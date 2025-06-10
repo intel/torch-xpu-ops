@@ -306,8 +306,9 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
   const auto XcclVersion = getXcclVersion();
-  LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
-            << "size: " << size << ", global rank: " << rank_;
+  LOG(INFO) << logPrefix()
+            << "ProcessGroupXCCL initialization options: " << "size: " << size
+            << ", global rank: " << rank_;
 
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
             << "XCCL version: " << XcclVersion
@@ -605,21 +606,21 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   auto stream = asyncOp ? xcclStreamsMap_.at(key).first
                         : at::xpu::getCurrentXPUStream(device.index());
 
-  std::unique_ptr<ccl::stream> cclstream;
+  std::unique_ptr<sycl::queue> cclstream;
   if (asyncOp) {
-    cclstream = std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).second);
+    cclstream = std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).second);
     syncStream(device, xcclEventsMap_[key], stream);
   } else {
     auto StreamKey = key + "_" +
         std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
     if (xcclStreamsMap_.find(StreamKey) != xcclStreamsMap_.end()) {
       cclstream =
-          std::make_unique<ccl::stream>(xcclStreamsMap_.at(StreamKey).second);
+          std::make_unique<sycl::queue>(xcclStreamsMap_.at(StreamKey).second);
     } else {
       LOG(INFO) << "Current stream id changed, create new ccl stream";
       // update xcclStreamsMap_ with current stream key
       cclstream =
-          std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
+          std::make_unique<sycl::queue>(c10::xpu::XPUStream(stream).queue());
       std::lock_guard<std::mutex> lock(mutex_);
       xcclStreamsMap_.emplace(
           StreamKey, std::make_pair(at::xpu::XPUStream(stream), *cclstream));
@@ -1544,6 +1545,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
         auto xcclDataType = getXcclDataType(input.scalar_type());
         onecclAllGather(
             input.data_ptr(),
+            output.data_ptr(),
+            (size_t)input.numel(),
+            xcclDataType,
             comm,
             &SyclQueue);
         return;
@@ -1641,7 +1645,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             sycl::queue& SyclQueue) {
           auto xcclDataType = getXcclDataType(input.scalar_type(), true);
           auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
-          ccl::reduce_scatter(
+          onecclReduceScatter(
               input.data_ptr(),
               output.data_ptr(),
               (size_t)output.numel(),
@@ -1738,6 +1742,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
             input.data_ptr(),
             output.data_ptr(),
             (size_t)output.numel(),
+            xcclDataType,
             xcclReduceOp,
             comm,
             &SyclQueue);
