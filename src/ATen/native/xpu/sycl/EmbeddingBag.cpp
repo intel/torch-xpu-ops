@@ -52,9 +52,9 @@ void embedding_bag(
     index_t padding_idx,
     bool ignore_offsets,
     int64_t num_row) {
-  using vec_t = at::detail::Array<scalar_t, vec_size>;
-  using vec_acc_t = at::detail::Array<accscalar_t, vec_size>;
-  using vec_idx_t = at::detail::Array<index_t, vec_size>;
+  using vec_t = memory::aligned_vector<scalar_t, vec_size>;
+  using vec_acc_t = memory::aligned_vector<accscalar_t, vec_size>;
+  using vec_idx_t = memory::aligned_vector<index_t, vec_size>;
   using KernelClass = EmbeddingBagKernelFunctor<
       scalar_t,
       accscalar_t,
