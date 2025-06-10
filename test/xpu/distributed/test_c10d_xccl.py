@@ -277,18 +277,16 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         time.sleep(2)
         dist.destroy_process_group()
 
-    # todo: https://github.com/pytorch/pytorch/blob/c06b5048ba866e2dd39e5da5399fe8261322c7ca/
-    #       torch/distributed/distributed_c10d.py#L1862 device agnostic
-    # @requires_xccl()
-    # @skip_but_pass_in_sandcastle_if(not TEST_MULTIXPU, "XCCL test requires 2+ GPUs")
-    # def test_set_process_group_desc(self):
-    #     device = torch.device(f"xpu:{self.rank}")
-    #     pg_default = self._create_process_group_xccl(device_id=device)
-    #     self.assertEqual(pg_default.group_desc, "default_pg")
-    #     pg_1 = c10d.new_group([0, 1], group_desc="test_purpose")
-    #     self.assertEqual(pg_1.group_desc, "test_purpose")
-    #     pg_2 = c10d.new_group([0, 1])
-    #     self.assertEqual(pg_2.group_desc, "undefined")
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIXPU, "XCCL test requires 2+ GPUs")
+    def test_set_process_group_desc(self):
+        device = torch.device(f"xpu:{self.rank}")
+        pg_default = self._create_process_group_xccl(device_id=device)
+        self.assertEqual(pg_default.group_desc, "default_pg")
+        pg_1 = c10d.new_group([0, 1], group_desc="test_purpose")
+        self.assertEqual(pg_1.group_desc, "test_purpose")
+        pg_2 = c10d.new_group([0, 1])
+        self.assertEqual(pg_2.group_desc, "undefined")
 
 
 class CommTest(MultiProcessTestCase):
@@ -450,17 +448,6 @@ class CommTest(MultiProcessTestCase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
-    def test_xccl_barrier_device_ids_function_argument(self):
-        store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
-        )
-
-        with self.assertRaisesRegex(TypeError, "Invalid function argument"):
-            c10d.barrier(device_ids=self.rank)
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
     def test_reduce_scatter_base_k(self):
         store = dist.FileStore(self.file_name, self.world_size)
         dist.init_process_group(
@@ -537,6 +524,31 @@ class CommTest(MultiProcessTestCase):
         dist.all_gather(tensor_list, tensor_c)
         dist.all_gather(tensor_list_c, tensor)
         dist.all_gather(tensor_list_c, tensor_c)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_all_gather_into_tensor(self):
+        store = dist.FileStore(self.file_name, self.world_size)
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+        )
+        device = "xpu"
+        for dtype in [torch.float32, torch.float8_e4m3fn, torch.float8_e5m2]:
+            tensor = torch.randn(12, 12, device=torch.device(device)).to(dtype)
+            output_tensor = torch.zeros(
+                self.world_size * 12, 12, device=torch.device(device)
+            ).to(dtype)
+            dist.all_gather_into_tensor(output_tensor, tensor)
+            for i in range(self.world_size):
+                start = i * 12
+                end = (i + 1) * 12
+                self.assertEqual(
+                    output_tensor[start:end].view(torch.float32),
+                    tensor.view(torch.float32),
+                )
 
 
 class SetDeviceMethod(Enum):

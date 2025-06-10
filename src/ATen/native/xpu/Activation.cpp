@@ -61,14 +61,14 @@ REGISTER_XPU_DISPATCH(hardshrink_stub, &xpu::hardshrink_kernel);
 TORCH_IMPL_FUNC(gelu_backward_out_xpu)
 (const Tensor& /*grad*/,
  const Tensor& /*self*/,
- c10::string_view approximate,
+ std::string_view approximate,
  const Tensor& /*grad_input*/
 ) {
   xpu::gelu_backward_kernel(*this, approximate);
 }
 
 TORCH_IMPL_FUNC(gelu_out_xpu)
-(const Tensor& /*self*/, c10::string_view approximate, const Tensor& /*result*/
+(const Tensor& /*self*/, std::string_view approximate, const Tensor& /*result*/
 ) {
   xpu::gelu_kernel(*this, approximate);
 }

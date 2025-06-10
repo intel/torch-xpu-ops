@@ -14,196 +14,55 @@ on:
       - release/*
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions: read-all
 
 jobs:
   preci-lint-check:
-    # Don't run on forked repos and draft PRs
-    if: ${{ github.repository_owner == 'intel' }}
     name: preci-lint-check
+    if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
       - name: Run lint check
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+          cd ./torch-xpu-ops
           bash .github/scripts/lintrunner.sh
       - name: Run lint check with Clang
         run: |
-          sudo apt update -y && sudo apt install -y libomp-dev
-          cd ../ && rm -rf pytorch
+          sudo apt update && sudo apt install -y libomp-dev
+          rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && cp -r ../torch-xpu-ops third_party/
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT build/xpu/**/*.* build/xpu/*.* third_party/torch-xpu-ops/src/*.* third_party/torch-xpu-ops/src/**/*.* third_party/torch-xpu-ops/src/**/**/*.* third_party/torch-xpu-ops/src/**/**/**/*.*"
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
+                                                    build/xpu/**/*.* \
+                                                    build/xpu/*.* \
+                                                    third_party/torch-xpu-ops/src/*.* \
+                                                    third_party/torch-xpu-ops/src/**/*.* \
+                                                    third_party/torch-xpu-ops/src/**/**/*.* \
+                                                    third_party/torch-xpu-ops/src/**/**/**/*.*"
           export CLANG=1
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
-  preci-linux-build:
-    # Don't run on forked repos and draft PRs
-    secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux
-    needs: preci-lint-check
-    permissions:
-      issues: write
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      pytorch: main
-      runner: pvc_e2e
-
-  preci-ut:
-    # Don't run on forked repos and draft PRs
-    secrets: inherit
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    name: preci-linux
-    needs: preci-linux-build
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      pytorch: ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-      ut: op_regression,op_regression_dev1,op_extended,op_ut,xpu_distributed
-      runner: linux.idc.xpu
-
-  Inductor-XPU-E2E-CI-Tests:
-    name: preci-linux / e2e_test
-    needs: preci-linux-build
-    runs-on: pvc_e2e
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
-    timeout-minutes: 900
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare Conda ENV
-        run: |
-          which conda && conda clean -ay
-          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
-          conda create -n e2e_ci python=3.10 cmake ninja -y
-          source activate e2e_ci
-          pip install mkl-static mkl-include
-          pip install pandas scipy tqdm
-      - name: Prepare Stock Pytorch
-        run: |
-          pwd
-          cd ../ && rm -rf pytorch
-          source activate e2e_ci
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ needs.preci-linux-build.outputs.torch_commit_id }}
-          # apply PRs for stock pytorch
-          pip install requests
-          # https://github.com/mengfei25/pytorch/pull/18 internal use only for subset model list
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/18
-          git status && git show -s
-          rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-          # Workaround for torch-xpu-ops ci test
-          sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch }} != 'nightly_wheel'
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
-        run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
-          cd ../pytorch
-          pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-      - name: Identify pinned versions
-        run: |
-          cd ../pytorch
-          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
-          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
-          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
-          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
-      - name: Torch Config
-        run: |
-          echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-
-          cd ..
-          source activate e2e_ci
-          python -c "import triton; print(triton.__version__)"
-          python pytorch/torch/utils/collect_env.py
-      - name: Huggingface BF16 Training Accuracy Test
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
-          env_prepare: true
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Huggingface FP16 Training Accuracy Test
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: huggingface
-          dt: float16
-          mode: training
-          scenario: accuracy
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Timm_models BF16 Training Accuracy Test
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: timm_models
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
-          env_prepare: true
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Torchbench BF16 Training Accuracy Test
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: accuracy
-          env_prepare: true
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      - name: Summarize archieve files
-        if: ${{ ! cancelled() }}
-        run: |
-          rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
-          # Print summary
-          rm -rf /tmp/tmp-*.txt
-          source activate e2e_ci
-          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
-          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
-          if [ ${exit_label} -ne 0 ];then
-            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
-            echo "There are ${exit_label} cases that need look into!!! Please check them"
-            exit ${exit_label}
-          fi
-      - name: Upload Inductor XPU E2E Data
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/upload_files
-
-  check-conditions:
-    if: ${{ github.repository_owner == 'intel' }}
-    name: preci-win-conditions-filter
+  preci-conditions-filter:
+    name: preci-conditions-filter
+    if: ${{ github.event.pull_request.draft == false }}
+    needs: [preci-lint-check]
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
     outputs:
-      files-changed: ${{ steps.check-files.outputs.src_changed }}
-      has-label: ${{ steps.check-label.outputs.results }}
+      src_changed: ${{ steps.check-files.outputs.src_changed }}
+      has_label: ${{ steps.check-label.outputs.has_label }}
+      disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
     steps:
       - uses: dorny/paths-filter@v2
         id: check-files
@@ -219,22 +78,191 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
-      
       - name: Check Label
         id: check-label
         run: |
-          LABEL_EXISTS=$(echo '${{ toJSON(github.event.pull_request.labels) }}' | jq 'any(.name == "windows_ci")')
-          echo $LABEL_EXISTS
-          echo "results=$LABEL_EXISTS" >> $GITHUB_OUTPUT
+          has_label=$(echo '${{ toJSON(github.event.pull_request.labels) }}' | jq 'any(.name == "windows_ci")')
+          echo "has_label=$has_label" |tee -a "${GITHUB_OUTPUT}"
+      - name: Check PR infos
+        id: check-pr-desc
+        run: |
+          set -x -e -o pipefail
+          sudo apt update && sudo apt install -y dos2unix
+          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
+          dos2unix pr-info.txt
+          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
+          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
+
+  preci-linux-build:
+    name: preci-linux
+    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all')}}
+    needs: [preci-conditions-filter]
+    secrets: inherit
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: main
+      runner: pvc_e2e
+
+  preci-linux-ut:
+    name: preci-linux
+    needs: [preci-conditions-filter, preci-linux-build]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
+      ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
+      runner: linux.idc.xpu
+
+  preci-linux-e2e:
+    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
+    name: preci-linux / e2e_test
+    needs: [preci-conditions-filter, preci-linux-build]
+    runs-on: pvc_e2e
+    env:
+      GH_TOKEN: ${{ github.token }}
+      reference_issue: 1645
+    timeout-minutes: 300
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare Conda ENV
+        run: |
+          which conda && conda clean -ay
+          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          conda create -n e2e_ci python=3.10 cmake ninja -y
+          source activate e2e_ci
+          pip install pandas scipy psutil requests
+      - name: Download Pytorch wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number }}
+      - name: Install Pytorch XPU
+        run: |
+          source activate e2e_ci
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          cd ../ && rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch && git checkout ${TORCH_COMMIT_ID}
+          pip install -r requirements.txt
+          # apply PRs for stock pytorch
+          # https://github.com/pytorch/pytorch/pull/152940 internal use only for subset model list
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          git show -s && git status && git diff
+      - name: Triton Installation
+        run: |
+          source activate e2e_ci
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
+          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+      - name: Identify pinned versions
+        run: |
+          cd ../pytorch
+          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" >> "${GITHUB_ENV}"
+          echo "TORCHAUDIO_COMMIT_ID=$(<.github/ci_commit_pins/audio.txt)" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" >> "${GITHUB_ENV}"
+          echo "TIMM_COMMIT_ID=$(<.ci/docker/ci_commit_pins/timm.txt)" >> "${GITHUB_ENV}"
+          . /etc/os-release
+          echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          source ../torch-xpu-ops/.github/scripts/env.sh
+          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+      - name: Torch Config
+        run: |
+          echo "$GITHUB_ENV"
+          rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_*
+          cd ..
+          source activate e2e_ci
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
+      - name: Huggingface BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Huggingface FP16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: huggingface
+          dt: float16
+          mode: training
+          scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Timm_models BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Torchbench BF16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      - name: Download Reference Artifact
+        id: reference_id
+        run: |
+          set -xe
+          source activate e2e_ci
+          conda install gh --channel conda-forge -y
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-weekly-LTS-XPU-E2E" |sed 's/.*: *//')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          rm -rf reference && mv Inductor-*-XPU-E2E-* reference
+      - name: Summarize archieve files
+        if: ${{ ! cancelled() }}
+        run: |
+          set -x -e -o pipefail
+          rm -rf ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
+          # Print summary
+          source activate e2e_ci
+          export IS_PR=1
+          bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
+              ${{ github.workspace }}/upload_files \
+              ${{ github.workspace }}/reference \
+          >> ${GITHUB_STEP_SUMMARY}
+          exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+          if [ ${exit_label} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "There are ${exit_label} cases that need look into!!! Please check them"
+            exit ${exit_label}
+          fi
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-CI-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/upload_files
 
   preci-windows:
-    # Don't run on forked repos and draft PRs
-    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }} 
     name: preci-windows
-    needs: [preci-lint-check, check-conditions]
+    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_win') }} 
+    needs: [preci-conditions-filter]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
-      ut: op_extended
+      ut: op_extended,torch_xpu
       runner: Windows_CI
-      files-changed: ${{ needs.check-conditions.outputs.files-changed }}
-      has-label: ${{ needs.check-conditions.outputs.has-label }}
+      src_changed: ${{ needs.preci-conditions-filter.outputs.src_changed }}
+      has_label: ${{ needs.preci-conditions-filter.outputs.has_label }}

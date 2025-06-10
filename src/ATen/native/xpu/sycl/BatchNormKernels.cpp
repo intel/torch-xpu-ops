@@ -92,7 +92,7 @@ template <
     template <typename U> class PtrTraits = DefaultPtrTraits,
     typename index_t = int64_t>
 static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
-get_packed_accessor(const Tensor& t, c10::string_view var_name) {
+get_packed_accessor(const Tensor& t, std::string_view var_name) {
   constexpr auto expect_type = c10::CppTypeToScalarType<
       typename std::remove_const<scalar_t>::type>::value;
   const auto actual_type = t.scalar_type();
@@ -113,7 +113,7 @@ template <
     template <typename U> class PtrTraits = DefaultPtrTraits,
     typename index_t = int64_t>
 static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
-packed_accessor_or_dummy(const Tensor& t, c10::string_view var_name) {
+packed_accessor_or_dummy(const Tensor& t, std::string_view var_name) {
   if (!t.defined()) {
     const std::array<index_t, dim> zeros{{0}};
     return GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>(
@@ -646,183 +646,6 @@ void batch_norm_stats_template(
         kfn);
   }
 }
-
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename vec_t,
-    typename vec_y,
-    int vec_size,
-    bool two_pass_reduce>
-struct BatchNormReduceSumChannelsLastKernelFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<2> item) const {
-    // int plane = item.get_group(0);
-    // int tid = item.get_local_linear_id();
-    auto sg = item.get_sub_group();
-
-    // offset along m dimension
-    int m_offset = item.get_global_id(0);
-    int c_offset_base = item.get_global_id(1) * vec_size;
-
-    int thread_idx_y = item.get_local_id(0);
-    // int thread_idx_x = item.get_local_id(1);
-    int group_idx_y = item.get_group(0);
-    // int group_idx_x = item.get_group(1);
-
-    int address_base = m_offset * stride_ + c_offset_base;
-    int inner_loop_stride = global_range_y_;
-    int address_increment = inner_loop_stride * stride_;
-
-    accscalar_t x_sum[vec_size] = {0.0f};
-    accscalar_t x_sq_sum[vec_size] = {0.0f};
-    // thread reduction
-    for (int i = 0; i < loop_count_; i++) {
-      vec_t x_math_vec = *(reinterpret_cast<vec_t*>(input_ptr_ + address_base));
-#pragma unroll
-      for (int j = 0; j < vec_size; j++) {
-        auto c_offset = c_offset_base + j;
-
-        if (c_offset < stride_ && m_offset < reduction_size_) {
-          // scalar_t arr = input_ptr_[address_base + j];
-          auto x_math = x_math_vec[j];
-          x_sum[j] += x_math;
-          x_sq_sum[j] += x_math * x_math;
-        }
-      }
-      m_offset += inner_loop_stride;
-      address_base += address_increment;
-    }
-
-#pragma unroll
-    for (int j = 0; j < vec_size; j++) {
-      vec_y value;
-      value[0] = x_sum[j];
-      value[1] = x_sq_sum[j];
-
-      value = group_y_reduce(
-          item, shared_, value, [](accscalar_t a, accscalar_t b) {
-            return a + b;
-          });
-
-      x_sum[j] = value[0];
-      x_sq_sum[j] = value[1];
-
-      item.barrier(sycl_local_fence);
-    }
-
-#pragma unroll
-    for (int j = 0; j < vec_size; j++) {
-      auto c_offset = c_offset_base + j;
-      // global_reduciton
-      if (thread_idx_y == 0 && c_offset < stride_) {
-        if constexpr (two_pass_reduce) {
-          // write to temp[c][group_idx_y]
-          // int offset = c_offset * group_num_y_ + group_idx_y;
-          temp_sum_ptr_[c_offset * group_num_y_ + group_idx_y] = x_sum[j];
-          temp_sum_sq_ptr_[c_offset * group_num_y_ + group_idx_y] = x_sq_sum[j];
-        } else {
-          out_mean_ptr_[c_offset] = x_sum[j];
-          out_invstd_ptr_[c_offset] = x_sq_sum[j];
-        }
-      }
-    }
-  }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<vec_y, 1>(sycl::range<1>{(size_t)wg_size_}, cgh);
-  }
-
-  BatchNormReduceSumChannelsLastKernelFunctor(
-      const int reduction_size,
-      const int stride,
-      int global_range_y,
-      int local_range_y,
-      int group_num_x,
-      int group_num_y,
-      accscalar_t* temp_sum_ptr,
-      accscalar_t* temp_sum_sq_ptr,
-      int wg_size,
-      scalar_t* input_ptr,
-      accscalar_t* out_mean_ptr,
-      accscalar_t* out_invstd_ptr,
-      int loop_count)
-      : reduction_size_(reduction_size),
-        stride_(stride),
-        global_range_y_(global_range_y),
-        local_range_y_(local_range_y),
-        group_num_x_(group_num_x),
-        group_num_y_(group_num_y),
-        temp_sum_ptr_(temp_sum_ptr),
-        temp_sum_sq_ptr_(temp_sum_sq_ptr),
-        wg_size_(wg_size),
-        input_ptr_(input_ptr),
-        out_mean_ptr_(out_mean_ptr),
-        out_invstd_ptr_(out_invstd_ptr),
-        loop_count_(loop_count) {}
-
- private:
-  const int reduction_size_;
-  const int stride_;
-  int global_range_y_;
-  int local_range_y_;
-  int group_num_x_;
-  int group_num_y_;
-  accscalar_t* temp_sum_ptr_;
-  accscalar_t* temp_sum_sq_ptr_;
-  int wg_size_;
-  scalar_t* input_ptr_;
-  accscalar_t* out_mean_ptr_;
-  accscalar_t* out_invstd_ptr_;
-  int loop_count_;
-  sycl_local_acc_t<vec_y, 1> shared_;
-};
-
-template <typename accscalar_t>
-struct BatchNormReduceSumChannelsLastTwoPassKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    auto local_id = item.get_local_linear_id();
-    // auto global_id = item.get_global_linear_id();
-    auto c_offset = item.get_group_linear_id();
-
-    accscalar_t temp_sum_val = 0.0f;
-    accscalar_t temp_sum_sq_val = 0.0f;
-    for (int i = local_id; i < group_num_y_; i += wg_size_) {
-      int offset = c_offset * group_num_y_ + i;
-      temp_sum_val += temp_sum_ptr_[offset];
-      temp_sum_sq_val += temp_sum_sq_ptr_[offset];
-    }
-    auto total_sum = sycl::reduce_over_group(
-        item.get_group(), temp_sum_val, sycl::plus<accscalar_t>());
-    auto total_sum_sq = sycl::reduce_over_group(
-        item.get_group(), temp_sum_sq_val, sycl::plus<accscalar_t>());
-    if (local_id == 0) {
-      out_mean_ptr_[c_offset] = total_sum;
-      out_invstd_ptr_[c_offset] = total_sum_sq;
-    }
-  }
-  BatchNormReduceSumChannelsLastTwoPassKernelFunctor(
-      int group_num_y,
-      accscalar_t* temp_sum_ptr,
-      accscalar_t* temp_sum_sq_ptr,
-      int wg_size,
-      accscalar_t* out_mean_ptr,
-      accscalar_t* out_invstd_ptr)
-      : group_num_y_(group_num_y),
-        temp_sum_ptr_(temp_sum_ptr),
-        temp_sum_sq_ptr_(temp_sum_sq_ptr),
-        wg_size_(wg_size),
-        out_mean_ptr_(out_mean_ptr),
-        out_invstd_ptr_(out_invstd_ptr) {}
-
- private:
-  int group_num_y_;
-  accscalar_t* temp_sum_ptr_;
-  accscalar_t* temp_sum_sq_ptr_;
-  int wg_size_;
-  accscalar_t* out_mean_ptr_;
-  accscalar_t* out_invstd_ptr_;
-};
 
 template <typename T, typename C, typename TACC, typename CACC, typename item_t>
 inline void welford_merge_group_vertical(
@@ -1759,7 +1582,7 @@ void batch_norm_elemt_channels_last_template(
     const at::Tensor& shift, // bias of BN
     const at::Tensor& mean,
     const at::Tensor& inv_std,
-    const at::optional<at::Tensor>& z = c10::nullopt, // bias after BN
+    const std::optional<at::Tensor>& z = std::nullopt, // bias after BN
     const bool fuse_relu = false) {
   const auto stride = input.sizes()[1];
   const auto reduction_size = input.numel() / stride;
@@ -1947,8 +1770,8 @@ struct BatchNormElementwiseLoopsFunctor {
 void batch_norm_elemt_kernel(
     Tensor& out,
     const Tensor& self,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     const Tensor& mean_,
     const Tensor& invstd_) {
   switch (batch_norm_choose_impl(self)) {
@@ -2553,7 +2376,7 @@ batch_norm_backward_reduce_channels_last_template(
   }
 
   auto config = get_adaptive_launch_config(
-      syclMaxWorkItemsPerEU() * 2,
+      syclMaxWorkItemsPerSubSlice() * 2,
       reduction_size,
       stride,
       false,
@@ -2661,7 +2484,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> batch_norm_backward_reduce_kernel(
     const Tensor& input,
     const Tensor& mean,
     const Tensor& invstd,
-    const c10::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& weight_opt,
     bool input_g,
     bool weight_g,
     bool bias_g) {
@@ -3867,7 +3690,7 @@ Tensor batch_norm_backward_elemt_kernel(
     const Tensor& input,
     const Tensor& mean,
     const Tensor& invstd,
-    const c10::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& weight_opt,
     const Tensor& sum_dy,
     const Tensor& sum_dy_xmu,
     const Tensor& count) {
@@ -4042,8 +3865,8 @@ void batch_norm_mean_var(
 
 std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
     const Tensor& self,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
     double momentum) {
   c10::MaybeOwned<Tensor> running_mean =
       at::borrow_from_optional_tensor(running_mean_opt);
@@ -4191,8 +4014,8 @@ struct BatchNormElementwiseFunctor {
 void batch_norm_elementwise(
     const Tensor& out,
     const Tensor& self,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
     const Tensor& mean_,
     const Tensor& invstd_) {
   switch (batch_norm_choose_impl(self)) {
@@ -4287,10 +4110,10 @@ void batch_norm_elementwise(
 
 std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_kernel(
     const Tensor& self,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& bias_opt,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& bias_opt,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
     bool train,
     double momentum,
     double epsilon,
@@ -5127,11 +4950,11 @@ Tensor batch_norm_elementwise_backward_eval(
 std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
     const Tensor& grad_out,
     const Tensor& input,
-    const c10::optional<Tensor>& weight_opt,
-    const c10::optional<Tensor>& running_mean_opt,
-    const c10::optional<Tensor>& running_var_opt,
-    const c10::optional<Tensor>& save_mean_opt,
-    const c10::optional<Tensor>& save_invstd_opt,
+    const std::optional<Tensor>& weight_opt,
+    const std::optional<Tensor>& running_mean_opt,
+    const std::optional<Tensor>& running_var_opt,
+    const std::optional<Tensor>& save_mean_opt,
+    const std::optional<Tensor>& save_invstd_opt,
     bool train,
     double epsilon,
     std::array<bool, 3> grad_input_mask) {
@@ -5416,8 +5239,7 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_with_counts_kernel(
   c10::MaybeOwned<Tensor> running_mean_maybe_owned =
       at::borrow_from_optional_tensor(running_mean_opt);
   const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
 
   auto scalar_type =
       running_mean.defined() ? running_mean.scalar_type() : self.scalar_type();
@@ -5471,8 +5293,7 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
   c10::MaybeOwned<Tensor> running_mean_maybe_owned =
       at::borrow_from_optional_tensor(running_mean_opt);
   const Tensor& running_mean = *running_mean_maybe_owned;
-  const Tensor& running_var =
-      c10::value_or_else(running_var_opt, [] { return Tensor(); });
+  const Tensor& running_var = running_var_opt.value_or(Tensor());
 
   std::vector<int64_t> counts(mean.size(0), count);
   Tensor counts_ = at::from_blob(

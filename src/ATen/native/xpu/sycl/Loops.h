@@ -35,7 +35,7 @@ inline void elementwise_kernel_helper(func_t f, policy_t policy) {
 #pragma unroll
   for (int i = 0; i < item_work_size; i++) {
     if (policy.check_inbounds(i)) {
-      results[i] = c10::guts::apply(f, args[i]);
+      results[i] = std::apply(f, args[i]);
     }
   }
 
@@ -314,7 +314,7 @@ static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseGroupRangeKernel<vec_size, func_t>(N, f);
 
-  int wg_sz = syclMaxWorkItemsPerEU();
+  int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = ceil_div<int>(N, wg_sz * vec_size);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -328,7 +328,7 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseGlobalRangeKernel<func_t>(N, f);
 
-  int wg_sz = syclMaxWorkItemsPerEU();
+  int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = ceil_div<int>(N, wg_sz);
   int hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
@@ -355,7 +355,7 @@ static inline void launch_unrolled_kernel(
   auto ker = UnrolledElementwiseKernel(N, f, data, ic, oc, l, s);
   using ker_t = decltype(ker);
 
-  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -389,7 +389,7 @@ static inline void launch_vectorized_kernel(
   constexpr auto max_scalar_bytes = max_scalar_size<func_t>();
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
   using traits = function_traits<func_t>;
-  auto wg_sz = syclMaxWorkItemsPerEU();
+  auto wg_sz = syclMaxWorkItemsPerSubSlice();
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
@@ -457,7 +457,7 @@ static inline void launch_unrolled_kernel_for_multi_outputs(
       out_calc_t>(N, f, data, ic, oc);
   using ker_t = decltype(ker);
 
-  int wg_sz = syclMaxWorkItemsPerEU();
+  int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = ceil_div<int>(N, ker_t::item_work_size * wg_sz);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -495,7 +495,7 @@ static inline bool can_vectorize_for_non_contigouous(
   return vec_size > 1;
 }
 
-template <typename func_t, bool enable_broadcast_vec>
+template <typename func_t, bool enable_broadcast_vec = true>
 void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
@@ -513,8 +513,8 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
   int64_t numel = iter.numel();
   bool contiguous = iter.is_contiguous();
-  bool latency_case = numel <=
-      syclMaxWorkItemsPerEU() * 4; /* on tuning for different data types */
+  bool latency_case = numel <= syclMaxWorkItemsPerSubSlice() *
+          4; /* on tuning for different data types */
 
   int vec_size;
   if (contiguous) {

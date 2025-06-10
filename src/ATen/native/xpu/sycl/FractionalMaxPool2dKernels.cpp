@@ -97,10 +97,10 @@ struct FractionalMaxPool2dOutFrameKernelFunctor {
     }
   }
   FractionalMaxPool2dOutFrameKernelFunctor(
-      PackedTensorAccessor<scalar_t, 4> output,
-      PackedTensorAccessor<int64_t, 4> indices,
-      PackedTensorAccessor<const scalar_t, 4> input,
-      PackedTensorAccessor<const scalar_t, 3> samples,
+      GenericPackedTensorAccessor<scalar_t, 4> output,
+      GenericPackedTensorAccessor<int64_t, 4> indices,
+      GenericPackedTensorAccessor<const scalar_t, 4> input,
+      GenericPackedTensorAccessor<const scalar_t, 3> samples,
       int poolSizeH,
       int poolSizeW)
       : output_(output),
@@ -111,10 +111,10 @@ struct FractionalMaxPool2dOutFrameKernelFunctor {
         poolSizeW_(poolSizeW) {}
 
  private:
-  PackedTensorAccessor<scalar_t, 4> output_;
-  PackedTensorAccessor<int64_t, 4> indices_;
-  PackedTensorAccessor<const scalar_t, 4> input_;
-  PackedTensorAccessor<const scalar_t, 3> samples_;
+  GenericPackedTensorAccessor<scalar_t, 4> output_;
+  GenericPackedTensorAccessor<int64_t, 4> indices_;
+  GenericPackedTensorAccessor<const scalar_t, 4> input_;
+  GenericPackedTensorAccessor<const scalar_t, 3> samples_;
   int poolSizeH_;
   int poolSizeW_;
 };
@@ -209,15 +209,15 @@ struct FractionalMaxPool2dBackwardOutFrameKernelFunctor {
     }
   }
   FractionalMaxPool2dBackwardOutFrameKernelFunctor(
-      PackedTensorAccessor<scalar_t, 4> gradInput,
-      PackedTensorAccessor<const scalar_t, 4> gradOutput,
-      PackedTensorAccessor<const int64_t, 4> indices)
+      GenericPackedTensorAccessor<scalar_t, 4> gradInput,
+      GenericPackedTensorAccessor<const scalar_t, 4> gradOutput,
+      GenericPackedTensorAccessor<const int64_t, 4> indices)
       : gradInput_(gradInput), gradOutput_(gradOutput), indices_(indices) {}
 
  private:
-  PackedTensorAccessor<scalar_t, 4> gradInput_;
-  PackedTensorAccessor<const scalar_t, 4> gradOutput_;
-  PackedTensorAccessor<const int64_t, 4> indices_;
+  GenericPackedTensorAccessor<scalar_t, 4> gradInput_;
+  GenericPackedTensorAccessor<const scalar_t, 4> gradOutput_;
+  GenericPackedTensorAccessor<const int64_t, 4> indices_;
 };
 
 void fractional_max_pool2d_backward_kernel(
