@@ -15,7 +15,7 @@ done
 
 # Python env via conda
 conda create python=${PYTHON_VERSION} -y -n ${CONDA_ENV}
-conda activate ${CONDA_ENV}
+source activate ${CONDA_ENV}
 conda info -e
 which python && python -V && conda list
 python -m pip install requests pandas scipy psutil
