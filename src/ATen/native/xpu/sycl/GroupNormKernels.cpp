@@ -3,7 +3,6 @@
 #include <ATen/OpMathType.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
@@ -1411,9 +1410,7 @@ void group_norm_backward_kernel_impl(
     T_ACC* c2_data = c2.mutable_data_ptr<T_ACC>();
     T_ACC* c3_data = c3.mutable_data_ptr<T_ACC>();
     Tensor dummy_gamma = at::ones({1, G, D}, X.options().dtype(kAccType));
-    std::cout << "dummy---------" << dummy_gamma.device() << std::endl;
     if (gamma.defined()) {
-      std::cout << "gamma.defined()---" << std::endl;
       auto iter = TensorIteratorConfig()
                       .check_all_same_dtype(std::is_same<T, T_ACC>::value)
                       .add_output(c1)
@@ -1422,7 +1419,6 @@ void group_norm_backward_kernel_impl(
                       .build();
       gpu_kernel(iter, GroupNormBackwardC1Functor<T, T_ACC>());
     } else {
-      std::cout << "gamma not defined---" << std::endl;
       auto iter = TensorIteratorConfig()
                       .check_all_same_dtype(std::is_same<T, T_ACC>::value)
                       .add_output(c1)
@@ -1432,7 +1428,6 @@ void group_norm_backward_kernel_impl(
       gpu_kernel(iter, GroupNormBackwardC1Functor<T, T_ACC>());
     }
 
-    std::cout << "ComputeBackwardFusedParamsFunctor---" << std::endl;
     wg_size = (C / G) < get_group_reduce_group_size(simd)
         ? simd
         : get_group_reduce_group_size(simd);
