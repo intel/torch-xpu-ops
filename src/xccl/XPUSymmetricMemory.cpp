@@ -315,6 +315,7 @@ struct RendezvousRequest {
   size_t buffer_size;
   size_t signal_pad_offset;
   bool has_multicast_support;
+  size_t base_offset;
 };
 
 void validate_rendezvous_requests(
@@ -459,8 +460,14 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   sycl::device dev = current_queue.get_device();
   auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
 
-  ze_result_t result = zeMemGetIpcHandle(l0_ctx, block->ptr, &ipc_handle);
-  TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
+  ze_ipc_mem_handle_t ipc_handle;
+  // convert to base address
+  void *base_addr;
+  size_t base_size;
+  zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size);
+  zeMemGetIpcHandle(l0_ctx, base_addr, &ipc_handle);
+  size_t base_offset = (char*)ptr - (char*)base_addr;
+  block_fd = *reinterpret_cast<int*>(&ipc_handle);
 
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
@@ -468,7 +475,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       .block_size = block->block_size,
       .buffer_size = block->buffer_size,
       .signal_pad_offset = block->signal_pad_offset,
-      .has_multicast_support = device_has_multicast_support(block->device_idx)};
+      .has_multicast_support = false,
+      .base_offset = base_offset};
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
@@ -476,9 +484,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   for (int r = 0; r < world_size; ++r) {
     pids[r] = reqs[r].pid;
   }
-  std::vector<ze_ipc_mem_handle_t> imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
-
-   imported_handles = ipc_channel.all_gather_ipc_handles(rank, group_info.pids, ipc_handle);
+  auto imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
 
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
@@ -492,16 +498,15 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       continue;
     }
 
-    void* imported_ptr = nullptr;
-    result = zeMemOpenIpcHandle(
-        l0_ctx,
-        l0_dev,
-        imported_handles[r],
-        ZE_IPC_MEMORY_FLAG_NONE,
-        &imported_ptr);
-    TORCH_CHECK(result == ZE_RESULT_SUCCESS, "zeMemOpenIpcHandle failed");
+    ze_ipc_mem_handle_t peer_ipc_handle;
+    int peer_fd = imported_fds[r];
+    std::memcpy(&peer_ipc_handle, &peer_fd, sizeof(int));
 
-    map_block(&buffers[r], handles[r], block->block_size, block->device_idx);
+    // Open IPC handle of remote peer
+    void* peer_base;
+    zeMemOpenIpcHandle(l0_ctx, l0_dev, peer_ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base);
+    void* physical_buffer_ptr = (char*)peer_base + reqs[r].base_offset;
+    map_block(&buffers[r], physical_buffer_ptr, block->block_size, block->device_idx);
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
