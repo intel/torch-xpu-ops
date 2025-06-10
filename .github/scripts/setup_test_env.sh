@@ -45,7 +45,7 @@ if [ "${PYTORCH_VERSION}" != "main" ];then
     cd third_party/torch-xpu-ops
     git checkout ${TORCH_XPU_OPS_COMMIT}
 else
-    cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
+    cp -r ${WORKSPACE} third_party/torch-xpu-ops
     cd third_party/torch-xpu-ops
 fi
 git remote -v && git branch && git show -s
