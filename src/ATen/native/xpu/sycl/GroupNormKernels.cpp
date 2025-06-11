@@ -1465,7 +1465,6 @@ void group_norm_backward_kernel_impl(
   if (dgamma.defined() || dbeta.defined()) {
     T* dgamma_data = dgamma.defined() ? dgamma.mutable_data_ptr<T>() : nullptr;
     T* dbeta_data = dbeta.defined() ? dbeta.mutable_data_ptr<T>() : nullptr;
-    std::cout << "dgamma.defined() || dbeta.defined()---" << std::endl;
     if (N <= 128) {
       // For small batch size, do colwise reduce directly.
       auto caller = GammaBetaBackwardPlainFunctor<T>(
@@ -1480,8 +1479,6 @@ void group_norm_backward_kernel_impl(
           dbeta_data);
       sycl_kernel_submit(sycl::range<1>(C), queue, caller);
     } else {
-      std::cout << "dgamma not defined() && dbeta not defined()---"
-                << std::endl;
       // The algorithm for colwise reduction here is to accumulate each
       // (subgroup_size) cols to a (subgroup_size^2) tile and write the tile
       // to shared memory. Then do subgroup reduce for each col in the tile.
