@@ -62,13 +62,18 @@ runs:
           fi
           # torchbench
           python -c "import torch, torchvision, torchaudio"
-          cd pt2e-performance && pip install -r requirements.txt
+          cd pt2e-performance
+          pip install --no-deps accelerate
+          pip install --no-deps $(cat requirements.txt |grep 'pytorch-image-models')
+          timm_commit="$(grep 'pytorch-image-models' requirements.txt  |awk -F '@' '{print $2}')"
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/${timm_commit:-"main"}/requirements.txt | grep -vE torch)
+          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g'  requirements.txt
+          pip install -r requirements.txt
           python install.py --continue_on_fail
-          cd ../
           # deps for torchrec_dlrm
           pip install pyre_extensions
-          pip install fbgemm-gpu
-          pip install --no-deps torchmetrics==1.0.3 torchrec
+          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
           # transformers
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
           # timm
