@@ -15,7 +15,7 @@ done
 
 # Python env via conda
 conda create python=${PYTHON_VERSION} -y -n ${CONDA_ENV}
-source activate ${CONDA_ENV}
+conda activate ${CONDA_ENV}
 conda info -e
 which python && python -V && conda list
 python -m pip install requests pandas scipy psutil
@@ -63,11 +63,11 @@ if [ "${PYTORCH_VERSION}" == "main" ];then
     cd ..
     rm -rf xpu-vision && git clone https://github.com/pytorch/vision.git xpu-vision
     cd xpu-vision && git checkout ${TORCHVISION_COMMIT}
-    python setup.py install
+    python setup.py bdist_wheel && python -m pip install dist/torch*.whl
     cd .. && rm -rf xpu-vision
     rm -rf xpu-audio && git clone https://github.com/pytorch/audio.git xpu-audio
     cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT}
-    python setup.py install
+    python setup.py bdist_wheel && python -m pip install dist/torch*.whl
     cd .. && rm -rf xpu-audio
     cd pytorch
 fi
