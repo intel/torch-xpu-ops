@@ -194,7 +194,6 @@ jobs:
           source activate e2e_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install /home/sdp/mengfeil/2025.2/*.whl
           pip install ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
