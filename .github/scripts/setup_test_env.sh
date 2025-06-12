@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -xe
+set -xe -o pipefail
 export GIT_PAGER=cat
 
 # Init params
@@ -14,7 +14,7 @@ for var; do
 done
 
 # Python env via conda
-. $(conda info -e |awk '{if($1=="base"){printf("%s/etc/profile.d/conda.sh", $NF)}}')
+. "$(conda info -e |awk '{if($1=="base"){printf("%s/etc/profile.d/conda.sh", $NF)}}')"
 conda create python=${PYTHON_VERSION} -y -n ${CONDA_ENV}
 conda activate ${CONDA_ENV}
 conda info -e
