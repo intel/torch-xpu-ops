@@ -61,7 +61,7 @@ fi
 if [ "${TRITON_VERSION}" == "pinned" ];then
     TRITON_VERSION="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
 fi
-if [ ! -z "${TRITON_VERSION}" ];then
+if [ -n "${TRITON_VERSION}" ];then
     TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
     python -m pip uninstall -y pytorch-triton-xpu
     python -m pip install "git+${TRITON_REPO}@${TRITON_VERSION}#subdirectory=python"
