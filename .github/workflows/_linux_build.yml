@@ -33,6 +33,11 @@ on:
         type: string
         default: 'false'
         description: Whether update LKG torch version to issue #1280
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton commit. Use pytorch pined commit by default
     outputs:
       torch_commit_id:
         description: The commit id of the torch build
@@ -118,12 +123,36 @@ jobs:
         id: build_version
         run: |
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
+      - name: Triton Installation
+        run: |
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ..
+            git clone ${TRITON_REPO}
+            git checkout ${TRITON_COMMIT_ID}
+            pip install -r python/requirements.txt
+            python setup.py bdist_wheel
+            cp ${WORKSPACE}/intel-xpu-backend-for-triton/dist/triton*.whl ${WORKSPACE}
+          fi
       - name: Upload Torch XPU Wheel
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/torch*.whl
+      - name: Upload Triton Wheel
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/triton*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

@@ -215,31 +215,6 @@ jobs:
               sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
             fi
           fi
-      - name: Triton Installation
-        run: |
-          source activate $CONDA_ENV_NAME
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            ( 
-              echo "[$(date)] Job ${GITHUB_JOB} waiting for lock..."
-              flock -x 200 || exit 1
-              export TRITON_WORKDIR="/tmp/triton_${CONDA_ENV_NAME}_${GITHUB_RUN_ID}"
-              trap "rm -f /tmp/triton.lock; rm -rf \$TRITON_WORKDIR" EXIT
-              echo "[$(date)] Job ${GITHUB_JOB} acquired lock"
-              mkdir -p $TRITON_WORKDIR || exit 1
-              cd $TRITON_WORKDIR
-              export TRITON_BUILD_PARALLEL=0
-              pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-              cd -
-            ) 200>/tmp/triton_install.lock
-          fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
@@ -269,6 +244,16 @@ jobs:
             python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           pip install -r .ci/docker/requirements-ci.txt
+      - name: Download Triton wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}
+      - name: Install Triton
+        run: |
+          source activate $CONDA_ENV_NAME
+          pip install --force-reinstall ${{ github.workspace }}/triton*.whl
       - name: Torch Config
         run: |
           source activate $CONDA_ENV_NAME
