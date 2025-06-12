@@ -135,6 +135,7 @@ jobs:
           echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ..
+            rm -rf intel-xpu-backend-for-triton
             git clone https://github.com/intel/intel-xpu-backend-for-triton.git
             cd intel-xpu-backend-for-triton
             git checkout ${TRITON_COMMIT_ID}
@@ -164,4 +165,4 @@ jobs:
         if: always()
         run: |
           chmod 777 . -R
-          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl
+          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl triton*.whl
