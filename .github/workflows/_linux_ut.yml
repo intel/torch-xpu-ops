@@ -138,14 +138,14 @@ jobs:
             command_script: |
               export PYTORCH_TEST_WITH_SLOW=1
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-              python -I -c "import torch; print(torch.xpu.device_count())" > /tmp/xpu_count.txt
-              export NUM_GPUS=$(cat /tmp/xpu_count.txt)
+              python -I -c 'import torch; print(torch.xpu.device_count())' > $GITHUB_WORKSPACE/xpu_count.txt
+              export NUM_GPUS=$(cat $GITHUB_WORKSPACE/xpu_count.txt)
               echo "Detected $NUM_GPUS XPU devices"
-              rm /tmp/xpu_count.txt
+              rm $GITHUB_WORKSPACE/xpu_count.txt
 
-              python -I -c "import torch; print(torch.xpu.current_device() + 1)" > /tmp/shard_index.txt
-              export SHARD_NUMBER=$(cat /tmp/shard_index.txt)
-              rm /tmp/shard_index.txt
+              python -I -c 'import torch; print(torch.xpu.current_device() + 1)' > $GITHUB_WORKSPACE/shard_index.txt
+              export SHARD_NUMBER=$(cat $GITHUB_WORKSPACE/shard_index.txt)
+              rm $GITHUB_WORKSPACE/shard_index.txt
 
               torchrun --nproc_per_node=$NUM_GPUS test/run_test.py \
                 --include inductor/test_torchinductor inductor/test_torchinductor_opinfo inductor/test_aot_inductor \
@@ -155,13 +155,13 @@ jobs:
                 --shard "$SHARD_NUMBER" "$NUM_GPUS" \
                 --verbose 2>$GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test_error.log | \
               tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
-              cp -r test/test-reports ${{ github.workspace }}/ut_log/torch_xpu/
+              cp -r test/test-reports $GITHUB_WORKSPACE/ut_log/torch_xpu/
               function read_dir(){
                 for file in `ls $1`
                 do
                   if [ -d $1"/"$file ]
                   then
-                    cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+                    cp $1"/"$file"/"*.xml $GITHUB_WORKSPACE/ut_log/
                   else
                     echo "[Warning] $file has no xml"
                   fi
