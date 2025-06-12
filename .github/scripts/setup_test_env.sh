@@ -60,6 +60,7 @@ fi
 # Install torchvision torchaudio if source build
 if [ "${PYTORCH_VERSION}" == "main" ];then
     unset PYTORCH_VERSION
+    python -m pip install cmake ninja
     TORCHVISION_COMMIT=$(cat .github/ci_commit_pins/vision.txt)
     rm -rf xpu-vision && git clone https://github.com/pytorch/vision.git xpu-vision
     cd xpu-vision && git checkout ${TORCHVISION_COMMIT}
@@ -91,6 +92,8 @@ python -c "import triton; print(triton.__version__)"
 python pytorch/torch/utils/collect_env.py
 
 # Clean cache
-rm -rf /tmp/* || sudo rm -rf /tmp/*
+rm -rf /tmp/ || sudo rm -rf /tmp/
+mkdir /tmp || sudo mkdir /tmp
+rm -rf ~/.torch || sudo rm -rf ~/.torch
 rm -rf ~/.triton || sudo rm -rf ~/.triton
 rm -rf ~/.cache || sudo rm -rf ~/.cache
