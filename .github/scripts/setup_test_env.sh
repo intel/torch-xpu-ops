@@ -57,19 +57,6 @@ else
     python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 fi
 
-# Install torchvision torchaudio if source build
-if [ "${PYTORCH_VERSION}" == "main" ];then
-    unset PYTORCH_VERSION
-    python -m pip install cmake ninja
-    TORCHVISION_COMMIT=$(cat .github/ci_commit_pins/vision.txt)
-    rm -rf xpu-vision && git clone https://github.com/pytorch/vision.git xpu-vision
-    cd xpu-vision && git checkout ${TORCHVISION_COMMIT}
-    python setup.py install && cd .. && rm -rf xpu-vision
-    TORCHAUDIO_COMMIT=$(cat .github/ci_commit_pins/audio.txt)
-    rm -rf xpu-audio && git clone https://github.com/pytorch/audio.git xpu-audio
-    cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT}
-    python setup.py install && cd .. && rm -rf xpu-audio
-fi
 # Install triton
 if [ "${TRITON_VERSION}" == "pinned" ];then
     TRITON_VERSION="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
