@@ -24,9 +24,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Setup python
         uses: actions/setup-python@v5
         with:

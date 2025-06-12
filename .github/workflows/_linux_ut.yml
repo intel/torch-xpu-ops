@@ -59,9 +59,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -261,9 +259,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -307,9 +303,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Set the UT name
         run: |
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -371,9 +365,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -443,9 +435,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Set the UT name
         run: |
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"

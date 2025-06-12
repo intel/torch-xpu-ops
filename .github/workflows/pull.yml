@@ -127,9 +127,7 @@ jobs:
     steps:
       - name: Cleanup Workspace
         run: |
-          cd ..
-          rm -rf ${{ github.workspace }} || sudo rm -rf ${{ github.workspace }}
-          mkdir -p ${{ github.workspace }}
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Pytorch wheel
