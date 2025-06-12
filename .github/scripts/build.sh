@@ -85,21 +85,6 @@ rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
 python -m pip install --force-reinstall tmp/torch*.whl
 
-# Build torchvision and torchaudio
-TORCHVISION_COMMIT=$(cat .github/ci_commit_pins/vision.txt)
-TORCHAUDIO_COMMIT=$(cat .github/ci_commit_pins/audio.txt)
-cd ..
-rm -rf xpu-vision && git clone https://github.com/pytorch/vision.git xpu-vision
-cd xpu-vision && git checkout ${TORCHVISION_COMMIT}
-python setup.py bdist_wheel
-pip install dist/torchvision*.whl
-cd .. && rm -rf xpu-vision
-rm -rf xpu-audio && git clone https://github.com/pytorch/audio.git xpu-audio
-cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT}
-python setup.py bdist_wheel
-pip install dist/torchaudio*.whl
-cd .. && rm -rf xpu-audio
-
 # Verify
 cd ${WORKSPACE}
 python ${WORKSPACE}/pytorch/torch/utils/collect_env.py
@@ -110,8 +95,6 @@ xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"
 # Save wheel
 if [ "${xpu_is_compiled,,}" == "true" ];then
     cp ${WORKSPACE}/pytorch/tmp/torch*.whl ${WORKSPACE}
-    cp ${WORKSPACE}/xpu-vision/dist/torchvision*.whl ${WORKSPACE}
-    cp ${WORKSPACE}/xpu-audio/dist/torchaudio*.whl ${WORKSPACE}
 else
     echo "Build got failed!"
     exit 1
