@@ -284,7 +284,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   std::cout << "zl_debug map virtual to physical done " << std::endl;
 
   // 初始化（memset）
-  memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
+  //memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
   
   std::cout << "zl_debug memset to 0 for initialization " << std::endl;
   // 构造 Block 和 AllocationRef（假设这些结构未变）
@@ -300,6 +300,9 @@ void* XPUSymmetricMemoryAllocator::alloc(
   }
 
   std::cout << "zl_debug before return ptr" << std::endl;
+  // check ptr type
+  auto type = sycl::get_pointer_type(ptr, sycl_ctx);
+  TORCH_CHECK(type == sycl::usm::alloc::device, "[In symmetric memory] ptr is not a device type pointer.");
 
   return ptr;
 }
