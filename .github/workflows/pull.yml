@@ -110,6 +110,7 @@ jobs:
     needs: [preci-conditions-filter, preci-linux-build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
+      triton: pinned
       disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
@@ -146,15 +147,8 @@ jobs:
                 --CONDA_ENV="e2e_ci" \
                 --PYTHON_VERSION="3.10" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
-                --PYTORCH_VERSION="${PYTORCH_VERSION}"
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+                --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+                --TRITON_VERSION="pinned"
       - name: Identify pinned versions
         run: |
           cd ../pytorch

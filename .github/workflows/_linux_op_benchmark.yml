@@ -71,7 +71,8 @@ jobs:
                 --CONDA_ENV="xpu_op_${ZE_AFFINITY_MASK}" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
-                --PYTORCH_VERSION="${PYTORCH_VERSION}"
+                --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+                --TRITON_VERSION="${{ inputs.triton }}"
       - name: Run Torch XPU Op Benchmark
         if: ${{ inputs.driver == 'rolling' }} 
         run: |

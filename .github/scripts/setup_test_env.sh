@@ -57,21 +57,17 @@ else
     python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 fi
 
-# Install torchvision torchaudio if source build
-if [ "${PYTORCH_VERSION}" == "main" ];then
-    TORCHVISION_COMMIT=$(cat .github/ci_commit_pins/vision.txt)
-    TORCHAUDIO_COMMIT=$(cat .github/ci_commit_pins/audio.txt)
-    cd ..
-    rm -rf xpu-vision && git clone https://github.com/pytorch/vision.git xpu-vision
-    cd xpu-vision && git checkout ${TORCHVISION_COMMIT}
-    python setup.py bdist_wheel && python -m pip install dist/torch*.whl
-    cd .. && rm -rf xpu-vision
-    rm -rf xpu-audio && git clone https://github.com/pytorch/audio.git xpu-audio
-    cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT}
-    python setup.py bdist_wheel && python -m pip install dist/torch*.whl
-    cd .. && rm -rf xpu-audio
-    cd pytorch
+# Install triton
+if [ "${TRITON_VERSION}" == "pinned" ];then
+    TRITON_VERSION="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
 fi
+if [ ! -z "${TRITON_VERSION}" ];then
+    TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+    python -m pip uninstall -y pytorch-triton-xpu
+    python -m pip install "git+${TRITON_REPO}@${TRITON_VERSION}#subdirectory=python"
+fi
+
+# Install requirements
 python -m pip install -r .ci/docker/requirements-ci.txt
 
 # Collect env infos

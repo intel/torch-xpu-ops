@@ -13,6 +13,11 @@ on:
         type: string
         default: 'nightly'
         description: Pytorch branch/commit
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton commit. Use pytorch pined commit by default
       ut:
         required: false
         type: string
@@ -60,6 +65,7 @@ jobs:
     if: ${{ (github.event_name == 'schedule' || inputs.ut != '') && github.repository_owner == 'intel' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       pytorch: nightly_wheel
@@ -110,7 +116,8 @@ jobs:
                 --CONDA_ENV="e2e_ci" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
-                --PYTORCH_VERSION="${PYTORCH_VERSION}"
+                --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+                --TRITON_VERSION="${{ inputs.triton }}"
       - name: Identify pinned versions
         id: pinned
         run: |

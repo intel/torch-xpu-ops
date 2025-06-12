@@ -90,7 +90,7 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      triton: ${{ (inputs.triton == '' && 'pinned') || inputs.triton }}
       driver: rolling
       runner: pvc_rolling
   
@@ -102,7 +102,7 @@ jobs:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      triton: ${{ (inputs.triton != '' && inputs.triton) || 'pinned' }}
       driver: rolling
       runner: pvc_rolling
 
@@ -153,12 +153,18 @@ jobs:
           PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
           PYTORCH_VERSION="main"
           cd ../
+          if [ -z ${{ inputs.triton }} ];then
+            TRITON_VERSION="pinned"
+          else
+            TRITON_VERSION="${{ inputs.triton }}"
+          fi
           ./torch-xpu-ops/.github/scripts/setup_test_env.sh \
                 --WORKSPACE="${{ github.workspace }}" \
                 --CONDA_ENV="e2e_ci" \
                 --PYTHON_VERSION="${{ inputs.python }}" \
                 --PYTORCH_REPO="${PYTORCH_REPO}" \
-                --PYTORCH_VERSION="${PYTORCH_VERSION}"
+                --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+                --TRITON_VERSION="${TRITON_VERSION}"
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -184,13 +190,6 @@ jobs:
           echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo ${GITHUB_ENV}
-      - name: Triton Installation
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
