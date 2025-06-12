@@ -33,7 +33,7 @@ template <
     bool inplace>
 struct ApplyTriuTrilKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int64_t linear_idx = item.get_global_id(0) * elements_per_thread;
+    IndexType linear_idx = item.get_global_id(0) * elements_per_thread;
     if (linear_idx >= N_padded_) {
       return;
     }
@@ -61,7 +61,6 @@ struct ApplyTriuTrilKernelFunctor {
 
     // Compute remaining offsets
     IndexType running_index;
-#pragma unroll
     for (int i = dims - 3; i >= 0; --i) {
       running_index = linear_idx % self_info_.sizes[i];
       linear_idx /= self_info_.sizes[i];
