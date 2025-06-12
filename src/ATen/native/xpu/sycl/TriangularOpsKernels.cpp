@@ -62,7 +62,7 @@ struct ApplyTriuTrilKernelFunctor {
     // Compute remaining offsets
     IndexType running_index;
 #pragma unroll
-    for (IndexType i = dims - 3; i >= 0; --i) {
+    for (int i = dims - 3; i >= 0; --i) {
       running_index = linear_idx % self_info_.sizes[i];
       linear_idx /= self_info_.sizes[i];
       self_offset += running_index * self_info_.strides[i];
