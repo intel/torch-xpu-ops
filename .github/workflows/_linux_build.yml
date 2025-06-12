@@ -140,7 +140,11 @@ jobs:
             cd intel-xpu-backend-for-triton
             git checkout ${TRITON_COMMIT_ID}
             pip install -r python/requirements.txt
-            python setup.py bdist_wheel
+            if [ -f setup.py ]; then
+              python setup.py bdist_wheel
+            else 
+              python python/setup.py bdist_wheel
+            fi
             cp dist/triton*.whl ${{ github.workspace }}
           fi
       - name: Upload Torch XPU Wheel
