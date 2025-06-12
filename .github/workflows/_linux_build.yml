@@ -125,7 +125,7 @@ jobs:
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
       - name: Triton Installation
         run: |
-          cd ../pytorch
+          cd ${{ github.workspace }}/pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
@@ -141,7 +141,7 @@ jobs:
             git checkout ${TRITON_COMMIT_ID}
             pip install -r python/requirements.txt
             python setup.py bdist_wheel
-            cp dist/triton*.whl ${WORKSPACE}
+            cp dist/triton*.whl ${{ github.workspace }}
           fi
       - name: Upload Torch XPU Wheel
         if: ${{ ! cancelled() }}
