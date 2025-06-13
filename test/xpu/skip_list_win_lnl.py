@@ -35,4 +35,20 @@ skip_dict = {
         "test_MaxUnpool_index_errors_case7_xpu",
         "test_MaxUnpool_index_errors_case9_xpu",
     ),
+    "test_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1733
+        # AssertionError: Tensor-likes are not close!
+        "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float32",
+        "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float64",
+        "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float32",
+        "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float64",
+    ),
+    "test_nn_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1737
+        # Accuracy issue for test_nn.py TestNN.test_CTCLoss_long_targets on windows
+        "test_CTCLoss_long_targets",
+        # https://github.com/intel/torch-xpu-ops/issues/1739
+        # DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2
+        "test_no_grad",
+    )
 }
