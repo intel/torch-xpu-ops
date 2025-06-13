@@ -302,6 +302,11 @@ void* XPUSymmetricMemoryAllocator::alloc(
   std::cout << "zl_debug before return ptr" << std::endl;
   // check ptr type
   auto type = sycl::get_pointer_type(ptr, sycl_ctx);
+  if (type == sycl::usm::alloc::unknown){
+      std::cout << "zl_debug get type as unknown" << std::endl;
+  } else if (type == sycl::usm::alloc::host) {
+      std::cout << "zl_debug get type as host" << std::endl;
+  }
   TORCH_CHECK(type == sycl::usm::alloc::device, "[In symmetric memory] ptr is not a device type pointer.");
 
   return ptr;
