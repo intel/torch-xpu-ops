@@ -72,6 +72,4 @@ jobs:
     steps:
       - name: Conda info
         run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body > new_body.txt
-          echo "This line is form github workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue comment 1738 -b "This line is form github workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
