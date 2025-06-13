@@ -67,6 +67,7 @@ jobs:
   Linux-Nightly-Ondemand-Build-Rolling:
     if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling
+    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
