@@ -84,7 +84,7 @@ jobs:
       - name: Build Triton XPU
         run: |
           # cd ${{ github.workspace }}/pytorch
-          sudo apt update -y && sudo apt install python3.10-venv python3.10-dev -y
+          apt update -y && apt install python3.10-venv python3.10-dev -y
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             wget https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.ci/docker/ci_commit_pins/triton-xpu.txt
