@@ -69,6 +69,7 @@ fi
 
 # Install requirements
 python -m pip install -r .ci/docker/requirements-ci.txt
+python -m pip install -U pytest pytest-timeout
 
 # Collect env infos
 cd ..
