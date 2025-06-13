@@ -59,36 +59,19 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: write-all
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.ut }}-${{ inputs.triton }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   example-1:
-    name: Ex1 (${{ matrix.python-version }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ["pytorch-11"]
-        python-version: ["3.10"]
+    name: Test permission
+    runs-on: linux.idc.xpu
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: conda-incubator/setup-miniconda@v3
-        with:
-          auto-update-conda: true
-          miniforge-version: latest
       - name: Conda info
         run: |
-          printenv
-          conda info -e
-          conda list
-          python -V
-          pip list
-          conda create python=${{ matrix.python-version }} -y -n test
-          conda activate test
-          conda info -e
-          conda list
-          python -V
-          pip list
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body > new_body.txt
+          echo "This line is form github workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
