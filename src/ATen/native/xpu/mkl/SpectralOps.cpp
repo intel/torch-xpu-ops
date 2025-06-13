@@ -538,7 +538,8 @@ Tensor _fft_r2c_mkl(
   // Only need to normalize the onesided slice since data in the other half is
   // overwritten
   auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
-  working_tensor = self;
+  impl::_fft_apply_normalization(out_slice, normalization, input_sizes, dim);
+
   if (!onesided) {
     if (out.sizes()[last_dim] != out_sizes[last_dim]) {
       working_tensor.resize_(out_sizes, MemoryFormat::Contiguous);
@@ -548,7 +549,7 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  return out;
 }
 
 Tensor& _fft_r2c_mkl_out(
