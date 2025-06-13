@@ -194,7 +194,7 @@ std::string IpcChannel::get_socket_name(int pid) {
 
 void map_block(
     void** ptr,
-    c10d::symmetric_memory::HandleType handle,
+    ze_physical_mem_handle_t handle,
     size_t size,
     int device_idx) {
    sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
