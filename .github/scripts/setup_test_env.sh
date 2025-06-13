@@ -81,7 +81,7 @@ python pytorch/torch/utils/collect_env.py
 
 # Clean cache
 rm -rf /tmp/ || sudo rm -rf /tmp/
-mkdir /tmp || sudo mkdir /tmp
+mkdir -m 777 /tmp || sudo mkdir -m 777 /tmp
 rm -rf ~/.torch || sudo rm -rf ~/.torch
 rm -rf ~/.triton || sudo rm -rf ~/.triton
 rm -rf ~/.cache || sudo rm -rf ~/.cache
