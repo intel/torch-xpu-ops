@@ -35,7 +35,8 @@ AllocationRef::~AllocationRef() {
   if (is_finalizing()) {
     return;
   }
-//  c10::DeviceGuard guard(device_idx); // zl_debug: todo
+c10::Device local_device(c10::DeviceType::XPU, device_idx);
+c10::DeviceGuard guard(local_device);
   c10::xpu::syncStreamsOnDevice();
 }
 
@@ -64,7 +65,9 @@ XPUSymmetricMemory::XPUSymmetricMemory(
   signal_pads_dev_ = reinterpret_cast<void**>(
       c10::xpu::XPUCachingAllocator::raw_alloc(arr_size));
 
-//  c10::DeviceGuard guard(local_device_idx); //todo
+  c10::Device local_device(c10::DeviceType::XPU, local_device_idx);
+  c10::DeviceGuard guard(local_device);
+
   // todo: zl_debug
   at::xpu::getCurrentXPUStream().queue().memcpy(buffers_dev_, buffers_.data(), arr_size);
   at::xpu::getCurrentXPUStream().queue().memcpy(signal_pads_dev_, signal_pads_.data(), arr_size);
@@ -175,19 +178,47 @@ at::Tensor XPUSymmetricMemory::get_signal_pad(
       .make_tensor();
 }
 
+void check_channel(int channel, int world_size) {
+  TORCH_CHECK(
+      channel >= 0,
+      "channel for barrier(), put_signal() and wait_signal() ",
+      "must be greater than 0 (got ",
+      channel,
+      ")");
+  const size_t num_channels = signal_pad_size / sizeof(uint32_t) * world_size;
+  TORCH_CHECK(
+      static_cast<size_t>(channel) < num_channels,
+      "The maximum supported channel for barrier(), put_signal() and wait_signal() is ",
+      num_channels - 1,
+      " (got ",
+      channel,
+      ")");
+}
+
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
-  LOG(ERROR) << "XPUSymmetricMemory::barrier not supported";
+//  LOG(ERROR) << "XPUSymmetricMemory::barrier not supported";
+  check_channel(channel, world_size_);
 
-//  check_channel(channel, world_size_);
-//  c10::xpu::CUDAGuard guard(local_device_idx_);
-//  barrier_kernel<<<1, C10_WARP_SIZE, 0, at::cuda::getCurrentCUDAStream()>>>(
-//      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-//      channel,
-//      rank_,
-//      world_size_,
-//      timeout_ms);
-//  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  c10::DeviceGuard guard(local_device);
+
+  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+
+  current_queue.submit([&](handler& h) {
+    h.parallel_for(range<1>(world_size), [=](id<1> idx) {
+      int target_rank = idx[0];
+      if (target_rank == rank) {
+        return;
+      }
+      //todo: implement
+//      bool put_success = try_put_signal<std::memory_order_release>(
+//          signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
+//
+//      bool wait_success = try_wait_signal<std::memory_order_acquire>(
+//          signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
+    });
+  });
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -287,7 +318,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
     .ordinal = 0
 };
 
-  zeMemAllocDevice(l0_ctx, default_device_mem_alloc_desc, size, 128, l0_dev, &ptr);
+  zeMemAllocDevice(ze_ctx, default_device_mem_alloc_desc, size, 128, ze_dev, &ptr);
 
   std::cout << "zl_debug map virtual to physical done " << std::endl;
 
@@ -472,7 +503,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     return it->second;
   }
 
-//  c10::DeviceGuard guard(block->device_idx); // todo
+  c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
+  c10::DeviceGuard guard(local_device);
 
   // Currently, IpcChannel is using a file based socket for inter-process communication
   IpcChannel ipc_channel;
