@@ -74,6 +74,7 @@ XPUSymmetricMemory::XPUSymmetricMemory(
 }
 
 std::vector<void*> XPUSymmetricMemory::get_buffer_ptrs() {
+  std::cout << "zl_debug in XPUSymmetricMemory::get_buffer_ptrs" << buffers_[0] << " ___ " << buffers_[1] << std::endl;
   return buffers_;
 }
 
@@ -124,6 +125,7 @@ at::Tensor XPUSymmetricMemory::get_buffer(
       " bytes) exceeds the allocated size (",
       buffer_size_,
       " bytes)");
+  std::cout << "zl_debug in get_buffer " << rank << "___" << buffers_[rank] << "___" <<storage_offset * element_size << std::endl;
   auto data_ptr = reinterpret_cast<uint8_t*>(buffers_[rank]) +
       storage_offset * element_size;
   auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
@@ -205,20 +207,20 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
 
-  current_queue.submit([&](handler& h) {
-    h.parallel_for(range<1>(world_size), [=](id<1> idx) {
-      int target_rank = idx[0];
-      if (target_rank == rank) {
-        return;
-      }
-      //todo: implement
-//      bool put_success = try_put_signal<std::memory_order_release>(
-//          signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
-//
-//      bool wait_success = try_wait_signal<std::memory_order_acquire>(
-//          signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
-    });
-  });
+//  current_queue.submit([&](handler& h) {
+//    h.parallel_for(range<1>(world_size), [=](id<1> idx) {
+//      int target_rank = idx[0];
+//      if (target_rank == rank) {
+//        return;
+//      }
+//      //todo: implement
+////      bool put_success = try_put_signal<std::memory_order_release>(
+////          signal_pads[target_rank] + world_size * channel + rank, timeout_ms);
+////
+////      bool wait_success = try_wait_signal<std::memory_order_acquire>(
+////          signal_pads[rank] + world_size * channel + target_rank, timeout_ms);
+//    });
+//  });
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -318,18 +320,23 @@ void* XPUSymmetricMemoryAllocator::alloc(
     .ordinal = 0
 };
 
-  zeMemAllocDevice(ze_ctx, default_device_mem_alloc_desc, size, 128, ze_dev, &ptr);
+  zeMemAllocDevice(ze_ctx, &default_device_mem_alloc_desc, size, 128, ze_dev, &ptr);
 
-  std::cout << "zl_debug map virtual to physical done " << std::endl;
+ at::Tensor xpu_tensor = at::empty({1000}, c10::TensorOptions().device(c10::kXPU).dtype(c10::kByte));
+
+ uint8_t* raw_ptr = xpu_tensor.data_ptr<uint8_t>();
+ std::cout << "zl_debug start copy to local " << std::endl;
+ current_queue.memcpy(raw_ptr, ptr, 100).wait();
+ std::cout << "zl_debug end copy to local " << std::endl;
+
+ std::cout << "zl_debug map virtual to physical done " << std::endl;
 
   // 初始化（memset）
   //memset(ptr, 0, block_size);  // You may want zeCommandListMemset for GPU-based memset
-  
-  std::cout << "zl_debug memset to 0 for initialization " << std::endl;
+
   // 构造 Block 和 AllocationRef（假设这些结构未变）
   //auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
   auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, ptr, block_size, device_idx);
-  std::cout << "zl_debug make AllocationRef " << std::endl;
   auto block = c10::make_intrusive<Block>(
       std::move(alloc_ref), device_idx, block_size, size, signal_pad_offset, group_name);
   std::cout << "zl_debug make block done " << std::endl;
@@ -338,18 +345,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
     std::unique_lock lock(mutex_);
     ptr_to_block_.emplace(ptr, std::move(block));
   }
+  // check this ptr copy to sycl buffer
 
-  std::cout << "zl_debug before return ptr" << std::endl;
-  // check ptr type
-  auto type = sycl::get_pointer_type(ptr, sycl_ctx);
-  if (type == sycl::usm::alloc::unknown){
-      std::cout << "zl_debug get type as unknown" << std::endl;
-  } else if (type == sycl::usm::alloc::host) {
-      std::cout << "zl_debug get type as host" << std::endl;
-  } else {
-      std::cout << "zl_debug get type as device" << std::endl;
-  }
-  TORCH_CHECK(type == sycl::usm::alloc::device, "[In symmetric memory] ptr is not a device type pointer.");
 
   return ptr;
 }
@@ -555,6 +552,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     if (r == rank) {
       handles[r] = block->alloc_ref->handle;
       buffers[r] = ptr;
+      std::cout << "zl_debug rendevous in rank = " << r  << " ptr: " <<  ptr << std::endl;
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
     }
@@ -569,6 +567,18 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* physical_buffer_ptr = (char*)peer_base + reqs[r].base_offset;
     //map_block(&buffers[r], physical_buffer_ptr, block->block_size, block->device_idx);
     buffers[r] = physical_buffer_ptr;
+
+    //double check this buffer
+    at::Tensor xpu_tensor = at::empty({1000}, c10::TensorOptions().device(c10::kXPU).dtype(c10::kByte));
+
+     uint8_t* raw_ptr = xpu_tensor.data_ptr<uint8_t>();
+     std::cout << "zl_debug start copy to local in rendevous" << std::endl;
+     current_queue.memcpy(raw_ptr, physical_buffer_ptr, 100).wait();
+     std::cout << "zl_debug end copy to local in rendevous in rank = " << r  << " ptr: " <<  physical_buffer_ptr << std::endl;
+
+     at::Tensor cpu_tensor = xpu_tensor.to("cpu");
+     std::cout << "zl_debug peer rank = " << r << " data = " << cpu_tensor << std::endl;
+
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
