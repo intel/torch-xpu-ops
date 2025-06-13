@@ -314,7 +314,7 @@ jobs:
 
   report:
     needs: tests
-    if: "always()"
+    if: ${{ always() }}
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
     steps:
       - name: Download reports
