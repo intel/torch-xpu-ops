@@ -81,6 +81,35 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
+      - name: Build Triton XPU
+        run: |
+          # gcc 11
+          source /opt/rh/gcc-toolset-11/enable
+          # cd ${{ github.workspace }}/pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            wget https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.ci/docker/ci_commit_pins/triton-xpu.txt
+            TRITON_COMMIT_ID="$(<./triton-xpu.txt)"
+            # TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ..
+            rm -rf intel-xpu-backend-for-triton
+            git clone https://github.com/intel/intel-xpu-backend-for-triton.git
+            cd intel-xpu-backend-for-triton
+            git checkout ${TRITON_COMMIT_ID}
+            pip install -r python/requirements.txt
+            if [ -f setup.py ]; then
+              python setup.py bdist_wheel
+            else
+              cd python
+              python setup.py bdist_wheel
+            fi
+            cp dist/triton*.whl ${{ github.workspace }}
+          fi
       - name: Build Pytorch XPU
         run: |
           set -xe -o pipefail
@@ -123,33 +152,6 @@ jobs:
         id: build_version
         run: |
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
-      - name: Build Triton XPU
-        run: |
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
-          cd ${{ github.workspace }}/pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ..
-            rm -rf intel-xpu-backend-for-triton
-            git clone https://github.com/intel/intel-xpu-backend-for-triton.git
-            cd intel-xpu-backend-for-triton
-            git checkout ${TRITON_COMMIT_ID}
-            pip install -r python/requirements.txt
-            if [ -f setup.py ]; then
-              python setup.py bdist_wheel
-            else
-              cd python
-              python setup.py bdist_wheel
-            fi
-            cp dist/triton*.whl ${{ github.workspace }}
-          fi
       - name: Upload Torch XPU Wheel
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
