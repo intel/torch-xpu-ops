@@ -142,8 +142,9 @@ jobs:
             pip install -r python/requirements.txt
             if [ -f setup.py ]; then
               python setup.py bdist_wheel
-            else 
-              python python/setup.py bdist_wheel
+            else
+              cd python
+              python setup.py bdist_wheel
             fi
             cp dist/triton*.whl ${{ github.workspace }}
           fi
