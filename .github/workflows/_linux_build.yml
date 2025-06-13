@@ -83,8 +83,6 @@ jobs:
           path: torch-xpu-ops
       - name: Build Triton XPU
         run: |
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
           # cd ${{ github.workspace }}/pytorch
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
