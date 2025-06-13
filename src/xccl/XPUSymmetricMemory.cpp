@@ -279,7 +279,15 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   // 分配虚拟地址空间（只映射，不物理分配）
   void* ptr = nullptr;
-  map_block(&ptr, handle, block_size, device_idx);
+  //map_block(&ptr, handle, block_size, device_idx);
+  ze_device_mem_alloc_desc_t default_device_mem_alloc_desc = {
+    .stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,
+    .pNext = nullptr,
+    .flags = 0,
+    .ordinal = 0
+};
+
+  zeMemAllocDevice(l0_ctx, default_device_mem_alloc_desc, size, 128, l0_dev, &ptr);
 
   std::cout << "zl_debug map virtual to physical done " << std::endl;
 
@@ -288,7 +296,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
   
   std::cout << "zl_debug memset to 0 for initialization " << std::endl;
   // 构造 Block 和 AllocationRef（假设这些结构未变）
-  auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
+  //auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle, block_size, device_idx);
+  auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, ptr, block_size, device_idx);
   std::cout << "zl_debug make AllocationRef " << std::endl;
   auto block = c10::make_intrusive<Block>(
       std::move(alloc_ref), device_idx, block_size, size, signal_pad_offset, group_name);
@@ -306,6 +315,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
       std::cout << "zl_debug get type as unknown" << std::endl;
   } else if (type == sycl::usm::alloc::host) {
       std::cout << "zl_debug get type as host" << std::endl;
+  } else {
+      std::cout << "zl_debug get type as device" << std::endl;
   }
   TORCH_CHECK(type == sycl::usm::alloc::device, "[In symmetric memory] ptr is not a device type pointer.");
 
