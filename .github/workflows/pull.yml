@@ -17,8 +17,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-permissions: read-all
-
 jobs:
   preci-lint-check:
     name: preci-lint-check
@@ -97,9 +95,6 @@ jobs:
     name: preci-linux
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all')}}
     needs: [preci-conditions-filter]
-    secrets: inherit
-    permissions:
-      issues: write
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: main
