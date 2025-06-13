@@ -50,5 +50,5 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1739
         # DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2
         "test_no_grad",
-    )
+    ),
 }
