@@ -1,5 +1,5 @@
-#include <xpu/ATen/ops/_embedding_bag_forward_only_native.h>
-#include <xpu/ATen/ops/_embedding_bag_native.h>
+#include <ATen/ops/_embedding_bag_forward_only_native.h>
+#include <ATen/ops/_embedding_bag_native.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingBagKernels.h>
 #include <comm/xpu_aten.h>

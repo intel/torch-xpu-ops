@@ -4,6 +4,7 @@ endif()
 set(Codegen_XPU_cmake_included true)
 
 set(BUILD_TORCH_XPU_ATEN_GENERATED "${CMAKE_BINARY_DIR}/xpu/ATen")
+set(BUILD_TORCH_ATEN_GENERATED "${CMAKE_BINARY_DIR}/aten/src/ATen")
 file(MAKE_DIRECTORY ${BUILD_TORCH_XPU_ATEN_GENERATED})
 
 set(RegisterXPU_GENERATED ${BUILD_TORCH_XPU_ATEN_GENERATED}/RegisterXPU_0.cpp)
@@ -49,6 +50,38 @@ function(GEN_XPU file_yaml)
     --xpu
   )
 
+  set(XPU_INSTALL_HEADER_COMMAND
+    "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
+    --src-header-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
+    --dst-header-dir ${BUILD_TORCH_ATEN_GENERATED}
+  )
+
+  execute_process(
+    COMMAND
+    ${XPU_CODEGEN_COMMAND}
+    --generate headers
+    --dry-run
+    --output-dependencies ${BUILD_TORCH_XPU_ATEN_GENERATED}/generated_headers.cmake
+    RESULT_VARIABLE RETURN_VALUE
+    WORKING_DIRECTORY ${TORCH_ROOT}
+  )
+
+  if(NOT RETURN_VALUE EQUAL 0)
+    message(FATAL_ERROR "Failed to get generated_headers list")
+  endif()
+
+  execute_process(
+    COMMAND
+    ${XPU_INSTALL_HEADER_COMMAND}
+    --dry-run
+    RESULT_VARIABLE RETURN_VALUE
+    WORKING_DIRECTORY ${TORCH_ROOT}
+  )
+
+  if(NOT RETURN_VALUE EQUAL 0)
+    message(FATAL_ERROR "Failed to get XPU header list to install")
+  endif()
+
   add_custom_command(
     COMMENT "Generating XPU ATen Codegen..."
     OUTPUT ${generated_files}
@@ -66,14 +99,15 @@ function(GEN_XPU file_yaml)
     COMMAND
     ${REGISTER_FALLBACK_CMD}
     # Codegen post-process
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterXPU_GENERATED}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseXPU_GENERATED}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterSparseCsrXPU_GENERATED}
-    COMMAND "${PYTHON_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/remove_headers.py --register_xpu_path ${RegisterNestedTensorXPU_GENERATED}
+    COMMAND
+    ${XPU_INSTALL_HEADER_COMMAND}
     WORKING_DIRECTORY ${TORCH_ROOT}
     DEPENDS
     ${CODEGEN_XPU_YAML_DIR}/native/${file_yaml}
     ${XPUFallback_TEMPLATE}
+    ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
+    ${ops_generated_headers}
+    ${ops_generated_sources}
   )
 
   # Post codegen delete the copied templates folder only on Windows.
@@ -99,11 +133,7 @@ GEN_XPU(
   ${XPU_AOTI_SHIM_SOURCE}
 )
 
-# The c_shim_xpu.cpp needs include files in ${CMAKE_BINARY_DIR}/xpu/ATen/ops/*.h)
-# The include path is auto generated as "#include <ATen/ops/*.h">
-# To follow the design of aoti codegen, here ${CMAKE_BINARY_DIR}/xpu is added to
-# $TORCH_XPU_OPS_INCLUDE_DIRS, so that "#include <ATen/ops/*.h>" works.
-list(APPEND TORCH_XPU_OPS_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/xpu)
+include(${BUILD_TORCH_XPU_ATEN_GENERATED}/xpu_ops_generated_headers.cmake)
 
 list(APPEND xpu_generated_src
   ${RegisterXPU_GENERATED}
