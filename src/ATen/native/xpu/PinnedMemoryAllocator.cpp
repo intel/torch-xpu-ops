@@ -3,7 +3,7 @@
 #include <ATen/xpu/PinnedMemoryAllocator.h>
 #include <comm/xpu_aten.h>
 
-#include <xpu/ATen/ops/is_pinned_native.h>
+#include <ATen/ops/is_pinned_native.h>
 
 namespace at {
 namespace native {

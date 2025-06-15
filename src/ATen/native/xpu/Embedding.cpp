@@ -1,6 +1,6 @@
 #include <ATen/core/op_registration/adaption.h>
 
-#include <xpu/ATen/ops/embedding_dense_backward_native.h>
+#include <ATen/ops/embedding_dense_backward_native.h>
 
 #include <ATen/native/xpu/sycl/EmbeddingKernels.h>
 #include <comm/xpu_aten.h>
