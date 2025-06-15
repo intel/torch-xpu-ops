@@ -10,10 +10,10 @@
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
-#include <xpu/ATen/ops/arange_native.h>
-#include <xpu/ATen/ops/linspace_native.h>
-#include <xpu/ATen/ops/logspace_native.h>
-#include <xpu/ATen/ops/range_native.h>
+#include <ATen/ops/arange_native.h>
+#include <ATen/ops/linspace_native.h>
+#include <ATen/ops/logspace_native.h>
+#include <ATen/ops/range_native.h>
 
 namespace at {
 
