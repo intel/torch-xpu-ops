@@ -49,15 +49,13 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: read-all
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ (github.event_name == 'schedule' || inputs.ut != '') && github.repository_owner == 'intel' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
@@ -67,11 +65,11 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
     runs-on: pvc_e2e
-    # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
     env:
       GH_TOKEN: ${{ github.token }}
+      reference_issue: 1645
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
@@ -115,7 +113,6 @@ jobs:
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch
           pip install requests
-          # python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git show -s
           pip install -r requirements.txt
           TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
@@ -125,7 +122,7 @@ jobs:
           cd third_party/torch-xpu-ops
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../../
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -262,11 +259,26 @@ jobs:
           scenario: ${{ inputs.scenario }}
           pytorch: nightly_wheel
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-
+      - name: Download Reference Artifact
+        id: reference_id
+        run: |
+          set -xe
+          source activate e2e_ci
+          conda install gh --channel conda-forge -y
+          if [ "${{ env.run_type }}" == "on-demand" ];then
+            artifact_type="weekly"
+          else
+            artifact_type="${{ env.run_type }}"
+          fi
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-${artifact_type}-LTS-XPU-E2E" |sed 's/.*: *//')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          rm -rf reference && mv Inductor-*-XPU-E2E-* reference
       - name: Summarize archieve files
         id: summary
         if: ${{ ! cancelled() }}
         run: |
+          set -x -e -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
@@ -277,7 +289,7 @@ jobs:
             source activate e2e_ci
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \
-                Inductor-${{ env.run_type }}-Pre-XPU-E2E \
+                ${{ github.workspace }}/reference \
             >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
@@ -298,12 +310,16 @@ jobs:
         with:
           name: Inductor-${{ env.run_type }}-Pre-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
+      - name: Upload Reference Run ID
+        if: ${{ env.run_type != 'on-demand' }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+            sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: [ self-hosted, Linux ]
-    permissions:
-      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
