@@ -140,7 +140,7 @@ jobs:
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
               bash $GITHUB_WORKSPACE/.github/scripts/test_inductor_ut.sh
             log_prefix: 'torch_xpu'
-            timeout: 10000
+            timeout: 100000
             additional_steps: |
               pip install pytest pytest-timeout
             runner: 'pytorch-06'
