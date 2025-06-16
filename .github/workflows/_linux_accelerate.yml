@@ -39,7 +39,6 @@ on:
         default: 'v4.51.3'
         description: Transformers version
 
-permissions: read-all
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
