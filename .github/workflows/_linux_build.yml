@@ -72,6 +72,7 @@ jobs:
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
           dnf autoremove -y git236* && dnf install -y git
           dnf install gh --repo gh-cli -y
+          dnf check-update -y && dnf install python3.10-venv python3.10-dev -y
           # Setup python
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
           /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
@@ -84,7 +85,9 @@ jobs:
       - name: Build Triton XPU
         run: |
           # cd ${{ github.workspace }}/pytorch
-          apt update -y && apt install python3.10-venv python3.10-dev -y
+          gcc --version
+          g++ --version
+          c++ --version
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             wget https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.ci/docker/ci_commit_pins/triton-xpu.txt
