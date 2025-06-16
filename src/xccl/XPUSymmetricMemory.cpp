@@ -576,8 +576,22 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
      current_queue.memcpy(raw_ptr, physical_buffer_ptr, 100).wait();
      std::cout << "zl_debug end copy to local in rendevous in rank = " << r  << " ptr: " <<  physical_buffer_ptr << std::endl;
 
-     at::Tensor cpu_tensor = xpu_tensor.to("cpu");
-     std::cout << "zl_debug peer rank = " << r << " data = " << cpu_tensor << std::endl;
+    int count = 256;
+    auto host_ptr = (int *)sycl::malloc_host(512 * sizeof(int), current_queue);
+    auto tmp_ptr = (int *)sycl::malloc_device(512 * sizeof(int), current_queue);
+    std::cout << "Sync buffer content at " << address << ": ";
+    current_queue.memcpy(tmp_ptr, physical_buffer_ptr, count * sizeof(int));
+    current_queue.memcpy(host_ptr, tmp_ptr, count * sizeof(int));
+    current_queue.wait();
+
+    for (int i = 0; i < count; i++) {
+        std::cout << host_ptr[i] << " ";
+    }
+     std::cout << std::flush;
+     std::cout << "zl_debug print done " << std::flush;
+
+//     at::Tensor cpu_tensor = xpu_tensor.to(c10::kCPU);
+//     std::cout << "zl_debug peer rank = " << r << " data = " << cpu_tensor << std::endl;
 
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
