@@ -72,4 +72,4 @@ jobs:
     steps:
       - name: Conda info
         run: |
-          gh --repo ${GITHUB_REPOSITORY} issue comment 1738 -b "This line is form github workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          printenv
