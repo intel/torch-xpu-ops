@@ -345,6 +345,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
+  traceBufferSize_ = getCvarInt(TORCH_XCCL_TRACE_BUFFER_SIZE, 2000);
   this->setGroupUid(options_->group_name);
 
   FlightRecorderXCCL::get()->record_pg_ranks(
@@ -361,9 +362,110 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << "XCCL version: " << XcclVersion
             << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug;
+
+  heartbeatMonitor_ = std::make_unique<HeartbeatMonitor>(this);
+  heartbeatMonitor_->start();
 }
 
-ProcessGroupXCCL::~ProcessGroupXCCL() = default;
+ProcessGroupXCCL::~ProcessGroupXCCL() {
+  heartbeatMonitor_->stop();
+  heartbeatMonitor_->join();
+}
+
+bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
+  STATIC_SCOPED_WAIT_COUNTER(pytorch.ProcessGroupXCCL__dumpDebuggingInfo);
+  static std::mutex writeDebugInfoMutex;
+  std::lock_guard<std::mutex> lock(writeDebugInfoMutex);
+  LOG(ERROR)
+      << logPrefix()
+      << "ProcessGroupNCCL preparing to dump debug info. Include stack trace: "
+      << includeStackTrace;
+  if (traceBufferSize_ > 0) {
+    // TODO: dump_xccl_trace
+    auto xcclDumpMap = std::unordered_map<
+        std::string,
+        std::unordered_map<std::string, std::string>>();
+    auto xcclTrace = FlightRecorderXCCL::get()->dump(
+        xcclDumpMap, true, includeStackTrace, false);
+    DebugInfoWriter& writer = DebugInfoWriter::getWriter(local_id_);
+    LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
+              << writer.getWriterTarget();
+    writer.write(xcclTrace);
+    LOG(INFO) << logPrefix() << "Flight Recorder trace successfully dumped.";
+    return true;
+  }
+  return false;
+}
+
+ProcessGroupXCCL::HeartbeatMonitor::HeartbeatMonitor(ProcessGroupXCCL* pg) {
+  pg_ = pg;
+  coordCheckIntervalMilSec_ = getCvarInt(TORCH_XCCL_COORD_CHECK_MILSEC, 1000);
+  LOG(INFO)
+      << pg_->logPrefix() << "HeartbeatMonitor environments: "
+      << "TORCH_XCCL_COOR_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
+}
+
+std::string ProcessGroupXCCL::HeartbeatMonitor::getXCCLTimeoutErrorMsg(const std::string& extraMsg) {
+  return c10::str(
+      pg_->logPrefix(),
+      "Received a dump signal due to a collective timeout from ",
+      extraMsg,
+      " and we will try our best to dump the debug info. ",
+      "Last enqueued XCCL work: ",
+      pg_->pgStatus_->lastEnqueuedSeq,
+      ", last completed XCCL work: ",
+      pg_->pgStatus_->lastCompletedSeq,
+      ".");
+}
+
+void ProcessGroupXCCL::HeartbeatMonitor::stop() {
+  terminateHeartbeatMonitorThread_.store(true);
+  monitorWakeUpCV_.notify_one();
+}
+
+void ProcessGroupXCCL::HeartbeatMonitor::start() {
+  TORCH_CHECK(
+      !xcclHeartbeatMonitorThread_.joinable(),
+      "HeartbeatMonitor thread already started");
+  xcclHeartbeatMonitorThread_ =
+      std::thread(&ProcessGroupXCCL::HeartbeatMonitor::runLoop, this);
+}
+
+void ProcessGroupXCCL::HeartbeatMonitor::join() {
+  if (xcclHeartbeatMonitorThread_.joinable()) {
+    xcclHeartbeatMonitorThread_.join();
+    LOG(INFO) << pg_->logPrefix()
+              << "ProcessGroupNCCL heart beat monitor thread joined.";
+  }
+}
+
+void ProcessGroupXCCL::HeartbeatMonitor::runLoop() {
+  c10::setThreadName("pt_xccl_heartbt");
+
+  std::string errorMsg;
+  std::string exitReason;
+  bool checkDumpSignal = pg_->local_id_ == 0;
+  int monitorPollInterval = coordCheckIntervalMilSec_;
+  std::optional<DumpPipe> dumpPipe = std::nullopt;
+  if (pg_->local_id_ == 0) {
+    // DumpPipe is one per-trainer process
+    dumpPipe.emplace(pg_->local_id_);
+    while (true) {
+      std::unique_lock<std::mutex> lock(monitorMutex_);
+      if (monitorWakeUpCV_.wait_for(
+              lock, std::chrono::milliseconds(monitorPollInterval), [&] {
+                return terminateHeartbeatMonitorThread_.load();
+              })) {
+        return;
+      }
+      if (dumpPipe.has_value() && dumpPipe->shouldDump()) {
+        std::future<bool> fut = std::async(std::launch::async, [this]() {
+          return this->pg_->dumpDebuggingInfo();
+        });
+      }
+    }
+  }
+}
 
 const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
   if (options_->global_ranks_in_group.empty()) {
@@ -543,16 +645,6 @@ void ProcessGroupXCCL::setStartedPgStatus(
   pgStatus_->lastStartedNumelIn = work->numelIn_;
   pgStatus_->lastStartedNumelOut = work->numelOut_;
 }
-
-// TODO: Add queue/thread to wait for completed work and mark status
-// void ProcessGroupXCCL::setCompletedPgStatus(
-//     c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-//   pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
-//   pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
-//   pgStatus_->lastCompletedNumelIn = work->numelIn_;
-//   pgStatus_->lastCompletedNumelOut = work->numelOut_;
-//   FlightRecorderXCCL::get()->retire_id(work.trace_id_, true);
-// }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   if (coalescedComm_ == nullptr) {
