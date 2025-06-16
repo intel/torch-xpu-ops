@@ -72,11 +72,11 @@ jobs:
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
           dnf autoremove -y git236* && dnf install -y git
           dnf install gh --repo gh-cli -y
-          dnf check-update -y && dnf install python3.10-venv python3.10-dev -y
           # Setup python
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
           /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
           which python && python -V && pip list
+          dnf check-update -y && dnf install python310-devel -y
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -85,6 +85,11 @@ jobs:
       - name: Build Triton XPU
         run: |
           # cd ${{ github.workspace }}/pytorch
+          gcc --version
+          g++ --version
+          c++ --version
+          # gcc 11
+          source /opt/rh/gcc-toolset-11/enable
           gcc --version
           g++ --version
           c++ --version
