@@ -75,7 +75,6 @@ XPUSymmetricMemory::XPUSymmetricMemory(
 }
 
 std::vector<void*> XPUSymmetricMemory::get_buffer_ptrs() {
-  std::cout << "zl_debug in XPUSymmetricMemory::get_buffer_ptrs" << buffers_[0] << " ___ " << buffers_[1] << std::endl;
   return buffers_;
 }
 
@@ -130,7 +129,7 @@ at::Tensor XPUSymmetricMemory::get_buffer(
       storage_offset * element_size;
   auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
   auto options = at::TensorOptions().dtype(dtype).device(device);
-  std::cout << "[Native] zl_debug in get_buffer on rank = " << rank << " buffer ptr=" << buffers_[rank] << " offset=" <<storage_offset * element_size << " dtype=" << dtype<< std::endl;
+//  std::cout << "[Native] zl_debug in get_buffer on rank = " << rank << " buffer ptr=" << buffers_[rank] << " offset=" <<storage_offset * element_size << " dtype=" << dtype<< std::endl;
   return at::for_blob(data_ptr, sizes)
       .options(options)
       .target_device(device)
@@ -321,7 +320,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   // zl_debug create a device memory by sycl
   void* ptr = sycl::malloc_device(size, current_queue);
 
-  std::cout << "[Native] zl_debug allocate memory with size = " << size << " allocated ptr=" << ptr << std::endl;
+//  std::cout << "[Native] zl_debug allocate memory with size = " << size << " allocated ptr=" << ptr << std::endl;
 
  //zeMemAllocDevice(ze_ctx, &default_device_mem_alloc_desc, size, 128, ze_dev, &ptr);
 // uint8_t* raw_ptr = xpu_tensor.data_ptr<uint8_t>();
@@ -516,29 +515,12 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
   sycl::device dev = current_queue.get_device();
   auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
-  // check with original ones
-  allreducer<sycl::half> ar;
-  ar.init(current_queue, rank, world_size);
-  current_queue.wait();
-  std::cout << "!!!![Native] zl_debug torch-ccl exchange done" << std::endl;
-
-  // print original values
-  int tmp_count = 32768;
-  auto host_ptr = (float *)sycl::malloc_host(tmp_count * sizeof(float), current_queue);
-  auto tmp_ptr = (float *)sycl::malloc_device(tmp_count * sizeof(float), current_queue);
-
-  current_queue.memcpy(tmp_ptr, ptr, tmp_count * sizeof(int));
-  current_queue.memcpy(host_ptr, tmp_ptr, tmp_count * sizeof(int));
-  current_queue.wait();
-  std::cout << "[Native] zl_debug finish copy original local data to host" << std::endl;
-
-  for (int i = 0; i < tmp_count; i++) {
-    std::cout << host_ptr[i] << " ";
-  }
-  std::cout << std::flush;
-  std::cout << "zl_debug print done " << std::flush;
-
-
+  // check with original ones // debug code
+//  allreducer<sycl::half> ar;
+//  ar.init(current_queue, rank, world_size);
+//  current_queue.wait();
+//  std::cout << "!!!![Native] zl_debug torch-ccl exchange done" << std::endl;
+//
   ze_ipc_mem_handle_t ipc_handle;
   // convert to base address
   void *base_addr;
@@ -573,7 +555,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     if (r == rank) {
       handles[r] = block->alloc_ref->handle;
       buffers[r] = ptr;
-      std::cout << "[Native] zl_debug rendevous in rank = " << r  << " ptr = " <<  ptr << std::endl;
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
     }
@@ -589,19 +570,19 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     //map_block(&buffers[r], physical_buffer_ptr, block->block_size, block->device_idx);
     buffers[r] = physical_buffer_ptr;
 
-    //double check this buffer
-    auto host_ptr = (float *)sycl::malloc_host(tmp_count * sizeof(float), current_queue);
-    auto tmp_ptr = (float *)sycl::malloc_device(tmp_count * sizeof(float), current_queue);
-    std::cout << "[Native] zl_debug start to copy exchanged data to local host " << std::endl;
-    current_queue.memcpy(tmp_ptr, physical_buffer_ptr, tmp_count * sizeof(int));
-    current_queue.memcpy(host_ptr, tmp_ptr, tmp_count * sizeof(int));
-    current_queue.wait();
-    std::cout << "[Native] zl_debug finish copy exchanged data to local host" << std::endl;
-
-    for (int i = 0; i < tmp_count; i++) {
-        std::cout << host_ptr[i] << " ";
-    }
-     std::cout << std::flush;
+//    //double check this buffer
+//    auto host_ptr = (float *)sycl::malloc_host(tmp_count * sizeof(float), current_queue);
+//    auto tmp_ptr = (float *)sycl::malloc_device(tmp_count * sizeof(float), current_queue);
+//    std::cout << "[Native] zl_debug start to copy exchanged data to local host " << std::endl;
+//    current_queue.memcpy(tmp_ptr, physical_buffer_ptr, tmp_count * sizeof(int));
+//    current_queue.memcpy(host_ptr, tmp_ptr, tmp_count * sizeof(int));
+//    current_queue.wait();
+//    std::cout << "[Native] zl_debug finish copy exchanged data to local host" << std::endl;
+//
+//    for (int i = 0; i < tmp_count; i++) {
+//        std::cout << host_ptr[i] << " ";
+//    }
+//     std::cout << std::flush;
 
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
