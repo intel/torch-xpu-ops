@@ -23,5 +23,5 @@ test_command = "pytest -v test_ops_xpu.py"
 test_command += skip_options
 res = os.system(test_command)
 if res:
-    print("".join("test_ops_xpu.py") + " have failures in extended UT")
+    print("test_ops_xpu.py has failures in extended unit tests")
 sys.exit(res)
