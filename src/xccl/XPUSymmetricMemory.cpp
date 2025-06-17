@@ -1,5 +1,6 @@
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
+#include <xccl/IPCExchange.hpp>
 
 #include <ATen/ceil_div.h>
 #include <ATen/xpu/XPUContext.h>
@@ -515,6 +516,11 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
   sycl::device dev = current_queue.get_device();
   auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
+  // check with original ones
+  allreducer<sycl::half> ar;
+  ar.init(current_queue, rank, world_size);
+  current_queue.wait();
+  std::cout << "!!!![Native] zl_debug torch-ccl exchange done" << std::endl;
 
   // print original values
   int tmp_count = 32768;
@@ -584,8 +590,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     buffers[r] = physical_buffer_ptr;
 
     //double check this buffer
-    auto host_ptr = (float *)sycl::malloc_host(32768 * sizeof(float), current_queue);
-    auto tmp_ptr = (float *)sycl::malloc_device(32768 * sizeof(float), current_queue);
+    auto host_ptr = (float *)sycl::malloc_host(tmp_count * sizeof(float), current_queue);
+    auto tmp_ptr = (float *)sycl::malloc_device(tmp_count * sizeof(float), current_queue);
     std::cout << "[Native] zl_debug start to copy exchanged data to local host " << std::endl;
     current_queue.memcpy(tmp_ptr, physical_buffer_ptr, tmp_count * sizeof(int));
     current_queue.memcpy(host_ptr, tmp_ptr, tmp_count * sizeof(int));
