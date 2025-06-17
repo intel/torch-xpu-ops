@@ -7,6 +7,7 @@ from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
 from xpu_test_utils import launch_test
 
 res = 0
+fail_test = []
 IS_WINDOWS = sys.platform == "win32"
 
 for key in skip_dict:
@@ -15,7 +16,13 @@ for key in skip_dict:
         skip_list += skip_dict_win[key]
     if IS_WINDOWS and key in skip_dict_win_lnl:
         skip_list += skip_dict_win_lnl[key]
-    res += launch_test(key, skip_list)
+    fail = launch_test(key, skip_list)
+    res += fail
+    if fail:
+        fail_test.append(key)
+
+if fail_test:
+    print(",".join(fail_test) + " have failures")
 
 if os.name == "nt":
     sys.exit(res)
