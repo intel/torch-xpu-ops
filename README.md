@@ -1,12 +1,12 @@
 # Torch XPU Operators*
 
-Torch XPU Operators* project is an integral part of [PyTorch](https://github.com/pytorch/pytorch) to support XPU acceleration backend. The PyTorch build system automatically clones this repository at the pin pointed commit, branch, or tag specified in the following file of the [PyTorch repository](https://github.com/pytorch/pytorch):
+Torch XPU Operators* project is an integral part of [PyTorch](https://github.com/pytorch/pytorch) to support Intel GPUs (the device backend name of Intel GPUs in PyTorch is XPU). The PyTorch build system automatically clones this repository at the pin pointed commit, branch, or tag specified in the following file of the [PyTorch repository](https://github.com/pytorch/pytorch):
 
 * https://github.com/pytorch/pytorch/blob/main/third_party/xpu.txt
 
 Cloned copy becomes available at `./third_party/torch-xpu-ops/` relative to the root of the checked out PyTorch tree.
 
-Torch XPU Operators* implements some of the operators for Intel GPU devices accessible via PyTorch XPU acceleration backend:
+Torch XPU Operators* implements most of the operators for Intel GPU devices accessible via PyTorch XPU acceleration backend:
 
 * PyTorch ATen operators
 * Torchvision operators
@@ -96,9 +96,6 @@ No. PyTorch XPU backend implementation does not use IPEX and can be used without
 **Does IPEX depend on this repository through the PyTorch XPU backend implementation?**
 
 Yes. IPEX relies on the PyTorch XPU backend implementation (which includes this repository) and augments it with additional features and operators.
-Moreover, IPEX implements select features and operators outside of standard PyTorch API that are required in popular AI frameworks such as vLLM, Huggingface TGI, SGLang, and others.
-The ultimate long term goal is to upstream or substitute with better upstream implementations as much of IPEX code as possible.
-Each subsequent IPEX release is a step toward that goal as fewer features are being implemented in IPEX and more are instead taken from other upstream projects.
 
 ## Security
 See Intel's [Security Center](https://www.intel.com/content/www/us/en/security-center/default.html) for information on how to report a potential security issue or vulnerability.
