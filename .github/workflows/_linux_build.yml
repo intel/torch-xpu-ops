@@ -88,8 +88,9 @@ jobs:
           gcc --version
           g++ --version
           c++ --version
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
+          # gcc 13
+          dnf install -y gcc-toolset-13-gcc-c++
+          source /opt/rh/gcc-toolset-13/enable
           gcc --version
           g++ --version
           c++ --version
