@@ -94,6 +94,7 @@ jobs:
           gcc --version
           g++ --version
           c++ --version
+          dnf install zlib1g-dev
           TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             wget https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.ci/docker/ci_commit_pins/triton-xpu.txt
