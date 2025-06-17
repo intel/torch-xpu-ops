@@ -72,8 +72,13 @@ void embedding_bag(
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
   vec_len = vec_len / vec_size;
+  int tile = 1;
+  if (32 % vec_len == 0) {
+    tile = 32 / vec_len;
+  }
+  int batch = (bag_num + tile - 1) / tile;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      bag_num, vec_len, 1, bag_num, true, BatchKernelConfig::Policy::pAdaptive);
+      batch, vec_len * tile, 1, batch, true, BatchKernelConfig::Policy::pAdaptive);
 
   index_t fixing_bag_size = ignore_offsets ? index_size / bag_num : 0;
   auto kfn = KernelClass(
@@ -86,6 +91,7 @@ void embedding_bag(
       index_size,
       bag_num,
       vec_len,
+      tile,
       padding_idx,
       ignore_offsets,
       o_vec,
