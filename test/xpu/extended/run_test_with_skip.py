@@ -21,5 +21,5 @@ test_command = "pytest --timeout 600 -v --junit-xml=./op_extended.xml test_ops_x
 test_command += skip_options
 res = os.system(test_command)
 if res:
-    print("".join("test_ops_xpu.py") + " have failures in extended UT")
+    print("test_ops_xpu.py has failures in extended unit tests")
 sys.exit(res)
