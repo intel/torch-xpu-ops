@@ -35,7 +35,7 @@ struct EmbeddingBagKernelFunctor {
           desc.glb_batch < cfg_.problem_batch_) {
         bool walk_on_bag = desc.glb_batch != off_off;
         if (walk_on_bag) {
-          off_off = desc.glb_batch;
+          off_off = desc.glb_batch * tile_ + desc.glb_problem / (cfg_.problem_ / tile_);
           bool last_bag = off_off == bag_num_ - 1;
           if (!ignore_offsets_) {
             start = offset_[off_off];
@@ -58,7 +58,7 @@ struct EmbeddingBagKernelFunctor {
         index_t index_off, vec_idx, i_off;
         vec_t other;
         auto handle_non_padding = [&]() {
-          i_off = vec_idx * vec_len_ + desc.glb_problem;
+          i_off = vec_idx * vec_len_ + desc.glb_problem % (cfg_.problem_ / tile_);
           other = w_vec_[i_off];
 
           if constexpr (mode == MODE_SUM) {
@@ -112,7 +112,7 @@ struct EmbeddingBagKernelFunctor {
           bag_size_[off_off] = bsize;
         }
 
-        index_t o_off = off_off * vec_len_ + desc.glb_problem;
+        index_t o_off = off_off * vec_len_ + desc.glb_problem % (cfg_.problem_ / tile_);
         if constexpr (mode == MODE_SUM) {
           vec_t o;
 #pragma unroll
@@ -155,6 +155,7 @@ struct EmbeddingBagKernelFunctor {
       int64_t index_size,
       int64_t bag_num,
       int64_t vec_len,
+      int64_t tile,
       index_t padding_idx,
       bool ignore_offsets,
       vec_t* o_vec,
@@ -172,6 +173,7 @@ struct EmbeddingBagKernelFunctor {
         index_size_(index_size),
         bag_num_(bag_num),
         vec_len_(vec_len),
+        tile_(tile),
         padding_idx_(padding_idx),
         ignore_offsets_(ignore_offsets),
         o_vec_(o_vec),
@@ -191,6 +193,7 @@ struct EmbeddingBagKernelFunctor {
   int64_t index_size_;
   int64_t bag_num_;
   int64_t vec_len_;
+  int64_t tile_;
   index_t padding_idx_;
   bool ignore_offsets_;
   vec_t* o_vec_;
