@@ -518,6 +518,24 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   sycl::device dev = current_queue.get_device();
   auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
 
+  // print original values
+  int tmp_count = 128;
+    auto host_ptr = (int *)sycl::malloc_host(tmp_count * sizeof(int), current_queue);
+    auto tmp_ptr = (int *)sycl::malloc_device(tmp_count * sizeof(int), current_queue);
+    std::cout << "zl_debug start to copy data " << std::endl;
+
+    current_queue.memcpy(tmp_ptr, ptr, tmp_count * sizeof(int));
+    current_queue.memcpy(host_ptr, tmp_ptr, tmp_count * sizeof(int));
+    current_queue.wait();
+    std::cout << "zl_debug finish copy original local data to host" << std::endl;
+
+    for (int i = 0; i < tmp_count; i++) {
+        std::cout << host_ptr[i] << " ";
+    }
+     std::cout << std::flush;
+     std::cout << "zl_debug print done " << std::flush;
+
+
   ze_ipc_mem_handle_t ipc_handle;
   // convert to base address
   void *base_addr;
@@ -569,29 +587,29 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     buffers[r] = physical_buffer_ptr;
 
     //double check this buffer
-    at::Tensor xpu_tensor = at::empty({1000}, c10::TensorOptions().device(c10::kXPU).dtype(c10::kByte));
+    at::Tensor xpu_tensor = at::empty({1024}, c10::TensorOptions().device(c10::kXPU).dtype(c10::kInt));
 
-     uint8_t* raw_ptr = xpu_tensor.data_ptr<uint8_t>();
-     std::cout << "zl_debug start copy to local in rendevous" << std::endl;
-     current_queue.memcpy(raw_ptr, physical_buffer_ptr, 100).wait();
-     std::cout << "zl_debug end copy to local in rendevous in rank = " << r  << " ptr: " <<  physical_buffer_ptr << std::endl;
-
-    int count = 256;
-    auto host_ptr = (int *)sycl::malloc_host(512 * sizeof(int), current_queue);
-    auto tmp_ptr = (int *)sycl::malloc_device(512 * sizeof(int), current_queue);
-    std::cout << "Sync buffer content at " << address << ": ";
-    current_queue.memcpy(tmp_ptr, physical_buffer_ptr, count * sizeof(int));
-    current_queue.memcpy(host_ptr, tmp_ptr, count * sizeof(int));
+    int tmp_count = 128;
+    int* raw_ptr = xpu_tensor.data_ptr<int>();
+    std::cout << "zl_debug start copy to local in rendevous" << std::endl;
+    current_queue.memcpy(raw_ptr, physical_buffer_ptr, tmp_count * sizeof(int));
     current_queue.wait();
+    std::cout << "zl_debug end copy to local in rendevous in rank = " << r  << " ptr: " <<  physical_buffer_ptr << std::endl;
 
-    for (int i = 0; i < count; i++) {
+    auto host_ptr = (int *)sycl::malloc_host(tmp_count * sizeof(int), current_queue);
+    auto tmp_ptr = (int *)sycl::malloc_device(tmp_count * sizeof(int), current_queue);
+    std::cout << "zl_debug start to copy data " << std::endl;
+
+    current_queue.memcpy(tmp_ptr, physical_buffer_ptr, tmp_count * sizeof(int));
+    current_queue.memcpy(host_ptr, tmp_ptr, tmp_count * sizeof(int));
+    current_queue.wait();
+    std::cout << "zl_debug finish copy data to host" << std::endl;
+
+    for (int i = 0; i < tmp_count; i++) {
         std::cout << host_ptr[i] << " ";
     }
      std::cout << std::flush;
      std::cout << "zl_debug print done " << std::flush;
-
-//     at::Tensor cpu_tensor = xpu_tensor.to(c10::kCPU);
-//     std::cout << "zl_debug peer rank = " << r << " data = " << cpu_tensor << std::endl;
 
     signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
