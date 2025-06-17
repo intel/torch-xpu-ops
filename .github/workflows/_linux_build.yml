@@ -33,9 +33,6 @@ on:
         description: The commit id of the torch build
         value: ${{ jobs.build.outputs.TORCH_COMMIT_ID }}
 
-permissions:
-  issues: write
-
 jobs:
   build:
     runs-on: ${{ inputs.runner }}

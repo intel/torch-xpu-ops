@@ -14,8 +14,6 @@ on:
         default: ''
         description: Baseline run id
 
-permissions: read-all
-
 jobs:
   Performance-Comparison:
     env:
