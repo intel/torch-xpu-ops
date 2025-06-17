@@ -33,6 +33,11 @@ on:
         type: string
         default: 'false'
         description: Whether update LKG torch version to issue #1280
+      triton:
+        required: false
+        type: string
+        default: ''
+        description: Triton commit. Use pytorch pined commit by default
     outputs:
       torch_commit_id:
         description: The commit id of the torch build
@@ -68,11 +73,49 @@ jobs:
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
           /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
           which python && python -V && pip list
+          dnf check-update -y && dnf install python310-devel -y
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
+      - name: Build Triton XPU
+        run: |
+          # cd ${{ github.workspace }}/pytorch
+          gcc --version
+          g++ --version
+          c++ --version
+          # gcc 13
+          dnf install -y gcc-toolset-13-gcc-c++
+          source /opt/rh/gcc-toolset-13/enable
+          gcc --version
+          g++ --version
+          c++ --version
+          dnf install -y zlib-devel
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          if [ -z ${{ inputs.triton }} ]; then
+            wget https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.ci/docker/ci_commit_pins/triton-xpu.txt
+            TRITON_COMMIT_ID="$(<./triton-xpu.txt)"
+            # TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd ..
+            rm -rf intel-xpu-backend-for-triton
+            git clone https://github.com/intel/intel-xpu-backend-for-triton.git
+            cd intel-xpu-backend-for-triton
+            git checkout ${TRITON_COMMIT_ID}
+            pip install -r python/requirements.txt
+            if [ -f setup.py ]; then
+              python setup.py bdist_wheel
+            else
+              cd python
+              python setup.py bdist_wheel
+            fi
+            cp dist/triton*.whl ${{ github.workspace }}
+          fi
       - name: Build Pytorch XPU
         run: |
           set -xe -o pipefail
@@ -121,6 +164,12 @@ jobs:
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/torch*.whl
+      - name: Upload Triton Wheel
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/triton*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -131,4 +180,4 @@ jobs:
         if: always()
         run: |
           chmod 777 . -R
-          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl
+          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl triton*.whl
