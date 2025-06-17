@@ -21,5 +21,5 @@ os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
 test_command = ["-k", skip_options, "test_ops_xpu.py", "-v"]
 res = pytest.main(test_command)
 if res:
-    print("".join("test_ops_xpu.py") + " have failures in extended UT")
+    print("test_ops_xpu.py has failures in extended UT")
 sys.exit(res)
