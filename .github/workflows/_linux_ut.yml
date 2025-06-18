@@ -241,6 +241,9 @@ jobs:
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean
   ut_test_dev1:
     runs-on: pvc_e2e
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
@@ -251,9 +254,6 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     steps:
-      - name: Cleanup Workspace
-        run: |
-          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel
@@ -287,6 +287,9 @@ jobs:
           unset ZE_AFFINITY_MASK
           cd test/regressions
           timeout 8000 pytest --timeout 600 -v test_operation_on_device_1.py
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean
   ut_test_results_check:
     needs: [ut_test, ut_test_dev1]
     runs-on: ubuntu-22.04
@@ -346,6 +349,9 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}-checked
           path: ${{ github.workspace }}/ut_log
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean
 
   distributed_ut_test:
     runs-on: pytorch-06
@@ -418,6 +424,9 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean
   distributed_ut_test_results_check:
     needs: distributed_ut_test
     runs-on: ubuntu-22.04
@@ -471,3 +480,6 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed-checked
           path: ${{ github.workspace }}/ut_log
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean

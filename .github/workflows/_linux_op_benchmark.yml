@@ -87,3 +87,6 @@ jobs:
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean

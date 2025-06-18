@@ -1,0 +1,23 @@
+name: Cleans up diskspace
+
+description: Cleans up diskspace
+
+runs:
+  using: composite
+  steps:
+    - name: Cleans up diskspace
+      shell: bash
+      run: |
+        set -xe -o pipefail
+        # Clean workspace
+        rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
+        # Clean cache
+        rm -rf /tmp/ || sudo rm -rf /tmp/
+        mkdir -m 777 /tmp || sudo mkdir -m 777 /tmp
+        rm -rf ~/.torch || sudo rm -rf ~/.torch
+        rm -rf ~/.triton || sudo rm -rf ~/.triton
+        rm -rf ~/.cache || sudo rm -rf ~/.cache
+        rm -rf ~/.conda || sudo rm -rf ~/.conda
+        # Clean docker
+        docker stop $(docker ps -aq) || true
+        docker system prune -af

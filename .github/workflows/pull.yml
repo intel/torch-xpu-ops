@@ -223,6 +223,9 @@ jobs:
         with:
           name: Inductor-CI-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean
 
   preci-windows:
     name: preci-windows

@@ -352,6 +352,9 @@ jobs:
           gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
             sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
           gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
+      - name: Clean diskspace
+        if: ${{ always() }}
+        uses: ./.github/actions/diskspace-clean
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
