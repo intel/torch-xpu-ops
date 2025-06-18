@@ -96,9 +96,6 @@ jobs:
       GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
-      - name: Cleanup Workspace
-        run: |
-          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare Test Env

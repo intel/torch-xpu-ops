@@ -121,9 +121,6 @@ jobs:
       reference_issue: 1645
     timeout-minutes: 300
     steps:
-      - name: Cleanup Workspace
-        run: |
-          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Pytorch wheel

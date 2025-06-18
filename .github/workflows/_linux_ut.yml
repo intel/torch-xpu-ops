@@ -55,9 +55,6 @@ jobs:
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     steps:
-      - name: Cleanup Workspace
-        run: |
-          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download PyTorch Wheel

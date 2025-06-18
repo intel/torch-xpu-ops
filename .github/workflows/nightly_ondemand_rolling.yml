@@ -132,9 +132,6 @@ jobs:
       TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
       TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
-      - name: Cleanup Workspace
-        run: |
-          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Checkout Torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Pytorch wheel

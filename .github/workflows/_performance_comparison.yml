@@ -20,9 +20,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-latest
     steps:
-      - name: Cleanup Workspace
-        run: |
-          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
       - name: Setup python
         uses: actions/setup-python@v5
         with:
