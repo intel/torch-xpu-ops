@@ -62,13 +62,19 @@ runs:
           fi
           cd ../ && python -c "import torch, torchvision, torchaudio"
           rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID && pip install --no-deps -r requirements.txt
+          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
+          # remove deps which will reinstall torch
+          pip install --no-deps accelerate
+          pip install --no-deps $(cat requirements.txt |grep 'pytorch-image-models')
+          timm_commit="$(grep 'pytorch-image-models' requirements.txt  |awk -F '@' '{print $2}')"
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/${timm_commit:-"main"}/requirements.txt | grep -vE torch)
+          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g'  requirements.txt
+          pip install -r requirements.txt
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions
           pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
-          pip install torchmetrics==1.0.3
-          pip install torchrec --no-deps --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
         fi
         if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
           pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
@@ -127,7 +133,7 @@ runs:
                 contains "accuracy,performance" $scenario
                 $contains_status
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{print $1 - 1":"NR - 1}'))
+                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{if($1==0){print $1":"NR - 1}else{print $1 - 1":"NR - 1}}'))
                   for xpu_id in ${xpu_list[*]}
                   do
                     bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
