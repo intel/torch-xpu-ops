@@ -12,5 +12,3 @@ void checkForNan(const at::Tensor& tensor, c10::xpu::XPUStream& stream);
 } // namespace c10d
 
 #endif // USE_C10D_XCCL
-
-
