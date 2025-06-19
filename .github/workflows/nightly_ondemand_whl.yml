@@ -49,15 +49,13 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: write-all
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   Linux-Nightly-Ondemand-UT-WHL-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ (github.event_name == 'schedule' || inputs.ut != '') && github.repository_owner == 'intel' }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
@@ -67,7 +65,6 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
     runs-on: pvc_e2e
-    # Don't run on forked repos
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
     env:
@@ -323,8 +320,6 @@ jobs:
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: [ self-hosted, Linux ]
-    permissions:
-      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}

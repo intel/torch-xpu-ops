@@ -38,9 +38,6 @@ on:
         description: The commit id of the torch build
         value: ${{ jobs.build.outputs.TORCH_COMMIT_ID }}
 
-permissions:
-  issues: write
-
 jobs:
   build:
     runs-on: ${{ inputs.runner }}
@@ -56,7 +53,7 @@ jobs:
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     outputs:
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
-    timeout-minutes: 900
+    timeout-minutes: 300
     steps:
       - name: Setup based env
         run: |

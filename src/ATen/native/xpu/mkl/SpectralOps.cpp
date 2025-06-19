@@ -1,4 +1,3 @@
-#if defined(USE_ONEMKL_XPU)
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
@@ -500,11 +499,10 @@ Tensor _fft_r2c_mkl(
 
   IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
 
-  auto sorted_dims = impl::_sort_dims(self, dim, /*exclude_last=*/true);
   auto out = at::empty(
       out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
 
-  auto working_tensor = self.clone(MemoryFormat::Contiguous);
+  auto working_tensor = self.contiguous();
 
   // First do the R2C transform on the last dimension
   impl::_exec_fft(
@@ -516,17 +514,12 @@ Tensor _fft_r2c_mkl(
         self.options().dtype(c10::toComplexType(self.scalar_type())));
   }
 
-  sorted_dims.resize(sorted_dims.size() - 1);
+  DimVector sorted_dims(dim.begin(), dim.end() - 1);
 
   while (!sorted_dims.empty()) {
-    if (working_tensor.is_same(self)) {
-      working_tensor = std::move(out);
-      out = at::empty(
-          out_sizes,
-          self.options().dtype(c10::toComplexType(self.scalar_type())));
-    } else {
-      std::swap(out, working_tensor);
-    }
+    sorted_dims = impl::_sort_dims(self, sorted_dims);
+
+    std::swap(out, working_tensor);
 
     const auto max_dims =
         std::min(static_cast<size_t>(impl::mkl_max_ndim), sorted_dims.size());
@@ -540,18 +533,13 @@ Tensor _fft_r2c_mkl(
         onesided,
         /*forward=*/true);
     sorted_dims.resize(sorted_dims.size() - max_dims);
-
-    if (sorted_dims.empty()) {
-      break;
-    }
-
-    sorted_dims = impl::_sort_dims(self, sorted_dims);
   }
 
   // Only need to normalize the onesided slice since data in the other half is
   // overwritten
   auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
-  working_tensor = self;
+  impl::_fft_apply_normalization(out_slice, normalization, input_sizes, dim);
+
   if (!onesided) {
     if (out.sizes()[last_dim] != out_sizes[last_dim]) {
       working_tensor.resize_(out_sizes, MemoryFormat::Contiguous);
@@ -561,7 +549,7 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  return out;
 }
 
 Tensor& _fft_r2c_mkl_out(
@@ -591,4 +579,3 @@ Tensor& _fft_r2c_mkl_out(
 }
 
 } // namespace at::native::xpu
-#endif // USE_ONEMKL_XPU
