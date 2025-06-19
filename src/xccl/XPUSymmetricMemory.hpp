@@ -65,6 +65,7 @@ class XPUSymmetricMemory : public SymmetricMemory {
   void barrier(int channel, size_t timeout_ms) override;
   void put_signal(int dst_rank, int channel, size_t timeout_ms) override;
   void wait_signal(int src_rank, int channel, size_t timeout_ms) override;
+  void copy_buffer(at::Tensor src, at::Tensor dst , size_t size) override;
 
   int get_rank() override;
   int get_world_size() override;

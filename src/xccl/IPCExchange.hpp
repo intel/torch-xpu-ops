@@ -252,10 +252,17 @@ public:
     void init(sycl::queue& queue, uint32_t rank_in, uint32_t world_in)
     {
       if (initialized) return;
-      auto ret = MPI_Init(NULL, NULL);
-      if (ret == MPI_ERR_OTHER) {
-        std::cout<<"MPI init error"<<std::endl;
-        return;
+      int flag = 0;
+      MPI_Initialized(&flag);
+
+      if (!flag) {
+        auto ret = MPI_Init(NULL, NULL);
+        if (ret == MPI_ERR_OTHER) {
+          std::cout<<"MPI init error"<<std::endl;
+          return;
+        }
+      } else {
+          std::cout << "MPI already initialized.\n";
       }
 
       zeCheck(zeInit(0));
@@ -267,17 +274,7 @@ public:
 
       rank = tmp_rank;
       world = tmp_world;
-//       void* local_buffer = sycl::malloc_device(ELE_COUNT * sizeof(int), queue);
-//       int* tmp_buffer = static_cast<int*>(local_buffer); // 1024 counts
-//       int host_data[ELE_COUNT];
-//       for (int i = 0; i < ELE_COUNT; ++i) host_data[i] = static_cast<int>(rank_in + 2);
-//       queue.memcpy(tmp_buffer, host_data, ELE_COUNT * sizeof(int)).wait();
-//       debug_print_buffer(queue, static_cast<int*>(local_buffer), ELE_COUNT);
-//       std::cout << "start to do IPC exchange " << std::endl;
-
-       // XXX: gain access to remote pointers
-//       exchange_peer_ipc_mem(queue, local_buffer);
-       initialized = true;
+      initialized = true;
 
     }
     void allreduce(sycl::queue& queue, void* inout_buffer, uint32_t size) {}

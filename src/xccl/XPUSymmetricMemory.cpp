@@ -106,6 +106,19 @@ void* XPUSymmetricMemory::get_multicast_ptr() {
   return mc_addr_;
 }
 
+void XPUSymmetricMemory::copy_buffer(at::Tensor src, at::Tensor dst , size_t size) {
+    sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+    auto src_ptr = src.data_ptr();
+    auto dst_ptr = dst.data_ptr();
+
+    size_t copy_size = size * c10::elementSize(src.scalar_type());
+
+//    std::cout << "[Native] zl_debug start to copy from src to dst with size " << copy_size << std::endl;
+    current_queue.memcpy(dst_ptr, src_ptr, copy_size);
+//    current_queue.wait();
+//    std::cout << "[Native] zl_debug copy done " << std::endl;
+
+}
 at::Tensor XPUSymmetricMemory::get_buffer(
     int rank,
     c10::IntArrayRef sizes,
@@ -425,51 +438,6 @@ static bool check_group_multicast_support(
   }
 }
 
-//void XPUSymmetricMemoryAllocator::exchange_peer_ipc_mem(sycl::queue& queue, void* ptr)
-//    {
-//        // Step 1: Get base address of the pointer
-//        sycl::context ctx = queue.get_context();
-//        auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-//
-//        void *base_addr;
-//        size_t base_size;
-//        ze_result_t status = zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size);
-//        TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeMemGetAddressRange failed");
-//
-//        // Step 2: Get IPC mem handle from base address
-//        alignas(64) exchange_contents send_buf;
-//        alignas(64) exchange_contents recv_buf[world];
-//
-//        // fill in the exchange info
-//        status = zeMemGetIpcHandle(l0_ctx, base_addr, &send_buf.ipc_handle);
-//        TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeMemGetIpcHandle failed");
-//        send_buf.offset = (char*)ptr - (char*)base_addr;
-//        send_buf.pid = getpid();
-//
-//        // Step 3: Exchange the handles and offsets
-//        memset(recv_buf, 0, sizeof(recv_buf));
-//        // Overkill if we don't really needs all peer's handles
-//        un_allgather(&send_buf, recv_buf, rank, world);
-//
-//        for (uint32_t i = 0; i < world; i++)
-//        {
-//            // Step 4: Prepare pid file descriptor of next process
-//            auto* peer = recv_buf + i;
-//            // Step 6: Open IPC handle of remote peer
-//            auto l0_device
-//                = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(queue.get_device());
-//            void* peer_base;
-//
-//            status = zeMemOpenIpcHandle(
-//                    l0_ctx, l0_device, peer->ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base);
-//            TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zeMemOpenIpcHandle failed");
-//            buffers[i] = (char*)peer_base + peer->offset;
-//            sync_buffer[i] = (char*)peer_base + peer->offset + data_size_per_buffer * sizeof(data_type);
-//            offsets[i] = peer->offset;
-//            ipc_handle[i] = send_buf.ipc_handle;
-//        }
-//    }
-
 c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* ptr,
     const std::optional<std::string>& group_name) {
@@ -541,7 +509,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   }
 
  // do IPC exchange for all peer ranks
- ar.exchange_peer_ipc_mem(current_queue, ptr, );
+ ar.exchange_peer_ipc_mem(current_queue, ptr);
  std::cout << "[Native] zl_debug finished ipc exchange " << std::endl;
 
 
