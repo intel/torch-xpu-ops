@@ -90,7 +90,7 @@ struct EmbeddingBagKernelFunctor {
         for (index_t off = start; off < end; off++) {
           index_off = off;
           vec_idx = index_[index_off];
-          // SYCL_KERNEL_ASSERT(vec_idx < num_row_);
+          SYCL_KERNEL_ASSERT(vec_idx < num_row_);
 
           if (walk_on_bag && desc.glb_problem == 0) {
             offset2bag_[index_off] = off_off;
