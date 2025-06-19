@@ -7,7 +7,7 @@
 
 namespace c10d {
 
-void checkForNan(const at::Tensor& tensor, c10::xpu::XPUStream& stream);
+void checkForNan(const at::Tensor& tensor, at::xpu::XPUStream& stream);
 
 } // namespace c10d
 

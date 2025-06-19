@@ -6,7 +6,7 @@
 #include <comm/XPUGuard.h>
 #include <stdint.h>
 #include <torch/torch.h>
-#include <xccl/NanCheck.hpp>
+#include <xccl/NanCheck_XPU.hpp>
 #include <algorithm>
 
 namespace c10d {
