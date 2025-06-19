@@ -73,8 +73,9 @@ void embedding_bag(
 
   vec_len = vec_len / vec_size;
   int tile = 1;
-  if (32 % vec_len == 0) {
-    tile = 32 / vec_len;
+  int sub_group_size = syclMaxSubGroupSize();
+  if (sub_group_size % vec_len == 0) {
+    tile = sub_group_size / vec_len;
   }
   int batch = (bag_num + tile - 1) / tile;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
