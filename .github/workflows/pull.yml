@@ -156,6 +156,7 @@ jobs:
           git clone https://github.com/intel/intel-xpu-backend-for-triton intel-xpu-backend-for-triton
           cd intel-xpu-backend-for-triton
           git checkout ${TRITON_COMMIT_ID}
+          pip install ninja cmake wheel pybind11
           if [ -e setup.py ];then
             python setup.py install
           else
