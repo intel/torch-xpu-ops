@@ -170,6 +170,7 @@ at::Tensor XPUSymmetricMemory::get_signal_pad(
       " bytes) exceeds the allocated size (",
       signal_pad_size,
       " bytes)");
+  std::cout << "[Native] zl_debug get singnal_pads " << std::endl;
   auto data_ptr = reinterpret_cast<uint8_t*>(signal_pads_[rank]) +
       storage_offset * element_size;
   auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
@@ -289,6 +290,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + signal_pad_size;
+  std::cout << "[Native] zl_debug in allocation with original size " << size << " with pad size= " << signal_pad_size << " with total block size= " << block_size << std::endl;
 
   // 获取 SYCL/Level Zero context 和 device
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
@@ -318,7 +320,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
 };
 
   // zl_debug create a device memory by sycl
-  void* ptr = sycl::malloc_device(size, current_queue);
+  void* ptr = sycl::malloc_device(block_size, current_queue);
+  current_queue.memset(ptr, 0, block_size);
 
 //  std::cout << "[Native] zl_debug allocate memory with size = " << size << " allocated ptr=" << ptr << std::endl;
 
@@ -516,20 +519,11 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   sycl::device dev = current_queue.get_device();
   auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
   // check with original ones // debug code
-//  allreducer<sycl::half> ar;
-//  ar.init(current_queue, rank, world_size);
-//  current_queue.wait();
+  // initialize MPI done
+  allreducer<sycl::half> ar;
+  ar.init(current_queue, rank, world_size);
 //  std::cout << "!!!![Native] zl_debug torch-ccl exchange done" << std::endl;
 //
-  ze_ipc_mem_handle_t ipc_handle;
-  // convert to base address
-  void *base_addr;
-  size_t base_size;
-  zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size);
-  zeMemGetIpcHandle(l0_ctx, base_addr, &ipc_handle);
-  size_t base_offset = (char*)ptr - (char*)base_addr;
-  block_fd = *reinterpret_cast<int*>(&ipc_handle);
-
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
       .pid = getpid(),
@@ -537,7 +531,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       .buffer_size = block->buffer_size,
       .signal_pad_offset = block->signal_pad_offset,
       .has_multicast_support = false,
-      .base_offset = base_offset};
+      .base_offset = 0};
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
@@ -545,7 +539,13 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   for (int r = 0; r < world_size; ++r) {
     pids[r] = reqs[r].pid;
   }
-  auto imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
+
+ // do IPC exchange for all peer ranks
+ ar.exchange_peer_ipc_mem(current_queue, ptr, );
+ std::cout << "[Native] zl_debug finished ipc exchange " << std::endl;
+
+
+//  auto imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
 
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
@@ -557,18 +557,12 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       buffers[r] = ptr;
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
+    } else {
+       buffers[r] = ar.buffers[r];
+       handles[r] = ar.buffers[r]; //ar.ipc_handle[r];
+       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
     }
 
-    ze_ipc_mem_handle_t peer_ipc_handle;
-    int peer_fd = imported_fds[r];
-    std::memcpy(&peer_ipc_handle, &peer_fd, sizeof(int));
-
-    // Open IPC handle of remote peer
-    void* peer_base;
-    zeMemOpenIpcHandle(l0_ctx, l0_dev, peer_ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base);
-    void* physical_buffer_ptr = (char*)peer_base + reqs[r].base_offset;
-    //map_block(&buffers[r], physical_buffer_ptr, block->block_size, block->device_idx);
-    buffers[r] = physical_buffer_ptr;
 
 //    //double check this buffer
 //    auto host_ptr = (float *)sycl::malloc_host(tmp_count * sizeof(float), current_queue);
@@ -584,7 +578,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 //    }
 //     std::cout << std::flush;
 
-    signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
+//    signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
 
