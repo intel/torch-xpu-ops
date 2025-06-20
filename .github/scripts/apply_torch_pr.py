@@ -10,12 +10,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--pr-list', '-n', nargs='+',
     default=[
         # Fallback to CPU for XPU FP64
-        "https://github.com/pytorch/pytorch/pull/126516",
+        "https://github.com/pytorch/pytorch/pull/156456",
         # Modify the tolerance level in TIMM benchmark
         "https://github.com/pytorch/pytorch/pull/143739",
-        # Allow XPU device for validating the arguments to sparse compressed tensor factory functions
-        "https://github.com/pytorch/pytorch/pull/147306",
-        "Enhance testing infrastructure to add half-precision support for histc on XPU"
+        # "Enhance testing infrastructure to add half-precision support for histc on XPU"
         "https://github.com/pytorch/pytorch/pull/154339",
     ]
 )
