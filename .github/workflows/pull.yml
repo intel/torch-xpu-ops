@@ -150,10 +150,10 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+          pip install cmake ninja pybind11
+          rm -rf pytorch_triton_xpu-*.whl
+          python .github/scripts/build_triton_wheel.py --device xpu
+          pip install pytorch_triton_xpu-*.whl
       - name: Identify pinned versions
         run: |
           cd ../pytorch
