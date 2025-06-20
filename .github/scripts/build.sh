@@ -44,7 +44,7 @@ cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
 
 # Pre Build
 cd ${WORKSPACE}/pytorch
-python -m pip install requests
+python -m pip install requests cmake ninja
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
@@ -85,6 +85,17 @@ rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
 python -m pip install --force-reinstall tmp/torch*.whl
 
+# Build torchvision torchaudio
+unset PYTORCH_VERSION
+TORCHVISION_COMMIT=$(cat .github/ci_commit_pins/vision.txt)
+rm -rf xpu-vision && git clone https://github.com/pytorch/vision.git xpu-vision
+cd xpu-vision && git checkout ${TORCHVISION_COMMIT}
+python setup.py bdist_wheel && cd ..
+TORCHAUDIO_COMMIT=$(cat .github/ci_commit_pins/audio.txt)
+rm -rf xpu-audio && git clone https://github.com/pytorch/audio.git xpu-audio
+cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT}
+python setup.py bdist_wheel && cd ..
+
 # Verify
 cd ${WORKSPACE}
 python ${WORKSPACE}/pytorch/torch/utils/collect_env.py
@@ -95,6 +106,8 @@ xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"
 # Save wheel
 if [ "${xpu_is_compiled,,}" == "true" ];then
     cp ${WORKSPACE}/pytorch/tmp/torch*.whl ${WORKSPACE}
+    cp ${WORKSPACE}/pytorch/xpu-vision/dist/torchvision*.whl ${WORKSPACE}
+    cp ${WORKSPACE}/pytorch/xpu-audio/dist/torchaudio*.whl ${WORKSPACE}
 else
     echo "Build got failed!"
     exit 1

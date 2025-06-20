@@ -1,0 +1,57 @@
+name: Cleans up diskspace
+
+description: Cleans up diskspace
+
+inputs:
+  suite:
+    required: true
+    type: string
+    default: 'huggingface'
+    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
+  env_prepare:
+    required: false
+    description: If set to any value, will prepare suite test env
+  dt:
+    required: true
+    type: string
+    default: 'float32'
+    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
+  mode:
+    required: true
+    type: string
+    default: 'inference'
+    description: inference,training. Delimiter is comma
+  scenario:
+    required: true
+    type: string
+    default: 'accuracy'
+    description: accuracy,performance. Delimiter is comma
+  cards:
+    required: false
+    type: string
+    default: 'all'
+    description: which cards can be used in the test
+  hf_token:
+    required: false
+    description: HUGGING_FACE_HUB_TOKEN for torchbench test
+  pytorch:
+    required: false
+    type: string
+    default: 'main'
+    description: Pytorch branch/commit
+  driver:
+    required: false
+    type: string
+    default: 'lts'
+    description: Driver lts/rolling
+
+runs:
+  using: composite
+  defaults:
+    run:
+      shell: bash -xe -o pipefail
+  steps:
+    - name: Prepare PyTorch
+      shell: bash
+      run: |
+        echo
