@@ -2,8 +2,8 @@
 #include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
 
 #include <ATen/ops/empty.h>
-#include <xpu/ATen/ops/max_pool3d_with_indices_backward_native.h>
-#include <xpu/ATen/ops/max_pool3d_with_indices_native.h>
+#include <ATen/ops/max_pool3d_with_indices_backward_native.h>
+#include <ATen/ops/max_pool3d_with_indices_native.h>
 namespace at {
 namespace native {
 
