@@ -21,6 +21,7 @@ namespace at::native::xpu {
 #define SYCL_ONEMKL_SUBMIT(q, routine, ...) \
   {                                         \
     auto e = (routine(__VA_ARGS__));        \
+    e.wait_and_throw();                     \
     (q).throw_asynchronous();               \
   }
 
