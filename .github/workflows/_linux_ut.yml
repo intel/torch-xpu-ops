@@ -86,15 +86,16 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+            pip install cmake ninja pybind11
+            rm -rf pytorch_triton_xpu-*.whl
+            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+            pip install pytorch_triton_xpu-*.whl
           fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
@@ -413,15 +414,16 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+            pip install cmake ninja pybind11
+            rm -rf pytorch_triton_xpu-*.whl
+            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+            pip install pytorch_triton_xpu-*.whl
           fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
