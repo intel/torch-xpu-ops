@@ -1,9 +1,8 @@
-#ifdef USE_C10D_XCCL
-
 #include <ATen/Dispatch.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUContext.h>
-#include <comm/XPUGuard.h>
+#include <comm/SYCLContext.h>
 #include <stdint.h>
 #include <torch/torch.h>
 #include <xccl/NanCheck_XPU.hpp>
@@ -19,7 +18,7 @@ struct CheckBytePack {
     T* data = (T*)tmp;
 #pragma unroll 8
     for (int i = 0; i < EltPerPack; i++) {
-      if (isnan(data[i]))
+      if (at::_isnan(data[i]))
         assert(0);
     }
   }
@@ -29,7 +28,7 @@ template <typename T>
 struct CheckBytePack<T, /*EltPerPack*/ 2> {
   static void check(BytePack* tmp) {
     T* data = (T*)tmp;
-    if (isnan(data[0]) || isnan(data[1]))
+    if (at::_isnan(data[0]) || at::_isnan(data[1]))
       assert(0);
   }
 };
@@ -38,7 +37,8 @@ template <typename T>
 struct CheckBytePack<T, /*EltPerPack*/ 4> {
   static void check(BytePack* tmp) {
     T* data = (T*)tmp;
-    if (isnan(data[0]) || isnan(data[1]) || isnan(data[2]) || isnan(data[3]))
+    if (at::_isnan(data[0]) || at::_isnan(data[1]) || at::_isnan(data[2]) ||
+        at::_isnan(data[3]))
       assert(0);
   }
 };
@@ -47,8 +47,9 @@ template <typename T>
 struct CheckBytePack<T, /*EltPerPack*/ 8> {
   static void check(BytePack* tmp) {
     T* data = (T*)tmp;
-    if (isnan(data[0]) || isnan(data[1]) || isnan(data[2]) || isnan(data[3]) ||
-        isnan(data[4]) || isnan(data[5]) || isnan(data[6]) || isnan(data[7])) {
+    if (at::_isnan(data[0]) || at::_isnan(data[1]) || at::_isnan(data[2]) ||
+        at::_isnan(data[3]) || at::_isnan(data[4]) || at::_isnan(data[5]) ||
+        at::_isnan(data[6]) || at::_isnan(data[7])) {
       assert(0);
     }
   }
@@ -127,36 +128,37 @@ struct checkForNaN {
   void operator()(sycl::nd_item<1> item) const {
     constexpr int EltPerPack = sizeof(BytePack) / sizeof(T);
 
-    size_t offset = item.get_global_id()[2];
+    size_t offset = item.get_global_id(0);
 
     // Align input address up to BytePack in case it is not
     T* ptrAlign = (T*)ALIGN_UP(data, BytePack);
-    size_t preProcElts = min(ptrAlign - data, size);
+    size_t preProcElts =
+        std::min<size_t>(static_cast<size_t>(ptrAlign - data), size);
 
     size_t size_left = size;
 
     if (offset < preProcElts) {
-      if (isnan(data[offset]))
+      if (at::_isnan(data[offset]))
         assert(0);
     }
     size_left -= preProcElts;
 
     BytePack* ptr = (BytePack*)ptrAlign;
     size_t sizeInBP = size_left * sizeof(T) / sizeof(BytePack);
-    size_t loopSize = num_group_ * max_group_size_ * UNROLL;
+    size_t loopSize = item.get_global_range(0) * UNROLL;
 
     for (; offset + loopSize <= sizeInBP; offset += loopSize) {
-      checkChunk<T>(ptr + offset, num_group_ * max_group_size_);
+      checkChunk<T>(ptr + offset, item.get_global_range(0));
     }
 
-    for (; offset < sizeInBP; offset += num_group_ * max_group_size_) {
+    for (; offset < sizeInBP; offset += item.get_global_range(0)) {
       BytePack tmp = ptr[offset];
       CheckBytePack<T, EltPerPack>::check(&tmp);
     }
 
-    if (item.get_local_id(1) < size_left % EltPerPack) {
+    if (item.get_local_id(0) < size_left % EltPerPack) {
       T* tailPtr = (T*)(ptr + sizeInBP);
-      if (isnan(tailPtr[item.get_local_id(1)]))
+      if (at::_isnan(tailPtr[item.get_local_id(0)]))
         assert(0);
     }
   }
@@ -182,7 +184,7 @@ void checkfornan_impl_xpu(
     return;
   }
 
-  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<checkForNaN<float>>();
+  int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<checkForNaN<T>>();
 
   const size_t numThreadsPerBlock =
       std::min<size_t>(maxNumThreadsPerBlock, tensor.numel());
@@ -197,10 +199,10 @@ void checkfornan_impl_xpu(
   auto local_range{maxNumThreadsPerBlock};
 
   using Kernel = checkForNaN<T>;
-  auto knf = Kernel(
+  auto kfn = Kernel(
       tensor.data_ptr<T>(), tensor.numel(), numBlocks, maxNumThreadsPerBlock);
 
-  sycl_kernel_submit(global_range, local_range, stream.queue(), knf);
+  sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
 }
 
 // CHECK if a Tensor contains NAN in any of its element
@@ -216,5 +218,3 @@ void checkForNan(const at::Tensor& tensor, at::xpu::XPUStream& stream) {
 }
 
 } // namespace c10d
-
-#endif // USE_C10D_XCCL
