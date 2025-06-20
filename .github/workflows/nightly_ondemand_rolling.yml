@@ -75,6 +75,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
       runner: pvc_rolling
+      update_lkg: 'true'
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -187,20 +188,10 @@ jobs:
       - name: Triton Installation
         run: |
           source activate e2e_ci
-          cd ../
-          rm -rf intel-xpu-backend-for-triton
-          git clone https://github.com/intel/intel-xpu-backend-for-triton intel-xpu-backend-for-triton
-          cd intel-xpu-backend-for-triton
-          git checkout ${TRITON_COMMIT_ID}
-          pip install ninja cmake wheel pybind11
-          if [ -e setup.py ];then
-            python setup.py install
-          else
-            cd python
-            python setup.py install
-            cd ..
-          fi
-          cd ../ && rm -rf intel-xpu-backend-for-triton
+          cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4

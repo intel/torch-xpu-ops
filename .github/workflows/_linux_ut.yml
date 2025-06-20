@@ -86,26 +86,15 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../
-            rm -rf intel-xpu-backend-for-triton
-            git clone https://github.com/intel/intel-xpu-backend-for-triton intel-xpu-backend-for-triton
-            cd intel-xpu-backend-for-triton
-            git checkout ${TRITON_COMMIT_ID}
-            pip install ninja cmake wheel pybind11
-            if [ -e setup.py ];then
-              python setup.py install
-            else
-              cd python
-              python setup.py install
-              cd ..
-            fi
-            cd ../ && rm -rf intel-xpu-backend-for-triton
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
@@ -424,26 +413,15 @@ jobs:
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ../pytorch
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
           if [ -z ${{ inputs.triton }} ]; then
             TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
+          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../
-            rm -rf intel-xpu-backend-for-triton
-            git clone https://github.com/intel/intel-xpu-backend-for-triton intel-xpu-backend-for-triton
-            cd intel-xpu-backend-for-triton
-            git checkout ${TRITON_COMMIT_ID}
-            pip install ninja cmake wheel pybind11
-            if [ -e setup.py ];then
-              python setup.py install
-            else
-              cd python
-              python setup.py install
-              cd ..
-            fi
-            cd ../ && rm -rf intel-xpu-backend-for-triton
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}

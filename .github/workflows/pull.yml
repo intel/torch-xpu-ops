@@ -150,21 +150,10 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          TRITON_COMMIT_ID=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          cd ../
-          rm -rf intel-xpu-backend-for-triton
-          git clone https://github.com/intel/intel-xpu-backend-for-triton intel-xpu-backend-for-triton
-          cd intel-xpu-backend-for-triton
-          git checkout ${TRITON_COMMIT_ID}
-          pip install ninja cmake wheel pybind11
-          if [ -e setup.py ];then
-            python setup.py install
-          else
-            cd python
-            python setup.py install
-            cd ..
-          fi
-          cd ../ && rm -rf intel-xpu-backend-for-triton
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
+          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
+          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
       - name: Identify pinned versions
         run: |
           cd ../pytorch
