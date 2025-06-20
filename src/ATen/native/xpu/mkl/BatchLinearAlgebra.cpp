@@ -1,4 +1,3 @@
-#if defined(USE_ONEMKL_XPU)
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
@@ -538,4 +537,3 @@ void lu_factor_mkl(
 }
 
 } // namespace at::native::xpu
-#endif // USE_ONEMKL_XPU
