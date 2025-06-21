@@ -29,19 +29,19 @@ else()
 endif()
 
 set(XPU_CODEGEN_COMMAND
-    "${Python_EXECUTABLE}" -m torchgen.gen
-    --source-path ${CODEGEN_XPU_YAML_DIR}
-    --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
-    --per-operator-headers
-    --backend-whitelist XPU SparseXPU SparseCsrXPU NestedTensorXPU
-    --xpu
-    )
+  "${Python_EXECUTABLE}" -m torchgen.gen
+  --source-path ${CODEGEN_XPU_YAML_DIR}
+  --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
+  --per-operator-headers
+  --backend-whitelist XPU SparseXPU SparseCsrXPU NestedTensorXPU
+  --xpu
+)
 
 set(XPU_INSTALL_HEADER_COMMAND
-    "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
-    --src-header-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
-    --dst-header-dir ${BUILD_TORCH_ATEN_GENERATED}
-    )
+  "${Python_EXECUTABLE}" ${TORCH_XPU_OPS_ROOT}/tools/codegen/install_xpu_headers.py
+  --src-header-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
+  --dst-header-dir ${BUILD_TORCH_ATEN_GENERATED}
+)
 
 # Generate ops_generated_headers.cmake for torch-xpu-ops
 execute_process(
@@ -121,7 +121,7 @@ add_custom_command(
   WORKING_DIRECTORY ${TORCH_ROOT}
 )
 
-# Codegen post progress 
+# Codegen post progress
 if(WIN32)
   add_custom_target(DELETE_TEMPLATES ALL DEPENDS ${OUTPUT_LIST})
   # Delete the copied templates folder only on Windows.

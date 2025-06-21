@@ -24,24 +24,30 @@ def append_xpu_function_header(src, dst):
     if args.dry_run:
         return
 
-    # Remove trailing empty lines from destination
-    with open(dst, "r+", encoding="utf-8") as f:
-        lines = f.readlines()
-        # Remove trailing empty lines
-        while lines and not lines[-1].strip():
-            lines.pop()
-        f.seek(0)
-        f.truncate()
-        f.writelines(lines)
-
-    # Read source file and append matching lines
+    # Read source file and match header lines
     with open(src, encoding="utf-8") as fr:
         src_text = fr.read()
     pattern = r"^#include <ATen/ops/.*>\s*\r?\n"
     matches = re.findall(pattern, src_text, re.MULTILINE)
-    if matches:
-        with open(dst, "a", encoding="utf-8") as fa:
-            fa.writelines(matches)
+    if not matches:
+        return
+
+    with open(dst, "r+", encoding="utf-8") as f:
+        dst_lines = f.readlines()
+        dst_text = "".join(dst_lines)
+        missing_headers = [match for match in matches if match not in dst_text]
+        if not missing_headers:
+            return
+
+        # Remove trailing empty lines from dst_lines
+        while dst_lines and not dst_lines[-1].strip():
+            dst_lines.pop()
+
+        f.seek(0)
+        f.truncate()
+        f.writelines(dst_lines)
+        # Append missing headers to the end of the file
+        f.writelines(missing_headers)
 
 
 def parse_ops_headers(src):
