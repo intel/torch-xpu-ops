@@ -165,6 +165,9 @@ jobs:
           cd ../pytorch
           pip install cmake ninja pybind11
           rm -rf pytorch_triton_xpu-*.whl
+          rm -rf xpu_torch_triton_tmp
+          git clone -b main --single-branch --depth 1 https://github.com/pytorch/pytorch xpu_torch_triton_tmp
+          cd xpu_torch_triton_tmp
           python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
           pip install pytorch_triton_xpu-*.whl
       - name: Download Pytorch wheel
