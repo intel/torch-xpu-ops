@@ -164,12 +164,8 @@ jobs:
           source activate e2e_ci
           cd ../pytorch
           pip install cmake ninja pybind11
-          rm -rf pytorch_triton_xpu-*.whl
-          rm -rf xpu_torch_triton_tmp
-          git clone -b main --single-branch --depth 1 https://github.com/pytorch/pytorch xpu_torch_triton_tmp
-          cd xpu_torch_triton_tmp
-          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
-          pip install pytorch_triton_xpu-*.whl
+          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          pip install "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python" || pip install "git+${TRITON_REPO}@${TRITON_COMMIT_ID}"
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
