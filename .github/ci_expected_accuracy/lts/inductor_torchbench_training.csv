@@ -4,7 +4,6 @@ BERT_pytorch,pass,pass,pass,pass,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 LearningToPaint,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1256
 Super_SloMo,pass,pass,pass,pass,pass
 alexnet,pass,pass,pass,pass,pass
 basic_gnn_edgecnn,pass,pass,pass,pass,pass
@@ -34,7 +33,6 @@ drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/508
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/510
 functorch_maml_omniglot,pass,pass,pass,pass,pass
 hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
@@ -107,7 +105,6 @@ timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1264
 vision_maskrcnn,pass,pass,pass,pass,pass
 yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass
