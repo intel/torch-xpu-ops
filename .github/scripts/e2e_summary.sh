@@ -2,7 +2,6 @@
 
 results_dir="$1"
 reference_dir="$2"
-check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
 rm -rf /tmp/tmp-*.txt
 
 # Accuracy
@@ -92,6 +91,7 @@ Empty means the cases NOT run\n\n"
     printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     echo > /tmp/tmp-summary.txt
     echo > /tmp/tmp-details.txt
+    check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py --driver ${LTS_OR_ROLLING:-"lts"}"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
