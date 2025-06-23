@@ -59,8 +59,6 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: write-all
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.ut }}-${{ inputs.triton }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
@@ -68,10 +66,8 @@ concurrency:
 jobs:
   Linux-Nightly-Ondemand-Build-Rolling:
     if: ${{ github.repository_owner == 'intel' }}
-    secrets: inherit
     name: linux-nightly-ondemand-rolling
-    permissions:
-      issues: write
+    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
@@ -193,9 +189,10 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          pip install cmake ninja pybind11
+          rm -rf pytorch_triton_xpu-*.whl
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+          pip install pytorch_triton_xpu-*.whl
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
@@ -385,8 +382,6 @@ jobs:
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}
     runs-on: [ self-hosted, Linux ]
-    permissions:
-      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
