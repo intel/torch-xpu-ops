@@ -14,6 +14,9 @@
 // todo: check this point
 #include <level_zero/ze_api.h>
 
+// todo: fixed with kernel barrier
+#include <mpi.h>
+
 namespace c10d {
 namespace symmetric_memory {
 
@@ -220,6 +223,10 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   c10::DeviceGuard guard(local_device);
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+
+  std::cout << "zl_debug finish to do barrier " << std::endl;
+  MPI_Barrier(MPI_COMM_WORLD);
+  std::cout << "zl_debug start to do barrier " << std::endl;
 
 //  current_queue.submit([&](handler& h) {
 //    h.parallel_for(range<1>(world_size), [=](id<1> idx) {
