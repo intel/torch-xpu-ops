@@ -175,7 +175,11 @@ jobs:
           cd ../pytorch
           pip install cmake ninja pybind11
           rm -rf pytorch_triton_xpu-*.whl
-          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+          TRITON_VERSION="$(
+            curl https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+              grep '__version__' |awk -F "'" '{print $2}'
+          )"
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION}
           pip install pytorch_triton_xpu-*.whl
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
