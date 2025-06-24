@@ -17,6 +17,8 @@
 // todo: fixed with kernel barrier
 #include <mpi.h>
 
+#define MAX_RANK 8
+
 namespace c10d {
 namespace symmetric_memory {
 
@@ -223,10 +225,51 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   c10::DeviceGuard guard(local_device);
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+//  sycl::event dep_event = current_queue.ext_oneapi_submit_barrier();
 
-//  std::cout << "zl_debug finish to do barrier " << std::endl;
-  MPI_Barrier(MPI_COMM_WORLD);
-//  std::cout << "zl_debug start to do barrier " << std::endl;
+  std::cout << "zl_debug start to do barrier " << std::endl;
+//  current_queue.submit([=](sycl::handler& h) {
+//        h.depends_on({dep_event});
+//        h.host_task([=]() {
+//            MPI_Barrier(MPI_COMM_WORLD);
+//        });
+//    });
+
+    int *peer_address[MAX_RANK];
+    int *local_address[MAX_RANK];
+
+    for (int i = 0; i < world_size_; i++) {
+          peer_address[i] = static_cast<int*>(singnal_pads[i]) + world_size_ * channel + rank_;
+          local_address[i] = static_cast<int*>(singnal_pads[rank]) + world_size_ * channel + i;
+    }
+    int tmp_rank = rank_;
+    current_queue.submit([&](sycl::handler& cgh) {
+        cgh.parallel_for<class test_read_kernel>(
+          sycl::range<1>{ world_size_ }, [=](sycl::item<1> idx) SYCL_ESIMD_KERNEL{
+            int target_rank = idx.get_linear_id();
+            sycl::ext::oneapi::experimental::printf("DEBUG loop to rank%d: \n", target_rank);
+            if (target_rank != tmp_rank) {
+              simd<int, 1> grf;
+              grf[0] = 1;
+              lsc_block_store<int, 1, lsc_data_size::default_size, cache_hint::uncached, cache_hint::uncached>(peer_address[target_rank], grf);
+              sycl::ext::oneapi::experimental::printf("DEBUG block store done rank%d: \n", target_rank);
+              do {
+//                lsc_fence<lsc_memory_kind::untyped_global, lsc_fence_op::none, lsc_scope::gpu>();
+                fence<memory_kind::global, fence_flush_op::none, fence_scope::gpu>();
+                grf = lsc_block_load<int, 1, lsc_data_size::default_size, cache_hint::uncached, cache_hint::uncached>
+                  (local_address[idx]);
+                sycl::ext::oneapi::experimental::printf("DEBUG block load wip rank%d: \n", target_rank);
+              } while (grf[0] == 0);
+              grf[0] = 0;
+              sycl::ext::oneapi::experimental::printf("DEBUG block load wip rank%d: \n", target_rank);
+              lsc_block_store<int, 1, lsc_data_size::default_size, cache_hint::uncached, cache_hint::uncached>(local_address[target_rank], grf);
+              sycl::ext::oneapi::experimental::printf("DEBUG block store back rank%d:\n", target_rank);
+            }
+          }
+        );
+      });
+  current_queue.wait();
+  std::cout << "zl_debug finish to do barrier " << std::endl;
 
 //  current_queue.submit([&](handler& h) {
 //    h.parallel_for(range<1>(world_size), [=](id<1> idx) {
