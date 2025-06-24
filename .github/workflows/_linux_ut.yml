@@ -251,7 +251,7 @@ jobs:
       - name: Install Triton
         run: |
           source activate $CONDA_ENV_NAME
-          pip install --force-reinstall ${{ github.workspace }}/triton*.whl
+          pip install --force-reinstall ${{ github.workspace }}/pytorch_triton_xpu-*.whl
       - name: Torch Config
         run: |
           source activate $CONDA_ENV_NAME

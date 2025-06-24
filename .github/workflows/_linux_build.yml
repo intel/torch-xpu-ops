@@ -81,40 +81,23 @@ jobs:
           path: torch-xpu-ops
       - name: Build Triton XPU
         run: |
-          # cd ${{ github.workspace }}/pytorch
-          gcc --version
-          g++ --version
-          c++ --version
           # gcc 13
           dnf install -y gcc-toolset-13-gcc-c++
           source /opt/rh/gcc-toolset-13/enable
-          gcc --version
-          g++ --version
-          c++ --version
           dnf install -y zlib-devel
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+          cd ../ && rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch
           if [ -z ${{ inputs.triton }} ]; then
-            wget https://raw.githubusercontent.com/pytorch/pytorch/refs/heads/main/.ci/docker/ci_commit_pins/triton-xpu.txt
-            TRITON_COMMIT_ID="$(<./triton-xpu.txt)"
-            # TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ..
-            rm -rf intel-xpu-backend-for-triton
-            git clone https://github.com/intel/intel-xpu-backend-for-triton.git
-            cd intel-xpu-backend-for-triton
-            git checkout ${TRITON_COMMIT_ID}
-            pip install -r python/requirements.txt
-            if [ -f setup.py ]; then
-              python setup.py bdist_wheel
-            else
-              cd python
-              python setup.py bdist_wheel
-            fi
-            cp dist/triton*.whl ${{ github.workspace }}
+            pip install cmake ninja pybind11
+            rm -rf pytorch_triton_xpu-*.whl
+            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+            cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
           fi
       - name: Build Pytorch XPU
         run: |
@@ -169,7 +152,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/triton*.whl
+          path: ${{ github.workspace }}/pytorch_triton_xpu-*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -180,4 +163,4 @@ jobs:
         if: always()
         run: |
           chmod 777 . -R
-          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl triton*.whl
+          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl pytorch_triton_xpu-*.whl
