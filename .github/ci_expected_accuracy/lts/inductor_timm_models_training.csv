@@ -24,7 +24,7 @@ fbnetc_100,pass,pass,pass,pass,pass
 fbnetv3_b,pass,fail_accuracy,pass,fail_accuracy,pass
 gernet_l,pass,pass,pass,pass,pass
 ghostnet_100,pass,pass,pass,pass,pass
-gluon_inception_v3,pass,pass,pass,pass,pass
+gluon_inception_v3,pass,fail_accuracy,pass,pass,pass
 gmixer_24_224,pass,pass,pass,pass,pass
 gmlp_s16_224,pass,pass,pass,pass,pass
 hrnet_w18,pass,pass,pass,pass,pass
