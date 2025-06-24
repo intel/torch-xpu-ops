@@ -44,8 +44,6 @@ on:
         default: 'false'
         description: Check if labelled
 
-permissions: read-all
-
 env: 
     USE_XPU: 1
 
