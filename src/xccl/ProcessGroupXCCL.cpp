@@ -670,8 +670,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   const auto key = std::to_string(device.index());
   auto comm = getXCCLComm(key, device, opType);
 
-  std::cout << "zl_debug async OP " << asyncOp << std::endl;
-
   if (coalescing_state_ & CoalActive) {
     if ((coalescing_state_ & CoalColl) == 0) {
       seqCollective_++;
