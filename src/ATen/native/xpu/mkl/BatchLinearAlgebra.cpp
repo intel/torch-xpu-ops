@@ -412,6 +412,7 @@ static void apply_lu_solve_xpu_(
     const Tensor& b_,
     const Tensor& lu_,
     const Tensor& pivots_,
+    int32_t* infos_,
     TransposeType t) {
   // do nothing if empty input
   if (lu_.numel() == 0)
@@ -450,22 +451,26 @@ static void apply_lu_solve_xpu_(
             stride_b,
             batch_size);
         Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
-        mkl_getrs<scalar_t>(
-            queue,
-            trans,
-            n,
-            nrhs,
-            a,
-            lda,
-            stride_a,
-            ipiv,
-            stride_ipiv,
-            b,
-            ldb,
-            stride_b,
-            batch_size,
-            scratchpad_at.data_ptr<scalar_t>(),
-            scratchpad_size);
+        try {
+          mkl_getrs<scalar_t>(
+              queue,
+              trans,
+              n,
+              nrhs,
+              a,
+              lda,
+              stride_a,
+              ipiv,
+              stride_ipiv,
+              b,
+              ldb,
+              stride_b,
+              batch_size,
+              scratchpad_at.data_ptr<scalar_t>(),
+              scratchpad_size);
+        } catch (oneapi::mkl::lapack::batch_error be) {
+          error_handle(infos_, be);
+        }
       };
 
   bool is_broadcast = false;
@@ -502,8 +507,11 @@ void lu_solve_mkl(
     const Tensor& pivots,
     const Tensor& B,
     TransposeType trans) {
+  std::vector<int32_t> infos(native::batchCount(LU), 0);
+  int32_t* infos_data = infos.data();
+
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
-    apply_lu_solve_xpu_<scalar_t>(B, LU, pivots, trans);
+    apply_lu_solve_xpu_<scalar_t>(B, LU, pivots, infos_data, trans);
   });
 }
 
