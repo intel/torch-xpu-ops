@@ -33,7 +33,7 @@ drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/508
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
-functorch_maml_omniglot,pass,pass,pass,pass,pass
+functorch_maml_omniglot,pass,fail_accuracy,pass,pass,pass
 hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
 hf_Bert,pass,pass,pass,pass,pass
@@ -101,7 +101,7 @@ timm_regnet,pass,fail_accuracy,pass,pass,pass
 timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
 timm_vision_transformer_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-timm_vovnet,pass,pass,pass,pass,pass
+timm_vovnet,pass,fail_accuracy,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass

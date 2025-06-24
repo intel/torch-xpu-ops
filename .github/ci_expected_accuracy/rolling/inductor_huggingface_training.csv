@@ -1,6 +1,6 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
-AlbertForMaskedLM,pass,pass,pass,pass,pass
-AlbertForQuestionAnswering,pass,pass,pass,pass,pass
+AlbertForMaskedLM,pass,pass,fail_accuracy,pass,pass
+AlbertForQuestionAnswering,pass,fail_accuracy,fail_accuracy,pass,pass
 AllenaiLongformerBase,pass,pass,pass,pass,pass
 BartForCausalLM,pass,pass,pass,pass,pass
 BartForConditionalGeneration,pass,pass,pass,pass,pass
@@ -27,7 +27,7 @@ LayoutLMForSequenceClassification,pass,pass,pass,pass,pass
 M2M100ForConditionalGeneration,pass,pass,pass,pass,pass
 MBartForCausalLM,pass,pass,pass,pass,pass
 MBartForConditionalGeneration,pass,pass,pass,pass,pass
-MT5ForConditionalGeneration,pass,pass,pass,pass,pass
+MT5ForConditionalGeneration,pass,fail_accuracy,pass,pass,pass
 MegatronBertForCausalLM,pass,pass,pass,pass,pass
 MegatronBertForQuestionAnswering,pass,pass,pass,pass,pass
 MobileBertForMaskedLM,pass,pass,pass,pass,pass

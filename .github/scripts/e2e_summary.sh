@@ -91,14 +91,14 @@ Empty means the cases NOT run\n\n"
     printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     echo > /tmp/tmp-summary.txt
     echo > /tmp/tmp-details.txt
-    check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py --driver ${LTS_OR_ROLLING:-"lts"}"
+    check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
+        python "${check_file}" --driver "${LTS_OR_ROLLING:-"lts"}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
         test_result="$(sed 's/, /,/g' "/tmp/tmp-${suite}-${mode}-${dtype}.txt" |awk '{
             if($0 ~/Total/){
                 total = $3;
