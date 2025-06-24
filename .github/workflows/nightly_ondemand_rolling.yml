@@ -351,6 +351,7 @@ jobs:
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             source activate e2e_ci
+            export LTS_OR_ROLLING='rolling'
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \
                 ${{ github.workspace }}/reference \
