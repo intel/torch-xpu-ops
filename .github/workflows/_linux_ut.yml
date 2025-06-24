@@ -44,6 +44,8 @@ on:
         default: 'lts'
         description: Driver lts/rolling
 
+permissions: read-all
+
 jobs:
   ut_test:
     runs-on: ${{ inputs.runner }}
