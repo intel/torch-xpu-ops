@@ -113,6 +113,9 @@ runs:
             }
         }
         set -xe
+        xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{if($1==0){print $1":"NR - 1}else{print $1 - 1":"NR - 1}}'))
+        cores_per_instance="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${#xpu_list[*]}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
+        export OMP_NUM_THREADS=${cores_per_instance}
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
           if [ "${suite}" == "pt2e" ];then
@@ -133,15 +136,15 @@ runs:
                 contains "accuracy,performance" $scenario
                 $contains_status
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{if($1==0){print $1":"NR - 1}else{print $1 - 1":"NR - 1}}'))
                   for xpu_id in ${xpu_list[*]}
                   do
-                    bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
+                    cpu_list="$(echo "${cores_per_instance} ${xpu_id/*:}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+                    numactl --localalloc --physcpubind=${cpu_list} bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id/:*} static ${#xpu_list[*]} ${xpu_id/*:} &
                   done
                 else
                   for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
                   do
-                    bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
+                    numactl --localalloc bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
                   done
                 fi
                 wait
