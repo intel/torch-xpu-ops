@@ -455,7 +455,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 
   xcclComm_t comm = nullptr;
   onecclResult_t result = onecclSuccess;
-  result = onecclSetDevice(rank);
+  result = onecclSetDevice(device.index());
   if (result != onecclSuccess) {
     std::cerr << "Failed to set device.\n";
   }
