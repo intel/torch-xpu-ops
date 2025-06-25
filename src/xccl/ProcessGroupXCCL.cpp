@@ -1817,7 +1817,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
 
   auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
   TORCH_CHECK(xcclWork);
-  xcclWork->isBarrierOp_ = true;
+  xcclWork->isBarrierOp_ = false;
   return work;
 }
 

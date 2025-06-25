@@ -270,7 +270,7 @@ public:
 
       MPI_Comm_size(MPI_COMM_WORLD, &tmp_world);
       MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
-      std::cout << "zl_debug get rank & world size after MPI init " << tmp_world << "   " << tmp_rank << std::endl;
+//      std::cout << "zl_debug get rank & world size after MPI init " << tmp_world << "   " << tmp_rank << std::endl;
 
       rank = tmp_rank;
       world = tmp_world;
@@ -319,7 +319,7 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
         void *base_addr;
         size_t base_size;
         zeCheck(zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size));
-        std::cout << "zl_debug get base address " << base_addr << " base size " << base_size << std::endl;
+//        std::cout << "zl_debug get base address " << base_addr << " base size " << base_size << std::endl;
 
         // Step 2: Get IPC mem handle from base address
         alignas(64) exchange_contents send_buf;
@@ -328,7 +328,7 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
         // fill in the exchange info
         zeCheck(zeMemGetIpcHandle(l0_ctx, base_addr, &send_buf.ipc_handle));
         send_buf.offset = (char*)ptr - (char*)base_addr;
-        std::cout << "zl_debug get address base offset  " << send_buf.offset << std::endl;
+//        std::cout << "zl_debug get address base offset  " << send_buf.offset << std::endl;
         send_buf.pid = getpid();
 
         // Step 3: Exchange the handles and offsets
@@ -347,10 +347,10 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
 
             zeCheck(zeMemOpenIpcHandle(
                     l0_ctx, l0_device, peer->ipc_handle, ZE_IPC_MEMORY_FLAG_BIAS_CACHED, &peer_base));
-            std::cout << "zl_debug get peer " << i <<  " with base address: " << peer_base << " offset: " << peer->offset << std::endl;
+//            std::cout << "zl_debug get peer " << i <<  " with base address: " << peer_base << " offset: " << peer->offset << std::endl;
             buffers[i] = (char*)peer_base + peer->offset;
             // make sure data correction
-            debug_print_buffer(queue, static_cast<int*>(buffers[i]), ELE_COUNT);
+//            debug_print_buffer(queue, static_cast<int*>(buffers[i]), ELE_COUNT);
             offsets[i] = peer->offset;
             ipc_handle[i] = send_buf.ipc_handle;
         }
