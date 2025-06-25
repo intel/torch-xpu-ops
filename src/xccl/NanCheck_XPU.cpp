@@ -162,17 +162,11 @@ struct checkForNaN {
         assert(0);
     }
   }
-  checkForNaN(T* data, size_t size, int64_t num_group, int64_t max_group_size)
-      : data(data),
-        size(size),
-        num_group_(num_group),
-        max_group_size_(max_group_size) {}
+  checkForNaN(T* data, size_t size) : data(data), size(size) {}
 
  private:
   T* data;
   size_t size;
-  int64_t num_group_;
-  int64_t max_group_size_;
 };
 
 template <typename T>
@@ -199,8 +193,7 @@ void checkfornan_impl_xpu(
   auto local_range{maxNumThreadsPerBlock};
 
   using Kernel = checkForNaN<T>;
-  auto kfn = Kernel(
-      tensor.data_ptr<T>(), tensor.numel(), numBlocks, maxNumThreadsPerBlock);
+  auto kfn = Kernel(tensor.data_ptr<T>(), tensor.numel());
 
   sycl_kernel_submit(global_range, local_range, stream.queue(), kfn);
 }
