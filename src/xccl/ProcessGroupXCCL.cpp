@@ -41,6 +41,44 @@ const std::map<at::ScalarType, onecclDataType_t> xcclDatatypes = {
     {at::kFloat8_e5m2fnuz, onecclDataType_t::onecclUint8},
 };
 
+bool computeLengthsAndCheckAndGetFlat(
+    const std::vector<at::Tensor>& tensors,
+    std::vector<size_t>& lengths,
+    at::Tensor& flatTensor,
+    int64_t& flatLength) {
+  int64_t groupSize = tensors.size();
+  auto firstTensor = tensors[0];
+  int64_t totalSize = 0;
+  bool isFlat = true;
+
+  auto storage = firstTensor.storage();
+  int64_t firstStorageOffset = firstTensor.storage_offset();
+
+  for (int i = 0; i < groupSize; i++) {
+    auto& curTensor = tensors[i];
+    int64_t length = curTensor.numel();
+    lengths[i] = length;
+    totalSize += length;
+
+    if (isFlat &&
+        (!storage.is_alias_of(curTensor.storage()) ||
+         curTensor.storage_offset() !=
+             firstStorageOffset + totalSize - length)) {
+      isFlat = false;
+    }
+  }
+
+  flatLength = totalSize;
+
+  if (isFlat) {
+    flatTensor = firstTensor;
+  } else {
+    flatTensor = at::empty({totalSize}, firstTensor.options());
+  }
+
+  return isFlat;
+}
+
 bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   for (const auto& input_tensor : input_tensors) {
     if (!input_tensors[0].is_same_size(input_tensor)) {
@@ -1880,6 +1918,27 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
     TORCH_CHECK(
         outputTensor.size(0) % size_ == 0,
         "xpu_alltoall_base: tensor's dim 0 does not divide equally across group size");
+    return collective(
+        inputTensor,
+        outputTensor,
+        [&](at::Tensor& input,
+            at::Tensor& output,
+            xcclComm_t& comm,
+            at::xpu::XPUStream& stream,
+            ccl::stream& xcclStream) {
+          auto xcclDataType = getXcclDataType(output.scalar_type());
+          ccl::alltoall(
+              input.data_ptr(),
+              output.data_ptr(),
+              (size_t)output.numel() / comm.size(),
+              xcclDataType,
+              comm,
+              xcclStream);
+          return;
+        },
+        OpType::ALLTOALL_BASE,
+        opts.asyncOp,
+        "xccl:all_to_all");
   } else {
     c10d::checkSplitSizes(inputSplitSizes, inputTensor, size_);
     c10d::checkSplitSizes(outputSplitSizes, outputTensor, size_);
@@ -1901,6 +1960,47 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         -1, // globalRankStart
         -1, // globalRankStride
         this->getSize()); // worldSize
+
+    return collective(
+        inputTensor,
+        outputTensor,
+        [&](at::Tensor& input,
+            at::Tensor& output,
+            xcclComm_t& comm,
+            at::xpu::XPUStream& stream,
+            ccl::stream& xcclStream) {
+          std::vector<size_t> sendCounts(size_);
+          std::vector<size_t> recvCounts(size_);
+          bool inputSplitsEqual = inputSplitSizes.size() == 0;
+          bool outputSplitsEqual = outputSplitSizes.size() == 0;
+
+          size_t inLen = input.numel();
+          size_t outLen = output.numel();
+          if (inLen)
+            inLen /= (inputSplitsEqual ? size_ : input.size(0));
+          if (outLen)
+            outLen /= (outputSplitsEqual ? size_ : output.size(0));
+
+          for (int i = 0; i < size_; i++) {
+            sendCounts[i] =
+                (inputSplitsEqual ? inLen : inputSplitSizes[i] * inLen);
+            recvCounts[i] =
+                (outputSplitsEqual ? outLen : outputSplitSizes[i] * outLen);
+          }
+          auto xcclDataType = getXcclDataType(output.scalar_type());
+          ccl::alltoallv(
+              input.data_ptr(),
+              sendCounts,
+              output.data_ptr(),
+              recvCounts,
+              xcclDataType,
+              comm,
+              xcclStream);
+          return;
+        },
+        OpType::ALLTOALL_BASE,
+        opts.asyncOp,
+        "xccl:all_to_all");
   }
   return collective(
       inputTensor,
@@ -1988,8 +2088,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       this->getSize()); // worldSize
 
   return collective(
-      inputTensors.front(),
-      outputTensors.front(),
+      inputTensors,
+      outputTensors,
       [&](at::Tensor& /* unused */,
           at::Tensor& /* unused */,
           xcclComm_t& comm,
