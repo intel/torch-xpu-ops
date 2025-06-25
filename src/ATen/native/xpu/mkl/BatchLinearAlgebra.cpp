@@ -409,9 +409,9 @@ static void apply_lu_xpu_(
 
 template <typename scalar_t>
 static void apply_lu_solve_xpu_(
-    const Tensor& b_,
     const Tensor& lu_,
     const Tensor& pivots_,
+    const Tensor& b_,
     TransposeType t) {
   // do nothing if empty input
   if (lu_.numel() == 0)
@@ -510,7 +510,7 @@ void lu_solve_mkl(
     const Tensor& B,
     TransposeType trans) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
-    apply_lu_solve_xpu_<scalar_t>(B, LU, pivots, trans);
+    apply_lu_solve_xpu_<scalar_t>(LU, pivots, B, trans);
   });
 }
 
