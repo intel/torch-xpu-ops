@@ -105,4 +105,10 @@ void lu_factor_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(lu_factor_stub, &lu_factor_kernel_xpu);
 
+// void matmal_complex_kernel_xpu() {
+//   std::cout << "======== call matmul_complex_xpu =============" << std::endl;
+//   return;
+// }
+// REGISTER_XPU_DISPATCH(matmul_complex_stub, &matmal_complex_kernel_xpu);
+
 } // namespace at::native

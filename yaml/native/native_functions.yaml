@@ -9408,16 +9408,6 @@
   dispatch:
     XPU: linalg_lu_solve_out
 
-- func: lu_unpack(Tensor LU_data, Tensor LU_pivots, bool unpack_data=True, bool unpack_pivots=True) -> (Tensor P, Tensor L, Tensor U)
-  structured_delegate: lu_unpack.out
-  variants: function
-
-- func: lu_unpack.out(Tensor LU_data, Tensor LU_pivots, bool unpack_data=True, bool unpack_pivots=True, *, Tensor(a!) P, Tensor(b!) L, Tensor(c!) U) -> (Tensor(a!) P, Tensor(b!) L, Tensor(c!) U)
-  variants: function
-  structured: True
-  dispatch:
-    CPU, CUDA: lu_unpack_out
-
 # linalg.det
 - func: _linalg_det(Tensor A) -> (Tensor result, Tensor LU, Tensor pivots)
   structured_delegate: _linalg_det.result
@@ -9475,3 +9465,25 @@
 
 - func: linalg_solve(Tensor A, Tensor B, *, bool left=True) -> Tensor
   python_module: linalg
+
+
+- func: mm.complex(Tensor self, Tensor mat2, bool is_complex) -> Tensor
+  dispatch:
+    XPU: mm_complex_xpu
+
+- func: mm.complex_out(Tensor self, Tensor mat2, bool is_complex, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: mm_complex_out_xpu
+
+
+# - func: mm.dtype(Tensor self, Tensor mat2, ScalarType out_dtype) -> Tensor
+#   dispatch:
+#     XPU: mm_dtype_xpu
+
+# - func: mm.dtype_out(Tensor self, Tensor mat2, ScalarType out_dtype, *, Tensor(a!) out) -> Tensor(a!)
+#   dispatch:
+#     XPU: mm_dtype_out_xpu
+
+
+
+

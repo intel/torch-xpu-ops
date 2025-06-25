@@ -39,6 +39,7 @@ include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
 
+
 option(USE_XCCL "Build with XCCL support" OFF)
 option(USE_C10D_XCCL "Build with XCCL support for C10D" ON)
 

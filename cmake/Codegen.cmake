@@ -47,7 +47,9 @@ function(GEN_XPU file_yaml)
     --per-operator-headers
     --backend-whitelist XPU SparseXPU SparseCsrXPU NestedTensorXPU
     --xpu
+    --output-dependencies ${BUILD_TORCH_XPU_ATEN_GENERATED}/generated_sources.cmake
   )
+
 
   add_custom_command(
     COMMENT "Generating XPU ATen Codegen..."
@@ -99,11 +101,31 @@ GEN_XPU(
   ${XPU_AOTI_SHIM_SOURCE}
 )
 
+# # Dry run to bootstrap the output variables
+# message(CMAKE_CURRENT_LIST_DIR "${CMAKE_CURRENT_LIST_DIR}")
+# execute_process(
+#   COMMAND ${XPU_CODEGEN_COMMAND} --dry-run
+#   RESULT_VARIABLE RETURN_VALUE
+#   WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/..
+# )
+
+# if(NOT RETURN_VALUE EQUAL 0)
+#   message(RETURN_VALUE: ${RETURN_VALUE})
+# endif()
+
+include("${BUILD_TORCH_XPU_ATEN_GENERATED}/generated_sources.cmake")
+
+
+
 # The c_shim_xpu.cpp needs include files in ${CMAKE_BINARY_DIR}/xpu/ATen/ops/*.h)
 # The include path is auto generated as "#include <ATen/ops/*.h">
 # To follow the design of aoti codegen, here ${CMAKE_BINARY_DIR}/xpu is added to
 # $TORCH_XPU_OPS_INCLUDE_DIRS, so that "#include <ATen/ops/*.h>" works.
 list(APPEND TORCH_XPU_OPS_INCLUDE_DIRS ${CMAKE_BINARY_DIR}/xpu)
+
+# set(xpu_generated_cpp)
+# file(GLOB xpu_generated_cpp "${CMAKE_BINARY_DIR}/xpu/ATen/*.cpp")
+# list(APPEND xpu_generated_src xpu_generated_cpp)
 
 list(APPEND xpu_generated_src
   ${RegisterXPU_GENERATED}
