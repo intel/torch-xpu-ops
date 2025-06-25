@@ -199,10 +199,12 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
     def test_alltoall_ops_with_xpufree_race(self):
         pg = self.pg
         opts = c10d.AllToAllOptions()
+        num_devices = torch.xpu.device_count()
+        tensor_size = num_devices * 100
         local_device = f"xpu:{self.rank_to_GPU[self.rank][0]}"
         torch.xpu.set_device(local_device)
-        input = torch.rand(1000, 1000, device=local_device)
-        output = torch.rand(1000, 1000, device=local_device)
+        input = torch.rand(tensor_size, 1000, device=local_device)
+        output = torch.rand(tensor_size, 1000, device=local_device)
         race_tensors = []
         # create some tensors to race with alltoall collective
         for _ in range(10):
