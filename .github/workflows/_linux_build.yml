@@ -80,6 +80,10 @@ jobs:
           path: torch-xpu-ops
       - name: Build Triton XPU
         run: |
+          # gcc 13
+          dnf install -y gcc-toolset-13-gcc-c++
+          source /opt/rh/gcc-toolset-13/enable
+          dnf install -y zlib-devel
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch
