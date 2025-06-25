@@ -73,7 +73,6 @@ jobs:
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
           /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
           which python && python -V && pip list
-          dnf check-update -y && dnf install python310-devel -y
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -81,10 +80,6 @@ jobs:
           path: torch-xpu-ops
       - name: Build Triton XPU
         run: |
-          # gcc 13
-          dnf install -y gcc-toolset-13-gcc-c++
-          source /opt/rh/gcc-toolset-13/enable
-          dnf install -y zlib-devel
           cd ../ && rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch
