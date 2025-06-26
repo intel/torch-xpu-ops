@@ -186,8 +186,8 @@ jobs:
               esac;
               mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
           ' _ {} \;
-          cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
-          cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+          cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log || true
+          cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log || true
           # Cases run with a on-demand white list, since some suites are too
           # slow to go through all operators on CPU. So add cases on-demand
           # when XPU implementatoin is done.
