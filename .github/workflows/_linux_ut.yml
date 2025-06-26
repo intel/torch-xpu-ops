@@ -44,6 +44,8 @@ on:
         default: 'lts'
         description: Driver lts/rolling
 
+permissions: read-all
+
 jobs:
   ut_test:
     runs-on: ${{ matrix.test.runner || inputs.runner }}
@@ -196,7 +198,8 @@ jobs:
                 rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
           source activate $CONDA_ENV_NAME
-          cd ../ && rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
