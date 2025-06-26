@@ -1,6 +1,7 @@
 skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
+        "test_dtypes__refs_nn_functional_pdist_xpu",
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
         "float8",
@@ -1034,7 +1035,9 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/1702
         "test_index_put_deterministic_with_optional_tensors_xpu",
     ),
-    "nn/test_pooling_xpu.py": None,
+    "nn/test_pooling_xpu.py": {
+        "test_max_pool_nan_inf_xpu"
+    },
     "nn/test_dropout_xpu.py": None,
     "test_dataloader_xpu.py": (
         # Skip for XPU didn't support
