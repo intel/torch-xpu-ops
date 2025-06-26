@@ -89,7 +89,7 @@ jobs:
           rm -rf third_party/torch-xpu-ops
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
+          git checkout mengfeil/test-2.7-skip-crach
           cd ../..
 
           pip install -r .ci/docker/requirements-ci.txt
