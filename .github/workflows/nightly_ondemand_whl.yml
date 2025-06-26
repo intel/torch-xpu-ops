@@ -270,7 +270,6 @@ jobs:
         run: |
           set -xe
           
-          conda install gh --channel conda-forge -y
           if [ "${{ env.run_type }}" == "on-demand" ];then
             artifact_type="weekly"
           else
