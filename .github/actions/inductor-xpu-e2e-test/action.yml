@@ -50,7 +50,7 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
-        source activate e2e_ci
+        
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
@@ -91,6 +91,7 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
+        pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
@@ -98,7 +99,7 @@ runs:
         DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       shell: bash
       run: |
-        source activate e2e_ci
+        
         cp .github/scripts/inductor_xpu_test.sh ../pytorch
         cd ../pytorch
 
@@ -171,7 +172,7 @@ runs:
           cat $var >> inductor_log/summary_accuracy.csv
         done
 
-        source activate e2e_ci
+        
         cd ${{ github.workspace }}
         cp .github/scripts/inductor_summary.py ../pytorch
         cd ../pytorch
