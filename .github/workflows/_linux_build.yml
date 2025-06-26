@@ -99,7 +99,7 @@ jobs:
           # oneAPI DLE
           rm -rf ~/intel ~/.intel /opt/intel 
           wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/e7705a6d-954d-465c-a5bc-4f820e2e4e90/intel-deep-learning-essentials-2025.0.2.9_offline.sh
-          bash intel-deep-learning-essentials-2025.1.3.7_offline.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
+          bash intel-deep-learning-essentials-2025.0.2.9_offline.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           # gcc 11
           source /opt/rh/gcc-toolset-11/enable
