@@ -140,7 +140,8 @@ jobs:
           source activate e2e_ci
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          cd ../ && rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           pip install -r requirements.txt
@@ -179,6 +180,7 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
           cd ..
           source activate e2e_ci
           python -c "import triton; print(triton.__version__)"
@@ -256,7 +258,7 @@ jobs:
 
   preci-windows:
     name: preci-windows
-    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_win') }} 
+    if: ${{ !(contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
     needs: [preci-conditions-filter]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
