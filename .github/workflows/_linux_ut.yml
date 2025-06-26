@@ -88,7 +88,7 @@ jobs:
           rm -rf third_party/torch-xpu-ops
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
+          git checkout mengfeil/test-2.8-skip-crach
           cd ../..
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
 
