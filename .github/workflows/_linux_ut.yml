@@ -94,6 +94,11 @@ jobs:
 
           pip install -r .ci/docker/requirements-ci.txt
 
+          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
+          cd vision
+          python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
+          cd ../ && rm -rf vision
+
       - name: Torch Config
         run: |
           
