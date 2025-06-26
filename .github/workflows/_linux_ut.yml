@@ -56,6 +56,7 @@ jobs:
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
+      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/hosted_tools
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -63,6 +64,7 @@ jobs:
         run: |
           if [ ! -z ${RUNNER_TOOL_CACHE} ];then
             rm -rf ${RUNNER_TOOL_CACHE}/* || sudo rm -rf rm -rf ${RUNNER_TOOL_CACHE}/*
+            rm -rf ${GITHUB_WORKSPACE}/hosted_tools || sudo rm -rf rm -rf ${GITHUB_WORKSPACE}/hosted_tools
           fi
       - uses: actions/setup-python@v5
         with:

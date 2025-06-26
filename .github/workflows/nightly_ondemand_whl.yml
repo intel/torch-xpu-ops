@@ -73,6 +73,7 @@ jobs:
       pytorch: ${{ github.event_name == 'schedule' && 'nightly' || inputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 17 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
+      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/hosted_tools
     outputs:
       TORCH_BRANCH_ID: ${{ steps.installed.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.installed.outputs.TORCH_COMMIT_ID }}
@@ -96,6 +97,7 @@ jobs:
         run: |
           if [ ! -z ${RUNNER_TOOL_CACHE} ];then
             rm -rf ${RUNNER_TOOL_CACHE}/* || sudo rm -rf rm -rf ${RUNNER_TOOL_CACHE}/*
+            rm -rf ${GITHUB_WORKSPACE}/hosted_tools || sudo rm -rf rm -rf ${GITHUB_WORKSPACE}/hosted_tools
           fi
       - uses: actions/setup-python@v5
         with:
