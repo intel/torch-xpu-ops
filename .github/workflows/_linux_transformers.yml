@@ -74,8 +74,30 @@ env:
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
 jobs:
+  conditions-filter:
+    name: conditions-filter
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    outputs:
+      disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
+    steps:
+      - name: Check PR infos
+        id: check-pr-desc
+        run: |
+          set -x -e -o pipefail
+          sudo apt update && sudo apt install -y dos2unix
+          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
+          dos2unix pr-info.txt
+          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
+          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
+
   prepare:
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+    needs: conditions-filter
+    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_transformers')) }}
     outputs:
       torch: ${{ steps.getver.outputs.torch }}
       torchvision: ${{ steps.getver.outputs.torchvision }}
