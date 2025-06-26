@@ -53,8 +53,8 @@ jobs:
     timeout-minutes: 3000
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      NEOReadDebugKeys: 1
+      DisableScratchPages: 1
       ut_skip_issue: 1624
       AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/hosted_tools
     steps:
