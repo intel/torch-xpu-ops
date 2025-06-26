@@ -78,9 +78,8 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           set -xe -o pipefail
-          if [ "${{ inputs.driver }}" == "lts" ]; then
-              export TORCH_XPU_ARCH_LIST='pvc'
-          fi
+          export TORCH_XPU_ARCH_LIST='pvc'
+          export USE_KINETO=0
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_VERSION="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
