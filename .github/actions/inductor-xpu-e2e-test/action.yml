@@ -82,8 +82,6 @@ runs:
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: 1
-        DisableScratchPages: 1
       shell: bash
       run: |
         
