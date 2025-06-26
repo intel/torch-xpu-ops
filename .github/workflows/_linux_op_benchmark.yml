@@ -34,6 +34,8 @@ on:
         default: 'rolling'
         description: Driver lts/rolling
 
+permissions: read-all
+
 jobs:
   op_benchmark_test:
     runs-on: ${{ inputs.runner }} 

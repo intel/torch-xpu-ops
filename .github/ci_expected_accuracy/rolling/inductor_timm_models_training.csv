@@ -2,7 +2,8 @@ name,float32,bfloat16,float16,amp_bf16,amp_fp16
 adv_inception_v3,pass,pass,pass,pass,pass
 beit_base_patch16_224,pass,pass,pass,pass,pass
 botnet26t_256,pass,pass,pass,pass,pass
-cait_m36_384,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1768
+cait_m36_384,pass,pass,fail_accuracy,pass,pass
 coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,pass,pass,pass,pass
@@ -15,8 +16,7 @@ dla102,pass,pass,pass,pass,pass
 dm_nfnet_f0,pass,pass,pass,pass,pass
 dpn107,pass,pass,pass,pass,pass
 eca_botnext26ts_256,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1275
-eca_halonext26ts,pass,pass,pass,fail_accuracy,pass
+eca_halonext26ts,pass,pass,pass,pass,pass
 ese_vovnet19b_dw,pass,pass,pass,pass,pass
 fbnetc_100,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1275
@@ -34,7 +34,8 @@ levit_128,pass,pass,pass,pass,pass
 mixer_b16_224,pass,pass,pass,pass,pass
 mixnet_l,pass,pass,pass,pass,pass
 mnasnet_100,pass,pass,pass,pass,pass
-mobilenetv2_100,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1768
+mobilenetv2_100,pass,pass,fail_accuracy,pass,pass
 mobilenetv3_large_100,pass,pass,pass,pass,pass
 mobilevit_s,pass,pass,pass,pass,pass
 nfnet_l0,pass,pass,pass,pass,pass
@@ -52,7 +53,8 @@ rexnet_100,pass,pass,pass,pass,pass
 sebotnet33ts_256,pass,pass,pass,pass,pass
 selecsls42b,pass,pass,pass,pass,pass
 spnasnet_100,pass,pass,pass,pass,pass
-swin_base_patch4_window7_224,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1768
+swin_base_patch4_window7_224,pass,fail_accuracy,fail_accuracy,pass,pass
 swsl_resnext101_32x16d,pass,pass,pass,pass,pass
 tf_efficientnet_b0,pass,pass,pass,pass,pass
 tf_mixnet_l,pass,pass,pass,pass,pass
