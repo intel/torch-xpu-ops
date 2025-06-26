@@ -199,6 +199,23 @@ static inline void get_wgroup_size_spatial(
   GroupRow = std::min(GroupRow, int(dim_size));
 }
 
+static bool inline can_use_vec(
+    int dim_size,
+    int scalar_size,
+    int max_vec_size,
+    bool is_same_dtype) {
+  if (dim_size % max_vec_size != 0)
+    return false;
+  if (is_same_dtype) {
+    if (dim_size <= 2048 && dim_size * scalar_size <= 8192)
+      return false;
+  } else {
+    if (dim_size <= 1024 && dim_size * scalar_size <= 4096)
+      return false;
+  }
+  return true;
+}
+
 template <
     int INNER_LOOP,
     int vec_size,
@@ -1544,6 +1561,7 @@ void spatial_softmax_forward(
 
   constexpr int float4_size = sizeof(float) * 4;
   constexpr int max_vec_size = float4_size / sizeof(inscalar_t);
+  constexpr int scalar_size = sizeof(inscalar_t);
   constexpr int INNER_LOOP = max_vec_size * 2;
 
   // decide vec_size: max_vec_size or 1
@@ -1695,14 +1713,16 @@ void spatial_softmax_forward(
     }
   } else {
     if (can_use_32bit_index) {
-      if (input_start == output_start && inner_size % max_vec_size == 0) {
+      if (input_start == output_start &&
+          can_use_vec(inner_size, scalar_size, max_vec_size, is_same_dtype)) {
         SPATIAL_SOFTMAX_FORWARD_IMPL(
             /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
       } else {
         SPATIAL_SOFTMAX_FORWARD_IMPL(/*vec_size*/ 1, /*IndexType*/ uint32_t);
       }
     } else {
-      if (input_start == output_start && inner_size % max_vec_size == 0) {
+      if (input_start == output_start &&
+          can_use_vec(inner_size, scalar_size, max_vec_size, is_same_dtype)) {
         SPATIAL_SOFTMAX_FORWARD_IMPL(
             /*vec_size*/ max_vec_size, /*IndexType*/ uint64_t);
       } else {
