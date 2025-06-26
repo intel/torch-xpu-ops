@@ -82,16 +82,15 @@ jobs:
           pip install requests
           pip install torch==2.7.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          git clone https://github.com/pytorch/pytorch pytorch
+          git clone https://github.com/mengfei25/pytorch pytorch
           cd ./pytorch
-          git reset --hard && git checkout ${TORCH_COMMIT_ID}
+          git reset --hard && git checkout mengfeil/2.7.1
           TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
           rm -rf third_party/torch-xpu-ops
           git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
           git checkout ${TORCH_XPU_OPS_COMMIT}
           cd ../..
-          python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 
           pip install -r .ci/docker/requirements-ci.txt
 
