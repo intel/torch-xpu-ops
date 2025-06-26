@@ -92,18 +92,19 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Clean tool cache
+        run: |
+          if [ ! -z ${RUNNER_TOOL_CACHE} ];then
+            rm -rf ${RUNNER_TOOL_CACHE}/* || sudo rm -rf rm -rf ${RUNNER_TOOL_CACHE}/*
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
-      - name: Setup Virtual ENV
+      - name: Prepare Stock Pytorch
         run: |
-          rm -rf ${HOME}/mengfeil/myvenv-2.8
-          python -m venv ${HOME}/mengfeil/myvenv-2.8
-          source ${HOME}/mengfeil/myvenv-2.8/bin/activate
           which python && which python3
           python -V
           pip list
-          echo "PATH=${HOME}/mengfeil/myvenv-2.8/bin:$PATH" >> "${GITHUB_ENV}"
           pip install pandas scipy psutil
       - name: Prepare Stock Pytorch
         id: installed
@@ -271,7 +272,6 @@ jobs:
         run: |
           set -xe
           
-          conda install gh --channel conda-forge -y
           if [ "${{ env.run_type }}" == "on-demand" ];then
             artifact_type="weekly"
           else
