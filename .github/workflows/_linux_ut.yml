@@ -44,6 +44,8 @@ on:
         default: 'lts'
         description: Driver lts/rolling
 
+permissions: read-all
+
 jobs:
   ut_test:
     runs-on: ${{ inputs.runner }}
@@ -65,7 +67,8 @@ jobs:
                 rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../ && sudo rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           pip install requests
           git clone https://github.com/pytorch/pytorch pytorch
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
