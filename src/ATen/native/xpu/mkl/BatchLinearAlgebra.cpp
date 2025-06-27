@@ -18,10 +18,15 @@
 
 namespace at::native::xpu {
 
-#define SYCL_ONEMKL_SUBMIT(q, routine, ...) \
-  {                                         \
-    auto e = (routine(__VA_ARGS__));        \
-    (q).throw_asynchronous();               \
+#define SYCL_ONEMKL_SUBMIT(q, routine, ...)             \
+  {                                                     \
+    try {                                               \
+      auto e = (routine(__VA_ARGS__));                  \
+      (q).throw_asynchronous();                         \
+    } catch (const sycl::exception& ep) {               \
+      const std::string_view err_msg(ep.what());        \
+      throw std::runtime_error("Catched Lapack Error"); \
+    }                                                   \
   }
 
 // Transforms TransposeType into the BLAS / LAPACK format
