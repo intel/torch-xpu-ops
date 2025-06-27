@@ -55,7 +55,7 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     intel-cmplr-lib-rt==2025.0.5 |\
     intel-cmplr-lib-ur==2025.0.5 |\
     intel-cmplr-lic-rt==2025.0.5 |\
-    intel-sycl-rt==2025.0.5 |\Add commentMore actions
+    intel-sycl-rt==2025.0.5 |\
     impi-devel==2021.14.2 |\
     oneccl-devel==2021.14.1 |\
     mkl-devel==2025.0.1 |\
