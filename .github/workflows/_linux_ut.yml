@@ -176,6 +176,7 @@ jobs:
             2>${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
             tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
           cp *.xml ${{ github.workspace }}/ut_log
+          mkdir -p op_ut_with_skip_quantization/core op_ut_with_skip_nn
           find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
               dir_path=$(dirname "$1");
               case "$dir_path" in
