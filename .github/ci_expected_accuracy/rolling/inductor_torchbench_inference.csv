@@ -1,7 +1,8 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 # https://github.com/intel/torch-xpu-ops/issues/1221
-torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,fail_to_run,fail_to_run
-BERT_pytorch,pass,pass,pass,pass,pass
+torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1768
+BERT_pytorch,pass,pass,pass,fail_accuracy,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 DALLE2_pytorch,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 LearningToPaint,pass,pass,pass,pass,pass
@@ -30,7 +31,8 @@ detectron2_maskrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_r
 detectron2_maskrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
 dlrm,pass,pass,pass,pass,pass
 doctr_det_predictor,pass,pass,pass,pass,pass
-doctr_reco_predictor,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/1768
+doctr_reco_predictor,pass,pass,pass,fail_accuracy,pass
 drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 functorch_dp_cifar10,pass,pass,pass,pass,pass
@@ -65,7 +67,7 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
@@ -106,6 +108,6 @@ timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-vision_maskrcnn,pass,pass,pass,eager_fail_to_run,eager_fail_to_run
+vision_maskrcnn,pass,pass,pass,fail_accuracy,fail_accuracy
 yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass

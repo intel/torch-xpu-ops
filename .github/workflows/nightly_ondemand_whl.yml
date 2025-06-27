@@ -49,7 +49,7 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: write-all
+permissions: read-all
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
@@ -110,7 +110,8 @@ jobs:
           echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../ && rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch

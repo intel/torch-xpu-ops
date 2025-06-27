@@ -59,7 +59,7 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: write-all
+permissions: read-all
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.ut }}-${{ inputs.triton }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
@@ -68,10 +68,8 @@ concurrency:
 jobs:
   Linux-Nightly-Ondemand-Build-Rolling:
     if: ${{ github.repository_owner == 'intel' }}
-    secrets: inherit
     name: linux-nightly-ondemand-rolling
-    permissions:
-      issues: write
+    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
@@ -149,7 +147,8 @@ jobs:
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          cd ../ && rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           source activate e2e_ci
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
@@ -193,9 +192,10 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          pip install cmake ninja pybind11
+          rm -rf pytorch_triton_xpu-*.whl
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+          pip install pytorch_triton_xpu-*.whl
       - name: Download Pytorch wheel
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
@@ -352,6 +352,7 @@ jobs:
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             source activate e2e_ci
+            export LTS_OR_ROLLING='rolling'
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
                 ${{ github.workspace }}/upload_files \
                 ${{ github.workspace }}/reference \

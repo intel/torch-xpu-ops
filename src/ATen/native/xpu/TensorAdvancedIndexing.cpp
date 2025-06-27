@@ -22,9 +22,9 @@
 
 #include <ATen/ops/index_add_meta.h>
 #include <ATen/ops/index_reduce_meta.h>
-#include <xpu/ATen/ops/index_add_native.h>
-#include <xpu/ATen/ops/index_reduce_native.h> //generated
-//#include <xpu/ATen/ops/index_reduce_prod_native.h> //generated
+#include <ATen/ops/index_add_native.h>
+#include <ATen/ops/index_reduce_native.h> //generated
+//#include <ATen/ops/index_reduce_prod_native.h> //generated
 
 namespace at {
 

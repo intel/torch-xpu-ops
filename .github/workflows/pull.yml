@@ -13,11 +13,11 @@ on:
       - main
       - release/*
 
+permissions: read-all
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
-permissions: read-all
 
 jobs:
   preci-lint-check:
@@ -98,8 +98,6 @@ jobs:
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all')}}
     needs: [preci-conditions-filter]
     secrets: inherit
-    permissions:
-      issues: write
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: main
@@ -142,7 +140,8 @@ jobs:
           source activate e2e_ci
           pip install --force-reinstall ${{ github.workspace }}/torch*.whl
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          cd ../ && rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           pip install -r requirements.txt
@@ -154,10 +153,10 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          TRITON_PINNED_COMMIT=$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)
-          echo ${TRITON_REPO}@${TRITON_PINNED_COMMIT}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_PINNED_COMMIT}#subdirectory=python"
+          pip install cmake ninja pybind11
+          rm -rf pytorch_triton_xpu-*.whl
+          python .github/scripts/build_triton_wheel.py --device xpu
+          pip install pytorch_triton_xpu-*.whl
       - name: Identify pinned versions
         run: |
           cd ../pytorch
@@ -181,6 +180,7 @@ jobs:
           echo "$GITHUB_ENV"
           rm -rf ../pytorch/inductor_log
           rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache
           cd ..
           source activate e2e_ci
           python -c "import triton; print(triton.__version__)"
@@ -258,7 +258,7 @@ jobs:
 
   preci-windows:
     name: preci-windows
-    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_win') }} 
+    if: ${{ !(contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
     needs: [preci-conditions-filter]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
