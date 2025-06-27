@@ -50,7 +50,7 @@ git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static mkl-include
 export USE_STATIC_MKL=1
-export USE_XCCL=1
+export USE_XCCL=0
 export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     intel-cmplr-lib-rt==2025.0.5 |\
     intel-cmplr-lib-ur==2025.0.5 |\
@@ -59,8 +59,14 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     impi-devel==2021.14.2 |\
     oneccl-devel==2021.14.1 |\
     mkl-devel==2025.0.1 |\
+    mkl==2025.0.1 | \
     onemkl-sycl-dft==2025.0.1 |\
     tcmlib==1.2.0 | umf==0.9.1 | intel-pti==0.10.2 \
+    onemkl-sycl-blas==2025.0.1 | \
+    onemkl-sycl-dft==2025.0.1 | \
+    onemkl-sycl-lapack==2025.0.1 | \
+    onemkl-sycl-rng==2025.0.1 | \
+    onemkl-sycl-sparse==2025.0.1 | \
 "
 
 # Build
