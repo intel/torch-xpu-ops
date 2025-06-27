@@ -43,16 +43,11 @@ permissions: read-all
 jobs:
   build:
     runs-on: ${{ inputs.runner }}
-    container:
-      image: 'pytorch/manylinux2_28-builder:xpu-main'
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      env:
-        PATH: /opt/xpu-build/bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        commit_issue: 1280
-        GH_TOKEN: ${{ github.token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+    env:
+      commit_issue: 1280
+      GH_TOKEN: ${{ github.token }}
+      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     outputs:
       TORCH_COMMIT_ID: ${{ steps.build_version.outputs.TORCH_COMMIT_ID }}
     timeout-minutes: 300
@@ -60,15 +55,9 @@ jobs:
       - name: Setup based env
         run: |
           # Cleanup workspace
-          rm -rf ${{ github.workspace }}/*
-          # Install gh
-          dnf install 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf autoremove -y git236* && dnf install -y git
-          dnf install gh --repo gh-cli -y
-          # Setup python
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
+          rm -rf ${{ github.workspace }}/* || sudo rm -rf ${{ github.workspace }}/*
+          conda create python=3.10 -y -n xpu-build
+          source activate xpu-build
           which python && python -V && pip list
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
@@ -78,6 +67,7 @@ jobs:
       - name: Build Pytorch XPU
         run: |
           set -xe -o pipefail
+          source activate xpu-build
           export TORCH_XPU_ARCH_LIST='pvc'
           export USE_KINETO=0
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
@@ -96,9 +86,10 @@ jobs:
             TORCH_XPU_OPS_VERSION="cicd"
           fi
           # oneAPI DLE
-          rm -rf ~/intel ~/.intel /opt/intel 
+          rm -rf ~/intel ~/.intel ${HOME}/intel 
           wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/e7705a6d-954d-465c-a5bc-4f820e2e4e90/intel-deep-learning-essentials-2025.0.2.9_offline.sh
-          bash intel-deep-learning-essentials-2025.0.2.9_offline.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
+          bash intel-deep-learning-essentials-2025.0.2.9_offline.sh -a -s --eula accept --action remove
+          bash intel-deep-learning-essentials-2025.0.2.9_offline.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           # gcc 11
           source /opt/rh/gcc-toolset-11/enable
