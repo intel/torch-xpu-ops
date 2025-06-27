@@ -66,7 +66,7 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     onemkl-sycl-dft==2025.0.1 | \
     onemkl-sycl-lapack==2025.0.1 | \
     onemkl-sycl-rng==2025.0.1 | \
-    onemkl-sycl-sparse==2025.0.1 | \
+    onemkl-sycl-sparse==2025.0.1 \
 "
 
 # Build
