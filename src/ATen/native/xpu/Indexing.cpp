@@ -10,7 +10,7 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/ops/index.h>
-#include <xpu/ATen/ops/index_native.h>
+#include <ATen/ops/index_native.h>
 
 namespace at {
 namespace native {
