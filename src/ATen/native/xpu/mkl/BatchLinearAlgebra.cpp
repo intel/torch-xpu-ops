@@ -167,20 +167,16 @@ void mkl_getrs(
     int64_t scratchpad_size) {
   SYCL_ONEMKL_SUBMIT(
       queue,
-      oneapi::mkl::lapack::getrs_batch,
+      oneapi::mkl::lapack::getrs,
       queue,
       trans,
       n,
       nrhs,
       a,
       lda,
-      stride_a,
       ipiv,
-      stride_ipiv,
       b,
       ldb,
-      stride_b,
-      batch_size,
       scratchpad,
       scratchpad_size);
 }
@@ -204,20 +200,16 @@ void mkl_getrs<c10::complex<double>>(
     int64_t scratchpad_size) {
   SYCL_ONEMKL_SUBMIT(
       queue,
-      oneapi::mkl::lapack::getrs_batch,
+      oneapi::mkl::lapack::getrs,
       queue,
       trans,
       n,
       nrhs,
       reinterpret_cast<std::complex<double>*>(a),
       lda,
-      stride_a,
       ipiv,
-      stride_ipiv,
       reinterpret_cast<std::complex<double>*>(b),
       ldb,
-      stride_b,
-      batch_size,
       reinterpret_cast<std::complex<double>*>(scratchpad),
       scratchpad_size);
 }
@@ -241,20 +233,16 @@ void mkl_getrs<c10::complex<float>>(
     int64_t scratchpad_size) {
   SYCL_ONEMKL_SUBMIT(
       queue,
-      oneapi::mkl::lapack::getrs_batch,
+      oneapi::mkl::lapack::getrs,
       queue,
       trans,
       n,
       nrhs,
       reinterpret_cast<std::complex<float>*>(a),
       lda,
-      stride_a,
       ipiv,
-      stride_ipiv,
       reinterpret_cast<std::complex<float>*>(b),
       ldb,
-      stride_b,
-      batch_size,
       reinterpret_cast<std::complex<float>*>(scratchpad),
       scratchpad_size);
 }
@@ -310,17 +298,8 @@ int64_t mkl_getrs_scratchpad(
     int64_t ldb,
     int64_t stride_b,
     int64_t batch_size) {
-  return oneapi::mkl::lapack::getrs_batch_scratchpad_size<scalar_t>(
-      queue,
-      trans,
-      n,
-      nrhs,
-      lda,
-      stride_a,
-      stride_ipiv,
-      ldb,
-      stride_b,
-      batch_size);
+  return oneapi::mkl::lapack::getrs_scratchpad_size<scalar_t>(
+      queue, trans, n, nrhs, lda, ldb);
 }
 
 template <>
@@ -335,17 +314,8 @@ int64_t mkl_getrs_scratchpad<c10::complex<double>>(
     int64_t ldb,
     int64_t stride_b,
     int64_t batch_size) {
-  return oneapi::mkl::lapack::getrs_batch_scratchpad_size<std::complex<double>>(
-      queue,
-      trans,
-      n,
-      nrhs,
-      lda,
-      stride_a,
-      stride_ipiv,
-      ldb,
-      stride_b,
-      batch_size);
+  return oneapi::mkl::lapack::getrs_scratchpad_size<std::complex<double>>(
+      queue, trans, n, nrhs, lda, ldb);
 }
 
 template <>
@@ -360,17 +330,8 @@ int64_t mkl_getrs_scratchpad<c10::complex<float>>(
     int64_t ldb,
     int64_t stride_b,
     int64_t batch_size) {
-  return oneapi::mkl::lapack::getrs_batch_scratchpad_size<std::complex<float>>(
-      queue,
-      trans,
-      n,
-      nrhs,
-      lda,
-      stride_a,
-      stride_ipiv,
-      ldb,
-      stride_b,
-      batch_size);
+  return oneapi::mkl::lapack::getrs_scratchpad_size<std::complex<float>>(
+      queue, trans, n, nrhs, lda, ldb);
 }
 
 template <typename scalar_t>
@@ -453,22 +414,44 @@ static void apply_lu_solve_xpu_(
       stride_b,
       batch_size);
   Tensor scratchpad_at = at::empty({scratchpadsize}, b_.options());
-  mkl_getrs<scalar_t>(
-      dpcpp_queue,
-      trans,
-      n,
-      nrhs,
-      a,
-      lda,
-      stride_a,
-      ipiv,
-      stride_ipiv,
-      b,
-      ldb,
-      stride_b,
-      batch_size,
-      (scalar_t*)(scratchpad_at.data_ptr()),
-      scratchpadsize);
+
+  bool is_broadcast = false;
+  IntArrayRef lu_batch_shape(lu_.sizes().data(), lu_.dim() - 2);
+  IntArrayRef b_batch_shape(b_.sizes().data(), b_.dim() - 2);
+
+  {
+    auto infer_size_buffer = at::infer_size(lu_batch_shape, b_batch_shape);
+    IntArrayRef out_batch_shape(infer_size_buffer);
+
+    is_broadcast = !(out_batch_shape.equals(lu_batch_shape));
+  }
+
+  BroadcastLinearIndices lu_index(
+      native::batchCount(lu_), lu_batch_shape, b_batch_shape);
+
+  for (const auto i : c10::irange(batch_size)) {
+    int64_t lu_index_i = lu_index(i);
+    scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
+    scalar_t* b_working_ptr = &b[i * stride_b];
+    int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
+
+    mkl_getrs<scalar_t>(
+        dpcpp_queue,
+        trans,
+        n,
+        nrhs,
+        a_working_ptr,
+        lda,
+        stride_a,
+        ipiv_working_ptr,
+        stride_ipiv,
+        b_working_ptr,
+        ldb,
+        stride_b,
+        batch_size,
+        (scalar_t*)(scratchpad_at.data_ptr()),
+        scratchpadsize);
+  }
 }
 
 void lu_solve_mkl(
