@@ -256,6 +256,9 @@ skip_dict = {
         # ValueError: Cannot use ReduceOp.PREMUL_SUM with XCCL 
         # https://github.com/intel/torch-xpu-ops/issues/1571, 2.8 skipped
         "test_set_reduce_scatter_divide_factor",
+        # NO related environment variable on XPU
+        "test_fully_shard_force_sum_both_reductions",
+        "test_fully_shard_force_sum_reduce_scatter",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": (
         # torch._dynamo.exc.BackendCompilerFailed: backend='inductor' raised
