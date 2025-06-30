@@ -102,8 +102,8 @@ jobs:
           source /opt/rh/gcc-toolset-11/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
-            --PYTORCH_REPO="${PYTORCH_REPO}" \
-            --PYTORCH_VERSION="${PYTORCH_VERSION}" \
+            --PYTORCH_REPO="https://github.com/LuFinch/pytorch" \
+            --PYTORCH_VERSION="lfq/sdpa_traning" \
             --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
             --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
             2>&1 |tee ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
