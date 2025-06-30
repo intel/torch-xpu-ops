@@ -79,7 +79,7 @@ jobs:
           cd ../
           rm -rf pytorch || sudo rm -rf pytorch
           pip install requests
-          pip install --pre torch==2.8.0 --index-url https://download.pytorch.org/whl/test/xpu
+          pip install --pre torch==2.8.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/test/xpu
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           git clone https://github.com/pytorch/pytorch pytorch
           cd ./pytorch
@@ -93,11 +93,6 @@ jobs:
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
 
           pip install -r .ci/docker/requirements-ci.txt
-
-          cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-          cd vision
-          python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-          cd ../ && rm -rf vision
 
       - name: Torch Config
         run: |
