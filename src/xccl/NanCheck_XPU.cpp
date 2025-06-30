@@ -188,9 +188,9 @@ void checkfornan_impl_xpu(
   }
 
   int64_t numBlocks =
-      (tensor.numel() + maxNumThreadsPerBlock - 1) / maxNumThreadsPerBlock;
-  auto global_range{numBlocks * maxNumThreadsPerBlock};
-  auto local_range{maxNumThreadsPerBlock};
+      (tensor.numel() + numThreadsPerBlock - 1) / numThreadsPerBlock;
+  auto global_range{numBlocks * numThreadsPerBlock};
+  auto local_range{numThreadsPerBlock};
 
   using Kernel = checkForNaN<T>;
   auto kfn = Kernel(tensor.data_ptr<T>(), tensor.numel());
