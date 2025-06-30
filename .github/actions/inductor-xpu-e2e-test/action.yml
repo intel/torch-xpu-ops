@@ -94,8 +94,8 @@ runs:
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        NEOReadDebugKeys: 1
+        DisableScratchPages: 1
       shell: bash
       run: |
         source activate e2e_ci
@@ -113,6 +113,9 @@ runs:
             }
         }
         set -xe
+        xpu-smi discovery
+        clinfo --list
+        sudo lshw -C display
         xpu_list=($(xpu-smi discovery |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |awk '{if($1==0){print $1":"NR - 1}else{print $1 - 1":"NR - 1}}'))
         cores_per_instance="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${#xpu_list[*]}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
         export OMP_NUM_THREADS=${cores_per_instance}
