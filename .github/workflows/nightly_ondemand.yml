@@ -96,6 +96,8 @@ jobs:
     name: linux-nightly-ondemand / e2e_test
     needs: Linux-Nightly-Ondemand-Build
     timeout-minutes: 3600
+    permissions:
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       reference_issue: 1645
