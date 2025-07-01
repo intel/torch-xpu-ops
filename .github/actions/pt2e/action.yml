@@ -35,7 +35,7 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
-        source activate e2e_ci
+        
         # accuracy code
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           rm -rf pt2e-accuracy
@@ -89,11 +89,9 @@ runs:
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       shell: bash
       run: |
-        source activate e2e_ci
+        
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
