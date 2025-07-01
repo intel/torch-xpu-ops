@@ -77,7 +77,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
       runner: pvc_rolling
-      update_lkg: 'true'
+      update_lkg: ${{ inputs.ut }}
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling

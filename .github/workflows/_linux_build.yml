@@ -87,9 +87,9 @@ jobs:
           fi
           # oneAPI DLE
           rm -rf ~/intel ~/.intel ${HOME}/intel 
-          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/e7705a6d-954d-465c-a5bc-4f820e2e4e90/intel-deep-learning-essentials-2025.0.2.9_offline.sh
-          bash intel-deep-learning-essentials-2025.0.2.9_offline.sh -a -s --eula accept --action remove --install-dir ${HOME}/intel/oneapi || true
-          bash intel-deep-learning-essentials-2025.0.2.9_offline.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          wget -q -O oneapi.sh ${{ inputs.update_lkg }}
+          bash oneapi.sh -a -s --eula accept --action remove --install-dir ${HOME}/intel/oneapi || true
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
