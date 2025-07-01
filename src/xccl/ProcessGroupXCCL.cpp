@@ -329,14 +329,26 @@ const std::string& ProcessGroupXCCL::logPrefix() const {
   return logPrefix_;
 }
 
+const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
+  if (options_->global_ranks_in_group.empty() && local_id_ == 0) {
+    static std::vector<uint64_t> globalRanks(size_);
+    std::iota(globalRanks.begin(), globalRanks.end(), 0);
+    return globalRanks;
+  }
+  return options_->global_ranks_in_group;
+}
+
 ProcessGroupXCCL::ProcessGroupXCCL(
-    const c10::intrusive_ptr<Store>& store,
+    c10::intrusive_ptr<Store> store,
     int rank,
-    int size)
+    int size,
+    c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
-      store_(store),
+      store_(std::move(store)),
+      options_(std::move(options)),
       xcclCommCounter_(0),
       local_id_(process_group_id++) {
+  this->setGroupUid(options_->group_name);
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   init();
@@ -345,7 +357,10 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
   const auto XcclVersion = getXcclVersion();
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
-            << "size: " << size << ", global rank: " << rank_;
+            << "size: " << size << ", global rank: " << rank_
+            << ", USE_HIGH_PRIORITY_STREAM: "
+            << options_->is_high_priority_stream
+            << ", PG Name: " << options_->group_name;
 
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
             << "XCCL version: " << XcclVersion
@@ -481,9 +496,9 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     rank = p2pRank;
   }
 
-  c10::impl::VirtualGuardImpl impl(device.type());
-  c10::Stream stream =
-      impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
+  bool force_high = getCvarBool(TORCH_XCCL_HIGH_PRIORITY, false);
+  c10::Stream stream = at::xpu::getStreamFromPool(
+      options_->is_high_priority_stream || force_high);
 
   if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
     onecclGetUniqueId(&xcclID);
@@ -550,6 +565,10 @@ void ProcessGroupXCCL::groupEnd() {
   onecclGroupEnd();
   --xcclActiveGroupCounter_;
 }
+
+ProcessGroupXCCL::Options::Options(bool is_high_priority_stream)
+    : Backend::Options(XCCL_BACKEND_NAME),
+      is_high_priority_stream(is_high_priority_stream) {}
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {
