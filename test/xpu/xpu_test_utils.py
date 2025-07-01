@@ -920,9 +920,11 @@ class XPUPatchForImport:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
-            if opinfo.name in _ops_dtype_different_cuda_support and \
-                "forward" in _ops_dtype_different_cuda_support[opinfo.name]:
-                    opinfo.dtypesIfXPU.update(_ops_dtype_different_cuda_support[opinfo.name]["forward"])
+            if opinfo.name in _ops_dtype_different_cuda_support:
+                if "forward" in _ops_dtype_different_cuda_support[opinfo.name]:
+                    opinfo.dtypesIfXPU.update(
+                        _ops_dtype_different_cuda_support[opinfo.name]["forward"]
+                    )
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
                 fp64_dtypes = [
