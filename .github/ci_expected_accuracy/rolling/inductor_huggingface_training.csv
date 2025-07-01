@@ -1,7 +1,5 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
-# https://github.com/intel/torch-xpu-ops/issues/1768,,,,,
 AlbertForMaskedLM,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1768,,,,,
 AlbertForQuestionAnswering,pass,pass,pass,pass,pass
 AllenaiLongformerBase,pass,pass,pass,pass,pass
 BartForCausalLM,pass,pass,pass,pass,pass
@@ -15,7 +13,7 @@ CamemBert,pass,pass,pass,pass,pass
 DebertaForMaskedLM,pass,pass,pass,pass,pass
 DebertaForQuestionAnswering,pass,pass,pass,pass,pass
 DebertaV2ForMaskedLM,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-# Skip DebertaV2ForQuestionAnswering issue: https://github.com/intel/torch-xpu-ops/issues/1216,,,,,
+# Skip DebertaV2ForQuestionAnswering issue: https://github.com/intel/torch-xpu-ops/issues/1216
 DebertaV2ForQuestionAnswering,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
 DistilBertForMaskedLM,pass,pass,pass,pass,pass
 DistilBertForQuestionAnswering,pass,pass,pass,pass,pass
@@ -29,7 +27,6 @@ LayoutLMForSequenceClassification,pass,pass,pass,pass,pass
 M2M100ForConditionalGeneration,pass,pass,pass,pass,pass
 MBartForCausalLM,pass,pass,pass,pass,pass
 MBartForConditionalGeneration,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1768,,,,,
 MT5ForConditionalGeneration,pass,pass,pass,pass,pass
 MegatronBertForCausalLM,pass,pass,pass,pass,pass
 MegatronBertForQuestionAnswering,pass,pass,pass,pass,pass
