@@ -97,14 +97,18 @@ runs:
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
-          if [[ "${{ inputs.dt }}" == *"float32"* ]];then
-            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --is_fp32 --dataset_dir ${HOME}/datasets/imagenet |\
-                    tee "${pt2e_logs_dir}/accuracy-fp32.log"
-          fi
-          if [[ "${{ inputs.dt }}" == *"int8"* ]];then
-            python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet |\
-                    tee "${pt2e_logs_dir}/accuracy-int8.log"
-          fi
+          models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
+          for model_name in $(echo $models |sed 's/,/ /g')
+          do
+            if [[ "${{ inputs.dt }}" == *"float32"* ]];then
+              python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --model_list $model_name --device xpu --is_fp32 --dataset_dir ${HOME}/datasets/imagenet |\
+                      tee "${pt2e_logs_dir}/accuracy-fp32-$model_name.log" || true
+            fi
+            if [[ "${{ inputs.dt }}" == *"int8"* ]];then
+              python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --model_list $model_name --device xpu --dataset_dir ${HOME}/datasets/imagenet |\
+                      tee "${pt2e_logs_dir}/accuracy-int8-$model_name.log" || true
+            fi
+          done
         fi
         if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
           models="alexnet,demucs,dlrm,hf_Albert,hf_Bert,hf_Bert_large,hf_DistilBert,hf_Roberta_base,mnasnet1_0,mobilenet_v2,"
@@ -113,19 +117,28 @@ runs:
           models+="timm_vision_transformer,timm_vision_transformer_large,timm_vovnet,vgg16"
           if [[ "${{ inputs.dt }}" == *"float32"* ]];then
             rm -rf pt2e-performance/.userbenchmark
-            python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $models 2>&1 |\
-                    tee "${pt2e_logs_dir}/performance-fp32.log"
+            for model_name in $(echo $models |sed 's/,/ /g')
+            do
+              python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor -m $model_name 2>&1 |\
+                    tee "${pt2e_logs_dir}/performance-fp32-$model_name.log" || true
+            done
             mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-fp32
           fi
           if [[ "${{ inputs.dt }}" == *"int8"* ]];then
             rm -rf pt2e-performance/.userbenchmark
-            XPU_QUANT_CONFIG=ASYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models 2>&1 |\
-                    tee "${pt2e_logs_dir}/performance-int8-ASYMM.log"
+            for model_name in $(echo $models |sed 's/,/ /g')
+            do
+              XPU_QUANT_CONFIG=ASYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |\
+                    tee "${pt2e_logs_dir}/performance-int8-ASYMM-$model_name.log"
+            done
             mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-ASYMM
 
             rm -rf pt2e-performance/.userbenchmark
-            XPU_QUANT_CONFIG=SYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $models 2>&1 |\
-                                tee "${pt2e_logs_dir}/performance-int8-SYMM.log"
+            for model_name in $(echo $models |sed 's/,/ /g')
+            do
+              XPU_QUANT_CONFIG=SYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |\
+                                tee "${pt2e_logs_dir}/performance-int8-SYMM-$model_name.log"
+            done
             mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-SYMM
           fi
         fi
