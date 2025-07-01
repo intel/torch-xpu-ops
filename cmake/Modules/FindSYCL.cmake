@@ -408,7 +408,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       COMMAND ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
-      -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
+      # -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"
       )
