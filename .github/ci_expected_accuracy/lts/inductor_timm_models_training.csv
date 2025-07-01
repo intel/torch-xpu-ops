@@ -19,7 +19,8 @@ eca_halonext26ts,pass,pass,pass,pass,pass
 ese_vovnet19b_dw,pass,pass,pass,pass,pass
 fbnetc_100,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1275
-fbnetv3_b,pass,pass,pass,fail_accuracy,pass
+# https://github.com/intel/torch-xpu-ops/issues/1765
+fbnetv3_b,pass,fail_accuracy,pass,fail_accuracy,pass
 gernet_l,pass,pass,pass,pass,pass
 ghostnet_100,pass,pass,pass,pass,pass
 gluon_inception_v3,pass,pass,pass,pass,pass
