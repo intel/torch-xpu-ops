@@ -325,6 +325,10 @@ _ops_without_cuda_support = [
     "histogramdd",
 ]
 
+_ops_dtype_different_cuda_support = {
+    "histc": {"forward": {torch.bfloat16, torch.float16}},
+}
+
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
 # but xpu can pass these case, and assert 'unexpected success'
 # the list will pass these case.
@@ -915,6 +919,10 @@ class XPUPatchForImport:
                 if bfloat16 in opinfo.dtypesIf["xpu"]:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
+
+            if opinfo.name in _ops_dtype_different_cuda_support and \
+                "forward" in _ops_dtype_different_cuda_support[opinfo.name]:
+                    opinfo.dtypesIfXPU.update(_ops_dtype_different_cuda_support[opinfo.name]["forward"])
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
                 fp64_dtypes = [
