@@ -90,7 +90,7 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     umf==0.10.0 | \
     intel-pti==0.11.0
 "
-else
+elif [[ "${BUILD_ONEAPI_NAME}"  == *"2025.1.3.7_offline"* ]];then
 python -m pip install mkl-static==2025.1.1 mkl-include==2025.1.1
 export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     intel-cmplr-lib-rt==2025.1.1 | \
@@ -113,6 +113,30 @@ export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
     tcmlib==1.3.0 | \
     umf==0.10.0 | \
     intel-pti==0.12.3
+"
+else
+python -m pip install mkl-static mkl-include
+export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
+    intel-cmplr-lib-rt | \
+    intel-cmplr-lib-ur | \
+    intel-cmplr-lic-rt | \
+    intel-sycl-rt | \
+    oneccl-devel | \
+    oneccl | \
+    impi-rt| \
+    onemkl-sycl-blas | \
+    onemkl-sycl-dft | \
+    onemkl-sycl-lapack | \
+    onemkl-sycl-rng | \
+    onemkl-sycl-sparse | \
+    dpcpp-cpp-rt | \
+    intel-opencl-rt | \
+    mkl | \
+    intel-openmp | \
+    tbb | \
+    tcmlib | \
+    umf | \
+    intel-pti
 "
 fi
 
