@@ -86,6 +86,7 @@ jobs:
             TORCH_XPU_OPS_VERSION="cicd"
           fi
           # oneAPI DLE
+          export BUILD_ONEAPI_NAME=${{ inputs.update_lkg }}
           rm -rf ~/intel ~/.intel ${HOME}/intel 
           wget -q -O oneapi.sh ${{ inputs.update_lkg }}
           bash oneapi.sh -a -s --eula accept --action remove --install-dir ${HOME}/intel/oneapi || true
