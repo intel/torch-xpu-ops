@@ -28,7 +28,7 @@ Tensor& index_select_out_xpu(
   c10::impl::check_and_update_common_device(
       common_device, out, "xpu::index_select_out", "out");
 
-  static constexpr string_view DIM_WARNING =
+  static constexpr std::string_view DIM_WARNING =
       "Tensor too large or too many (> 12) dimensions";
   at::assert_no_internal_overlap(out);
   at::assert_no_overlap(out, self);
