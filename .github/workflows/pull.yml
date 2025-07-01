@@ -81,7 +81,10 @@ jobs:
       - name: Check Label
         id: check-label
         run: |
-          labels='${{ toJSON(github.event.pull_request.labels) || '[]' }}'
+          labels='${{ toJSON(github.event.pull_request.labels) }}'
+          if [ "$labels" = "null" ]; then
+            labels="[]"
+          fi
           has_label=$(echo "$labels" | jq -e 'any(.name == "windows_ci")' || echo "false")
           echo "has_label=$has_label" |tee -a "${GITHUB_OUTPUT}"
       - name: Check PR infos
