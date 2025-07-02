@@ -116,6 +116,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       return c10::make_intrusive<Options>(is_high_priority_stream);
     }
     bool is_high_priority_stream;
+
+    onecclConfig_t config = ONECCL_CONFIG_INITIALIZER;
+
+    std::shared_ptr<ProcessGroupXCCL> split_from;
+    int split_color{ONECCL_SPLIT_NOCOLOR - 1};
+
     std::vector<uint64_t> global_ranks_in_group;
     std::string group_name;
   };
@@ -142,6 +148,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);
+  }
+
+  bool supportsSplitting() const override {
+    return true;
   }
 
   bool supportsCoalescing() const override {
@@ -398,6 +408,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::string& logPrefix() const;
 
   const std::vector<uint64_t>& groupRanks() const;
+
+  uint64_t getCommSplitCounter() const;
+
+  void eagerConnectSingleDevice(at::Device device) override;
+
+  void performNocolorSplit(at::Device device);
 
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, sycl::queue>>

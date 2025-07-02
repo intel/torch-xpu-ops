@@ -376,6 +376,29 @@ uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
   return seqCollective_;
 }
 
+void ProcessGroupXCCL::eagerConnectSingleDevice(at::Device device) {
+  const auto key = std::to_string(device.index());
+  LOG(INFO) << logPrefix() << "Eagerly connecting xccl backend with device "
+            << device;
+  getXCCLComm(key, device, OpType::ALLREDUCE);
+}
+
+void ProcessGroupXCCL::performNocolorSplit(at::Device device) {
+  const auto key = std::to_string(device.index());
+  LOG(INFO) << logPrefix() << "Performing nocolor split on backend device "
+            << device << ", key " << key << ", i am " << this;
+  auto comm = getXCCLComm(key, device, OpType::ALLREDUCE);
+  if (comm == nullptr) {
+    LOG(ERROR) << logPrefix()
+               << "No parent communicator exists for nocolor split";
+  }
+  c10::OptionalDeviceGuard gpuGuard(device);
+  xcclComm_t comm_new = nullptr;
+
+  onecclCommSplit(comm, ONECCL_SPLIT_NOCOLOR, rank_, &comm_new, &options_->config);
+}
+
+
 c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     at::Device& device,
     int rank,
@@ -462,6 +485,16 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
         "the devices are empty ");
   }
 
+  if (bound_device_id_) {
+    if (*bound_device_id_ != device) {
+      LOG(ERROR) << logPrefix() << "Tensor found on device " << device
+                 << " but backend constrained to " << *bound_device_id_;
+      C10_THROW_ERROR(
+          DistBackendError,
+          "Attempt to perform collective on tensor not on device passed to init_process_group");
+    }
+  }
+
   usedDeviceIdxs_.insert(device.index());
 
   {
@@ -511,7 +544,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   if (result != onecclSuccess) {
     std::cerr << "Failed to set device.\n";
   }
-  result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
+  result = onecclCommInitRankConfig(&comm, numRanks, xcclID, rank, &config_);
   if (result != onecclSuccess) {
     std::cerr << "Failed to initialize communicator.\n";
   }
@@ -554,6 +587,15 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
             << "Created XCCL communicator with Key: " << deviceKey;
 
   return XCCLComm;
+}
+
+uint64_t ProcessGroupXCCL::getCommSplitCounter() const {
+  uint64_t ret = 0;
+  for (const auto& i : devXCCLCommMap_) {
+    auto& xcclComm = i.second;
+    ret += xcclComm->getCommSplitCounter();
+  }
+  return ret;
 }
 
 void ProcessGroupXCCL::groupStart() {
