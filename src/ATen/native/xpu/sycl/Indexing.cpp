@@ -845,7 +845,7 @@ static inline void index_copy_impl(
     int64_t dim,
     const Tensor& indices,
     const Tensor& source) {
-  static constexpr string_view DIM_WARNING =
+  static constexpr std::string_view DIM_WARNING =
       "Tensor too large or too many (> 12) dimensions";
 
   TORCH_CHECK(dst.dim() <= XPU_MAX_TENSORINFO_DIMS, DIM_WARNING);

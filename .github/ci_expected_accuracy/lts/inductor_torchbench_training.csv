@@ -33,8 +33,7 @@ drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/508
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1768
-functorch_maml_omniglot,pass,fail_accuracy,pass,pass,pass
+functorch_maml_omniglot,pass,pass,pass,pass,pass
 hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
 hf_Bert,pass,pass,pass,pass,pass
@@ -63,13 +62,13 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,model_fail_to_load,eager_fail_to_run,eager_fail_to_run,model_fail_to_load,model_fail_to_load
+moco,model_fail_to_load,model_fail_to_load,eager_fail_to_run,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 nanogpt,pass,pass,pass,pass,pass
 nvidia_deeprecommender,pass,pass,pass,pass,pass
 opacus_cifar10,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 phlippe_densenet,pass,pass,pass,pass,pass
-phlippe_resnet,pass,pass,pass,pass,pass
+phlippe_resnet,pass,fail_accuracy,pass,pass,pass
 pyhpc_equation_of_state,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 pyhpc_isoneutral_mixing,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 pyhpc_turbulent_kinetic_energy,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
@@ -101,8 +100,7 @@ timm_regnet,pass,fail_accuracy,pass,pass,pass
 timm_resnest,pass,pass,pass,pass,pass
 timm_vision_transformer,pass,pass,pass,pass,pass
 timm_vision_transformer_large,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-# https://github.com/intel/torch-xpu-ops/issues/1768
-timm_vovnet,pass,fail_accuracy,pass,pass,pass
+timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass

@@ -69,6 +69,8 @@ jobs:
     runs-on: pvc_e2e
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
+    permissions:
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       reference_issue: 1645

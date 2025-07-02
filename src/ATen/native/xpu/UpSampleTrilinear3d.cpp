@@ -2,8 +2,8 @@
 #include <ATen/native/xpu/sycl/UpSampleTrilinear3dKernels.h>
 #include <comm/SYCLContext.h>
 
-#include <xpu/ATen/ops/upsample_trilinear3d_backward_native.h>
-#include <xpu/ATen/ops/upsample_trilinear3d_native.h>
+#include <ATen/ops/upsample_trilinear3d_backward_native.h>
+#include <ATen/ops/upsample_trilinear3d_native.h>
 
 namespace at {
 namespace native {

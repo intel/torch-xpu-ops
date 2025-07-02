@@ -1,7 +1,7 @@
 #include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
-#include <xpu/ATen/ops/_convert_indices_from_coo_to_csr_native.h>
-#include <xpu/ATen/ops/_convert_indices_from_csr_to_coo_native.h>
+#include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
+#include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
 
 namespace at::native {
 

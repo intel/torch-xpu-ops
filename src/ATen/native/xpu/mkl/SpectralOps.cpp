@@ -110,7 +110,6 @@ void _mkl_dft(
   } else {
     event = compute_backward(desc, in_data, out_data);
   }
-  event.wait_and_throw();
   queue.throw_asynchronous();
 }
 

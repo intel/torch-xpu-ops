@@ -409,9 +409,9 @@ static void apply_lu_xpu_(
 
 template <typename scalar_t>
 static void apply_lu_solve_xpu_(
-    const Tensor& b_,
     const Tensor& lu_,
     const Tensor& pivots_,
+    const Tensor& b_,
     TransposeType t) {
   // do nothing if empty input
   if (lu_.numel() == 0)
@@ -436,6 +436,9 @@ static void apply_lu_solve_xpu_(
   int64_t* ipiv = pivots.data_ptr<int64_t>();
   scalar_t* b = b_.data_ptr<scalar_t>();
 
+  std::vector<int32_t> infos(batch_size, 0);
+  int32_t* infos_ = infos.data();
+
   auto execute_mkl_getrs =
       [&](scalar_t* a, scalar_t* b, int64_t* ipiv, int64_t batch_size) {
         int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
@@ -450,22 +453,26 @@ static void apply_lu_solve_xpu_(
             stride_b,
             batch_size);
         Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
-        mkl_getrs<scalar_t>(
-            queue,
-            trans,
-            n,
-            nrhs,
-            a,
-            lda,
-            stride_a,
-            ipiv,
-            stride_ipiv,
-            b,
-            ldb,
-            stride_b,
-            batch_size,
-            scratchpad_at.data_ptr<scalar_t>(),
-            scratchpad_size);
+        try {
+          mkl_getrs<scalar_t>(
+              queue,
+              trans,
+              n,
+              nrhs,
+              a,
+              lda,
+              stride_a,
+              ipiv,
+              stride_ipiv,
+              b,
+              ldb,
+              stride_b,
+              batch_size,
+              scratchpad_at.data_ptr<scalar_t>(),
+              scratchpad_size);
+        } catch (oneapi::mkl::lapack::batch_error be) {
+          error_handle(infos_, be);
+        }
       };
 
   bool is_broadcast = false;
@@ -503,7 +510,7 @@ void lu_solve_mkl(
     const Tensor& B,
     TransposeType trans) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
-    apply_lu_solve_xpu_<scalar_t>(B, LU, pivots, trans);
+    apply_lu_solve_xpu_<scalar_t>(LU, pivots, B, trans);
   });
 }
 

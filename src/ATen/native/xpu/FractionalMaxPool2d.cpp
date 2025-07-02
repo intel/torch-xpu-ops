@@ -3,8 +3,8 @@
 #include <ATen/native/cpu/mixed_data_type.h>
 #include <ATen/native/xpu/sycl/FractionalMaxPool2dKernels.h>
 
-#include <xpu/ATen/ops/fractional_max_pool2d_backward_native.h>
-#include <xpu/ATen/ops/fractional_max_pool2d_native.h>
+#include <ATen/ops/fractional_max_pool2d_backward_native.h>
+#include <ATen/ops/fractional_max_pool2d_native.h>
 
 namespace at::native {
 
