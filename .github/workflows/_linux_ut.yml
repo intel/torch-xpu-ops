@@ -339,7 +339,7 @@ jobs:
 
           cd ${{ matrix.test.directory }}
 
-          if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
+          if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu_1" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu_2" ]]; then
             eval "${{ matrix.test.command_script }}"
           else
             timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
