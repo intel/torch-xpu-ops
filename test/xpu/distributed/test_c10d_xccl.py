@@ -340,6 +340,32 @@ class CommTest(MultiProcessTestCase):
         if self.rank != root_rank:
             self.assertEqual(tensors, target)
 
+    def _test_pass_xccl_options(self, pg_opts):
+        store = c10d.FileStore(self.file_name, self.world_size)
+        # Test init_process_group accepts options
+        dist.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+            pg_options=pg_opts,
+        )
+
+        # Test with new_group
+        pg = c10d.new_group([0, 1], pg_options=pg_opts)
+        # test the process group works as expected
+        t = torch.tensor([self.rank + 1] * 10).xpu(self.rank)
+        pg.allreduce(t).wait()
+        expected_tensor = torch.tensor([3] * 10).xpu(self.rank)
+        self.assertEqual(expected_tensor, t)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_pass_xccl_options_high_priority_stream(self):
+        pg_opts = c10d.ProcessGroupXCCL.Options()
+        pg_opts.is_high_priority_stream = True
+        self._test_pass_xccl_options(pg_opts)
+
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_broadcast_coalesced_xccl(self):
