@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 
+import pytest
 import torch
 from torch import bfloat16, cuda
 from torch.testing._internal import (
@@ -1164,30 +1165,76 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     if skip_list is not None:
-        skip_options = ' -k "not ' + skip_list[0]
+        skip_options = "not " + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
             skip_options += skip_option
-        skip_options += '"'
-        test_command = (
-            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
-            + test_case
-        )
-        test_command += skip_options
+        if test_case == "test_dataloader_xpu.py":
+            test_command = [
+                "-k",
+                skip_options,
+                "-n",
+                "1",
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
+        else:
+            test_command = [
+                "-k",
+                skip_options,
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
     elif exe_list is not None:
-        exe_options = ' -k "' + exe_list[0]
+        exe_options = exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
             exe_options += exe_option
-        exe_options += '"'
-        test_command = (
-            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
-            + test_case
-        )
-        test_command += exe_options
+        if test_case == "test_dataloader_xpu.py":
+            test_command = [
+                "-k",
+                exe_options,
+                "-n",
+                "1",
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
+        else:
+            test_command = [
+                "-k",
+                exe_options,
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
     else:
-        test_command = (
-            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
-            + test_case
-        )
-    return os.system(test_command)
+        if test_case == "test_dataloader_xpu.py":
+            test_command = [
+                "-n",
+                "1",
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
+        else:
+            test_command = [
+                "--timeout",
+                "600",
+                f"--junit-xml=./op_ut_with_skip_{test_case}.xml",
+                "-v",
+                test_case,
+            ]
+    return pytest.main(test_command)
