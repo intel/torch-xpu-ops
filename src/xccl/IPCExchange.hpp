@@ -9,7 +9,7 @@
 #include <system_error>
 #include <future>
 
-#include <mpi.h>
+//#include <mpi.h>
 #include <sycl/sycl.hpp>
 #include <level_zero/ze_api.h>
 
@@ -145,92 +145,112 @@ int client_connect(const char *server, const char *client) {
   return sock;
 }
 
-void un_allgather(exchange_contents* send_buf, exchange_contents recv_buf[], int rank, int world) {
-  const char* servername_prefix = "/tmp/open-peer-ipc-mem-server-rank_";
-  const char* clientname_prefix = "/tmp/open-peer-ipc-mem-client-rank_";
+static const char* servername_prefix = "open-peer-ipc-mem-server-rank_";
+static const char* clientname_prefix = "open-peer-ipc-mem-client-rank_";
+
+int launch_connect(pollfd fdarray[], int slot, int peer, int rank, int instance) {
+  char peer_name[64];
+  char client_name[64];
+
+  snprintf(client_name, sizeof(client_name), "%s%d-%d", clientname_prefix, rank, peer);
+  unlink(client_name);
+
+  snprintf(peer_name, sizeof(peer_name), "%s%d%d", servername_prefix, peer, instance);
+  fdarray[slot].fd = client_connect(peer_name, client_name);
+  fdarray[slot].events = POLLOUT;
+  fdarray[slot].revents = 0;
+
+  unlink(client_name);
+  return fdarray[slot].fd;
+}
+
+void un_allgather(
+    exchange_contents* send_buf, exchange_contents recv_buf[], int rank, int world
+    , int instance = 0, int batch = 1
+) {
   char server_name[64];
-  /* get username to make server_name unique */
-  auto uid = getuid();
-  auto pwd = getpwuid(uid);
-  snprintf(server_name, sizeof(server_name), "%s%d_%s", servername_prefix, rank, pwd->pw_name);
+  snprintf(server_name, sizeof(server_name), "%s%d%d", servername_prefix, rank, instance);
   unlink(server_name);
   auto s_listen = server_listen(server_name);
 
-  MPI_Barrier(MPI_COMM_WORLD);
-
   pollfd fdarray[world];
-  int recv_socks[world-1];
+  // int recv_socks[world-1];
 
   for (auto& pollfd : fdarray) pollfd.fd = -1;
-  std::fill(recv_socks, recv_socks + world -1, -1);
+  // std::fill(recv_socks, recv_socks + world -1, -1);
 
-  auto fd_guard = [&]() {
-    for (int i = 0, j = 0; i < world; ++ i) {
-      if ( i != rank && recv_socks[j] != -1)
-        sysCheck(close(recv_socks[j++]));
+  __scope_guard free_fd([&]() {
+    for (int i = 0/*, j = 0*/; i < world; ++ i) {
+      // if ( i != rank && recv_socks[j] != -1)
+      //   sysCheck(close(recv_socks[j++]));
       if ( fdarray[i].fd != -1 )
         sysCheck(close(fdarray[i].fd));
     }
-  };
 
-  struct guard__{
-    using F = decltype(fd_guard);
-    F f;
-    guard__(const F &f) : f(f) {}
-    ~guard__() { f(); }
-  } free_fd(fd_guard);
+    unlink(server_name);
+  });
 
-  // connect to all ranks
-  for (int i = 0; i < world; ++ i) {
-    if (rank == i) {
-      fdarray[i].fd = s_listen;
-      fdarray[i].events = POLLIN;
-      fdarray[i].revents = 0;
-    } else {
-      char peer_name[64];
-      char client_name[64];
+  // slot 0 used for accept
+  fdarray[0].fd = s_listen;
+  fdarray[0].events = POLLIN;
+  fdarray[0].revents = 0;
 
-      snprintf(client_name, sizeof(client_name), "%s%d-%d_%s", clientname_prefix, rank, i, pwd->pw_name);
-      unlink(client_name);
+  auto fdarray_sz = 1;
+  auto peer = rank + 1;
 
-      snprintf(peer_name, sizeof(peer_name), "%s%d_%s", servername_prefix, i, pwd->pw_name);
-      fdarray[i].fd = client_connect(peer_name, client_name);
-      fdarray[i].events = POLLOUT;
-      fdarray[i].revents = 0;
-    }
-  }
+  auto n_conns = std::min(batch, world -1);
 
-  // std::future<std::tuple<int, int, size_t>> future_fds[world -1];
+  // connect to next peers
+  for (int i = 0; i < n_conns; ++ i)
+    launch_connect(fdarray, fdarray_sz ++, peer ++ % world, rank, instance);
+
   int slot = 0;
-  uint32_t send_progress = 1<<rank;
+  uint32_t send_progress = 0;
 
-  while (slot < world-1 || send_progress != (1<<world) -1) {
-    sysCheck(ppoll(fdarray, world, nullptr, nullptr));
+  std::future<std::tuple<int, int, size_t>> future_fds[world -1];
 
-    for (int i = 0; i < world; ++ i) {
-      if (i == rank && (fdarray[i].revents & POLLIN)) {
-        // auto accept_sock = serv_accept(fdarray[i].fd);
-        // future_fds[slot ++] = std::async(
-        //     std::launch::async, [=]() {
-        //     struct sock_guard{
-        //       int sock;
-        //       sock_guard(int sock) : sock(sock) {}
-        //       ~guard_sock() {sysCheck(close(sock));}
-        //     } release(accept_sock);
-        //     auto ret = un_recv_fd(accept_sock);
-        //     return ret;});
-        recv_socks[slot ++] = serv_accept(fdarray[i].fd);
-      } else if ((send_progress & (1<<i)) == 0 && fdarray[i].revents & POLLOUT) {
+  while (slot < world -1 || send_progress < world -1) {
+    sysCheck(ppoll(fdarray, fdarray_sz, nullptr, nullptr));
+
+    if (fdarray[0].revents & POLLIN) {
+      auto accept_sock = serv_accept(fdarray[0].fd);
+      future_fds[slot ++] = std::async(
+          std::launch::async, [=]() {
+            __scope_guard release([=]() {
+              sysCheck(close(accept_sock));
+            });
+            auto ret = un_recv_fd(accept_sock);
+            return ret;
+          });
+      // recv_socks[slot ++] = serv_accept(fdarray[0].fd);
+      // Increase the priority of accept and receive
+      continue;
+    }
+
+    // connected and send
+    for (int i = 1; i < fdarray_sz; ++ i) {
+      if (fdarray[i].revents & POLLOUT) {
         un_send_fd(fdarray[i].fd, send_buf->fd, rank, send_buf->offset);
-        send_progress |= 1<<i;
+        send_progress ++;
+        sysCheck(close(fdarray[i].fd));
+        fdarray[i].fd = -1;
+        // for each accept of connect request, we launch a new connect
+        if (peer % world != rank &&
+            -1 != launch_connect(fdarray, i, peer % world, rank, instance))
+          ++peer;
+      } else if (fdarray[i].fd == -1) {
+        // for each accept of connect request, we launch a new connect
+        if (peer % world != rank &&
+            -1 != launch_connect(fdarray, i, peer % world, rank, instance))
+          ++peer;
       }
     }
   }
 
   for (int i = 0; i < world -1; ++i) {
-    // future_fds[i].wait();
-    // auto [fd, peer, offset] = future_fds[i].get();
-    auto [fd, peer, offset] = un_recv_fd(recv_socks[i]);
+    future_fds[i].wait();
+    auto [fd, peer, offset] = future_fds[i].get();
+    // auto [fd, peer, offset] = un_recv_fd(recv_socks[i]);
     recv_buf[peer].fd = fd;
     recv_buf[peer].offset = offset;
   }
@@ -253,27 +273,27 @@ public:
     {
       if (initialized) return;
       int flag = 0;
-      MPI_Initialized(&flag);
-
-      if (!flag) {
-        auto ret = MPI_Init(NULL, NULL);
-        if (ret == MPI_ERR_OTHER) {
-          std::cout<<"MPI init error"<<std::endl;
-          return;
-        }
-      } else {
-          std::cout << "MPI already initialized.\n";
+//      MPI_Initialized(&flag);
+//
+//      if (!flag) {
+//        auto ret = MPI_Init(NULL, NULL);
+//        if (ret == MPI_ERR_OTHER) {
+//          std::cout<<"MPI init error"<<std::endl;
+//          return;
+//        }
+//      } else {
+//          std::cout << "MPI already initialized.\n";
       }
 
       zeCheck(zeInit(0));
-      int tmp_rank, tmp_world;
-
-      MPI_Comm_size(MPI_COMM_WORLD, &tmp_world);
-      MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
+//      int tmp_rank, tmp_world;
+//
+//      MPI_Comm_size(MPI_COMM_WORLD, &tmp_world);
+//      MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
 //      std::cout << "zl_debug get rank & world size after MPI init " << tmp_world << "   " << tmp_rank << std::endl;
 
-      rank = tmp_rank;
-      world = tmp_world;
+      rank = rank_in;
+      world = world_in;
       initialized = true;
 
     }
@@ -338,6 +358,10 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
 
         for (uint32_t i = 0; i < world; i++)
         {
+           if (i == rank) {
+               buffers[i] = ptr;
+               offsets[i] = 0;
+           } else {
             // Step 4: Prepare pid file descriptor of next process
             auto* peer = recv_buf + i;
             // Step 6: Open IPC handle of remote peer
@@ -353,6 +377,7 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
 //            debug_print_buffer(queue, static_cast<int*>(buffers[i]), ELE_COUNT);
             offsets[i] = peer->offset;
             ipc_handle[i] = send_buf.ipc_handle;
+          }
         }
     }
 
