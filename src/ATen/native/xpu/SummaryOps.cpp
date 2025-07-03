@@ -2,7 +2,7 @@
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
 #include <comm/SYCLContext.h>
 
-#include <xpu/ATen/ops/bincount_native.h>
+#include <ATen/ops/bincount_native.h>
 
 namespace at {
 namespace native {
