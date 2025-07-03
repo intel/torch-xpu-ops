@@ -281,9 +281,9 @@ jobs:
           cd ${{ matrix.test.directory }}
 
           if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
-            bash << 'SCRIPT'
+            bash << "SCRIPT"
             ${{ matrix.test.command_script }}
-            SCRIPT
+          SCRIPT
           else
             timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
               2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
