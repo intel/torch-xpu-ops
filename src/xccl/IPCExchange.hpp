@@ -9,7 +9,7 @@
 #include <system_error>
 #include <future>
 
-#include <mpi.h>
+//#include <mpi.h>
 #include <sycl/sycl.hpp>
 #include <level_zero/ze_api.h>
 
@@ -117,7 +117,7 @@ int prepare_socket(const char *sockname) {
 }
 
 int server_listen(const char *sockname) {
-  // unlink(sockname);
+   unlink(sockname);
   auto sock = prepare_socket(sockname);
   sysCheck(listen(sock, 10));
 
@@ -134,14 +134,45 @@ int serv_accept(int listen_sock) {
   return accept_sock;
 }
 
+bool wait_for_socket_file(const char* path, int max_seconds = 10) {
+  struct stat buffer;
+  for (int i = 0; i < max_seconds * 10; ++i) {
+    if (stat(path, &buffer) == 0) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  return false;
+}
+
 int client_connect(const char *server, const char *client) {
+  if (!wait_for_socket_file(server, 10)) {
+    std::cerr << "Error: timeout waiting for server socket file: " << server
+              << std::endl;
+    exit(EXIT_FAILURE);
+  }
   auto sock = prepare_socket(client);
   sockaddr_un sun;
   memset(&sun, 0, sizeof(sun));
   sun.sun_family = AF_UNIX;
   strcpy(sun.sun_path, server);
   auto len = offsetof(sockaddr_un, sun_path) + strlen(server);
-  sysCheck(connect(sock, (sockaddr *)&sun, len));
+  //sysCheck(connect(sock, (sockaddr *)&sun, len));
+  // connect重试
+  const int max_retries = 50;
+  int retry = 0;
+  int ret = -1;
+  while (retry < max_retries) {
+    ret = connect(sock, (sockaddr*)&sun, len);
+    if (ret == 0)
+      break; // 连接成功
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    retry++;
+  }
+  if (ret != 0) {
+    perror("connect failed");
+    exit(EXIT_FAILURE);
+  }
   return sock;
 }
 
@@ -156,7 +187,7 @@ void un_allgather(exchange_contents* send_buf, exchange_contents recv_buf[], int
   unlink(server_name);
   auto s_listen = server_listen(server_name);
 
-  MPI_Barrier(MPI_COMM_WORLD);
+//  MPI_Barrier(MPI_COMM_WORLD);
 
   pollfd fdarray[world];
   int recv_socks[world-1];
@@ -253,27 +284,27 @@ public:
     {
       if (initialized) return;
       int flag = 0;
-      MPI_Initialized(&flag);
-
-      if (!flag) {
-        auto ret = MPI_Init(NULL, NULL);
-        if (ret == MPI_ERR_OTHER) {
-          std::cout<<"MPI init error"<<std::endl;
-          return;
-        }
-      } else {
-          std::cout << "MPI already initialized.\n";
-      }
+//      MPI_Initialized(&flag);
+//
+//      if (!flag) {
+//        auto ret = MPI_Init(NULL, NULL);
+//        if (ret == MPI_ERR_OTHER) {
+//          std::cout<<"MPI init error"<<std::endl;
+//          return;
+//        }
+//      } else {
+//          std::cout << "MPI already initialized.\n";
+//      }
 
       zeCheck(zeInit(0));
-      int tmp_rank, tmp_world;
-
-      MPI_Comm_size(MPI_COMM_WORLD, &tmp_world);
-      MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
+//      int tmp_rank, tmp_world;
+//
+//      MPI_Comm_size(MPI_COMM_WORLD, &tmp_world);
+//      MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
 //      std::cout << "zl_debug get rank & world size after MPI init " << tmp_world << "   " << tmp_rank << std::endl;
 
-      rank = tmp_rank;
-      world = tmp_world;
+      rank = rank_in;
+      world = world_in;
       initialized = true;
 
     }
@@ -338,6 +369,10 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
 
         for (uint32_t i = 0; i < world; i++)
         {
+           if (i == rank) {
+               buffers[i] = ptr;
+               offsets[i] = 0;
+           } else {
             // Step 4: Prepare pid file descriptor of next process
             auto* peer = recv_buf + i;
             // Step 6: Open IPC handle of remote peer
@@ -353,6 +388,7 @@ void debug_print_buffer(sycl::queue& queue, int *address, int count) {
 //            debug_print_buffer(queue, static_cast<int*>(buffers[i]), ELE_COUNT);
             offsets[i] = peer->offset;
             ipc_handle[i] = send_buf.ipc_handle;
+          }
         }
     }
 
