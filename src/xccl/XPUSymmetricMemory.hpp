@@ -4,7 +4,7 @@
 #include <ATen/ATen.h>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
-#include <torch/csrc/distributed/c10d/SymmetricMemory.hpp>
+#include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
 namespace c10d::symmetric_memory {
 

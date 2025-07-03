@@ -1813,12 +1813,30 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   at::Tensor barrierTensor =
       at::zeros({1}, at::TensorOptions().device(barDevice).dtype(at::kFloat));
 
-  auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier");
+    // All reduce to achieve the barrier
+  AllreduceOptions arOpts = AllreduceOptions();
+  arOpts.asyncOp = opts.asyncOp;
+  auto work = allreduce_impl(barrierTensor, "nccl:all_reduce_barrier", arOpts);
 
-  auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
-  TORCH_CHECK(xcclWork);
-  xcclWork->isBarrierOp_ = false;
-  return work;
+  if (opts.asyncOp) {
+    // Work will take over barrierTensors
+    auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
+    // If user specified async, the work should not be nullptr
+    TORCH_CHECK(xcclWork);
+    // Put a marker here so that `work.wait()` issue by users does
+    // barrier-specific thing: CPU sync
+    xcclWork->isBarrierOp_ = false;
+
+    return work;
+  }
+
+  // Otherwise, we are in sync mode, we directly wait here.
+  // (It is a CPU wait for barrier)
+  auto currentStream = at::xpu::getCurrentXPUStream(barDevIdx);
+  // CUDAStream wrapper will correctly use a DeviceGuard here
+//  currentStream.synchronize(); // zl_debug workaround
+  // No work to return
+  return nullptr;
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
