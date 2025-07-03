@@ -59,7 +59,7 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
+      - name: Create Conda Env
         run: |
           pwd
           which conda && conda clean -ay
@@ -100,7 +100,7 @@ jobs:
           cd ../pytorch
           rm -rf third_party/torch-xpu-ops
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cp -r ${{ github.workspace }}/torch-xpu-ops third_party
+            cp -r ${{ github.workspace }} third_party
           else
             TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
@@ -385,7 +385,7 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
+      - name: Create Conda Env
         run: |
           pwd
           which conda && conda clean -ay
@@ -426,7 +426,7 @@ jobs:
           cd ../pytorch
           rm -rf third_party/torch-xpu-ops
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cp -r ${{ github.workspace }}/torch-xpu-ops third_party
+            cp -r ${{ github.workspace }} third_party
           else
             TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
