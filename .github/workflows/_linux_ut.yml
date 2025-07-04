@@ -145,11 +145,11 @@ jobs:
                           tee "$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_test.log"
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_1/"
               function read_dir(){
-                for file in $(ls "$1")
+                for file in `ls $1`
                 do
                   if [ -d $1"/"$file ]
                   then
-                    cp $1"/"$file"/"*.xml "$GITHUB_WORKSPACE/ut_log/"
+                    cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
                   else
                     echo "[Warning] $file has no xml"
                   fi
@@ -157,14 +157,14 @@ jobs:
               }
               read_dir "test/test-reports/python-pytest"
               cd "$GITHUB_WORKSPACE/ut_log/torch_xpu_1"
-              find . -name 'inductor.*' -exec bash -c \'
+              find . -name 'inductor.*' -exec bash -c '
                   for file; do
-                      newfile=\$(echo \"\$file\" | sed \"s/inductor\\./inductor_/\")
-                      if [ \"\$file\" != \"\$newfile\" ]; then
-                          mv -v \"\$file\" \"\$newfile\"
+                      newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                      if [ "$file" != "$newfile" ]; then
+                          mv -v "$file" "$newfile"
                       fi
                   done
-              \' bash {} +
+              ' bash {} +
             log_prefix: 'torch_xpu_1'
             timeout: 10000
             additional_steps: |
@@ -182,11 +182,11 @@ jobs:
                           tee "$GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_test.log"
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_2/"
               function read_dir(){
-                for file in $(ls "$1")
+                for file in `ls $1`
                 do
                   if [ -d $1"/"$file ]
                   then
-                    cp $1"/"$file"/"*.xml "$GITHUB_WORKSPACE/ut_log/"
+                    cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
                   else
                     echo "[Warning] $file has no xml"
                   fi
@@ -194,14 +194,14 @@ jobs:
               }
               read_dir "test/test-reports/python-pytest"
               cd "$GITHUB_WORKSPACE/ut_log/torch_xpu_2"
-              find . -name 'inductor.*' -exec bash -c \'
+              find . -name 'inductor.*' -exec bash -c '
                   for file; do
-                      newfile=\$(echo \"\$file\" | sed \"s/inductor\\./inductor_/\")
-                      if [ \"\$file\" != \"\$newfile\" ]; then
-                          mv -v \"\$file\" \"\$newfile\"
+                      newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                      if [ "$file" != "$newfile" ]; then
+                          mv -v "$file" "$newfile"
                       fi
                   done
-              \' bash {} +
+              ' bash {} +
             log_prefix: 'torch_xpu_2'
             timeout: 10000
             additional_steps: |
