@@ -436,6 +436,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t seqP2P_{0};
   size_t local_id_;
   std::string logPrefix_;
+  uint64_t xcclCommSplitCounter_{0};
 };
 } // namespace c10d
 

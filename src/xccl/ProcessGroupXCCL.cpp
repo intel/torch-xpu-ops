@@ -360,6 +360,8 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << "size: " << size << ", global rank: " << rank_
             << ", USE_HIGH_PRIORITY_STREAM: "
             << options_->is_high_priority_stream
+            << ", SPLIT_FROM: " << options_->split_from
+            << ", SPLIT_COLOR: " << options_->split_color
             << ", PG Name: " << options_->group_name;
 
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
@@ -395,9 +397,10 @@ void ProcessGroupXCCL::performNocolorSplit(at::Device device) {
   c10::OptionalDeviceGuard gpuGuard(device);
   xcclComm_t comm_new = nullptr;
 
-  onecclCommSplit(comm, ONECCL_SPLIT_NOCOLOR, rank_, &comm_new, &options_->config);
+  onecclCommSplit(
+      *comm, ONECCL_SPLIT_NOCOLOR, rank_, &comm_new, &options_->config);
+  xcclCommSplitCounter_++;
 }
-
 
 c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     at::Device& device,
@@ -529,26 +532,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     rank = p2pRank;
   }
 
-  bool force_high = getCvarBool(TORCH_XCCL_HIGH_PRIORITY, false);
-  c10::Stream stream = at::xpu::getStreamFromPool(
-      options_->is_high_priority_stream || force_high);
-
-  if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
-    onecclGetUniqueId(&xcclID);
-  }
-  broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
-
   xcclComm_t comm = nullptr;
-  onecclResult_t result = onecclSuccess;
-  result = onecclSetDevice(device.index());
-  if (result != onecclSuccess) {
-    std::cerr << "Failed to set device.\n";
-  }
-  result = onecclCommInitRankConfig(&comm, numRanks, xcclID, rank, &config_);
-  if (result != onecclSuccess) {
-    std::cerr << "Failed to initialize communicator.\n";
-  }
-  XCCLComm = std::make_shared<xcclComm_t>(comm);
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -564,6 +548,42 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       -1, // globalRankStride
       size_); // worldSize
 
+  if (options_->split_from && !singleP2POp) {
+    std::lock_guard<std::mutex> lock(options_->split_from->mutex_);
+    auto& other_comms = options_->split_from->devXCCLCommMap_;
+    auto dit = other_comms.find(std::to_string(device.index()));
+    if (dit != other_comms.end()) {
+      auto& parentComm = dit->second;
+      if (parentComm != nullptr) {
+        LOG(INFO) << logPrefix() << "Splitting XCCL communicator from "
+                  << c10::str(static_cast<void*>(*parentComm));
+        onecclCommSplit(
+            *parentComm, options_->split_color, rank, &comm, &options_->config);
+        xcclCommSplitCounter_++;
+      }
+    }
+  }
+
+  if (!comm) {
+    if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
+      onecclGetUniqueId(&xcclID);
+    }
+    broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
+
+    onecclResult_t result = onecclSuccess;
+    result = onecclSetDevice(device.index());
+    if (result != onecclSuccess) {
+      std::cerr << "Failed to set device.\n";
+    }
+    result = onecclCommInitRankConfig(
+        &comm, numRanks, xcclID, rank, &options_->config);
+    if (result != onecclSuccess) {
+      std::cerr << "Failed to initialize communicator.\n";
+    }
+  }
+
+  XCCLComm = std::make_shared<xcclComm_t>(comm);
+
   for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
     (void)i;
     onecclGroupStart();
@@ -576,6 +596,9 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   // in a map alongside the communicator. Similarly, oneCCLv2 also requires
   // retaining the SYCL queue pointer for collective operations, so this change
   // will be necessary in oneCCLv2 as well.
+  bool force_high = getCvarBool(TORCH_XCCL_HIGH_PRIORITY, false);
+  c10::Stream stream = at::xpu::getStreamFromPool(
+      options_->is_high_priority_stream || force_high);
   std::lock_guard<std::mutex> lock(mutex_);
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
@@ -590,12 +613,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 }
 
 uint64_t ProcessGroupXCCL::getCommSplitCounter() const {
-  uint64_t ret = 0;
-  for (const auto& i : devXCCLCommMap_) {
-    auto& xcclComm = i.second;
-    ret += xcclComm->getCommSplitCounter();
-  }
-  return ret;
+  return xcclCommSplitCounter_;
 }
 
 void ProcessGroupXCCL::groupStart() {
