@@ -149,7 +149,7 @@ jobs:
                 do
                   if [ -d $1"/"$file ]
                   then
-                    cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+                    cp $1"/"$file"/"*.xml $GITHUB_WORKSPACE/ut_log/
                   else
                     echo "[Warning] $file has no xml"
                   fi
@@ -186,7 +186,7 @@ jobs:
                 do
                   if [ -d $1"/"$file ]
                   then
-                    cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+                    cp $1"/"$file"/"*.xml $GITHUB_WORKSPACE/ut_log/
                   else
                     echo "[Warning] $file has no xml"
                   fi
