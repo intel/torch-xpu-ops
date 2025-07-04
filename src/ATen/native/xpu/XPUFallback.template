@@ -209,7 +209,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_svd.U",
     "lu_unpack.out",
     "ormqr",
-    "_scaled_mm",
     "triangular_solve.X",
     "_validate_compressed_sparse_indices",
     "vdot",
