@@ -1,14 +1,14 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/UpSampleNearest3dKernels.h>
 
-#include <xpu/ATen/ops/_upsample_nearest_exact3d.h>
-#include <xpu/ATen/ops/_upsample_nearest_exact3d_backward.h>
-#include <xpu/ATen/ops/_upsample_nearest_exact3d_backward_native.h>
-#include <xpu/ATen/ops/_upsample_nearest_exact3d_native.h>
-#include <xpu/ATen/ops/upsample_nearest3d.h>
-#include <xpu/ATen/ops/upsample_nearest3d_backward.h>
-#include <xpu/ATen/ops/upsample_nearest3d_backward_native.h>
-#include <xpu/ATen/ops/upsample_nearest3d_native.h>
+#include <ATen/ops/_upsample_nearest_exact3d.h>
+#include <ATen/ops/_upsample_nearest_exact3d_backward.h>
+#include <ATen/ops/_upsample_nearest_exact3d_backward_native.h>
+#include <ATen/ops/_upsample_nearest_exact3d_native.h>
+#include <ATen/ops/upsample_nearest3d.h>
+#include <ATen/ops/upsample_nearest3d_backward.h>
+#include <ATen/ops/upsample_nearest3d_backward_native.h>
+#include <ATen/ops/upsample_nearest3d_native.h>
 
 namespace at::native {
 

@@ -1,6 +1,6 @@
 name,float32,bfloat16,float16,amp_bf16,amp_fp16
 # https://github.com/intel/torch-xpu-ops/issues/1221
-torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,pass,pass
+torchrec_dlrm,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,pass
 # https://github.com/intel/torch-xpu-ops/issues/1768
 BERT_pytorch,pass,pass,pass,fail_accuracy,pass
 Background_Matting,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
@@ -17,22 +17,21 @@ dcgan,pass,pass,pass,pass,pass
 demucs,pass,pass,pass,pass,pass
 densenet121,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1278
-detectron2_fasterrcnn_r_101_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_fasterrcnn_r_101_dc5,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_fasterrcnn_r_101_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_fasterrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_fasterrcnn_r_50_dc5,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_fasterrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
+detectron2_fasterrcnn_r_101_c4,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_fasterrcnn_r_101_dc5,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_fasterrcnn_r_101_fpn,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_fasterrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_fasterrcnn_r_50_dc5,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_fasterrcnn_r_50_fpn,pass,eager_fail_to_run,pass,fail_accuracy,fail_accuracy
 detectron2_fcos_r_50_fpn,pass,pass,pass,pass,pass
 detectron2_maskrcnn,fail_to_run,eager_fail_to_run,fail_to_run,eager_fail_to_run,fail_to_run
-detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_maskrcnn_r_101_fpn,fail_accuracy,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_maskrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
-detectron2_maskrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,eager_fail_to_run,fail_accuracy
+detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_maskrcnn_r_101_fpn,fail_accuracy,eager_fail_to_run,eager_1st_run_OOM,eager_1st_run_OOM,fail_accuracy
+detectron2_maskrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_maskrcnn_r_50_fpn,pass,eager_fail_to_run,eager_1st_run_OOM,eager_1st_run_OOM,fail_accuracy
 dlrm,pass,pass,pass,pass,pass
 doctr_det_predictor,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1768
-doctr_reco_predictor,pass,pass,pass,fail_accuracy,pass
+doctr_reco_predictor,pass,pass,pass,pass,pass
 drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 functorch_dp_cifar10,pass,pass,pass,pass,pass
@@ -68,7 +67,7 @@ mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 mobilenet_v2_quantized_qat,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 mobilenet_v3_large,pass,pass,pass,pass,pass
-moco,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,model_fail_to_load,model_fail_to_load
+moco,eager_fail_to_run,eager_fail_to_run,model_fail_to_load,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1767
 nanogpt,pass,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ,eager_two_runs_differ
