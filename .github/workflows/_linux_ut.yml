@@ -213,7 +213,7 @@ jobs:
               export PYTORCH_TEST_WITH_SLOW=1
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
               python test/run_test.py \
-              --include inductor/test_aot_inductor \
+              --include inductor/test_aot_inductor.py \
                         2>"$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_test_error.log" | \
                           tee "$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_test.log"
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_3/"
