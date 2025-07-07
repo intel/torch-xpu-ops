@@ -28,11 +28,6 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-      update_lkg:
-        required: false
-        type: string
-        default: 'false'
-        description: Whether update LKG torch version to issue #1280
       triton:
         required: false
         type: string
