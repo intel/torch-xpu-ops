@@ -143,7 +143,6 @@ jobs:
           rm -rf pytorch || sudo rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
-          pip install -r requirements.txt
           # apply PRs for stock pytorch
           # https://github.com/pytorch/pytorch/pull/152940 internal use only for subset model list
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
