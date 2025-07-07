@@ -271,6 +271,7 @@ jobs:
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
         run: |
+          set -e
           mkdir -p ${{ github.workspace }}/ut_log
           mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
           source activate $CONDA_ENV_NAME
@@ -282,6 +283,7 @@ jobs:
 
           if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
             bash << "SCRIPT"
+            set -e
             ${{ matrix.test.command_script }}
           SCRIPT
           else
