@@ -442,6 +442,8 @@ jobs:
           condition: ${{ contains(inputs.ut, 'torch_xpu') }}
         - name: 'torch_xpu_2'
           condition: ${{ contains(inputs.ut, 'torch_xpu') }}
+        - name: 'torch_xpu_3'
+          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
         - name: 'xpu_profiling'
           condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
     steps:
