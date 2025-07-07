@@ -7,16 +7,7 @@ skip_dict = {
     # ),
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": (
-        # Accuracy gap in FSDP checkpoint related UT
-        # https://github.com/intel/torch-xpu-ops/issues/1666, 2.8 skipped
-        "test_basic_checkpoint_end_to_end_cpu_offload1_offload_activations_False_use_orig_params_False",
-        "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_False_use_orig_params_False",
-        "test_checkpoint_fsdp_wrapping_cpu_offload0_offload_activations_True_use_orig_params_False",
-        "test_checkpoint_fsdp_wrapping_cpu_offload1_offload_activations_False_use_orig_params_False",
-        "test_checkpoint_fsdp_wrapping_cpu_offload1_offload_activations_True_use_orig_params_False",
-        "test_checkpoint_submodule_use_reentrant_False_xpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": None,
@@ -77,11 +68,7 @@ skip_dict = {
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_scatter_1d",
     ),
-    "../../../../test/distributed/test_dynamo_distributed.py": (
-        # AssertionError: 'setattr() on Tensor.requires_grad' not found in 'Attempted to call function marked as skipped
-        # https://github.com/intel/torch-xpu-ops/issues/1667, 2.8 skipped
-        "test_fsdp_setattr",
-    ),
+    "../../../../test/distributed/test_dynamo_distributed.py": None,
     "../../../../test/distributed/test_fake_pg.py": None,
     "../../../../test/distributed/test_functional_api.py": None,
     "../../../../test/distributed/test_inductor_collectives.py": (
@@ -146,12 +133,6 @@ skip_dict = {
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_True",
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_False",
         "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_True",
-        # NotImplementedError: The operator 'aten::_scaled_mm.out' is not currently implemented for the XPU device.
-        # https://github.com/intel/torch-xpu-ops/issues/1550, 2.8 skipped
-        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_1_return_A_False",
-        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_1_return_A_True",
-        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_2_return_A_False",
-        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_2_return_A_True",
         # NotImplementedError: The operator 'symm_mem::fused_scaled_matmul_reduce_scatter'
         # is not currently implemented for the XPU device.
         # https://github.com/intel/torch-xpu-ops/issues/1551, 2.8 skipped
@@ -264,7 +245,6 @@ skip_dict = {
         # torch._dynamo.exc.BackendCompilerFailed: backend='inductor' raised
         # https://github.com/intel/torch-xpu-ops/issues/1665, 2.8 skipped
         "test_transformer_backend_inductor_fullgraph_True",
-        "test_nested_fully_shard_backend_inductor_fullgraph_True",
     ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_extensions.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_frozen.py": (
@@ -309,24 +289,7 @@ skip_dict = {
         "test_custom_sharder",
     ),
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
-    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": (
-        # RuntimeError: eof (this error originated at tensorpipe/transport/shm/connection_impl.cc:259)
-        # https://github.com/intel/torch-xpu-ops/issues/1617, 2.8 skipped
-        "test_complete_world_size",
-        "test_multiple_local_shards",
-        "test_new_group",
-        "test_partial_world_size",
-        "test_grid_sharding",
-        "test_multiple_local_shards",
-        "test_new_group",
-        "test_partial_world_size",
-        "test_with_rpc_names",
-        "test_init_from_local_tensor",
-        # what():  Attempting to send a Tensor with unexpected device type xpu:3
-        # https://github.com/intel/torch-xpu-ops/issues/1616, 2.8 skipped
-        "test_init_from_local_shards",
-        "test_init_from_local_shards_and_global_metadata",
-    ),
+    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": None,
     "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
     "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
