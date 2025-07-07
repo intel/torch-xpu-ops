@@ -402,6 +402,14 @@ void ProcessGroupXCCL::performNocolorSplit(at::Device device) {
   xcclCommSplitCounter_++;
 }
 
+bool ProcessGroupXCCL::isInitialized() {
+  if (devXCCLCommMap_.empty()) {
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  return initialized_;
+}
+
 c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     at::Device& device,
     int rank,
@@ -605,6 +613,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   xcclStreamsMap_.emplace(
       deviceKey, std::make_pair(at::xpu::XPUStream(stream), q));
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
+  initialized_ = true;
 
   LOG(INFO) << logPrefix()
             << "Created XCCL communicator with Key: " << deviceKey;

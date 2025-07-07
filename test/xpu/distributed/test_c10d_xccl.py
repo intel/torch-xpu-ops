@@ -318,21 +318,19 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_comm_eager_init_subgroup(self):
-        # Test `ncclCommSplit` for smaller subgroups of the world when
         # we've passed a specific device_id to init_process_group.
-        store = c10d.FileStore(self.file_name, self.world_size)
         device = torch.device(f"xpu:{self.rank}")
         # default PG comm is not initialized yet
-        pg = self._create_process_group_xccl(store, self.opts())
+        pg = self._create_process_group_xccl(opts=self.opts())
         backend = pg._get_backend(torch.device(device))
         self.assertEqual(backend._is_initialized(), False)
         # create a subgroup eagerly
         new_group = c10d.new_group([0, 1], device_id=device)
-        tensor = torch.full((1,), self.rank).cuda(device)
+        tensor = torch.full((1,), self.rank).xpu(device)
         dist.broadcast(tensor, 0, group=new_group)
         # the default group should stay lazy
         self.assertEqual(backend._is_initialized(), False)
-        torch.cuda.synchronize()
+        torch.xpu.synchronize()
         dist.destroy_process_group()
 
     @requires_xccl()
@@ -340,9 +338,8 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
     def test_comm_split_group(self):
         # Test `ncclCommSplit` for smaller subgroups of the world when
         # we've passed a specific device_id to init_process_group.
-        store = c10d.FileStore(self.file_name, self.world_size)
         device = torch.device(f"xpu:{self.rank}")
-        pg = self._create_process_group_xccl(store, self.opts(), device_id=device)
+        pg = self._create_process_group_xccl(opts=self.opts(), device_id=device)
         backend = pg._get_backend(torch.device(device))
 
         tensor = torch.full((1,), self.rank).xpu(device)

@@ -415,6 +415,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   void performNocolorSplit(at::Device device);
 
+  bool isInitialized();
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, sycl::queue>>
       xcclStreamsMap_;
@@ -437,6 +439,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   size_t local_id_;
   std::string logPrefix_;
   uint64_t xcclCommSplitCounter_{0};
+  bool initialized_{false};
 };
 } // namespace c10d
 
