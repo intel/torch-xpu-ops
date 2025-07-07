@@ -24,7 +24,19 @@ jobs:
           df -h
           lscpu
           free -h
-          cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
+          scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c)
+          if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
+              if [ "${scaling_governor}" != "performance" ];then
+                  # set frequency governor to performance mode
+                  sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
+                  sudo cpupower frequency-set -g performance
+              fi
+              # clean cache
+              sync; sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
+          else
+              echo "[INFO] You do NOT have ROOT permission to set system config."
+              echo "       The frequency governor is ${scaling_governor}."
+          fi
           # software
           cat /etc/os-release
           source /opt/intel/oneapi/setvars.sh
