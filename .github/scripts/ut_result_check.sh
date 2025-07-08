@@ -104,10 +104,10 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-if [[ "${ut_suite}" == 'torch_xpu' ]]; then
-    grep -E "FAILED" "${ut_suite}"_test*.log | awk '{print $3}' | grep "inductor/test" > ./"${ut_suite}"_failed.log
-    grep -E "have failures" "${ut_suite}"_test*.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
-    grep "PASSED" "${ut_suite}"_test*.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
+if [[ "${ut_suite}" == 'torch_xpu_1' ]] || [[ "${ut_suite}" == 'torch_xpu_2' ]] || [[ "${ut_suite}" == 'torch_xpu_3' ]]; then
+    grep -E "FAILED" inductor_test*.log | awk '{print $3}' > ./"${ut_suite}"_failed.log
+    grep -E "have failures" inductor_test*.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
+    grep "PASSED" inductor_test*.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
     if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
       num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
