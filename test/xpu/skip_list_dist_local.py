@@ -155,13 +155,6 @@ skip_dict = {
         # NotImplementedError: Operator aten._scaled_dot_product_fused_attention_overrideable.default does not have a sharding strategy registered.
         # https://github.com/intel/torch-xpu-ops/issues/1556, 2.8 skipped
         "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
-        # https://jira.devtools.intel.com/browse/MLSL-3625
-        "test_loss_parallel",
-        "test_mlp_training_is_seq_parallel_False_recompute_activation_False",
-        "test_mlp_training_is_seq_parallel_True_recompute_activation_False",
-        "test_transformer_req_grad_float64_thaw_all",
-        "test_transformer_training_is_seq_parallel_False_float64",
-        "test_transformer_training_is_seq_parallel_True_float64",
     ),
     "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
     "../../../../test/distributed/tensor/parallel/test_parallelize_api.py": (
