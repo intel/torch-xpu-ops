@@ -15,7 +15,7 @@ permissions: read-all
 
 jobs:
   setup-xpu:
-    name: setup-xpu-for-${{ inputs.node_name }}
+    name: setup-xpu-for-${{ matrix.node_name }}
     if: ${{ inputs.setup_xpu == 'yes' }}
     runs-on: ${{ matrix.node_name }}
     strategy:
@@ -80,7 +80,7 @@ jobs:
         node_name: ${{ inputs.node_name }}
     needs: setup-xpu
     if: ${{ always() }}
-    name: check-nodes-env-for-${{ inputs.node_name }}
+    name: check-nodes-env-for-${{ matrix.node_name }}
     steps:
       - name: Check env
         run: |
