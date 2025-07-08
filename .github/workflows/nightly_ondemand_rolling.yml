@@ -17,20 +17,18 @@ jobs:
   setup:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.setVariables.outputs.matrix }}
+      node_name: ${{ steps.setVariables.outputs.node_name }}
     steps:
       - id: setVariables
         run: |
-          echo "::set-output name=matrix::$input"
-        env:
-          input: ${{ inputs.node_name }}
+          echo "node_name=${{ inputs.node_name }}" >> ${GITHUB_OUTPUT}
   test:
     runs-on: ${{ matrix.node_name }}
     needs: setup
     strategy:
       fail-fast: false
       matrix:
-        node_name: ${{fromJSON(needs.setup.outputs.matrix)}}
+        node_name: ${{ needs.setup.outputs.node_name }}
     steps:
       - name: Checkout repository
         run: |
