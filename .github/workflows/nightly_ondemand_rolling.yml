@@ -77,7 +77,6 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
       runner: pvc_rolling
-      update_lkg: 'true'
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -145,26 +144,26 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install pandas scipy psutil
+          pip install pandas scipy psutil requests
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
       - name: Prepare Stock Pytorch
         run: |
           pwd
           cd ../
           rm -rf pytorch || sudo rm -rf pytorch
           source activate e2e_ci
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
-          # apply PRs for stock pytorch
-          pip install requests
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
+          # apply extra PRs for stock pytorch
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+          git status && git diff && git show -s
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -175,7 +174,7 @@ jobs:
           else
             echo "TRITON_COMMIT_ID=${{ inputs.triton }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           fi
-          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_BRANCH_ID=${{ inputs.pytorch }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -196,20 +195,12 @@ jobs:
           cd ../pytorch
           pip install cmake ninja pybind11
           rm -rf pytorch_triton_xpu-*.whl
-          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID}
+          TRITON_VERSION_NAME="$(
+            curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+                    grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
+          )"
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
           pip install pytorch_triton_xpu-*.whl
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
-        run: |
-          source activate e2e_ci
-          cd ../pytorch
-          pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
