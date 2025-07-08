@@ -63,11 +63,7 @@ skip_dict = {
     ),
     "../../../../test/distributed/test_compute_comm_reordering.py": None,
     "../../../../test/distributed/test_control_collectives.py": None,
-    "../../../../test/distributed/test_device_mesh.py": (
-        # RuntimeError: Process 1 exited with error code 10 and exception:
-        # https://jira.devtools.intel.com/browse/MLSL-3625
-        "test_scatter_1d",
-    ),
+    "../../../../test/distributed/test_device_mesh.py": None,
     "../../../../test/distributed/test_dynamo_distributed.py": None,
     "../../../../test/distributed/test_fake_pg.py": None,
     "../../../../test/distributed/test_functional_api.py": None,
@@ -206,10 +202,6 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_redistribute.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
-        "test_redistribute_shard_dim_change",
-        "test_redistribute_uneven_sharding",
-        "test_shard_to_replicate_forward_backward",
-        "test_shard_to_replicate_forward_backward_datatype_conversion",
         "test_multi_dim_mesh",
     ),
     "../../../../test/distributed/tensor/test_tensor_ops.py": (
