@@ -86,7 +86,7 @@ jobs:
           df -h
           lscpu
           free -h
-          scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c)
+          scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq )
           if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
               if [ "${scaling_governor}" != "performance" ];then
                   # set frequency governor to performance mode
@@ -101,7 +101,7 @@ jobs:
           fi
           # software
           cat /etc/os-release
-          source /opt/intel/oneapi/setvars.sh
+          source /opt/intel/oneapi/setvars.sh > /dev/null
           sycl-ls
           icpx -v
           uname -a
