@@ -22,6 +22,7 @@ jobs:
       - name: Install XPU
         run: |
           sudo su -
+          set -xe
           # Clean
           rm -rf .intel ./intel /opt/intel .cache .config .condarc .conda .gitconfig
           rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -75,9 +76,12 @@ jobs:
   check-nodes-env:
     runs-on: ${{ inputs.node_name }}
     name: check-nodes-env-for-${{ inputs.node_name }}
+    needs: setup-xpu
+    if: ${{ always() }}
     steps:
       - name: Check env
         run: |
+          set -xe
           # hardware
           df -h
           lscpu
