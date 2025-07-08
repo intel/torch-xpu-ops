@@ -20,7 +20,7 @@ jobs:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: ${{ inputs.node_name }}
+        node_name: ${{ toJson(inputs.node_name) }}
     steps:
       - name: Install XPU
         run: |
@@ -80,7 +80,7 @@ jobs:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: ${{ inputs.node_name }}
+        node_name: ${{ toJson(inputs.node_name) }}
     name: check-nodes-env-for-${{ matrix.node_name }}
     needs: setup-xpu
     if: ${{ always() }}
