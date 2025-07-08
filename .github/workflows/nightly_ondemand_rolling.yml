@@ -103,7 +103,7 @@ jobs:
           fi
           # software
           cat /etc/os-release
-          source /opt/intel/oneapi/setvars.sh > /dev/null
+          source /opt/intel/oneapi/setvars.sh > /dev/null 2>&1
           sycl-ls
           icpx -v
           uname -a
