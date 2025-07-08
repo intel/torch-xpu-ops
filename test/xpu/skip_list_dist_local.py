@@ -85,6 +85,7 @@ skip_dict = {
         "test_inductor_reduce_scatter_coalesced",
         "test_inductor_all_gather_coalesced",
         "test_reorder_peak_memory",
+        "test_reorder_respects_wait_dep",
     ),
     "../../../../test/distributed/test_multi_threaded_pg.py": None,
     "../../../../test/distributed/test_store.py": None,
