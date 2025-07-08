@@ -14,9 +14,24 @@ on:
 permissions: read-all
 
 jobs:
-  setup-xpu:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.setVariables.outputs.matrix }}
     steps:
-      - name: Install XPU
+      - id: setVariables
         run: |
-          echo ${{ toJson(inputs.node_name) }}
+          echo "::set-output name=matrix::$input"
+        env:
+          input: ${{ inputs.node_name }}
+  test:
+    runs-on: ubuntu-latest
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{fromJSON(needs.setup.outputs.matrix)}}
+    steps:
+      - name: Checkout repository
+        run: |
+          hostname
