@@ -17,7 +17,10 @@ jobs:
   setup-xpu:
     name: setup-xpu-for-${{ inputs.node_name }}
     if: ${{ inputs.setup_xpu == 'yes' }}
-    runs-on: ${{ inputs.node_name }}
+    runs-on: ${{ matrix.node_name }}
+    strategy:
+      matrix:
+        node_name: ${{ inputs.node_name }}
     steps:
       - name: Install XPU
         run: |
@@ -74,7 +77,10 @@ jobs:
             libigc-dev intel-igc-cm libigdfcl-dev libigfxcmrt-dev libze-dev
 
   check-nodes-env:
-    runs-on: ${{ inputs.node_name }}
+    runs-on: ${{ matrix.node_name }}
+    strategy:
+      matrix:
+        node_name: ${{ inputs.node_name }}
     name: check-nodes-env-for-${{ inputs.node_name }}
     needs: setup-xpu
     if: ${{ always() }}
