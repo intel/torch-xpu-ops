@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
     inputs:
       node_name:
-        required: true
         type: string
         default: ''
       setup_xpu:
@@ -15,12 +14,9 @@ permissions: read-all
 
 jobs:
   setup-xpu:
-    name: setup-xpu-for-${{ matrix.node_name }}
+    name: setup-xpu-for-${{ inputs.node_name }}
     if: ${{ inputs.setup_xpu == 'yes' }}
-    runs-on: ${{ matrix.node_name }}
-    strategy:
-      matrix:
-        node_name: ${{ toJson(inputs.node_name) }}
+    runs-on: ${{ inputs.node_name }}
     steps:
       - name: Install XPU
         run: |
@@ -73,11 +69,11 @@ jobs:
             mesa-vdpau-drivers mesa-vulkan-drivers va-driver-all vainfo hwinfo clinfo \
             libigc-dev intel-igc-cm libigdfcl-dev libigfxcmrt-dev level-zero-dev
 
-  check-nodes-env:
+  check-nodes-e2e:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: ${{ toJson(inputs.node_name) }}
+        node_name: [PVC-7364, PVC-7365, PVC-7366]
     needs: setup-xpu
     if: ${{ always() }}
     name: check-nodes-env-for-${{ matrix.node_name }}
@@ -102,6 +98,32 @@ jobs:
               echo "[INFO] You do NOT have ROOT permission to set system config."
               echo "       The frequency governor is ${scaling_governor}."
           fi
+          # software
+          cat /etc/os-release
+          source /opt/intel/oneapi/setvars.sh > /dev/null
+          sycl-ls
+          icpx -v
+          uname -a
+          apt search libigc-dev
+          apt search level-zero-dev
+          gcc -v && g++ -v
+
+  check-nodes-ut:
+    runs-on: ${{ matrix.node_name }}
+    strategy:
+      matrix:
+        node_name: [PVC-7362, PVC-7363]
+    needs: setup-xpu
+    if: ${{ always() }}
+    name: check-nodes-env-for-${{ matrix.node_name }}
+    steps:
+      - name: Check env
+        run: |
+          set -xe
+          # hardware
+          df -h
+          lscpu
+          free -h
           # software
           cat /etc/os-release
           source /opt/intel/oneapi/setvars.sh > /dev/null

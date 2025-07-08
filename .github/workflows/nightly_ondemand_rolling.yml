@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
     inputs:
       node_name:
-        required: true
         type: string
         default: ''
       setup_xpu:
@@ -15,12 +14,9 @@ permissions: read-all
 
 jobs:
   setup-xpu:
-    name: setup-xpu-for-${{ matrix.node_name }}
+    name: setup-xpu-for-${{ inputs.node_name }}
     if: ${{ inputs.setup_xpu == 'yes' }}
-    runs-on: ${{ matrix.node_name }}
-    strategy:
-      matrix:
-        node_name: ${{ toJson(inputs.node_name) }}
+    runs-on: ${{ inputs.node_name }}
     steps:
       - name: Install XPU
         run: |
@@ -80,7 +76,7 @@ jobs:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: ${{ toJson(inputs.node_name) }}
+        node_name: [PVC-03006, PVC-03004, PVC-7900, PVC-7901]
     name: check-nodes-env-for-${{ matrix.node_name }}
     needs: setup-xpu
     if: ${{ always() }}
