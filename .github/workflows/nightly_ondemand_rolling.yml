@@ -25,12 +25,12 @@ jobs:
         env:
           input: ${{ inputs.node_name }}
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.node_name }}
     needs: setup
     strategy:
       fail-fast: false
       matrix:
-        language: ${{fromJSON(needs.setup.outputs.matrix)}}
+        node_name: ${{fromJSON(needs.setup.outputs.matrix)}}
     steps:
       - name: Checkout repository
         run: |
