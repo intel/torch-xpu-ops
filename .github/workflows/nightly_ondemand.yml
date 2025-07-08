@@ -7,12 +7,16 @@ on:
         required: true
         type: string
         default: ''
+      setup_xpu:
+        type: string
+        default: ''
 
 permissions: read-all
 
 jobs:
   setup-xpu:
     name: setup-xpu-for-${{ inputs.node_name }}
+    if: ${{ inputs.setup_xpu == 'yes' }}
     runs-on: ${{ inputs.node_name }}
     steps:
       - name: Install XPU
@@ -67,6 +71,7 @@ jobs:
 
   check-nodes-env:
     runs-on: ${{ inputs.node_name }}
+    name: check-nodes-env-for-${{ inputs.node_name }}
     steps:
       - name: Check env
         run: |
