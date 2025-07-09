@@ -9,11 +9,11 @@ on:
         description: Runner label
       pytorch:
         type: string
-        default: 'main'
+        default: 'https://github.com/daisyden/pytorch.git@distributed_2.9'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'daisyden/distributed_2.9'
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
@@ -169,7 +169,6 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
