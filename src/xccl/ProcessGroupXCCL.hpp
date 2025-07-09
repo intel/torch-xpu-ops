@@ -484,7 +484,8 @@ inline std::string reduceOpToString(c10d::ReduceOp op) {
     worldSize,                                                               \
     async_op)                                                                \
   do {                                                                       \
-    LOG(INFO) << "collective_name: " << collective_name                      \
+    LOG(INFO) << std::boolalpha                                              \
+              << "collective_name: " << collective_name                      \
               << ", inNelems: " << inNelems << ", outNelems: " << outNelems  \
               << ", dType: " << dType << ", root/src rank: " << rank         \
               << ", worldSize: " << worldSize << ", async_op: " << async_op; \
