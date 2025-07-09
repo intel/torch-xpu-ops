@@ -374,7 +374,7 @@ jobs:
           path: ${{ github.workspace }}/ut_log
 
   distributed_ut_test:
-    runs-on: pytorch-06
+    runs-on: PVC-7358
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 60
     env:
@@ -447,13 +447,9 @@ jobs:
           fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install cmake ninja pybind11
-            rm -rf pytorch_triton_xpu-*.whl
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-            pip install pytorch_triton_xpu-*.whl
+            TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+            TRITON_COMMIT_ID="bdd0656b"
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Torch Config
         run: |
@@ -491,7 +487,6 @@ jobs:
             2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_error.log | \
             tee ${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test.log
           cp *.xml ${{ github.workspace }}/ut_log
-          cp 
       - name: Reset Ptrace_scope
         if: ${{ always() }}
         run: |
