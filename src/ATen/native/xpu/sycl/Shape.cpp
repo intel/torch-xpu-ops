@@ -36,7 +36,7 @@ inline bool is_aligned_vec4(const void* ptr) {
 
 inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRange(
     ptrdiff_t nTensors) {
-  const int numSM = syclMaxWorkItemsPerTile();
+  const int numSM = syclGpuEUCountPerSubslice();
 
   sycl::range<2> global_range((long long)nTensors, 2LL * numSM * 32 * 16);
   sycl::range<2> local_range(1, 32 * 16);
@@ -49,18 +49,16 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
     unsigned int max_elements_per_tensor,
     ptrdiff_t nTensors) {
   constexpr unsigned int items_per_group = 256;
-  constexpr unsigned int min_aligned_vec_per_thread = 1;
-  constexpr unsigned int max_tb_per_sm = 32;
+  constexpr unsigned int min_aligned_vec_per_item = 1;
+  constexpr unsigned int max_group_per_eu = 32;
 
-  unsigned int elements_per_thread =
-      aligned_vec_load_bytes / sizeof(T) * min_aligned_vec_per_thread;
-  unsigned int max_items =
-      ceil_div(max_elements_per_tensor, elements_per_thread);
+  unsigned int elements_per_item =
+      aligned_vec_load_bytes / sizeof(T) * min_aligned_vec_per_item;
+  unsigned int max_items = ceil_div(max_elements_per_tensor, elements_per_item);
   unsigned int item_groups = ceil_div(max_items, items_per_group);
 
-  const unsigned int num_sm = syclGpuEUCountPerSubslice();
-
-  item_groups = std::min(num_sm * max_tb_per_sm, item_groups);
+  const unsigned int num_eu = syclGpuEUCountPerSubslice();
+  item_groups = std::min(num_eu * max_group_per_eu, item_groups);
 
   sycl::range<2> global_range(
       (long long)nTensors, item_groups * items_per_group);
