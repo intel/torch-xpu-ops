@@ -49,13 +49,15 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
-          path: gs-torch-xpu-ops
+          path: gs-scripts
       - name: Prepare source code
         run: |
           git clone https://github.com/pytorch/pytorch gs-pytorch
           cd gs-pytorch
           LATEST_PT_COMMIT="$(git rev-parse HEAD)"
-          cd ../gs-torch-xpu-ops
+          cd ..
+          git clone https://github.com/intel/torch-xpu-ops gs-torch-xpu-ops
+          cd gs-torch-xpu-ops
           LATEST_XPU_COMMIT="$(git rev-parse HEAD)"
           cd ..
           echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> ${GITHUB_ENV}
@@ -64,7 +66,10 @@ jobs:
         run: |
           conda create python=${{ inputs.python }} -y -n guilty-search
           source activate guilty-search
-          pip install cmake ninja pandas psutil scipy requests
+          conda info -e
+          which python && which pip
+          conda list
+          pip install cmake ninja pandas psutil scipy requests pybind11
       - name: Prepare test env
         run: |
           source activate guilty-search
@@ -83,6 +88,17 @@ jobs:
           else
             pip install -r gs-pytorch/.ci/docker/requirements-ci.txt
           fi
+      - name: Triton Installation
+        run: |
+          source activate guilty-search
+          cd ../pytorch
+          rm -rf pytorch_triton_xpu-*.whl
+          TRITON_VERSION_NAME="$(
+            curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+                    grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
+          )"
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
+          pip install pytorch_triton_xpu-*.whl
       - name: Guilty search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
@@ -91,13 +107,13 @@ jobs:
           pytorch_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*pytorch=++;s+,.*++')"
           old_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $2}')"
-          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${old_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="${old_result}"
-          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${new_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
@@ -121,7 +137,7 @@ jobs:
           if [ "${search_or_not}" != "no" ];then
             cd gs-pytorch
             git reset --hard
-            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="$(git rev-parse HEAD)" \
                     --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
@@ -135,13 +151,13 @@ jobs:
           xpu_ops_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*xpu-ops=++;s+,.*++')"
           old_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $2}')"
-          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${old_commit}"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="${old_result}"
-          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${new_commit}"
@@ -165,7 +181,7 @@ jobs:
           if [ "${search_or_not}" != "no" ];then
             cd gs-pytorch
             git reset --hard
-            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                     --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)"

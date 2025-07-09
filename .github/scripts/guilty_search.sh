@@ -32,8 +32,6 @@ pip list |grep torch
 test_result=1
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
-    git reset --hard ${PYTORCH_VERSION}
-    python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
     eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1
     if [ $? -eq 0 ];then
@@ -44,8 +42,6 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
     fi
 elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
-    git reset --hard ${PYTORCH_VERSION}
-    python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
     eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1
     if [ $? -eq 0 ];then
