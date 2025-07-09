@@ -98,7 +98,11 @@ jobs:
           source activate guilty-search
           cd gs-pytorch
           rm -rf pytorch_triton_xpu-*.whl
-          TRITON_COMMIT_ID=$(cat third_party/xpu.txt)
+          if [ "${{ inputs.triton }}" != "" ];then
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          else
+            TRITON_COMMIT_ID=$(cat third_party/xpu.txt)
+          fi
           TRITON_VERSION_NAME="$(
             curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
                     grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
