@@ -1,6 +1,5 @@
 #!/bin/bash
-set -x
-set +e
+set -xe
 export GIT_PAGER=cat
 
 # Init params
@@ -26,7 +25,12 @@ $(dirname $(realpath $0))/build.sh \
     --PYTORCH_VERSION="${PYTORCH_VERSION}" \
     --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
     --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
-    > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1
+    > ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1
+if [ $? -ne 0 ];then
+    tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
+    echo "Build got failed"
+    exit 1
+fi
 pip list |grep torch
 
 # Test
