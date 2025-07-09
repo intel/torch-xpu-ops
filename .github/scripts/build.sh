@@ -9,7 +9,7 @@ export GIT_PAGER=cat
 
 # Init params
 WORKSPACE=$(realpath ${WORKSPACE:-"/tmp"})
-PYTORCH_REPO=${PYTORCH_REPO:-"https://github.com/pytorch/pytorch.git"}
+PYTORCH_REPO=${PYTORCH_REPO:-"https://github.com/etaf/pytorch-inductor-xpu.git"}
 PYTORCH_VERSION=${PYTORCH_VERSION:-"main"}
 TORCH_XPU_OPS_REPO=${TORCH_XPU_OPS_REPO:-"https://github.com/intel/torch-xpu-ops.git"}
 TORCH_XPU_OPS_VERSION=${TORCH_XPU_OPS_VERSION:-"main"}

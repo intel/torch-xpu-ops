@@ -76,7 +76,7 @@ jobs:
         run: |
           cd ../
           rm -rf ./pytorch || sudo rm -rf ./pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
+          git clone https://github.com/etaf/pytorch-inductor-xpu pytorch
           source activate xpu_op_${ZE_AFFINITY_MASK}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
@@ -402,7 +402,7 @@ jobs:
         run: |
           cd ../
           rm -rf ./pytorch || sudo rm -rf ./pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
+          git clone https://github.com/etaf/pytorch-inductor-xpu pytorch
           source activate xpu_op_${ZE_AFFINITY_MASK}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
