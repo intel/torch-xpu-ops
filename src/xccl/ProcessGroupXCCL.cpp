@@ -1163,7 +1163,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      "N/A"); // async_op
+      opts.asyncOp); // async_op
 
   return collectiveCoalesced(
       tensors,
@@ -1563,7 +1563,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      "N/A"); // async_op
+      opts.asyncOp); // async_op
 
   return collectiveCoalesced(
       inputs,
@@ -1771,7 +1771,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      "N/A"); // async_op
+      opts.asyncOp); // async_op
 
   return collectiveCoalesced(
       inputs,
