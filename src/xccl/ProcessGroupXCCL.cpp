@@ -755,7 +755,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      false); // async_op
 
   auto ret = pointToPoint(
       tensor,
@@ -804,7 +805,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      false); // async_op
 
   auto ret = pointToPoint(
       tensor,
@@ -889,7 +891,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   auto inputs = std::vector<at::Tensor>{inputTensor};
   return collective(
@@ -1003,7 +1006,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   const auto root = opts.rootRank;
 
@@ -1131,7 +1135,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      size_); // worldSize
+      size_, // worldSize
+      opts.asyncOp); // async_op
 
   return allreduce_impl(tensor, "xccl:all_reduce", opts);
 }
@@ -1157,7 +1162,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      false); // async_op
 
   return collectiveCoalesced(
       tensors,
@@ -1219,7 +1225,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   const auto root = opts.rootRank + opts.rootTensor;
 
@@ -1310,7 +1317,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   return collective(
       tensor,
@@ -1419,7 +1427,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   bool same_size = checkSameSize(outputTensors_);
   if (same_size) {
@@ -1506,7 +1515,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   return collective(
       input_tensor,
@@ -1552,7 +1562,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      false); // async_op
 
   return collectiveCoalesced(
       inputs,
@@ -1603,7 +1614,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   bool same_size = checkSameSize(inputTensors_);
   if (same_size) {
@@ -1700,7 +1712,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   return collective(
       inputTensor,
@@ -1740,7 +1753,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
     std::vector<at::Tensor>& outputs,
     std::vector<at::Tensor>& inputs,
     const ReduceScatterOptions& opts) {
-
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
       std::make_tuple(
           static_cast<int64_t>(seqCollective_) + 1,
@@ -1758,7 +1770,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      false); // async_op
 
   return collectiveCoalesced(
       inputs,
@@ -1888,7 +1901,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         std::vector<int64_t>(), // outSplitSizes
         -1, // globalRankStart
         -1, // globalRankStride
-        this->getSize()); // worldSize
+        this->getSize(), // worldSize
+        opts.asyncOp); // async_op
+
     TORCH_CHECK(
         outputTensor.numel() == inputTensor.numel() &&
             outputTensor.scalar_type() == inputTensor.scalar_type(),
@@ -1937,7 +1952,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         outputSplitSizes, // outSplitSizes
         -1, // globalRankStart
         -1, // globalRankStride
-        this->getSize()); // worldSize
+        this->getSize(), // worldSize
+        opts.asyncOp); // async_op
 
     return collective(
         inputTensor,
@@ -2013,7 +2029,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp); // async_op
 
   return collective(
       inputTensors,
