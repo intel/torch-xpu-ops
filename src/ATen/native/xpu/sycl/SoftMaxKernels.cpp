@@ -199,20 +199,29 @@ static inline void get_wgroup_size_spatial(
   GroupRow = std::min(GroupRow, int(dim_size));
 }
 
-static bool inline can_use_vec(
+static bool inline get_spatial_vec_choice(
+    int bs,
     int dim_size,
+    int inner_size,
     int scalar_size,
-    int max_vec_size,
-    bool is_same_dtype) {
+    int max_vec_size) {
   if (dim_size % max_vec_size != 0)
     return false;
-  if (is_same_dtype) {
-    if (dim_size <= 2048 && dim_size * scalar_size <= 8192)
-      return false;
-  } else {
-    if (dim_size <= 1024 && dim_size * scalar_size <= 4096)
-      return false;
+  int total_resource = syclMaxWorkItemsPerTile();
+  int maxWGSize = syclDeviceMaxWorkGroupSize();
+  int group_col_size = std::min(inner_size, SIMD32);
+  auto local_group_num = (inner_size + group_col_size - 1) / group_col_size;
+  int group_row_size = 1;
+  while (bs *group_row_size * local_group_num * group_col_size <
+         total_resource ) {
+    group_row_size = group_row_size << 1;
+    if (group_row_size * SIMD32 == maxWGSize)
+      break;
   }
+  group_row_size = std::min(group_row_size, int(dim_size));
+  if(bs *group_row_size * local_group_num * group_col_size <=
+         total_resource)
+	  return false;
   return true;
 }
 
@@ -1714,7 +1723,7 @@ void spatial_softmax_forward(
   } else {
     if (can_use_32bit_index) {
       if (input_start == output_start &&
-          can_use_vec(inner_size, scalar_size, max_vec_size, is_same_dtype)) {
+         get_spatial_vec_choice(outer_size, dim_size, inner_size, scalar_size, max_vec_size)) {
         SPATIAL_SOFTMAX_FORWARD_IMPL(
             /*vec_size*/ max_vec_size, /*IndexType*/ uint32_t);
       } else {
@@ -1722,7 +1731,7 @@ void spatial_softmax_forward(
       }
     } else {
       if (input_start == output_start &&
-          can_use_vec(inner_size, scalar_size, max_vec_size, is_same_dtype)) {
+          get_spatial_vec_choice(outer_size, dim_size, inner_size, scalar_size, max_vec_size)) {
         SPATIAL_SOFTMAX_FORWARD_IMPL(
             /*vec_size*/ max_vec_size, /*IndexType*/ uint64_t);
       } else {
