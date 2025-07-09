@@ -48,7 +48,7 @@ template <typename T, int aligned_vec_load_bytes>
 inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
     unsigned int max_elements_per_tensor,
     ptrdiff_t nTensors) {
-  constexpr unsigned int items_per_group = 128;
+  constexpr unsigned int items_per_group = 256;
   constexpr unsigned int min_aligned_vec_per_thread = 1;
   constexpr unsigned int max_tb_per_sm = 32;
 
@@ -58,7 +58,8 @@ inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
       ceil_div(max_elements_per_tensor, elements_per_thread);
   unsigned int item_groups = ceil_div(max_items, items_per_group);
 
-  const unsigned int num_sm = syclMaxWorkItemsPerTile();
+  const unsigned int num_sm = syclGpuEUCountPerSubslice();
+
   item_groups = std::min(num_sm * max_tb_per_sm, item_groups);
 
   sycl::range<2> global_range(
@@ -358,8 +359,6 @@ void parallel_cat(
     TORCH_CHECK(false, "unsupported memory format");
   }
 
-  // at::cuda::CUDAStream stream = at::xpu::getCurrentXPUStream();
-
   // If all batches are contiguous we can call a specialized implementation
   // which requires the input tensor addresses to be aligned to a
   // 16 Byte boundary.
@@ -519,7 +518,6 @@ void parallel_cat(
 #undef HANDLE_CASE
   }
 }
-// #undef HANDLE_CASE
 
 // The kernels are templated on an opaque, self-aligned type of the correct
 // size to avoid redundant kernels for different types of the same size.
@@ -624,7 +622,6 @@ void cat_out_kernel(
           kFloat8_e5m2,
           kFloat8_e5m2fnuz,
           AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
-          // TODO(#146647): extend this to other shell dtypes
           kFloat4_e2m1fn_x2);
     }
   } else {
