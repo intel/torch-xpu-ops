@@ -46,14 +46,16 @@ jobs:
         run: |
           rm -rf ./* || sudo rm -rf ./*
           mkdir gs-logs gs-search
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: gs-torch-xpu-ops
       - name: Prepare source code
         run: |
           git clone https://github.com/pytorch/pytorch gs-pytorch
           cd gs-pytorch
           LATEST_PT_COMMIT="$(git rev-parse HEAD)"
-          cd ..
-          git clone https://github.com/intel/torch-xpu-ops gs-torch-xpu-ops
-          cd gs-torch-xpu-ops
+          cd ../gs-torch-xpu-ops
           LATEST_XPU_COMMIT="$(git rev-parse HEAD)"
           cd ..
           echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> ${GITHUB_ENV}
@@ -66,20 +68,20 @@ jobs:
       - name: Prepare test env
         run: |
           source activate guilty-search
-          if [[ "${{ inputs.search_case }}" == "python benchmarks/dynamo/huggingface.py" ]];then
+          if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers==4.44.2
-          fi
-          if [[ "${{ inputs.search_case }}" == "python benchmarks/dynamo/timm_models.py" ]];then
+          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
             pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
             pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
-          fi
-          if [[ "${{ inputs.search_case }}" == "python benchmarks/dynamo/torchbench.py" ]];then
+          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
             model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
             pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
             git clone https://github.com/pytorch/benchmark gs-benchmark
             cd gs-benchmark
             python install.py ${model_name}
             pip uninstall -y torch
+          else
+            pip install -r gs-pytorch/.ci/docker/requirements-ci.txt
           fi
       - name: Guilty search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
