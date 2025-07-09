@@ -101,7 +101,7 @@ jobs:
           if [ "${{ inputs.triton }}" != "" ];then
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           else
-            TRITON_COMMIT_ID=$(cat third_party/xpu.txt)
+            TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
           fi
           TRITON_VERSION_NAME="$(
             curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
