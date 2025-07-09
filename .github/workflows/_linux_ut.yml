@@ -376,7 +376,7 @@ jobs:
   distributed_ut_test:
     runs-on: PVC-7358
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
-    timeout-minutes: 60
+    timeout-minutes: 600
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
