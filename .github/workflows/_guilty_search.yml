@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       runner:
+        required: true
         type: string
         default: 'pvc_rolling'
         description: Test node
+      triton:
+        type: string
+        default: ''
+        description: Triton version if need
       python:
         type: string
         default: '3.10'
@@ -19,7 +24,7 @@ on:
       search_check:
         type: string
         default: ''
-        description: Test case type, 'performance, accuracy, <regressions/transformers/extended/xpu_ops> ut or others'
+        description: Test case type, 'performance, accuracy, <ut_regressions/ut_extended/ut_xpu> or others'
       search_case:
         required: true
         type: string
@@ -91,8 +96,9 @@ jobs:
       - name: Triton Installation
         run: |
           source activate guilty-search
-          cd ../pytorch
+          cd gs-pytorch
           rm -rf pytorch_triton_xpu-*.whl
+          TRITON_COMMIT_ID=$(cat third_party/xpu.txt)
           TRITON_VERSION_NAME="$(
             curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
                     grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
