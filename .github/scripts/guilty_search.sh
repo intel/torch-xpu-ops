@@ -19,6 +19,7 @@ rm -rf ${WORKSPACE}/* || sudo rm -rf ${WORKSPACE}/*
 
 # Build pytorch
 pip uninstall -y torch
+source $(dirname $(realpath $0))/env.sh
 $(dirname $(realpath $0))/build.sh \
     --WORKSPACE="${WORKSPACE}" \
     --PYTORCH_REPO="${PYTORCH_REPO}" \
