@@ -1794,6 +1794,25 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
       "xccl:reduce_scatter_tensor_coalesced");
 }
 
+c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
+  if (getBoundDeviceId().has_value()) {
+    return getBoundDeviceId().value().index();
+  } else if (!usedDeviceIdxs_.empty()) {
+    return *usedDeviceIdxs_.begin();
+  }
+  int devIdx =
+      static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
+  LOG(WARNING)
+      << logPrefix()
+      << c10::str(
+             " using GPU ",
+             devIdx,
+             " as device used by this process is currently unknown. ",
+             "This can potentially cause a hang if this rank to GPU mapping is incorrect. ",
+             "You can specify device_id in init_process_group() to force use of a particular device.");
+  return static_cast<c10::DeviceIndex>(devIdx);
+}
+
 c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   RECORD_PARAM_COMMS(
       static_cast<int>(
@@ -1810,18 +1829,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
       -1, // globalRankStride
       this->getSize()); // worldSize
   // Device to use for barrier
-  int barDevIdx = -1;
+  c10::DeviceIndex barDevIdx = -1;
 
   // See nccl barrier comments
   if (!opts.device_ids.empty()) {
-    barDevIdx = opts.device_ids[0];
-  } else if (getBoundDeviceId()) {
-    barDevIdx = (*getBoundDeviceId()).index();
-  } else if (!usedDeviceIdxs_.empty()) {
-    barDevIdx = *usedDeviceIdxs_.begin();
+    barDevIdx = static_cast<c10::DeviceIndex>(opts.device_ids[0]);
   } else {
-    barDevIdx =
-        static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
+    barDevIdx = guessDeviceId();
   }
 
   TORCH_CHECK_WITH(
@@ -1833,12 +1847,20 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   at::Tensor barrierTensor =
       at::zeros({1}, at::TensorOptions().device(barDevice).dtype(at::kFloat));
 
-  auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier");
+  AllreduceOptions arOpts = AllreduceOptions();
+  arOpts.asyncOp = opts.asyncOp;
+  auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier", arOpts);
 
-  auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
-  TORCH_CHECK(xcclWork);
-  xcclWork->isBarrierOp_ = true;
-  return work;
+  if (opts.asyncOp) {
+    auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
+    TORCH_CHECK(xcclWork);
+    xcclWork->isBarrierOp_ = true;
+    return work;
+  }
+
+  auto currentStream = at::xpu::getCurrentXPUStream(barDevIdx);
+  currentStream.synchronize();
+  return nullptr;
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
