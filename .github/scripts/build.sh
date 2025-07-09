@@ -44,7 +44,6 @@ git remote -v && git branch && git show -s
 # Pre Build
 cd ${WORKSPACE}/pytorch
 python -m pip install requests
-python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
