@@ -143,18 +143,20 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: xpu_distributed
-      shell: timeout 36000 bash -xeu -o pipefail {0}
+      shell: bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
+        pip install pytest pytest-timeout xmlrunner unittest-xml-reporting zstandard transformers
+        cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/ut_result_check.sh ut_log/xpu_distributed/
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
-        python run_distributed.py \
+        python run_distributed_local.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
