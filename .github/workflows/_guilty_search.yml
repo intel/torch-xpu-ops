@@ -89,13 +89,13 @@ jobs:
           pytorch_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*pytorch=++;s+,.*++')"
           old_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $2}')"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${old_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="${old_result}"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${new_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
@@ -133,13 +133,13 @@ jobs:
           xpu_ops_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*xpu-ops=++;s+,.*++')"
           old_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $2}')"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${old_commit}"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="${old_result}"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${new_commit}"
