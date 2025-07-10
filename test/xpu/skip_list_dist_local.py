@@ -63,7 +63,11 @@ skip_dict = {
     ),
     "../../../../test/distributed/test_compute_comm_reordering.py": None,
     "../../../../test/distributed/test_control_collectives.py": None,
-    "../../../../test/distributed/test_device_mesh.py": None,
+    "../../../../test/distributed/test_device_mesh.py": (
+        # RuntimeError: Process 1 exited with error code 10 and exception:
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_scatter_1d",
+    ),
     "../../../../test/distributed/test_dynamo_distributed.py": None,
     "../../../../test/distributed/test_fake_pg.py": None,
     "../../../../test/distributed/test_functional_api.py": None,
@@ -155,6 +159,13 @@ skip_dict = {
         # NotImplementedError: Operator aten._scaled_dot_product_fused_attention_overrideable.default does not have a sharding strategy registered.
         # https://github.com/intel/torch-xpu-ops/issues/1556, 2.8 skipped
         "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_loss_parallel",
+        "test_mlp_training_is_seq_parallel_False_recompute_activation_False",
+        "test_mlp_training_is_seq_parallel_True_recompute_activation_False",
+        "test_transformer_req_grad_float64_thaw_all",
+        "test_transformer_training_is_seq_parallel_False_float64",
+        "test_transformer_training_is_seq_parallel_True_float64",
     ),
     "../../../../test/distributed/tensor/parallel/test_tp_random_state.py": None,
     "../../../../test/distributed/tensor/parallel/test_parallelize_api.py": (
@@ -195,6 +206,10 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_redistribute.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_redistribute_shard_dim_change",
+        "test_redistribute_uneven_sharding",
+        "test_shard_to_replicate_forward_backward",
+        "test_shard_to_replicate_forward_backward_datatype_conversion",
         "test_multi_dim_mesh",
     ),
     "../../../../test/distributed/tensor/test_tensor_ops.py": (
@@ -288,6 +303,31 @@ skip_dict = {
     "../../../../test/distributed/_tools/test_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_memory_tracker.py": None,
     "../../../../test/distributed/_tools/test_mod_tracker.py": None,
+    "../../../../test/distributed/checkpoint/e2e/test_e2e_save_and_load.py": None,
+    "../../../../test/distributed/checkpoint/e2e/test_fine_tuning.py": None,
+    "../../../../test/distributed/checkpoint/e2e/test_fsdp_ep.py": None,
+    "../../../../test/distributed/checkpoint/fsdp/test_fsdp_dsd.py": None,
+    "../../../../test/distributed/checkpoint/test_checkpoint.py": None,
+    "../../../../test/distributed/checkpoint/test_compatibility.py": None,
+    "../../../../test/distributed/checkpoint/test_dedup_tensors.py": None,
+    "../../../../test/distributed/checkpoint/test_dtensor_checkpoint.py": None,
+    "../../../../test/distributed/checkpoint/test_dtensor_resharding.py": None,
+    "../../../../test/distributed/checkpoint/test_file_system_checkpoint.py": None,
+    "../../../../test/distributed/checkpoint/test_file_system_checkpoint_cpu.py": None,
+    "../../../../test/distributed/checkpoint/test_format_utils.py": None,
+    "../../../../test/distributed/checkpoint/test_fsdp_model_state.py": None,
+    "../../../../test/distributed/checkpoint/test_fsdp_optim_state.py": None,
+    "../../../../test/distributed/checkpoint/test_fsdp_tp_checkpoint_conversion.py": None,
+    "../../../../test/distributed/checkpoint/test_fsspec.py": None,
+    "../../../../test/distributed/checkpoint/test_hsdp_checkpoint.py": None,
+    "../../../../test/distributed/checkpoint/test_nested_dict.py": None,
+    "../../../../test/distributed/checkpoint/test_planner.py": None,
+    "../../../../test/distributed/checkpoint/test_save_load_api.py": None,
+    "../../../../test/distributed/checkpoint/test_state_dict.py": None,
+    "../../../../test/distributed/checkpoint/test_state_dict_utils.py": None,
+    "../../../../test/distributed/checkpoint/test_tp_checkpoint.py": None,
+    "../../../../test/distributed/checkpoint/test_traverse.py": None,
+    "../../../../test/distributed/checkpoint/test_utils.py": None,
 }
 
 skip_dict_python = {
