@@ -156,15 +156,26 @@ jobs:
                 done
               }
               read_dir "test/test-reports/python-pytest"
-              cd "$GITHUB_WORKSPACE/ut_log/torch_xpu_1"
-              find . -name 'inductor.*' -exec bash -c '
-                  for file; do
-                      newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
-                      if [ "$file" != "$newfile" ]; then
-                          mv -v "$file" "$newfile"
-                      fi
-                  done
-              ' bash {} +
+              function rename_inductor_files() {
+                  local target_dir="${1:-.}"
+                  
+                  if [ ! -d "$target_dir" ]; then
+                      echo "Error: Directory '$target_dir' does not exist" >&2
+                      return 1
+                  fi
+
+                  find "$target_dir" -name 'inductor.*' -exec bash -c '
+                      for file; do
+                          newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                          if [ "$file" != "$newfile" ]; then
+                              echo "Renaming: $file -> $newfile"
+                              mv -v "$file" "$newfile"
+                          fi
+                      done
+                  ' bash {} +
+              }
+              rename_inductor_files "$GITHUB_WORKSPACE/ut_log/torch_xpu_1"
+              rename_inductor_files "$GITHUB_WORKSPACE/ut_log/"
             log_prefix: 'torch_xpu_1'
             timeout: 10000
             additional_steps: |
@@ -193,15 +204,26 @@ jobs:
                 done
               }
               read_dir "test/test-reports/python-pytest"
-              cd "$GITHUB_WORKSPACE/ut_log/torch_xpu_2"
-              find . -name 'inductor.*' -exec bash -c '
-                  for file; do
-                      newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
-                      if [ "$file" != "$newfile" ]; then
-                          mv -v "$file" "$newfile"
-                      fi
-                  done
-              ' bash {} +
+              function rename_inductor_files() {
+                  local target_dir="${1:-.}"
+                  
+                  if [ ! -d "$target_dir" ]; then
+                      echo "Error: Directory '$target_dir' does not exist" >&2
+                      return 1
+                  fi
+
+                  find "$target_dir" -name 'inductor.*' -exec bash -c '
+                      for file; do
+                          newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                          if [ "$file" != "$newfile" ]; then
+                              echo "Renaming: $file -> $newfile"
+                              mv -v "$file" "$newfile"
+                          fi
+                      done
+                  ' bash {} +
+              }
+              rename_inductor_files "$GITHUB_WORKSPACE/ut_log/torch_xpu_2"
+              rename_inductor_files "$GITHUB_WORKSPACE/ut_log/"
             log_prefix: 'torch_xpu_2'
             timeout: 10000
             additional_steps: |
@@ -229,15 +251,26 @@ jobs:
                 done
               }
               read_dir "test/test-reports/python-pytest"
-              cd "$GITHUB_WORKSPACE/ut_log/torch_xpu_3"
-              find . -name 'inductor.*' -exec bash -c '
-                  for file; do
-                      newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
-                      if [ "$file" != "$newfile" ]; then
-                          mv -v "$file" "$newfile"
-                      fi
-                  done
-              ' bash {} +
+              function rename_inductor_files() {
+                  local target_dir="${1:-.}"
+                  
+                  if [ ! -d "$target_dir" ]; then
+                      echo "Error: Directory '$target_dir' does not exist" >&2
+                      return 1
+                  fi
+
+                  find "$target_dir" -name 'inductor.*' -exec bash -c '
+                      for file; do
+                          newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                          if [ "$file" != "$newfile" ]; then
+                              echo "Renaming: $file -> $newfile"
+                              mv -v "$file" "$newfile"
+                          fi
+                      done
+                  ' bash {} +
+              }
+              rename_inductor_files "$GITHUB_WORKSPACE/ut_log/torch_xpu_3"
+              rename_inductor_files "$GITHUB_WORKSPACE/ut_log/"
             log_prefix: 'torch_xpu_3'
             timeout: 10000
             additional_steps: |
