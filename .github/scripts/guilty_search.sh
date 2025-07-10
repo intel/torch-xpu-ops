@@ -49,7 +49,7 @@ elif [ "${SEARCH_CHECK}" == "performance" ];then
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         perf_result=$(tail -n 1 ${WORKSPACE}/tmp.csv |awk -F, '{print $5}')
-        test_result=$(echo "${perf_result},${SEARCH_GOOD_VALUE},${SEARCH_CRITERIA}" |awk -F, '{
+        test_result=$(echo "${perf_result},${SEARCH_GOOD_VALUE:-"0.00001"},${SEARCH_CRITERIA}" |awk -F, '{
             if ($1/$2 > (1 - $3)){
                 print "0";
             }else{
