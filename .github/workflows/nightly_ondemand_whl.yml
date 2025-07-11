@@ -293,9 +293,11 @@ jobs:
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
-          else
-            find ${{ github.workspace }}/upload_files/ -name "summary.csv" | xargs cat
-            failed_num=$(find ${{ github.workspace }}/upload_files/ -name "summary.csv" |xargs grep ',failed' |wc -l)
+          fi
+          pt2e_summary_csv="$(find ${{ github.workspace }}/upload_files/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            cat ${pt2e_summary_csv}
+            failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
             if [ ${failed_num} -ne 0 ];then
               echo "PT2E has failures!"
               exit 1
