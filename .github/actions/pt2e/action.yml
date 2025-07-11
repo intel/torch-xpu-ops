@@ -111,8 +111,6 @@ runs:
               python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet 2>&1 |\
                       tee "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" || true
             fi
-            grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '{
-                      printf("%s,%s,%s,%s,\n", m, d, $(NF - 2), $(NF)) }' >> ${pt2e_logs_dir}/summary.csv
             grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '
                     BEGIN{acc1 = "failed";acc5 = "failed";}
                     {acc1 = $(NF - 2);acc5 = $NF;}
