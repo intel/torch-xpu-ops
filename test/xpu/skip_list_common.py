@@ -1036,8 +1036,6 @@ skip_dict = {
         # https://github.com/intel/torch-xpu-ops/issues/461
         "test_index_put_src_datatype_xpu_float8_e5m2",
         "test_index_put_src_datatype_xpu_float8_e4m3fn",
-        # https://github.com/intel/torch-xpu-ops/issues/1702
-        "test_index_put_deterministic_with_optional_tensors_xpu",
     ),
     "nn/test_pooling_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
