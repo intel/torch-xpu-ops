@@ -33,6 +33,7 @@ pip list |grep torch
 test_result=1
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
+    python setup.py clean
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
@@ -45,6 +46,7 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
     fi
 elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
+    python setup.py clean
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
