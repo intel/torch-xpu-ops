@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-E2E-WHL-Tests:
-    runs-on: pvc_e2e
+    runs-on: pvc_rolling
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 360000
     permissions:
