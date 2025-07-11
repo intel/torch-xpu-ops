@@ -48,7 +48,7 @@ void embedding_bag(
     const scalar_t* const per_sample_weights,
     int64_t index_size,
     int64_t bag_num,
-    int64_t vec_len,
+    int64_t feature_dim,
     index_t padding_idx,
     bool ignore_offsets,
     int64_t num_row) {
@@ -71,15 +71,12 @@ void embedding_bag(
   const vec_t* w_vec = reinterpret_cast<const vec_t*>(weights);
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
-  vec_len = vec_len / vec_size;
-  int tile = 1;
-  int sub_group_size = syclMaxSubGroupSize();
-  if (sub_group_size % vec_len == 0) {
-    tile = sub_group_size / vec_len;
-  }
-  int batch = (bag_num + tile - 1) / tile;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      batch, vec_len * tile, 1, batch, true, BatchKernelConfig::Policy::pAdaptive);
+  int vectorized_feature_dim = feature_dim / vec_size;
+  int64_t work_group_size = syclMaxWorkGroupSize<KernelClass>();
+  // TODO: we can set num_work_group = 1024 and add for loop in kernel
+  int64_t num_work_group = ceil_div(
+      static_cast<int64_t>(bag_num * vectorized_feature_dim),
+      static_cast<int64_t>(work_group_size));
 
   index_t fixing_bag_size = ignore_offsets ? index_size / bag_num : 0;
   auto kfn = KernelClass(
@@ -91,18 +88,19 @@ void embedding_bag(
       per_sample_weights,
       index_size,
       bag_num,
-      vec_len,
-      tile,
+      vectorized_feature_dim,
       padding_idx,
       ignore_offsets,
       o_vec,
       w_vec,
       max_idx_vec,
-      cfg,
       fixing_bag_size,
       num_row);
   sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+      num_work_group * work_group_size,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      kfn);
 }
 
 #define EMBBAG_KERNEL_ACC(                                                     \
@@ -121,7 +119,7 @@ void embedding_bag(
     per_sample_weights,                                                        \
     index_len,                                                                 \
     bag_num,                                                                   \
-    vec_len,                                                                   \
+    feature_dim,                                                               \
     padding_idx,                                                               \
     ignore_offsets,                                                            \
     num_row)                                                                   \
@@ -137,7 +135,7 @@ void embedding_bag(
         per_sample_weights.const_data_ptr<scalar_t>(),                         \
         index_size,                                                            \
         bag_num,                                                               \
-        vec_len,                                                               \
+        feature_dim,                                                           \
         padding_idx,                                                           \
         ignore_offsets,                                                        \
         num_row);                                                              \
@@ -160,7 +158,7 @@ void embedding_bag(
         nullptr,                                                               \
         index_size,                                                            \
         bag_num,                                                               \
-        vec_len,                                                               \
+        feature_dim,                                                           \
         padding_idx,                                                           \
         ignore_offsets,                                                        \
         num_row);                                                              \
@@ -183,7 +181,7 @@ void embedding_bag(
         per_sample_weights.const_data_ptr<scalar_t>(),                         \
         index_size,                                                            \
         bag_num,                                                               \
-        vec_len,                                                               \
+        feature_dim,                                                           \
         padding_idx,                                                           \
         ignore_offsets,                                                        \
         num_row);                                                              \
@@ -206,7 +204,7 @@ void embedding_bag(
         nullptr,                                                               \
         index_size,                                                            \
         bag_num,                                                               \
-        vec_len,                                                               \
+        feature_dim,                                                           \
         padding_idx,                                                           \
         ignore_offsets,                                                        \
         num_row);
@@ -226,7 +224,7 @@ void embedding_bag(
     per_sample_weights,                                                       \
     index_len,                                                                \
     bag_num,                                                                  \
-    vec_len,                                                                  \
+    feature_dim,                                                              \
     padding_idx,                                                              \
     ignore_offsets,                                                           \
     num_row)                                                                  \
@@ -242,7 +240,7 @@ void embedding_bag(
         per_sample_weights.const_data_ptr<scalar_t>(),                        \
         index_size,                                                           \
         bag_num,                                                              \
-        vec_len,                                                              \
+        feature_dim,                                                          \
         padding_idx,                                                          \
         ignore_offsets,                                                       \
         num_row);                                                             \
@@ -258,7 +256,7 @@ void embedding_bag(
         nullptr,                                                              \
         index_size,                                                           \
         bag_num,                                                              \
-        vec_len,                                                              \
+        feature_dim,                                                          \
         padding_idx,                                                          \
         ignore_offsets,                                                       \
         num_row);                                                             \
@@ -274,7 +272,7 @@ void embedding_bag(
         per_sample_weights.const_data_ptr<scalar_t>(),                        \
         index_size,                                                           \
         bag_num,                                                              \
-        vec_len,                                                              \
+        feature_dim,                                                          \
         padding_idx,                                                          \
         ignore_offsets,                                                       \
         num_row);                                                             \
@@ -290,7 +288,7 @@ void embedding_bag(
         nullptr,                                                              \
         index_size,                                                           \
         bag_num,                                                              \
-        vec_len,                                                              \
+        feature_dim,                                                          \
         padding_idx,                                                          \
         ignore_offsets,                                                       \
         num_row);
@@ -306,7 +304,7 @@ void embedding_bag_sum_template(
     Tensor& max_indices,
     int64_t index_size,
     int64_t bag_num,
-    int64_t vec_len,
+    int64_t feature_dim,
     int64_t padding_idx,
     bool ignore_offsets) {
   uint64_t num_row = weights.size(0);
@@ -327,7 +325,7 @@ void embedding_bag_sum_template(
       per_sample_weights,                      \
       index_len,                               \
       bag_num,                                 \
-      vec_len,                                 \
+      feature_dim,                             \
       padding_idx,                             \
       ignore_offsets,                          \
       num_row)
@@ -343,7 +341,15 @@ void embedding_bag_sum_template(
               using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
-              vec_size = vec_len % vec_size == 0 ? vec_size : 1;
+              vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
+              for (int v : {8, 4, 2, 1}) {
+                // We only load one weight[i] in one subgroup, otherwise memory
+                // load cannot be coalesce
+                if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
+                  vec_size = v;
+                  break;
+                }
+              }
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_SUM_KERNEL_VEC(8);
@@ -374,7 +380,7 @@ void embedding_bag_mean_template(
     Tensor& max_indices,
     int64_t index_size,
     int64_t bag_num,
-    int64_t vec_len,
+    int64_t feature_dim,
     int64_t padding_idx,
     bool ignore_offsets) {
   uint64_t num_row = weights.size(0);
@@ -395,7 +401,7 @@ void embedding_bag_mean_template(
       per_sample_weights,                       \
       index_len,                                \
       bag_num,                                  \
-      vec_len,                                  \
+      feature_dim,                              \
       padding_idx,                              \
       ignore_offsets,                           \
       num_row)
@@ -411,7 +417,7 @@ void embedding_bag_mean_template(
               using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
-              vec_size = vec_len % vec_size == 0 ? vec_size : 1;
+              vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_MEAN_KERNEL_VEC(8);
@@ -442,7 +448,7 @@ void embedding_bag_max_template(
     Tensor& max_indices,
     int64_t index_size,
     int64_t bag_num,
-    int64_t vec_len,
+    int64_t feature_dim,
     int64_t padding_idx,
     bool ignore_offsets) {
   uint64_t num_row = weights.size(0);
@@ -462,7 +468,7 @@ void embedding_bag_max_template(
       per_sample_weights,                      \
       index_len,                               \
       bag_num,                                 \
-      vec_len,                                 \
+      feature_dim,                             \
       padding_idx,                             \
       ignore_offsets,                          \
       num_row)
@@ -478,7 +484,7 @@ void embedding_bag_max_template(
               // using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
-              vec_size = vec_len % vec_size == 0 ? vec_size : 1;
+              vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_MAX_KERNEL_VEC(8);

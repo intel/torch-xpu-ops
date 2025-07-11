@@ -25,125 +25,126 @@ template <
     bool per_sample_weights_defined,
     bool padding_idx_defined>
 struct EmbeddingBagKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto desc = cfg_.get_item_desc(item);
-    index_t start = 0, end = 0;
-    int64_t off_off = -1;
+  void operator()(sycl::nd_item<1> item) const {
+    auto thread_id = item.get_global_linear_id();
+    if (thread_id < bag_num_ * vectorized_feature_dim_len_) {
+      auto current_feature = thread_id % vectorized_feature_dim_len_;
+      auto current_bag = thread_id / vectorized_feature_dim_len_;
+      index_t start, end;
+      bool last_bag = current_bag == bag_num_ - 1;
+      // TODO: add template
+      if (!ignore_offsets_) {
+        start = offset_[current_bag];
+        end = last_bag ? index_size_ : offset_[current_bag + 1];
+      } else {
+        start = current_bag * fixing_bag_size_;
+        end = start + fixing_bag_size_;
+      }
 
-    do {
-      if (desc.glb_problem < cfg_.problem_ &&
-          desc.glb_batch < cfg_.problem_batch_) {
-        bool walk_on_bag = desc.glb_batch != off_off;
-        if (walk_on_bag) {
-          off_off = desc.glb_batch * tile_ + desc.glb_problem / (cfg_.problem_ / tile_);
-          bool last_bag = off_off == bag_num_ - 1;
-          if (!ignore_offsets_) {
-            start = offset_[off_off];
-            end = last_bag ? index_size_ : offset_[off_off + 1];
-          } else {
-            start = off_off * fixing_bag_size_;
-            end = start + fixing_bag_size_;
-          }
-        }
+      vec_acc_t value, value_max;
+      vec_idx_t index_max;
+      index_t padding_cnt = 0;
 
-        vec_acc_t value, value_max;
-        vec_idx_t index_max;
-        index_t padding_cnt = 0;
+#pragma unroll
+      for (int i = 0; i < vec_size; i++) {
+        value[i] = 0;
+      }
+      if constexpr (mode == MODE_MAX) {
 #pragma unroll
         for (int i = 0; i < vec_size; i++) {
-          value[i] = 0;
           value_max[i] = at::numeric_limits<accscalar_t>::lower_bound();
           index_max[i] = -1;
         }
-        index_t index_off, vec_idx, i_off;
-        vec_t other;
-        auto handle_non_padding = [&]() {
-          i_off = vec_idx * vec_len_ + desc.glb_problem % (cfg_.problem_ / tile_);
-          other = w_vec_[i_off];
+      }
+      index_t index_offset, weight_index;
+      vec_t wei_load;
+      auto handle_non_padding = [&]() {
+        wei_load = w_vec_
+            [weight_index * vectorized_feature_dim_len_ + current_feature];
 
-          if constexpr (mode == MODE_SUM) {
-#pragma unroll
-            for (int i = 0; i < vec_size; i++) {
-              if constexpr (per_sample_weights_defined) {
-                other[i] *= per_sample_weights_[index_off];
-              }
-              value[i] += other[i];
-            }
-          } else if constexpr (mode == MODE_MEAN) {
-#pragma unroll
-            for (int i = 0; i < vec_size; i++) {
-              value[i] += other[i];
-            }
-          } else if constexpr (mode == MODE_MAX) {
-#pragma unroll
-            for (int i = 0; i < vec_size; i++) {
-              if (other[i] > value_max[i]) {
-                value_max[i] = other[i];
-                if (max_index_) {
-                  index_max[i] = vec_idx;
-                }
-              }
-            }
-          }
-        };
-
-        for (index_t off = start; off < end; off++) {
-          index_off = off;
-          vec_idx = index_[index_off];
-          SYCL_KERNEL_ASSERT(vec_idx < num_row_);
-
-          if (walk_on_bag && desc.glb_problem == 0) {
-            offset2bag_[index_off] = off_off;
-          }
-
-          if constexpr (padding_idx_defined) {
-            if (padding_idx_ != vec_idx) {
-              handle_non_padding();
-            } else {
-              padding_cnt++;
-            }
-          } else {
-            handle_non_padding();
-          }
-        }
-
-        int64_t bsize = end - start - padding_cnt;
-        if (desc.glb_problem == 0) {
-          bag_size_[off_off] = bsize;
-        }
-
-        index_t o_off = off_off * vec_len_ + desc.glb_problem % (cfg_.problem_ / tile_);
         if constexpr (mode == MODE_SUM) {
-          vec_t o;
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
-            o[i] = value[i];
+            if constexpr (per_sample_weights_defined) {
+              wei_load[i] *= per_sample_weights_[index_offset];
+            }
+            value[i] += wei_load[i];
           }
-          o_vec_[o_off] = o;
         } else if constexpr (mode == MODE_MEAN) {
-          vec_t o;
-          bsize = bsize == 0 ? 1 : bsize;
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
-            o[i] = value[i] / bsize;
+            value[i] += wei_load[i];
           }
-          o_vec_[o_off] = o;
         } else if constexpr (mode == MODE_MAX) {
-          vec_t padding;
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
-            padding[i] = 0;
+            if (wei_load[i] > value_max[i]) {
+              value_max[i] = wei_load[i];
+              if (max_index_) {
+                index_max[i] = weight_index;
+              }
+            }
           }
-          o_vec_[o_off] =
-              value_max[0] == at::numeric_limits<accscalar_t>::lower_bound()
-              ? padding
-              : value_max;
-          if (max_index_) {
-            max_idx_vec_[o_off] = index_max;
+        }
+      };
+
+      for (index_t offset_in_bag = start; offset_in_bag < end;
+           offset_in_bag++) {
+        index_offset = offset_in_bag;
+        weight_index = index_[index_offset];
+        SYCL_KERNEL_ASSERT(weight_index < num_row_);
+
+        if (current_feature == 0)
+          offset2bag_[index_offset] = current_bag;
+
+        if constexpr (padding_idx_defined) {
+          if (padding_idx_ != weight_index) {
+            handle_non_padding();
+          } else {
+            padding_cnt++;
           }
+        } else {
+          handle_non_padding();
         }
       }
-    } while (cfg_.next(item, desc));
+
+      int64_t bsize = end - start - padding_cnt;
+      if (current_feature == 0) {
+        bag_size_[current_bag] = bsize;
+      }
+
+      index_t o_off =
+          current_bag * vectorized_feature_dim_len_ + current_feature;
+      if constexpr (mode == MODE_SUM) {
+        vec_t o;
+#pragma unroll
+        for (int i = 0; i < vec_size; i++) {
+          o[i] = value[i];
+        }
+        o_vec_[o_off] = o;
+      } else if constexpr (mode == MODE_MEAN) {
+        vec_t o;
+        bsize = bsize == 0 ? 1 : bsize;
+#pragma unroll
+        for (int i = 0; i < vec_size; i++) {
+          o[i] = value[i] / bsize;
+        }
+        o_vec_[o_off] = o;
+      } else if constexpr (mode == MODE_MAX) {
+        vec_t padding;
+#pragma unroll
+        for (int i = 0; i < vec_size; i++) {
+          padding[i] = 0;
+        }
+        o_vec_[o_off] =
+            value_max[0] == at::numeric_limits<accscalar_t>::lower_bound()
+            ? padding
+            : value_max;
+        if (max_index_) {
+          max_idx_vec_[o_off] = index_max;
+        }
+      }
+    }
   }
   EmbeddingBagKernelFunctor(
       const index_t* const index,
@@ -154,14 +155,12 @@ struct EmbeddingBagKernelFunctor {
       const scalar_t* const per_sample_weights,
       int64_t index_size,
       int64_t bag_num,
-      int64_t vec_len,
-      int64_t tile,
+      int64_t vectorized_feature_dim_len,
       index_t padding_idx,
       bool ignore_offsets,
       vec_t* o_vec,
       const vec_t* w_vec,
       vec_idx_t* max_idx_vec,
-      BatchKernelConfig cfg,
       index_t fixing_bag_size,
       index_t num_row)
       : index_(index),
@@ -172,14 +171,12 @@ struct EmbeddingBagKernelFunctor {
         per_sample_weights_(per_sample_weights),
         index_size_(index_size),
         bag_num_(bag_num),
-        vec_len_(vec_len),
-        tile_(tile),
+        vectorized_feature_dim_len_(vectorized_feature_dim_len),
         padding_idx_(padding_idx),
         ignore_offsets_(ignore_offsets),
         o_vec_(o_vec),
         w_vec_(w_vec),
         max_idx_vec_(max_idx_vec),
-        cfg_(cfg),
         fixing_bag_size_(fixing_bag_size),
         num_row_(num_row) {}
 
@@ -192,14 +189,12 @@ struct EmbeddingBagKernelFunctor {
   const scalar_t* const per_sample_weights_;
   int64_t index_size_;
   int64_t bag_num_;
-  int64_t vec_len_;
-  int64_t tile_;
+  int64_t vectorized_feature_dim_len_;
   index_t padding_idx_;
   bool ignore_offsets_;
   vec_t* o_vec_;
   const vec_t* w_vec_;
   vec_idx_t* max_idx_vec_;
-  BatchKernelConfig cfg_;
   index_t fixing_bag_size_;
   index_t num_row_;
 };
