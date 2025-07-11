@@ -418,6 +418,14 @@ void embedding_bag_mean_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
+              for (int v : {8, 4, 2, 1}) {
+                // We only load one weight[i] in one subgroup, otherwise memory
+                // load cannot be coalesce
+                if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
+                  vec_size = v;
+                  break;
+                }
+              }
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_MEAN_KERNEL_VEC(8);
@@ -485,6 +493,14 @@ void embedding_bag_max_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
+              for (int v : {8, 4, 2, 1}) {
+                // We only load one weight[i] in one subgroup, otherwise memory
+                // load cannot be coalesce
+                if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
+                  vec_size = v;
+                  break;
+                }
+              }
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_MAX_KERNEL_VEC(8);
