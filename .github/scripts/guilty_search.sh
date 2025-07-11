@@ -41,8 +41,6 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
         if [[ "${acc_result}" == "pass"* ]];then
             test_result=0
         fi
-    else
-        tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
     fi
 elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
@@ -58,8 +56,6 @@ elif [ "${SEARCH_CHECK}" == "performance" ];then
                 print "1";
             }
         }')
-    else
-        tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
     fi
 elif [ "${SEARCH_CHECK}" == "ut_regressions" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions
@@ -67,8 +63,6 @@ elif [ "${SEARCH_CHECK}" == "ut_regressions" ];then
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
-    else
-        tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
     fi
 elif [ "${SEARCH_CHECK}" == "ut_extended" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu/extended
@@ -76,8 +70,6 @@ elif [ "${SEARCH_CHECK}" == "ut_extended" ];then
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
-    else
-        tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
     fi
 elif [ "${SEARCH_CHECK}" == "ut_xpu" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu
@@ -85,20 +77,17 @@ elif [ "${SEARCH_CHECK}" == "ut_xpu" ];then
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
-    else
-        tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
     fi
 else
     test_status="$(eval "${SEARCH_CASE}" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
-    else
-        tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
     fi
 fi
 
 # Test result
+cat ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
 echo "${test_result},${acc_result},${perf_result},${PYTORCH_VERSION},${TORCH_XPU_OPS_VERSION}" |\
     tee -a ${GITHUB_WORKSPACE}/gs-logs/summary.csv |tee -a ${WORKSPACE}/result.csv
 exit ${test_result}

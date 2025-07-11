@@ -51,6 +51,7 @@ jobs:
         run: |
           rm -rf ./* || sudo rm -rf ./*
           mkdir gs-logs gs-search
+          echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -140,7 +141,9 @@ jobs:
                     --PYTORCH_VERSION="$(git rev-parse HEAD)" \
                     --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
                     > ${{ github.workspace }}/gs-logs/bisect-pytorch.log 2>&1 && echo $? || echo $?)"
-            git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log.log
+            git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log
+          else
+            echo "Checked and no regression !"
           fi
       - name: Guilty search torch-xpu-ops
         if: ${{ contains(inputs.search_commits, 'xpu-ops') }}
@@ -173,5 +176,15 @@ jobs:
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                     --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)" \
                     > ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log 2>&1 && echo $? || echo $?)"
-            git bisect log |tee ${{ github.workspace }}/gs-logs/result-torch-xpu-ops.log.log
+            git bisect log |tee ${{ github.workspace }}/gs-logs/result-torch-xpu-ops.log
+          else
+            echo "Checked and no regression !"
           fi
+      - name: Summary
+        run: |
+          cat gs-logs/summary.csv |tee -a ${GITHUB_STEP_SUMMARY}
+          for reulst_log in $(find  gs-logs -name "result-*.log")
+          do
+            echo -e "\n\n\n${reulst_log}" |tee -a ${GITHUB_STEP_SUMMARY}
+            cat ${reulst_log} |tee -a ${GITHUB_STEP_SUMMARY}
+          done
