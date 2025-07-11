@@ -94,6 +94,8 @@ jobs:
   
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     name: linux-nightly-ondemand-rolling / Op_microbench
+    permissions:
+      issues: write
     needs: Linux-Nightly-Ondemand-Build-Rolling
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
