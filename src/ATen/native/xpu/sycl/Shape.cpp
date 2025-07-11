@@ -35,12 +35,22 @@ inline bool is_aligned_vec4(const void* ptr) {
 }
 
 inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRange(
+    unsigned int max_elements_per_tensor,
     ptrdiff_t nTensors) {
-  const int numSM = syclGpuEUCountPerSubslice();
+  std::cout << "getCatRange---" << std::endl;
+  constexpr unsigned int items_per_group = 256;
+  constexpr unsigned int elements_per_item = 8;
+  constexpr unsigned int max_group_per_eu = 32;
 
-  sycl::range<2> global_range((long long)nTensors, 2LL * numSM * 32 * 16);
-  sycl::range<2> local_range(1, 32 * 16);
+  unsigned int max_items = ceil_div(max_elements_per_tensor, elements_per_item);
+  unsigned int item_groups = ceil_div(max_items, items_per_group);
 
+  const unsigned int num_eu = syclGpuEUCountPerSubslice();
+  item_groups = std::min(num_eu * max_group_per_eu, item_groups);
+
+  sycl::range<2> global_range(
+      (long long)nTensors, items_per_group * item_groups);
+  sycl::range<2> local_range(1, item_groups);
   return std::make_tuple(global_range, local_range);
 }
 
@@ -48,6 +58,7 @@ template <typename T, int aligned_vec_load_bytes>
 inline std::tuple<sycl::range<2>, sycl::range<2>> getCatRangeContig(
     unsigned int max_elements_per_tensor,
     ptrdiff_t nTensors) {
+  std::cout << "getCatRangeContig---" << std::endl;
   constexpr unsigned int items_per_group = 256;
   constexpr unsigned int min_aligned_vec_per_item = 1;
   constexpr unsigned int max_group_per_eu = 32;
@@ -415,6 +426,7 @@ void parallel_cat(
     if (max_elements_per_tensor == 0)
       continue;
 
+    isContig = false;
     sycl::range<2> applyGroup, catRange;
     if (isContig && sizeof(scalar_t) > 2) {
       std::tie(catRange, applyGroup) =
@@ -425,7 +437,8 @@ void parallel_cat(
           getCatRangeContig<scalar_t, ALIGNED_VEC_LOAD_BYTES_8>(
               max_elements_per_tensor, batchCounter);
     } else {
-      std::tie(catRange, applyGroup) = getCatRange(batchCounter);
+      std::tie(catRange, applyGroup) =
+          getCatRange(max_elements_per_tensor, batchCounter);
     }
 
     if (memory_format != c10::MemoryFormat::Contiguous) {
