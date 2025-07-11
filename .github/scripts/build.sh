@@ -85,7 +85,7 @@ WERROR=1 python setup.py bdist_wheel
 python -m pip install patchelf
 rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
-python -m pip install tmp/torch*.whl
+python -m pip install --force-reinstall tmp/torch*.whl
 
 # Verify
 cd ${WORKSPACE}
