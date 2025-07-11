@@ -4,9 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       runner:
+        required: true
         type: string
         default: 'pvc_rolling'
         description: Test node
+      triton:
+        type: string
+        default: ''
+        description: Triton version if need
       python:
         type: string
         default: '3.10'
@@ -19,7 +24,7 @@ on:
       search_check:
         type: string
         default: ''
-        description: Test case type, 'performance, accuracy, <regressions/transformers/extended/xpu_ops> ut or others'
+        description: Test case type, 'performance, accuracy, <ut_regressions/ut_extended/ut_xpu> or others'
       search_case:
         required: true
         type: string
@@ -46,6 +51,11 @@ jobs:
         run: |
           rm -rf ./* || sudo rm -rf ./*
           mkdir gs-logs gs-search
+          echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: gs-scripts
       - name: Prepare source code
         run: |
           git clone https://github.com/pytorch/pytorch gs-pytorch
@@ -62,25 +72,45 @@ jobs:
         run: |
           conda create python=${{ inputs.python }} -y -n guilty-search
           source activate guilty-search
-          pip install cmake ninja pandas psutil scipy requests
+          conda info -e
+          which python && which pip
+          conda list
+          pip install cmake ninja pandas psutil scipy requests pybind11
       - name: Prepare test env
         run: |
           source activate guilty-search
-          if [[ "${{ inputs.search_case }}" == "python benchmarks/dynamo/huggingface.py" ]];then
+          if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers==4.44.2
-          fi
-          if [[ "${{ inputs.search_case }}" == "python benchmarks/dynamo/timm_models.py" ]];then
+          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
             pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
             pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
-          fi
-          if [[ "${{ inputs.search_case }}" == "python benchmarks/dynamo/torchbench.py" ]];then
+          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
             model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
             pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
             git clone https://github.com/pytorch/benchmark gs-benchmark
             cd gs-benchmark
+            echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
             python install.py ${model_name}
             pip uninstall -y torch
+          else
+            pip install -r gs-pytorch/.ci/docker/requirements-ci.txt
           fi
+      - name: Triton Installation
+        run: |
+          source activate guilty-search
+          cd gs-pytorch
+          rm -rf pytorch_triton_xpu-*.whl
+          if [ "${{ inputs.triton }}" != "" ];then
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          else
+            TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+          fi
+          TRITON_VERSION_NAME="$(
+            curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+                    grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
+          )"
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
+          pip install pytorch_triton_xpu-*.whl
       - name: Guilty search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
@@ -89,41 +119,31 @@ jobs:
           pytorch_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*pytorch=++;s+,.*++')"
           old_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $2}')"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${old_commit}" \
-                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
+                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
+                  > ${{ github.workspace }}/gs-logs/search-${old_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
-          export SEARCH_GOOD_VALUE="${old_result}"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
+          new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${new_commit}" \
-                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
+                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
+                  > ${{ github.workspace }}/gs-logs/search-${new_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
-          search_or_not="yes"
-          if [ "${{ inputs.search_check }}" == "performance" ];then
-            old_perf="$(echo ${old_result} |awk -F, '{print $3}')"
-            new_perf="$(echo ${new_result} |awk -F, '{print $3}')"
-            search_or_not="$(echo "${new_perf},${old_perf},${{ inputs.search_criteria }}" |awk -F, '{
-              if ($1/$2 > (1 - $3)){
-                  print "no";
-              }else{
-                  print "yes";
-              }
-            }')"
-          else
-            if [ "${old_result}" == "${new_result}" ];then
-              search_or_not="no"
-            fi
-          fi
-          if [ "${search_or_not}" != "no" ];then
+          if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+            bisect_status="$(git bisect start ${new_commit} ${old_commit} \
+                    ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="$(git rev-parse HEAD)" \
-                    --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
-            git bisect log > {{ github.workspace }}/gs-logs/pytorch-bisect.log
+                    --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
+                    > ${{ github.workspace }}/gs-logs/bisect-pytorch.log 2>&1 && echo $? || echo $?)"
+            git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log
+          else
+            echo "Checked and no regression !"
           fi
       - name: Guilty search torch-xpu-ops
         if: ${{ contains(inputs.search_commits, 'xpu-ops') }}
@@ -133,39 +153,38 @@ jobs:
           xpu_ops_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*xpu-ops=++;s+,.*++')"
           old_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $2}')"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                  --TORCH_XPU_OPS_VERSION="${old_commit}"
+                  --TORCH_XPU_OPS_VERSION="${old_commit}" \
+                  > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${old_commit}.log && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
-          export SEARCH_GOOD_VALUE="${old_result}"
-          ./gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+          export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
+          new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                  --TORCH_XPU_OPS_VERSION="${new_commit}"
+                  --TORCH_XPU_OPS_VERSION="${new_commit}" \
+                  > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${new_commit}.log && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
-          search_or_not="yes"
-          if [ "${{ inputs.search_check }}" == "performance" ];then
-            old_perf="$(echo ${old_result} |awk -F, '{print $3}')"
-            new_perf="$(echo ${new_result} |awk -F, '{print $3}')"
-            search_or_not="$(echo "${new_perf},${old_perf},${{ inputs.search_criteria }}" |awk -F, '{
-              if ($1/$2 > (1 - $3)){
-                  print "no";
-              }else{
-                  print "yes";
-              }
-            }')"
-          else
-            if [ "${old_result}" == "${new_result}" ];then
-              search_or_not="no"
-            fi
-          fi
-          if [ "${search_or_not}" != "no" ];then
+          if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-torch-xpu-ops/.github/scripts/guilty_search.sh \
+            bisect_status="$(
+            git bisect start ${new_commit} ${old_commit} \
+                    ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                    --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)"
-            git bisect log > {{ github.workspace }}/gs-logs/xpu-ops-bisect.log
+                    --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)" \
+                    > ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log 2>&1 && echo $? || echo $?)"
+            git bisect log |tee ${{ github.workspace }}/gs-logs/result-torch-xpu-ops.log
+          else
+            echo "Checked and no regression !"
           fi
+      - name: Summary
+        run: |
+          cat gs-logs/summary.csv |tee -a ${GITHUB_STEP_SUMMARY}
+          for reulst_log in $(find  gs-logs -name "result-*.log")
+          do
+            echo -e "\n\n\n${reulst_log}" |tee -a ${GITHUB_STEP_SUMMARY}
+            cat ${reulst_log} |tee -a ${GITHUB_STEP_SUMMARY}
+          done
