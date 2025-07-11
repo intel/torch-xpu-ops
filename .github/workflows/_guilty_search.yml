@@ -121,22 +121,26 @@ jobs:
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${old_commit}" \
-                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" && echo $? || echo $?)"
+                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
+                  > ${{ github.workspace }}/gs-logs/search-${old_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${new_commit}" \
-                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" && echo $? || echo $?)"
+                  --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
+                  > ${{ github.workspace }}/gs-logs/search-${new_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+            bisect_status="$(git bisect start ${new_commit} ${old_commit} \
+                    ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="$(git rev-parse HEAD)" \
-                    --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}"
-            git bisect log > {{ github.workspace }}/gs-logs/pytorch-bisect.log
+                    --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
+                    > ${{ github.workspace }}/gs-logs/bisect-pytorch.log 2>&1 && echo $? || echo $?)"
+            git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log.log
           fi
       - name: Guilty search torch-xpu-ops
         if: ${{ contains(inputs.search_commits, 'xpu-ops') }}
@@ -149,20 +153,25 @@ jobs:
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                  --TORCH_XPU_OPS_VERSION="${old_commit}" && echo $? || echo $?)"
+                  --TORCH_XPU_OPS_VERSION="${old_commit}" \
+                  > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${old_commit}.log && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                  --TORCH_XPU_OPS_VERSION="${new_commit}" && echo $? || echo $?)"
+                  --TORCH_XPU_OPS_VERSION="${new_commit}" \
+                  > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${new_commit}.log && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            git bisect start ${new_commit} ${old_commit} ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+            bisect_status="$(
+            git bisect start ${new_commit} ${old_commit} \
+                    ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                    --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)"
-            git bisect log > {{ github.workspace }}/gs-logs/xpu-ops-bisect.log
+                    --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)" \
+                    > ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log 2>&1 && echo $? || echo $?)"
+            git bisect log |tee ${{ github.workspace }}/gs-logs/result-torch-xpu-ops.log.log
           fi
