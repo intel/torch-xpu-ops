@@ -33,7 +33,7 @@ pip list |grep torch
 test_result=1
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
-    python setup.py clean
+    rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
@@ -46,7 +46,7 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
     fi
 elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
-    python setup.py clean
+    rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
@@ -100,5 +100,5 @@ fi
 
 # Test result
 echo "${test_result},${acc_result},${perf_result},${PYTORCH_VERSION},${TORCH_XPU_OPS_VERSION}" |\
-    tee ${GITHUB_WORKSPACE}/gs-logs/summary.csv |tee ${WORKSPACE}/result.csv
+    tee -a ${GITHUB_WORKSPACE}/gs-logs/summary.csv |tee -a ${WORKSPACE}/result.csv
 exit ${test_result}
