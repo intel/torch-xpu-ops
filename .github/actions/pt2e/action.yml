@@ -98,18 +98,25 @@ runs:
         source activate e2e_ci
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
+        echo "Model,Dtype,Acc@1,Acc@5,Throughput" > ${pt2e_logs_dir}/summary.csv
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
           for model_name in $(echo $models |sed 's/,/ /g')
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --is_fp32 --dataset_dir ${HOME}/datasets/imagenet 2>&1 |\
-                      tee "${pt2e_logs_dir}/accuracy-fp32-${model_name}.log"
+                      tee "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" || true
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet 2>&1 |\
-                      tee "${pt2e_logs_dir}/accuracy-int8-${model_name}.log"
+                      tee "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" || true
             fi
+            grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '{
+                      printf("%s,%s,%s,%s,\n", m, d, $(NF - 2), $(NF)) }' >> ${pt2e_logs_dir}/summary.csv
+            grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-${{ inputs.dt }}-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '
+                    BEGIN{acc1 = "failed";acc5 = "failed";}
+                    {acc1 = $(NF - 2);acc5 = $NF;}
+                    END{printf("%s,%s,%s,%s,\n", m, d, acc1, acc5) }' >> ${pt2e_logs_dir}/summary.csv
           done
         fi
         if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
@@ -122,19 +129,31 @@ runs:
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               rm -rf pt2e-performance/.userbenchmark
               python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs \
-                      --torchdynamo inductor -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-fp32.log"
-              mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-fp32-${model_name}
+                      --torchdynamo inductor -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-${{ inputs.dt }}.log" || true
+              grep -i 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '
+                      BEGIN{result = "failed";}
+                      {result = $NF;}
+                      END{printf("%s,%s,,,%s\n", m, d, result) }' >> ${pt2e_logs_dir}/summary.csv
+              mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-${{ inputs.dt }}-${model_name}
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=ASYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs \
-                      --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-int8-ASYMM.log"
-              mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-ASYMM-${model_name}
+                      --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-${{ inputs.dt }}-ASYMM.log" || true
+              grep -i 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="ASYMM" '
+                      BEGIN{result = "failed";}
+                      {result = $NF;}
+                      END{printf("%s,%s,,,%s\n", m, d, result) }' >> ${pt2e_logs_dir}/summary.csv
+              mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-${{ inputs.dt }}-ASYMM-${model_name}
 
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=SYMM  python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs \
-                      --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-int8-SYMM.log"
-              mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-int8-SYMM-${model_name}
+                      --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-${{ inputs.dt }}-SYMM.log" || true
+              grep -i 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="SYMM" '
+                      BEGIN{result = "failed";}
+                      {result = $NF;}
+                      END{printf("%s,%s,,,%s\n", m, d, result) }' >> ${pt2e_logs_dir}/summary.csv
+              mv pt2e-performance/.userbenchmark ${pt2e_logs_dir}/performance-${{ inputs.dt }}-SYMM-${model_name}
             fi
           done
         fi
