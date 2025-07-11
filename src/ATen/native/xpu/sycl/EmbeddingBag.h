@@ -32,7 +32,6 @@ struct EmbeddingBagKernelFunctor {
       auto current_bag = thread_id / vectorized_feature_dim_len_;
       index_t start, end;
       bool last_bag = current_bag == bag_num_ - 1;
-      // TODO: add template
       if (!ignore_offsets_) {
         start = offset_[current_bag];
         end = last_bag ? index_size_ : offset_[current_bag + 1];
