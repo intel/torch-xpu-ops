@@ -102,32 +102,23 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install pandas scipy psutil
+          pip install pandas scipy psutil requests
       - name: Prepare Stock Pytorch
         id: installed
         run: |
           pwd
+          cd ../
           source activate e2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../
           rm -rf pytorch || sudo rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch
-          pip install requests
-          git status && git show -s
-          pip install -r requirements.txt
-          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          rm -rf third_party/torch-xpu-ops
-          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-          cd ../../
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git status && git diff && git show -s
       - name: Identify pinned versions
         id: pinned
         run: |

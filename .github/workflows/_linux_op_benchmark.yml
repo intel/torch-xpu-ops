@@ -34,7 +34,8 @@ on:
         default: 'rolling'
         description: Driver lts/rolling
 
-permissions: read-all
+permissions: 
+  issues: write
 
 jobs:
   op_benchmark_test:
@@ -42,6 +43,7 @@ jobs:
     timeout-minutes: 900
     env:
       GH_TOKEN: ${{ github.token }}
+      reference_issue: 1689
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
     steps:
@@ -118,9 +120,53 @@ jobs:
           bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
           bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv True
+      - name: Download OP Baseline
+        continue-on-error: true
+        id: reference_id
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          conda install gh --channel conda-forge -y
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
+          rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          mv Inductor-XPU-OP-Benchmark-Data-*/* ${GITHUB_WORKSPACE:-"/tmp"}/reference
+
+          mkdir ${{ github.workspace }}/baseline
+          if [[ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+          else
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+          fi
+      - name: Check the OP Regression
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install tabulate
+          # Compare forward op
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+          # Compare backward op
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+      - name: Update OP Baseline
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          mkdir ${{ github.workspace }}/new_baseline
+          cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
+          # Update forward op
+          python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
+          # Update backward op
+          python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_backward_op_summary.csv -r
+          cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/op_benchmark
+      - name: Upload Reference Run ID
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+            sed "s/Inductor-XPU-OP-Benchmark-Data:.*/Inductor-XPU-OP-Benchmark-Data: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt

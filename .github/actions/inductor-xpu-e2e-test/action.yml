@@ -65,19 +65,20 @@ runs:
           cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
           # remove deps which will reinstall torch
           pip install --no-deps accelerate
-          pip install --no-deps $(cat requirements.txt |grep 'pytorch-image-models')
-          timm_commit="$(grep 'pytorch-image-models' requirements.txt  |awk -F '@' '{print $2}')"
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/${timm_commit:-"main"}/requirements.txt | grep -vE torch)
-          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g'  requirements.txt
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+          pip install -U transformers==4.44.2
+          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g;s/^transformers.*//g'  requirements.txt
+          git status && git diff
           pip install -r requirements.txt
           python install.py --continue_on_fail
           # deps for torchrec_dlrm
           pip install pyre_extensions
-          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/nightly/cpu
+          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/cpu
           pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
         fi
         if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
-          pip install --force-reinstall git+https://github.com/huggingface/transformers@${TRANSFORMERS_VERSION}
+          pip install -U transformers==4.44.2
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
