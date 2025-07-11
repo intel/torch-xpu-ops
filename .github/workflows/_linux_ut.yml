@@ -53,8 +53,8 @@ jobs:
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      NEOReadDebugKeys: 1
+      DisableScratchPages: 1
       ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
@@ -86,7 +86,7 @@ jobs:
             rm -rf vision || sudo rm -rf vision
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
             cd ./pytorch
             git checkout ${TORCH_COMMIT_ID}
@@ -412,7 +412,7 @@ jobs:
             rm -rf vision || sudo rm -rf vision
             git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
           else
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
             cd ./pytorch
             git checkout ${TORCH_COMMIT_ID}
