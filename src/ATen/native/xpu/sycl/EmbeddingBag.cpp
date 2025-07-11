@@ -73,7 +73,7 @@ void embedding_bag(
 
   int vectorized_feature_dim = feature_dim / vec_size;
   int64_t work_group_size = syclMaxWorkGroupSize<KernelClass>();
-  // TODO: we can set num_work_group = 1024 and add for loop in kernel
+  // TODO: we can set a smaller num_work_group and add for loop in kernel
   int64_t num_work_group = ceil_div(
       static_cast<int64_t>(bag_num * vectorized_feature_dim),
       static_cast<int64_t>(work_group_size));
