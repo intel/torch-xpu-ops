@@ -72,7 +72,7 @@ void embedding_bag(
   vec_idx_t* max_idx_vec = reinterpret_cast<vec_idx_t*>(max_index);
 
   int vectorized_feature_dim = feature_dim / vec_size;
-  int64_t work_group_size = syclMaxWorkGroupSize<KernelClass>();
+  int64_t work_group_size = syclDeviceMaxWorkGroupSize();
   // TODO: we can set a smaller num_work_group and add for loop in kernel
   int64_t num_work_group = ceil_div(
       static_cast<int64_t>(bag_num * vectorized_feature_dim),
@@ -342,14 +342,19 @@ void embedding_bag_sum_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              // for (int v : {8, 4, 2, 1}) {
-              //   // We only load one weight[i] in one subgroup, otherwise memory
-              //   // load cannot be coalesce
-              //   if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
-              //     vec_size = v;
-              //     break;
-              //   }
-              // }
+              auto num_wg = bag_num * feature_dim / vec_size /
+                  syclDeviceMaxWorkGroupSize();
+              auto num_xe = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+              if (num_wg < num_xe) {
+                for (int v = vec_size; v != 1; v = v / 2) {
+                  // We only load one weight[i] in one subgroup, otherwise
+                  // memory load cannot be coalesce
+                  if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
+                    vec_size = v;
+                    break;
+                  }
+                }
+              }
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_SUM_KERNEL_VEC(8);
@@ -418,6 +423,19 @@ void embedding_bag_mean_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
+              auto num_wg = bag_num * feature_dim / vec_size /
+                  syclDeviceMaxWorkGroupSize();
+              auto num_xe = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+              if (num_wg < num_xe) {
+                for (int v = vec_size; v != 1; v = v / 2) {
+                  // We only load one weight[i] in one subgroup, otherwise
+                  // memory load cannot be coalesce
+                  if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
+                    vec_size = v;
+                    break;
+                  }
+                }
+              }
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_MEAN_KERNEL_VEC(8);
@@ -485,6 +503,19 @@ void embedding_bag_max_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
+              auto num_wg = bag_num * feature_dim / vec_size /
+                  syclDeviceMaxWorkGroupSize();
+              auto num_xe = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+              if (num_wg < num_xe) {
+                for (int v = vec_size; v != 1; v = v / 2) {
+                  // We only load one weight[i] in one subgroup, otherwise
+                  // memory load cannot be coalesce
+                  if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
+                    vec_size = v;
+                    break;
+                  }
+                }
+              }
               switch (vec_size) {
                 case 8:
                   EXTEND_EMBBAG_MAX_KERNEL_VEC(8);
