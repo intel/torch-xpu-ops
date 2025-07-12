@@ -53,7 +53,7 @@ sebotnet33ts_256,pass,pass,pass,pass,pass
 selecsls42b,pass,pass,pass,pass,pass
 spnasnet_100,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1768
-swin_base_patch4_window7_224,pass,fail_accuracy,fail_accuracy,pass,pass
+swin_base_patch4_window7_224,pass,pass,pass,pass,pass
 swsl_resnext101_32x16d,pass,pass,pass,pass,pass
 tf_efficientnet_b0,pass,pass,pass,pass,pass
 tf_mixnet_l,pass,pass,pass,pass,pass
