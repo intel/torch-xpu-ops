@@ -128,7 +128,7 @@ runs:
               rm -rf pt2e-performance/.userbenchmark
               python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs \
                       --torchdynamo inductor -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-${{ inputs.dt }}.log" || true
-              grep -i 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '
+              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="${{ inputs.dt }}" '
                       BEGIN{result = "failed";}
                       {result = $NF;}
                       END{printf("%s,%s,,,%s\n", m, d, result) }' >> ${pt2e_logs_dir}/summary.csv
@@ -138,7 +138,7 @@ runs:
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=ASYMM python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs \
                       --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-${{ inputs.dt }}-ASYMM.log" || true
-              grep -i 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="ASYMM" '
+              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="ASYMM" '
                       BEGIN{result = "failed";}
                       {result = $NF;}
                       END{printf("%s,%s,,,%s\n", m, d, result) }' >> ${pt2e_logs_dir}/summary.csv
@@ -147,7 +147,7 @@ runs:
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=SYMM  python pt2e-performance/run_benchmark.py xpu --test eval --channels-last --metrics throughputs \
                       --torchdynamo inductor --quantization pt2e -m $model_name 2>&1 |tee "${pt2e_logs_dir}/performance-${{ inputs.dt }}-SYMM.log" || true
-              grep -i 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="SYMM" '
+              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" -v d="SYMM" '
                       BEGIN{result = "failed";}
                       {result = $NF;}
                       END{printf("%s,%s,,,%s\n", m, d, result) }' >> ${pt2e_logs_dir}/summary.csv

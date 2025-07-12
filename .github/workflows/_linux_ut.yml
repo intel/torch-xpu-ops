@@ -136,8 +136,8 @@ jobs:
 
           cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
       - name: Run XPU OP Regression
         if: contains(inputs.ut, 'op_regression')
         run: |
@@ -461,8 +461,8 @@ jobs:
           python -c "import triton; print(triton.__version__)"
           cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
       - name: Set Ptrace_scope
         if: ${{ always() }}
         run: |
