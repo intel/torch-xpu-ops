@@ -1,5 +1,5 @@
-import time
 import torch
+import time
 from torch.profiler import profile, ProfilerActivity
 
 shape_list = [(1024, 8)]
