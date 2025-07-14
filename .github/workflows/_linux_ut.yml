@@ -67,6 +67,7 @@ jobs:
             log_prefix: 'op_regression'
             timeout: 8000
             additional_steps: |
+              clinfo --list
               pip install pytest pytest-timeout
           - name: 'op_regression_dev1'
             condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
@@ -75,6 +76,7 @@ jobs:
             log_prefix: 'op_regression_dev1'
             timeout: 8000
             additional_steps: |
+              clinfo --list
               unset ZE_AFFINITY_MASK
               pip install pytest pytest-timeout
             runner: 'pvc_e2e'
@@ -258,8 +260,8 @@ jobs:
 
           cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
           echo "UT_NAME=${{ matrix.test.name }}" >> "${GITHUB_ENV}"
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
@@ -476,8 +478,8 @@ jobs:
           python -c "import triton; print(triton.__version__)"
           cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
       - name: Set Ptrace_scope
         if: ${{ always() }}
         run: |
