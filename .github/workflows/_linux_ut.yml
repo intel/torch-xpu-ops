@@ -77,7 +77,7 @@ jobs:
             additional_steps: |
               unset ZE_AFFINITY_MASK
               pip install pytest pytest-timeout
-            runner: 'pytorch-06'
+            runner: 'pvc_e2e'
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
             directory: '../pytorch'
