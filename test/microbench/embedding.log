@@ -1,0 +1,191 @@
+shape: (1024, 8) ; datatype: torch.bfloat16 ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+autograd::engine::evaluate_function: torch::autograd...         0.04%      63.105us        35.19%      60.522ms       3.026ms       0.000us         0.00%      50.773ms       2.539ms            20  
+                        torch::autograd::AccumulateGrad         0.06%      99.755us        35.15%      60.459ms       3.023ms       0.000us         0.00%      50.773ms       2.539ms            20  
+                                             aten::add_        34.85%      59.953ms        35.09%      60.359ms       3.018ms      50.773ms        69.43%      50.773ms       2.539ms            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      50.773ms        69.43%      50.773ms       2.539ms            20  
+autograd::engine::evaluate_function: EmbeddingBackwa...         0.11%     194.734us        52.33%      90.013ms       4.501ms       0.000us         0.00%      21.809ms       1.090ms            20  
+                                     EmbeddingBackward0         0.09%     148.596us        52.22%      89.818ms       4.491ms       0.000us         0.00%      21.809ms       1.090ms            20  
+                               aten::embedding_backward         0.02%      40.503us        52.13%      89.670ms       4.483ms       0.000us         0.00%      21.809ms       1.090ms            20  
+                         aten::embedding_dense_backward         1.84%       3.172ms        52.11%      89.629ms       4.481ms       2.699ms         3.69%      21.809ms       1.090ms            20  
+                                            aten::zeros         0.05%      77.416us         0.91%       1.558ms      77.879us       0.000us         0.00%      13.662ms     683.088us            20  
+                                            aten::zero_         0.03%      44.318us         0.55%     950.853us      47.543us       0.000us         0.00%      13.662ms     683.088us            20  
+                                            aten::fill_         0.30%     517.592us         0.53%     906.535us      45.327us      13.662ms        18.68%      13.662ms     683.088us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      13.662ms        18.68%      13.662ms     683.088us            20  
+                                             pstl::sort        13.38%      23.015ms        24.89%      42.808ms       2.140ms       4.265ms         5.83%       4.265ms     213.272us            20  
+at::native::xpu::SumAndScatterKernelFunctor<c10::BFl...         0.00%       0.000us         0.00%       0.000us       0.000us       2.011ms         2.75%       2.011ms     100.560us            20  
+at::native::xpu::SegmentedRadixSortPairsDownsweepFun...         0.00%       0.000us         0.00%       0.000us       0.000us       1.881ms         2.57%       1.881ms       5.877us           320  
+at::native::xpu::SegmentedRadixSortPairsUpsweepFunct...         0.00%       0.000us         0.00%       0.000us       0.000us       1.331ms         1.82%       1.331ms       4.159us           320  
+at::native::xpu::SegmentedRadixSortPairsScanFunctor<...         0.00%       0.000us         0.00%       0.000us       0.000us       1.054ms         1.44%       1.054ms       3.294us           320  
+                                        aten::embedding         0.10%     178.774us        12.48%      21.473ms       1.074ms       0.000us         0.00%     541.280us      27.064us            20  
+                                     aten::index_select         0.59%       1.019ms        12.34%      21.221ms       1.061ms     541.280us         0.74%     541.280us      27.064us            20  
+at::native::xpu::IndexKernel<at::native::xpu::IndexK...         0.00%       0.000us         0.00%       0.000us       0.000us     541.280us         0.74%     541.280us      27.064us            20  
+at::native::xpu::ComputeGradWeightKernelFunctor<c10:...         0.00%       0.000us         0.00%       0.000us       0.000us     528.480us         0.72%     528.480us      26.424us            20  
+                                            copy_if_xpu         0.60%       1.025ms        18.08%      31.098ms       1.555ms     141.120us         0.19%     482.080us      24.104us            20  
+                                     inclusive_scan_xpu         1.41%       2.433ms         2.00%       3.442ms     172.091us     301.120us         0.41%     301.120us      15.056us            20  
+                                     exclusive_scan_xpu         1.17%       2.017ms         1.72%       2.954ms     147.677us     291.840us         0.40%     291.840us      14.592us            20  
+at::native::xpu::pstl::KSScanKernelFunctor<0, long*,...         0.00%       0.000us         0.00%       0.000us       0.000us     155.360us         0.21%     155.360us       3.884us            40  
+at::native::xpu::pstl::KSScanWithCarrierKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us     152.000us         0.21%     152.000us       7.600us            20  
+at::native::xpu::pstl::KSScanWithCarrierKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us     144.000us         0.20%     144.000us       7.200us            20  
+at::native::xpu::pstl::ScanAccumulateKernelFunctor<l...         0.00%       0.000us         0.00%       0.000us       0.000us     141.600us         0.19%     141.600us       3.540us            40  
+                                             aten::item         0.04%      63.920us        15.91%      27.374ms     456.231us       0.000us         0.00%     127.440us       2.124us            60  
+                              aten::_local_scalar_dense         4.82%       8.291ms        15.88%      27.310ms     455.166us     127.440us         0.17%     127.440us       2.124us            60  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us     127.440us         0.17%     127.440us       2.124us            60  
+                                               itoa_xpu         0.51%     868.850us         0.92%       1.581ms      39.516us     106.400us         0.15%     106.400us       2.660us            40  
+at::native::xpu::pstl::ItoAKernelFunctor<long, long*...         0.00%       0.000us         0.00%       0.000us       0.000us     106.400us         0.15%     106.400us       2.660us            40  
+sycl::_V1::detail::RoundedRangeKernel<sycl::_V1::ite...         0.00%       0.000us         0.00%       0.000us       0.000us      83.840us         0.11%      83.840us       4.192us            20  
+                                    adjacent_difference         0.24%     410.468us         0.45%     779.979us      38.999us      76.160us         0.10%      76.160us       3.808us            20  
+at::native::xpu::pstl::AdjacentDifferenceKernelFunct...         0.00%       0.000us         0.00%       0.000us       0.000us      76.160us         0.10%      76.160us       3.808us            20  
+sycl::_V1::detail::RoundedRangeKernel<sycl::_V1::ite...         0.00%       0.000us         0.00%       0.000us       0.000us      75.840us         0.10%      75.840us       3.792us            20  
+at::native::xpu::pstl::CopyIfKernelFunctor<long, lon...         0.00%       0.000us         0.00%       0.000us       0.000us      74.400us         0.10%      74.400us       3.720us            20  
+                                   transform_first_true         0.26%     453.871us         0.48%     833.468us      41.673us      70.560us         0.10%      70.560us       3.528us            20  
+at::native::xpu::pstl::TransformFirstTrueKernelFunct...         0.00%       0.000us         0.00%       0.000us       0.000us      70.560us         0.10%      70.560us       3.528us            20  
+                                            aten::copy_         0.53%     907.723us         0.87%       1.493ms      74.645us      67.840us         0.09%      67.840us       3.392us            20  
+at::native::xpu::VectorizedElementwiseKernel<2, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      67.840us         0.09%      67.840us       3.392us            20  
+at::native::xpu::pstl::PredictKernelFunctor<long, lo...         0.00%       0.000us         0.00%       0.000us       0.000us      66.720us         0.09%      66.720us       3.336us            20  
+                                          aten::reshape         0.02%      37.540us         0.04%      61.520us       3.076us       0.000us         0.00%       0.000us       0.000us            20  
+                                             aten::view         0.04%      68.949us         0.04%      68.949us       1.149us       0.000us         0.00%       0.000us       0.000us            60  
+                                            aten::empty         0.25%     427.577us         0.48%     828.616us       2.959us       0.000us         0.00%       0.000us       0.000us           280  
+                                          aten::resize_         0.04%      63.984us         0.04%      63.984us       3.199us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch        27.11%      46.628ms        27.11%      46.628ms      34.285us       0.000us         0.00%       0.000us       0.000us          1360  
+                                       aten::empty_like         0.07%     118.826us         0.14%     235.852us       2.948us       0.000us         0.00%       0.000us       0.000us            80  
+                                       urUSMDeviceAlloc         0.23%     401.039us         0.23%     401.039us     401.039us       0.000us         0.00%       0.000us       0.000us             1  
+                                    aten::empty_strided         0.03%      54.240us         0.03%      54.240us       1.356us       0.000us         0.00%       0.000us       0.000us            40  
+                                           aten::select         0.09%     147.269us         0.11%     193.574us       3.226us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.03%      46.305us         0.03%      46.305us       0.772us       0.000us         0.00%       0.000us       0.000us            60  
+                                     urEnqueueUSMMemcpy        11.06%      19.019ms        11.06%      19.019ms     316.989us       0.000us         0.00%       0.000us       0.000us            60  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 172.008ms
+Self XPU time total: 73.123ms
+
+E2E forward time: 0.00003402233123779297
+E2E total time: 0.00383886098861694345
+shape: (1024, 8) ; datatype: torch.float16 ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+autograd::engine::evaluate_function: torch::autograd...         0.03%      63.260us        56.73%     116.203ms       5.810ms       0.000us         0.00%      49.062ms       2.453ms            20  
+                        torch::autograd::AccumulateGrad         0.05%      98.025us        56.70%     116.139ms       5.807ms       0.000us         0.00%      49.062ms       2.453ms            20  
+                                             aten::add_        56.42%     115.572ms        56.65%     116.041ms       5.802ms      49.062ms        68.74%      49.062ms       2.453ms            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      49.062ms        68.74%      49.062ms       2.453ms            20  
+autograd::engine::evaluate_function: EmbeddingBackwa...         0.09%     187.507us        42.33%      86.702ms       4.335ms       0.000us         0.00%      21.802ms       1.090ms            20  
+                                     EmbeddingBackward0         0.07%     141.863us        42.23%      86.515ms       4.326ms       0.000us         0.00%      21.802ms       1.090ms            20  
+                               aten::embedding_backward         0.02%      36.897us        42.16%      86.373ms       4.319ms       0.000us         0.00%      21.802ms       1.090ms            20  
+                         aten::embedding_dense_backward         1.57%       3.215ms        42.15%      86.336ms       4.317ms       2.676ms         3.75%      21.802ms       1.090ms            20  
+                                            aten::zeros         0.03%      63.382us         0.49%     994.813us      49.741us       0.000us         0.00%      13.595ms     679.736us            20  
+                                            aten::zero_         0.02%      35.459us         0.43%     873.418us      43.671us       0.000us         0.00%      13.595ms     679.736us            20  
+                                            aten::fill_         0.24%     499.636us         0.41%     837.959us      41.898us      13.595ms        19.05%      13.595ms     679.736us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      13.595ms        19.05%      13.595ms     679.736us            20  
+                                             pstl::sort        11.59%      23.742ms        28.26%      57.898ms       2.895ms       4.333ms         6.07%       4.333ms     216.632us            20  
+at::native::xpu::SumAndScatterKernelFunctor<c10::Hal...         0.00%       0.000us         0.00%       0.000us       0.000us       1.997ms         2.80%       1.997ms      99.848us            20  
+at::native::xpu::SegmentedRadixSortPairsDownsweepFun...         0.00%       0.000us         0.00%       0.000us       0.000us       1.919ms         2.69%       1.919ms       5.997us           320  
+at::native::xpu::SegmentedRadixSortPairsUpsweepFunct...         0.00%       0.000us         0.00%       0.000us       0.000us       1.339ms         1.88%       1.339ms       4.183us           320  
+at::native::xpu::SegmentedRadixSortPairsScanFunctor<...         0.00%       0.000us         0.00%       0.000us       0.000us       1.075ms         1.51%       1.075ms       3.359us           320  
+at::native::xpu::ComputeGradWeightKernelFunctor<c10:...         0.00%       0.000us         0.00%       0.000us       0.000us     521.440us         0.73%     521.440us      26.072us            20  
+                                        aten::embedding         0.05%     103.231us         0.95%       1.941ms      97.044us       0.000us         0.00%     509.440us      25.472us            20  
+                                     aten::index_select         0.40%     821.759us         0.88%       1.799ms      89.949us     509.440us         0.71%     509.440us      25.472us            20  
+at::native::xpu::IndexKernel<at::native::xpu::IndexK...         0.00%       0.000us         0.00%       0.000us       0.000us     509.440us         0.71%     509.440us      25.472us            20  
+                                            copy_if_xpu         0.47%     959.583us         6.65%      13.630ms     681.502us     139.360us         0.20%     479.120us      23.956us            20  
+                                     inclusive_scan_xpu         1.19%       2.439ms         1.84%       3.779ms     188.951us     299.840us         0.42%     299.840us      14.992us            20  
+                                     exclusive_scan_xpu         0.95%       1.955ms         1.43%       2.924ms     146.212us     290.560us         0.41%     290.560us      14.528us            20  
+at::native::xpu::pstl::KSScanKernelFunctor<0, long*,...         0.00%       0.000us         0.00%       0.000us       0.000us     156.480us         0.22%     156.480us       3.912us            40  
+at::native::xpu::pstl::KSScanWithCarrierKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us     150.400us         0.21%     150.400us       7.520us            20  
+at::native::xpu::pstl::KSScanWithCarrierKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us     142.720us         0.20%     142.720us       7.136us            20  
+at::native::xpu::pstl::ScanAccumulateKernelFunctor<l...         0.00%       0.000us         0.00%       0.000us       0.000us     140.800us         0.20%     140.800us       3.520us            40  
+                                             aten::item         0.03%      63.019us         4.51%       9.248ms     154.128us       0.000us         0.00%     127.680us       2.128us            60  
+                              aten::_local_scalar_dense         0.84%       1.722ms         4.48%       9.185ms     153.078us     127.680us         0.18%     127.680us       2.128us            60  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us     127.680us         0.18%     127.680us       2.128us            60  
+                                               itoa_xpu         0.40%     810.564us         0.76%       1.565ms      39.118us     127.360us         0.18%     127.360us       3.184us            40  
+at::native::xpu::pstl::ItoAKernelFunctor<long, long*...         0.00%       0.000us         0.00%       0.000us       0.000us     127.360us         0.18%     127.360us       3.184us            40  
+sycl::_V1::detail::RoundedRangeKernel<sycl::_V1::ite...         0.00%       0.000us         0.00%       0.000us       0.000us      83.360us         0.12%      83.360us       4.168us            20  
+                                    adjacent_difference         0.20%     404.327us         0.38%     773.640us      38.682us      77.440us         0.11%      77.440us       3.872us            20  
+at::native::xpu::pstl::AdjacentDifferenceKernelFunct...         0.00%       0.000us         0.00%       0.000us       0.000us      77.440us         0.11%      77.440us       3.872us            20  
+sycl::_V1::detail::RoundedRangeKernel<sycl::_V1::ite...         0.00%       0.000us         0.00%       0.000us       0.000us      74.240us         0.10%      74.240us       3.712us            20  
+at::native::xpu::pstl::CopyIfKernelFunctor<long, lon...         0.00%       0.000us         0.00%       0.000us       0.000us      73.280us         0.10%      73.280us       3.664us            20  
+                                   transform_first_true         0.22%     444.229us         0.40%     817.116us      40.856us      69.920us         0.10%      69.920us       3.496us            20  
+at::native::xpu::pstl::TransformFirstTrueKernelFunct...         0.00%       0.000us         0.00%       0.000us       0.000us      69.920us         0.10%      69.920us       3.496us            20  
+                                            aten::copy_         0.39%     791.341us         0.67%       1.374ms      68.680us      66.240us         0.09%      66.240us       3.312us            20  
+at::native::xpu::VectorizedElementwiseKernel<2, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      66.240us         0.09%      66.240us       3.312us            20  
+at::native::xpu::pstl::PredictKernelFunctor<long, lo...         0.00%       0.000us         0.00%       0.000us       0.000us      66.080us         0.09%      66.080us       3.304us            20  
+                                          aten::reshape         0.01%      20.361us         0.02%      31.532us       1.577us       0.000us         0.00%       0.000us       0.000us            20  
+                                             aten::view         0.02%      49.516us         0.02%      49.516us       0.825us       0.000us         0.00%       0.000us       0.000us            60  
+                                            aten::empty         0.17%     353.593us         0.17%     353.593us       1.263us       0.000us         0.00%       0.000us       0.000us           280  
+                                          aten::resize_         0.03%      58.286us         0.03%      58.286us       2.914us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch        20.70%      42.396ms        20.70%      42.396ms      31.174us       0.000us         0.00%       0.000us       0.000us          1360  
+                                       aten::empty_like         0.05%     107.081us         0.11%     224.559us       2.807us       0.000us         0.00%       0.000us       0.000us            80  
+                                    aten::empty_strided         0.03%      52.058us         0.03%      52.058us       1.301us       0.000us         0.00%       0.000us       0.000us            40  
+                                           aten::select         0.07%     134.509us         0.09%     176.941us       2.949us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.02%      42.432us         0.02%      42.432us       0.707us       0.000us         0.00%       0.000us       0.000us            60  
+                                     urEnqueueUSMMemcpy         3.64%       7.462ms         3.64%       7.462ms     124.370us       0.000us         0.00%       0.000us       0.000us            60  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 204.846ms
+Self XPU time total: 71.373ms
+
+E2E forward time: 0.00003380775451660157
+E2E total time: 0.00373077392578125000
+shape: (1024, 8) ; datatype: torch.float32 ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+autograd::engine::evaluate_function: torch::autograd...         0.04%      58.143us         0.80%       1.177ms      58.857us       0.000us         0.00%      97.073ms       4.854ms            20  
+                        torch::autograd::AccumulateGrad         0.06%      88.441us         0.76%       1.119ms      55.949us       0.000us         0.00%      97.073ms       4.854ms            20  
+                                             aten::add_         0.46%     668.596us         0.70%       1.031ms      51.527us      97.073ms        72.32%      97.073ms       4.854ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      97.073ms        72.32%      97.073ms       4.854ms            20  
+autograd::engine::evaluate_function: EmbeddingBackwa...         0.11%     158.808us        98.00%     143.655ms       7.183ms       0.000us         0.00%      36.657ms       1.833ms            20  
+                                     EmbeddingBackward0         0.09%     127.896us        97.89%     143.497ms       7.175ms       0.000us         0.00%      36.657ms       1.833ms            20  
+                               aten::embedding_backward         0.02%      34.412us        97.80%     143.369ms       7.168ms       0.000us         0.00%      36.657ms       1.833ms            20  
+                         aten::embedding_dense_backward         2.01%       2.949ms        97.78%     143.334ms       7.167ms       2.670ms         1.99%      36.657ms       1.833ms            20  
+                                            aten::zeros         0.04%      59.858us         1.86%       2.721ms     136.057us       0.000us         0.00%      28.585ms       1.429ms            20  
+                                            aten::zero_         0.02%      34.432us         1.41%       2.069ms     103.430us       0.000us         0.00%      28.585ms       1.429ms            20  
+                                            aten::fill_         0.32%     474.215us         1.39%       2.034ms     101.709us      28.585ms        21.29%      28.585ms       1.429ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      28.585ms        21.29%      28.585ms       1.429ms            20  
+                                             pstl::sort        15.35%      22.504ms        45.76%      67.075ms       3.354ms       4.220ms         3.14%       4.220ms     210.984us            20  
+at::native::xpu::SumAndScatterKernelFunctor<float, l...         0.00%       0.000us         0.00%       0.000us       0.000us       1.989ms         1.48%       1.989ms      99.448us            20  
+at::native::xpu::SegmentedRadixSortPairsDownsweepFun...         0.00%       0.000us         0.00%       0.000us       0.000us       1.839ms         1.37%       1.839ms       5.748us           320  
+at::native::xpu::SegmentedRadixSortPairsUpsweepFunct...         0.00%       0.000us         0.00%       0.000us       0.000us       1.320ms         0.98%       1.320ms       4.125us           320  
+at::native::xpu::SegmentedRadixSortPairsScanFunctor<...         0.00%       0.000us         0.00%       0.000us       0.000us       1.060ms         0.79%       1.060ms       3.314us           320  
+at::native::xpu::ComputeGradWeightKernelFunctor<floa...         0.00%       0.000us         0.00%       0.000us       0.000us     521.280us         0.39%     521.280us      26.064us            20  
+                                        aten::embedding         0.06%      91.635us         1.20%       1.757ms      87.841us       0.000us         0.00%     504.160us      25.208us            20  
+                                     aten::index_select         0.50%     727.839us         1.11%       1.630ms      81.513us     504.160us         0.38%     504.160us      25.208us            20  
+at::native::xpu::IndexKernel<at::native::xpu::IndexK...         0.00%       0.000us         0.00%       0.000us       0.000us     504.160us         0.38%     504.160us      25.208us            20  
+                                            copy_if_xpu         1.10%       1.610ms        38.17%      55.949ms       2.797ms     139.840us         0.10%     480.080us      24.004us            20  
+                                     inclusive_scan_xpu         1.64%       2.405ms         5.12%       7.499ms     374.938us     299.680us         0.22%     299.680us      14.984us            20  
+                                     exclusive_scan_xpu         1.82%       2.661ms         2.48%       3.640ms     182.009us     291.680us         0.22%     291.680us      14.584us            20  
+at::native::xpu::pstl::KSScanKernelFunctor<0, long*,...         0.00%       0.000us         0.00%       0.000us       0.000us     157.440us         0.12%     157.440us       3.936us            40  
+at::native::xpu::pstl::KSScanWithCarrierKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us     151.200us         0.11%     151.200us       7.560us            20  
+at::native::xpu::pstl::KSScanWithCarrierKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us     142.080us         0.11%     142.080us       7.104us            20  
+at::native::xpu::pstl::ScanAccumulateKernelFunctor<l...         0.00%       0.000us         0.00%       0.000us       0.000us     140.640us         0.10%     140.640us       3.516us            40  
+                                             aten::item         0.04%      53.063us        30.49%      44.700ms     744.999us       0.000us         0.00%     128.800us       2.147us            60  
+                              aten::_local_scalar_dense         2.94%       4.314ms        30.46%      44.647ms     744.115us     128.800us         0.10%     128.800us       2.147us            60  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us     128.800us         0.10%     128.800us       2.147us            60  
+                                               itoa_xpu         0.51%     747.271us         1.82%       2.668ms      66.696us     105.920us         0.08%     105.920us       2.648us            40  
+at::native::xpu::pstl::ItoAKernelFunctor<long, long*...         0.00%       0.000us         0.00%       0.000us       0.000us     105.920us         0.08%     105.920us       2.648us            40  
+sycl::_V1::detail::RoundedRangeKernel<sycl::_V1::ite...         0.00%       0.000us         0.00%       0.000us       0.000us      83.840us         0.06%      83.840us       4.192us            20  
+                                    adjacent_difference         0.27%     393.281us         1.34%       1.959ms      97.963us      81.600us         0.06%      81.600us       4.080us            20  
+at::native::xpu::pstl::AdjacentDifferenceKernelFunct...         0.00%       0.000us         0.00%       0.000us       0.000us      81.600us         0.06%      81.600us       4.080us            20  
+sycl::_V1::detail::RoundedRangeKernel<sycl::_V1::ite...         0.00%       0.000us         0.00%       0.000us       0.000us      75.520us         0.06%      75.520us       3.776us            20  
+at::native::xpu::pstl::CopyIfKernelFunctor<long, lon...         0.00%       0.000us         0.00%       0.000us       0.000us      73.440us         0.05%      73.440us       3.672us            20  
+                                   transform_first_true         0.30%     441.904us         1.40%       2.057ms     102.856us      69.760us         0.05%      69.760us       3.488us            20  
+at::native::xpu::pstl::TransformFirstTrueKernelFunct...         0.00%       0.000us         0.00%       0.000us       0.000us      69.760us         0.05%      69.760us       3.488us            20  
+at::native::xpu::pstl::PredictKernelFunctor<long, lo...         0.00%       0.000us         0.00%       0.000us       0.000us      66.400us         0.05%      66.400us       3.320us            20  
+                                            aten::copy_         0.44%     640.269us         0.79%       1.159ms      57.964us      66.240us         0.05%      66.240us       3.312us            20  
+at::native::xpu::VectorizedElementwiseKernel<2, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      66.240us         0.05%      66.240us       3.312us            20  
+                                          aten::reshape         0.01%      19.770us         0.02%      26.954us       1.348us       0.000us         0.00%       0.000us       0.000us            20  
+                                             aten::view         0.03%      42.190us         0.03%      42.190us       0.703us       0.000us         0.00%       0.000us       0.000us            60  
+                                            aten::empty         0.25%     363.067us         0.59%     867.995us       3.100us       0.000us         0.00%       0.000us       0.000us           280  
+                                          aten::resize_         0.04%      60.085us         0.04%      60.085us       3.004us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch        43.46%      63.706ms        43.46%      63.706ms      46.843us       0.000us         0.00%       0.000us       0.000us          1360  
+                                       aten::empty_like         0.06%      93.525us         0.13%     196.839us       2.460us       0.000us         0.00%       0.000us       0.000us            80  
+                                       urUSMDeviceAlloc         0.34%     504.928us         0.34%     504.928us     504.928us       0.000us         0.00%       0.000us       0.000us             1  
+                                    aten::empty_strided         0.03%      50.175us         0.03%      50.175us       1.254us       0.000us         0.00%       0.000us       0.000us            40  
+                                           aten::select         0.09%     134.088us         0.12%     174.287us       2.905us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.03%      40.199us         0.03%      40.199us       0.670us       0.000us         0.00%       0.000us       0.000us            60  
+                                     urEnqueueUSMMemcpy        27.51%      40.333ms        27.51%      40.333ms     672.219us       0.000us         0.00%       0.000us       0.000us            60  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 146.589ms
+Self XPU time total: 134.234ms
+
+E2E forward time: 0.00003573894500732422
+E2E total time: 0.00695725679397582973

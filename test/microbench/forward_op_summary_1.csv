@@ -1,0 +1,4 @@
+case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;padding_mode;align_corners;shifts;affine;backward;time(us);E2E forward time(us);E2E total time(us)
+embedding;torch.bfloat16;embedding_backward;(1024, 8);;;;;;;;;;;;;;;;True;1090.0;34.022331237792976;3838.8609886169434
+embedding;torch.float16;embedding_backward;(1024, 8);;;;;;;;;;;;;;;;True;1090.0;33.80775451660157;3730.77392578125
+embedding;torch.float32;embedding_backward;(1024, 8);;;;;;;;;;;;;;;;True;183.0;35.73894500732422;6957.25679397583

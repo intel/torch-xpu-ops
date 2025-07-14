@@ -4,7 +4,6 @@ from torch.profiler import profile, ProfilerActivity
 device = "xpu"
 
 shape_list = [
-    (8, 512, 7, 7, (1, 1)),
     (8, 512, 32, 32, (7, 7)),
     (8, 256, 56, 56, (14, 14)),
 ]

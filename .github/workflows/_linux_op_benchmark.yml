@@ -116,10 +116,11 @@ jobs:
           do
             python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
+          pip install pandas openpyxl
           # Summary forward op time
-          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
+          python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
-          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv True
+          python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --backward
       - name: Download OP Baseline
         continue-on-error: true
         id: reference_id
