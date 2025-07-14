@@ -72,7 +72,7 @@ def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
                 preceding_shape_idx = bisect.bisect_right(shape_positions, time_pos) - 1
                 if preceding_shape_idx >= 0:
                     E2E_forward_times.append((preceding_shape_idx, time_val))
-            
+
             e2e_total_time_matches = re.finditer(r"E2E total time:\s*(\d+\.?\d*)", content)
             for match in e2e_total_time_matches:
                 time_val = float(match.group(1)) * 1_000_000
@@ -105,7 +105,7 @@ def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
                 preceding_shape_idx = bisect.bisect_right(shape_positions, time_pos) - 1
                 if preceding_shape_idx >= 0:
                     time_matches.append((time, unit, preceding_shape_idx))
-            
+
              # Create mappings from shape index to E2E times
             shape_to_e2e_forward = {}
             for shape_idx, time in E2E_forward_times:
@@ -123,19 +123,18 @@ def parse_logs(log_dir: str, get_backward: bool = False) -> pd.DataFrame:
                 time_us = convert_to_us(float(time), unit)
                 if time_us == 0:
                     continue
-                    
+
                 shape_text = shape_lines[shape_idx]
                 if shape_idx in processed_shapes:
                     continue
                 processed_shapes.add(shape_idx)
-                
                 params = extract_params(shape_text)
 
                 if get_backward and params.get("backward", "False") == "False":
                     continue
 
                 record = create_record(params, case_name, op_name, str(get_backward), time_us)
-                
+
                 # Add E2E times if available for this specific shape
                 if has_e2e_forward:
                     record["E2E forward time(us)"] = shape_to_e2e_forward.get(shape_idx, "")

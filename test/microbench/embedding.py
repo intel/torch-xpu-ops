@@ -1,6 +1,5 @@
-import torch
 import time
-import timeit
+import torch
 from torch.profiler import profile, ProfilerActivity
 
 shape_list = [(1024, 8)]
@@ -38,7 +37,7 @@ for shape in shape_list:
             output = emb(input)
         torch.xpu.synchronize()
         t2 = time.time()
-        e2e_forward_time = (t2-t1) / num_iter
+        e2e_forward_time = (t2 - t1) / num_iter
         print("E2E forward time:", f"{float(e2e_forward_time):.20f}")
 
         torch.xpu.synchronize()
@@ -48,5 +47,5 @@ for shape in shape_list:
             output.backward(grad)
         torch.xpu.synchronize()
         t4 = time.time()
-        e2e_total_time = (t4-t3) / num_iter
+        e2e_total_time = (t4 - t3) / num_iter
         print("E2E total time:", f"{float(e2e_total_time):.20f}")
