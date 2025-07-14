@@ -11,6 +11,7 @@
 #include <ATen/ops/_linalg_check_errors_native.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/from_blob.h>
+#include <ATen/ops/zeros_like.h>
 
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
@@ -40,6 +41,18 @@ static oneapi::mkl::transpose to_blas_(TransposeType trans) {
 void error_handle(int32_t* infos, const oneapi::mkl::lapack::batch_error& be) {
   auto errs = be.exceptions();
   auto ids = be.ids();
+
+  if (!errs.size()) {
+    std::cout << "Cathed lapack exception:"
+              << "\nWhat: " << be.what() << "\nInfo: " << be.info()
+              << std::endl;
+    for (auto& i : ids) {
+      std::cout << "Error in martix #" << i << std::endl;
+      infos[i] = 1;
+    }
+    return;
+  }
+
   for (auto& i : ids) {
     try {
       std::rethrow_exception(errs[i]);
@@ -529,8 +542,8 @@ void lu_factor_mkl(
       "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
 
   // handle the info
-  info.zero_();
-  int32_t* infos_data = info.data_ptr<int32_t>();
+  Tensor info_ = at::zeros_like(info, Device(at::kCPU));
+  int32_t* infos_data = info_.data_ptr<int32_t>();
 
   // oneMKL requires Long for pivots but PyTorch provides Int
   Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
@@ -539,7 +552,8 @@ void lu_factor_mkl(
     apply_lu_xpu_<scalar_t>(LU, pivots_, infos_data);
   });
 
-  // Copy to original pivots tensor
+  // Copy to original info and pivots tensor
+  info.copy_(info_);
   pivots.copy_(pivots_);
 }
 
