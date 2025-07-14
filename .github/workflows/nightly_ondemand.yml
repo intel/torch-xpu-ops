@@ -349,7 +349,7 @@ jobs:
         if: ${{ env.run_type != 'on-demand' }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
-            sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+            sed "s/Inductor-${{ env.run_type }}-LTS-XPU-E2E:.*/Inductor-${{ env.run_type }}-LTS-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
           gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
 
   Windows-Nightly-Ondemand-UT-Tests:

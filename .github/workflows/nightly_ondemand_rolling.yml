@@ -331,7 +331,7 @@ jobs:
             artifact_type="${{ env.run_type }}"
           fi
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
-            --json body -q .body |grep "Inductor-${artifact_type}-LTS-XPU-E2E" |sed 's/.*: *//')"
+            --json body -q .body |grep "Inductor-${artifact_type}-Rolling-XPU-E2E" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           rm -rf reference && mv Inductor-*-XPU-E2E-* reference
       - name: Summarize archieve files
