@@ -757,8 +757,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
       -1, // globalRankStride
       this->getSize(), // worldSize
       "N/A", // async_op
-      "N/A" // reductionOp
-  );
+      "N/A"); // reductionOp
 
   auto ret = pointToPoint(
       tensor,
@@ -809,8 +808,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
       -1, // globalRankStride
       this->getSize(), // worldSize
       "N/A", // async_op
-      "N/A" // reductionOp
-  );
+      "N/A"); // reductionOp
 
   auto ret = pointToPoint(
       tensor,
@@ -897,8 +895,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
       -1, // globalRankStride
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
-      "N/A" // reductionOp
-  );
+      "N/A"); // reductionOp
 
   auto inputs = std::vector<at::Tensor>{inputTensor};
   return collective(
