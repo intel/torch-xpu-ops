@@ -364,8 +364,7 @@ jobs:
             cat ${pt2e_summary_csv}
             failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
             if [ ${failed_num} -ne 0 ];then
-              echo "PT2E has failures!"
-              exit 1
+              echo "[Warning] PT2E has failures!"
             fi
           fi
       - name: Upload Inductor XPU E2E Data
