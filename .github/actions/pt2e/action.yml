@@ -132,7 +132,7 @@ runs:
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               rm -rf pt2e-performance/.userbenchmark
               ${cmd_line} -m ${model_name} 2>&1 |tee "${pt2e_logs_dir}/performance-float32.log" || true
-              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark 2>&1 |tail -n 1 |awk -v m="${model_name}" '
+              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo $?) 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
                       END{printf("Performance,%s,float32,%s\n", m, fps) }' >> ${pt2e_logs_dir}/summary.csv
@@ -140,13 +140,13 @@ runs:
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=ASYMM ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-ASYMM.log" || true
-              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark 2>&1 |tail -n 1 |awk -v m="${model_name}" '
+              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo $?) 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
                       END{printf("Performance,%s,ASYMM,%s\n", m, fps) }' >> ${pt2e_logs_dir}/summary.csv
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=SYMM  ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-SYMM.log" || true
-              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark 2>&1 |tail -n 1 |awk -v m="${model_name}" '
+              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo $?) 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
                       END{printf("Performance,%s,SYMM,%s\n", m, fps) }' >> ${pt2e_logs_dir}/summary.csv
