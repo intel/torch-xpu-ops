@@ -60,8 +60,9 @@ def display_comparison(results, threshold, xpu_file):
     else:
         direction = "Operation"
 
-    regression = results[results['change'] == '↓']
-    improvement = results[results['change'] == '↑']
+    results['diff_float'] = results['difference'].str.rstrip('%').astype(float)
+    regression = results[results['change'] == '↓'].sort_values('diff_float', ascending=False)
+    improvement = results[results['change'] == '↑'].sort_values('diff_float')
 
     if not regression.empty:
         print("\n🔴 Regression:")
