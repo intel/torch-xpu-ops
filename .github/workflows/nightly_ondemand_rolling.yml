@@ -32,4 +32,15 @@ jobs:
     steps:
       - name: Checkout repository
         run: |
-          hostname
+          docker images
+          docker ps -a
+      - name: Nightly Timm_models FP16 Training Accuracy Test
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          suite: timm_models
+          dt: float16
+          mode: training
+          scenario: accuracy
+          pytorch: nightly_wheel
+          env_prepare: true
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
