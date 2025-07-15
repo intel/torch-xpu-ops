@@ -45,7 +45,7 @@ def _do_test(loss, input, target, dtype, device):
             output.backward(grad_output)
     print(prof.key_averages().table(sort_by="xpu_time_total"))
 
-    # E2E time 
+    # E2E time
     torch.xpu.synchronize()
     t1 = time.time()
     for i in range(num_iter):

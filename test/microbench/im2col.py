@@ -42,8 +42,8 @@ for shape in shape_list:
         t1 = time.time()
         for i in range(num_iter):
             output = torch.nn.functional.unfold(
-                    input, kernel_size, dilation=dilation, padding=1, stride=1
-                )
+                input, kernel_size, dilation=dilation, padding=1, stride=1
+            )
             if backward:
                 torch.autograd.grad(
                     output, input, grad_outputs=torch.ones_like(output)

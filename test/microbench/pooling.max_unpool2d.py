@@ -95,9 +95,7 @@ if __name__ == "__main__":
                 torch.xpu.synchronize()
                 t1 = time.time()
                 for i in range(num_iter):
-                    maxUnpool2d(
-                        shape, dtype, device, channels_last, backward=backward
-                    )
+                    maxUnpool2d(shape, dtype, device, channels_last, backward=backward)
                 torch.xpu.synchronize()
                 t2 = time.time()
                 e2e_forward_time = (t2 - t1) / num_iter

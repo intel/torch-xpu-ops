@@ -59,8 +59,8 @@ for shape in shape_list:
                 t1 = time.time()
                 for i in range(num_iter):
                     output = torch.nn.utils.rnn.pad_sequence(
-                            ([a, b, c]), batch_first, padding_value
-                        )
+                        ([a, b, c]), batch_first, padding_value
+                    )
                     if backward:
                         gy = torch.empty_like(output)
                         output.backward(gy)

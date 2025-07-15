@@ -58,8 +58,8 @@ for shape in shape_list:
         t1 = time.time()
         for i in range(num_iter):
             output = torch.nn.functional.fold(
-                    input, output_size, kernel_size, dilation, 1, 1
-                )
+                input, output_size, kernel_size, dilation, 1, 1
+            )
             if backward:
                 torch.autograd.grad(
                     output, input, grad_outputs=torch.ones_like(output)
