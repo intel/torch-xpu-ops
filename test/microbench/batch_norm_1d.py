@@ -7,7 +7,7 @@ device = "xpu"
 num_iter = 20
 shape_list = [((64, 8), (8)), ((4, 128, 15000), (128)), ((4, 256, 512), (256))]
 
-for dtype in [torch.bfloat16, torch.float16, torch.float12]:
+for dtype in [torch.bfloat16, torch.float16, torch.float32]:
     for shape in shape_list:
         backward = True
         # input
