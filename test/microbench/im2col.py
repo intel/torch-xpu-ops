@@ -45,9 +45,7 @@ for shape in shape_list:
                 input, kernel_size, dilation=dilation, padding=1, stride=1
             )
             if backward:
-                torch.autograd.grad(
-                    output, input, grad_outputs=torch.ones_like(output)
-                )
+                torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
         torch.xpu.synchronize()
         t2 = time.time()
         e2e_forward_time = (t2 - t1) / num_iter

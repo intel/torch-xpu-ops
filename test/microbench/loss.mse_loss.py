@@ -58,6 +58,7 @@ def _do_test(loss, input, target, dtype, device):
     e2e_forward_time = (t2 - t1) / num_iter
     print("E2E forward time:", f"{float(e2e_forward_time):.20f}")
 
+
 for shape in shape_list:
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
         for reduce in ["none", "mean"]:
