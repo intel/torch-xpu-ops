@@ -136,14 +136,14 @@ jobs:
 
           cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
       - name: Run XPU OP Regression
         if: contains(inputs.ut, 'op_regression')
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression
-          xpu-smi discovery
+          clinfo --list
           source activate xpu_op_${ZE_AFFINITY_MASK}
           cd ${{ github.workspace }}
           cd test/regressions
@@ -157,7 +157,7 @@ jobs:
         run: |
           cd ${{ github.workspace }}
           mkdir -p ut_log/op_regression_dev1
-          xpu-smi discovery
+          clinfo --list
           source activate xpu_op_${ZE_AFFINITY_MASK}
           unset ZE_AFFINITY_MASK
           cd ${{ github.workspace }}
@@ -461,8 +461,8 @@ jobs:
           python -c "import triton; print(triton.__version__)"
           cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
       - name: Set Ptrace_scope
         if: ${{ always() }}
         run: |
