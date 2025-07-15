@@ -60,6 +60,7 @@ if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]]; then
 fi
 
 ulimit -n 1048576
+export ONEDNN_VERBOSE=1
 ZE_AFFINITY_MASK=${CARD} \
     eval python benchmarks/dynamo/"${SUITE}".py --"${SCENARIO}" --"${Real_DT}" -d "${DEVICE}" -n10 "${DT_extra}" "${Mode_extra}" \
     "${Shape_extra}" "${partition_flags}" "${Model_only_extra}" --backend=inductor --cold-start-latency --timeout=10800 \
