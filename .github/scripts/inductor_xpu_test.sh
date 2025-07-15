@@ -21,6 +21,7 @@ Model_only_extra=""
 if [[ -n "$MODEL_ONLY" ]]; then
     echo "Testing model ${MODEL_ONLY}"
     Model_only_extra="--only ${MODEL_ONLY}"
+    LOG_NAME+="_${MODEL_ONLY}"
 fi
 
 Cur_Ver=$(pip list | grep "^torch " | awk '{print $2}' | cut -d"+" -f 1)
