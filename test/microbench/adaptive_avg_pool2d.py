@@ -11,6 +11,7 @@ shape_list = [
 ]
 num_iter = 20
 
+
 def Adaptive_AVGPool2d(shape, dtype, channels_last, backward):
     N, C, H, W, output_size = (
         shape[0],

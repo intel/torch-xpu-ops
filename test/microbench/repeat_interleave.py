@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
@@ -7,6 +9,7 @@ shape_list = [
 ]
 device = "xpu"
 backward = False
+num_iter = 20
 
 for shape in shape_list:
     for repeats in [8]:
@@ -39,10 +42,23 @@ for shape in shape_list:
                     activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                     record_shapes=True,
                 ) as prof:
-                    for i in range(20):
+                    for i in range(num_iter):
                         output = torch.repeat_interleave(input, repeats, dim)
 
                         if backward:
                             gy = torch.empty_like(output)
                             output.backward(gy)
                 print(prof.key_averages().table(sort_by="xpu_time_total"))
+
+                # E2E time
+                torch.xpu.synchronize()
+                t1 = time.time()
+                for i in range(num_iter):
+                    output = torch.repeat_interleave(input, repeats, dim)
+                    if backward:
+                        gy = torch.empty_like(output)
+                        output.backward(gy)
+                torch.xpu.synchronize()
+                t2 = time.time()
+                e2e_forward_time = (t2 - t1) / num_iter
+                print("E2E forward time:", f"{float(e2e_forward_time):.20f}")

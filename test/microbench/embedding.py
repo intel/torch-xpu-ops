@@ -36,17 +36,8 @@ for shape in shape_list:
         t1 = time.time()
         for i in range(num_iter):
             output = emb(input)
+            output.backward(grad)
         torch.xpu.synchronize()
         t2 = time.time()
         e2e_forward_time = (t2 - t1) / num_iter
         print("E2E forward time:", f"{float(e2e_forward_time):.20f}")
-
-        torch.xpu.synchronize()
-        t3 = time.time()
-        for i in range(num_iter):
-            output = emb(input)
-            output.backward(grad)
-        torch.xpu.synchronize()
-        t4 = time.time()
-        e2e_total_time = (t4 - t3) / num_iter
-        print("E2E total time:", f"{float(e2e_total_time):.20f}")
