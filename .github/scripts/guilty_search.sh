@@ -12,7 +12,7 @@ done
 
 # Clean WORKSPACE
 mkdir -p ${WORKSPACE}
-rm -rf ${WORKSPACE}/* || sudo rm -rf ${WORKSPACE}/*
+rm -rf "${WORKSPACE:?}/"* || sudo rm -rf "${WORKSPACE:?}/"*
 
 # Build pytorch
 pip uninstall -y torch
