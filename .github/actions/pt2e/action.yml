@@ -99,7 +99,7 @@ runs:
         set -xe
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
-        echo "Mode,Model,Dtype,Result" > ${pt2e_logs_dir}/summary.csv
+        echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
           cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet "
@@ -110,14 +110,14 @@ runs:
               grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
-                      END{printf("Accuracy,%s,float32,%s,%s\n", m, acc1, acc5) }' >> ${pt2e_logs_dir}/summary.csv
+                      END{printf("Accuracy,%s,float32,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               ${cmd_line}  --model_list ${model_name} 2>&1 |tee "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || true
               grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
-                      END{printf("Accuracy,%s,int8,%s,%s\n", m, acc1, acc5) }' >> ${pt2e_logs_dir}/summary.csv
+                      END{printf("Accuracy,%s,int8,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
           done
         fi
@@ -132,24 +132,24 @@ runs:
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               rm -rf pt2e-performance/.userbenchmark
               ${cmd_line} -m ${model_name} 2>&1 |tee "${pt2e_logs_dir}/performance-float32.log" || true
-              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" '
+              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
-                      END{printf("Performance,%s,float32,%s\n", m, fps) }' >> ${pt2e_logs_dir}/summary.csv
+                      END{printf("Performance,%s,float32,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=ASYMM ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-ASYMM.log" || true
-              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" '
+              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
-                      END{printf("Performance,%s,ASYMM,%s\n", m, fps) }' >> ${pt2e_logs_dir}/summary.csv
+                      END{printf("Performance,%s,ASYMM,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
               rm -rf pt2e-performance/.userbenchmark
               XPU_QUANT_CONFIG=SYMM  ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-SYMM.log" || true
-              grep -ir 'eval_throughput' pt2e-performance/.userbenchmark |tail -n 1 |awk -v m="${model_name}" '
+              (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
-                      END{printf("Performance,%s,SYMM,%s\n", m, fps) }' >> ${pt2e_logs_dir}/summary.csv
+                      END{printf("Performance,%s,SYMM,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
           done
         fi
