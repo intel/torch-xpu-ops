@@ -342,17 +342,16 @@ void embedding_bag_sum_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              auto num_wg = bag_num * feature_dim / vec_size /
-                  syclDeviceMaxWorkGroupSize();
-              auto num_xe = syclGpuEuCount() / syclGpuEUCountPerSubslice();
-              if (num_wg < num_xe) {
-                for (int v = vec_size; v != 1; v = v / 2) {
-                  // We only load one weight[i] in one subgroup, otherwise
-                  // memory load cannot be coalesce
-                  if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
-                    vec_size = v;
-                    break;
-                  }
+              int num_sub_wg =
+                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
+              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              for (int v = vec_size; v != 1;
+                   v = v / 2, num_sub_wg = num_sub_wg * 2) {
+                if (2 * num_sub_wg > thread_slots) {
+                  // peak occurancy = num_sub_wg / thread_slots
+                  // it should > 50%
+                  vec_size = v;
+                  break;
                 }
               }
               switch (vec_size) {
@@ -423,17 +422,16 @@ void embedding_bag_mean_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              auto num_wg = bag_num * feature_dim / vec_size /
-                  syclDeviceMaxWorkGroupSize();
-              auto num_xe = syclGpuEuCount() / syclGpuEUCountPerSubslice();
-              if (num_wg < num_xe) {
-                for (int v = vec_size; v != 1; v = v / 2) {
-                  // We only load one weight[i] in one subgroup, otherwise
-                  // memory load cannot be coalesce
-                  if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
-                    vec_size = v;
-                    break;
-                  }
+              int num_sub_wg =
+                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
+              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              for (int v = vec_size; v != 1;
+                   v = v / 2, num_sub_wg = num_sub_wg * 2) {
+                if (2 * num_sub_wg > thread_slots) {
+                  // peak occurancy = num_sub_wg / thread_slots
+                  // it should > 50%
+                  vec_size = v;
+                  break;
                 }
               }
               switch (vec_size) {
@@ -503,17 +501,16 @@ void embedding_bag_max_template(
               int vec_size = memory::can_vectorize_up_to<scalar_t>(
                   (char*)weights.const_data_ptr());
               vec_size = feature_dim % vec_size == 0 ? vec_size : 1;
-              auto num_wg = bag_num * feature_dim / vec_size /
-                  syclDeviceMaxWorkGroupSize();
-              auto num_xe = syclGpuEuCount() / syclGpuEUCountPerSubslice();
-              if (num_wg < num_xe) {
-                for (int v = vec_size; v != 1; v = v / 2) {
-                  // We only load one weight[i] in one subgroup, otherwise
-                  // memory load cannot be coalesce
-                  if (feature_dim % v == 0 && (feature_dim / v) % 32 == 0) {
-                    vec_size = v;
-                    break;
-                  }
+              int num_sub_wg =
+                  bag_num * feature_dim / vec_size / syclMaxSubGroupSize();
+              int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+              for (int v = vec_size; v != 1;
+                   v = v / 2, num_sub_wg = num_sub_wg * 2) {
+                if (2 * num_sub_wg > thread_slots) {
+                  // peak occurancy = num_sub_wg / thread_slots
+                  // it should > 50%
+                  vec_size = v;
+                  break;
                 }
               }
               switch (vec_size) {
