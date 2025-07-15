@@ -33,8 +33,7 @@ drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/508
 functorch_dp_cifar10,fail_accuracy,fail_accuracy,fail_accuracy,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1807
-functorch_maml_omniglot,pass,pass,pass,pass,eager_fail_to_run
+functorch_maml_omniglot,pass,pass,pass,pass,pass
 hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
 hf_Bert,pass,pass,pass,pass,pass
@@ -57,8 +56,7 @@ llama,pass,pass,pass,pass,pass
 llama_v2_7b_16h,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
 llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
-# https://github.com/intel/torch-xpu-ops/issues/1807
-maml_omniglot,pass,pass,pass,pass,eager_fail_to_run
+maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
@@ -90,8 +88,7 @@ sam_fast,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 shufflenet_v2_x1_0,pass,pass,pass,pass,pass
 simple_gpt,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 simple_gpt_tp_manual,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
-# https://github.com/intel/torch-xpu-ops/issues/1806
-soft_actor_critic,pass,pass,pass,pass,eager_fail_to_run
+soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,pass,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass

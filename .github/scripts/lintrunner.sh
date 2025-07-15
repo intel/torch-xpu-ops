@@ -4,7 +4,7 @@ set -ex
 # Creat a venv for lint check
 python3 -m venv lint
 source lint/bin/activate
-python3 -m pip install setuptools
+python3 -m pip install -U pip setuptools wheel
 
 # Use uv to speed up lintrunner init
 python3 -m pip install uv==0.1.45
