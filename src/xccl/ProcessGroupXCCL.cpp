@@ -756,7 +756,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      "N/A"); // async_op
+      "N/A", // async_op
+      "N/A"); // reductionOp
 
   auto ret = pointToPoint(
       tensor,
@@ -806,7 +807,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      "N/A"); // async_op
+      "N/A", // async_op
+      "N/A"); // reductionOp
 
   auto ret = pointToPoint(
       tensor,
@@ -892,7 +894,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   auto inputs = std::vector<at::Tensor>{inputTensor};
   return collective(
@@ -1007,7 +1010,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   const auto root = opts.rootRank;
 
@@ -1136,7 +1140,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
       -1, // globalRankStart
       -1, // globalRankStride
       size_, // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return allreduce_impl(tensor, "xccl:all_reduce", opts);
 }
@@ -1163,7 +1168,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collectiveCoalesced(
       tensors,
@@ -1226,7 +1232,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   const auto root = opts.rootRank + opts.rootTensor;
 
@@ -1318,7 +1325,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collective(
       tensor,
@@ -1428,7 +1436,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   bool same_size = checkSameSize(outputTensors_);
   if (same_size) {
@@ -1516,7 +1525,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   return collective(
       input_tensor,
@@ -1563,7 +1573,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   return collectiveCoalesced(
       inputs,
@@ -1615,7 +1626,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   bool same_size = checkSameSize(inputTensors_);
   if (same_size) {
@@ -1713,7 +1725,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collective(
       inputTensor,
@@ -1771,7 +1784,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collectiveCoalesced(
       inputs,
@@ -1902,7 +1916,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         -1, // globalRankStart
         -1, // globalRankStride
         this->getSize(), // worldSize
-        opts.asyncOp); // async_op
+        opts.asyncOp, // async_op
+        "N/A"); // reductionOp
 
     TORCH_CHECK(
         outputTensor.numel() == inputTensor.numel() &&
@@ -1953,7 +1968,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         -1, // globalRankStart
         -1, // globalRankStride
         this->getSize(), // worldSize
-        opts.asyncOp); // async_op
+        opts.asyncOp, // async_op
+        "N/A"); // reductionOp
 
     return collective(
         inputTensor,
@@ -2030,7 +2046,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       -1, // globalRankStart
       -1, // globalRankStride
       this->getSize(), // worldSize
-      opts.asyncOp); // async_op
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   return collective(
       inputTensors,
