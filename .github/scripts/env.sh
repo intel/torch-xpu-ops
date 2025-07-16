@@ -1,9 +1,11 @@
 #!/bin/bash
 
-source /opt/intel/oneapi/compiler/latest/env/vars.sh
-source /opt/intel/oneapi/pti/latest/env/vars.sh
-source /opt/intel/oneapi/umf/latest/env/vars.sh
-source /opt/intel/oneapi/ccl/latest/env/vars.sh
-source /opt/intel/oneapi/mpi/latest/env/vars.sh
+XPU_ONEAPI_PATH="${XPU_ONEAPI_PATH:-"/opt/intel/oneapi"}"
+
+source ${XPU_ONEAPI_PATH}/compiler/latest/env/vars.sh
+source ${XPU_ONEAPI_PATH}/pti/latest/env/vars.sh
+source ${XPU_ONEAPI_PATH}/umf/latest/env/vars.sh
+source ${XPU_ONEAPI_PATH}/ccl/latest/env/vars.sh
+source ${XPU_ONEAPI_PATH}/mpi/latest/env/vars.sh
 icpx --version
 sycl-ls
