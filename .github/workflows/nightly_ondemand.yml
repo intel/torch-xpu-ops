@@ -29,11 +29,6 @@ on:
         type: string
         default: 'installed'
         description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
-      python:
-        required: false
-        type: string
-        default: '3.10'
-        description: Python version
       ut:
         required: false
         type: string
@@ -129,7 +124,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ github.event_name == 'schedule' && 'pinned' || inputs.triton }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       runner: pvc_rolling
 
   Linux-Nightly-Ondemand-UT-Tests:
@@ -142,7 +137,7 @@ jobs:
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.torch_xpu_ops }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
       runner: linux.idc.xpu
 
@@ -166,7 +161,7 @@ jobs:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -410,7 +405,7 @@ jobs:
     with:
       torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       src_changed: false
       has_label: true
       runner: Windows_CI
