@@ -218,11 +218,11 @@ def process_l1_loss(content: str, case_name: str, data: List, columns: List):
     shape_matches = list(re.finditer(r"(shape\s*[:=].*?)(?=\n\S|$)", content))
     shape_lines = [match.group(0) for match in shape_matches]
     shape_positions = [match.start() for match in shape_matches]
-    
+
     # Parse E2E times if present in columns
     has_e2e_forward = "E2E forward time(us)" in columns
     has_e2e_total = "E2E total time(us)" in columns
-    
+
     # Create mappings from shape index to E2E times
     shape_to_e2e_forward = {}
     shape_to_e2e_total = {}
