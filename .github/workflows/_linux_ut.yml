@@ -7,17 +7,26 @@ on:
         required: false
         type: string
         default: 'main'
-        description: Pytorch branch/commit
-      keep_torch_xpu_ops:
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      torch_xpu_ops:
         required: false
         type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
+        default: 'main'
+        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
         type: string
-        default: ''
-        description: Triton commit. Use pytorch pined commit by default
+        default: 'pinned'
+        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
       ut:
         required: true
         type: string
@@ -28,21 +37,11 @@ on:
         type: string
         default: ''
         description: List disabled tests, such as disable_ut or disable_distributed
-      python:
-        required: false
-        type: string
-        default: '3.10'
-        description: Python version
       runner:
         required: true
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-      driver:
-        required: false
-        type: string
-        default: 'lts'
-        description: Driver lts/rolling
 
 permissions: read-all
 
@@ -53,9 +52,6 @@ jobs:
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -263,7 +259,7 @@ jobs:
           eval $test_cmd 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
             tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
       - name: Run Torch XPU Profile UT
-        if: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }} 
+        if: ${{ contains(inputs.ut, 'xpu_profiling') }}
         run: |
           source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/ut_log/profile_test
@@ -379,9 +375,6 @@ jobs:
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
