@@ -29,9 +29,6 @@ inputs:
     type: string
     default: 'all'
     description: which cards can be used in the test
-  hf_token:
-    required: false
-    description: HUGGING_FACE_HUB_TOKEN for torchbench test
   pytorch:
     required: false
     type: string
@@ -50,23 +47,16 @@ runs:
       if: ${{ inputs.env_prepare }}
       shell: bash
       run: |
-        source activate e2e_ci
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf audio && git clone --single-branch -b main https://github.com/pytorch/audio.git
-            cd audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-          fi
-          cd ../ && python -c "import torch, torchvision, torchaudio"
-          rm -rf benchmark && git clone https://github.com/pytorch/benchmark.git
-          cd benchmark && git checkout $TORCHBENCH_COMMIT_ID
+          python -c "import torch, torchvision, torchaudio"
+          cd ./pytorch
+          TORCHBENCH_COMMIT_ID=$(cat .github/ci_commit_pins/torchbench.txt)
+          git clone https://github.com/pytorch/benchmark.git xpu-benchmark
+          cd xpu-benchmark && git checkout $TORCHBENCH_COMMIT_ID
           # remove deps which will reinstall torch
           pip install --no-deps accelerate
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
           pip install -U transformers==4.44.2
           sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g;s/^transformers.*//g'  requirements.txt
           git status && git diff
@@ -81,28 +71,17 @@ runs:
           pip install -U transformers==4.44.2
         fi
         if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../ && rm -rf vision && git clone --single-branch -b main https://github.com/pytorch/vision.git
-            cd vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-          fi
           # install timm without dependencies
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
           # install timm dependencies without torch and torchvision
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
         fi
-        pip install numpy==1.26.4
+        pip list |grep -E 'intel|torch'
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       shell: bash
       run: |
-        source activate e2e_ci
-        cp .github/scripts/inductor_xpu_test.sh ../pytorch
-        cd ../pytorch
-
+        cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
+        cd ./pytorch
         # check param
         function contains() {
             contains_status="echo 'Start $2 ...'"
@@ -164,18 +143,16 @@ runs:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       shell: bash
       run: |
-        cd ../pytorch
+        cd ./pytorch
         rm -f inductor_log/summary_accuracy.csv
         for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
         do
           sed -i "s/$/,$(basename $var)/" $var
           cat $var >> inductor_log/summary_accuracy.csv
         done
-
-        source activate e2e_ci
         cd ${{ github.workspace }}
-        cp .github/scripts/inductor_summary.py ../pytorch
-        cd ../pytorch
+        cp ./.github/scripts/inductor_summary.py ./pytorch
+        cd ./pytorch
         pip install styleFrame scipy pandas
         set -xe
         dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')

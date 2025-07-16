@@ -13,11 +13,6 @@ on:
         type: string
         default: 'main'
         description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
-      triton:
-        required: false
-        type: string
-        default: 'pinned'
-        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
       oneapi:
         type: string
         default: 'installed'
@@ -75,7 +70,7 @@ jobs:
           git clone https://github.com/pytorch/pytorch pytorch
           source activate xpu_op_${ZE_AFFINITY_MASK}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+            pip install --force-reinstall ${{ github.workspace }}/*.whl
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
             cd ./pytorch
             git checkout ${TORCH_COMMIT_ID}
@@ -102,25 +97,6 @@ jobs:
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
             cd third_party/torch-xpu-ops
             git checkout ${TORCH_XPU_OPS_COMMIT}
-          fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install cmake ninja pybind11
-            rm -rf pytorch_triton_xpu-*.whl
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-            pip install pytorch_triton_xpu-*.whl
           fi
       - name: Torch Config
         run: |
@@ -398,7 +374,7 @@ jobs:
           git clone https://github.com/pytorch/pytorch pytorch
           source activate xpu_op_${ZE_AFFINITY_MASK}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+            pip install --force-reinstall ${{ github.workspace }}/*.whl
             TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
             cd ./pytorch
             git checkout ${TORCH_COMMIT_ID}
@@ -425,25 +401,6 @@ jobs:
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
             cd third_party/torch-xpu-ops
             git checkout ${TORCH_XPU_OPS_COMMIT}
-          fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install cmake ninja pybind11
-            rm -rf pytorch_triton_xpu-*.whl
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-            pip install pytorch_triton_xpu-*.whl
           fi
       - name: Torch Config
         run: |
