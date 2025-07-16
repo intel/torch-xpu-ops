@@ -31,28 +31,20 @@ static std::vector<std::string> TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN = {
     "TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN",
     "XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN"};
 
-static std::vector<std::string> TORCH_XCCL_TRACE_BUFFER_SIZE = {
-    "TORCH_XCCL_TRACE_BUFFER_SIZE",
-    "XCCL_TRACE_BUFFER_SIZE"};
-
 static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = {
     "TORCH_XCCL_COORD_CHECK_MILSEC",
     "XCCL_COORD_CHECK_MILSEC"};
-
-static std::vector<std::string> TORCH_XCCL_DEBUG_INFO_PIPE_FILE = {
-    "TORCH_XCCL_DEBUG_INFO_PIPE_FILE",
-    "XCCL_DEBUG_INFO_PIPE_FILE"};
 
 #if defined(__linux__)
 struct DumpPipe {
   DumpPipe(int rank) {
     std::string fileStem =
-        getCvarString(TORCH_XCCL_DEBUG_INFO_PIPE_FILE, "");
+        getCvarString({"TORCH_FR_DEBUG_INFO_PIPE_FILE"}, "");
     if (fileStem.empty() ||
-        getCvarInt(TORCH_XCCL_TRACE_BUFFER_SIZE, 0) <= 0) {
+        getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0) <= 0) {
       return;
     }
-    TORCH_CHECK(!fileStem.empty(), "TORCH_XCCL_DEBUG_INFO_PIPE_FILE is empty");
+    TORCH_CHECK(!fileStem.empty(), "TORCH_FR_DEBUG_INFO_PIPE_FILE is empty");
     std::string filename = c10::str(fileStem, rank, ".pipe");
     TORCH_CHECK(
         unlink(filename.c_str()) != -1 || errno == ENOENT,
@@ -489,6 +481,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::vector<uint64_t>& groupRanks() const;
 
   void setStartedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void setCompletedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
 
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 

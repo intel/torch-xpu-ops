@@ -345,7 +345,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
-  traceBufferSize_ = getCvarInt(TORCH_XCCL_TRACE_BUFFER_SIZE, 2000);
+  traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
   this->setGroupUid(options_->group_name);
 
   FlightRecorderXCCL::get()->record_pg_ranks(
@@ -378,7 +378,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
   std::lock_guard<std::mutex> lock(writeDebugInfoMutex);
   LOG(ERROR)
       << logPrefix()
-      << "ProcessGroupNCCL preparing to dump debug info. Include stack trace: "
+      << "ProcessGroupXCCL preparing to dump debug info. Include stack trace: "
       << includeStackTrace;
   if (traceBufferSize_ > 0) {
     // TODO: dump_xccl_trace
@@ -387,7 +387,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
         std::unordered_map<std::string, std::string>>();
     auto xcclTrace = FlightRecorderXCCL::get()->dump(
         xcclDumpMap, true, includeStackTrace, false);
-    DebugInfoWriter& writer = DebugInfoWriter::getWriter(local_id_);
+    DebugInfoWriter& writer = DebugInfoWriter::getWriter(rank_);
     LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
               << writer.getWriterTarget();
     writer.write(xcclTrace);
@@ -435,7 +435,7 @@ void ProcessGroupXCCL::HeartbeatMonitor::join() {
   if (xcclHeartbeatMonitorThread_.joinable()) {
     xcclHeartbeatMonitorThread_.join();
     LOG(INFO) << pg_->logPrefix()
-              << "ProcessGroupNCCL heart beat monitor thread joined.";
+              << "ProcessGroupXCCL heart beat monitor thread joined.";
   }
 }
 
@@ -449,7 +449,7 @@ void ProcessGroupXCCL::HeartbeatMonitor::runLoop() {
   std::optional<DumpPipe> dumpPipe = std::nullopt;
   if (pg_->local_id_ == 0) {
     // DumpPipe is one per-trainer process
-    dumpPipe.emplace(pg_->local_id_);
+    dumpPipe.emplace(pg_->rank_);
     while (true) {
       std::unique_lock<std::mutex> lock(monitorMutex_);
       if (monitorWakeUpCV_.wait_for(
@@ -459,6 +459,7 @@ void ProcessGroupXCCL::HeartbeatMonitor::runLoop() {
         return;
       }
       if (dumpPipe.has_value() && dumpPipe->shouldDump()) {
+        LOG(INFO) << pg_->logPrefix() << "Dump signal received through pipe.";
         std::future<bool> fut = std::async(std::launch::async, [this]() {
           return this->pg_->dumpDebuggingInfo();
         });
@@ -646,6 +647,15 @@ void ProcessGroupXCCL::setStartedPgStatus(
   pgStatus_->lastStartedNumelOut = work->numelOut_;
 }
 
+void ProcessGroupXCCL::setCompletedPgStatus(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+  pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
+  pgStatus_->lastCompletedNumelIn = work->numelIn_;
+  pgStatus_->lastCompletedNumelOut = work->numelOut_;
+  FlightRecorderXCCL::get()->retire_id(work->trace_id_, false);
+}
+
 c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   if (coalescedComm_ == nullptr) {
     // There is no actual work being coalesced, return here
@@ -804,6 +814,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
+  work->future_->addCallback(
+      [this, work](at::ivalue::Future&) {
+          this->setCompletedPgStatus(work);
+      }
+      );
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -910,6 +925,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
+    work->future_->addCallback(
+        [this, work](at::ivalue::Future&) {
+            this->setCompletedPgStatus(work);
+        }
+        );
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
     setStartedPgStatus(work);
