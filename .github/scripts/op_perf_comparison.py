@@ -48,17 +48,17 @@ def format_parameters(record):
     return "<br>".join(params)
 
 def display_comparison(results, threshold, xpu_file):
-    if results.empty:
-        print(f"\n No outlier exceeding ({threshold:.0%})")
-        write_to_github_summary(f"## No outlier exceeding ({threshold:.0%})")
-        return
-
     if 'forward' in xpu_file.lower():
         direction = "Forward"
     elif 'backward' in xpu_file.lower():
         direction = "Backward"
     else:
         direction = "Operation"
+
+    if results.empty:
+        print(f"\n {direction} No outlier exceeding ({threshold:.0%})")
+        write_to_github_summary(f"## {direction} No outlier exceeding ({threshold:.0%})")
+        return
 
     results['diff_float'] = results['difference'].str.rstrip('%').astype(float)
     regression = results[results['change'] == '↓'].sort_values('diff_float', ascending=False)

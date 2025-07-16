@@ -215,6 +215,36 @@ def get_op_pattern(base_op_name: str, get_backward: bool) -> tuple:
         return (base_op_name, f"{base_op_name} ")
 
 def process_l1_loss(content: str, case_name: str, data: List, columns: List):
+    shape_matches = list(re.finditer(r"(shape\s*[:=].*?)(?=\n\S|$)", content))
+    shape_lines = [match.group(0) for match in shape_matches]
+    shape_positions = [match.start() for match in shape_matches]
+    
+    # Parse E2E times if present in columns
+    has_e2e_forward = "E2E forward time(us)" in columns
+    has_e2e_total = "E2E total time(us)" in columns
+    
+    # Create mappings from shape index to E2E times
+    shape_to_e2e_forward = {}
+    shape_to_e2e_total = {}
+
+    if has_e2e_forward:
+        e2e_forward_time_matches = re.finditer(r"E2E forward time:\s*(\d+\.?\d*)", content)
+        for match in e2e_forward_time_matches:
+            time_val = float(match.group(1)) * 1_000_000
+            time_pos = match.start()
+            preceding_shape_idx = bisect.bisect_right(shape_positions, time_pos) - 1
+            if preceding_shape_idx >= 0:
+                shape_to_e2e_forward[preceding_shape_idx] = time_val
+
+    if has_e2e_total:
+        e2e_total_time_matches = re.finditer(r"E2E total time:\s*(\d+\.?\d*)", content)
+        for match in e2e_total_time_matches:
+            time_val = float(match.group(1)) * 1_000_000
+            time_pos = match.start()
+            preceding_shape_idx = bisect.bisect_right(shape_positions, time_pos) - 1
+            if preceding_shape_idx >= 0:
+                shape_to_e2e_total[preceding_shape_idx] = time_val
+
     filtered_content = [line for line in content.split('\n') if "autograd::engine" not in line]
     filtered_content = '\n'.join(filtered_content)
     abs_times = re.findall(r"AbsBackward0(?:\s+\S+){8}\s+(\d+\.?\d*)([a-zA-Z]*)", filtered_content)
@@ -227,6 +257,13 @@ def process_l1_loss(content: str, case_name: str, data: List, columns: List):
         time_us = convert_to_us(float(time), unit)
         params = extract_params(shape_lines[i])
         record = create_record(params, case_name, "AbsBackward0", "True", time_us)
+
+        # Add E2E times if available
+        if has_e2e_forward:
+            record["E2E forward time(us)"] = shape_to_e2e_forward.get(i, "")
+        if has_e2e_total:
+            record["E2E total time(us)"] = shape_to_e2e_total.get(i, "")
+
         data.append([record.get(col, "") for col in columns])
 
     for i, (time, unit) in enumerate(mean_times):
@@ -235,6 +272,13 @@ def process_l1_loss(content: str, case_name: str, data: List, columns: List):
         time_us = convert_to_us(float(time), unit)
         params = extract_params(shape_lines[i + 6])
         record = create_record(params, case_name, "MeanBackward0", "True", time_us)
+
+        # Add E2E times if available
+        if has_e2e_forward:
+            record["E2E forward time(us)"] = shape_to_e2e_forward.get(i + 6, "")
+        if has_e2e_total:
+            record["E2E total time(us)"] = shape_to_e2e_total.get(i + 6, "")
+
         data.append([record.get(col, "") for col in columns])
 
 def extract_times(content: str, pattern: str, get_backward: bool) -> List:
