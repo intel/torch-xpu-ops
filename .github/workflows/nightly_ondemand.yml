@@ -3,31 +3,42 @@ name: Nightly-OnDemand Tests
 on:
   schedule:
     # GMT+8 21:00 every workday
-    - cron: '0 13 * * 0-4'
-    # GMT+8 0:00 Saturday
-    - cron: '0 16 * * 5'
+    - cron: '10 13 * * 0-4' # build from source
+    - cron: '30 13 * * 0-4' # nightly wheel
+    # GMT+8 00:00 Saturday
+    - cron: '10 16 * * 5' # build from source
+    - cron: '30 16 * * 5' # nightly wheel
   workflow_dispatch:
     inputs:
       pytorch:
         required: false
         type: string
         default: 'main'
-        description: Pytorch branch/commit
-      keep_torch_xpu_ops:
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      torch_xpu_ops:
         required: false
         type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
-      ut:
-        required: false
-        type: string
-        default: 'torch_xpu'
-        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu,xpu_profiling`. Delimiter is comma
+        default: 'main'
+        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
         type: string
-        default: ''
-        description: Triton commit. Use pytorch pined commit by default
+        default: 'pinned'
+        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      ut:
+        required: false
+        type: string
+        default: 'op_regression'
+        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_profiling,xpu_distributed`. Delimiter is comma
       suite:
         required: true
         type: string
@@ -53,75 +64,120 @@ on:
         type: string
         default: ''
         description: Model. Will only run this one mode if set
-      python:
-        required: false
-        type: string
-        default: '3.10'
-        description: Python version
 
 permissions: read-all
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.ut }}-${{ inputs.triton }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
-  cancel-in-progress: ${{ github.event_name != 'schedule' }}
-
 jobs:
-  Linux-Nightly-Ondemand-Build:
+  Conditions-Filter:
+    name: conditions-filter
     if: ${{ github.repository_owner == 'intel' }}
-    name: linux-nightly-ondemand
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      test_type: ${{ steps.inputs-check.outputs.test_type }}
+      pytorch: ${{ steps.inputs-check.outputs.pytorch }}
+      torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
+    steps:
+      - name: Inputs check
+        id: inputs-check
+        run: |
+          if [ "${{ github.event_name }}" == "schedule" ];then
+            if [ "${{ github.event.schedule }}" == "10 13 * * 0-4" ];then
+              test_type="build-nightly"
+              pytorch="main"
+              torch_xpu_ops="main"
+            elif [ "${{ github.event.schedule }}" == "30 13 * * 0-4" ];then
+              test_type="wheel-nightly"
+              pytorch="nightly_wheel"
+              torch_xpu_ops="pinned"
+            elif [ "${{ github.event.schedule }}" == "10 16 * * 5" ];then
+              test_type="build-weekly"
+              pytorch="main"
+              torch_xpu_ops="main"
+            elif [ "${{ github.event.schedule }}" == "30 16 * * 5" ];then
+              test_type="wheel-weekly"
+              pytorch="nightly_wheel"
+              torch_xpu_ops="pinned"
+            else
+              test_type="unknown"
+              pytorch="main"
+              torch_xpu_ops="main"
+            fi
+          else
+            if [ "${{ inputs.pytorch }}" == "nightly_wheel" ] || [ "${{ inputs.pytorch }}" == "release_wheel" ];then
+              test_type="wheel-ondemand"
+              pytorch="${{ inputs.pytorch }}"
+              torch_xpu_ops="pinned"
+            else
+              test_type="build-ondemand"
+              pytorch="${{ inputs.pytorch }}"
+              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
+            fi
+          fi
+          echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
+          echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}
+          echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
+
+  Linux-Nightly-Ondemand-Build:
+    if: ${{ needs.Conditions-Filter.outputs.pytorch != 'nightly_wheel' && needs.Conditions-Filter.outputs.pytorch != 'release_wheel' }}
+    needs: [Conditions-Filter]
+    name: linux
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      runner: pvc_e2e
+      runner: pvc_rolling
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
-    name: linux-nightly-ondemand
-    needs: Linux-Nightly-Ondemand-Build
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
+    name: linux
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.torch_xpu_ops }}
+      triton: ${{ github.event_name == 'schedule' && 'pinned' || inputs.triton }}
+      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
       runner: linux.idc.xpu
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    runs-on: pvc_e2e
-    name: linux-nightly-ondemand / e2e_test
-    needs: Linux-Nightly-Ondemand-Build
+    runs-on: pvc_rolling
+    name: linux / e2e_test
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     timeout-minutes: 3600
     permissions:
       issues: write
+    container:
+      image: 'xpu:test'
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --privileged --shm-size=8g
     env:
+      AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
       GH_TOKEN: ${{ github.token }}
       reference_issue: 1645
-      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      triton: ${{ github.event_name == 'schedule' && 'pinned' || inputs.triton }}
+      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-      run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 16 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
-    outputs:
-      TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
-      TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
-      DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
-      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
-      BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
-      OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
-      GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
-      TORCHBENCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCHBENCH_COMMIT_ID }}
-      TORCHVISION_COMMIT_ID: ${{ steps.pinned.outputs.TORCHVISION_COMMIT_ID }}
-      TORCHAUDIO_COMMIT_ID: ${{ steps.pinned.outputs.TORCHAUDIO_COMMIT_ID }}
-      TRANSFORMERS_VERSION: ${{ steps.pinned.outputs.TRANSFORMERS_VERSION }}
-      TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
-      TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
-      TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
     steps:
+      - name: Cleanup workspace
+        run: |
+          rm -rf ./* || sudo rm -rf ./*
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Setup python ${{ env.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.python }}
       - name: Prepare Conda ENV
         run: |
           which conda && conda clean -ay
@@ -357,88 +413,9 @@ jobs:
     name: Windows-nightly-ondemand
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       src_changed: false
       has_label: true
       runner: Windows_CI
-
-  Tests-Failure-And-Report:
-    if: ${{ ! cancelled() }}
-    runs-on: [ self-hosted, Linux ]
-    permissions:
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
-    needs: Linux-Nightly-Ondemand-E2E-Tests
-    steps:
-      - name: Report github issue for XPU OPS nightly
-        if: github.repository_owner == 'intel'
-        run: |
-          set -xe
-          # Test env
-          build_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          repo="${{ github.repository }}"
-          TORCH_BRANCH_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_BRANCH_ID }}"
-          TORCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCH_COMMIT_ID }}"
-          DRIVER_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.DRIVER_VERSION }}"
-          KERNEL_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.KERNEL_VERSION }}"
-          BUNDLE_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.BUNDLE_VERSION }}"
-          OS_PRETTY_NAME="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.OS_PRETTY_NAME }}"
-          GCC_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.GCC_VERSION }}"
-          TORCHBENCH_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHBENCH_COMMIT_ID }}"
-          TORCHVISION_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHVISION_COMMIT_ID }}"
-          TORCHAUDIO_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TORCHAUDIO_COMMIT_ID }}"
-          TRANSFORMERS_VERSION="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRANSFORMERS_VERSION }}"
-          TIMM_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMM_COMMIT_ID }}"
-          TRITON_COMMIT_ID="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TRITON_COMMIT_ID }}"
-          TIMEOUT_MODELS="${{ needs.Linux-Nightly-Ondemand-E2E-Tests.outputs.TIMEOUT_MODELS }}"
-          # Test status
-          if [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "success" ];then
-            test_status=Success
-          elif [ "${{ needs.Linux-Nightly-Ondemand-E2E-Tests.result }}" == "failure" ];then
-            test_status=Failure
-            cc_comment="CC ${{ secrets.NIGHTLY_EMAIL_LIST }}"
-          else
-            test_status=None
-            exit 0
-          fi
-          # Test Type
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_type="On-demand"
-            test_issue_id=426
-            cc_comment="CC @${GITHUB_TRIGGERING_ACTOR}"
-          elif [ "${{ github.event.schedule }}" == "0 16 * * 5" ];then
-            test_type="Weekly"
-            test_issue_id=432
-          else
-            test_type="Nightly"
-            test_issue_id=432
-          fi
-          # Test report
-          echo -e "**${test_status}** $test_type Test on $(date +'%F'), See: $build_url\n" > ${{ github.workspace }}/report.txt
-          printf "Torch-xpu-ops | PyTorch | Triton\n--- | --- | ---\n${GITHUB_WORKFLOW_SHA:0:7} on ${GITHUB_REF_NAME} | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCH_COMMIT_ID:0:7}](https://github.com/pytorch/pytorch/commit/${TORCH_COMMIT_ID:0:7}) on $TORCH_BRANCH_ID | " >> ${{ github.workspace }}/report.txt
-          echo -e "[${TRITON_COMMIT_ID:0:7}](https://github.com/intel/intel-xpu-backend-for-triton/commit/${TRITON_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Transformers | Timm | Torchbench | Torchvision | Torchaudio\n--- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          printf "[${TRANSFORMERS_VERSION:0:7}](https://github.com/huggingface/transformers/commit/${TRANSFORMERS_VERSION:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TIMM_COMMIT_ID:0:7}](https://github.com/huggingface/pytorch-image-models/commit/${TIMM_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCHBENCH_COMMIT_ID:0:7}](https://github.com/pytorch/benchmark/commit/${TORCHBENCH_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          printf "[${TORCHVISION_COMMIT_ID:0:7}](https://github.com/pytorch/vision/commit/${TORCHVISION_COMMIT_ID:0:7}) | " >> ${{ github.workspace }}/report.txt
-          echo -e "[${TORCHAUDIO_COMMIT_ID:0:7}](https://github.com/pytorch/audio/commit/${TORCHAUDIO_COMMIT_ID:0:7}) \n" >> ${{ github.workspace }}/report.txt
-          printf "Device | OS | GCC | Python | Driver(DKMS) | Kernel | Bundle(DPCPP)\n--- | --- | --- | --- | --- | --- | ---\n" >> ${{ github.workspace }}/report.txt
-          echo -e "$RUNNER_NAME | $OS_PRETTY_NAME | $GCC_VERSION | ${{ env.python }} | $DRIVER_VERSION | $KERNEL_VERSION | $BUNDLE_VERSION \n" >> ${{ github.workspace }}/report.txt
-          if [ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ];then
-            test_scope="${{ inputs.suite }}/${{ inputs.dt }}/${{ inputs.mode }}/${{ inputs.scenario }}"
-            if [ "${{ inputs.model }}" != "" ];then
-              test_scope+="; model=${{ inputs.model }}"
-            fi
-            echo -e "Inputs | $test_scope\n--- | --- \n" >> ${{ github.workspace }}/report.txt
-          fi
-          echo "$TIMEOUT_MODELS" |awk '{printf("%s\\n", $0)}' >> ${{ github.workspace }}/report.txt
-          echo "$cc_comment" >> ${{ github.workspace }}/report.txt
-          # Report
-          report_txt=$(cat ${{ github.workspace }}/report.txt)
-          gh --repo $repo issue comment $test_issue_id --body "$report_txt"
