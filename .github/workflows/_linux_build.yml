@@ -3,6 +3,11 @@ name: Linux PyTorch XPU Build
 on:
   workflow_call:
     inputs:
+      runner:
+        required: true
+        type: string
+        default: 'pvc_rolling'
+        description: Runner label
       test_type:
         type: string
         default: 'build-from-source'
@@ -28,11 +33,6 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      runner:
-        required: true
-        type: string
-        default: 'pvc_rolling'
-        description: Runner label
 
 permissions: read-all
 

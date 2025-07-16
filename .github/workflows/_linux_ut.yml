@@ -3,6 +3,15 @@ name: Linux UT Test
 on:
   workflow_call:
     inputs:
+      runner:
+        required: true
+        type: string
+        default: 'linux.idc.xpu'
+        description: Runner label
+      test_type:
+        type: string
+        default: 'build-from-source'
+        description: Build from source or install nightly wheel
       pytorch:
         required: false
         type: string
@@ -32,11 +41,6 @@ on:
         type: string
         default: ''
         description: List disabled tests, such as disable_ut or disable_distributed
-      runner:
-        required: true
-        type: string
-        default: 'linux.idc.xpu'
-        description: Runner label
 
 permissions: read-all
 

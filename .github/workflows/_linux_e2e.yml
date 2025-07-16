@@ -1,0 +1,277 @@
+name: Linux PyTorch XPU Build
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+        default: 'pvc_rolling'
+        description: Runner label
+      test_type:
+        type: string
+        default: 'build-from-source'
+        description: Build from source or install nightly wheel
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+      suite:
+        required: true
+        type: string
+        default: 'huggingface'
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+      dt:
+        required: true
+        type: string
+        default: 'float32'
+        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
+      mode:
+        required: true
+        type: string
+        default: 'inference'
+        description: Test mode. `inference,training`. Delimiter is comma
+      scenario:
+        required: true
+        type: string
+        default: 'accuracy'
+        description: Test scenario. `accuracy,performance`. Delimiter is comma
+      model:
+        required: false
+        type: string
+        default: ''
+        description: Model. Will only run this one mode if set
+
+permissions: read-all
+
+jobs:
+  e2e:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 3600
+    permissions:
+      issues: write
+    container:
+      image: 'xpu:test'
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --privileged --shm-size=8g
+      env:
+        AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
+        GH_TOKEN: ${{ github.token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        reference_issue: 1645
+    steps:
+      - name: Cleanup workspace
+        run: |
+          rm -rf ~/.triton /tmp ./* || sudo rm -rf ~/.triton /tmp ./*
+          mkdir -m 777 /tmp || sudo mkdir -m 777 /tmp
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Setup python ${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Prepare Conda ENV
+        run: |
+          which python
+          pip list
+          pip install pandas scipy psutil requests
+      - name: Install oneAPI DLE
+        if: ${{ inputs.oneapi != 'installed' }}
+        run: |
+          rm -rf ~/intel ~/.intel /opt/intel
+          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
+      - name: Download Pytorch wheel
+        if: ${{ ! contains(inputs.test_type, 'wheel') }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Torch-XPU-Wheel-*
+      - name: Prepare Stock Pytorch
+        run: |
+          if [ "${{ inputs.pytorch }}" == "release_wheel" ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
+          elif [ "${{ inputs.pytorch }}" == "test_wheel" ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+          elif [ "${{ inputs.pytorch }}" == "nightly_wheel" ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          else
+            pip install --force-reinstall ${{ github.workspace }}/*.whl
+          fi
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
+          # apply extra PRs for stock pytorch
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git status && git diff && git show -s
+      - name: Torch Config
+        run: |
+          printenv
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+          python pytorch/torch/utils/collect_env.py
+          pip list |grep -E 'torch|intel'
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+          source /opt/intel/oneapi/setvars.sh
+          sycl-ls
+
+      # Nihglty launch
+      - name: Nightly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'nightly') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'nightly') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly Timm_models FP16 Training Test
+        if: ${{ contains(inputs.test_type, 'nightly') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: float16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly PT2E Full Test
+        if: ${{ contains(inputs.test_type, 'nightly') }}
+        uses: ./.github/actions/pt2e
+        with:
+          dt: float32,int8
+          scenario: accuracy,performance
+
+      # Weekly launch
+      - name: Nightly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'weekly') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Nightly Timm_models FP16 Training Test
+        if: ${{ contains(inputs.test_type, 'weekly') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Nightly PT2E Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') }}
+        uses: ./.github/actions/pt2e
+        with:
+          dt: float32,int8
+          scenario: accuracy,performance
+
+      # On-demand launch
+      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: ${{ contains(inputs.test_type, 'ondemand') && inputs.suite != 'pt2e' }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: ${{ inputs.suite }}
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: ${{ inputs.dt }}
+          scenario: ${{ inputs.scenario }}
+
+      - name: Download Reference Artifact
+        id: reference_id
+        run: |
+          set -xe
+          source activate e2e_ci
+          conda install gh --channel conda-forge -y
+          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo 'n/a')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*" && \
+            rm -rf reference && mv Inductor-*-XPU-E2E-* reference || echo 'No reference'
+      - name: Summarize archieve files
+        id: summary
+        if: ${{ ! cancelled() }}
+        run: |
+          set -x -e -o pipefail
+          rm -rf ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+          mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
+          find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
+          tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
+          # Print summary
+          if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            source activate e2e_ci
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
+              ${{ github.workspace }}/upload_files \
+              ${{ github.workspace }}/reference \
+            >> ${GITHUB_STEP_SUMMARY}
+            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+            if [ ${exit_label} -ne 0 ];then
+              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+              echo "There are ${exit_label} cases that need look into!!! Please check them"
+              exit ${exit_label}
+            fi
+          fi
+          pt2e_summary_csv="$(find ${{ github.workspace }}/upload_files/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            cat ${pt2e_summary_csv}
+            failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
+            if [ ${failed_num} -ne 0 ];then
+              echo "[Warning] PT2E has failures!"
+            fi
+          fi
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/upload_files
+      - name: Upload Reference Run ID
+        if: ${{ ! contains(inputs.test_type, 'ondemand') }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body 2>&1 |tee new_body.txt 2>&1
+          has_or_not="$(grep 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt |wc -l)"
+          if [ ${has_or_not} -ne 0 ];then
+            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
+          else
+            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
+          fi
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
