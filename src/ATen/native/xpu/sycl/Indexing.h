@@ -30,8 +30,7 @@ TensorInfo<T, IndexType> tensorInfoIfScalar(TensorInfo<T, IndexType> ti) {
 template <typename index_t, typename scalar_t>
 struct EmbeddingKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto thread_id = item.get_global_linear_id();
-    if (thread_id < indices_length_ * embedding_dim_) {
+    for (auto thread_id = item.get_global_linear_id(); thread_id < indices_length_ * embedding_dim_; thread_id += item.get_local_range(0) * item.get_group_range(0)) {
       output_[thread_id] = weight_
           [index_[thread_id / embedding_dim_] * embedding_dim_ +
            thread_id % embedding_dim_];

@@ -87,9 +87,11 @@ static inline void _embedding(
     int64_t indices_length) {
   using KernelClass = EmbeddingKernelFunctor<index_t, scalar_t>;
   int64_t work_group_size = syclDeviceMaxWorkGroupSize();
-  int64_t num_work_group = ceil_div(
+  int64_t num_xe_core = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+  // 2 work group on 1 xe core to reach 100% occupancy
+  int64_t num_work_group = std::min(num_xe_core * 2,ceil_div(
       static_cast<int64_t>(indices_length * embedding_dim),
-      static_cast<int64_t>(work_group_size));
+      static_cast<int64_t>(work_group_size)));
   auto kfn = KernelClass(
       output, weight, index, num_embeddings, embedding_dim, indices_length);
   sycl_kernel_submit(
