@@ -73,6 +73,7 @@ jobs:
       - name: Cleanup workspace
         run: |
           whoami
+          sudo chmod 777 . -R
           rm -rf ~/.triton /tmp ./* || sudo rm -rf ~/.triton /tmp ./*
           mkdir -m 777 /tmp || sudo mkdir -m 777 /tmp
       - name: Checkout torch-xpu-ops
