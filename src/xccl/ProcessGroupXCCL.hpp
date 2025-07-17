@@ -27,10 +27,6 @@ static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "TORCH_XCCL_BLOCKING_WAIT",
     "XCCL_BLOCKING_WAIT"};
 
-static std::vector<std::string> TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN = {
-    "TORCH_XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN",
-    "XCCL_LOG_CPP_STACK_ON_UNCLEAN_SHUTDOWN"};
-
 static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = {
     "TORCH_XCCL_COORD_CHECK_MILSEC",
     "XCCL_COORD_CHECK_MILSEC"};
@@ -158,7 +154,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
    protected:
     at::Device device_;
-    std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     bool isBarrierOp_{false};
     bool blockingWait_{false};
@@ -476,13 +471,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::string& logPrefix() const;
 
   c10::DeviceIndex guessDeviceId() const;
+
   const int& globalRank() const;
-
   const std::vector<uint64_t>& groupRanks() const;
-
   void setStartedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   void setCompletedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
@@ -491,7 +484,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
-  const c10::intrusive_ptr<Options> options_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
   std::set<int> usedDeviceIdxs_;
@@ -507,6 +499,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t op_id_{0};
   size_t local_id_;
   std::string logPrefix_;
+  const c10::intrusive_ptr<Options> options_;
   std::shared_ptr<ProcessGroupStatus> pgStatus_ =
       std::make_shared<ProcessGroupStatus>();
   std::unique_ptr<HeartbeatMonitor> heartbeatMonitor_;

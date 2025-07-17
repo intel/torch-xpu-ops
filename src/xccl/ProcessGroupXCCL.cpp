@@ -246,7 +246,6 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
       workStartTime_(std::chrono::steady_clock::now()),
       seq_(seq),
       isP2P_(isP2P) {
-  xcclStartEvent_ = std::make_shared<at::xpu::XPUEvent>();
   xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>();
   stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
 }
@@ -254,7 +253,6 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
     : Work(w.rank_, w.opType_),
       device_(w.device_),
-      xcclStartEvent_(w.xcclStartEvent_),
       xcclEndEvent_(w.xcclEndEvent_),
       blockingWait_(w.blockingWait_),
       workStartTime_(w.workStartTime_),
@@ -307,6 +305,10 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
+ProcessGroupXCCL::Options::Options()
+    : Backend::Options(XCCL_BACKEND_NAME) {}
+
+
 static std::atomic<size_t> process_group_id = 0;
 
 constexpr const char* MULTI_DEVICE_ERROR_MSG =
@@ -346,8 +348,9 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
-  this->setGroupUid(options_->group_name);
 
+  this->setGroupUid(options_->group_name);
+  // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just do it here.
   FlightRecorderXCCL::get()->record_pg_ranks(
       std::make_tuple(pg_uid_, pg_desc_), groupRanks());
   init();
@@ -363,19 +366,19 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug;
 
+  // Heartbeat monitor thread dumps debug info on write to pipe
   heartbeatMonitor_ = std::make_unique<HeartbeatMonitor>(this);
   heartbeatMonitor_->start();
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() {
   heartbeatMonitor_->stop();
+  // Wait for all threads to finish before returning
   heartbeatMonitor_->join();
 }
 
 bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
   STATIC_SCOPED_WAIT_COUNTER(pytorch.ProcessGroupXCCL__dumpDebuggingInfo);
-  static std::mutex writeDebugInfoMutex;
-  std::lock_guard<std::mutex> lock(writeDebugInfoMutex);
   LOG(ERROR)
       << logPrefix()
       << "ProcessGroupXCCL preparing to dump debug info. Include stack trace: "
@@ -405,19 +408,6 @@ ProcessGroupXCCL::HeartbeatMonitor::HeartbeatMonitor(ProcessGroupXCCL* pg) {
       << "TORCH_XCCL_COOR_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
 }
 
-std::string ProcessGroupXCCL::HeartbeatMonitor::getXCCLTimeoutErrorMsg(const std::string& extraMsg) {
-  return c10::str(
-      pg_->logPrefix(),
-      "Received a dump signal due to a collective timeout from ",
-      extraMsg,
-      " and we will try our best to dump the debug info. ",
-      "Last enqueued XCCL work: ",
-      pg_->pgStatus_->lastEnqueuedSeq,
-      ", last completed XCCL work: ",
-      pg_->pgStatus_->lastCompletedSeq,
-      ".");
-}
-
 void ProcessGroupXCCL::HeartbeatMonitor::stop() {
   terminateHeartbeatMonitorThread_.store(true);
   monitorWakeUpCV_.notify_one();
@@ -442,24 +432,23 @@ void ProcessGroupXCCL::HeartbeatMonitor::join() {
 void ProcessGroupXCCL::HeartbeatMonitor::runLoop() {
   c10::setThreadName("pt_xccl_heartbt");
 
-  std::string errorMsg;
-  std::string exitReason;
-  bool checkDumpSignal = pg_->local_id_ == 0;
-  int monitorPollInterval = coordCheckIntervalMilSec_;
   std::optional<DumpPipe> dumpPipe = std::nullopt;
+  // We only need to dump once per PG, so we use local_id_ == 0 for the first PG
   if (pg_->local_id_ == 0) {
     // DumpPipe is one per-trainer process
     dumpPipe.emplace(pg_->rank_);
     while (true) {
       std::unique_lock<std::mutex> lock(monitorMutex_);
       if (monitorWakeUpCV_.wait_for(
-              lock, std::chrono::milliseconds(monitorPollInterval), [&] {
+              lock, std::chrono::milliseconds(coordCheckIntervalMilSec_), [&] {
                 return terminateHeartbeatMonitorThread_.load();
               })) {
         return;
       }
+      // Write to pipe files for all ranks to dump debug info
       if (dumpPipe.has_value() && dumpPipe->shouldDump()) {
-        LOG(INFO) << pg_->logPrefix() << "Dump signal received through pipe.";
+        LOG(INFO) << pg_->logPrefix()
+                  << "Dump signal received through pipe, triggering FR dump.";
         std::future<bool> fut = std::async(std::launch::async, [this]() {
           return this->pg_->dumpDebuggingInfo();
         });
@@ -475,6 +464,24 @@ const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
     return globalRanks;
   }
   return options_->global_ranks_in_group;
+}
+
+void ProcessGroupXCCL::setStartedPgStatus(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+  pgStatus_->lastStartedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastStartedWorkName = opTypeToString(work->opType_);
+  pgStatus_->lastStartedNumelIn = work->numelIn_;
+  pgStatus_->lastStartedNumelOut = work->numelOut_;
+}
+
+void ProcessGroupXCCL::setCompletedPgStatus(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+  pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
+  pgStatus_->lastCompletedNumelIn = work->numelIn_;
+  pgStatus_->lastCompletedNumelOut = work->numelOut_;
+  // To avoid complexity, we're not computing duration.
+  FlightRecorderXCCL::get()->retire_id(work->trace_id_, /*compute_duration*/false);
 }
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
@@ -500,7 +507,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle,
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
                                 : std::nullopt);
-  
+
   r->trace_id_ = FlightRecorderXCCL::get()->record(
       local_id_,
       std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
@@ -510,7 +517,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle ? profilingTitle : "",
       inputs,
       outputs,
-      r->xcclStartEvent_.get(),
+      nullptr,
       r->xcclEndEvent_.get(),
       options_->timeout,
       pgStatus_,
@@ -627,9 +634,6 @@ void ProcessGroupXCCL::groupEnd() {
   --xcclActiveGroupCounter_;
 }
 
-ProcessGroupXCCL::Options::Options()
-    : Backend::Options(XCCL_BACKEND_NAME) {}
-
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {
   coalescedDevice_.set_index(-1);
@@ -637,23 +641,6 @@ void ProcessGroupXCCL::startCoalescing() {
   coalescedTensors_.clear();
   coalescing_state_ |= CoalActive;
   groupStart();
-}
-
-void ProcessGroupXCCL::setStartedPgStatus(
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-  pgStatus_->lastStartedSeq = static_cast<int64_t>(work->getSequencenumber());
-  pgStatus_->lastStartedWorkName = opTypeToString(work->opType_);
-  pgStatus_->lastStartedNumelIn = work->numelIn_;
-  pgStatus_->lastStartedNumelOut = work->numelOut_;
-}
-
-void ProcessGroupXCCL::setCompletedPgStatus(
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-  pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
-  pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
-  pgStatus_->lastCompletedNumelIn = work->numelIn_;
-  pgStatus_->lastCompletedNumelOut = work->numelOut_;
-  FlightRecorderXCCL::get()->retire_id(work->trace_id_, false);
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
@@ -817,8 +804,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_->addCallback(
       [this, work](at::ivalue::Future&) {
           this->setCompletedPgStatus(work);
-      }
-      );
+      });
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -904,7 +890,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         profilingTitle,
         {tensor},
         {tensor},
-        work->xcclStartEvent_.get(),
+        nullptr,
         work->xcclEndEvent_.get(),
         options_->timeout,
         pgStatus_,
@@ -928,8 +914,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_->addCallback(
         [this, work](at::ivalue::Future&) {
             this->setCompletedPgStatus(work);
-        }
-        );
+        });
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
     setStartedPgStatus(work);
@@ -2325,13 +2310,3 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
 } // namespace c10d
 
 #endif // USE_C10D_XCCL
-
-void printNcclCommProxyTrace(
-    const std::string& dumpReason,
-    const std::unordered_map<std::string, std::string>& dumpMap) {
-  LOG(INFO) << "Dumping nccl comm trace, reason: " << dumpReason;
-  for (auto& [key, value] : dumpMap) {
-    LOG(INFO) << "key: " << key << ", value: " << value;
-  }
-  LOG(INFO) << "----------------------";
-}
