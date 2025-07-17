@@ -154,7 +154,7 @@ jobs:
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
           rm -rf ${{ github.workspace }}/reference
           mkdir -p ${{ github.workspace }}/reference
-          mv -f Inductor-XPU-OP-Benchmark-Data-*/* ${{ github.workspace }}/reference
+          mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
 
           mkdir -p ${{ github.workspace }}/baseline
           if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
