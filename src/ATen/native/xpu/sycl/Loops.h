@@ -482,7 +482,7 @@ static inline bool can_vectorize_for_non_contigouous(
   for (int i = 0; i < iter.ntensors(); i++) {
     // Checking each row has enough alignments
     auto strides = iter.strides(i);
-    for (int dim = 1; dim < (int)strides.size(); dim++) {
+    for (int dim = 0; dim < (int)strides.size(); dim++) {
       int64_t base_of_row = strides[dim];
       int64_t vec_size_in_bytes = strides[0] * vec_size;
       while (base_of_row % vec_size_in_bytes) {
