@@ -147,8 +147,8 @@ jobs:
               > test_files_1.txt
               for line in $(cat test_files_1.txt)
               do
-                python test/run_test.py --include inductor/${line} 2>GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
-                  tee GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                python test/run_test.py --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
+                  tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_1/"
               function read_dir(){
@@ -202,8 +202,8 @@ jobs:
               > test_files_2.txt
               for line in $(cat test_files_2.txt)
               do
-                python test/run_test.py --include inductor/${line} 2>GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test_error.log | \
-                  tee GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test.log
+                python test/run_test.py --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test_error.log | \
+                  tee $GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test.log
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_2/"
               function read_dir(){
@@ -254,8 +254,8 @@ jobs:
               > test_files_3.txt
               for line in $(cat test_files_3.txt)
               do
-                python test/run_test.py --include inductor/${line} 2>GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test_error.log | \
-                  tee GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test.log
+                python test/run_test.py --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test_error.log | \
+                  tee $GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test.log
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_3/"
               function read_dir(){
@@ -427,7 +427,7 @@ jobs:
           cd ${{ matrix.test.directory }}
 
           if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu_1" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu_2" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu_3" ]]; then
-            bash << 'SCRIPT'
+            bash << "SCRIPT"
             ${{ matrix.test.command_script }}
           SCRIPT
           else
