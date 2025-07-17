@@ -609,6 +609,15 @@ bool XPUSymmetricMemoryAllocator::has_multicast_support(int device_idx) {
   return device_has_multicast_support(device_idx);
 }
 
+c10::DeviceType XPUSymmetricMemoryAllocator::supported_device_type() {
+  return c10::DeviceType::XPU;
+}
+
+std::string XPUSymmetricMemoryAllocator::name() {
+  return "XPU";
+}
+
+
 c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
   std::shared_lock lock(mutex_);
   auto it = ptr_to_block_.find(ptr);
