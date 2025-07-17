@@ -86,19 +86,34 @@ static inline void _embedding(
     int64_t embedding_dim,
     int64_t indices_length) {
   using KernelClass = EmbeddingKernelFunctor<index_t, scalar_t>;
+  using SLMKernelClass = EmbeddingKernelSLMFunctor<index_t, scalar_t>;
   int64_t work_group_size = syclDeviceMaxWorkGroupSize();
   int64_t num_xe_core = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+
   // 2 work group on 1 xe core to reach 100% occupancy
-  int64_t num_work_group = std::min(num_xe_core * 2,ceil_div(
-      static_cast<int64_t>(indices_length * embedding_dim),
-      static_cast<int64_t>(work_group_size)));
+  int64_t num_work_group = std::min(
+      num_xe_core * 2,
+      ceil_div(
+          static_cast<int64_t>(indices_length * embedding_dim),
+          static_cast<int64_t>(work_group_size)));
   auto kfn = KernelClass(
       output, weight, index, num_embeddings, embedding_dim, indices_length);
-  sycl_kernel_submit(
-      num_work_group * work_group_size,
-      work_group_size,
-      getCurrentSYCLQueue(),
-      kfn);
+  auto slmkfn = SLMKernelClass(
+      output, weight, index, num_embeddings, embedding_dim, indices_length);
+  // 2 work group share 1 Xe core, so slm is 64KB
+  if (num_embeddings * embedding_dim * sizeof(scalar_t) <=
+      syclLocalMemSize() / 2)
+    sycl_kernel_submit(
+        num_work_group * work_group_size,
+        work_group_size,
+        getCurrentSYCLQueue(),
+        slmkfn);
+  else
+    sycl_kernel_submit(
+        num_work_group * work_group_size,
+        work_group_size,
+        getCurrentSYCLQueue(),
+        kfn);
 }
 
 template <
@@ -227,8 +242,7 @@ void index_select_kernel(
           // Improve efficiency of generated native instructions for contiguous.
           // See comm/TensorInfo.h
           if (dst.is_contiguous() && indices.is_contiguous()) {
-            if (src.dim() == 2 && indices.dim() == 1 &&
-                src.is_contiguous()) {
+            if (src.dim() == 2 && indices.dim() == 1 && src.is_contiguous()) {
               _embedding<index_t, scalar_t>(
                   dst.mutable_data_ptr<scalar_t>(),
                   src.const_data_ptr<scalar_t>(),
