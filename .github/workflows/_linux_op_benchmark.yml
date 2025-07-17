@@ -152,17 +152,17 @@ jobs:
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
-          rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
-          mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
-          mv Inductor-XPU-OP-Benchmark-Data-*/* ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          rm -rf ${{ github.workspace }}/reference
+          mkdir -p ${{ github.workspace }}/reference
+          mv -f Inductor-XPU-OP-Benchmark-Data-*/* ${{ github.workspace }}/reference
 
-          mkdir ${{ github.workspace }}/baseline
-          if [[ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+          mkdir -p ${{ github.workspace }}/baseline
+          if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
+            cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
+            cp ${{ github.workspace }}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
           else
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+            cp ${{ github.workspace }}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+            cp ${{ github.workspace }}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
           fi
       - name: Check the OP Regression
         run: |
