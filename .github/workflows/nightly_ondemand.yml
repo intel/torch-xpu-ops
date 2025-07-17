@@ -28,23 +28,23 @@ on:
         description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       ut:
         type: string
-        default: 'op_regression'
+        default: ''
         description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_profiling,xpu_distributed`. Delimiter is comma
       suite:
         type: string
-        default: 'huggingface'
+        default: ''
         description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
       dt:
         type: string
-        default: 'float32'
+        default: ''
         description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
       mode:
         type: string
-        default: 'inference'
+        default: ''
         description: Test mode. `inference,training`. Delimiter is comma
       scenario:
         type: string
-        default: 'accuracy'
+        default: ''
         description: Test scenario. `accuracy,performance`. Delimiter is comma
       model:
         type: string
