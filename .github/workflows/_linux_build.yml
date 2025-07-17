@@ -37,6 +37,13 @@ on:
 permissions: read-all
 
 jobs:
+  wheel:
+    if: ${{ contains(inputs.test_type, 'wheel') }}
+    name: ${{ inputs.pytorch }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use ${{ inputs.pytorch }}
+        run: echo 'Use ${{ inputs.pytorch }}'
   build:
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
     runs-on: ${{ inputs.runner }}

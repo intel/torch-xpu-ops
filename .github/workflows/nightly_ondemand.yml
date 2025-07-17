@@ -90,7 +90,7 @@ jobs:
               torch_xpu_ops="main"
             fi
           else
-            if [["${{ inputs.pytorch }}" == *"_wheel"]];then
+            if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
               pytorch="${{ inputs.pytorch }}"
               torch_xpu_ops="pinned"
@@ -124,7 +124,7 @@ jobs:
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: linux.idc.xpu
+      runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.torch_xpu_ops }}
@@ -135,8 +135,7 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux
-    permissions:
-      issues: write
+    permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
@@ -152,7 +151,7 @@ jobs:
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
 
   Windows-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' }}
     name: Windows-nightly-ondemand
     uses: ./.github/workflows/_windows_ut.yml
     with:
