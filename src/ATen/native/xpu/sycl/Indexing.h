@@ -27,6 +27,39 @@ TensorInfo<T, IndexType> tensorInfoIfScalar(TensorInfo<T, IndexType> ti) {
   return ti;
 }
 
+template <typename index_t, typename scalar_t>
+struct EmbeddingKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    auto thread_id = item.get_global_linear_id();
+    if (thread_id < indices_length_ * embedding_dim_) {
+      output_[thread_id] = weight_
+          [index_[thread_id / embedding_dim_] * embedding_dim_ +
+           thread_id % embedding_dim_];
+    }
+  }
+  EmbeddingKernelFunctor(
+      scalar_t* output,
+      const scalar_t* weight,
+      const index_t* index,
+      int64_t num_embeddings,
+      int64_t embedding_dim,
+      int64_t indices_length)
+      : output_(output),
+        weight_(weight),
+        index_(index),
+        num_embeddings_(num_embeddings),
+        embedding_dim_(embedding_dim),
+        indices_length_(indices_length) {}
+
+ private:
+  scalar_t* output_;
+  const scalar_t* weight_;
+  const index_t* index_;
+  int64_t num_embeddings_;
+  int64_t embedding_dim_;
+  int64_t indices_length_;
+};
+
 template <class SrcInfo, class DstInfo, class IdxInfo, class FuncType>
 class IndexKernelConfig : public BatchKernelConfig {
  public:

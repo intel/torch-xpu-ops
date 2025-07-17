@@ -77,6 +77,28 @@ class IndexSelectScalarFunctor {
   }
 };
 
+template <typename index_t, typename scalar_t>
+static inline void _embedding(
+    scalar_t* output,
+    const scalar_t* weight,
+    const index_t* index,
+    int64_t num_embeddings,
+    int64_t embedding_dim,
+    int64_t indices_length) {
+  using KernelClass = EmbeddingKernelFunctor<index_t, scalar_t>;
+  int64_t work_group_size = syclDeviceMaxWorkGroupSize();
+  int64_t num_work_group = ceil_div(
+      static_cast<int64_t>(indices_length * embedding_dim),
+      static_cast<int64_t>(work_group_size));
+  auto kfn = KernelClass(
+      output, weight, index, num_embeddings, embedding_dim, indices_length);
+  sycl_kernel_submit(
+      num_work_group * work_group_size,
+      work_group_size,
+      getCurrentSYCLQueue(),
+      kfn);
+}
+
 template <
     class SrcInfo,
     class DstInfo,
@@ -202,14 +224,25 @@ void index_select_kernel(
 
           // Improve efficiency of generated native instructions for contiguous.
           // See comm/TensorInfo.h
-          if (dst.is_contiguous() && indices.is_contiguous())
-            _index_select_kernel<
-                SrcInfo,
-                DstInfo,
-                IdxInfo,
-                /* TrivialOffCal */ true>(
-                src_info, dst_info, index_info, new_indexing_dim);
-          else
+          if (dst.is_contiguous() && indices.is_contiguous()) {
+            if (src.dim() == 2 && indices.dim() == 1 &&
+                src.is_contiguous()) {
+              _embedding<index_t, scalar_t>(
+                  dst.mutable_data_ptr<scalar_t>(),
+                  src.const_data_ptr<scalar_t>(),
+                  indices.const_data_ptr<index_t>(),
+                  src.size(0),
+                  src.size(1),
+                  indices.size(0));
+            } else {
+              _index_select_kernel<
+                  SrcInfo,
+                  DstInfo,
+                  IdxInfo,
+                  /* TrivialOffCal */ true>(
+                  src_info, dst_info, index_info, new_indexing_dim);
+            }
+          } else
             _index_select_kernel<
                 SrcInfo,
                 DstInfo,
