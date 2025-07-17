@@ -55,7 +55,7 @@ class IndexKernelConfig : public BatchKernelConfig {
             stride,
             problem_batch,
             problem_along_x,
-            Policy::pSegment,
+            Policy::pAdaptive,
             syclMaxWorkItemsPerSubSlice()),
         sinfo_(sinfo),
         dinfo_(dinfo),
@@ -284,6 +284,7 @@ class IndexKernel {
 
   void operator()(sycl::nd_item<2> item) const {
     auto id = cfg_.get_item_desc(item);
+    do{
 
     if (id.glb_problem >= cfg_.problem_ ||
         id.glb_batch >= cfg_.problem_batch_) {
@@ -351,6 +352,7 @@ class IndexKernel {
         src_off,
         glb_batch_group_loc_off,
         cfg_.alpha_);
+    }while (cfg_.next(item, id));
   }
 
  private:
