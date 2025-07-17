@@ -367,6 +367,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
+  c10::DeviceIndex guessDeviceId() const;
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
       xcclStreamsMap_;
@@ -479,12 +481,15 @@ inline std::string reduceOpToString(c10d::ReduceOp op) {
     outSplitSizes,                                                          \
     globalRankStart,                                                        \
     globalRankStride,                                                       \
-    worldSize)                                                              \
+    worldSize,                                                              \
+    async_op,                                                               \
+    reduce_op)                                                              \
   do {                                                                      \
-    LOG(INFO) << "collective_name: " << collective_name                     \
+    LOG(INFO) << std::boolalpha << "collective_name: " << collective_name   \
               << ", inNelems: " << inNelems << ", outNelems: " << outNelems \
               << ", dType: " << dType << ", root/src rank: " << rank        \
-              << ", worldSize: " << worldSize;                              \
+              << ", worldSize: " << worldSize << ", async_op: " << async_op \
+              << ", reduction op: " << reduce_op;                           \
     RECORD_PARAM_COMMS_DATA(                                                \
         seq,                                                                \
         pg_name_tuple,                                                      \
