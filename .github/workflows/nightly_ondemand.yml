@@ -107,7 +107,6 @@ jobs:
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
     name: linux
-    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
@@ -135,7 +134,8 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux
-    secrets: inherit
+    permissions:
+      issues: write
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
