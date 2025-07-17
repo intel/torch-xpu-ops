@@ -3,6 +3,12 @@
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
 
+#if !defined(SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS) || \
+    (SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS != 1)
+#error This change enables event-less APIs, \
+  please ensure SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS=1.
+#endif
+
 // sycl access address space
 static constexpr auto sycl_priv_space =
     sycl::access::address_space::private_space;
