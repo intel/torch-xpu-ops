@@ -107,6 +107,7 @@ jobs:
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
     name: linux
+    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
