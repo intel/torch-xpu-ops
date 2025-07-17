@@ -405,7 +405,7 @@ ProcessGroupXCCL::HeartbeatMonitor::HeartbeatMonitor(ProcessGroupXCCL* pg) {
   coordCheckIntervalMilSec_ = getCvarInt(TORCH_XCCL_COORD_CHECK_MILSEC, 1000);
   LOG(INFO)
       << pg_->logPrefix() << "HeartbeatMonitor environments: "
-      << "TORCH_XCCL_COOR_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
+      << "TORCH_XCCL_COORD_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
 }
 
 void ProcessGroupXCCL::HeartbeatMonitor::stop() {

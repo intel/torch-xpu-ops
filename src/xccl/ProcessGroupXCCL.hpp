@@ -472,7 +472,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   c10::DeviceIndex guessDeviceId() const;
 
-  const int& globalRank() const;
   const std::vector<uint64_t>& groupRanks() const;
   void setStartedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   void setCompletedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
