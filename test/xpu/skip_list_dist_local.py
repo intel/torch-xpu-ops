@@ -67,6 +67,7 @@ skip_dict = {
         # RuntimeError: Process 1 exited with error code 10 and exception:
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_scatter_1d",
+        "test_scatter_uneven",
     ),
     "../../../../test/distributed/test_dynamo_distributed.py": None,
     "../../../../test/distributed/test_fake_pg.py": None,
@@ -107,58 +108,58 @@ skip_dict = {
     "../../../../test/distributed/pipelining/test_schedule.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
     "../../../../test/distributed/pipelining/test_unflatten.py": None,
-    "../../../../test/distributed/tensor/parallel/test_micro_pipeline_tp.py": (
+    "../../../../test/distributed/tensor/parallel/test_micro_pipeline_tp.py": None,
         # NotImplementedError: The operator 'symm_mem::fused_matmul_reduce_scatter'
         # is not currently implemented for the XPU device
         # https://github.com/intel/torch-xpu-ops/issues/1547, 2.8 skipped
-        "test_dtensor_seq_par_shard_dim_0",
-        "test_dtensor_seq_par_shard_dim_1",
-        "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
-        "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
-        "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
-        "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
-        "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
+        # "test_dtensor_seq_par_shard_dim_0",
+        # "test_dtensor_seq_par_shard_dim_1",
+        # "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
+        # "test_fuse_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
+        # "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
+        # "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
+        # "test_fuse_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
         # AssertionError: 'fused_all_gather_matmul' not found in '# AOT ID: ......'
         # https://github.com/intel/torch-xpu-ops/issues/1548, 2.8 skipped
-        "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_False",
-        "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_True",
-        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_False",
-        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_True",
-        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_False",
-        "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_True",
+        # "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_False",
+        # "test_fuse_all_gather_matmul_A_dims_2_gather_dim_0_return_A_True",
+        # "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_False",
+        # "test_fuse_all_gather_matmul_A_dims_3_gather_dim_0_return_A_True",
+        # "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_False",
+        # "test_fuse_all_gather_matmul_A_dims_3_gather_dim_1_return_A_True",
         # AssertionError: 'fused_all_gather_scaled_matmul' not found in 'graph():\n......'
         # https://github.com/intel/torch-xpu-ops/issues/1549, 2.8 skipped
-        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_False",
-        "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_True",
-        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_False",
-        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_True",
-        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_False",
-        "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_True",
+        # "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_False",
+        # "test_fuse_all_gather_scaled_matmul_A_dims_2_gather_dim_0_return_A_True",
+        # "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_False",
+        # "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_0_return_A_True",
+        # "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_False",
+        # "test_fuse_all_gather_scaled_matmul_A_dims_3_gather_dim_1_return_A_True",
         # NotImplementedError: The operator 'symm_mem::fused_scaled_matmul_reduce_scatter'
         # is not currently implemented for the XPU device.
         # https://github.com/intel/torch-xpu-ops/issues/1551, 2.8 skipped
-        "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
-        "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
-        "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
-        "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
-        "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
-        "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_0",
-        "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_1",
-        "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_2",
-    ),
+        # "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_0",
+        # "test_fuse_scaled_matmul_reduce_scatter_A_dims_2_scatter_dim_1",
+        # "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_0",
+        # "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_1",
+        # "test_fuse_scaled_matmul_reduce_scatter_A_dims_3_scatter_dim_2",
+        # "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_0",
+        # "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_1",
+        # "test_fuse_scaled_matmul_reduce_scatter_rowwise_scales_reshape_mm_reshape_scatter_dim_2",
+    # ),
     "../../../../test/distributed/tensor/parallel/test_tp_examples.py": (
         # RuntimeError: aten.add.Tensor: got mixed torch.Tensor and DTensor, need to convert all torch.Tensor to DTensor before calling distributed operators!
         # https://github.com/intel/torch-xpu-ops/issues/1555, 2.8 skipped
-        "test_transformer_req_grad_seq_parallel_float32_thaw_all",
-        "test_transformer_req_grad_seq_parallel_float32_thaw_layers_0_attention_wv__layers_0_feed_forward_w1__layers_1_feed_forward_w2__layers_1_ffn_norm__output__tok_embeddings",
-        "test_transformer_req_grad_seq_parallel_float32_thaw_layers_1_ffn_norm__norm__output__tok_embeddings",
-        "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output__tok_embeddings",
-        "test_transformer_req_grad_seq_parallel_float32_thaw_output__tok_embeddings",
-        "test_transformer_training_is_seq_parallel_False_float32",
-        "test_transformer_training_is_seq_parallel_True_float32",
+        # "test_transformer_req_grad_seq_parallel_float32_thaw_all",
+        # "test_transformer_req_grad_seq_parallel_float32_thaw_layers_0_attention_wv__layers_0_feed_forward_w1__layers_1_feed_forward_w2__layers_1_ffn_norm__output__tok_embeddings",
+        # "test_transformer_req_grad_seq_parallel_float32_thaw_layers_1_ffn_norm__norm__output__tok_embeddings",
+        # "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output__tok_embeddings",
+        # "test_transformer_req_grad_seq_parallel_float32_thaw_output__tok_embeddings",
+        # "test_transformer_training_is_seq_parallel_False_float32",
+        # "test_transformer_training_is_seq_parallel_True_float32",
         # NotImplementedError: Operator aten._scaled_dot_product_fused_attention_overrideable.default does not have a sharding strategy registered.
         # https://github.com/intel/torch-xpu-ops/issues/1556, 2.8 skipped
-        "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
+        # "test_transformer_req_grad_seq_parallel_float32_thaw_norm__output",
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_loss_parallel",
         "test_mlp_training_is_seq_parallel_False_recompute_activation_False",
@@ -179,6 +180,9 @@ skip_dict = {
         "test_parallelize_module_with_question",
         "test_parallelize_module_with_star",
         "test_under_devicemesh_context",
+        "test_linear_row_wise_parallel",
+        "test_parallelize_module_with_no_match",
+        "test_parallelize_module_with_root_module",
     ),
     "../../../../test/distributed/tensor/parallel/test_tp_style.py": None,
     "../../../../test/distributed/tensor/test_api.py": (
@@ -238,15 +242,12 @@ skip_dict = {
         # ValueError: Cannot use ReduceOp.PREMUL_SUM with XCCL 
         # https://github.com/intel/torch-xpu-ops/issues/1571, 2.8 skipped
         "test_set_reduce_scatter_divide_factor",
-        # NO related environment variable on XPU
-        "test_fully_shard_force_sum_both_reductions",
-        "test_fully_shard_force_sum_reduce_scatter",
     ),
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": (
-        # torch._dynamo.exc.BackendCompilerFailed: backend='inductor' raised
-        # https://github.com/intel/torch-xpu-ops/issues/1665, 2.8 skipped
-        "test_transformer_backend_inductor_fullgraph_True",
-    ),
+    "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": None,
+    #     # torch._dynamo.exc.BackendCompilerFailed: backend='inductor' raised
+    #     # https://github.com/intel/torch-xpu-ops/issues/1665, 2.8 skipped
+    #     "test_transformer_backend_inductor_fullgraph_True",
+    # ),
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_extensions.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_frozen.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
@@ -270,28 +271,34 @@ skip_dict = {
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state_dict.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_training.py": (
-        # checkpointing issue, 2.8 skipped
-        "test_train_parity_with_activation_checkpointing",
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_1f1b_microbatching",
         "test_gradient_accumulation",
     ),
-    "../../../../test/distributed/_composable/test_replicate_with_compiler.py": (
-        # AssertionError: Tensor-likes are not close!
-        # https://github.com/intel/torch-xpu-ops/issues/1668, 2.8 skipped
-        "test_compile_backward_only",
-        "test_compile_bf16",
-        "test_compile_fp16",
-        "test_compile_gpu",
-        "test_compile_gpu_ac",
-    ),
+    "../../../../test/distributed/_composable/test_replicate_with_compiler.py": None,
+    #     # AssertionError: Tensor-likes are not close!
+    #     # https://github.com/intel/torch-xpu-ops/issues/1668, 2.8 skipped
+    #     "test_compile_backward_only",
+    #     "test_compile_bf16",
+    #     "test_compile_fp16",
+    #     "test_compile_gpu",
+    #     "test_compile_gpu_ac",
+    # ),
     "../../../../test/distributed/_shard/test_sharder.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_custom_sharder",
     ),
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
-    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": None,
-    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_shard_parameter",
+        "test_shard_tensor",
+        "test_shard_tensor_with_empty_shard",
+    )
+    "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_sharded_tensor_reshard",
+    )
     "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
     "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
@@ -311,23 +318,58 @@ skip_dict = {
     "../../../../test/distributed/checkpoint/test_compatibility.py": None,
     "../../../../test/distributed/checkpoint/test_dedup_tensors.py": None,
     "../../../../test/distributed/checkpoint/test_dtensor_checkpoint.py": None,
-    "../../../../test/distributed/checkpoint/test_dtensor_resharding.py": None,
+    "../../../../test/distributed/checkpoint/test_dtensor_resharding.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_1d_to_1d_reshard_placement_change_extensions0",
+        "test_1d_to_1d_reshard_placement_change_extensions1",
+        "test_2d_to_2d_reshard_placement_change",
+        "test_1d_to_2d_reshard_mesh_change",
+        "test_2d_to_1d_reshard_mesh_change",
+    )
     "../../../../test/distributed/checkpoint/test_file_system_checkpoint.py": None,
     "../../../../test/distributed/checkpoint/test_file_system_checkpoint_cpu.py": None,
     "../../../../test/distributed/checkpoint/test_format_utils.py": None,
     "../../../../test/distributed/checkpoint/test_fsdp_model_state.py": None,
     "../../../../test/distributed/checkpoint/test_fsdp_optim_state.py": None,
-    "../../../../test/distributed/checkpoint/test_fsdp_tp_checkpoint_conversion.py": None,
+    "../../../../test/distributed/checkpoint/test_fsdp_tp_checkpoint_conversion.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_fsdp_to_tp"
+    )
     "../../../../test/distributed/checkpoint/test_fsspec.py": None,
     "../../../../test/distributed/checkpoint/test_hsdp_checkpoint.py": None,
     "../../../../test/distributed/checkpoint/test_nested_dict.py": None,
     "../../../../test/distributed/checkpoint/test_planner.py": None,
     "../../../../test/distributed/checkpoint/test_save_load_api.py": None,
-    "../../../../test/distributed/checkpoint/test_state_dict.py": None,
+    "../../../../test/distributed/checkpoint/test_state_dict.py": (
+        # https://jira.devtools.intel.com/browse/MLSL-3625
+        "test_setting_meta_device_model",
+        "test_multi_param_groups",
+    )
     "../../../../test/distributed/checkpoint/test_state_dict_utils.py": None,
     "../../../../test/distributed/checkpoint/test_tp_checkpoint.py": None,
     "../../../../test/distributed/checkpoint/test_traverse.py": None,
     "../../../../test/distributed/checkpoint/test_utils.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_barriers.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_builder.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_checkpoint_process.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_checkpoint_reader.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_checkpoint_writer.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_checkpointer.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_staging.py": None,
+    "../../../../test/distributed/checkpoint/_experimental/test_types.py": None,
+    "../../../../test/distributed/elastic/events/lib_test.py": None,
+    "../../../../test/distributed/elastic/metrics/api_test.py": None,
+    "../../../../test/distributed/elastic/multiprocessing/api_test.py": None,
+    "../../../../test/distributed/elastic/test_control_plane.py": None,
+    "../../../../test/distributed/elastic/timer/api_test.py": None,
+    "../../../../test/distributed/elastic/timer/local_timer_example.py": None,
+    "../../../../test/distributed/elastic/timer/local_timer_test.py": None,
+    "../../../../test/distributed/elastic/utils/distributed_test.py": None,
+    "../../../../test/distributed/elastic/utils/logging_test.py": None,
+    "../../../../test/distributed/elastic/utils/util_test.py": None,
+    "../../../../test/distributed/optim/test_apply_optimizer_in_backward.py": None,
+    "../../../../test/distributed/optim/test_named_optimizer.py": None,
+    "../../../../test/distributed/optim/test_zero_redundancy_optimizer.py": None,
 }
 
 skip_dict_python = {
