@@ -43,7 +43,7 @@ def write_to_github_summary(content):
 def format_parameters(record):
     params = []
     for key, value in record.items():
-        if key not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change', 'E2E forward time(us)', 'E2E total time(us)']:
+        if key not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change', 'E2E total time(us)']:
             params.append(f"{key}: {value}")
     return "<br>".join(params)
 
@@ -155,12 +155,12 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
     records_baseline = [preprocess_row(row) for _, row in df_baseline.iterrows()]
 
     dict_xpu = {
-        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'):
+        tuple((k, str(v)) for k, v in record.items() if k not in ['time(us)', 'E2E total time(us)']):
         record['time(us)']
         for record in records_xpu
     }
     dict_baseline = {
-        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'):
+        tuple((k, str(v)) for k, v in record.items() if k not in ['time(us)', 'E2E total time(us)']):
         record['time(us)']
         for record in records_baseline
     }
@@ -171,8 +171,8 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
         time_xpu = dict_xpu[key]
         time_baseline = dict_baseline[key]
 
-        # Skip comparison if time_xpu is 0
-        if time_xpu == 0:
+        # Skip comparison if time_xpu or time_baseline is 0
+        if time_xpu == 0 or time_baseline == 0:
             continue
 
         diff = (time_baseline - time_xpu) / time_xpu

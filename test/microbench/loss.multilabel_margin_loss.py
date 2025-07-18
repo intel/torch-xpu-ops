@@ -53,7 +53,7 @@ def _test_dpcpp(input, target, reduce, dtype):
         torch.xpu.synchronize()
         t2 = time.time()
         e2e_forward_time = (t2 - t1) / num_iter
-        print("E2E forward time:", f"{float(e2e_forward_time):.20f}")
+        print("E2E total time:", f"{float(e2e_forward_time):.20f}")
 
     else:
         # warm up
@@ -91,7 +91,7 @@ def _test_dpcpp(input, target, reduce, dtype):
         torch.xpu.synchronize()
         t2 = time.time()
         e2e_forward_time = (t2 - t1) / num_iter
-        print("E2E forward time:", f"{float(e2e_forward_time):.20f}")
+        print("E2E total time:", f"{float(e2e_forward_time):.20f}")
 
 
 for shape in shape_list:
