@@ -65,7 +65,7 @@ jobs:
         - /etc/group:/etc/group
       options: --device=/dev/mem --device=/dev/dri --privileged --shm-size=8g -u jenkins
       env:
-        AGENT_TOOLSDIRECTORY: "/opt/_tools"
+        AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         reference_issue: 1645
@@ -115,7 +115,7 @@ jobs:
           cd pytorch
           git checkout ${TORCH_COMMIT_ID}
           # apply extra PRs for stock pytorch
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          python ../.github/scripts/apply_torch_pr.py
           git status && git diff && git show -s
       - name: Torch Config
         run: |
@@ -233,7 +233,7 @@ jobs:
         id: summary
         if: ${{ ! cancelled() }}
         run: |
-          set -x -e -o pipefail
+          set -xe -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
