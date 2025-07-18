@@ -64,9 +64,9 @@ jobs:
         id: runner-info
         run: |
           # get test runner
-          echo "test_host=${RUNNER_NAME}" >> ${GITHUB_OUTPUT}
-          echo "test_user=$(id -u)" >> ${GITHUB_OUTPUT}
-          echo "test_group=$(getent group render |cut -d: -f3)" >> ${GITHUB_OUTPUT}
+          echo "test_host=${RUNNER_NAME}" |tee -a ${GITHUB_OUTPUT}
+          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
           # show host info
           cat /etc/os-release
           uname -a
@@ -80,6 +80,7 @@ jobs:
           docker stop $(docker ps -aq) || true
           docker system prune -af || true
           # clean files
+          ls -al
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
 
   e2e_test:
@@ -93,7 +94,7 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
               -u ${{ needs.get_e2e_runner.outputs.test_user }}:${{ needs.get_e2e_runner.outputs.test_group }}
       env:
-        AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
+        AGENT_TOOLSDIRECTORY: /opt/_tools
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
@@ -101,8 +102,6 @@ jobs:
       run:
         shell: bash -xe {0}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
@@ -117,6 +116,10 @@ jobs:
           pip install -U pip wheel setuptools
           pip list
           pip install pandas scipy psutil requests
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
