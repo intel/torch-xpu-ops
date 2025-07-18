@@ -71,7 +71,7 @@ jobs:
         reference_issue: 1645
     defaults:
       run:
-        shell: bash -xe
+        shell: bash
     steps:
       - name: Cleanup workspace
         run: |
