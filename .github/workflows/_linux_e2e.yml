@@ -53,9 +53,8 @@ on:
 permissions: read-all
 
 jobs:
-  get_runner:
+  get_e2e_runner:
     runs-on: ${{ inputs.runner }}
-    name: ${{ github.runner.name }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
       test_user: ${{ steps.runner-info.outputs.test_user }}
@@ -64,54 +63,57 @@ jobs:
       - name: Get runner info
         id: runner-info
         run: |
+          # get test runner
           echo "test_host=${RUNNER_NAME}" >> ${GITHUB_OUTPUT}
           echo "test_user=$(id -u)" >> ${GITHUB_OUTPUT}
           echo "test_group=$(getent group render |cut -d: -f3)" >> ${GITHUB_OUTPUT}
-
           # show host info
           cat /etc/os-release
           uname -a
           source /opt/intel/oneapi/setvars.sh
           sycl-ls
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # clean docker cache
+          docker stop $(docker ps -aq) || true
+          docker system prune -af || true
+          # clean files
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
 
   e2e_test:
-    runs-on: ${{ needs.get_runner.outputs.test_host }}
-    needs: [get_runner]
+    runs-on: ${{ needs.get_e2e_runner.outputs.test_host }}
+    needs: get_e2e_runner
     timeout-minutes: 3600
-    permissions:
-      issues: write
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
+              -u ${{ needs.get_e2e_runner.outputs.test_user }}:${{ needs.get_e2e_runner.outputs.test_group }}
       env:
         AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-        reference_issue: 1645
     defaults:
       run:
         shell: bash -xe {0}
     steps:
-      - name: Cleanup workspace
-        run: |
-          hostname && whoami && id
-          find ./ |grep -v "^\./$" |xargs rm -rf
-          rm -rf ~/.triton ${HOME}/.triton
-          clinfo --list
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Setup python ${{ inputs.python }}
+      - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
-      - name: Check python
+      - name: Check runner
         run: |
-          which python
+          hostname && whoami && id
+          clinfo --list
+          gcc -v && g++ -v
+          which python && which pip
           python -V
+          pip install -U pip wheel setuptools
           pip list
           pip install pandas scipy psutil requests
       - name: Install oneAPI DLE
@@ -244,24 +246,61 @@ jobs:
           dt: ${{ inputs.dt }}
           scenario: ${{ inputs.scenario }}
 
-      - name: Download Reference Artifact
-        id: reference_id
-        run: |
-          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
-          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
-            --json body -q .body |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo 'n/a')"
-          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*" && \
-            rm -rf reference && mv Inductor-*-XPU-E2E-* reference || echo 'No reference'
-      - name: Summarize archieve files
-        id: summary
+      - name: Get archieve files
         if: ${{ ! cancelled() }}
         run: |
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/upload_files
+
+  e2e_summary:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: e2e_test
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFERENCE_ISSUE_ID: 1645
+    steps:
+      - name: Install gh
+        run: |
+          apt-get update
+          apt-get install gh rsync -y
+          find ./ |grep -v "^\./$" |xargs rm -rf
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Download Target Artifact
+        run: |
+          target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}"
+          gh --repo intel/torch-xpu-ops run download ${GITHUB_RUN_ID} -n "${target_dir}"
+          if [ -d "${target_dir}" ];then
+            rsync -avzq --delete ${target_dir}/ target/
+            rm -rf ${target_dir}/
+          fi
+      - name: Download Baseline Artifact
+        run: |
+          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
+          REFERENCE_RUN_ID="$(gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} \
+            --json body -q .body |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo 'n/a')"
+          gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*" || true
+          baseline_dir="$(find . -name 'Inductor-*-XPU-E2E-*')"
+          if [ -d "${baseline_dir}" ];then
+            rsync -avzq --delete ${baseline_dir}/ baseline/
+            rm -rf ${baseline_dir}/
+          fi
+      - name: Get summary
+        if: ${{ ! cancelled() }}
+        run: |
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
-              ${{ github.workspace }}/upload_files \
-              ${{ github.workspace }}/reference \
+              ${{ github.workspace }}/target \
+              ${{ github.workspace }}/baseline \
             >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
@@ -270,7 +309,7 @@ jobs:
               exit ${exit_label}
             fi
           fi
-          pt2e_summary_csv="$(find ${{ github.workspace }}/upload_files/ -name "summary.csv")"
+          pt2e_summary_csv="$(find ${{ github.workspace }}/target/ -name "summary.csv")"
           if [ -f "${pt2e_summary_csv}" ];then
             cat ${pt2e_summary_csv}
             failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
@@ -278,20 +317,18 @@ jobs:
               echo "[Warning] PT2E has failures!"
             fi
           fi
-      - name: Upload Inductor XPU E2E Data
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/upload_files
       - name: Upload Reference Run ID
-        if: ${{ ! contains(inputs.test_type, 'ondemand') }}
+        if: ${{ ! contains(inputs.test_type, 'ondemand') && github.repository_owner == 'intel' }}
         run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body 2>&1 |tee new_body.txt 2>&1
+          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
           has_or_not="$(grep 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt |wc -l)"
           if [ ${has_or_not} -ne 0 ];then
             sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
           else
             echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
           fi
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          find ./ |grep -v "^\./$" |xargs rm -rf
