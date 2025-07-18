@@ -53,8 +53,22 @@ on:
 permissions: read-all
 
 jobs:
-  e2e_test:
+  get_runner:
     runs-on: ${{ inputs.runner }}
+    outputs:
+      test_host: ${{ steps.runner-info.outputs.test_host }}
+      test_user: ${{ steps.runner-info.outputs.test_user }}
+      test_group: ${{ steps.runner-info.outputs.test_group }}
+    steps:
+      - name: Get runner info
+        id: runner-info
+        run: |
+          echo "test_host=${RUNNER_NAME}" >> ${GITHUB_OUTPUT}
+          echo "test_user=$(id -u)" >> ${GITHUB_OUTPUT}
+          echo "test_group=$(getent group render |cut -d: -f3)" >> ${GITHUB_OUTPUT}
+  e2e_test:
+    runs-on: ${{ needs.get_runner.outputs.test_host }}
+    needs: [get_runner]
     timeout-minutes: 3600
     permissions:
       issues: write
@@ -62,9 +76,8 @@ jobs:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video 
-               --privileged --shm-size=8g
-               -u $(id -u):$(getent group render | cut -d ':' -f3)
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
+              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
       env:
         AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
         GH_TOKEN: ${{ github.token }}
@@ -77,9 +90,8 @@ jobs:
       - name: Cleanup workspace
         run: |
           hostname && whoami && id
-          sudo find ./ /tmp |grep -vE "^(./|/tmp)$" |xargs sudo rm -rf
-          sudo rm -rf ~/.triton ${HOME}/.triton
-          sudo chmod 777 . /__w -R || true
+          find ./ |grep -v "^\./$" |xargs rm -rf
+          rm -rf ~/.triton ${HOME}/.triton
           clinfo --list
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
