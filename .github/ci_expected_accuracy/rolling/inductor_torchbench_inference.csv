@@ -22,7 +22,7 @@ detectron2_fasterrcnn_r_101_dc5,pass,eager_fail_to_run,fail_accuracy,fail_accura
 detectron2_fasterrcnn_r_101_fpn,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
 detectron2_fasterrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
 detectron2_fasterrcnn_r_50_dc5,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
-detectron2_fasterrcnn_r_50_fpn,pass,eager_fail_to_run,pass,fail_accuracy,pass
+detectron2_fasterrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,pass
 detectron2_fcos_r_50_fpn,pass,pass,pass,pass,pass
 detectron2_maskrcnn,fail_to_run,eager_fail_to_run,fail_to_run,eager_fail_to_run,fail_to_run
 detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
@@ -95,7 +95,7 @@ speech_transformer,pass,pass,pass,pass,pass
 squeezenet1_1,pass,fail_accuracy,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1261
-stable_diffusion_unet,eager_fail_to_run,pass_due_to_skip,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
+stable_diffusion_unet,eager_fail_to_run,eager_fail_to_run,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
 tacotron2,pass,pass,pass,fail_to_run,fail_to_run
 timm_efficientdet,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 timm_efficientnet,pass,pass,pass,pass,pass
