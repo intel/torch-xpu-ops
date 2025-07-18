@@ -107,6 +107,6 @@ jobs:
     needs: [preci-conditions-filter, preci-linux-build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests 
+      disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
       ut: xpu_distributed
       runner: PVC-7358
