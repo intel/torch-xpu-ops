@@ -55,6 +55,7 @@ permissions: read-all
 jobs:
   get_runner:
     runs-on: ${{ inputs.runner }}
+    name: ${{ github.runner.name }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
       test_user: ${{ steps.runner-info.outputs.test_user }}
@@ -66,6 +67,14 @@ jobs:
           echo "test_host=${RUNNER_NAME}" >> ${GITHUB_OUTPUT}
           echo "test_user=$(id -u)" >> ${GITHUB_OUTPUT}
           echo "test_group=$(getent group render |cut -d: -f3)" >> ${GITHUB_OUTPUT}
+
+          # show host info
+          cat /etc/os-release
+          uname -a
+          source /opt/intel/oneapi/setvars.sh
+          sycl-ls
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+
   e2e_test:
     runs-on: ${{ needs.get_runner.outputs.test_host }}
     needs: [get_runner]
@@ -146,8 +155,6 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-          ${{ github.workspace }}/.github/scripts/env.sh
-          sycl-ls
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
