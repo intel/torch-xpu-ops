@@ -3,10 +3,9 @@
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
 
-#if !defined(SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS) || \
-    (SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS != 1)
-#error This change enables event-less APIs, \
-  please ensure SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS=1.
+#ifndef SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS
+#error FATAL ERROR: The SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS is excepted to be defined \
+  to enqueue kernel without returning event. But the undef is detected!
 #endif
 
 // sycl access address space
