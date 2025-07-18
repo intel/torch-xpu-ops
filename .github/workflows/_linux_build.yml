@@ -98,7 +98,7 @@ jobs:
             bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
             export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
           fi
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           # gcc 11
           source /opt/rh/gcc-toolset-11/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \

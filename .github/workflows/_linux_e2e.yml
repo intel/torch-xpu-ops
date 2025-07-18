@@ -69,6 +69,9 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         reference_issue: 1645
+    defaults:
+      run:
+        shell: bash -xe
     steps:
       - name: Cleanup workspace
         run: |
@@ -127,7 +130,7 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-          source ${{ github.workspace }}/.github/scripts/env.sh
+          ${{ github.workspace }}/.github/scripts/env.sh
           sycl-ls
 
       # Nihglty launch
@@ -221,9 +224,6 @@ jobs:
       - name: Download Reference Artifact
         id: reference_id
         run: |
-          set -xe
-          source activate e2e_ci
-          conda install gh --channel conda-forge -y
           artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo 'n/a')"
@@ -233,15 +233,9 @@ jobs:
         id: summary
         if: ${{ ! cancelled() }}
         run: |
-          set -xe -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
-          mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
-          find . -type f -name "*.tgz" -mtime +3 -delete # delete files older than 3 days
-          tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
-          # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            source activate e2e_ci
             bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
               ${{ github.workspace }}/upload_files \
               ${{ github.workspace }}/reference \
