@@ -153,6 +153,8 @@ struct ScatterGatherElementwiseKernelFunctor {
     auto wg_id = item.get_group_linear_id();
     auto local_id = item.get_local_linear_id();
     int idx = nv * wg_id + local_id;
+
+#pragma unroll
     for (int i = 0; i < thread_work_size_; ++i) {
       if (idx < N_) {
         f_(idx);
