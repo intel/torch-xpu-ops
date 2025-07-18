@@ -96,6 +96,7 @@ jobs:
         AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        MODEL_ONLY_NAME: ${{ inputs.model }}
     defaults:
       run:
         shell: bash -xe {0}
