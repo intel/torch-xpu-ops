@@ -76,7 +76,8 @@ jobs:
       - name: Cleanup workspace
         run: |
           hostname && whoami
-          sudo find ./ /tmp ${HOME}/.triton |grep -vE "^(./|/tmp|${HOME}/.triton)$" |xargs sudo rm -rf
+          sudo find ./ /tmp |grep -vE "^(./|/tmp)$" |xargs sudo rm -rf
+          sudo rm -rf ~/.triton ${HOME}/.triton
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Setup python ${{ inputs.python }}
