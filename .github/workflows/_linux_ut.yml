@@ -3,46 +3,38 @@ name: Linux UT Test
 on:
   workflow_call:
     inputs:
-      pytorch:
-        required: false
-        type: string
-        default: 'main'
-        description: Pytorch branch/commit
-      keep_torch_xpu_ops:
-        required: false
-        type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
-      triton:
-        required: false
-        type: string
-        default: ''
-        description: Triton commit. Use pytorch pined commit by default
-      ut:
-        required: true
-        type: string
-        default: ''
-        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
-      disabled_tests:
-        required: false
-        type: string
-        default: ''
-        description: List disabled tests, such as disable_ut or disable_distributed
-      python:
-        required: false
-        type: string
-        default: '3.10'
-        description: Python version
       runner:
         required: true
         type: string
-        default: 'linux.idc.xpu'
         description: Runner label
-      driver:
-        required: false
+      test_type:
+        required: true
         type: string
-        default: 'lts'
-        description: Driver lts/rolling
+        description: Test scope
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      torch_xpu_ops:
+        type: string
+        default: 'main'
+        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+      ut:
+        required: true
+        type: string
+        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
+      disabled_tests:
+        type: string
+        default: ''
+        description: List disabled tests, such as disable_ut or disable_distributed
 
 permissions: read-all
 
@@ -53,8 +45,6 @@ jobs:
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     strategy:
       fail-fast: false
@@ -151,7 +141,7 @@ jobs:
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'xpu_profiling'
-            condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
+            condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
             command_script: |
               # RN50 Test
               PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
@@ -200,11 +190,18 @@ jobs:
                 rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
           source activate $CONDA_ENV_NAME
+      - name: Install oneAPI DLE
+        if: ${{ inputs.oneapi != 'installed' }}
+        run: |
+          rm -rf ~/intel ~/.intel /opt/intel
+          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        if: ${{ ! contains(inputs.test_type, 'wheel') }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          pattern: Torch-XPU-Wheel-*
       - name: Prepare Stock Pytorch
         run: |
           cd ../
@@ -344,7 +341,7 @@ jobs:
         - name: 'torch_xpu'
           condition: ${{ contains(inputs.ut, 'torch_xpu') }}
         - name: 'xpu_profiling'
-          condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
+          condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
     steps:
       - name: Get matrix UT value
         run: |
@@ -396,8 +393,6 @@ jobs:
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
       ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
@@ -449,25 +444,6 @@ jobs:
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
             cd third_party/torch-xpu-ops
             git checkout ${TORCH_XPU_OPS_COMMIT}
-          fi
-      - name: Triton Installation
-        run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../pytorch
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install cmake ninja pybind11
-            rm -rf pytorch_triton_xpu-*.whl
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-            pip install pytorch_triton_xpu-*.whl
           fi
       - name: Torch Config
         run: |
