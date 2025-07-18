@@ -74,6 +74,30 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
+      - name: Build Triton XPU
+        run: |
+          # gcc 13
+          dnf install -y gcc-toolset-13-gcc-c++
+          source /opt/rh/gcc-toolset-13/enable
+          dnf install -y zlib-devel
+          cd ../ && rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          cd pytorch
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            pip install cmake ninja pybind11
+            rm -rf pytorch_triton_xpu-*.whl
+            TRITON_VERSION_NAME="$(
+              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
+            )"
+            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
+            cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
+          fi
       - name: Build Pytorch XPU
         run: |
           set -xe -o pipefail
