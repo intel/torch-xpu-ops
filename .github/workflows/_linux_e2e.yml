@@ -62,8 +62,7 @@ jobs:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - /etc/group:/etc/group
-      options: --device=/dev/mem --device=/dev/dri --privileged --shm-size=8g -u jenkins
+      options: --device=/dev/mem --device=/dev/dri --group-add video --group-add 109 --privileged --shm-size=8g -u jenkins:109
       env:
         AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
         GH_TOKEN: ${{ github.token }}
@@ -78,7 +77,7 @@ jobs:
           hostname && whoami && id
           sudo find ./ /tmp |grep -vE "^(./|/tmp)$" |xargs sudo rm -rf
           sudo rm -rf ~/.triton ${HOME}/.triton
-          sudo chmod . 777 -R
+          sudo chmod 777 . -R
           clinfo --list
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
