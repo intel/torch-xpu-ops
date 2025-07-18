@@ -1,3 +1,4 @@
+#include <ATen/AccumulateType.h>
 #include <ATen/Functions.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Reduction.h>
@@ -126,7 +127,7 @@ struct NllLossForwardReduce1DKernelFunctor {
   int64_t reduction;
 };
 
-template <typename scalar_t, typename index_t>
+template <typename scalar_t, typename index_t, typename accscalar_t>
 struct NllLossForwardReduce2DKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item_id) const {
@@ -136,17 +137,18 @@ struct NllLossForwardReduce2DKernelFunctor
     auto total_weight_ptr = total_weight_data;
     auto output_ptr = output_data;
     int64_t local_id = item_id.get_local_id(0);
-    local_output_acc[local_id] = 0.0;
-    local_total_weight_acc[local_id] = 0.0;
+    local_output_acc[local_id] = accscalar_t(0.0);
+    local_total_weight_acc[local_id] = accscalar_t(0.0);
     for (int i = local_id; i < batch_size; i += local_size) {
       int cur_target = target_ptr[i];
       if (cur_target != ignore_index) {
         scalar_t cur_weight =
             has_weight ? weight_ptr[cur_target] : static_cast<scalar_t>(1.0f);
-        local_total_weight_acc[local_id] += cur_weight;
+        local_total_weight_acc[local_id] +=
+            static_cast<accscalar_t>(cur_weight);
         local_output_acc[local_id] -=
-            static_cast<scalar_t>(input_ptr[i * n_target + cur_target]) *
-            static_cast<scalar_t>(cur_weight);
+            static_cast<accscalar_t>(input_ptr[i * n_target + cur_target]) *
+            static_cast<accscalar_t>(cur_weight);
       }
     }
 
@@ -161,11 +163,13 @@ struct NllLossForwardReduce2DKernelFunctor
     }
     item_id.barrier(sycl_global_and_local_fence);
 
-    output_ptr[0] = local_output_acc[0];
-    total_weight_ptr[0] = local_total_weight_acc[0];
     if (reduction == at::Reduction::Mean) {
-      output_ptr[0] /= total_weight_ptr[0];
+      output_ptr[0] = static_cast<scalar_t>(
+          local_output_acc[0] / local_total_weight_acc[0]);
+    } else {
+      output_ptr[0] = static_cast<scalar_t>(local_output_acc[0]);
     }
+    total_weight_ptr[0] = static_cast<scalar_t>(local_total_weight_acc[0]);
   }
   NllLossForwardReduce2DKernelFunctor(
       scalar_t* input_data_,
@@ -192,8 +196,8 @@ struct NllLossForwardReduce2DKernelFunctor
         reduction(reduction_) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_output_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
-    local_total_weight_acc = sycl_local_acc_t<scalar_t>(local_size, cgh);
+    local_output_acc = sycl_local_acc_t<accscalar_t>(local_size, cgh);
+    local_total_weight_acc = sycl_local_acc_t<accscalar_t>(local_size, cgh);
   }
 
  private:
@@ -207,8 +211,8 @@ struct NllLossForwardReduce2DKernelFunctor
   int64_t local_size;
   int64_t ignore_index;
   int n_target;
-  sycl_local_acc_t<scalar_t> local_output_acc;
-  sycl_local_acc_t<scalar_t> local_total_weight_acc;
+  sycl_local_acc_t<accscalar_t> local_output_acc;
+  sycl_local_acc_t<accscalar_t> local_total_weight_acc;
   int64_t reduction;
 };
 
@@ -309,8 +313,9 @@ void nll_loss_forward_template(
 
     sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
   } else if (input_cont.dim() == 2) {
+    using accscalar_t = at::acc_type<scalar_t, true>;
     using NllLossForwardReduce2DKernel =
-        NllLossForwardReduce2DKernelFunctor<scalar_t, index_t>;
+        NllLossForwardReduce2DKernelFunctor<scalar_t, index_t, accscalar_t>;
 
     int64_t batch_size = input.size(0);
     int n_target = input.size(1);
@@ -322,7 +327,7 @@ void nll_loss_forward_template(
     auto target_data = _target_data;
     auto total_weight_data = _total_weight_data;
     auto output_data = _output_data;
-    NllLossForwardReduce2DKernelFunctor<scalar_t, index_t> kfn(
+    NllLossForwardReduce2DKernelFunctor<scalar_t, index_t, accscalar_t> kfn(
         input_data,
         target_data,
         weight_data,
