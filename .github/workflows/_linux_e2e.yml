@@ -77,7 +77,7 @@ jobs:
           hostname && whoami && id
           sudo find ./ /tmp |grep -vE "^(./|/tmp)$" |xargs sudo rm -rf
           sudo rm -rf ~/.triton ${HOME}/.triton
-          sudo chmod 777 . /__w -R
+          sudo chmod 777 . /__w -R || true
           clinfo --list
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
