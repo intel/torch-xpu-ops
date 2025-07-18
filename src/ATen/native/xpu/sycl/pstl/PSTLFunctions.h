@@ -357,7 +357,7 @@ struct InclusiveScanIfKernelFunctor {
     d_first_[item_id] = static_cast<T>(first_[item_id]);
 
     if (mask_ptr_[item_id] == 0) {
-      for (int64_t _k = 1; item_id - _k >= 0; _k++) {
+      for (int64_t _k = 1; (int64_t)item_id - _k >= 0; _k++) {
         auto tmp = first_[item_id - _k];
         d_first_[item_id] = static_cast<T>(p_(d_first_[item_id], tmp));
         if (mask_ptr_[item_id - _k] != 0)
