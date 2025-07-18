@@ -25,11 +25,12 @@ inputs:
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
 
+defaults:
+  run:
+    shell: bash -xe {0}
+
 runs:
   using: composite
-  defaults:
-    run:
-      shell: bash -xe {0}
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
