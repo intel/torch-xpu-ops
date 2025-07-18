@@ -201,9 +201,9 @@ jobs:
       - name: Torch Config
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf ../pytorch/inductor_log || sudo rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
           cd ..
           source activate e2e_ci
           python -c "import triton; print(triton.__version__)"
@@ -257,7 +257,7 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           set -x -e -o pipefail
-          rm -rf ${{ github.workspace }}/upload_files
+          rm -rf ${{ github.workspace }}/upload_files || sudo rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           # Print summary
           source activate e2e_ci

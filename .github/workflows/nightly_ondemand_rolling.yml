@@ -206,9 +206,9 @@ jobs:
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf ../pytorch/inductor_log || sudo rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
@@ -331,7 +331,7 @@ jobs:
             artifact_type="${{ env.run_type }}"
           fi
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
-            --json body -q .body |grep "Inductor-${artifact_type}-LTS-XPU-E2E" |sed 's/.*: *//')"
+            --json body -q .body |grep "Inductor-${artifact_type}-Rolling-XPU-E2E" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           rm -rf reference && mv Inductor-*-XPU-E2E-* reference
       - name: Summarize archieve files
@@ -358,12 +358,14 @@ jobs:
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
-          else
-            source activate e2e_ci
-            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
-            cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
-            rm -rf summary_pt2e.py
+          fi
+          pt2e_summary_csv="$(find ${{ github.workspace }}/upload_files/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            cat ${pt2e_summary_csv}
+            failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
+            if [ ${failed_num} -ne 0 ];then
+              echo "[Warning] PT2E has failures!"
+            fi
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
