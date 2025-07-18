@@ -282,23 +282,18 @@ jobs:
       - name: Install gh
         run: |
           apt-get update
-          apt-get install gh rsync -y
+          apt-get install gh rsync ca-certificates -y
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Target Artifact
         run: |
+          mkdir target/
+          cd target/
           target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}"
           gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -n "${target_dir}"
-          if [ -d "${target_dir}" ];then
-            rsync -avzq --delete ${target_dir}/ target/
-            ls -al target/
-            rm -rf ${target_dir}/
-          else
-            echo "No artifacts!"
-            exit 1
-          fi
       - name: Download Baseline Artifact
         run: |
+          mkdir baseline/
           artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
           gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
           REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
@@ -310,18 +305,12 @@ jobs:
               ls -al baseline/
               rm -rf ${baseline_dir}/
             fi
-          else
-            echo "No reference!"
-            mkdir -p baseline
           fi
       - name: Get summary
         if: ${{ ! cancelled() }}
         run: |
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
-              ${{ github.workspace }}/target \
-              ${{ github.workspace }}/baseline \
-            >> ${GITHUB_STEP_SUMMARY}
+            bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
@@ -329,7 +318,7 @@ jobs:
               exit ${exit_label}
             fi
           fi
-          pt2e_summary_csv="$(find ${{ github.workspace }}/target/ -name "summary.csv")"
+          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
           if [ -f "${pt2e_summary_csv}" ];then
             cat ${pt2e_summary_csv}
             failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
