@@ -294,11 +294,11 @@ skip_dict = {
         "test_shard_parameter",
         "test_shard_tensor",
         "test_shard_tensor_with_empty_shard",
-    )
+    ),
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_sharded_tensor_reshard",
-    )
+    ),
     "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
     "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
@@ -325,7 +325,7 @@ skip_dict = {
         "test_2d_to_2d_reshard_placement_change",
         "test_1d_to_2d_reshard_mesh_change",
         "test_2d_to_1d_reshard_mesh_change",
-    )
+    ),
     "../../../../test/distributed/checkpoint/test_file_system_checkpoint.py": None,
     "../../../../test/distributed/checkpoint/test_file_system_checkpoint_cpu.py": None,
     "../../../../test/distributed/checkpoint/test_format_utils.py": None,
@@ -334,7 +334,7 @@ skip_dict = {
     "../../../../test/distributed/checkpoint/test_fsdp_tp_checkpoint_conversion.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_fsdp_to_tp"
-    )
+    ),
     "../../../../test/distributed/checkpoint/test_fsspec.py": None,
     "../../../../test/distributed/checkpoint/test_hsdp_checkpoint.py": None,
     "../../../../test/distributed/checkpoint/test_nested_dict.py": None,
@@ -344,7 +344,7 @@ skip_dict = {
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_setting_meta_device_model",
         "test_multi_param_groups",
-    )
+    ),
     "../../../../test/distributed/checkpoint/test_state_dict_utils.py": None,
     "../../../../test/distributed/checkpoint/test_tp_checkpoint.py": None,
     "../../../../test/distributed/checkpoint/test_traverse.py": None,
