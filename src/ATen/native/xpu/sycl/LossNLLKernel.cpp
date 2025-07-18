@@ -137,8 +137,8 @@ struct NllLossForwardReduce2DKernelFunctor
     auto total_weight_ptr = total_weight_data;
     auto output_ptr = output_data;
     int64_t local_id = item_id.get_local_id(0);
-    local_output_acc[local_id] = accscalar_t(0.0);
-    local_total_weight_acc[local_id] = accscalar_t(0.0);
+    local_output_acc[local_id] = accscalar_t(0);
+    local_total_weight_acc[local_id] = accscalar_t(0);
     for (int i = local_id; i < batch_size; i += local_size) {
       int cur_target = target_ptr[i];
       if (cur_target != ignore_index) {
