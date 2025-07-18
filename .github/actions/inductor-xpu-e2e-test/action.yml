@@ -27,6 +27,9 @@ inputs:
 
 runs:
   using: composite
+  defaults:
+    run:
+      shell: bash -xe {0}
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
@@ -75,7 +78,6 @@ runs:
               contains_status="continue"
             }
         }
-        set -xe
         xpu_num=$(clinfo --list |awk 'BEGIN{gpu=0;}{if(gpu==1 && $0~/Platform/){gpu=0;}; if(gpu==1){print $0;}; if($0~/Platform.*Graphics/){gpu=1;}}' |wc -l)
         cores_per_instance="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${xpu_num}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
         export OMP_NUM_THREADS=${cores_per_instance}
@@ -134,7 +136,6 @@ runs:
         cp ./.github/scripts/inductor_summary.py ./pytorch
         cd ./pytorch
         pip install styleFrame scipy pandas
-        set -xe
         dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
         mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
         suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
