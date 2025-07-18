@@ -62,8 +62,9 @@ jobs:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g \
-                -u $(id -u):$(getent group render | cut -d ':' -f3)
+      options: --device=/dev/mem --device=/dev/dri --group-add video 
+               --privileged --shm-size=8g
+               -u $(id -u):$(getent group render | cut -d ':' -f3)
       env:
         AGENT_TOOLSDIRECTORY: "${{ github.workspace }}/_tools"
         GH_TOKEN: ${{ github.token }}
