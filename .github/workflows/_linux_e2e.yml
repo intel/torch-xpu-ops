@@ -265,40 +265,54 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   e2e_summary:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     if: ${{ always() }}
     needs: e2e_test
     permissions:
       issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REFERENCE_ISSUE_ID: 1645
+    container:
+      image: ubuntu:24.04
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REFERENCE_ISSUE_ID: 1645
+    defaults:
+      run:
+        shell: bash -xe {0}
     steps:
       - name: Install gh
         run: |
-          sudo apt-get update
-          sudo apt-get install gh rsync -y
-          find ./ |grep -v "^\./$" |xargs rm -rf
+          apt-get update
+          apt-get install gh rsync -y
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Target Artifact
         run: |
           target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}"
-          gh --repo intel/torch-xpu-ops run download ${GITHUB_RUN_ID} -n "${target_dir}"
+          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -n "${target_dir}"
           if [ -d "${target_dir}" ];then
             rsync -avzq --delete ${target_dir}/ target/
+            ls -al target/
             rm -rf ${target_dir}/
+          else
+            echo "No artifacts!"
+            exit 1
           fi
       - name: Download Baseline Artifact
         run: |
           artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
-          REFERENCE_RUN_ID="$(gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} \
-            --json body -q .body |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo 'n/a')"
-          gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*" || true
-          baseline_dir="$(find . -name 'Inductor-*-XPU-E2E-*')"
-          if [ -d "${baseline_dir}" ];then
-            rsync -avzq --delete ${baseline_dir}/ baseline/
-            rm -rf ${baseline_dir}/
+          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
+          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+          if [ "${REFERENCE_RUN_ID}" != "" ];then
+            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+            baseline_dir="$(find . -name 'Inductor-*-XPU-E2E-*' -type d)"
+            if [ -d "${baseline_dir}" ];then
+              rsync -avzq --delete ${baseline_dir}/ baseline/
+              ls -al baseline/
+              rm -rf ${baseline_dir}/
+            fi
+          else
+            echo "No reference!"
+            mkdir -p baseline
           fi
       - name: Get summary
         if: ${{ ! cancelled() }}
@@ -334,7 +348,3 @@ jobs:
             echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
           fi
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
-      - name: Cleanup workspace
-        if: ${{ always() }}
-        run: |
-          find ./ |grep -v "^\./$" |xargs rm -rf
