@@ -19,12 +19,75 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
+#include <torch/csrc/distributed/c10d/TraceUtils.h>
 #include <torch/csrc/distributed/c10d/logger.hpp>
 namespace c10d {
 
 static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "TORCH_XCCL_BLOCKING_WAIT",
     "XCCL_BLOCKING_WAIT"};
+
+static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = {
+    "TORCH_XCCL_COORD_CHECK_MILSEC",
+    "XCCL_COORD_CHECK_MILSEC"};
+
+#if defined(__linux__)
+struct DumpPipe {
+  DumpPipe(int rank) {
+    std::string fileStem =
+        getCvarString({"TORCH_FR_DEBUG_INFO_PIPE_FILE"}, "");
+    if (fileStem.empty() ||
+        getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0) <= 0) {
+      return;
+    }
+    TORCH_CHECK(!fileStem.empty(), "TORCH_FR_DEBUG_INFO_PIPE_FILE is empty");
+    std::string filename = c10::str(fileStem, rank, ".pipe");
+    TORCH_CHECK(
+        unlink(filename.c_str()) != -1 || errno == ENOENT,
+        "Error removing existing named pipe ",
+        filename,
+        ", Error: ",
+        std::strerror(errno));
+    TORCH_CHECK(
+        mkfifo(filename.c_str(), 0666) != -1,
+        "Error creating named pipe ",
+        filename,
+        ", Error: ",
+        std::strerror(errno));
+    fd_ = open(filename.c_str(), O_RDONLY | O_NONBLOCK);
+    LOG(INFO) << "Pipe file " << filename
+              << " has been opened, write to it to trigger XCCL Debug Dump.";
+    TORCH_CHECK(fd_ != -1, "Error opening named pipe ", filename);
+  }
+  bool shouldDump() {
+    if (fd_ == -1) {
+      return false;
+    }
+    // NOLINTNEXTLINE(*array*)
+    char buf[128]{};
+    // non-blocking from O_NONBLOCK above.
+    // Ignore EINTR because we already will poll this
+    // again later.
+    ssize_t bytesRead = read(fd_, &buf, 128);
+    return bytesRead > 0;
+  }
+  ~DumpPipe() {
+    if (fd_ != -1) {
+      close(fd_);
+    }
+  }
+
+ private:
+  int fd_ = -1;
+};
+#else
+struct DumpPipe {
+  DumpPipe(int rank) {}
+  bool shouldDump() {
+    return false;
+  }
+};
+#endif
 
 using xcclComm_t = ccl::communicator;
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
@@ -97,6 +160,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
     bool isP2P_;
+    std::optional<uint64_t> trace_id_;
+    size_t numelIn_ = -1;
+    size_t numelOut_ = -1;
 
    private:
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
@@ -105,7 +171,44 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     friend class ProcessGroupXCCL;
   };
 
-  ProcessGroupXCCL(const c10::intrusive_ptr<Store>& store, int rank, int size);
+  struct Options : public Backend::Options {
+    explicit Options();
+
+    static c10::intrusive_ptr<Options> create() {
+      return c10::make_intrusive<Options>();
+    }
+
+    std::vector<uint64_t> global_ranks_in_group;
+    std::string group_name;
+  };
+
+  class HeartbeatMonitor {
+   public:
+    HeartbeatMonitor(ProcessGroupXCCL* pg);
+    virtual ~HeartbeatMonitor() = default;
+
+    std::string getXCCLTimeoutErrorMsg(const std::string& extraMsg);
+    void start();
+    void join();
+    virtual void runLoop();
+    void stop();
+
+   protected:
+    ProcessGroupXCCL* pg_;
+
+   private:
+    int coordCheckIntervalMilSec_;
+    std::condition_variable monitorWakeUpCV_;
+    std::mutex monitorMutex_;
+    std::thread xcclHeartbeatMonitorThread_;
+    std::atomic<bool> terminateHeartbeatMonitorThread_{false};
+  };
+
+  ProcessGroupXCCL(
+    const c10::intrusive_ptr<Store>& store,
+    int rank,
+    int size,
+    c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
@@ -369,6 +472,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   c10::DeviceIndex guessDeviceId() const;
 
+  const std::vector<uint64_t>& groupRanks() const;
+  void setStartedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void setCompletedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  bool dumpDebuggingInfo(bool includeStackTrace = true);
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
       xcclStreamsMap_;
@@ -387,8 +495,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
+  uint64_t op_id_{0};
   size_t local_id_;
   std::string logPrefix_;
+  const c10::intrusive_ptr<Options> options_;
+  std::shared_ptr<ProcessGroupStatus> pgStatus_ =
+      std::make_shared<ProcessGroupStatus>();
+  std::unique_ptr<HeartbeatMonitor> heartbeatMonitor_;
+  int traceBufferSize_;
 
  private:
   std::mutex kvs_mutex;
