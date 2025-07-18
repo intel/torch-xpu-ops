@@ -25,15 +25,12 @@ inputs:
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
 
-defaults:
-  run:
-    shell: bash -xe {0}
-
 runs:
   using: composite
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
+      shell: bash -xe {0}
       run: |
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           python -c "import torch, torchvision, torchaudio"
@@ -66,6 +63,7 @@ runs:
         fi
         pip list |grep -E 'intel|torch'
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      shell: bash -xe {0}
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
@@ -125,6 +123,7 @@ runs:
         done
 
     - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      shell: bash -xe {0}
       run: |
         cd ./pytorch
         rm -f inductor_log/summary_accuracy.csv

@@ -194,6 +194,7 @@ jobs:
         if: ${{ contains(inputs.test_type, 'nightly') }}
         uses: ./.github/actions/pt2e
         with:
+          env_prepare: true
           dt: float32,int8
           scenario: accuracy,performance
 
@@ -229,6 +230,7 @@ jobs:
         if: ${{ contains(inputs.test_type, 'weekly') }}
         uses: ./.github/actions/pt2e
         with:
+          env_prepare: true
           dt: float32,int8
           scenario: accuracy,performance
 
