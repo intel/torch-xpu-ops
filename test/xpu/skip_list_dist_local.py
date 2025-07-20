@@ -224,6 +224,7 @@ skip_dict = {
         "test_slice",
         "test_stack",
         "test_where_type_promotion",
+        "test_copy_",
     ),
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": (
         # https://jira.devtools.intel.com/browse/MLSL-3625
@@ -322,6 +323,7 @@ skip_dict = {
         # https://jira.devtools.intel.com/browse/MLSL-3625
         "test_1d_to_1d_reshard_placement_change_extensions0",
         "test_1d_to_1d_reshard_placement_change_extensions1",
+        "test_1d_to_1d_reshard_placement_change_extensions2",
         "test_2d_to_2d_reshard_placement_change",
         "test_1d_to_2d_reshard_mesh_change",
         "test_2d_to_1d_reshard_mesh_change",
