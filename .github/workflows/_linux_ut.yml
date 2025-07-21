@@ -152,6 +152,7 @@ jobs:
               pip install pytest pytest-timeout
           - name: 'xpu_profiling'
             condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
+            directory: '$GITHUB_WORKSPACE'
             command_script: |
               mkdir -p $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce
               # RN50 Test
