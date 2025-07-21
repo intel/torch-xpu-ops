@@ -45,6 +45,7 @@ jobs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
       test_user: ${{ steps.runner-info.outputs.test_user }}
       test_group: ${{ steps.runner-info.outputs.test_group }}
+      ZE_AFFINITY_MASK: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
       - name: Get runner info
         id: runner-info
@@ -53,6 +54,7 @@ jobs:
           echo "test_host=${NODE_LABEL}" |tee -a ${GITHUB_OUTPUT}
           echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
           echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+          echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
           # show host info
           cat /etc/os-release
           uname -a
@@ -83,6 +85,7 @@ jobs:
         AGENT_TOOLSDIRECTORY: /opt/_tools
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        ZE_AFFINITY_MASK: ${{ needs.get_ut_runner.outputs.ZE_AFFINITY_MASK }}
     env:
       UT_NAME: ${{ matrix.test.name }}
     defaults:
@@ -104,7 +107,8 @@ jobs:
             command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
             timeout: 300
-            runner: 'pvc_rolling'
+            additional_steps: |
+              unset ZE_AFFINITY_MASK
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
             directory: 'pytorch'
@@ -261,7 +265,11 @@ jobs:
           git checkout ${TORCH_COMMIT_ID}
           pip install -r .ci/docker/requirements-ci.txt
           # apply extra PRs for stock pytorch
-          python ../.github/scripts/apply_torch_pr.py
+          if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
+            python ../.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          else
+            python ../.github/scripts/apply_torch_pr.py
+          fi
           git status && git diff && git show -s
       - name: Prepare Torch-xpu-ops
         run: |
@@ -278,7 +286,7 @@ jobs:
               TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
             fi
           fi
-          if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ];then
+          if [ "${{ inputs.test_type }}" == "cicd" ];then
             cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           else
             git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops

@@ -155,7 +155,11 @@ jobs:
           cd pytorch
           git checkout ${TORCH_COMMIT_ID}
           # apply extra PRs for stock pytorch
-          python ../.github/scripts/apply_torch_pr.py
+          if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
+            python ../.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          else
+            python ../.github/scripts/apply_torch_pr.py
+          fi
           git status && git diff && git show -s
       - name: Torch Config
         run: |
@@ -167,6 +171,35 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+
+      # CICD launch
+      - name: Nightly Huggingface BF16 & FP16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: bfloat16,float16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly Timm_models BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') }}
+        uses: ./.github/actions/inductor-xpu-e2e-test
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
@@ -300,7 +333,7 @@ jobs:
       - name: Download Baseline Artifact
         run: |
           mkdir baseline/
-          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/')"
+          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/;s/cicd/weekly/')"
           gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
           REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
           if [ "${REFERENCE_RUN_ID}" != "" ];then
@@ -333,7 +366,7 @@ jobs:
             fi
           fi
       - name: Upload Reference Run ID
-        if: ${{ ! contains(inputs.test_type, 'ondemand') && github.repository_owner == 'intel' }}
+        if: ${{ ! (contains(inputs.test_type, 'ondemand') && contains(inputs.test_type, 'cicd')) && github.repository_owner == 'intel' }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
           has_or_not="$(grep 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt |wc -l)"
