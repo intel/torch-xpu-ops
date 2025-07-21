@@ -51,7 +51,7 @@ python -m pip install -r requirements.txt
 python -m pip install mkl-static mkl-include
 export USE_STATIC_MKL=1
 export USE_XCCL=1
-if [ "${XPU_ONEAPI_PATH}" != "" ];then
+if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
         intel-cmplr-lib-rt==2025.1.1 | \
         intel-cmplr-lib-ur==2025.1.1 | \
