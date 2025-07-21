@@ -53,8 +53,8 @@ jobs:
     timeout-minutes: 300
     env:
       GH_TOKEN: ${{ github.token }}
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      NEOReadDebugKeys: 1
+      DisableScratchPages: 1
       ut_skip_issue: 1624
     steps:
       - name: Checkout torch-xpu-ops
@@ -68,10 +68,11 @@ jobs:
           conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
           source activate xpu_op_${ZE_AFFINITY_MASK}
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: manywheel-py3_10-xpu
+          repository: pytorch/pytorch
+          run-id: 16407976204
       - name: Prepare Stock Pytorch
         run: |
           cd ../
@@ -95,6 +96,8 @@ jobs:
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git show -s && git status && git diff
           pip install -r .ci/docker/requirements-ci.txt
+          pip uninstall -y torch && pip uninstall -y torch
+          find ${{ github.workspace }} -name "torch-*.whl" |xargs pip install --force-reinstall
       - name: Prepare Torch-xpu-ops
         run: |
           cd ../pytorch

@@ -46,6 +46,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Download Pytorch wheel
+      uses: actions/download-artifact@v4
+      with:
+        name: manywheel-py3_10-xpu
+        repository: pytorch/pytorch
+        run-id: 16407976204
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
       shell: bash
@@ -92,11 +98,13 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
         fi
         pip install numpy==1.26.4
+        pip uninstall -y torch && pip uninstall -y torch
+        find ${{ github.workspace }} -name "torch-*.whl" |xargs pip install --force-reinstall
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+        NEOReadDebugKeys: 1
+        DisableScratchPages: 1
       shell: bash
       run: |
         source activate e2e_ci
