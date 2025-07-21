@@ -18,7 +18,7 @@ jobs:
     runs-on: linux.idc.xpu
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
-      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g -u 100:109 -e ZE_AFFINITY_MASK
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g -u 100:109
     steps:
       - id: setVariables
         run: |
