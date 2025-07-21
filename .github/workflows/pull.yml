@@ -116,6 +116,7 @@ jobs:
   preci-linux-e2e:
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
     name: preci-linux / e2e_test
+    permissions: write-all
     needs: [preci-conditions-filter, preci-linux-build]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
