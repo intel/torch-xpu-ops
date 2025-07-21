@@ -45,7 +45,6 @@ jobs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
       test_user: ${{ steps.runner-info.outputs.test_user }}
       test_group: ${{ steps.runner-info.outputs.test_group }}
-      ZE_AFFINITY_MASK: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
       - name: Get runner info
         id: runner-info
@@ -54,7 +53,6 @@ jobs:
           echo "test_host=${NODE_LABEL}" |tee -a ${GITHUB_OUTPUT}
           echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
           echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
-          echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
           # show host info
           cat /etc/os-release
           uname -a
@@ -72,7 +70,7 @@ jobs:
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
   ut_test:
     needs: get_ut_runner
-    runs-on: ${{ matrix.test.runner || needs.get_ut_runner.outputs.test_host }}
+    runs-on: ${{ needs.get_ut_runner.outputs.test_host }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
     container:
@@ -85,7 +83,7 @@ jobs:
         AGENT_TOOLSDIRECTORY: /opt/_tools
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-        ZE_AFFINITY_MASK: ${{ needs.get_ut_runner.outputs.ZE_AFFINITY_MASK }}
+        ZE_AFFINITY_MASK: ${{ env.ZE_AFFINITY_MASK }}
     env:
       UT_NAME: ${{ matrix.test.name }}
     defaults:
