@@ -52,6 +52,7 @@ runs:
         name: manywheel-py3_10-xpu
         repository: pytorch/pytorch
         run-id: 16407976204
+        github-token: ${{ github.token }}
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
       shell: bash
