@@ -265,9 +265,9 @@ jobs:
           pip install -r .ci/docker/requirements-ci.txt
           # apply extra PRs for stock pytorch
           if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
-            python ../.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
           else
-            python ../.github/scripts/apply_torch_pr.py
+            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           fi
           git status && git diff && git show -s
       - name: Prepare Torch-xpu-ops
@@ -486,7 +486,7 @@ jobs:
           git checkout ${TORCH_COMMIT_ID}
           pip install -r .ci/docker/requirements-ci.txt
           # apply extra PRs for stock pytorch
-          python ../.github/scripts/apply_torch_pr.py
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
           git status && git diff && git show -s
       - name: Prepare Torch-xpu-ops
         run: |

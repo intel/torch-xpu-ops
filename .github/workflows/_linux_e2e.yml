@@ -307,7 +307,7 @@ jobs:
     permissions:
       issues: write
     container:
-      image: ubuntu:24.04
+      image: ubuntu:latest
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
@@ -350,6 +350,7 @@ jobs:
       - name: Get summary
         if: ${{ ! cancelled() }}
         run: |
+          pip install pandas requests
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
