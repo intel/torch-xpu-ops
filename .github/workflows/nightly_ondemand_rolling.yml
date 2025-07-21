@@ -15,32 +15,14 @@ permissions: read-all
 
 jobs:
   setup:
-    runs-on: ubuntu-latest
-    outputs:
-      node_name: ${{ steps.setVariables.outputs.node_name }}
+    runs-on: linux.idc.xpu
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g -u 100:109
+      env:
+        ZE_AFFINITY_MASK: ${{ env.ZE_AFFINITY_MASK }}
     steps:
       - id: setVariables
         run: |
-          echo "node_name=${{ inputs.node_name }}" >> ${GITHUB_OUTPUT}
-  test:
-    runs-on: ${{ matrix.node_name }}
-    needs: setup
-    strategy:
-      fail-fast: false
-      matrix:
-        node_name: ${{ needs.setup.outputs.node_name }}
-    steps:
-      - name: Checkout repository
-        run: |
-          docker images
-          docker ps -a
-      - name: Nightly Timm_models FP16 Training Accuracy Test
-        uses: ./.github/actions/inductor-xpu-e2e-test
-        with:
-          suite: timm_models
-          dt: float16
-          mode: training
-          scenario: accuracy
-          pytorch: nightly_wheel
-          env_prepare: true
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          printenv
+          clinfo --list
