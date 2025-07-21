@@ -124,7 +124,7 @@ jobs:
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: linux.idc.xpu
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.torch_xpu_ops }}

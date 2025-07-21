@@ -224,6 +224,7 @@ jobs:
           pip install pytest pytest-timeout
           uname -a
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+          pip install pandas psutil scipy requests
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
