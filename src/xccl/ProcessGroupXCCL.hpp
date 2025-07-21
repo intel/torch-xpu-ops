@@ -386,7 +386,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::string& logPrefix() const;
 
   void setEnableNanCheck(bool enableNanCheck);
-  
+
   c10::DeviceIndex guessDeviceId() const;
 
  protected:
