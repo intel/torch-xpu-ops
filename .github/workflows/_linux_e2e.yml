@@ -309,6 +309,7 @@ jobs:
     container:
       image: ubuntu:24.04
       env:
+        AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
         REFERENCE_ISSUE_ID: 1645
     defaults:
@@ -319,6 +320,10 @@ jobs:
         run: |
           apt-get update
           apt-get install gh rsync ca-certificates -y
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Target Artifact

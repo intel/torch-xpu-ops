@@ -50,7 +50,7 @@ jobs:
         id: runner-info
         run: |
           # get test runner
-          echo "test_host=${NODE_LABEL}" |tee -a ${GITHUB_OUTPUT}
+          echo "test_host=${RUNNER_NAME%-*}" |tee -a ${GITHUB_OUTPUT}
           echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
           echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
           # show host info
