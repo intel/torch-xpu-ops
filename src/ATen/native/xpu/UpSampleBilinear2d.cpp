@@ -4,10 +4,10 @@
 #include <ATen/native/xpu/sycl/UpSampleBilinear2dKernels.h>
 #include <comm/RegisterUtils.h>
 
-#include <xpu/ATen/ops/_upsample_bilinear2d_aa_backward_native.h>
-#include <xpu/ATen/ops/_upsample_bilinear2d_aa_native.h>
-#include <xpu/ATen/ops/upsample_bilinear2d_backward_native.h>
-#include <xpu/ATen/ops/upsample_bilinear2d_native.h>
+#include <ATen/ops/_upsample_bilinear2d_aa_backward_native.h>
+#include <ATen/ops/_upsample_bilinear2d_aa_native.h>
+#include <ATen/ops/upsample_bilinear2d_backward_native.h>
+#include <ATen/ops/upsample_bilinear2d_native.h>
 
 namespace at {
 namespace native {

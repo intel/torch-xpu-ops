@@ -49,7 +49,7 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: write-all
+permissions: read-all
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.ut }}-${{ inputs.suite }}-${{ inputs.dt }}-${{ inputs.mode }}-${{ inputs.scenario }}-${{ inputs.model }}-${{ inputs.python }}
@@ -69,6 +69,8 @@ jobs:
     runs-on: pvc_e2e
     if: ${{ github.repository_owner == 'intel' }}
     timeout-minutes: 3600
+    permissions:
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       reference_issue: 1645
@@ -100,31 +102,23 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install pandas scipy psutil
+          pip install pandas scipy psutil requests
       - name: Prepare Stock Pytorch
         id: installed
         run: |
           pwd
+          cd ../
           source activate e2e_ci
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          echo "TORCH_BRANCH_ID=$(python -c 'import torch; print(torch.__version__)')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ../ && rm -rf pytorch
+          rm -rf pytorch || sudo rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && git checkout ${TORCH_COMMIT_ID}
           # apply PRs for stock pytorch
-          pip install requests
-          git status && git show -s
-          pip install -r requirements.txt
-          TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          rm -rf third_party/torch-xpu-ops
-          git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-          cd ../../
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git status && git diff && git show -s
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -148,9 +142,9 @@ jobs:
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf ../pytorch/inductor_log || sudo rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
@@ -273,7 +267,7 @@ jobs:
             artifact_type="${{ env.run_type }}"
           fi
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
-            --json body -q .body |grep "Inductor-${artifact_type}-LTS-XPU-E2E" |sed 's/.*: *//')"
+            --json body -q .body |grep "Inductor-${artifact_type}-Pre-XPU-E2E" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
           rm -rf reference && mv Inductor-*-XPU-E2E-* reference
       - name: Summarize archieve files
@@ -299,12 +293,14 @@ jobs:
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
-          else
-            source activate e2e_ci
-            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
-            cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
-            rm -rf summary_pt2e.py
+          fi
+          pt2e_summary_csv="$(find ${{ github.workspace }}/upload_files/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            cat ${pt2e_summary_csv}
+            failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
+            if [ ${failed_num} -ne 0 ];then
+              echo "[Warning] PT2E has failures!"
+            fi
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
@@ -316,7 +312,7 @@ jobs:
         if: ${{ env.run_type != 'on-demand' }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
-            sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+            sed "s/Inductor-${{ env.run_type }}-Pre-XPU-E2E:.*/Inductor-${{ env.run_type }}-Pre-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
           gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
 
   Tests-Failure-And-Report:
