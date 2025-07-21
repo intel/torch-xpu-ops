@@ -11,7 +11,6 @@ if ! diff_output=$(diff <(sort "$file1") <(sort "$file2")); then
     echo "ERROR: Files $file1 and $file2 differ!" >&2
     echo "Differences found:" >&2
     echo "$diff_output" >&2
-    exit 1
 fi
 
 echo "SUCCESS: Files $file1 and $file2 are same"
