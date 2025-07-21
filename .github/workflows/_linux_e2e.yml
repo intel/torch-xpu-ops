@@ -108,6 +108,8 @@ jobs:
           python-version: ${{ inputs.python }}
       - name: Check runner
         run: |
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
           hostname && whoami && id
           clinfo --list
           gcc -v && g++ -v
@@ -115,15 +117,14 @@ jobs:
           python -V
           pip install -U pip wheel setuptools
           pip list
-          pip install pandas scipy psutil requests
-          ls -al
-          find ./ |grep -v "^\./$" |xargs rm -rf
+          uname -a
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
-          rm -rf ~/intel ~/.intel /opt/intel
+          rm -rf ~/intel ~/.intel
           wget -q -O oneapi.sh "${{ inputs.oneapi }}"
           bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
           echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
@@ -145,7 +146,12 @@ jobs:
             pip install --force-reinstall ${{ github.workspace }}/*.whl
           fi
           TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          git clone https://github.com/pytorch/pytorch pytorch
+          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          else
+            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          fi
+          git clone ${PYTORCH_REPO} pytorch
           cd pytorch
           git checkout ${TORCH_COMMIT_ID}
           # apply extra PRs for stock pytorch

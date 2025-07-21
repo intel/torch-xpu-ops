@@ -39,60 +39,93 @@ on:
 permissions: read-all
 
 jobs:
+  get_ut_runner:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      test_host: ${{ steps.runner-info.outputs.test_host }}
+      test_user: ${{ steps.runner-info.outputs.test_user }}
+      test_group: ${{ steps.runner-info.outputs.test_group }}
+    steps:
+      - name: Get runner info
+        id: runner-info
+        run: |
+          # get test runner
+          echo "test_host=${NODE_LABEL}" |tee -a ${GITHUB_OUTPUT}
+          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+          # show host info
+          cat /etc/os-release
+          uname -a
+          source /opt/intel/oneapi/setvars.sh
+          sycl-ls
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # clean docker cache
+          # docker stop $(docker ps -aq) || true
+          docker system prune -af || true
+          # clean files
+          ls -al
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
   ut_test:
-    runs-on: ${{ matrix.test.runner || inputs.runner }}
+    needs: get_ut_runner
+    runs-on: ${{ matrix.test.runner || needs.get_ut_runner.outputs.test_host }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
+              -u ${{ needs.get_ut_runner.outputs.test_user }}:${{ needs.get_ut_runner.outputs.test_group }}
+      env:
+        AGENT_TOOLSDIRECTORY: /opt/_tools
+        GH_TOKEN: ${{ github.token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     env:
-      GH_TOKEN: ${{ github.token }}
-      ut_skip_issue: 1624
+      UT_NAME: ${{ matrix.test.name }}
+    defaults:
+      run:
+        shell: bash -xe {0}
     strategy:
       fail-fast: false
       matrix:
         test:
           - name: 'op_regression'
             condition: ${{ contains(inputs.ut, 'op_regression') }}
-            directory: 'test/regressions'
+            directory: 'pytorch/third_party/torch-xpu-ops/test/regressions'
             command: 'pytest --timeout 600 -v --junit-xml=../../ut_log/op_regression.xml'
             log_prefix: 'op_regression'
-            timeout: 8000
-            additional_steps: |
-              clinfo --list
-              pip install pytest pytest-timeout
+            timeout: 3600
           - name: 'op_regression_dev1'
             condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
-            directory: 'test/regressions'
+            directory: 'pytorch/third_party/torch-xpu-ops/test/regressions'
             command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
-            timeout: 8000
-            additional_steps: |
-              clinfo --list
-              unset ZE_AFFINITY_MASK
-              pip install pytest pytest-timeout
-            runner: 'pvc_e2e'
+            timeout: 300
+            runner: 'pvc_rolling'
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
-            directory: '../pytorch'
+            directory: 'pytorch'
             command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=$GITHUB_WORKSPACE/ut_log/op_transformers.xml'
             log_prefix: 'op_transformers'
             timeout: 3600
             additional_steps: |
-              pip install pytest pytest-timeout
               export PYTORCH_TEST_WITH_SLOW=1
           - name: 'op_extended'
             condition: ${{ contains(inputs.ut, 'op_extended') }}
-            directory: '../pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
+            directory: 'pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
             command: 'python run_test_with_skip.py'
             log_prefix: 'op_extended'
-            timeout: 10000
+            timeout: 3600
             additional_steps: |
-              pip install pytest pytest-timeout
               export PYTORCH_TEST_WITH_SLOW=1
             xml_post_processing: |
               cp op_extended.xml $GITHUB_WORKSPACE/ut_log
           - name: 'op_ut'
             condition: ${{ contains(inputs.ut, 'op_ut') }}
-            directory: '../pytorch/third_party/torch-xpu-ops/test/xpu'
+            directory: 'pytorch/third_party/torch-xpu-ops/test/xpu'
             log_prefix: 'op_ut'
             command_script: |
               export PYTORCH_ENABLE_XPU_FALLBACK=1
@@ -122,11 +155,9 @@ jobs:
                 2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test_error.log | \
                 tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test.log
               cp op_ut_with_only.xml $GITHUB_WORKSPACE/ut_log
-            additional_steps: |
-              pip install pytest pytest-timeout
           - name: 'torch_xpu'
             condition: ${{ contains(inputs.ut, 'torch_xpu') }}
-            directory: '../pytorch'
+            directory: 'pytorch'
             command_script: |
               export PYTORCH_TEST_WITH_SLOW=1
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
@@ -138,11 +169,10 @@ jobs:
                 tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
             log_prefix: 'torch_xpu'
             timeout: 10000
-            additional_steps: |
-              pip install pytest pytest-timeout
           - name: 'xpu_profiling'
             condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
             command_script: |
+              cd torch-xpu-ops
               # RN50 Test
               PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
               cp profiling.fp32.train.pt $GITHUB_WORKSPACE/ut_log/profile_test
@@ -170,30 +200,36 @@ jobs:
               python -m pytest --timeout 600 -vs test_profiler_tree.py | \
                 tee $GITHUB_WORKSPACE/ut_log/profile_test/test_profiler_tree.log
             additional_steps: |
-              pip install pytest pytest-timeout
               mkdir -p ut_log/profile_test/issue_reproduce
     outputs: 
       ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
     steps:
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Check runner
+        run: |
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
+          hostname && whoami && id
+          clinfo --list
+          gcc -v && g++ -v
+          which python && which pip
+          python -V
+          pip install -U pip wheel setuptools
+          pip list
+          pip install pytest pytest-timeout
+          uname -a
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Create unique workspace
-        run: |
-          # Create unique conda env for each UT test
-          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
-          echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}_${random}" >> $GITHUB_ENV
-      - name: Create Conda Env
-        run: |
-          pwd
-          which conda
-          conda remove --all -y -n $CONDA_ENV_NAME || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
-          source activate $CONDA_ENV_NAME
+        with:
+          path: torch-xpu-ops
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
-          rm -rf ~/intel ~/.intel /opt/intel
+          rm -rf ~/intel ~/.intel
           wget -q -O oneapi.sh "${{ inputs.oneapi }}"
           bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
           echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
@@ -204,75 +240,71 @@ jobs:
           pattern: Torch-XPU-Wheel-*
       - name: Prepare Stock Pytorch
         run: |
-          cd ../
-          rm -rf ./pytorch || sudo rm -rf ./pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          source activate $CONDA_ENV_NAME
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-            cd ./pytorch
-            git checkout ${TORCH_COMMIT_ID}
-            rm -rf vision || sudo rm -rf vision
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          else
+          # install pytorch
+          if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" |wc -l) -ne 0 ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
+          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" |wc -l) -ne 0 ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" |wc -l) -ne 0 ];then
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-            cd ./pytorch
-            git checkout ${TORCH_COMMIT_ID}
+          else
+            pip install --force-reinstall ${{ github.workspace }}/*.whl
           fi
-          pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git show -s && git status && git diff
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          else
+            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          fi
+          git clone ${PYTORCH_REPO} pytorch
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
           pip install -r .ci/docker/requirements-ci.txt
+          # apply extra PRs for stock pytorch
+          python ../.github/scripts/apply_torch_pr.py
+          git status && git diff && git show -s
       - name: Prepare Torch-xpu-ops
         run: |
-          cd ../pytorch
+          cd pytorch
           rm -rf third_party/torch-xpu-ops
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cp -r ${{ github.workspace }} third_party
+          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
+            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
+            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
           else
-            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-            cd third_party/torch-xpu-ops
-            git checkout ${TORCH_XPU_OPS_COMMIT}
+            TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
+            if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
+              TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
+            else
+              TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+            fi
           fi
-      - name: Download Triton wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Triton
-        run: |
-          source activate $CONDA_ENV_NAME
-          pip install --force-reinstall ${{ github.workspace }}/pytorch_triton_xpu-*.whl
+          if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ];then
+            cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
+          else
+            git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+          fi
+          cd third_party/torch-xpu-ops
+          git checkout ${TORCH_XPU_OPS_COMMIT}
+          git status && git diff && git show -s
       - name: Torch Config
         run: |
-          source activate $CONDA_ENV_NAME
+          printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
           python -c "import triton; print(triton.__version__)"
-
-          cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
-          echo "UT_NAME=${{ matrix.test.name }}" >> "${GITHUB_ENV}"
+          pip list |grep -E 'torch|intel'
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
         run: |
           set -e
           mkdir -p ${{ github.workspace }}/ut_log
           mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
-          source activate $CONDA_ENV_NAME
           echo "Running ${{ matrix.test.name }}"
           echo "Directory: ${{ matrix.test.directory }}"
           ${{ matrix.test.additional_steps }}
-
           cd ${{ matrix.test.directory }}
-
           if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
             bash << "SCRIPT"
             set -e
@@ -287,17 +319,10 @@ jobs:
       - name: UT Test Results Summary
         if: ${{ matrix.test.condition }}
         run: |
-          source activate $CONDA_ENV_NAME
           pip install junitparser
-          python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          python torch-xpu-ops/.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           if [ -e "ut_failure_list.csv" ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          fi
-      - name: Clean up
-        if: ${{ always() }}
-        run: |
-          if [ -n "$CONDA_ENV_NAME" ]; then
-            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
           fi
       - name: Upload Inductor XPU UT Log
         if: ${{ matrix.test.condition }}
@@ -323,7 +348,7 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      ut_skip_issue: 1624
+      UT_SKIP_ISSUE: 1624
     strategy:
       fail-fast: false
       matrix:
@@ -370,7 +395,7 @@ jobs:
           }
           set -xe
           cd ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
-          gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
+          gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
           --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
           > issues.log
@@ -393,69 +418,101 @@ jobs:
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
-      ut_skip_issue: 1624
+      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/_tools
     steps:
+      - name: Check runner
+        run: |
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
+          sudo find /tmp/ |grep -v "^/tmp/$" |xargs sudo rm -rf
+          rm -rf ~/.triton ~/.torch
+          hostname && whoami && id
+          xpu-smi topology -m
+          gcc -v && g++ -v
+          uname -a
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Create Conda Env
+        with:
+          path: torch-xpu-ops
+      - name: Install oneAPI DLE
+        if: ${{ inputs.oneapi != 'installed' }}
         run: |
-          pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          rm -rf ~/intel ~/.intel
+          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        if: ${{ ! contains(inputs.test_type, 'wheel') }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          pattern: Torch-XPU-Wheel-*
       - name: Prepare Stock Pytorch
         run: |
-          cd ../
-          rm -rf ./pytorch || sudo rm -rf ./pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-            cd ./pytorch
-            git checkout ${TORCH_COMMIT_ID}
-            rm -rf vision || sudo rm -rf vision
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          else
+          which python && which pip
+          python -V
+          pip install -U pip wheel setuptools
+          pip list
+          pip install pytest pytest-timeout
+          # install pytorch
+          if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" |wc -l) -ne 0 ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
+          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" |wc -l) -ne 0 ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" |wc -l) -ne 0 ];then
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-            cd ./pytorch
-            git checkout ${TORCH_COMMIT_ID}
+          else
+            pip install --force-reinstall ${{ github.workspace }}/*.whl
           fi
-          pip install requests
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git show -s && git status && git diff
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          else
+            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          fi
+          git clone ${PYTORCH_REPO} pytorch
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
           pip install -r .ci/docker/requirements-ci.txt
+          # apply extra PRs for stock pytorch
+          python ../.github/scripts/apply_torch_pr.py
+          git status && git diff && git show -s
       - name: Prepare Torch-xpu-ops
         run: |
-          cd ../pytorch
+          cd pytorch
           rm -rf third_party/torch-xpu-ops
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cp -r ${{ github.workspace }} third_party
+          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
+            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
+            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
           else
-            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
-            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
-            cd third_party/torch-xpu-ops
-            git checkout ${TORCH_XPU_OPS_COMMIT}
+            TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
+            if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
+              TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
+            else
+              TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+            fi
           fi
+          if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ];then
+            cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
+          else
+            git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+          fi
+          cd third_party/torch-xpu-ops
+          git checkout ${TORCH_XPU_OPS_COMMIT}
+          git status && git diff && git show -s
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
           python -c "import triton; print(triton.__version__)"
-          cd ..
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
+          pip list |grep -E 'torch|intel'
       - name: Set Ptrace_scope
         if: ${{ always() }}
         run: |
@@ -467,8 +524,6 @@ jobs:
       - name: Run Torch XPU Distributed UT
         run: |
           set -x -e -o pipefail
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install pytest pytest-timeout
           mkdir -p ut_log/xpu_distributed
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
@@ -498,7 +553,7 @@ jobs:
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      ut_skip_issue: 1624
+      UT_SKIP_ISSUE: 1624
     steps:
       - name: Set the UT name
         run: |
@@ -526,7 +581,7 @@ jobs:
           set -xe
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ${{ github.workspace }}/ut_log/xpu_distributed
-          gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
+          gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
           --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
           > issues.log
