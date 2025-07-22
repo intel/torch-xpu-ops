@@ -28,7 +28,7 @@ on:
 permissions: read-all
 
 jobs:
-  get_op_runner:
+  get_runner:
     runs-on: ${{ inputs.runner }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
@@ -59,9 +59,9 @@ jobs:
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
 
-  op_benchmark_test:
-    needs: get_op_runner
-    runs-on: ${{ needs.get_op_runner.outputs.test_host }}
+  op_benchmark:
+    needs: get_runner
+    runs-on: ${{ needs.get_runner.outputs.test_host }}
     permissions: 
       issues: write
     timeout-minutes: 900
@@ -70,7 +70,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_op_runner.outputs.test_user }}:${{ needs.get_op_runner.outputs.test_group }}
+              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
       env:
         AGENT_TOOLSDIRECTORY: /opt/_tools
         GH_TOKEN: ${{ github.token }}

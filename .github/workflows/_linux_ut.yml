@@ -39,7 +39,7 @@ on:
 permissions: read-all
 
 jobs:
-  get_ut_runner:
+  get_runner:
     runs-on: ${{ inputs.runner }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
@@ -71,8 +71,8 @@ jobs:
           sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
 
   ut_test:
-    needs: get_ut_runner
-    runs-on: ${{ needs.get_ut_runner.outputs.test_host }}
+    needs: get_runner
+    runs-on: ${{ needs.get_runner.outputs.test_host }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
     container:
@@ -80,7 +80,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_ut_runner.outputs.test_user }}:${{ needs.get_ut_runner.outputs.test_group }}
+              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
@@ -354,7 +354,7 @@ jobs:
         run: |
           echo "UT_NAME=${{ matrix.test.name }}" >> $GITHUB_OUTPUT
   
-  ut_test_results_check:
+  ut_summary:
     needs: ut_test
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -424,7 +424,7 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}-checked
           path: ${{ github.workspace }}/ut_log
 
-  distributed_ut_test:
+  distributed:
     runs-on: pytorch-06
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 60
@@ -562,8 +562,8 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log
 
-  distributed_ut_test_results_check:
-    needs: distributed_ut_test
+  distributed_summary:
+    needs: distributed
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:

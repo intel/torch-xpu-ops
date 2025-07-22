@@ -51,8 +51,8 @@ jobs:
           export CLANG=1
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
-  preci-conditions-filter:
-    name: preci-conditions-filter
+  conditions-filter:
+    name: conditions-filter
     if: ${{ github.event.pull_request.draft == false }}
     needs: [preci-lint-check]
     runs-on: ubuntu-22.04
@@ -92,10 +92,10 @@ jobs:
           disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
-  preci-linux-build:
-    name: preci-linux
-    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all')}}
-    needs: [preci-conditions-filter]
+  linux-build:
+    name: linux
+    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all')}}
+    needs: [conditions-filter]
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -104,35 +104,35 @@ jobs:
       pytorch: main
       torch_xpu_ops: cicd
 
-  preci-linux-ut:
-    name: preci-linux
-    needs: [preci-conditions-filter, preci-linux-build]
+  linux-ut:
+    name: linux
+    needs: [conditions-filter, linux-build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: linux.idc.xpu
       test_type: build-cicd
       pytorch: main
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
-      disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
+      disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
-  preci-linux-e2e:
-    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
-    name: preci-linux / e2e_test
+  linux-e2e:
+    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
+    name: linux
     permissions: write-all
-    needs: [preci-conditions-filter, preci-linux-build]
+    needs: [conditions-filter, linux-build]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
       test_type: build-cicd
       pytorch: main
 
-  preci-windows:
-    name: preci-windows
-    if: ${{ !(contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
-    needs: [preci-conditions-filter]
+  windows:
+    name: windows
+    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
+    needs: [conditions-filter]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: op_extended,torch_xpu
       runner: Windows_CI
-      src_changed: ${{ needs.preci-conditions-filter.outputs.src_changed }}
-      has_label: ${{ needs.preci-conditions-filter.outputs.has_label }}
+      src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
+      has_label: ${{ needs.conditions-filter.outputs.has_label }}

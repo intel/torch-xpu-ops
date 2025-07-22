@@ -45,7 +45,7 @@ jobs:
       - name: Use ${{ inputs.pytorch }}
         run: echo 'Use ${{ inputs.pytorch }}'
 
-  get_build_runner:
+  get_runner:
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
     runs-on: ${{ inputs.runner }}
     outputs:
@@ -77,14 +77,14 @@ jobs:
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
 
-  build_torch:
-    needs: get_build_runner
-    runs-on: ${{ needs.get_build_runner.outputs.test_host }}
+  build:
+    needs: get_runner
+    runs-on: ${{ needs.get_runner.outputs.test_host }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: -u ${{ needs.get_build_runner.outputs.test_user }}:${{ needs.get_build_runner.outputs.test_group }}
+      options: -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
       env:
         GH_TOKEN: ${{ github.token }}
         AGENT_TOOLSDIRECTORY: /tmp/_tools

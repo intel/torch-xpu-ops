@@ -49,7 +49,7 @@ on:
 permissions: read-all
 
 jobs:
-  get_e2e_runner:
+  get_runner:
     runs-on: ${{ inputs.runner }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
@@ -81,15 +81,15 @@ jobs:
           sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
 
   e2e_test:
-    runs-on: ${{ needs.get_e2e_runner.outputs.test_host }}
-    needs: get_e2e_runner
+    runs-on: ${{ needs.get_runner.outputs.test_host }}
+    needs: get_runner
     timeout-minutes: 3600
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_e2e_runner.outputs.test_user }}:${{ needs.get_e2e_runner.outputs.test_group }}
+              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
@@ -302,7 +302,7 @@ jobs:
           name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
 
-  e2e_summary:
+  summary:
     runs-on: [self-hosted, Linux, X64]
     if: ${{ always() }}
     needs: e2e_test
