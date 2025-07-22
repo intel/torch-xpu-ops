@@ -82,6 +82,7 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
+          export TORCH_XPU_ARCH_LIST='pvc'
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
