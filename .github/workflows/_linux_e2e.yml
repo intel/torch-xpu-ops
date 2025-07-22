@@ -91,7 +91,7 @@ jobs:
       # CICD launch
       - name: Nightly Huggingface BF16 & FP16 Training Test
         if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: huggingface
@@ -100,7 +100,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: torchbench
@@ -109,7 +109,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Timm_models BF16 Training Test
         if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: timm_models
@@ -120,7 +120,7 @@ jobs:
       # Nihglty launch
       - name: Nightly Huggingface Full Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: huggingface
@@ -129,7 +129,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: torchbench
@@ -138,7 +138,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: timm_models
@@ -147,7 +147,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/pt2e
+        uses: .github/actions/pt2e
         with:
           env_prepare: true
           dt: float32,int8
@@ -156,7 +156,7 @@ jobs:
       # Weekly launch
       - name: Nightly Huggingface Full Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: huggingface
@@ -165,7 +165,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: torchbench
@@ -174,7 +174,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: timm_models
@@ -183,7 +183,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/pt2e
+        uses: .github/actions/pt2e
         with:
           env_prepare: true
           dt: float32,int8
@@ -192,7 +192,7 @@ jobs:
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ contains(inputs.test_type, 'ondemand') && inputs.suite != 'pt2e' }}
-        uses: ./.github/actions/inductor-xpu-e2e-test
+        uses: .github/actions/inductor-xpu-e2e-test
         with:
           env_prepare: true
           suite: ${{ inputs.suite }}
@@ -201,7 +201,7 @@ jobs:
           scenario: ${{ inputs.scenario }}
       - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
-        uses: ./.github/actions/pt2e
+        uses: .github/actions/pt2e
         with:
           env_prepare: true
           dt: ${{ inputs.dt }}
@@ -271,7 +271,7 @@ jobs:
         run: |
           pip install pandas requests
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
+            bash .github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
