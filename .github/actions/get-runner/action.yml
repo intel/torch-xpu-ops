@@ -10,6 +10,7 @@ runs:
   steps:
     - name: Get runner
       shell: bash -xe {0}
+      id: runner-info
       run: |
         # get test runner
         echo "test_host=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
