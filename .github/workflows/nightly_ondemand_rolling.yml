@@ -4,23 +4,32 @@ on:
   workflow_dispatch:
     inputs:
       node_name:
-        required: true
-        type: string
-        default: ''
-      setup_xpu:
         type: string
         default: ''
 
 permissions: read-all
 
 jobs:
-  setup:
+  get_runner:
     runs-on: linux.idc.xpu
-    container:
-      image: mengfeili/intel-pvc-driver:1146-1136
-      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g -u 100:109
+    outputs:
+      test_host: ${{ steps.runner-info.outputs.test_host }}
+      test_user: ${{ steps.runner-info.outputs.test_user }}
+      test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
-      - id: setVariables
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  verify:
+    runs-on: linux.idc.xpu
+    needs: get_runner
+    steps:
+      - name: verify
         run: |
-          printenv
-          clinfo --list
+          echo "${{ needs.get_runner.outputs.test_host }}"
+          echo "${{ needs.get_runner.outputs.test_user }}"
+          echo "${{ needs.get_runner.outputs.test_group }}"
+  
