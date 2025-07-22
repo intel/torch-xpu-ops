@@ -3,6 +3,11 @@ name: Get Runner Infos
 on:
   workflow_call:
 
+outputs:
+  test_host: ${{ steps.runner-info.outputs.test_host }}
+  test_user: ${{ steps.runner-info.outputs.test_user }}
+  test_group: ${{ steps.runner-info.outputs.test_group }}
+
 permissions: read-all
 
 runs:
