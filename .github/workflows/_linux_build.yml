@@ -44,6 +44,7 @@ jobs:
     steps:
       - name: Use ${{ inputs.pytorch }}
         run: echo 'Use ${{ inputs.pytorch }}'
+
   get_build_runner:
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
     runs-on: ${{ inputs.runner }}
@@ -74,7 +75,9 @@ jobs:
           # clean files
           ls -al
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-  build:
+          sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
+
+  build_torch:
     needs: get_build_runner
     runs-on: ${{ needs.get_build_runner.outputs.test_host }}
     container:
@@ -83,22 +86,27 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: -u ${{ needs.get_build_runner.outputs.test_user }}:${{ needs.get_build_runner.outputs.test_group }}
       env:
-        PATH: /tmp/xpu-build/bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         GH_TOKEN: ${{ github.token }}
+        AGENT_TOOLSDIRECTORY: /tmp/_tools
     timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash -xe {0}
     steps:
-      - name: Setup based env
+      - name: Setup gh
+        uses: actions4gh/setup-gh@v1
+      - name: Setup gcc
+        uses: Dup4/actions-setup-gcc@v1
+        with:
+          version: 11
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Clean workspace
         run: |
           # Cleanup workspace
-          rm -rf ./*
-          # Install gh
-          dnf install 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf autoremove -y git236* && dnf install -y git
-          dnf install gh --repo gh-cli -y
-          # Setup python
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-build
+          find ./ |grep -v "^\./$" |xargs rm -rf
           which python && python -V && pip list
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
@@ -107,7 +115,6 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
-          set -xe -o pipefail
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
@@ -130,8 +137,6 @@ jobs:
             export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
           fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             --PYTORCH_REPO="${PYTORCH_REPO}" \
@@ -141,9 +146,6 @@ jobs:
             2>&1 |tee ${{ github.workspace }}/build_pytorch_${PYTORCH_COMMIT//\//-}.log
       - name: Build Triton
         run: |
-          # gcc 13
-          dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
-          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           pip install cmake ninja pybind11
           rm -rf pytorch_triton_xpu-*.whl
@@ -199,8 +201,3 @@ jobs:
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/build_*.log
-      - name: Cleanup
-        if: always()
-        run: |
-          chmod 777 . -R
-          rm -rf ./*

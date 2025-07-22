@@ -78,6 +78,7 @@ jobs:
           # clean files
           ls -al
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
 
   e2e_test:
     runs-on: ${{ needs.get_e2e_runner.outputs.test_host }}

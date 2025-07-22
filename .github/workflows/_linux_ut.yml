@@ -68,6 +68,8 @@ jobs:
           # clean files
           ls -al
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
+
   ut_test:
     needs: get_ut_runner
     runs-on: ${{ needs.get_ut_runner.outputs.test_host }}
