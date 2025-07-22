@@ -1,5 +1,6 @@
 #ifdef USE_C10D_XCCL
 
+#include <c10/util/thread_name.h>
 #include <xccl/ProcessGroupXCCL.hpp>
 namespace c10d {
 
@@ -39,7 +40,7 @@ void HeartbeatMonitorXCCL::runLoop() {
   // We only need to dump once per PG, so we use local_id_ == 0 for the first PG
   if (pg_->local_id_ == 0) {
     // DumpPipe is one per-trainer process
-    dumpPipe.emplace(pg_->rank_);
+    dumpPipe.emplace(pg_->getRank());
     while (true) {
       std::unique_lock<std::mutex> lock(monitorMutex_);
       if (monitorWakeUpCV_.wait_for(
@@ -61,3 +62,5 @@ void HeartbeatMonitorXCCL::runLoop() {
 }
 
 } // namespace c10d
+
+#endif // USE_C10D_XCCL

@@ -70,7 +70,7 @@ struct DumpPipe {
 class ProcessGroupXCCL;
 class HeartbeatMonitorXCCL {
  public:
-  HeartbeatMonitorXXCL(ProcessGroupXCCL* pg);
+  HeartbeatMonitorXCCL(ProcessGroupXCCL* pg);
   virtual ~HeartbeatMonitorXCCL() = default;
 
   std::string getXCCLTimeoutErrorMsg(const std::string& extraMsg);

@@ -425,6 +425,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;
   int traceBufferSize_;
 
+  friend class HeartbeatMonitorXCCL;
+
  private:
   std::mutex kvs_mutex;
 
