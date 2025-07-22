@@ -3,112 +3,157 @@ name: Linux OP Benchmark Test
 on:
   workflow_call:
     inputs:
-      pytorch:
-        required: false
-        type: string
-        default: 'main'
-        description: Pytorch branch/commit
-      keep_torch_xpu_ops:
-        required: false
-        type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
-      triton:
-        required: false
-        type: string
-        default: ''
-        description: Triton commit. Use pytorch pined commit by default
-      python:
-        required: false
-        type: string
-        default: '3.10'
-        description: Python version
       runner:
         required: true
         type: string
-        default: 'linux.idc.xpu'
+        default: 'pvc_rolling'
         description: Runner label
-      driver:
-        required: false
+      test_type:
         type: string
-        default: 'rolling'
-        description: Driver lts/rolling
+        default: 'build-from-source'
+        description: Build from source or install nightly wheel
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      torch_xpu_ops:
+        type: string
+        default: 'main'
+        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
 
-permissions: 
-  issues: write
+permissions: read-all
 
 jobs:
-  op_benchmark_test:
-    runs-on: ${{ inputs.runner }} 
-    timeout-minutes: 900
-    env:
-      GH_TOKEN: ${{ github.token }}
-      reference_issue: 1689
-      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+  get_op_runner:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      test_host: ${{ steps.runner-info.outputs.test_host }}
+      test_user: ${{ steps.runner-info.outputs.test_user }}
+      test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
+      - name: Get runner info
+        id: runner-info
+        run: |
+          # get test runner
+          echo "test_host=${RUNNER_NAME}" |tee -a ${GITHUB_OUTPUT}
+          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+          # show host info
+          cat /etc/os-release
+          uname -a
+          source /opt/intel/oneapi/setvars.sh
+          sycl-ls
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # clean docker cache
+          docker stop $(docker ps -aq) || true
+          docker system prune -af || true
+          # clean files
+          ls -al
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+  op_benchmark_test:
+    needs: get_op_runner
+    runs-on: ${{ needs.get_op_runner.outputs.test_host }}
+    permissions: 
+      issues: write
+    timeout-minutes: 900
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
+              -u ${{ needs.get_op_runner.outputs.test_user }}:${{ needs.get_op_runner.outputs.test_group }}
+      env:
+        AGENT_TOOLSDIRECTORY: /opt/_tools
+        GH_TOKEN: ${{ github.token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        REFERENCE_ISSUE: 1689
+    defaults:
+      run:
+        shell: bash -xe {0}
+    steps:
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Check runner
+        run: |
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
+          hostname && whoami && id
+          clinfo --list
+          gcc -v && g++ -v
+          which python && which pip
+          python -V
+          pip install -U pip wheel setuptools
+          pip list
+          uname -a
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+          pip install pandas psutil scipy requests
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare Stock Pytorch
+      - name: Install oneAPI DLE
+        if: ${{ inputs.oneapi != 'installed' }}
         run: |
-          pwd
-          which conda && conda clean -ay
-          conda remove --all -y -n xpu_op_${ZE_AFFINITY_MASK} || \
-                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_${ZE_AFFINITY_MASK}
-          conda create -n xpu_op_${ZE_AFFINITY_MASK} python=${{ inputs.python }} cmake ninja -y
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          cd ../ && rm -rf pytorch
-          pip install requests
-          git clone https://github.com/pytorch/pytorch pytorch
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd pytorch && git checkout $(echo ${{ inputs.pytorch }})
-            # apply PRs for stock pytorch
-            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-            git status && git show -s
-            git submodule sync && git submodule update --init --recursive
-            if [[ ${{ inputs.keep_torch_xpu_ops }} == 'true' ]]; then
-              echo "Don't replace torch-xpu-ops!"
-            else
-              rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-              # Workaround for torch-xpu-ops ci test
-              sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-            fi
-          fi
+          rm -rf ~/intel ~/.intel
+          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
       - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        if: ${{ ! contains(inputs.test_type, 'wheel') }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
+          pattern: Torch-XPU-Wheel-*
+      - name: Prepare Stock Pytorch
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cd ../pytorch
-            export CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:${CONDA_PREFIX:-"$(dirname $(which conda))/../"}
-            pip install -r requirements.txt
-            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
-            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
-          else
+          # install pytorch
+          if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" |wc -l) -ne 0 ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
+          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" |wc -l) -ne 0 ];then
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" |wc -l) -ne 0 ];then
             pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          else
+            pip install --force-reinstall ${{ github.workspace }}/*.whl
           fi
-          pip install -r .ci/docker/requirements-ci.txt
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          else
+            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          fi
+          git clone ${PYTORCH_REPO} pytorch
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
+          # apply extra PRs for stock pytorch
+          if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
+            python ../.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          else
+            python ../.github/scripts/apply_torch_pr.py
+          fi
+          git status && git diff && git show -s
       - name: Torch Config
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-
-          cd ..
+          python -c "import triton; print(triton.__version__)"
           python pytorch/torch/utils/collect_env.py
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          pip list |grep -E 'torch|intel'
+
       - name: Run Torch XPU Op Benchmark
-        if: ${{ inputs.driver == 'rolling' }} 
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir -p ${{ github.workspace }}/op_benchmark
           cd test/microbench
           filename=$(find -- *.py)
@@ -124,15 +169,12 @@ jobs:
         continue-on-error: true
         id: reference_id
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          conda install gh --channel conda-forge -y
-          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
           rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
           mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
           mv Inductor-XPU-OP-Benchmark-Data-*/* ${GITHUB_WORKSPACE:-"/tmp"}/reference
-
           mkdir ${{ github.workspace }}/baseline
           if [[ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
             cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
@@ -143,7 +185,6 @@ jobs:
           fi
       - name: Check the OP Regression
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
           pip install tabulate
           # Compare forward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
@@ -151,7 +192,6 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
       - name: Update OP Baseline
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
           mkdir ${{ github.workspace }}/new_baseline
           cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
           # Update forward op
@@ -167,6 +207,6 @@ jobs:
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
         run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE} --json body -q .body | \
             sed "s/Inductor-XPU-OP-Benchmark-Data:.*/Inductor-XPU-OP-Benchmark-Data: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE} --body-file new_body.txt

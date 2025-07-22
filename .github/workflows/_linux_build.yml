@@ -44,15 +44,46 @@ jobs:
     steps:
       - name: Use ${{ inputs.pytorch }}
         run: echo 'Use ${{ inputs.pytorch }}'
-  build:
+  get_build_runner:
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
     runs-on: ${{ inputs.runner }}
+    outputs:
+      test_host: ${{ steps.runner-info.outputs.test_host }}
+      test_user: ${{ steps.runner-info.outputs.test_user }}
+      test_group: ${{ steps.runner-info.outputs.test_group }}
+    steps:
+      - name: Get runner info
+        id: runner-info
+        run: |
+          # get test runner
+          echo "test_host=${RUNNER_NAME}" |tee -a ${GITHUB_OUTPUT}
+          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+          # show host info
+          cat /etc/os-release
+          uname -a
+          source /opt/intel/oneapi/setvars.sh
+          sycl-ls
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # clean docker cache
+          docker stop $(docker ps -aq) || true
+          docker system prune -af || true
+          # clean files
+          ls -al
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+  build:
+    needs: get_build_runner
+    runs-on: ${{ needs.get_build_runner.outputs.test_host }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+      options: -u ${{ needs.get_build_runner.outputs.test_user }}:${{ needs.get_build_runner.outputs.test_group }}
       env:
-        PATH: /opt/xpu-build/bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        PATH: /tmp/xpu-build/bin:/usr/share/Modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         GH_TOKEN: ${{ github.token }}
     timeout-minutes: 300
     steps:
@@ -67,7 +98,7 @@ jobs:
           dnf install gh --repo gh-cli -y
           # Setup python
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /opt/xpu-build
+          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-build
           which python && python -V && pip list
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
@@ -93,7 +124,7 @@ jobs:
           fi
           # oneAPI DLE
           if [ "${{ inputs.oneapi }}" != "installed" ];then
-            rm -rf ~/intel ~/.intel /opt/intel
+            rm -rf ${HOME}/intel ${HOME}/.intel
             wget -q -O oneapi.sh "${{ inputs.oneapi }}"
             bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
             export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
@@ -146,6 +177,7 @@ jobs:
           cp dist/*.whl ${{ github.workspace }}
       - name: Torch Config
         run: |
+          printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -153,6 +185,8 @@ jobs:
           python -c "import torchvision; print(torchvision.__version__)"
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
+          pip list |grep -E 'torch|intel'
+
       - name: Upload Torch XPU Wheel
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

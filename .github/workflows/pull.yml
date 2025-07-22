@@ -99,8 +99,10 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
+      runner: pvc_rolling
+      test_type: build-cicd
       pytorch: main
-      runner: pvc_e2e
+      torch_xpu_ops: cicd
 
   preci-linux-ut:
     name: preci-linux

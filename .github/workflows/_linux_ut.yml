@@ -81,7 +81,7 @@ jobs:
               -u ${{ needs.get_ut_runner.outputs.test_user }}:${{ needs.get_ut_runner.outputs.test_group }}
               -e ZE_AFFINITY_MASK
       env:
-        AGENT_TOOLSDIRECTORY: /opt/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     env:
@@ -302,6 +302,7 @@ jobs:
           python -c "import triton; print(triton.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
+
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
         run: |
@@ -503,7 +504,7 @@ jobs:
               TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
             fi
           fi
-          if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ];then
+          if [ "${{ inputs.test_type }}" == "cicd" ];then
             cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           else
             git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops

@@ -90,7 +90,7 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
               -u ${{ needs.get_e2e_runner.outputs.test_user }}:${{ needs.get_e2e_runner.outputs.test_group }}
       env:
-        AGENT_TOOLSDIRECTORY: /opt/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
@@ -167,7 +167,6 @@ jobs:
           python -c "import triton; print(triton.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
-          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
 
       # CICD launch
       - name: Nightly Huggingface BF16 & FP16 Training Test
