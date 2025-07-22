@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: Get runner
         id: runner-info
-        uses: .github/actions/get-runner
+        uses: ./.github/actions/get-runner
 
   build:
     name: ${{ contains(inputs.test_type, 'wheel') && inputs.pytorch || 'build' }}

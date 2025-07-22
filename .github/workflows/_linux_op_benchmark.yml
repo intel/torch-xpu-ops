@@ -37,7 +37,7 @@ jobs:
     steps:
       - name: Get runner
         id: runner-info
-        uses: .github/actions/get-runner
+        uses: ./.github/actions/get-runner
 
   op_benchmark:
     needs: get_runner
@@ -61,7 +61,7 @@ jobs:
         shell: bash -xe {0}
     steps:
       - name: Setup Test Env
-        uses: .github/actions/setup-testenv
+        uses: ./.github/actions/setup-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}

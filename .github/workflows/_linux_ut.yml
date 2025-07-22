@@ -48,7 +48,7 @@ jobs:
     steps:
       - name: Get runner
         id: runner-info
-        uses: .github/actions/get-runner
+        uses: ./.github/actions/get-runner
 
   ut_test:
     needs: get_runner
@@ -189,7 +189,7 @@ jobs:
       ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
     steps:
       - name: Setup Test Env
-        uses: .github/actions/setup-testenv
+        uses: ./.github/actions/setup-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
@@ -330,7 +330,7 @@ jobs:
           sudo rm -rf ~/.triton ~/.torch
           xpu-smi topology -m
       - name: Setup Test Env
-        uses: .github/actions/setup-testenv
+        uses: ./.github/actions/setup-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}

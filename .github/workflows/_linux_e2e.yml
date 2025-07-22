@@ -58,7 +58,7 @@ jobs:
     steps:
       - name: Get runner
         id: runner-info
-        uses: .github/actions/get-runner
+        uses: ./.github/actions/get-runner
 
   e2e_test:
     runs-on: ${{ needs.get_runner.outputs.test_host }}
@@ -80,7 +80,7 @@ jobs:
         shell: bash -xe {0}
     steps:
       - name: Setup Test Env
-        uses: .github/actions/setup-testenv
+        uses: ./.github/actions/setup-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
