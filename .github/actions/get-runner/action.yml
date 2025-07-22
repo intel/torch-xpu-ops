@@ -1,0 +1,39 @@
+name: Get Runner Infos
+
+on:
+  workflow_call:
+
+permissions: read-all
+
+runs:
+  using: composite
+  steps:
+    - name: Get runner
+      shell: bash -xe {0}
+      run: |
+        # get test runner
+        echo "test_host=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
+        echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+        echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+        # show host info
+        lscpu
+        free -h
+        cat /etc/os-release
+        uname -a
+        gcc -v && g++ -v
+        source /opt/intel/oneapi/setvars.sh
+        sycl-ls
+        icpx -v
+        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+        cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
+        df -h
+    - name: Cleanup host
+      if: ${{ always() }}
+      shell: bash -xe {0}
+      run: |
+        # clean docker cache
+        docker system prune -af || true
+        # clean files
+        ls -al
+        sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+        sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}

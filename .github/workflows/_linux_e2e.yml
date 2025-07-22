@@ -56,29 +56,9 @@ jobs:
       test_user: ${{ steps.runner-info.outputs.test_user }}
       test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
-      - name: Get runner info
+      - name: Get runner
         id: runner-info
-        run: |
-          # get test runner
-          echo "test_host=${RUNNER_NAME}" |tee -a ${GITHUB_OUTPUT}
-          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
-          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
-          # show host info
-          cat /etc/os-release
-          uname -a
-          source /opt/intel/oneapi/setvars.sh
-          sycl-ls
-          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-      - name: Cleanup workspace
-        if: ${{ always() }}
-        run: |
-          # clean docker cache
-          docker stop $(docker ps -aq) || true
-          docker system prune -af || true
-          # clean files
-          ls -al
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
+        uses: .github/actions/get-runner
 
   e2e_test:
     runs-on: ${{ needs.get_runner.outputs.test_host }}
