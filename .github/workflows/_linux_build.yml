@@ -44,6 +44,8 @@ jobs:
       test_user: ${{ steps.runner-info.outputs.test_user }}
       test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
