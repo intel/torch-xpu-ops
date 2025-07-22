@@ -5,11 +5,11 @@ on:
 
 outputs:
   test_host:
-    description: "Test Runner name"
+    value: ${{ steps.runner.outputs.test_host }}
   test_user:
-    description: "Test user id"
+    value: ${{ steps.runner.outputs.test_user }}
   test_group:
-    description: "Render group id"
+    value: ${{ steps.runner.outputs.test_group }}
 
 permissions: read-all
 
@@ -18,6 +18,7 @@ runs:
   steps:
     - name: Get runner
       shell: bash -xe {0}
+      id: runner
       run: |
         # get test runner
         echo "test_host=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
