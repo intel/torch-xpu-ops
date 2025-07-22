@@ -367,7 +367,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug;
 
   // Heartbeat monitor thread dumps debug info on write to pipe
-  heartbeatMonitor_ = std::make_unique<HeartbeatMonitor>(this);
+  heartbeatMonitor_ = std::make_unique<HeartbeatMonitorXCCL>(this);
   heartbeatMonitor_->start();
 }
 
@@ -398,63 +398,6 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
     return true;
   }
   return false;
-}
-
-ProcessGroupXCCL::HeartbeatMonitor::HeartbeatMonitor(ProcessGroupXCCL* pg) {
-  pg_ = pg;
-  coordCheckIntervalMilSec_ = getCvarInt(TORCH_XCCL_COORD_CHECK_MILSEC, 1000);
-  LOG(INFO)
-      << pg_->logPrefix() << "HeartbeatMonitor environments: "
-      << "TORCH_XCCL_COORD_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
-}
-
-void ProcessGroupXCCL::HeartbeatMonitor::stop() {
-  terminateHeartbeatMonitorThread_.store(true);
-  monitorWakeUpCV_.notify_one();
-}
-
-void ProcessGroupXCCL::HeartbeatMonitor::start() {
-  TORCH_CHECK(
-      !xcclHeartbeatMonitorThread_.joinable(),
-      "HeartbeatMonitor thread already started");
-  xcclHeartbeatMonitorThread_ =
-      std::thread(&ProcessGroupXCCL::HeartbeatMonitor::runLoop, this);
-}
-
-void ProcessGroupXCCL::HeartbeatMonitor::join() {
-  if (xcclHeartbeatMonitorThread_.joinable()) {
-    xcclHeartbeatMonitorThread_.join();
-    LOG(INFO) << pg_->logPrefix()
-              << "ProcessGroupXCCL heart beat monitor thread joined.";
-  }
-}
-
-void ProcessGroupXCCL::HeartbeatMonitor::runLoop() {
-  c10::setThreadName("pt_xccl_heartbt");
-
-  std::optional<DumpPipe> dumpPipe = std::nullopt;
-  // We only need to dump once per PG, so we use local_id_ == 0 for the first PG
-  if (pg_->local_id_ == 0) {
-    // DumpPipe is one per-trainer process
-    dumpPipe.emplace(pg_->rank_);
-    while (true) {
-      std::unique_lock<std::mutex> lock(monitorMutex_);
-      if (monitorWakeUpCV_.wait_for(
-              lock, std::chrono::milliseconds(coordCheckIntervalMilSec_), [&] {
-                return terminateHeartbeatMonitorThread_.load();
-              })) {
-        return;
-      }
-      // Write to pipe files for all ranks to dump debug info
-      if (dumpPipe.has_value() && dumpPipe->shouldDump()) {
-        LOG(INFO) << pg_->logPrefix()
-                  << "Dump signal received through pipe, triggering FR dump.";
-        std::future<bool> fut = std::async(std::launch::async, [this]() {
-          return this->pg_->dumpDebuggingInfo();
-        });
-      }
-    }
-  }
 }
 
 const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
