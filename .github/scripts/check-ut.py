@@ -192,8 +192,12 @@ def determine_category(ut):
         return 'op_regression_dev1'
     elif ut == 'op_extended':
         return 'op_extended'
+    elif ut == 'op_transformers':
+        return 'op_transformers'
     elif 'op_ut' in ut:
         return 'op_ut'
+    elif 'inductor_' in ut:
+        return 'inductor'
     else:
         return 'unknown'
 
@@ -211,9 +215,10 @@ def process_xml_file(xml_file):
         category = determine_category(ut)
 
         for suite in xml:
+            ut_name = f"{ut.split('-')[0]}_rerun" if suite.tests == 1 else ut.split('-')[0]
             suite_summary = {
                 'Category': category,
-                'UT': ut,
+                'UT': ut_name,
                 'Test cases': suite.tests,
                 'Passed': suite.tests - suite.skipped - suite.failures - suite.errors,
                 'Skipped': suite.skipped,
@@ -234,6 +239,8 @@ def print_summary():
     print_header = True
 
     for summary in summaries:
+        if summary['Test cases'] == 0:
+            continue
         print_md_row({
             'Category': summary['Category'],
             'UT': summary['UT'],
