@@ -639,11 +639,12 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
       // Broadcasting vectorization is disabled for sub-iterators to prevent
       // potential output offset calculation issues.
-      gpu_kernel<func_t,false>(sub_iter, f);
+      gpu_kernel<func_t, false>(sub_iter, f);
+    }
     return;
   }
 
-  gpu_kernel_impl<func_t,enable_broadcast_vec>(iter, f);
+  gpu_kernel_impl<func_t, enable_broadcast_vec>(iter, f);
 }
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
