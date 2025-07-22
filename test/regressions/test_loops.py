@@ -75,4 +75,3 @@ class TestLoopsKernel(TestCase):
         raw_data = torch.rand(48, 64, 64, 64, 64)
         a = raw_data.xpu().transpose(0, 1).contiguous().transpose(0, 1)
         self.assertEqual(a, raw_data.xpu())
-
