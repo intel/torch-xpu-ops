@@ -53,14 +53,9 @@ jobs:
     needs: get_runner
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
     runs-on: ${{ needs.get_runner.outputs.test_host }}
-    container:
-      image: 'pytorch/manylinux2_28-builder:xpu-main'
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      options: -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
-      env:
-        GH_TOKEN: ${{ github.token }}
-        AGENT_TOOLSDIRECTORY: /tmp/_tools
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AGENT_TOOLSDIRECTORY: /tmp/_tools
     timeout-minutes: 300
     defaults:
       run:
@@ -70,6 +65,7 @@ jobs:
         run: |
           curl -sS https://webi.sh/gh | sh
           echo "PATH=${HOME}/.local/bin:$PATH" >> ${GITHUB_ENV}
+          sudo rm -rf /tmp/_tools
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
@@ -108,8 +104,6 @@ jobs:
             export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
           fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             --PYTORCH_REPO="${PYTORCH_REPO}" \
@@ -137,9 +131,6 @@ jobs:
           cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
       - name: Build Torchvision and Torchaudio
         run: |
-          # gcc 13
-          dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
-          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
