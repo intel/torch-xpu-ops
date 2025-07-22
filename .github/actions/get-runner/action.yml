@@ -3,6 +3,14 @@ name: Get Runner Infos
 on:
   workflow_call:
 
+outputs:
+  test_host:
+    value: ${{ steps.runner.outputs.test_host }}
+  test_user:
+    value: ${{ steps.runner.outputs.test_user }}
+  test_group:
+    value: ${{ steps.runner.outputs.test_group }}
+
 permissions: read-all
 
 runs:
@@ -10,6 +18,7 @@ runs:
   steps:
     - name: Get runner
       shell: bash -xe {0}
+      id: runner
       run: |
         # get test runner
         echo "test_host=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
@@ -21,6 +30,7 @@ runs:
         free -h
         df -h
         cat /etc/os-release
+        uname -a
     - name: Cleanup host
       if: ${{ always() }}
       shell: bash -xe {0}
