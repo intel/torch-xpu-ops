@@ -46,6 +46,8 @@ jobs:
       test_user: ${{ steps.runner-info.outputs.test_user }}
       test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
@@ -188,6 +190,8 @@ jobs:
     outputs: 
       ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Setup Test Env
         uses: ./.github/actions/setup-testenv
         with:
@@ -329,6 +333,8 @@ jobs:
           sudo find /tmp/ |grep -v "^/tmp/$" |xargs sudo rm -rf
           sudo rm -rf ~/.triton ~/.torch
           xpu-smi topology -m
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Setup Test Env
         uses: ./.github/actions/setup-testenv
         with:

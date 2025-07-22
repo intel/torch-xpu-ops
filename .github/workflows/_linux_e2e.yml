@@ -56,6 +56,8 @@ jobs:
       test_user: ${{ steps.runner-info.outputs.test_user }}
       test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
@@ -79,6 +81,8 @@ jobs:
       run:
         shell: bash -xe {0}
     steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
       - name: Setup Test Env
         uses: ./.github/actions/setup-testenv
         with:
