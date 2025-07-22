@@ -637,8 +637,9 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
 
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
+      // Broadcasting vectorization is disabled for sub-iterators to prevent
+      // potential output offset calculation issues.
       gpu_kernel<func_t,false>(sub_iter, f);
-    }
     return;
   }
 
