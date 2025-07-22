@@ -108,7 +108,7 @@ jobs:
     needs: [Conditions-Filter]
     name: linux
     secrets: inherit
-    uses: .github/workflows/_linux_build.yml
+    uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -122,7 +122,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    uses: .github/workflows/_linux_ut.yml
+    uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: linux.idc.xpu
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -137,7 +137,7 @@ jobs:
     name: linux
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    uses: .github/workflows/_linux_e2e.yml
+    uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -155,7 +155,7 @@ jobs:
     name: linux-nightly-ondemand-rolling / Op_microbench
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    uses: .github/workflows/_linux_op_benchmark.yml
+    uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -167,7 +167,7 @@ jobs:
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' }}
     name: Windows-nightly-ondemand
-    uses: .github/workflows/_windows_ut.yml
+    uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
