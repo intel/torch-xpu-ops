@@ -4,9 +4,12 @@ on:
   workflow_call:
 
 outputs:
-  test_host: ${{ steps.runner-info.outputs.test_host }}
-  test_user: ${{ steps.runner-info.outputs.test_user }}
-  test_group: ${{ steps.runner-info.outputs.test_group }}
+  test_host:
+    description: "Test Runner name"
+  test_user:
+    description: "Test user id"
+  test_group:
+    description: "Render group id"
 
 permissions: read-all
 
@@ -15,7 +18,6 @@ runs:
   steps:
     - name: Get runner
       shell: bash -xe {0}
-      id: runner-info
       run: |
         # get test runner
         echo "test_host=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
