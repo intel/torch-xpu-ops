@@ -109,8 +109,8 @@ jobs:
           uname -a
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
           pip install cmake ninja pandas psutil scipy requests pybind11
-          echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
           mkdir gs-logs gs-search
+          echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
