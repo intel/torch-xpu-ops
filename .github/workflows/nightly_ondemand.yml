@@ -169,7 +169,6 @@ jobs:
     name: Windows-nightly-ondemand
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       src_changed: false

@@ -16,10 +16,6 @@ on:
         type: string
         default: 'main'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
-      torch_xpu_ops:
-        type: string
-        default: 'main'
-        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       oneapi:
         type: string
         default: 'installed'
@@ -126,30 +122,15 @@ jobs:
           else
             pip install --force-reinstall ${{ github.workspace }}/*.whl
           fi
-          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-          else
-            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-          fi
-          git clone ${PYTORCH_REPO} pytorch
-          cd pytorch
-          git checkout ${TORCH_COMMIT_ID}
-          # apply extra PRs for stock pytorch
-          if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
-            python ../.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-          else
-            python ../.github/scripts/apply_torch_pr.py
-          fi
-          git status && git diff && git show -s
       - name: Torch Config
         run: |
           printenv
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import torchvision; print(torchvision.__version__)"
+          python -c "import torchaudio; print(torchaudio.__version__)"
           python -c "import triton; print(triton.__version__)"
-          python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
 
       - name: Run Torch XPU Op Benchmark
