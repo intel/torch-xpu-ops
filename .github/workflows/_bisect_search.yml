@@ -10,8 +10,12 @@ on:
         description: Test node
       triton:
         type: string
-        default: ''
-        description: Triton version if need
+        default: 'pinned'
+        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
         default: '3.10'
@@ -38,20 +42,82 @@ on:
 permissions: read-all
 
 jobs:
-  guilty-search:
-    env:
-      GH_TOKEN: ${{ github.token }}
-      SEARCH_COMMITS: ${{ inputs.search_commits }}
-      SEARCH_CHECK: ${{ inputs.search_check }}
-      SEARCH_CASE: ${{ inputs.search_case }}
-      SEARCH_CRITERIA: ${{ inputs.search_criteria }}
+  get_runner:
     runs-on: ${{ inputs.runner }}
+    outputs:
+      test_host: ${{ steps.runner-info.outputs.test_host }}
+      test_user: ${{ steps.runner-info.outputs.test_user }}
+      test_group: ${{ steps.runner-info.outputs.test_group }}
     steps:
-      - name: Cleanup workspace
+      - name: Get runner info
+        id: runner-info
         run: |
-          rm -rf ./* || sudo rm -rf ./*
-          mkdir gs-logs gs-search
+          # get test runner
+          echo "test_host=${RUNNER_NAME}" |tee -a ${GITHUB_OUTPUT}
+          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+          # show host info
+          cat /etc/os-release
+          uname -a
+          source /opt/intel/oneapi/setvars.sh
+          sycl-ls
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          # clean docker cache
+          docker stop $(docker ps -aq) || true
+          docker system prune -af || true
+          # clean files
+          ls -al
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+
+  biisect-search:
+    needs: get_runner
+    runs-on: ${{ needs.get_runner.outputs.test_host }}
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
+              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SEARCH_COMMITS: ${{ inputs.search_commits }}
+        SEARCH_CHECK: ${{ inputs.search_check }}
+        SEARCH_CASE: ${{ inputs.search_case }}
+        SEARCH_CRITERIA: ${{ inputs.search_criteria }}
+    defaults:
+      run:
+        shell: bash -xe {0}
+    steps:
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Check runner
+        run: |
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
+          hostname && whoami && id
+          clinfo --list
+          gcc -v && g++ -v
+          which python && which pip
+          python -V
+          pip install -U pip wheel setuptools
+          pip list
+          uname -a
+          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+          pip install cmake ninja pandas psutil scipy requests pybind11
           echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
+          mkdir gs-logs gs-search
+      - name: Install oneAPI DLE
+        if: ${{ inputs.oneapi != 'installed' }}
+        run: |
+          rm -rf ~/intel ~/.intel
+          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -68,17 +134,8 @@ jobs:
           cd ..
           echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> ${GITHUB_ENV}
           echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> ${GITHUB_ENV}
-      - name: Setup python env
-        run: |
-          conda create python=${{ inputs.python }} -y -n guilty-search
-          source activate guilty-search
-          conda info -e
-          which python && which pip
-          conda list
-          pip install cmake ninja pandas psutil scipy requests pybind11
       - name: Prepare test env
         run: |
-          source activate guilty-search
           if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers==4.44.2
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
@@ -97,7 +154,6 @@ jobs:
           fi
       - name: Triton Installation
         run: |
-          source activate guilty-search
           cd gs-pytorch
           rm -rf pytorch_triton_xpu-*.whl
           if [ "${{ inputs.triton }}" != "" ];then
@@ -114,19 +170,17 @@ jobs:
       - name: Guilty search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
-          source activate guilty-search
-          set -xe -o pipefail
           pytorch_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*pytorch=++;s+,.*++')"
           old_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${pytorch_commits} |awk -F '/' '{print $2}')"
-          old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+          old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${old_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
                   > ${{ github.workspace }}/gs-logs/search-${old_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
-          new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+          new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${new_commit}" \
                   --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
@@ -136,7 +190,7 @@ jobs:
             cd gs-pytorch
             git reset --hard
             bisect_status="$(git bisect start ${new_commit} ${old_commit} \
-                    ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+                    ${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="$(git rev-parse HEAD)" \
                     --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
@@ -148,19 +202,17 @@ jobs:
       - name: Guilty search torch-xpu-ops
         if: ${{ contains(inputs.search_commits, 'xpu-ops') }}
         run: |
-          source activate guilty-search
-          set -xe -o pipefail
           xpu_ops_commits="$(echo ${{ inputs.search_commits }} |sed 's+.*xpu-ops=++;s+,.*++')"
           old_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $1}')"
           new_commit="$(echo ${xpu_ops_commits} |awk -F '/' '{print $2}')"
-          old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+          old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${old_commit}" \
                   > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${old_commit}.log && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
-          new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+          new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_VERSION="${new_commit}" \
@@ -171,7 +223,7 @@ jobs:
             git reset --hard
             bisect_status="$(
             git bisect start ${new_commit} ${old_commit} \
-                    ${{ github.workspace }}/gs-scripts/.github/scripts/guilty_search.sh \
+                    ${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
                     --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)" \
