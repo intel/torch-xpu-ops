@@ -67,11 +67,9 @@ jobs:
         shell: bash -xe {0}
     steps:
       - name: Setup gh
-        uses: actions4gh/setup-gh@v1
-      - name: Setup gcc
-        uses: Dup4/actions-setup-gcc@v1
-        with:
-          version: 11
+        run: |
+          curl -sS https://webi.sh/gh | sh
+          echo "PATH=${HOME}/.local/bin:$PATH" >> ${GITHUB_ENV}
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
@@ -110,6 +108,8 @@ jobs:
             export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
           fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          # gcc 11
+          source /opt/rh/gcc-toolset-11/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             --PYTORCH_REPO="${PYTORCH_REPO}" \
@@ -137,6 +137,9 @@ jobs:
           cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
       - name: Build Torchvision and Torchaudio
         run: |
+          # gcc 13
+          dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
+          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
