@@ -188,104 +188,14 @@ jobs:
     outputs: 
       ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
     steps:
-      - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+      - name: Setup Test Env
+        uses: .github/actions/setup-testenv
         with:
-          python-version: ${{ inputs.python }}
-      - name: Check runner
-        run: |
-          ls -al
-          find ./ |grep -v "^\./$" |xargs rm -rf
-          hostname && whoami && id
-          clinfo --list
-          gcc -v && g++ -v
-          which python && which pip
-          python -V
-          pip install -U pip wheel setuptools
-          pip list
-          pip install pytest pytest-timeout
-          uname -a
-          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-          pip install pandas psutil scipy requests
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-        with:
-          path: torch-xpu-ops
-      - name: Install oneAPI DLE
-        if: ${{ inputs.oneapi != 'installed' }}
-        run: |
-          rm -rf ~/intel ~/.intel
-          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
-          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
-          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
-      - name: Download Pytorch wheel
-        if: ${{ ! contains(inputs.test_type, 'wheel') }}
-        uses: actions/download-artifact@v4
-        with:
-          pattern: Torch-XPU-Wheel-*
-      - name: Prepare Stock Pytorch
-        run: |
-          # install pytorch
-          if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" |wc -l) -ne 0 ];then
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
-          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" |wc -l) -ne 0 ];then
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
-          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" |wc -l) -ne 0 ];then
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          else
-            pip install --force-reinstall ${{ github.workspace }}/*.whl
-          fi
-          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-          else
-            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-          fi
-          git clone ${PYTORCH_REPO} pytorch
-          cd pytorch
-          git checkout ${TORCH_COMMIT_ID}
-          pip install -r .ci/docker/requirements-ci.txt
-          # apply extra PRs for stock pytorch
-          if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
-            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-          else
-            python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          fi
-          git status && git diff && git show -s
-      - name: Prepare Torch-xpu-ops
-        run: |
-          cd pytorch
-          rm -rf third_party/torch-xpu-ops
-          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
-          else
-            TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-              TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
-            else
-              TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
-            fi
-          fi
-          if [ "${{ inputs.test_type }}" == "cicd" ];then
-            cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          else
-            git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          fi
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-          git status && git diff && git show -s
-      - name: Torch Config
-        run: |
-          printenv
-          python -c "import torch; print(torch.__config__.show())"
-          python -c "import torch; print(torch.__config__.parallel_info())"
-          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-          python -c "import torchvision; print(torchvision.__version__)"
-          python -c "import torchaudio; print(torchaudio.__version__)"
-          python -c "import triton; print(triton.__version__)"
-          python pytorch/torch/utils/collect_env.py
-          pip list |grep -E 'torch|intel'
+          test_type: ${{ inputs.test_type }}
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+          oneapi: ${{ inputs.oneapi }}
+          python: ${{ inputs.python }}
 
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
@@ -415,98 +325,18 @@ jobs:
       - name: Check runner
         run: |
           ls -al
-          find ./ |grep -v "^\./$" |xargs rm -rf
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           sudo find /tmp/ |grep -v "^/tmp/$" |xargs sudo rm -rf
-          rm -rf ~/.triton ~/.torch
-          hostname && whoami && id
+          sudo rm -rf ~/.triton ~/.torch
           xpu-smi topology -m
-          gcc -v && g++ -v
-          uname -a
-          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-      - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+      - name: Setup Test Env
+        uses: .github/actions/setup-testenv
         with:
-          python-version: ${{ inputs.python }}
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-        with:
-          path: torch-xpu-ops
-      - name: Install oneAPI DLE
-        if: ${{ inputs.oneapi != 'installed' }}
-        run: |
-          rm -rf ~/intel ~/.intel
-          wget -q -O oneapi.sh "${{ inputs.oneapi }}"
-          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
-          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
-      - name: Download Pytorch wheel
-        if: ${{ ! contains(inputs.test_type, 'wheel') }}
-        uses: actions/download-artifact@v4
-        with:
-          pattern: Torch-XPU-Wheel-*
-      - name: Prepare Stock Pytorch
-        run: |
-          which python && which pip
-          python -V
-          pip install -U pip wheel setuptools
-          pip list
-          pip install pytest pytest-timeout
-          # install pytorch
-          if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" |wc -l) -ne 0 ];then
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
-          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" |wc -l) -ne 0 ];then
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
-          elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" |wc -l) -ne 0 ];then
-            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-          else
-            pip install --force-reinstall ${{ github.workspace }}/*.whl
-          fi
-          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-          else
-            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-          fi
-          git clone ${PYTORCH_REPO} pytorch
-          cd pytorch
-          git checkout ${TORCH_COMMIT_ID}
-          pip install -r .ci/docker/requirements-ci.txt
-          # apply extra PRs for stock pytorch
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git diff && git show -s
-      - name: Prepare Torch-xpu-ops
-        run: |
-          cd pytorch
-          rm -rf third_party/torch-xpu-ops
-          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
-          else
-            TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-              TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
-            else
-              TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
-            fi
-          fi
-          if [ "${{ inputs.test_type }}" == "cicd" ];then
-            cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          else
-            git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          fi
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-          git status && git diff && git show -s
-      - name: Torch Config
-        run: |
-          printenv
-          python -c "import torch; print(torch.__config__.show())"
-          python -c "import torch; print(torch.__config__.parallel_info())"
-          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-          python -c "import torchvision; print(torchvision.__version__)"
-          python -c "import torchaudio; print(torchaudio.__version__)"
-          python -c "import triton; print(triton.__version__)"
-          python pytorch/torch/utils/collect_env.py
-          pip list |grep -E 'torch|intel'
+          test_type: ${{ inputs.test_type }}
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+          oneapi: ${{ inputs.oneapi }}
+          python: ${{ inputs.python }}
 
       - name: Set Ptrace_scope
         if: ${{ always() }}

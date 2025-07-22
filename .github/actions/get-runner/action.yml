@@ -17,16 +17,10 @@ runs:
         echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
         # show host info
         lscpu
+        lshw -C display
         free -h
-        cat /etc/os-release
-        uname -a
-        gcc -v && g++ -v
-        source /opt/intel/oneapi/setvars.sh
-        sycl-ls
-        icpx -v
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-        cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
         df -h
+        cat /etc/os-release
     - name: Cleanup host
       if: ${{ always() }}
       shell: bash -xe {0}
