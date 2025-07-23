@@ -31,8 +31,17 @@ compare_and_filter_logs() {
     # Keep the filtered UT cases
     grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
     echo "Filtered cases file: $filtered_content"
+
+    echo -e "\n\033[1;31m[Check new failed cases]\033[0m"
+    if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
+        echo -e "\033[1;32mNo new failed cases found\033[0m"
+    else
+        echo -e "\n\033[1;31mNew failed cases, not in known issues\033[0m"
+        cat "$output_file"
+    fi
+
     if [[ -s "$filtered_content" ]]; then
-        echo -e "\n\033[1;31m[Filtered Cases]\033[0m"
+        echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
         awk -F':' '{
             line_number = $1
             $1 = ""
