@@ -1,0 +1,419 @@
+case	Upstream priority	Upstream target	Upstream owner	Tested feature
+test/distributions/test_distributions.py	P1	2.9		distributed
+test/inductor/test_benchmark_fusion.py	P1			inductor
+test/inductor/test_cutlass_backend.py	P1			inductor
+test/inductor/test_flex_attention.py	P1			inductor
+test/nn/test_convolution.py	P2			op
+test/inductor/test_smoke.py	P1			inductor
+test/nn/test_dropout.py	P2			op
+test/test_autograd_fallback.py	P2			op
+test/test_cuda_nvml_based_avail.py	P4			runtime
+test/test_cuda_primary_ctx.py	P4			runtime
+test/test_cuda_trace.py	P4			runtime
+test/test_fake_tensor.py	P2			op
+test/test_fx.py	P2			op
+test/test_native_mha.py	P2			op
+test/test_nn.py	P1			op
+test/test_overrides.py	P3			op
+test/test_python_dispatch.py	P3			op
+test/test_reductions.py	P1			op
+test/test_sort_and_select.py	P2			op
+test/test_spectral_ops.py	P2			op
+test/test_tensor_creation_ops.py	P1			op
+test/test_torch.py	P1			op
+test/test_transformers.py	P1			op
+test/test_utils.py	P3			runtime
+cpp/cpu_generator_test 				cpp
+test/distributions/test_constraints.py	P1			distributed
+test/dynamo/test_autograd_function.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_backends.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_callback.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_compile.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_ctx_manager.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_cudagraphs.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_cudagraphs_expandable_segments.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_dicts.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_dynamic_shapes.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_exceptions.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_flat_apply.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_functions.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_higher_order_ops.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_misc.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_model_output.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_modules.py	P1	2.9	Erxin	dynamo
+test/dynamo/test_repros.py	P1	2.9	Erxin	dynamo
+test/export/test_cpp_serdes.py	P2			export
+test/export/test_draft_export.py	P2			export
+test/export/test_export.py	P2			export
+test/export/test_export_nonstrict.py	P2			export
+test/export/test_export_training_ir_to_run_decomp.py	P2			export
+test/export/test_hop.py	P2			export
+test/export/test_retraceability.py	P2			export
+test/export/test_serdes.py	P2			export
+test/export/test_serialize.py	P2			export
+test/functorch/test_ac.py	P3			functorch
+test/functorch/test_control_flow.py	P3			functorch
+test/functorch/test_eager_transforms.py	P3			functorch
+test/functorch/test_ops.py	P3			functorch
+test/functorch/test_vmap.py	P3			functorch
+test/inductor/test_aot_inductor.py	P1			inductor
+test/inductor/test_aot_inductor_arrayref.py	P1			inductor
+test/inductor/test_aot_inductor_custom_ops.py	P1			inductor
+test/inductor/test_aot_inductor_package.py	P1			inductor
+test/inductor/test_b2b_gemm.py	P1			inductor
+test/inductor/test_triton_heuristics.py	P1			inductor
+test/inductor/test_ck_backend.py	P1			inductor
+test/inductor/test_codecache.py	P1			inductor
+test/inductor/test_compiled_autograd.py	P1			inductor
+test/inductor/test_compiled_optimizers.py	P1			inductor
+test/inductor/test_control_flow.py	P1			inductor
+test/inductor/test_cooperative_reductions.py	P1			inductor
+test/inductor/test_cpu_repro.py	P1			inductor
+test/inductor/test_cuda_repro.py	P1			inductor
+test/inductor/test_cudacodecache.py	P1			inductor
+test/inductor/test_cudagraph_trees.py	P1			inductor
+test/inductor/test_cudagraph_trees_expandable_segments.py	P1			inductor
+test/inductor/test_decompose_mem_bound_mm.py	P1			inductor
+test/inductor/test_flex_decoding.py	P1			inductor
+test/inductor/test_fp8.py	P1			inductor
+test/inductor/test_fused_attention.py	P1			inductor
+test/inductor/test_fuzzer.py	P1			inductor
+test/inductor/test_gpu_cpp_wrapper.py	P1			inductor
+test/test_accelerator.py	P1			inductor
+test/inductor/test_halide.py	P1			inductor
+test/inductor/test_inductor_utils.py	P1			inductor
+test/inductor/test_inplace_padding.py	P1			inductor
+test/nn/test_multihead_attention.py	P2			op
+test/inductor/test_minifier.py	P1			inductor
+test/inductor/test_mmdecomp.py	P1			inductor
+test/inductor/test_move_constructors_to_cuda.py	P1			inductor
+test/inductor/test_op_completeness.py	P1			inductor
+test/inductor/test_op_dtype_prop.py	P1			inductor
+test/inductor/test_pad_mm.py	P1			inductor
+test/inductor/test_config.py	P1			inductor
+test/inductor/test_perf.py	P1			inductor
+test/inductor/test_profiler.py	P1			inductor
+test/inductor/test_provenance_tracing.py	P1			inductor
+test/inductor/test_split_cat_fx_aten_passes.py	P1			inductor
+test/inductor/test_torchinductor.py	P1			inductor
+test/inductor/test_torchinductor_codegen_dynamic_shapes.py	P1			inductor
+test/inductor/test_torchinductor_dynamic_shapes.py	P1			inductor
+test/inductor/test_torchinductor_opinfo.py	P1			inductor
+test/inductor/test_triton_kernels.py	P1			inductor
+test/inductor/test_unbacked_symints.py	P1			inductor
+test/lazy/test_bindings.py	P4			lazy
+test/lazy/test_extract_compiled_graph.py	P4			lazy
+test/lazy/test_meta_kernel.py	P4			lazy
+test/nn/test_pooling.py	P1			op
+test/nn/test_embedding.py	P1			op
+test/inductor/test_padding.py	P1			inductor
+test/nn/test_parametrization.py	P2			op
+test/optim/test_lrscheduler.py	P1			optim
+test/optim/test_optim.py	P1			optim
+test/optim/test_swa_utils.py	P1			optim
+test/profiler/test_cpp_thread.py	P2			profiler
+test/profiler/test_profiler.py	P2			profiler
+test/profiler/test_profiler_tree.py	P2			profiler
+test/profiler/test_record_function.py	P2			profiler
+test/profiler/test_torch_tidy.py	P2			profiler
+test/inductor/test_layout_optim.py	P1			inductor
+test/test_autograd.py	P1			op
+test/test_binary_ufuncs.py	P1			op
+test/profiler/test_execution_trace.py	P2			profiler
+test/profiler/test_memory_profiler.py	P2			profiler
+test/test_complex.py	P2			op
+test/test_cuda.py	P4			op
+test/test_cuda_expandable_segments.py	P4			op
+test/test_cuda_multigpu.py	P4			op
+test/test_cuda_sanitizer.py	P4			op
+test/test_custom_ops.py	P2			op
+test/test_dataloader.py	P2			runtime
+test/test_decomp.py	P1			op
+test/test_dlpack.py	P2			op
+test/test_expanded_weights.py	P3			op
+test/test_flop_counter.py	P3			runtime
+test/test_foreach.py	P1			op
+test/test_functionalization_of_rng_ops.py	P3			op
+test/test_fx_experimental.py	P2			op
+test/test_hop_infra.py	P3			op
+test/test_hub.py	P3			op
+test/test_indexing.py	P1			op
+test/test_jit.py	P4			jit
+test/test_jit_fuser_te.py	P4			jit
+test/test_jit_llga_fuser.py	P4			jit
+test/test_jiterator.py	P4			jit
+test/test_legacy_vmap.py	P3			op
+test/test_linalg.py	P1			op
+test/test_masked.py	P1			op
+test/test_maskedtensor.py	P1			op
+test/test_content_store.py	P2			op
+test/test_meta.py	P1			op
+test/test_modules.py	P1			op
+test/test_matmul_cuda.py	P2			op
+test/test_nestedtensor.py	P2			op
+test/test_numpy_interop.py	P3			op
+test/test_ops.py	P1			op
+test/test_ops_fwd_gradients.py	P2			op
+test/test_ops_gradients.py	P1			op
+test/test_ops_jit.py	P4			op
+test/test_optim.py	P1			op
+test/test_prims.pyco	P2			op
+test/test_public_bindings	P3			op
+test/test_pytree.py	P3			op
+test/test_quantization.py	P2			op
+test/test_scatter_gather_ops.py	P1			op
+test/test_schema_check.py	P3			op
+test/test_segment_reductions.py	P1			op
+test/test_serialization.py	P3			op
+test/test_shape_ops.py	P2			op
+test/test_sparse.py	P2			op
+test/test_sparse_csr.py	P2			op
+test/test_sparse_semi_structured.py	P2			op
+test/test_sympy_utils.py	P3			op
+test/test_testing.py	P3			op
+test/test_type_promotion.py	P2			op
+test/test_typing.py	P3			op
+test/test_unary_ufuncs.py	P1			op
+test/test_utils_config_module.py	P3			op
+test/test_view_ops.py	P1			op
+test/torch_np/test_nep50_examples.py	P2			torch_np
+tools/dynamo/verify_dynamo.py	P1			dynamo
+inductor/test_max_autotune 				
+python benchmarks/dynamo/timm_models.py --device cuda --accuracy --amp \				benchmark
+    --training --inductor --disable-cudagraphs --only vit_base_patch16_224 \				
+"    --output ""$TEST_REPORTS_DIR/inductor_cpp_wrapper_training.csv"""				
+python benchmarks/dynamo/torchbench.py --device cuda --accuracy \				benchmark
+"      --bfloat16 --inference --inductor --only hf_T5 --output ""$TEST_REPORTS_DIR/inductor_cpp_wrapper_inference.csv"""				
+python benchmarks/dynamo/torchbench.py --device cuda --accuracy \				benchmark
+"      --bfloat16 --inference --inductor --only llama --output ""$TEST_REPORTS_DIR/inductor_cpp_wrapper_inference.csv"""				
+python benchmarks/dynamo/torchbench.py --device cuda --accuracy \				benchmark
+"      --bfloat16 --inference --inductor --only moco --output ""$TEST_REPORTS_DIR/inductor_cpp_wrapper_inference.csv"""				
+test_jit_legacy 	P4			jit
+test_jit_fuser_legacy	P4			jit
+"OMP_NUM_THREADS=2 TORCH_CPP_TEST_MNIST_PATH=""${MNIST_DIR}"" ""$TORCH_BIN_DIR""/test_api --gtest_filter='-IMethodTest.*' --gtest_output=xml:$TEST_REPORTS_DIR/test_api.xml"	P4			cpp
+python test/run_test.py --cpp --verbose -i cpp/test_tensorexpr	P4			cpp
+python test/run_test.py --cpp --verbose -i cpp/static_runtime_test	P4			cpp
+LTC_TS_CUDA=1 python test/run_test.py --cpp --verbose -i cpp/test_jit cpp/test_lazy	P4			cpp
+"CPP_TESTS_DIR=""${TORCH_BIN_DIR}"" python test/run_test.py --cpp --verbose -i cpp/test_mobile_nnc"	P4			cpp
+source test/mobile/nnc/test_aot_compile.sh	P4			mobile
+python test_custom_ops.py -v				op
+  python model.py --export-script-module=model.pt				op
+  build/test_custom_ops ./model.pt				op
+python test_custom_backend.py -v				op
+  python backend.py --export-module-to=model.pt				op
+  build/test_custom_backend ./model.pt				op
+  python bench.py -n 1 -m 2				benchmark
+  python pyspybench.py Tensor -n 1				benchmark
+  python pyspybench.py SubTensor -n 1				benchmark
+  python pyspybench.py WithTorchFunction -n 1				benchmark
+  python pyspybench.py SubWithTorchFunction -n 1				benchmark
+pytest benchmarks/fastrnns/test_bench.py --benchmark-sort=Name --benchmark-json=${BENCHMARK_DATA}/fastrnns_default.json --fuser=default --executor=default				benchmark
+    pytest benchmarks/fastrnns/test_bench.py --benchmark-sort=Name --benchmark-json=${BENCHMARK_DATA}/fastrnns_legacy_old.json --fuser=old --executor=legacy				benchmark
+    pytest benchmarks/fastrnns/test_bench.py --benchmark-sort=Name --benchmark-json=${BENCHMARK_DATA}/fastrnns_profiling_te.json --fuser=te --executor=profiling				benchmark
+python benchmarks/upload_scribe.py --pytest_bench_json ${BENCHMARK_DATA}/fastrnns_default.json				benchmark
+      python benchmarks/upload_scribe.py --pytest_bench_json ${BENCHMARK_DATA}/fastrnns_legacy_old.json				benchmark
+      python benchmarks/upload_scribe.py --pytest_bench_json ${BENCHMARK_DATA}/fastrnns_profiling_te.json				benchmark
+test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/fsdp/test_fully_shard_comm.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/fsdp/test_fully_shard_compile.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/fsdp/test_fully_shard_frozen.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/fsdp/test_fully_shard_mixed_precision.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/fsdp/test_fully_shard_state_dict.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/fsdp/test_fully_shard_training.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/test_checkpoint.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/test_composability/test_2d_composability.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/test_composability/test_pp_composability.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/test_contract.py	P1	2.9	Xiangdong	distributed
+test/distributed/_composable/test_replicate_with_compiler.py	P1	2.9	Xiangdong	distributed
+test/distributed/_shard/sharded_tensor/test_logger.py	P1	2.9	Libo	distributed
+test/distributed/_shard/sharded_tensor/test_sharded_tensor.py	P1	2.9	Libo	distributed
+test/distributed/_shard/sharded_tensor/test_sharded_tensor_reshard.py	P1	2.9	Libo	distributed
+test/distributed/_shard/sharding_plan/test_sharding_plan.py	P1	2.9	Libo	distributed
+test/distributed/_shard/sharding_spec/test_sharding_spec.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_fsdp2_mem_tracker.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_mem_tracker.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_memory_tracker.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_mod_tracker.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_runtime_estimator.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_sac_estimator.py	P1	2.9	Libo	distributed
+test/distributed/_tools/test_sac_ilp.py	P1	2.9	Libo	distributed
+test/distributed/checkpoint/e2e/test_e2e_save_and_load.py	P1			distributed
+test/distributed/checkpoint/e2e/test_fsdp_ep.py	P1			distributed
+test/distributed/checkpoint/fsdp/test_fsdp_dsd.py	P1			distributed
+test/distributed/checkpoint/test_checkpoint.py	P1			distributed
+test/distributed/checkpoint/test_dedup_tensors.py	P1			distributed
+test/distributed/checkpoint/test_file_system_checkpoint.py	P1			distributed
+test/distributed/checkpoint/test_format_utils.py	P1			distributed
+test/distributed/checkpoint/test_fsdp_optim_state.py	P1			distributed
+test/distributed/checkpoint/test_nested_dict.py	P1			distributed
+test/distributed/checkpoint/test_save_load_api.py	P1			distributed
+test/distributed/flight_recorder/test_fr_analysis.py	P1			distributed
+test/distributed/fsdp/test_checkpoint_wrapper.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_distributed_checkpoint.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_apply.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_backward_prefetch.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_checkpoint.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_clip_grad_norm.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_comm.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_comm_hooks.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_core.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_dtensor_state_dict.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_exec_order.py	P1	2.9	Libo	distributed
+test/distributed/fsdp/test_fsdp_fine_tune.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_flatten_params.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_freezing_weights.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_fx.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_grad_acc.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_hybrid_shard.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_ignored_modules.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_input.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_memory.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_meta.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_misc.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_mixed_precision.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_multiple_forward.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_multiple_wrapping.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_optim_state.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_overlap.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_pure_fp16.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_state_dict.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_tp_integration.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_traversal.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_uneven.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_unshard_params.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_fsdp_use_orig_params.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_hsdp_dtensor_state_dict.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_shard_utils.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_utils.py	P1	2.9	Daisy	distributed
+test/distributed/fsdp/test_wrap.py	P1	2.9	Daisy	distributed
+test/distributed/pipelining/test_backward.py	P1	2.9	Wei	distributed
+test/distributed/pipelining/test_microbatch.py	P1	2.9	Wei	distributed
+test/distributed/pipelining/test_pipe.py	P1	2.9	Wei	distributed
+test/distributed/pipelining/test_schedule_multiproc.py	P1	2.9	Wei	distributed
+test/distributed/pipelining/test_transformer.py	P1	2.9	Wei	distributed
+test/distributed/pipelining/test_unflatten.py	P1	2.9	Wei	distributed
+test/distributed/rpc/cuda/test_tensorpipe_agent.py	P1			distributed
+test/distributed/tensor/debug/test_op_coverage.py	P1			distributed
+test/distributed/tensor/experimental/test_register_sharding.py	P1	2.9	Wei	distributed
+test/distributed/tensor/parallel/test_micro_pipeline_tp.py	P1	2.9	Wei	distributed
+test/distributed/tensor/parallel/test_tp_examples.py	P1	2.9	Wei	distributed
+test/distributed/tensor/parallel/test_tp_random_state.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_api.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_attention.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_common_rules.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_dtensor.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_dtensor_compile.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_experimental_ops.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_init.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_math_ops.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_random_ops.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_redistribute.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_tensor_ops.py	P1	2.9	Wei	distributed
+test/distributed/tensor/test_xla_integration.py	P1	2.9	Wei	distributed
+test/distributed/test_backends.py	P1	2.9	Daisy	distributed
+test/distributed/test_c10d_common.py	P1	2.9	Daisy	distributed
+test/distributed/test_c10d_functional_native.py	P1	2.9	Daisy	distributed
+test/distributed/test_c10d_gloo.py	P1			distributed
+test/distributed/test_c10d_nccl.py	P1			distributed
+test/distributed/test_c10d_spawn_gloo.py	P1			distributed
+test/distributed/test_c10d_spawn_nccl.py	P1			distributed
+test/distributed/test_compute_comm_reordering.py	P1	2.9	Daisy	distributed
+test/distributed/test_device_mesh.py	P1	2.9	Daisy	distributed
+test/distributed/test_dynamo_distributed.py	P1	2.9	Daisy	distributed
+test/distributed/test_functional_api.py	P1	2.9	Daisy	distributed
+test/distributed/test_inductor_collectives.py	P1	2.9	Daisy	distributed
+test/distributed/test_pg_wrapper.py	P1	n/a	Daisy	distributed
+test/distributed/test_store.py	P1	2.9	Daisy	distributed
+test/distributed/test_symmetric_memory.py	P1	n/a	Daisy	distributed
+test/distributed/elastic/events/lib_test.py	P1			distributed
+test/distributed/elastic/test_control_plane.py	P1			distributed
+python test/run_test.py --cpp --verbose -i cpp/FileStoreTest	P4			cpp
+    python test/run_test.py --cpp --verbose -i cpp/HashStoreTest	P4			cpp
+    python test/run_test.py --cpp --verbose -i cpp/TCPStoreTest	P4			cpp
+"MPICMD=""${MPIEXEC} -np 2 $TORCH_BIN_DIR/ProcessGroupMPITest"""	P4			cpp
+python test/run_test.py --cpp --verbose -i cpp/ProcessGroupGlooTest	P4			cpp
+      python test/run_test.py --cpp --verbose -i cpp/ProcessGroupNCCLTest	P4			cpp
+      python test/run_test.py --cpp --verbose -i cpp/ProcessGroupNCCLErrorsTest	P4			cpp
+"PYTHONPATH=$(pwd)/benchmarks/dynamo/pr_time_benchmarks source benchmarks/dynamo/pr_time_benchmarks/benchmark_runner.sh ""$TEST_REPORTS_DIR/pr_time_benchmarks_results.csv"" ""benchmarks/dynamo/pr_time_benchmarks/benchmarks"""				benchmark
+"PYTHONPATH=$(pwd)/benchmarks/dynamo/pr_time_benchmarks python benchmarks/dynamo/pr_time_benchmarks/check_results.py ""benchmarks/dynamo/pr_time_benchmarks/expected_results.csv"" ""$TEST_REPORTS_DIR/pr_time_benchmarks_results.csv"" ""$TEST_REPORTS_DIR/new_expected_results.csv"""				benchmark
+test/test_public_bindings.py				runtime
+test/distributed/optim/test_apply_optimizer_in_backward.py	P1	2.9	Daisy	distributed
+test/distributed/optim/test_named_optimizer.py	P1			distributed
+test/distributed/optim/test_zero_redundancy_optimizer.py	P1			distributed
+test/distributed/checkpoint/test_checkpoint.py	P1			distributed
+test_compatibility.py	P1			distributed
+test_dedup_tensors.py	P1			distributed
+test_dtensor_checkpoint.py	P1			distributed
+test_dtensor_resharding.py	P1			distributed
+test_file_system_checkpoint_cpu.py	P1			distributed
+test_file_system_checkpoint.py	P1			distributed
+test_format_utils.py	P1			distributed
+test_fsdp_model_state.py	P1			distributed
+test_fsdp_optim_state.py	P1			distributed
+test_fsdp_tp_checkpoint_conversion.py	P1			distributed
+test_fsspec.py	P1			distributed
+test_hf_safetensor_e2e.py	P1			distributed
+test_hf_storage.py	P1			distributed
+test_hsdp_checkpoint.py	P1			distributed
+test_nested_dict.py	P1			distributed
+test_planner.py	P1			distributed
+test_save_load_api.py	P1			distributed
+test_state_dict.py	P1			distributed
+test_state_dict_stager.py	P1			distributed
+test_state_dict_utils.py	P1			distributed
+test_tp_checkpoint.py	P1			distributed
+test_traverse.py	P1			distributed
+test_utils.py	P1			distributed
+test/distributed/checkpoint/_experimental//test_barriers.py	P1			distributed
+test_checkpointer.py	P1			distributed
+test_checkpoint_reader.py	P1			distributed
+test_checkpoint_writer.py	P1			distributed
+test_types.py	P1			distributed
+test/distributed/checkpoint/fsdp/test_fsdp_dsd.py	P1			distributed
+test/distributed/checkpoint/e2e/test_e2e_save_and_load.py	P1			distributed
+test_fine_tuning.py	P1			distributed
+test_fsdp_ep.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/events/lib_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/agent/server/test/local_elastic_agent_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/agent/server/test/api_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/redirects_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/bin/zombie_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/tail_log_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/errors/error_handler_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/errors/api_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/api_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/timer/file_based_local_timer_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/timer/local_timer_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/timer/api_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/out_of_tree_test_package/src/testbackend/__init__.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/out_of_tree_test_package/pyproject.toml	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/etcd_rendezvous_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/static_rendezvous_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/etcd_server_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/dynamic_rendezvous_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/rendezvous_backend_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/c10d_rendezvous_backend_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/utils_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/etcd_rendezvous_backend_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/out_of_tree_rendezvous_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/rendezvous/api_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/utils/logging_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/utils/data/cycling_iterator_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/utils/distributed_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/utils/util_test.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/multiprocessing/bin/test_script.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/elastic/test_control_plane.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_fsdp2_mem_tracker.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_mem_tracker.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_mod_tracker.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_sac_estimator.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_sac_ilp.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_runtime_estimator.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_fake_collectives.py	P1			distributed
+/home/sdp/daisyden/ut/triage_bot/0625/test/distributed/_tools/test_memory_tracker.py	P1			distributed
+test/quantization/core/test_quantized_op_xpu.py	P1			
+test/quantization/core/test_quantized_tensor_xpu.py	P1			
+test/quantization/core/test_workflow_module_xpu.py	P1			
+test/quantization/core/test_workflow_ops_xpu.py	P1			
+test/inductor/test_max_autotune.py	P1			inductor
