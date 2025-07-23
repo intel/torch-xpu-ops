@@ -464,17 +464,17 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     return kvs;
   }
 };
+
+// Dumps the comm traces and additional information about the ProcessGroup.
+TORCH_API std::string dump_xccl_trace(
+    bool includeCollectives,
+    bool includeStackTraces,
+    bool onlyActive);
+
+TORCH_API std::string getXcclVersion();
 } // namespace c10d
 
 namespace {
-
-inline std::string getXcclVersion() {
-  auto xccl_version = ccl::get_library_version();
-  std::string versionString = std::to_string(xccl_version.major) + "." +
-      std::to_string(xccl_version.minor) + "." +
-      std::to_string(xccl_version.update);
-  return versionString;
-}
 
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {

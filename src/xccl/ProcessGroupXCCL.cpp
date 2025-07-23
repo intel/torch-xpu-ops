@@ -202,6 +202,17 @@ void syncStream(
 
 } // namespace
 
+std::string dump_xccl_trace(
+    bool includeCollectives,
+    bool includeStackTraces,
+    bool onlyActive) {
+    auto xcclDumpMap = std::unordered_map<
+        std::string,
+        std::unordered_map<std::string, std::string>>();
+    return FlightRecorderXCCL::get()->dump(
+        xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
+}
+
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
@@ -385,11 +396,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
       << includeStackTrace;
   if (traceBufferSize_ > 0) {
     // TODO: dump_xccl_trace
-    auto xcclDumpMap = std::unordered_map<
-        std::string,
-        std::unordered_map<std::string, std::string>>();
-    auto xcclTrace = FlightRecorderXCCL::get()->dump(
-        xcclDumpMap, true, includeStackTrace, false);
+    auto xcclTrace = dump_xccl_trace(true, includeStackTrace, false);
     DebugInfoWriter& writer = DebugInfoWriter::getWriter(rank_);
     LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
               << writer.getWriterTarget();
@@ -2265,6 +2272,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       OpType::ALLTOALL,
       opts.asyncOp,
       "xccl:all_to_all");
+}
+
+std::string getXcclVersion() {
+  auto xccl_version = ccl::get_library_version();
+  std::string versionString = std::to_string(xccl_version.major) + "." +
+      std::to_string(xccl_version.minor) + "." +
+      std::to_string(xccl_version.update);
+  return versionString;
 }
 
 } // namespace c10d
