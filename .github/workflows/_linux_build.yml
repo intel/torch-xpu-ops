@@ -70,7 +70,11 @@ jobs:
     steps:
       - name: Setup gh
         run: |
+          hostname && id
           curl -sS https://webi.sh/gh | sh
+          echo "PATH=${HOME}/.local/bin:$PATH" |tee -a ${GITHUB_ENV}
+          source ~/.config/envman/PATH.env
+          gh --version
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
@@ -80,7 +84,8 @@ jobs:
         run: |
           # Cleanup workspace
           find ./ |grep -v "^\./$" |xargs rm -rf
-          which python && python -V && pip list
+          which python && python -V
+          which pip && pip list
           pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -88,7 +93,6 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
-          export PATH=${HOME}/.local/bin:$PATH
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
@@ -103,6 +107,8 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
+          # gcc 11
+          source /opt/rh/gcc-toolset-11/enable
           # oneAPI DLE
           if [ "${{ inputs.oneapi }}" != "installed" ];then
             rm -rf ${HOME}/intel ${HOME}/.intel
@@ -111,8 +117,6 @@ jobs:
             export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
           fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             --PYTORCH_REPO="${PYTORCH_REPO}" \
