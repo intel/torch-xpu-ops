@@ -76,6 +76,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
+          check-latest: true
       - name: Clean workspace
         run: |
           # Cleanup workspace
@@ -184,7 +185,7 @@ jobs:
           pip list |grep -E 'torch|intel'
 
       - name: Upload Torch XPU Wheel
-        if: ${{ ! cancelled() }}
+        if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
