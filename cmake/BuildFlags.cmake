@@ -35,6 +35,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=c++17)
+    list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
     list(APPEND SYCL_HOST_FLAGS -Wno-deprecated)
