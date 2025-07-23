@@ -71,7 +71,6 @@ jobs:
       - name: Setup gh
         run: |
           curl -sS https://webi.sh/gh | sh
-          echo "PATH=${HOME}/.local/bin:$PATH" >> ${GITHUB_ENV}
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
@@ -89,6 +88,7 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
+          export PATH=${HOME}/.local/bin:$PATH
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
