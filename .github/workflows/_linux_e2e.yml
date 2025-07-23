@@ -286,7 +286,7 @@ jobs:
           pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
           if [ -f "${pt2e_summary_csv}" ];then
             cat ${pt2e_summary_csv}
-            failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
+            failed_num=$(grep -c ',failed' ${pt2e_summary_csv})
             if [ ${failed_num} -ne 0 ];then
               echo "[Warning] PT2E has failures!"
             fi
@@ -295,7 +295,7 @@ jobs:
         if: ${{ ! (contains(inputs.test_type, 'ondemand') && contains(inputs.test_type, 'cicd')) && github.repository_owner == 'intel' }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
-          has_or_not="$(grep 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt |wc -l)"
+          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt)"
           if [ ${has_or_not} -ne 0 ];then
             sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
           else
