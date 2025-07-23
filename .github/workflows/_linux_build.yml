@@ -36,6 +36,10 @@ on:
 
 permissions: read-all
 
+defaults:
+  run:
+    shell: bash -xe {0}
+
 jobs:
   runner:
     runs-on: ${{ inputs.runner }}
@@ -60,29 +64,22 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
+        PATH: /tmp/xpu-build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/github/home/.local/bin
         GH_TOKEN: ${{ github.token }}
         AGENT_TOOLSDIRECTORY: /tmp/_tools
     timeout-minutes: 300
-    defaults:
-      run:
-        shell: bash -xe {0}
     steps:
       - name: Setup gh
         run: |
-          hostname && id
-          curl -sS https://webi.sh/gh | sh
-          echo "PATH=${HOME}/.local/bin:${PATH}" |tee -a ${GITHUB_ENV}
-          source ~/.config/envman/PATH.env
-          gh --version
-      - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: 'pypy${{ inputs.python }}'
-          check-latest: true
-      - name: Clean workspace
-        run: |
           # Cleanup workspace
           find ./ |grep -v "^\./$" |xargs rm -rf
+          hostname && id
+          curl -sS https://webi.sh/gh | sh
+          gh --version
+      - name: Setup python-${{ inputs.python }}
+        run: |
+          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-build
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
@@ -92,7 +89,6 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
-          source ~/.config/envman/PATH.env
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
