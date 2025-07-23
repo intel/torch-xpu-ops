@@ -32,7 +32,9 @@ runs:
       - name: Setup gh
         run: |
           curl -sS https://webi.sh/gh | sh
-          echo "PATH=${HOME}/.local/bin:$PATH" >> ${GITHUB_ENV}
+          echo "PATH=${HOME}/.local/bin:${PATH}" |tee -a ${GITHUB_ENV}
+          source ~/.config/envman/PATH.env
+          gh --version
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:

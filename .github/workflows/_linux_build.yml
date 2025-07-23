@@ -71,7 +71,7 @@ jobs:
         run: |
           hostname && id
           curl -sS https://webi.sh/gh | sh
-          echo "PATH=${HOME}/.local/bin:$PATH" |tee -a ${GITHUB_ENV}
+          echo "PATH=${HOME}/.local/bin:${PATH}" |tee -a ${GITHUB_ENV}
           source ~/.config/envman/PATH.env
           gh --version
       - name: Setup python-${{ inputs.python }}
@@ -92,6 +92,7 @@ jobs:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
+          source ~/.config/envman/PATH.env
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
@@ -187,7 +188,6 @@ jobs:
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
           chmod 777 . -R
-
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
