@@ -73,11 +73,12 @@ with open('status.csv', newline='') as csvfile:
         if cols[3] == "xpu-ops":
             xpu_tested_files += 1
 
-        elif cols[1] != "" and cols[4] == 'No':
-            xpu_files += 1
+        elif cols[1] != "":
             xpu_cases += int(cols[1])
-            xpu_tested_files += 1
             xpu_tested_cases += int(cols[1])
+            if cols[4] == 'No':
+                xpu_files += 1
+                xpu_tested_files += 1
 
         if cols[2] != "":
             cuda_files += 1
