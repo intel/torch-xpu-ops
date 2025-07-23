@@ -37,7 +37,7 @@ on:
 permissions: read-all
 
 jobs:
-  get_runner:
+  runner:
     runs-on: ${{ inputs.runner }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
@@ -52,9 +52,9 @@ jobs:
 
   build:
     name: ${{ contains(inputs.test_type, 'wheel') && inputs.pytorch || 'build' }}
-    needs: get_runner
+    needs: runner
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
-    runs-on: ${{ needs.get_runner.outputs.test_host }}
+    runs-on: ${{ needs.runner.outputs.test_host }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:

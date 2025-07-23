@@ -21,9 +21,8 @@ concurrency:
 
 jobs:
   preci-lint-check:
-    name: preci-lint-check
     if: ${{ github.repository_owner == 'intel' }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout torch-xpu-ops
@@ -52,10 +51,9 @@ jobs:
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
   conditions-filter:
-    name: conditions-filter
     if: ${{ github.event.pull_request.draft == false }}
     needs: [preci-lint-check]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
@@ -93,7 +91,6 @@ jobs:
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
   linux-build:
-    name: linux
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all')}}
     needs: [conditions-filter]
     secrets: inherit
@@ -105,7 +102,6 @@ jobs:
       torch_xpu_ops: cicd
 
   linux-ut:
-    name: linux
     needs: [conditions-filter, linux-build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
@@ -117,7 +113,6 @@ jobs:
 
   linux-e2e:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
-    name: linux
     permissions: write-all
     needs: [conditions-filter, linux-build]
     uses: ./.github/workflows/_linux_e2e.yml

@@ -38,8 +38,12 @@ on:
 
 permissions: read-all
 
+defaults:
+  run:
+    shell: bash -xe {0}
+
 jobs:
-  get_runner:
+  runner:
     runs-on: ${{ inputs.runner }}
     outputs:
       test_host: ${{ steps.runner-info.outputs.test_host }}
@@ -52,9 +56,9 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  ut_test:
-    needs: get_runner
-    runs-on: ${{ needs.get_runner.outputs.test_host }}
+  normal:
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.test_host }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
     container:
@@ -62,17 +66,12 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
+              -u ${{ needs.runner.outputs.test_user }}:${{ needs.runner.outputs.test_group }}
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-    env:
-      UT_NAME: ${{ matrix.test.name }}
-    defaults:
-      run:
-        shell: bash -xe {0}
     strategy:
       fail-fast: false
       matrix:
@@ -187,8 +186,8 @@ jobs:
                 tee $GITHUB_WORKSPACE/ut_log/profile_test/test_profiler_tree.log
             additional_steps: |
               mkdir -p ut_log/profile_test/issue_reproduce
-    outputs: 
-      ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
+    env:
+      UT_NAME: ${{ matrix.test.name }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -200,11 +199,9 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
-
       - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
         run: |
-          set -e
           mkdir -p ${{ github.workspace }}/ut_log
           mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
           echo "Running ${{ matrix.test.name }}"
@@ -213,7 +210,6 @@ jobs:
           cd ${{ matrix.test.directory }}
           if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
             bash << "SCRIPT"
-            set -e
             ${{ matrix.test.command_script }}
           SCRIPT
           else
@@ -242,81 +238,74 @@ jobs:
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
-      - name: Set UT outputs
-        id: set-output
-        if: ${{ matrix.test.condition }}
-        run: |
-          echo "UT_NAME=${{ matrix.test.name }}" >> $GITHUB_OUTPUT
-  
-  ut_summary:
-    needs: ut_test
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
-      UT_SKIP_ISSUE: 1624
+
+  devices:
+    runs-on: pvc_rolling
+    if: ${{ contains(inputs.ut, 'op_regression_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
+    timeout-minutes: 5
     strategy:
-      fail-fast: false
       matrix:
-        test: 
-        - name: 'op_regression'
-          condition: ${{ contains(inputs.ut, 'op_regression') }}
-        - name: 'op_regression_dev1'
-          condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
-        - name: 'op_transformers'
-          condition: ${{ contains(inputs.ut, 'op_transformers') }}
-        - name: 'op_extended'
-          condition: ${{ contains(inputs.ut, 'op_extended') }}
-        - name: 'op_ut'
-          condition: ${{ contains(inputs.ut, 'op_ut') }}
-        - name: 'torch_xpu'
-          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
-        - name: 'xpu_profiling'
-          condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
+        test:
+          - name: 'op_regression_dev1'
+            condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
+            directory: 'pytorch/third_party/torch-xpu-ops/test/regressions'
+            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
+            log_prefix: 'op_regression_dev1'
+            timeout: 3
+    env:
+      AGENT_TOOLSDIRECTORY: /tmp/_tools
+      GH_TOKEN: ${{ github.token }}
+      UT_NAME: ${{ matrix.test.name }}
     steps:
-      - name: Get matrix UT value
-        run: |
-          echo "UT_NAME=${{ needs.ut_test.outputs.ut_name }}" >> "${GITHUB_ENV}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Download XPU UT Logs
-        if: ${{ matrix.test.condition }}
-        uses: actions/download-artifact@v4
+      - name: Setup Test Env
+        uses: ./.github/actions/setup-testenv
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}
-          path: ${{ github.workspace }}/ut_log
-      - name: Check UT Results
+          test_type: ${{ inputs.test_type }}
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+          oneapi: ${{ inputs.oneapi }}
+          python: ${{ inputs.python }}
+      - name: Run XPU UT Test
         if: ${{ matrix.test.condition }}
-        shell: bash
         run: |
-          repo="${{ github.repository }}"
-          function contains() {
-              contains_status="echo 'Start $2 ...'"
-              {
-                [[ $1 =~ (^|,)$2($|,) ]]
-              } || {
-                echo "[Warning] $2 is not suppotted type! Skipped!"
-                contains_status="continue"
-              }
-          }
-          set -xe
-          cd ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
-          gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
-          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
-          --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
-          > issues.log
-          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
-          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
-          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
-          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh ${{ matrix.test.name }}
+          mkdir -p ${{ github.workspace }}/ut_log
+          mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
+          echo "Running ${{ matrix.test.name }}"
+          echo "Directory: ${{ matrix.test.directory }}"
+          ${{ matrix.test.additional_steps }}
+          cd ${{ matrix.test.directory }}
+          if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
+            bash << "SCRIPT"
+            ${{ matrix.test.command_script }}
+          SCRIPT
+          else
+            timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
+              2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
+              tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test.log
+            ${{ matrix.test.xml_post_processing || '' }}
+          fi
+      - name: UT Test Results Summary
+        if: ${{ matrix.test.condition }}
+        run: |
+          pip install junitparser
+          python torch-xpu-ops/.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          if [ -e "ut_failure_list.csv" ];then
+              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ matrix.test.condition }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}-checked
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
           path: ${{ github.workspace }}/ut_log
+      - name: Upload XPU UT Failure list
+        if: ${{ matrix.test.condition }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
 
   distributed:
     runs-on: pytorch-06
@@ -343,7 +332,6 @@ jobs:
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
-
       - name: Set Ptrace_scope
         if: ${{ always() }}
         run: |
@@ -378,53 +366,62 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
           path: ${{ github.workspace }}/ut_log
 
-  distributed_summary:
-    needs: distributed
-    runs-on: ubuntu-22.04
+  summary:
+    needs: [normal, devices, distributed]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        test: 
+        - name: 'op_regression'
+          condition: ${{ contains(inputs.ut, 'op_regression') }}
+        - name: 'op_regression_dev1'
+          condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
+        - name: 'op_transformers'
+          condition: ${{ contains(inputs.ut, 'op_transformers') }}
+        - name: 'op_extended'
+          condition: ${{ contains(inputs.ut, 'op_extended') }}
+        - name: 'op_ut'
+          condition: ${{ contains(inputs.ut, 'op_ut') }}
+        - name: 'torch_xpu'
+          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
+        - name: 'xpu_profiling'
+          condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
+        - name: 'xpu_distributed'
+          condition: ${{ contains(inputs.ut, 'xpu_distributed') }}
     env:
       GH_TOKEN: ${{ github.token }}
       UT_SKIP_ISSUE: 1624
+      UT_NAME: ${{ matrix.test.name }}
     steps:
-      - name: Set the UT name
-        run: |
-          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
+        if: ${{ matrix.test.condition }}
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
+        if: ${{ matrix.test.condition }}
         shell: bash
         run: |
           repo="${{ github.repository }}"
-          function contains() {
-              contains_status="echo 'Start $2 ...'"
-              {
-                [[ $1 =~ (^|,)$2($|,) ]]
-              } || {
-                echo "[Warning] $2 is not suppotted type! Skipped!"
-                contains_status="continue"
-              }
-          }
-          set -xe
-          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
-          cd ${{ github.workspace }}/ut_log/xpu_distributed
+          cd ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
           gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
-          --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
-          > issues.log
-          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
+            --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | \
+            grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
           awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
           cat issues_temp.log | awk '{print $1}' >> Known_issue.log
           awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh 'xpu_distributed'
+          bash ut_result_check.sh ${{ matrix.test.name }}
       - name: Upload Inductor XPU UT Log
-        if: always()
+        if: ${{ matrix.test.condition }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed-checked
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}-checked
           path: ${{ github.workspace }}/ut_log
