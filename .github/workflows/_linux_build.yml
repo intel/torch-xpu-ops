@@ -66,9 +66,9 @@ jobs:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: -e HOME=/tmp/xpu-build
       env:
         PATH: /tmp/xpu-build/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        HOME: /tmp/xpu-build
         GH_TOKEN: ${{ github.token }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-build/_tools
     timeout-minutes: 300
