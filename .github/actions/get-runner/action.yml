@@ -4,12 +4,14 @@ on:
   workflow_call:
 
 outputs:
-  test_host:
-    value: ${{ steps.runner.outputs.test_host }}
-  test_user:
-    value: ${{ steps.runner.outputs.test_user }}
-  test_group:
-    value: ${{ steps.runner.outputs.test_group }}
+  runner_id:
+    value: ${{ steps.runner.outputs.runner_id }}
+  user_id:
+    value: ${{ steps.runner.outputs.user_id }}
+  render_id:
+    value: ${{ steps.runner.outputs.render_id }}
+  hostname:
+    value: ${{ steps.runner.outputs.hostname }}
 
 permissions: read-all
 
@@ -21,9 +23,10 @@ runs:
       id: runner
       run: |
         # get test runner
-        echo "test_host=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
-        echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
-        echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+        echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
+        echo "user_id=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+        echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+        echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
         # show host info
         lscpu
         lshw -C display

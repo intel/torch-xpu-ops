@@ -44,9 +44,10 @@ jobs:
   runner:
     runs-on: ${{ inputs.runner }}
     outputs:
-      test_host: ${{ steps.runner-info.outputs.test_host }}
-      test_user: ${{ steps.runner-info.outputs.test_user }}
-      test_group: ${{ steps.runner-info.outputs.test_group }}
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -61,39 +62,41 @@ jobs:
     name: ${{ contains(inputs.test_type, 'wheel') && inputs.pytorch || 'build' }}
     needs: runner
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
-    runs-on: ${{ needs.runner.outputs.test_host }}
+    runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
-        PATH: /tmp/xpu-build/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        PATH: /tmp/xpu-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         GH_TOKEN: ${{ github.token }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-build
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     timeout-minutes: 300
     steps:
+      - name: Install gh-cli
+        run: |
+          cat /etc/os-release
+          hostname && id
+          # Cleanup workspace
+          find ./ |grep -v "^\./$" |xargs rm -rf
+          # install gh
+          dnf install -y 'dnf-command(config-manager)'
+          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+          dnf install -y gh --repo gh-cli
+          gh --version
       - name: Setup python-${{ inputs.python }}
         run: |
-          rm -rf ${AGENT_TOOLSDIRECTORY}
+          rm -rf /tmp/xpu-venv
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv ${AGENT_TOOLSDIRECTORY}/.local
+          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-venv
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
-      - name: Setup gh
-        run: |
-          # Cleanup workspace
-          find ./ |grep -v "^\./$" |xargs rm -rf
-          hostname && id
-          # install gh
-          export HOME=${AGENT_TOOLSDIRECTORY}
-          curl -sS https://webi.sh/gh | sh
-          gh --version
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
-      - name: Build Pytorch XPU
+      - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           # only build pvc for CI
           if [ "${{ inputs.test_type }}" == "build-cicd" ];then

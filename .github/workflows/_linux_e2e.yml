@@ -56,9 +56,10 @@ jobs:
   runner:
     runs-on: ${{ inputs.runner }}
     outputs:
-      test_host: ${{ steps.runner-info.outputs.test_host }}
-      test_user: ${{ steps.runner-info.outputs.test_user }}
-      test_group: ${{ steps.runner-info.outputs.test_group }}
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -70,7 +71,7 @@ jobs:
         uses: ./.github/actions/get-runner
 
   test:
-    runs-on: ${{ needs.runner.outputs.test_host }}
+    runs-on: ${{ needs.runner.outputs.runner_id }}
     needs: runner
     timeout-minutes: 3600
     container:
@@ -78,7 +79,7 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.runner.outputs.test_user }}:${{ needs.runner.outputs.test_group }}
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
@@ -87,7 +88,7 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Setup Test Env
+      - name: Launch Test on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/setup-testenv
         with:
           test_type: ${{ inputs.test_type }}
