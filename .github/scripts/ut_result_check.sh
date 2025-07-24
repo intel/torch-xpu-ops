@@ -9,6 +9,9 @@ compare_and_filter_logs() {
     local file_known_issue="$2"
     local output_file="${3:-${file_UT%.*}_filtered.log}"
     local filtered_content="${file_UT%.*}_removed.log"
+    local temp_file="temp_parts.log"
+    local temp_output="${3:-${file_UT%.*}_filtered_temp.log}"
+    local temp_final="${file_UT%.*}_final_temp.log"
 
     if [[ $# -lt 2 ]]; then
         echo "[ERROR] Need 2 files to compare"
@@ -31,9 +34,9 @@ compare_and_filter_logs() {
     # Keep the filtered UT cases
     grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
     echo "Filtered cases file: $filtered_content"
-
-    temp_file="temp_parts.log"
-    temp_output="${3:-${file_UT%.*}_filtered_temp.log}"
+    true > "$temp_file"
+    true > "$temp_output"
+    true > "$temp_final"
     grep -E '\.py$|,' "$output_file" > "$temp_output"
     while IFS= read -r line; do
         IFS=',' read -ra parts <<< "$line"
@@ -45,13 +48,14 @@ compare_and_filter_logs() {
                 echo -e "\033[1;33mCase not found in ${file_known_issue}: '${part_trimmed}' (from line: '${line}')\033[0m"
             else
                 echo -e "\n\033[1;33m[Check the failed cases]\033[0m"
-                echo -e "\n\033[1;32m"${part_trimmed}" found in "${file_known_issue}" (from line: '${line}')\033[0m"
+                echo -e "\n\033[1;32m${part_trimmed} found in ${file_known_issue} (from line: '${line}')\033[0m"
             fi
         done
     done < "$temp_output"
 
-    grep -v ',' "$output_file" | grep -v '\.py$' > "$output_file"
-    cat "$temp_file" >> "$output_file"
+    grep -vE '\.py$|,' "$output_file" > "$temp_final"
+    cat "$temp_file" >> "$temp_final"
+    mv "$temp_final" "$output_file"
 
     echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
     if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
@@ -72,6 +76,8 @@ compare_and_filter_logs() {
     else
         echo -e "\n\033[1;32mNo Filtered Cases\033[0m"
     fi
+
+    rm -f ${temp_output} ${temp_file} ${temp_final}
 }
 
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
