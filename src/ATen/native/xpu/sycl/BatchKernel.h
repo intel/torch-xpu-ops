@@ -204,8 +204,6 @@ class BatchKernelConfig {
     wg_range_x_ = sg_size;
     wg_range_y_ = wg_size / wg_range_x_;
 
-    size_t limit_x =
-        (uint8_t)policy_ & (uint8_t)Policy::pAggressiveSplit ? 1 : sg_size;
 
     if (problem_batch_ == 0)
       problem_batch_ = batch_ * stride_;
@@ -214,6 +212,9 @@ class BatchKernelConfig {
     // dimension
     auto range_bound_x = problem_along_x_ ? problem_ : problem_batch_;
     auto range_bound_y = problem_along_x_ ? problem_batch_ : problem_;
+
+    size_t limit_x =
+        (uint8_t)policy_ & (uint8_t)Policy::pAggressiveSplit ? 1 : std::min(sg_size, c10::llvm::PowerOf2Ceil((uint64_t)range_bound_x));
 
     // Implications,
     // 1. assign proper x/y to accommodate workload exactly.
