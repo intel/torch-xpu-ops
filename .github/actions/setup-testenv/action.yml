@@ -30,6 +30,7 @@ runs:
   using: composite
   steps:
     - name: Cleanup workspace
+      shell: bash -xe {0}
       run: |
         ls -al
         find ./ |grep -v "^\./$" |xargs rm -rf
@@ -39,6 +40,7 @@ runs:
       with:
         python-version: ${{ inputs.python }}
     - name: Check runner
+      shell: bash -xe {0}
       run: |
         hostname && id
         cat /etc/os-release
@@ -55,6 +57,7 @@ runs:
       with:
         path: torch-xpu-ops
     - name: Install oneAPI DLE
+      shell: bash -xe {0}
       if: ${{ inputs.oneapi != 'installed' }}
       run: |
         rm -rf ~/intel ~/.intel
@@ -69,6 +72,7 @@ runs:
       with:
         pattern: Torch-XPU-Wheel-*
     - name: Prepare Stock Pytorch
+      shell: bash -xe {0}
       run: |
         # install pytorch
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" |wc -l) -ne 0 ];then
@@ -98,6 +102,7 @@ runs:
         fi
         git status && git diff && git show -s
     - name: Prepare Torch-xpu-ops
+      shell: bash -xe {0}
       if: ${{ inputs.torch_xpu_ops != 'skipped' }}
       run: |
         cd pytorch
@@ -122,6 +127,7 @@ runs:
         git checkout ${TORCH_XPU_OPS_COMMIT}
         git status && git diff && git show -s
     - name: Torch Config
+      shell: bash -xe {0}
       run: |
         printenv
         python -c "import torch; print(torch.__config__.show())"
