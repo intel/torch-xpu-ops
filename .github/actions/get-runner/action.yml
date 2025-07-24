@@ -37,7 +37,12 @@ runs:
       run: |
         # clean docker cache
         docker system prune -af || true
-        # clean files
+        # clean workspace
         ls -al
         sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-        sudo rm -rf ${RUNNER_TEMP} ${RUNNER_TOOL_CACHE}
+        cd ${RUNNER_WORKSPACE}/..
+        if [ "${PWD}" != "/" ];then
+          ls -al
+          sudo chmod 777 -R torch-xpu-ops _temp _actions _tool || true
+          sudo rm -rf _temp
+        fi

@@ -68,15 +68,15 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
         PATH: /tmp/xpu-build/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        HOME: /tmp/xpu-build
         GH_TOKEN: ${{ github.token }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-build/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-build
     timeout-minutes: 300
     steps:
       - name: Setup python-${{ inputs.python }}
         run: |
+          rm -rf ${AGENT_TOOLSDIRECTORY}
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-build/.local
+          /opt/python/${local_python}/bin/python -m venv ${AGENT_TOOLSDIRECTORY}/.local
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
@@ -85,6 +85,8 @@ jobs:
           # Cleanup workspace
           find ./ |grep -v "^\./$" |xargs rm -rf
           hostname && id
+          # install gh
+          export HOME=${AGENT_TOOLSDIRECTORY}
           curl -sS https://webi.sh/gh | sh
           gh --version
       - name: Checkout torch-xpu-ops
