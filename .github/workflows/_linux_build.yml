@@ -66,12 +66,20 @@ jobs:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+      options: -e HOME=/tmp/xpu-build
       env:
-        PATH: /tmp/xpu-build/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/github/home/.local/bin
+        PATH: /tmp/xpu-build/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         GH_TOKEN: ${{ github.token }}
-        AGENT_TOOLSDIRECTORY: /tmp/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-build/_tools
     timeout-minutes: 300
     steps:
+      - name: Setup python-${{ inputs.python }}
+        run: |
+          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
+          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-build/.local
+          which python && python -V
+          which pip && pip list
+          pip install -U pip wheel setuptools
       - name: Setup gh
         run: |
           # Cleanup workspace
@@ -79,19 +87,16 @@ jobs:
           hostname && id
           curl -sS https://webi.sh/gh | sh
           gh --version
-      - name: Setup python-${{ inputs.python }}
-        run: |
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-build
-          which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
       - name: Build Pytorch XPU
         run: |
+          # only build pvc for CI
+          if [ "${{ inputs.test_type }}" == "build-cicd" ];then
+            export TORCH_XPU_ARCH_LIST='pvc'
+          fi
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
@@ -129,6 +134,9 @@ jobs:
           fi
       - name: Build Triton
         run: |
+          # gcc 13
+          dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
+          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           pip install cmake ninja pybind11
           rm -rf pytorch_triton_xpu-*.whl

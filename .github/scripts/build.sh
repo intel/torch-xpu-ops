@@ -48,7 +48,7 @@ python -m pip install requests
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
-python -m pip install mkl-static mkl-include
+python -m pip install mkl-static==2025.1.0 mkl-include==2025.1.0
 export USE_STATIC_MKL=1
 export USE_XCCL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
