@@ -237,7 +237,7 @@ jobs:
     container:
       image: ubuntu:latest
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         GH_TOKEN: ${{ github.token }}
         REFERENCE_ISSUE_ID: 1645
     steps:
