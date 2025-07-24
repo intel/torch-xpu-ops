@@ -106,7 +106,7 @@ jobs:
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
-    name: linux
+    name: linux-build
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -120,7 +120,7 @@ jobs:
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
-    name: linux
+    name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
@@ -134,7 +134,7 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
-    name: linux
+    name: linux-e2e
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
@@ -152,7 +152,7 @@ jobs:
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' }}
-    name: linux-nightly-ondemand-rolling / Op_microbench
+    name: linux-microbench
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_op_benchmark.yml
@@ -165,7 +165,7 @@ jobs:
 
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' }}
-    name: Windows-nightly-ondemand
+    name: windows
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
