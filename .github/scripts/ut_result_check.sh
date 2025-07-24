@@ -31,8 +31,33 @@ compare_and_filter_logs() {
     # Keep the filtered UT cases
     grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
     echo "Filtered cases file: $filtered_content"
+    
+    temp_file="temp_parts.log"
+    temp_output="${3:-${file_UT%.*}_filtered_temp.log}"
+    > "$temp_file"
+    > "$temp_output"
+    grep -E '\.py$|,' "$output_file" > "$temp_output"
+    while IFS= read -r line; do
+        IFS=',' read -ra parts <<< "$line"
+        all_found=true
+        for part in "${parts[@]}"; do
+            part_trimmed=$(echo "$part" | xargs)
+            if [[ -n "$part_trimmed" ]] && ! grep -qF "$part_trimmed" "$file_known_issue"; then
+                all_found=false
+                echo "$part_trimmed" >> "$temp_file"
+                echo -e "\n\033[1;33m[Check the failed cases]\033[0m"
+                echo -e "\033[1;33mCase not found in "$file_known_issue": '$part_trimmed' (from line: '$line')\033[0m"
+            else
+                echo -e "\n\033[1;33m[Check the failed cases]\033[0m"
+                echo -e "\n\033[1;32m"$part_trimmed" found in "$file_known_issue" (from line: '$line')\033[0m"
+            fi
+        done
+    done < "$temp_output"
 
-    echo -e "\n\033[1;31m[Check new failed cases]\033[0m"
+    grep -v ',' "$output_file" | grep -v '\.py$' > "$output_file"
+    cat "$temp_file" >> "$output_file"
+
+    echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
     if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
         echo -e "\033[1;32mNo new failed cases found\033[0m"
     else
