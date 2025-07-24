@@ -149,8 +149,10 @@ jobs:
               > test_files_1.txt
               for line in $(cat test_files_1.txt)
               do
+                echo "=== Starting test: ${line} ==="
                 python test/run_test.py --keep-going --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
                   tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                echo "=== Finished test: ${line} ==="
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_1/"
               function read_dir(){
@@ -204,8 +206,10 @@ jobs:
               > test_files_2.txt
               for line in $(cat test_files_2.txt)
               do
+                echo "=== Starting test: ${line} ==="
                 python test/run_test.py --keep-going --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test_error.log | \
                   tee $GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test.log
+                echo "=== Finished test: ${line} ==="
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_2/"
               function read_dir(){
@@ -255,8 +259,10 @@ jobs:
               > test_files_3.txt
               for line in $(cat test_files_3.txt)
               do
+                echo "=== Starting test: ${line} ==="
                 python test/run_test.py --keep-going --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test_error.log | \
                   tee $GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test.log
+                echo "=== Finished test: ${line} ==="
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_3/"
               function read_dir(){
