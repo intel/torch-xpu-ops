@@ -43,7 +43,7 @@ def write_to_github_summary(content):
 def format_parameters(record):
     params = []
     for key, value in record.items():
-        if key not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change', 'E2E total time(us)', 'E2E forward time(us)']:
+        if key not in ['case_name', 'op_name', 'time_xpu_file', 'time_baseline_file', 'difference', 'change', 'E2E total time(us)', 'E2E forward time(us)']:
             if value != "NULL":
                 params.append(f"{key}: {value}")
     return "<br>".join(params)
@@ -71,6 +71,8 @@ def display_comparison(results, threshold, xpu_file):
         for _, row in regression.iterrows():
             record = display_row(row)
             display_records.append({
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
                 'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
@@ -91,6 +93,8 @@ def display_comparison(results, threshold, xpu_file):
         for _, row in improvement.iterrows():
             record = display_row(row)
             display_records.append({
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
                 'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
@@ -112,6 +116,8 @@ def display_comparison(results, threshold, xpu_file):
         for _, row in regression.iterrows():
             record = display_row(row)
             display_records.append({
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
                 'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
@@ -132,6 +138,8 @@ def display_comparison(results, threshold, xpu_file):
         for _, row in improvement.iterrows():
             record = display_row(row)
             display_records.append({
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
                 'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
