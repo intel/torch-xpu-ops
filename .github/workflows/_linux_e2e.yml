@@ -48,6 +48,10 @@ on:
 
 permissions: read-all
 
+defaults:
+  run:
+    shell: bash -xe {0}
+
 jobs:
   runner:
     runs-on: ${{ inputs.runner }}
@@ -77,9 +81,6 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
-    defaults:
-      run:
-        shell: bash -xe {0}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -224,7 +225,7 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   summary:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, Linux]
     if: ${{ always() }}
     needs: test
     permissions:
@@ -235,9 +236,6 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
         REFERENCE_ISSUE_ID: 1645
-    defaults:
-      run:
-        shell: bash -xe {0}
     steps:
       - name: Install gh
         run: |

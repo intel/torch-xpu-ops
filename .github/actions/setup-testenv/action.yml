@@ -31,6 +31,9 @@ runs:
   steps:
       - name: Setup gh
         run: |
+          hostname && id
+          ls -al
+          find ./ |grep -v "^\./$" |xargs rm -rf
           curl -sS https://webi.sh/gh | sh
           echo "PATH=${HOME}/.local/bin:${PATH}" |tee -a ${GITHUB_ENV}
           source ~/.config/envman/PATH.env
@@ -41,15 +44,11 @@ runs:
           python-version: ${{ inputs.python }}
       - name: Check runner
         run: |
-          ls -al
-          find ./ |grep -v "^\./$" |xargs rm -rf
-          hostname && whoami && id
           cat /etc/os-release
           gcc -v && g++ -v
-          which python && which pip
-          python -V
+          which python && python -V
+          which pip && pip list
           pip install -U pip wheel setuptools
-          pip list
           uname -a
           dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
           clinfo --list

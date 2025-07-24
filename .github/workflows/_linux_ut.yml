@@ -82,14 +82,6 @@ jobs:
             command: 'pytest --timeout 600 -v --junit-xml=../../ut_log/op_regression.xml'
             log_prefix: 'op_regression'
             timeout: 3600
-          - name: 'op_regression_dev1'
-            condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
-            directory: 'pytorch/third_party/torch-xpu-ops/test/regressions'
-            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
-            log_prefix: 'op_regression_dev1'
-            timeout: 300
-            additional_steps: |
-              unset ZE_AFFINITY_MASK
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
             directory: 'pytorch'
@@ -243,19 +235,9 @@ jobs:
     runs-on: pvc_rolling
     if: ${{ contains(inputs.ut, 'op_regression_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 5
-    strategy:
-      matrix:
-        test:
-          - name: 'op_regression_dev1'
-            condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
-            directory: 'pytorch/third_party/torch-xpu-ops/test/regressions'
-            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
-            log_prefix: 'op_regression_dev1'
-            timeout: 3
     env:
-      AGENT_TOOLSDIRECTORY: /tmp/_tools
       GH_TOKEN: ${{ github.token }}
-      UT_NAME: ${{ matrix.test.name }}
+      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/_tools
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -268,44 +250,20 @@ jobs:
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
-        if: ${{ matrix.test.condition }}
         run: |
-          mkdir -p ${{ github.workspace }}/ut_log
-          mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
-          echo "Running ${{ matrix.test.name }}"
-          echo "Directory: ${{ matrix.test.directory }}"
-          ${{ matrix.test.additional_steps }}
-          cd ${{ matrix.test.directory }}
-          if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
-            bash << "SCRIPT"
-            ${{ matrix.test.command_script }}
-          SCRIPT
-          else
-            timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
-              2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
-              tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test.log
-            ${{ matrix.test.xml_post_processing || '' }}
-          fi
-      - name: UT Test Results Summary
-        if: ${{ matrix.test.condition }}
-        run: |
-          pip install junitparser
-          python torch-xpu-ops/.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          if [ -e "ut_failure_list.csv" ];then
-              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          fi
+          mkdir -p ${{ github.workspace }}/ut_log/op_regression_dev1
+          echo "Running op_regression_dev1"
+          cd pytorch/third_party/torch-xpu-ops/test/regressions
+          pytest --timeout 200 -v test_operation_on_device_1.py \
+            --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml \
+            2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
       - name: Upload Inductor XPU UT Log
-        if: ${{ matrix.test.condition }}
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-op_regression_dev1
           path: ${{ github.workspace }}/ut_log
-      - name: Upload XPU UT Failure list
-        if: ${{ matrix.test.condition }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
 
   distributed:
     runs-on: pytorch-06

@@ -120,7 +120,7 @@ jobs:
             --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
             --TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_COMMIT}" \
             2>&1 |tee ${{ github.workspace }}/build_pytorch_${PYTORCH_COMMIT//\//-}.log
-          if [ ! -f "${{ github.workspace }}/torch-*.whl" ];then
+          if [ $(ls ${{ github.workspace }} |grep -c "torch-.*.whl") -eq 0 ];then
             echo "Build pytorch got failed"
             exit 1
           fi
@@ -140,7 +140,7 @@ jobs:
           )"
           python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
             2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
-          if [ ! -f "${{ github.workspace }}/pytorch_triton_xpu-*.whl" ];then
+          if [ $(ls |grep -c "pytorch_triton_xpu-.*.whl") -eq 0 ];then
             echo "Build triton got failed"
             exit 1
           fi
@@ -157,7 +157,7 @@ jobs:
           git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
           cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
           python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
-          if [ ! -f "dist/*.whl" ];then
+          if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
             echo "Build torchvision got failed"
             exit 1
           fi
@@ -166,7 +166,7 @@ jobs:
           git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
           cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
           python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
-          if [ ! -f "dist/*.whl" ];then
+          if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
             echo "Build torchaudio got failed"
             exit 1
           fi
