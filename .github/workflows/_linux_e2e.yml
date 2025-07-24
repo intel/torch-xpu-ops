@@ -81,7 +81,7 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         MODEL_ONLY_NAME: ${{ inputs.model }}

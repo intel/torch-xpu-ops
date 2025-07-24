@@ -73,7 +73,7 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
               -e ZE_AFFINITY_MASK
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     strategy:
@@ -241,7 +241,7 @@ jobs:
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
-      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/_tools
+      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/xpu-tool
     steps:
       - name: Cleanup workspace
         id: cleanup
@@ -285,7 +285,7 @@ jobs:
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
-      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/_tools
+      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/xpu-tool
     steps:
       - name: Cleanup workspace
         id: cleanup
