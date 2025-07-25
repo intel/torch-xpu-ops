@@ -92,7 +92,7 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Launch Test on ${{ needs.runner.outputs.hostname }}
-        uses: ./.github/actions/setup-testenv
+        uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
@@ -103,7 +103,7 @@ jobs:
       # CICD launch
       - name: Nightly Huggingface BF16 & FP16 Training Test
         if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: huggingface
@@ -112,7 +112,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: torchbench
@@ -121,7 +121,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Timm_models BF16 Training Test
         if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: timm_models
@@ -132,7 +132,7 @@ jobs:
       # Nihglty launch
       - name: Nightly Huggingface Full Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: huggingface
@@ -141,7 +141,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: torchbench
@@ -150,7 +150,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: timm_models
@@ -168,7 +168,7 @@ jobs:
       # Weekly launch
       - name: Nightly Huggingface Full Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: huggingface
@@ -177,7 +177,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: torchbench
@@ -186,7 +186,7 @@ jobs:
           scenario: accuracy,performance
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: timm_models
@@ -204,7 +204,7 @@ jobs:
       # On-demand launch
       - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
         if: ${{ contains(inputs.test_type, 'ondemand') && inputs.suite != 'pt2e' }}
-        uses: ./.github/actions/linux-e2e
+        uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: ${{ inputs.suite }}

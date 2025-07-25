@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Launch Test on ${{ needs.runner.outputs.hostname }}
         if: ${{ contains(inputs.ut, matrix.test) }}
-        uses: ./.github/actions/setup-testenv
+        uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
@@ -99,7 +99,7 @@ jobs:
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
         if: ${{ contains(inputs.ut, matrix.test) }}
-        uses: ./.github/actions/linux-ut
+        uses: ./.github/actions/linux-uttest
         with:
           test_type: ${{ matrix.test }}
       - name: UT Test Results Summary
@@ -144,7 +144,7 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Launch Test on ${{ steps.cleanup.outputs.hostname }}
-        uses: ./.github/actions/setup-testenv
+        uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
@@ -152,7 +152,7 @@ jobs:
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
-        uses: ./.github/actions/linux-ut
+        uses: ./.github/actions/linux-uttest
         with:
           test_type: op_dev1
       - name: Upload Inductor XPU UT Log
@@ -183,7 +183,7 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Launch Test on ${{ steps.cleanup.outputs.hostname }}
-        uses: ./.github/actions/setup-testenv
+        uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
@@ -199,7 +199,7 @@ jobs:
           cat ptrace_scope.bk
           echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
       - name: Run Torch XPU Distributed UT
-        uses: ./.github/actions/linux-ut
+        uses: ./.github/actions/linux-uttest
         with:
           test_type: xpu_distributed
       - name: Reset Ptrace_scope
