@@ -296,7 +296,7 @@ jobs:
             fi
           fi
       - name: Upload Reference Run ID
-        if: ${{ ! (contains(inputs.test_type, 'ondemand') && contains(inputs.test_type, 'cicd')) && github.repository_owner == 'intel' }}
+        if: ${{ ! (contains(inputs.test_type, 'ondemand') || contains(inputs.test_type, 'cicd')) && github.repository_owner == 'intel' }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
           has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt)"
