@@ -70,3 +70,8 @@ class TestLoopsKernel(TestCase):
             c = a + b + 1
             c_xpu = a_xpu + b_xpu + 1
             self.assertEqual(c, c_xpu.cpu())
+
+    def test_bc_vec_large_tensor(self):
+        raw_data = torch.rand(48, 64, 64, 64, 64)
+        a = raw_data.xpu().transpose(0, 1).contiguous().transpose(0, 1)
+        self.assertEqual(a, raw_data.xpu())
