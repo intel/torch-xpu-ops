@@ -17,7 +17,7 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `ut_regression,xpu_dev1,ut_extended,ut_op,torch_xpu` Delimiter is comma
+        description: UT scope. `ut_regression,xpu_dev1,ut_extended,ut_op,ut_torch` Delimiter is comma
       python:
         required: false
         type: string
@@ -169,7 +169,7 @@ jobs:
           python run_test_with_skip_mtl.py
 
       - name: Run Test XPU UT
-        if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'ut_torch') || github.event_name == 'schedule'
         shell: cmd
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"

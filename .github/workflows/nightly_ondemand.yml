@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
+        description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,ut_torch,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -119,7 +119,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'ut_') || contains(inputs.ut, 'xpu_') }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml
@@ -168,7 +168,7 @@ jobs:
     name: windows
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: ${{ github.event_name == 'schedule' && 'ut_extended,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'ut_extended,ut_torch' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       src_changed: false
       has_label: true

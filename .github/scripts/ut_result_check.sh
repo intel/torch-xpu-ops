@@ -1,5 +1,5 @@
 #!/bin/bash
-ut_suite="${1:-ut_regression}"   # ut_regression / ut_extended / ut_op / torch_xpu
+ut_suite="${1:-ut_regression}"   # ut_regression / ut_extended / ut_op / ut_torch
 
 # usage
 # compare_and_filter_logs <UT'log> <Known_issue.log> [output.log]
@@ -104,13 +104,13 @@ if [[ "${ut_suite}" == 'ut_op' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-if [[ "${ut_suite}" == 'torch_xpu' ]]; then
+if [[ "${ut_suite}" == 'ut_torch' ]]; then
     echo "Pytorch XPU binary UT checking"
     cd ../../pytorch || exit
     for xpu_case in build/bin/*{xpu,sycl}*; do
       if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
         case_name=$(basename "$xpu_case")
-        cd ../ut_log/torch_xpu || exit
+        cd ../ut_log/ut_torch || exit
         grep -E "FAILED|have failures" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_failed.log
         wc -l < "./binary_ut_${ut_suite}_${case_name}_failed.log" | tee -a ./binary_ut_"${ut_suite}"_failed_summary.log
         grep -E "PASSED|Pass" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_passed.log
@@ -121,7 +121,7 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    cd ../ut_log/torch_xpu || exit
+    cd ../ut_log/ut_torch || exit
     cat "./binary_ut_${ut_suite}_${case_name}_failed.log"
     num_failed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_"${ut_suite}"_failed_summary.log)
     num_passed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_"${ut_suite}"_passed_summary.log)

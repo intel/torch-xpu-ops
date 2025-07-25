@@ -30,7 +30,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. `ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op,torch_xpu` Delimiter is comma
+        description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_torch,xpu_dev1` Delimiter is comma
       disabled_tests:
         type: string
         default: ''
@@ -63,7 +63,7 @@ jobs:
   normal:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    if: ${{ contains(inputs.ut, 'p') && !contains(inputs.disabled_tests, 'disable_ut') }}
+    if: ${{ contains(inputs.ut, 'ut_') && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
@@ -79,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [ut_regression, ut_transformers, ut_extended, ut_op, torch_xpu, ut_profiling]
+        test: [ut_regression, ut_transformers, ut_extended, ut_op, ut_torch, ut_profiling]
     steps:
       - name: Cleanup workspace
         if: ${{ contains(inputs.ut, matrix.test) }}
@@ -222,7 +222,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [ut_regression, ut_transformers, ut_extended, ut_op, torch_xpu, ut_profiling, xpu_dev1, xpu_distributed]
+        test: [ut_regression, ut_transformers, ut_extended, ut_op, ut_torch, ut_profiling, xpu_dev1, xpu_distributed]
     env:
       GH_TOKEN: ${{ github.token }}
       UT_SKIP_ISSUE: 1624

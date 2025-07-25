@@ -65,9 +65,9 @@ runs:
           2>$GITHUB_WORKSPACE/ut_log/ut_op/ut_op_with_only_test_error.log | \
           tee $GITHUB_WORKSPACE/ut_log/ut_op/ut_op_with_only_test.log
         cp ut_op_with_only.xml $GITHUB_WORKSPACE/ut_log
-    - name: torch_xpu
+    - name: ut_torch
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'torch_xpu' }}
+      if: ${{ inputs.test_type == 'ut_torch' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
@@ -76,8 +76,8 @@ runs:
         for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
         for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
         if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-        eval $test_cmd 2>$GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test_error.log | \
-          tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
+        eval $test_cmd 2>$GITHUB_WORKSPACE/ut_log/ut_torch/torch_xpu_test_error.log | \
+          tee $GITHUB_WORKSPACE/ut_log/ut_torch/torch_xpu_test.log
     - name: ut_profiling
       shell: bash -xe {0}
       if: ${{ inputs.test_type == 'ut_profiling' }}
