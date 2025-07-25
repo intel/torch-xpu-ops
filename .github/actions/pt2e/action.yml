@@ -14,28 +14,19 @@ inputs:
     type: string
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
-  hf_token:
-    required: false
-    description: HUGGING_FACE_HUB_TOKEN for torchbench test
   pytorch:
     required: false
     type: string
     default: 'main'
     description: Pytorch branch/commit
-  driver:
-    required: false
-    type: string
-    default: 'lts'
-    description: Driver lts/rolling
 
 runs:
   using: composite
   steps:
     - name: Prepare ENV
       if: ${{ inputs.env_prepare }}
-      shell: bash
+      shell: bash -xe {0}
       run: |
-        source activate e2e_ci
         # accuracy code
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           rm -rf pt2e-accuracy
@@ -65,8 +56,8 @@ runs:
           cd pt2e-performance
           # remove deps which will reinstall torch
           pip install --no-deps accelerate
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
+          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
           pip install -U transformers==4.44.2
           sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g;s/^transformers.*//g'  requirements.txt
           git status && git diff
@@ -89,14 +80,8 @@ runs:
           bash valprep.sh
         fi
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      shell: bash
+      shell: bash -xe {0}
       run: |
-        source activate e2e_ci
-        set -xe
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
@@ -107,14 +92,14 @@ runs:
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               ${cmd_line} --model_list ${model_name} --is_fp32 2>&1 |tee "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || true
-              grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" '
+              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || echo "failed a failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
                       END{printf("Accuracy,%s,float32,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               ${cmd_line}  --model_list ${model_name} 2>&1 |tee "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || true
-              grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" '
+              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || echo "failed a failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
                       END{printf("Accuracy,%s,int8,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
