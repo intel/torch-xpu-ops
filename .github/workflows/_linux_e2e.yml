@@ -232,19 +232,16 @@ jobs:
           path: ${{ github.workspace }}/upload_files
 
   summary:
-    runs-on: [self-hosted, Linux]
+    runs-on: ubuntu-latest
     if: ${{ ! cancelled() }}
     needs: test
     permissions:
       issues: write
-    container:
-      image: ubuntu:latest
-      env:
-        GH_TOKEN: ${{ github.token }}
-        REFERENCE_ISSUE_ID: 1645
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
-        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFERENCE_ISSUE_ID: 1645
+      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+      PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     steps:
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
