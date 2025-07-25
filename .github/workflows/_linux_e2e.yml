@@ -78,7 +78,7 @@ jobs:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
@@ -244,15 +244,17 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         REFERENCE_ISSUE_ID: 1645
     steps:
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
       - name: Install gh
         run: |
           apt-get update
           apt-get install gh rsync ca-certificates -y
           find ./ |grep -v "^\./$" |xargs rm -rf
-      - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python }}
+          python -m venv /tmp/myvenv
+          echo "PATH=/tmp/myvenv/bin:$PATH" >> ${GITHUB_ENV}
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Target Artifact
@@ -279,6 +281,7 @@ jobs:
       - name: Get summary
         if: ${{ ! cancelled() }}
         run: |
+          export HOME=/tmp/
           pip install pandas requests
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
