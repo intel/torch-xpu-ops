@@ -245,6 +245,7 @@ jobs:
         shell: bash
         run: |
           repo="${{ github.repository }}"
+          ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ matrix.test }}
           gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
