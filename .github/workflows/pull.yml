@@ -108,7 +108,7 @@ jobs:
       runner: linux.idc.xpu
       test_type: build-cicd
       pytorch: main
-      ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
+      ut: op_regression,op_dev1,op_transformers,op_extended,op_ut,xpu_distributed
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
   linux-e2e:

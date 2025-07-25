@@ -188,8 +188,8 @@ def parse_log_file(log_file):
 def determine_category(ut):
     if ut == 'op_regression':
         return 'op_regression'
-    elif ut == 'op_regression_dev1':
-        return 'op_regression_dev1'
+    elif ut == 'op_dev1':
+        return 'op_dev1'
     elif ut == 'op_extended':
         return 'op_extended'
     elif 'op_ut' in ut:

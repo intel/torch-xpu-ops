@@ -30,7 +30,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `op_regression,op_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
       disabled_tests:
         type: string
         default: ''
@@ -79,111 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test:
-          - name: 'op_regression'
-            condition: ${{ contains(inputs.ut, 'op_regression') }}
-            directory: 'pytorch/third_party/torch-xpu-ops/test/regressions'
-            command: 'pytest --timeout 600 -v --junit-xml=../../ut_log/op_regression.xml'
-            log_prefix: 'op_regression'
-            timeout: 3600
-          - name: 'op_transformers'
-            condition: ${{ contains(inputs.ut, 'op_transformers') }}
-            directory: 'pytorch'
-            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=$GITHUB_WORKSPACE/ut_log/op_transformers.xml'
-            log_prefix: 'op_transformers'
-            timeout: 3600
-            additional_steps: |
-              export PYTORCH_TEST_WITH_SLOW=1
-          - name: 'op_extended'
-            condition: ${{ contains(inputs.ut, 'op_extended') }}
-            directory: 'pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
-            command: 'python run_test_with_skip.py'
-            log_prefix: 'op_extended'
-            timeout: 3600
-            additional_steps: |
-              export PYTORCH_TEST_WITH_SLOW=1
-            xml_post_processing: |
-              cp op_extended.xml $GITHUB_WORKSPACE/ut_log
-          - name: 'op_ut'
-            condition: ${{ contains(inputs.ut, 'op_ut') }}
-            directory: 'pytorch/third_party/torch-xpu-ops/test/xpu'
-            log_prefix: 'op_ut'
-            command_script: |
-              export PYTORCH_ENABLE_XPU_FALLBACK=1
-              export PYTORCH_TEST_WITH_SLOW=1
-              timeout 10000 python run_test_with_skip.py \
-                2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_skip_test_error.log | \
-                tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_skip_test.log
-              cp *.xml $GITHUB_WORKSPACE/ut_log
-              find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
-                  dir_path=$(dirname "$1");
-                  case "$dir_path" in
-                      *"op_ut_with_skip_quantization/core"*)
-                          dir_name="op_ut_with_skip_quantization_core";;
-                      *)
-                          dir_name=$(basename "$dir_path");;
-                  esac;
-                  mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
-              ' _ {} \;
-              cp op_ut_with_skip_nn/*.xml $GITHUB_WORKSPACE/ut_log
-              cp op_ut_with_skip_quantization/core/*.xml $GITHUB_WORKSPACE/ut_log
-              # Cases run with a on-demand white list, since some suites are too
-              # slow to go through all operators on CPU. So add cases on-demand
-              # when XPU implementatoin is done.
-              # test_foreach, test_decomp
-              # Run with only
-              timeout 10000 python run_test_with_only.py \
-                2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test_error.log | \
-                tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test.log
-              cp op_ut_with_only.xml $GITHUB_WORKSPACE/ut_log
-          - name: 'torch_xpu'
-            condition: ${{ contains(inputs.ut, 'torch_xpu') }}
-            directory: 'pytorch'
-            command_script: |
-              export PYTORCH_TEST_WITH_SLOW=1
-              export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-              test_cmd="python test/run_test.py --include "
-              for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-              for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-              if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-              eval $test_cmd 2>$GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test_error.log | \
-                tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
-            log_prefix: 'torch_xpu'
-            timeout: 10000
-          - name: 'xpu_profiling'
-            condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
-            command_script: |
-              cd torch-xpu-ops
-              # RN50 Test
-              PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
-              cp profiling.fp32.train.pt $GITHUB_WORKSPACE/ut_log/profile_test
-
-              # All Issue Reproduce UT
-              python -u test/profiling/correlation_id_mixed.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
-              python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
-              python -u test/profiling/time_precision_in_profile.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
-              python -u test/profiling/profile_partial_runtime_ops.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
-              python -u test/profiling/triton_xpu_ops_time.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
-
-              # All xpu ut under test/profiler
-              cd ../pytorch/test/profiler
-              python -m pytest --timeout 600 -vs test_cpp_thread.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_cpp_thread.log
-              python -m pytest --timeout 600 -vs test_execution_trace.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_execution_trace.log
-              python -m pytest --timeout 600 -vs test_memory_profiler.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_memory_profiler.log
-              python -m pytest --timeout 600 -vs test_profiler_tree.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_profiler_tree.log
-            additional_steps: |
-              mkdir -p ut_log/profile_test/issue_reproduce
-    env:
-      UT_NAME: ${{ matrix.test.name }}
+        test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling]
     steps:
       - name: Cleanup workspace
         run: |
@@ -199,29 +95,13 @@ jobs:
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
-        if: ${{ matrix.test.condition }}
-        run: |
-          mkdir -p ${{ github.workspace }}/ut_log
-          mkdir -p ${{ github.workspace }}/ut_log/${{ matrix.test.name }}
-          echo "Running ${{ matrix.test.name }}"
-          echo "Directory: ${{ matrix.test.directory }}"
-          ${{ matrix.test.additional_steps }}
-          cd ${{ matrix.test.directory }}
-          if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
-            bash << "SCRIPT"
-            ${{ matrix.test.command_script }}
-          SCRIPT
-          else
-            timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
-              2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
-              tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test.log
-            ${{ matrix.test.xml_post_processing || '' }}
-          fi
+        uses: ./.github/actions/linux-ut
+        with:
+          test_type: ${{ matrix.test }}
       - name: UT Test Results Summary
-        if: ${{ matrix.test.condition }}
         run: |
           pip install junitparser
-          python torch-xpu-ops/.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           if [ -e "ut_failure_list.csv" ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
           fi
@@ -229,18 +109,18 @@ jobs:
         if: ${{ matrix.test.condition }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
           path: ${{ github.workspace }}/ut_log
       - name: Upload XPU UT Failure list
         if: ${{ matrix.test.condition }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ env.UT_NAME }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
 
   devices:
     runs-on: pvc_rolling
-    if: ${{ contains(inputs.ut, 'op_regression_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
+    if: ${{ contains(inputs.ut, 'op_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
@@ -267,19 +147,14 @@ jobs:
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
-        run: |
-          mkdir -p ${{ github.workspace }}/ut_log/op_regression_dev1
-          echo "Running op_regression_dev1"
-          cd pytorch/third_party/torch-xpu-ops/test/regressions
-          pytest --timeout 200 -v test_operation_on_device_1.py \
-            --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml \
-            2>${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
+        uses: ./.github/actions/linux-ut
+        with:
+          test_type: op_dev1
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-op_regression_dev1
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-op_dev1
           path: ${{ github.workspace }}/ut_log
 
   distributed:
@@ -319,18 +194,9 @@ jobs:
           cat ptrace_scope.bk
           echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
       - name: Run Torch XPU Distributed UT
-        run: |
-          set -x -e -o pipefail
-          mkdir -p ut_log/xpu_distributed
-          cd ../pytorch/third_party/torch-xpu-ops/test/xpu
-          XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
-          if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
-            echo -e "[ERROR] XCCL is not enabled"
-            exit 1
-          fi
-          timeout 1800 python run_distributed.py \
-            2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+        uses: ./.github/actions/linux-ut
+        with:
+          test_type: xpu_distributed
       - name: Reset Ptrace_scope
         if: ${{ always() }}
         run: |
@@ -351,41 +217,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: 
-        - name: 'op_regression'
-          condition: ${{ contains(inputs.ut, 'op_regression') }}
-        - name: 'op_regression_dev1'
-          condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
-        - name: 'op_transformers'
-          condition: ${{ contains(inputs.ut, 'op_transformers') }}
-        - name: 'op_extended'
-          condition: ${{ contains(inputs.ut, 'op_extended') }}
-        - name: 'op_ut'
-          condition: ${{ contains(inputs.ut, 'op_ut') }}
-        - name: 'torch_xpu'
-          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
-        - name: 'xpu_profiling'
-          condition: ${{ contains(inputs.ut, 'xpu_profiling') }}
-        - name: 'xpu_distributed'
-          condition: ${{ contains(inputs.ut, 'xpu_distributed') }}
+        test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling, op_dev1, xpu_distributed]
     env:
       GH_TOKEN: ${{ github.token }}
       UT_SKIP_ISSUE: 1624
-      UT_NAME: ${{ matrix.test.name }}
     steps:
       - name: Cleanup workspace
+        if: ${{ contains(inputs.ut, matrix.test) }}
         run: |
           find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
-        if: ${{ matrix.test.condition }}
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/download-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
-        if: ${{ matrix.test.condition }}
+        if: ${{ contains(inputs.ut, matrix.test) }}
         shell: bash
         run: |
           repo="${{ github.repository }}"
@@ -401,7 +252,7 @@ jobs:
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ matrix.test.name }}
       - name: Upload Inductor XPU UT Log
-        if: ${{ matrix.test.condition }}
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}-checked
