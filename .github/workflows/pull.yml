@@ -108,7 +108,7 @@ jobs:
       runner: linux.idc.xpu
       test_type: build-cicd
       pytorch: main
-      ut: op_regression,op_dev1,op_transformers,op_extended,op_ut,xpu_distributed
+      ut: ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op,xpu_distributed
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
   linux-e2e:
@@ -127,7 +127,7 @@ jobs:
     needs: [conditions-filter]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
-      ut: op_extended,torch_xpu
+      ut: ut_extended,torch_xpu
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
       has_label: ${{ needs.conditions-filter.outputs.has_label }}

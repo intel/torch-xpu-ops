@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. `op_regression,op_dev1,op_transformers,op_extended,op_ut,xpu_profiling,xpu_distributed,microbench,windows`. Delimiter is comma
+        description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -130,7 +130,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op' || inputs.ut }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
@@ -168,7 +168,7 @@ jobs:
     name: windows
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'ut_extended,torch_xpu' || inputs.ut }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       src_changed: false
       has_label: true

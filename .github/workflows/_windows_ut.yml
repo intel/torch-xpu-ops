@@ -17,7 +17,7 @@ on:
         required: true
         type: string
         default: ''
-        description: UT scope. `op_regression,op_dev1,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `ut_regression,xpu_dev1,ut_extended,ut_op,torch_xpu` Delimiter is comma
       python:
         required: false
         type: string
@@ -157,7 +157,7 @@ jobs:
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
 
       - name: Run XPU OP Extended UT
-        if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'ut_extended') || github.event_name == 'schedule'
         shell: cmd
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"

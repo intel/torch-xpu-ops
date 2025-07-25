@@ -30,7 +30,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. `op_regression,op_dev1,op_transformers,op_extended,op_ut,torch_xpu` Delimiter is comma
+        description: UT scope. `ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op,torch_xpu` Delimiter is comma
       disabled_tests:
         type: string
         default: ''
@@ -63,7 +63,7 @@ jobs:
   normal:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
+    if: ${{ contains(inputs.ut, 'p') && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
@@ -79,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling]
+        test: [ut_regression, ut_transformers, ut_extended, ut_op, torch_xpu, ut_profiling]
     steps:
       - name: Cleanup workspace
         if: ${{ contains(inputs.ut, matrix.test) }}
@@ -125,7 +125,7 @@ jobs:
 
   devices:
     runs-on: pvc_rolling
-    if: ${{ contains(inputs.ut, 'op_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
+    if: ${{ contains(inputs.ut, 'xpu_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
@@ -154,12 +154,12 @@ jobs:
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
-          test_type: op_dev1
+          test_type: xpu_dev1
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-op_dev1
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_dev1
           path: ${{ github.workspace }}/ut_log
 
   distributed:
@@ -222,7 +222,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling, op_dev1, xpu_distributed]
+        test: [ut_regression, ut_transformers, ut_extended, ut_op, torch_xpu, ut_profiling, xpu_dev1, xpu_distributed]
     env:
       GH_TOKEN: ${{ github.token }}
       UT_SKIP_ISSUE: 1624
@@ -251,9 +251,9 @@ jobs:
             --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
           awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | \
             grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
-          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
+          awk '$2 == "ut_op" {print $1}' issues_temp.log > issues_ut_op.log
           cat issues_temp.log | awk '{print $1}' >> Known_issue.log
-          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
+          awk -F'::' '{print $1}' issues_ut_op.log | sort -u | paste -sd ',' >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ matrix.test }}
       - name: Upload Inductor XPU UT Log
