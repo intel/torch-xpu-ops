@@ -115,7 +115,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
-          path: ${{ github.workspace }}/ut_log
+          path: ${{ github.workspace }}/ut_log/${{ matrix.test }}
       - name: Upload XPU UT Failure list
         if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/upload-artifact@v4
