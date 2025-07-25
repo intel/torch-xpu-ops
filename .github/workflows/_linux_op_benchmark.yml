@@ -137,9 +137,10 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Setup python-${{ inputs.python }}
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ inputs.python }}
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
