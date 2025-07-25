@@ -48,6 +48,7 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_ENABLE_XPU_FALLBACK=1
+        mkdir -p ut_log/ut_op
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         timeout 10000 python run_test_with_skip.py \
           2> ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test_error.log | \
@@ -80,6 +81,7 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        mkdir -p ut_log/ut_torch
         cd pytorch
         test_cmd="python test/run_test.py --include "
         for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
