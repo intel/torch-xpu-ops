@@ -240,9 +240,11 @@ jobs:
     container:
       image: ubuntu:latest
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         GH_TOKEN: ${{ github.token }}
         REFERENCE_ISSUE_ID: 1645
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+        PIP_ROOT_USER_ACTION: ignore
     steps:
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
@@ -281,7 +283,6 @@ jobs:
       - name: Get summary
         if: ${{ ! cancelled() }}
         run: |
-          export HOME=/tmp/
           pip install pandas requests
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
             bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}

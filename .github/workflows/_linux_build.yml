@@ -71,6 +71,8 @@ jobs:
         PATH: /tmp/xpu-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         GH_TOKEN: ${{ github.token }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+        PIP_ROOT_USER_ACTION: ignore
     timeout-minutes: 300
     steps:
       - name: Install gh-cli
@@ -120,10 +122,10 @@ jobs:
           source /opt/rh/gcc-toolset-11/enable
           # oneAPI DLE
           if [ "${{ inputs.oneapi }}" != "installed" ];then
-            rm -rf ${HOME}/intel ${HOME}/.intel
+            rm -rf ${HOME}/intel ${HOME}/.intel /opt/intel
             wget -q -O oneapi.sh "${{ inputs.oneapi }}"
-            bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
-            export XPU_ONEAPI_PATH="${HOME}/intel/oneapi"
+            bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
+            export XPU_ONEAPI_PATH="/opt/intel/oneapi"
           fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
