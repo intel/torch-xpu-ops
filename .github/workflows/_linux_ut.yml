@@ -187,6 +187,8 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+        with:
+          clean: true
       - name: Create unique workspace
         run: |
           # Create unique conda env for each UT test
