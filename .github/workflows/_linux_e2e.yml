@@ -244,7 +244,7 @@ jobs:
         REFERENCE_ISSUE_ID: 1645
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
-        PIP_ROOT_USER_ACTION: ignore
+        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     steps:
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
@@ -255,8 +255,8 @@ jobs:
           apt-get update
           apt-get install gh rsync ca-certificates -y
           find ./ |grep -v "^\./$" |xargs rm -rf
-          python -m venv /tmp/myvenv
-          echo "PATH=/tmp/myvenv/bin:$PATH" >> ${GITHUB_ENV}
+          rm -rf /tmp/xpu-tool/myvenv
+          python -m venv /tmp/xpu-tool/myvenv
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Target Artifact

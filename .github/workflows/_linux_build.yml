@@ -68,11 +68,10 @@ jobs:
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
-        PATH: /tmp/xpu-venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         GH_TOKEN: ${{ github.token }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
-        PIP_ROOT_USER_ACTION: ignore
     timeout-minutes: 300
     steps:
       - name: Install gh-cli
@@ -88,9 +87,9 @@ jobs:
           gh --version
       - name: Setup python-${{ inputs.python }}
         run: |
-          rm -rf /tmp/xpu-venv
+          rm -rf /tmp/xpu-tool/myvenv
           local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-venv
+          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
