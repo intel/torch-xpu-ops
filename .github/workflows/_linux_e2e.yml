@@ -241,19 +241,16 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REFERENCE_ISSUE_ID: 1645
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     steps:
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
-      - name: Install gh
+      - name: Install gh-cli
         run: |
-          apt-get update
-          apt-get install gh rsync ca-certificates -y
+          sudo apt-get update
+          sudo apt-get install gh rsync ca-certificates -y
           find ./ |grep -v "^\./$" |xargs rm -rf
-          rm -rf /tmp/xpu-tool/myvenv
-          python -m venv /tmp/xpu-tool/myvenv
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download Target Artifact
