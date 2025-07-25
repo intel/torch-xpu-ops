@@ -312,3 +312,7 @@ jobs:
             echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
           fi
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
+      - name: Set permissions
+        if: ${{ always() }}
+        run: |
+          chmod 777 /__w -R
