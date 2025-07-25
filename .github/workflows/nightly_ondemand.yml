@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. `op_regression,op_dev1,op_transformers,op_extended,op_ut,xpu_profiling,xpu_distributed`. Delimiter is comma
+        description: UT scope. `op_regression,op_dev1,op_transformers,op_extended,op_ut,xpu_profiling,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -151,7 +151,7 @@ jobs:
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    if: ${{ github.event_name == 'schedule' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
     name: linux-microbench
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
@@ -164,7 +164,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 
   Windows-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows
     uses: ./.github/workflows/_windows_ut.yml
     with:

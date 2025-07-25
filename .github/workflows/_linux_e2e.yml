@@ -233,7 +233,7 @@ jobs:
 
   summary:
     runs-on: [self-hosted, Linux]
-    if: ${{ always() }}
+    if: ${{ ! cancelled() }}
     needs: test
     permissions:
       issues: write

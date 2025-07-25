@@ -35,7 +35,6 @@ runs:
         cat /etc/os-release
         uname -a
     - name: Cleanup host
-      if: ${{ always() }}
       shell: bash -xe {0}
       run: |
         # clean docker cache
