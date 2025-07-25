@@ -82,11 +82,14 @@ jobs:
         test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling]
     steps:
       - name: Cleanup workspace
+        if: ${{ contains(inputs.ut, matrix.test) }}
         run: |
           find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/checkout@v4
       - name: Launch Test on ${{ needs.runner.outputs.hostname }}
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/setup-testenv
         with:
           test_type: ${{ inputs.test_type }}
@@ -95,10 +98,12 @@ jobs:
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/linux-ut
         with:
           test_type: ${{ matrix.test }}
       - name: UT Test Results Summary
+        if: ${{ contains(inputs.ut, matrix.test) }}
         run: |
           pip install junitparser
           python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
@@ -106,13 +111,13 @@ jobs:
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
           fi
       - name: Upload Inductor XPU UT Log
-        if: ${{ matrix.test.condition }}
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
           path: ${{ github.workspace }}/ut_log
       - name: Upload XPU UT Failure list
-        if: ${{ matrix.test.condition }}
+        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/upload-artifact@v4
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
