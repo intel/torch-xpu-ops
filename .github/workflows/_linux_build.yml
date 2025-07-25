@@ -59,7 +59,7 @@ jobs:
         uses: ./.github/actions/get-runner
 
   build:
-    name: ${{ contains(inputs.test_type, 'wheel') && inputs.pytorch || 'build' }}
+    name: ${{ inputs.pytorch }}
     needs: runner
     if: ${{ ! contains(inputs.test_type, 'wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
