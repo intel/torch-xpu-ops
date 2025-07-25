@@ -1,12 +1,10 @@
 name: Linux Unit Test
 
-on:
-  workflow_call:
-    inputs:
-      test_type:
-        required: true
-        type: string
-        description: Test scope
+inputs:
+  test_type:
+    required: true
+    type: string
+    description: Test scope
 
 permissions: read-all
 

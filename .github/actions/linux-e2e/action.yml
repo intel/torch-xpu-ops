@@ -1,4 +1,4 @@
-name: inductor-xpu-e2e-test
+name: Linux E2E Test
 
 inputs:
   env_prepare:

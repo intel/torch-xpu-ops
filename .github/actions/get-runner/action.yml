@@ -1,8 +1,5 @@
 name: Get Runner Infos
 
-on:
-  workflow_call:
-
 outputs:
   runner_id:
     value: ${{ steps.runner.outputs.runner_id }}
