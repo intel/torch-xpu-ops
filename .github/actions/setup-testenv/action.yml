@@ -29,12 +29,6 @@ permissions: read-all
 runs:
   using: composite
   steps:
-    - name: Cleanup workspace
-      shell: bash -xe {0}
-      run: |
-        ls -al
-        find ./ |grep -v "^\./$" |xargs rm -rf
-        rm -rf ~/.triton /tmp/*inductor*
     - name: Setup python-${{ inputs.python }}
       uses: actions/setup-python@v5
       with:
@@ -52,6 +46,7 @@ runs:
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
+        rm -rf ~/.triton /tmp/*inductor*
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:

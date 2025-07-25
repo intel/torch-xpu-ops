@@ -185,6 +185,9 @@ jobs:
     env:
       UT_NAME: ${{ matrix.test.name }}
     steps:
+      - name: Cleanup workspace
+        run: |
+          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Launch Test on ${{ needs.runner.outputs.hostname }}
@@ -370,6 +373,9 @@ jobs:
       UT_SKIP_ISSUE: 1624
       UT_NAME: ${{ matrix.test.name }}
     steps:
+      - name: Cleanup workspace
+        run: |
+          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
