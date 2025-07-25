@@ -84,5 +84,5 @@ if __name__ == "__main__":
                     Adaptive_AVGPool2d(shape, dtype, channels_last, backward)
                 torch.xpu.synchronize()
                 t2 = time.time()
-                e2e_forward_time = (t2 - t1) / num_iter
-                print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+                e2e_time = (t2 - t1) / num_iter
+                print("E2E total time:", f"{float(e2e_time):.20f}")

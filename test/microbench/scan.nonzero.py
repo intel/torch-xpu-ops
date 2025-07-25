@@ -35,5 +35,5 @@ for shape in shape_list:
             torch.nonzero(input)
         torch.xpu.synchronize()
         t2 = time.time()
-        e2e_forward_time = (t2 - t1) / num_iter
-        print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+        e2e_time = (t2 - t1) / num_iter
+        print("E2E total time:", f"{float(e2e_time):.20f}")

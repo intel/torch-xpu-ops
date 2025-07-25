@@ -55,8 +55,8 @@ def _do_test(loss, input, target, dtype, device):
         output.backward(grad_output)
     torch.xpu.synchronize()
     t2 = time.time()
-    e2e_forward_time = (t2 - t1) / num_iter
-    print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
 
 
 for shape in shape_list:

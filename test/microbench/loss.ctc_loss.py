@@ -58,8 +58,8 @@ def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
         loss_dpcpp.backward()
     torch.xpu.synchronize()
     t2 = time.time()
-    e2e_forward_time = (t2 - t1) / num_iter
-    print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
 
 
 for shape in shape_list:

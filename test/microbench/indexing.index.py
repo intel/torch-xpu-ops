@@ -48,8 +48,8 @@ for shape in shape_list:
                     g = e[f]
                 torch.xpu.synchronize()
                 t2 = time.time()
-                e2e_forward_time = (t2 - t1) / num_iter
-                print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+                e2e_time = (t2 - t1) / num_iter
+                print("E2E total time:", f"{float(e2e_time):.20f}")
             else:
                 f = torch.linspace(0, 4 - 2, steps=int(4 / 2), device=device).to(
                     torch.long
@@ -84,5 +84,5 @@ for shape in shape_list:
                     g = e[f]
                 torch.xpu.synchronize()
                 t2 = time.time()
-                e2e_forward_time = (t2 - t1) / num_iter
-                print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+                e2e_time = (t2 - t1) / num_iter
+                print("E2E total time:", f"{float(e2e_time):.20f}")

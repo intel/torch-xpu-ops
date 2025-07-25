@@ -52,8 +52,8 @@ def _test_dpcpp(input, target, reduce, dtype):
             output.backward(torch.ones_like(output, dtype=dtype).to("xpu"))
         torch.xpu.synchronize()
         t2 = time.time()
-        e2e_forward_time = (t2 - t1) / num_iter
-        print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+        e2e_time = (t2 - t1) / num_iter
+        print("E2E total time:", f"{float(e2e_time):.20f}")
 
     else:
         # warm up
@@ -90,8 +90,8 @@ def _test_dpcpp(input, target, reduce, dtype):
             output.backward(torch.tensor((1.0), dtype=dtype).to("xpu"))
         torch.xpu.synchronize()
         t2 = time.time()
-        e2e_forward_time = (t2 - t1) / num_iter
-        print("E2E total time:", f"{float(e2e_forward_time):.20f}")
+        e2e_time = (t2 - t1) / num_iter
+        print("E2E total time:", f"{float(e2e_time):.20f}")
 
 
 for shape in shape_list:
