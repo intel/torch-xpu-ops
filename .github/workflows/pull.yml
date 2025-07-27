@@ -110,6 +110,31 @@ jobs:
       disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
+  
+  preci-linux-build-distributed:
+    # Don't run on forked repos and draft PRs
+    secrets: inherit
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux-distributed
+    needs: preci-lint-check
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: distributed_2.8
+      runner: pvc_e2e
+
+  preci-ut-distributed:
+    # Don't run on forked repos and draft PRs
+    secrets: inherit
+    if: ${{ (github.repository_owner == 'intel') && (github.event.pull_request.draft == false) }}
+    name: preci-linux-distributed
+    needs: preci-linux-build-distributed
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      pytorch: ${{ needs.preci-linux-build-distributed.outputs.torch_commit_id }}
+      ut: pytorch_distributed
+      runner: pvc_e2e
 
   preci-linux-e2e:
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
