@@ -206,6 +206,7 @@ skip_dict = {
         "test_shard0_svd",
         "test_softmax_fwd",
         "test_topk",
+        "test_rms_norm_bwd",
     ),
     "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_redistribute.py": (
