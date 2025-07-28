@@ -1,8 +1,10 @@
 #!/bin/bash
 
 results_dir="$1"
-check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
+reference_dir="$2"
+rm -rf /tmp/tmp-*.txt
 
+# Accuracy
 function get_model_result() {
     echo -e "\n<table><thead>
         <tr>
@@ -17,7 +19,6 @@ function get_model_result() {
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
     )
-    rm -rf /tmp/tmp-result.txt
     for suite in ${suite_list}
     do
         model_list=$(
@@ -74,8 +75,8 @@ function get_model_result() {
     echo -e "</tbody></table>\n"
 }
 
-# Accuracy
 accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
+echo > /tmp/tmp-result.txt
 if [ "${accuracy}" -gt 0 ];then
     printf "#### Note:
 \$\${\\color{red}Red}\$\$: the failed cases which need look into
@@ -90,13 +91,14 @@ Empty means the cases NOT run\n\n"
     printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
     echo > /tmp/tmp-summary.txt
     echo > /tmp/tmp-details.txt
+    check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
         category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
+        python "${check_file}" --driver "${LTS_OR_ROLLING:-"lts"}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
         test_result="$(sed 's/, /,/g' "/tmp/tmp-${suite}-${mode}-${dtype}.txt" |awk '{
             if($0 ~/Total/){
                 total = $3;
@@ -145,30 +147,19 @@ fi
 performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
 if [ "${performance}" -gt 0 ];then
     echo "### Performance"
-    echo "| Category | Total | \$\${\\color{green}Passed}\$\$ | Pass Rate | Speedup |"
-    echo "| --- | --- | --- | --- | --- |"
-    for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" |sort)
-    do
-        category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_performance.*//')"
-        test_result="$(awk -M -v PREC=1024 -F ',' 'BEGIN{
-            total = 0;
-            pass = 0;
-            fail = 0;
-            speedup = 1;
-        }{
-            if ($1 == "xpu") {
-                total++;
-                if ($4 > 0) {
-                    pass++;
-                    speedup *= $4;
-                }else {
-                    fail++;
-                }
-            }
-        }END{
-            printf("%d | %d | %.2f% | %.3f\n", total, pass, pass/total*100, speedup^(1/pass))
-        }' "${csv}")"
-        echo "| ${category} | ${test_result} |"
-    done
-    echo
+    unzip ${reference_dir}/*.zip -d ${reference_dir} > /dev/null 2>&1
+    if [ "${IS_PR}" == "1" ];then
+        python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir} --pr
+    else
+        python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir}
+    fi
+    cp ${reference_dir}/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
+    python "$(dirname "$0")/calculate_best_perf.py" \
+        --new ${results_dir} \
+        --best ${results_dir}/best.csv \
+        --device PVC1100 --os "${OS_PRETTY_NAME}" \
+        --driver "${DRIVER_VERSION}" --oneapi "${BUNDLE_VERSION}" \
+        --gcc "${GCC_VERSION}" --python "${python}" \
+        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-"${GITHUB_SHA}"}" \
+        > /dev/null 2>&1
 fi

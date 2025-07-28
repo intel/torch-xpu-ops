@@ -22,9 +22,9 @@
 
 #include <ATen/ops/index_add_meta.h>
 #include <ATen/ops/index_reduce_meta.h>
-#include <xpu/ATen/ops/index_add_native.h>
-#include <xpu/ATen/ops/index_reduce_native.h> //generated
-//#include <xpu/ATen/ops/index_reduce_prod_native.h> //generated
+#include <ATen/ops/index_add_native.h>
+#include <ATen/ops/index_reduce_native.h> //generated
+//#include <ATen/ops/index_reduce_prod_native.h> //generated
 
 namespace at {
 
@@ -139,7 +139,7 @@ TORCH_IMPL_FUNC(index_reduce_xpu_out)
  int64_t dim,
  const Tensor& index,
  const Tensor& source,
- const c10::string_view reduce,
+ const std::string_view reduce,
  bool include_self,
  const Tensor& result) {
   TORCH_WARN_ONCE(

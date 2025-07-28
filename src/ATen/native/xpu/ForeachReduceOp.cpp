@@ -1,14 +1,14 @@
 #include <ATen/native/ForeachUtils.h>
 
 #include <ATen/native/xpu/sycl/ForeachReduceKernels.h>
-#include <xpu/ATen/ops/_foreach_max_native.h>
-#include <xpu/ATen/ops/_foreach_norm_native.h>
+#include <ATen/ops/_foreach_max_native.h>
+#include <ATen/ops/_foreach_norm_native.h>
 
 namespace at {
 namespace native {
 
 static inline void check_foreach_norm_dtype(
-    optional<ScalarType> opt_dtype,
+    std::optional<ScalarType> opt_dtype,
     ScalarType self_dtype,
     const char* const name) {
   if (opt_dtype.has_value()) {
@@ -44,7 +44,7 @@ static inline void check_foreach_norm_dtype(
 std::vector<Tensor> foreach_tensor_norm_xpu(
     TensorList tensors,
     const Scalar& ord,
-    c10::optional<ScalarType> dtype) {
+    std::optional<ScalarType> dtype) {
   const auto p = [&]() -> double {
     if (ord.isIntegral(false)) {
       return ord.to<int64_t>();

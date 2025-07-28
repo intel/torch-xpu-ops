@@ -62,10 +62,12 @@ inline T& GroupReduceSumWithoutBroadcast(
     shared[sg_id] = val;
   }
   item.barrier(sycl_local_fence);
+  val = 0;
   if (sg_id == 0) {
-    for (int i = 1; i < n_sg; i++) {
+    for (int i = sg_tid; i < n_sg; i += SIMD) {
       val += shared[i];
     }
+    val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
   }
   return val;
 }

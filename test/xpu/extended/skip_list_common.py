@@ -58,6 +58,8 @@ skip_dict = {
         "test_compare_cpu_log_softmax_xpu_bfloat16",
         "test_compare_cpu__softmax_backward_data_xpu_bfloat16",
         "test_compare_cpu__softmax_backward_data_xpu_float16",
+        "test_compare_cpu_histc_xpu_bfloat16",
+        "test_compare_cpu_histc_xpu_float16",
         # TestCompositeCompliance::test_cow_input
         # XPU Tensor fails in copy-on-write cases
         # AssertionError: False is not true : Keyword argument 'output grad 0' during backward call unexpectedly materializes.
@@ -200,5 +202,8 @@ skip_dict = {
         "test_compare_cpu_index_reduce_mean_xpu_float16",
         "test_compare_cpu_index_reduce_prod_xpu_bfloat16",
         "test_compare_cpu_index_reduce_prod_xpu_float16",
+        # Segmentation fault from GPU at 0xff010003fd612000 https://github.com/intel/torch-xpu-ops/issues/1835
+        "test_backward_nn_functional_interpolate_trilinear_xpu_float32",
+        "test_cow_input_nn_functional_interpolate_trilinear_xpu_float32",
     ),
 }

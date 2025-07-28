@@ -9,9 +9,9 @@
 #include <ATen/native/xpu/sycl/ShapeKernels.h>
 #include <ATen/native/xpu/sycl/TensorShapeKernels.h>
 #include <comm/RegisterUtils.h>
-#include <xpu/ATen/ops/as_strided_copy_native.h>
-#include <xpu/ATen/ops/as_strided_native.h>
-#include <xpu/ATen/ops/cat_native.h>
+#include <ATen/ops/as_strided_copy_native.h>
+#include <ATen/ops/as_strided_native.h>
+#include <ATen/ops/cat_native.h>
 
 namespace at {
 
@@ -27,7 +27,7 @@ Tensor as_strided_xpu(
     const Tensor& self,
     IntArrayRef size,
     IntArrayRef stride,
-    c10::optional<int64_t> storage_offset = c10::nullopt) {
+    std::optional<int64_t> storage_offset = std::nullopt) {
   if (self.is_quantized()) {
     return at::native::as_strided_qtensorimpl(
         self, size, stride, storage_offset);

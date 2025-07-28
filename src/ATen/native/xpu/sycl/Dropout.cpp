@@ -412,7 +412,7 @@ std::tuple<Tensor, Tensor> dropout(
 std::tuple<Tensor, Tensor> dropout_kernel(
     const Tensor& self,
     double p,
-    c10::optional<bool> train) {
+    std::optional<bool> train) {
   // short-cut for train == false
   if (train.has_value() && !train.value()) {
     return std::make_tuple(
@@ -428,7 +428,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
     return std::tuple<Tensor, Tensor>(ret, mask);
   }
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
-      c10::nullopt, at::xpu::detail::getDefaultXPUGenerator());
+      std::nullopt, at::xpu::detail::getDefaultXPUGenerator());
   double p1m = 1. - p;
   return dropout<bool>(gen, self, p1m);
 }
@@ -436,7 +436,7 @@ std::tuple<Tensor, Tensor> dropout_kernel(
 std::tuple<Tensor, Tensor> fused_dropout_kernel(
     const Tensor& self,
     double p,
-    c10::optional<Generator> gen_) {
+    std::optional<Generator> gen_) {
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       gen_, at::xpu::detail::getDefaultXPUGenerator());
   return dropout<uint8_t>(gen, self, p);

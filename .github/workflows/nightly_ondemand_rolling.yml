@@ -22,7 +22,7 @@ on:
         required: false
         type: string
         default: 'torch_xpu'
-        description: UT scope. `op_regression,op_regression_dev1,op_extended,op_ut,torch_xpu,xpu_profiling`. Delimiter is comma
+        description: UT scope. `op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu,xpu_profiling`. Delimiter is comma
       triton:
         required: false
         type: string
@@ -67,12 +67,9 @@ concurrency:
 
 jobs:
   Linux-Nightly-Ondemand-Build-Rolling:
-    # Don't run on forked repos
-    secrets: inherit
     if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling
-    permissions:
-      issues: write
+    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
@@ -80,7 +77,6 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       driver: rolling
       runner: pvc_rolling
-      update_lkg: 'true'
 
   Linux-Nightly-Ondemand-UT-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
@@ -89,7 +85,21 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_extended,op_ut' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
+      pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
+      driver: rolling
+      runner: pvc_rolling
+  
+  Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
+    name: linux-nightly-ondemand-rolling / Op_microbench
+    permissions:
+      issues: write
+    needs: Linux-Nightly-Ondemand-Build-Rolling
+    uses: ./.github/workflows/_linux_op_benchmark.yml
+    with:
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
@@ -98,17 +108,20 @@ jobs:
 
   Linux-Nightly-Ondemand-E2E-Tests-Rolling:
     runs-on: pvc_rolling
-    # Don't run on forked repos
-    if: ${{ github.repository_owner == 'intel' }}
     name: linux-nightly-ondemand-rolling / e2e_test
     needs: Linux-Nightly-Ondemand-Build-Rolling
     timeout-minutes: 3600
+    permissions:
+      issues: write
     env:
+      GH_TOKEN: ${{ github.token }}
+      reference_issue: 1645
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       NEOReadDebugKeys: 1
       DisableScratchPages: 1
+      run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '30 16 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
     outputs:
       TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
       TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
@@ -133,26 +146,26 @@ jobs:
           conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
           conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
           source activate e2e_ci
-          pip install mkl-static==2025.0.1 mkl-include==2025.0.1
-          pip install pandas scipy tqdm
+          pip install pandas scipy psutil requests
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
       - name: Prepare Stock Pytorch
         run: |
           pwd
-          cd ../ && rm -rf pytorch
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
           source activate e2e_ci
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
           git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout $(echo ${{ env.pytorch }} |awk '{print $1}') 
-          # apply PRs for stock pytorch
-          pip install requests
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
+          # apply extra PRs for stock pytorch
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-          git status && git show -s
-          if [[ ${{ env.keep_torch_xpu_ops }} == 'true' ]]; then
-            echo "Don't replace torch-xpu-ops!"
-          else
-            rm -rf third_party/torch-xpu-ops && cp -r ../torch-xpu-ops third_party/
-            # Workaround for torch-xpu-ops ci test
-            sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
-          fi
+          git status && git diff && git show -s
       - name: Identify pinned versions
         id: pinned
         run: |
@@ -163,7 +176,7 @@ jobs:
           else
             echo "TRITON_COMMIT_ID=${{ inputs.triton }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           fi
-          echo "TORCH_BRANCH_ID=$(git rev-parse --abbrev-ref HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_BRANCH_ID=${{ inputs.pytorch }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHBENCH_COMMIT_ID=$(<.github/ci_commit_pins/torchbench.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
@@ -182,32 +195,24 @@ jobs:
         run: |
           source activate e2e_ci
           cd ../pytorch
-          TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
-          echo ${TRITON_REPO}@${TRITON_COMMIT_ID}
-          pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
-      - name: Download Pytorch wheel
-        if: ${{ inputs.pytorch != 'nightly_wheel' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}
-      - name: Install Pytorch XPU
-        run: |
-          source activate e2e_ci
-          source .github/scripts/env.sh
-          cd ../pytorch
-          pip install -r requirements.txt
-          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          pip install cmake ninja pybind11
+          rm -rf pytorch_triton_xpu-*.whl
+          TRITON_VERSION_NAME="$(
+            curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
+                    grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
+          )"
+          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
+          pip install pytorch_triton_xpu-*.whl
       - name: Show GITHUB_ENV
         run: |
           echo "$GITHUB_ENV"
-          rm -rf ../pytorch/inductor_log
-          rm -rf /tmp/torchinductor_*
-          rm -rf ~/.triton/cache
+          rm -rf ../pytorch/inductor_log || sudo rm -rf ../pytorch/inductor_log
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
 
       # Nihglty launch
       - name: Nightly Huggingface FP32/BF16/FP16 Inference & Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -218,7 +223,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Nightly Torchbench BF16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -229,7 +234,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Nightly Timm_models FP16 Training Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -240,7 +245,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Nightly PT2E Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 13 * * 0-4'
+        if: ${{ env.run_type == 'nightly' }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
@@ -251,7 +256,7 @@ jobs:
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: huggingface
@@ -262,7 +267,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Weekly Torchbench Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: torchbench
@@ -273,7 +278,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Weekly Timm_models Full Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/inductor-xpu-e2e-test
         with:
           suite: timm_models
@@ -284,7 +289,7 @@ jobs:
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
       - name: Weekly PT2E Accuracy Test
-        if: github.event_name == 'schedule' && github.event.schedule == '30 16 * * 5'
+        if: ${{ env.run_type == 'weekly' }}
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -314,11 +319,26 @@ jobs:
           scenario: ${{ inputs.scenario }}
           hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
           driver: rolling
-
+      - name: Download Reference Artifact
+        id: reference_id
+        run: |
+          set -xe
+          source activate e2e_ci
+          conda install gh --channel conda-forge -y
+          if [ "${{ env.run_type }}" == "on-demand" ];then
+            artifact_type="weekly"
+          else
+            artifact_type="${{ env.run_type }}"
+          fi
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-${artifact_type}-Rolling-XPU-E2E" |sed 's/.*: *//')"
+          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          rm -rf reference && mv Inductor-*-XPU-E2E-* reference
       - name: Summarize archieve files
         id: summary
         if: ${{ ! cancelled() }}
         run: |
+          set -x -e -o pipefail
           rm -rf ${{ github.workspace }}/upload_files
           cp -r ${{ github.workspace }}/../pytorch/inductor_log ${{ github.workspace }}/upload_files
           mkdir -p ${{ github.workspace }}/../../_backup/ && cd ${{ github.workspace }}/../../_backup/
@@ -326,28 +346,39 @@ jobs:
           tar zcf xpu-inductor-${GITHUB_RUN_ID}.tgz -C ${{ github.workspace }}/upload_files/ . # backup logs
           # Print summary
           if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            rm -rf /tmp/tmp-*.txt
             source activate e2e_ci
-            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh ${{ github.workspace }}/upload_files >> ${GITHUB_STEP_SUMMARY}
+            export LTS_OR_ROLLING='rolling'
+            bash ${{ github.workspace }}/.github/scripts/e2e_summary.sh \
+                ${{ github.workspace }}/upload_files \
+                ${{ github.workspace }}/reference \
+            >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
               echo "There are ${exit_label} cases that need look into!!! Please check them"
               exit ${exit_label}
             fi
-          else
-            source activate e2e_ci
-            cp -r ${{ github.workspace }}/.github/scripts/summary_pt2e.py ${{ github.workspace }}/upload_files
-            cd ${{ github.workspace }}/upload_files
-            python summary_pt2e.py ${{ github.workspace }}/upload_files/inductor_log/pt2e
-            rm -rf summary_pt2e.py
+          fi
+          pt2e_summary_csv="$(find ${{ github.workspace }}/upload_files/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            cat ${pt2e_summary_csv}
+            failed_num=$(grep ',failed' ${pt2e_summary_csv} |wc -l)
+            if [ ${failed_num} -ne 0 ];then
+              echo "[Warning] PT2E has failures!"
+            fi
           fi
       - name: Upload Inductor XPU E2E Data
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-${{ env.run_type }}-Rolling-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/upload_files
+      - name: Upload Reference Run ID
+        if: ${{ env.run_type != 'on-demand' }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
+            sed "s/Inductor-${{ env.run_type }}-Rolling-XPU-E2E:.*/Inductor-${{ env.run_type }}-Rolling-XPU-E2E: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
 
   Tests-Failure-And-Report:
     if: ${{ ! cancelled() }}

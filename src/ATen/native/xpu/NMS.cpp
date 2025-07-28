@@ -1,6 +1,5 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/NMSKernel.h>
-#include <comm/XPUGuard.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
@@ -35,8 +34,6 @@ Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_) {
   if (dets.numel() == 0) {
     return at::empty({0}, dets.options().dtype(at::kLong));
   }
-
-  constexpr int nms_items_per_group = sizeof(unsigned long long) * 8;
 
   auto order_t = std::get<1>(
       scores.sort(/*stable=*/true, /*dim=*/0, /* descending=*/true));

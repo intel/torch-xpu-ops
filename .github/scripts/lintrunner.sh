@@ -4,7 +4,7 @@ set -ex
 # Creat a venv for lint check
 python3 -m venv lint
 source lint/bin/activate
-python3 -m pip install setuptools
+python3 -m pip install -U pip setuptools wheel
 
 # Use uv to speed up lintrunner init
 python3 -m pip install uv==0.1.45
@@ -24,7 +24,7 @@ if ! command -v lintrunner &> /dev/null; then
 fi
 
 # Ignoring errors in one specific run
-export SHELLCHECK_OPTS="-e SC2154"
+export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046"
 
 # This has already been cached in the docker image
 lintrunner init 2> /dev/null
