@@ -92,7 +92,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "========================================================================="
     cat "./${ut_suite}_failed.log"
     echo -e "========================================================================="
-    echo -e "Checking Failed cases"
+    echo -e "Checking Failed cases in ${ut_suite}"
     echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
     if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
@@ -118,11 +118,7 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     echo -e "========================================================================="
     cat "./${ut_suite}_with_skip_test_failed.log"
     echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} with only"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_with_only_test_failed.log"
-    echo -e "========================================================================="
-    echo -e "Checking Failed cases"
+    echo -e "Checking Failed cases in ${ut_suite} with skip"
     echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_with_skip_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_with_skip_test_failed_filtered.log" ]]; then
@@ -130,6 +126,13 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     else
       num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed.log")
     fi
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} with only"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_with_only_test_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite} with only"
+    echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_with_only_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_with_only_test_failed_filtered.log" ]]; then
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
@@ -186,7 +189,7 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     echo -e "========================================================================="
     cat "./${ut_suite}_xpu_distributed_test_failed.log"
     echo -e "========================================================================="
-    echo -e "Checking Failed cases"
+    echo -e "Checking Failed cases in ${ut_suite} xpu distributed"
     echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_xpu_distributed_test_failed_filtered.log" ]]; then
