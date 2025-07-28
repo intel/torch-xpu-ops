@@ -211,6 +211,7 @@ jobs:
     with:
       runner: build
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      runner: pvc_e2e
 
   reproducer-test:
     needs: [linux-build, preci-lint-check]
