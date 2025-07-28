@@ -10889,9 +10889,9 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         y = torch.randn(100)
         self.assertEqual(x, y)
 
-        max_int64 = 0x7fff_ffff_ffff_ffff
+        max_int64 = 0x7FFF_FFFF_FFFF_FFFF
         min_int64 = -max_int64 - 1
-        max_uint64 = 0xffff_ffff_ffff_ffff
+        max_uint64 = 0xFFFF_FFFF_FFFF_FFFF
         # Check all boundary cases of valid seed value inputs
         test_cases = [
             # (seed, expected_initial_seed)
@@ -10902,16 +10902,20 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             (0, 0),
             # Negative seeds wrap around starting from the largest seed value
             (-1, max_uint64),
-            (min_int64, max_int64 + 1)
+            (min_int64, max_int64 + 1),
         ]
         for seed, expected_initial_seed in test_cases:
             torch.manual_seed(seed)
             actual_initial_seed = torch.initial_seed()
-            msg = (f"expected initial_seed() = {expected_initial_seed:x} "
-                   f"after calling manual_seed({seed:x}), but got {actual_initial_seed:x} instead")
+            msg = (
+                f"expected initial_seed() = {expected_initial_seed:x} "
+                f"after calling manual_seed({seed:x}), but got {actual_initial_seed:x} instead"
+            )
             self.assertEqual(expected_initial_seed, actual_initial_seed, msg=msg)
         for invalid_seed in [min_int64 - 1, max_uint64 + 1]:
-            with self.assertRaisesRegex(ValueError, r'Overflow when unpacking long long'):
+            with self.assertRaisesRegex(
+                ValueError, r"Overflow when unpacking long long"
+            ):
                 torch.manual_seed(invalid_seed)
 
         torch.set_rng_state(rng_state)
@@ -12542,10 +12546,15 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         self.assertEqual(t.t().stride(), torch.Size([1, 3]))
 
     def test_invalid_arg_error_handling(self) -> None:
-        """ Tests that errors from old TH functions are propagated back """
+        """Tests that errors from old TH functions are propagated back"""
         for invalid_val in [-1, 2**65]:
-            self.assertRaises((ValueError, RuntimeError), lambda: torch.set_num_threads(invalid_val))
-            self.assertRaises((ValueError, RuntimeError), lambda: torch.set_num_interop_threads(invalid_val))
+            self.assertRaises(
+                (ValueError, RuntimeError), lambda: torch.set_num_threads(invalid_val)
+            )
+            self.assertRaises(
+                (ValueError, RuntimeError),
+                lambda: torch.set_num_interop_threads(invalid_val),
+            )
 
     def _get_tensor_prop(self, t):
         preserved = (

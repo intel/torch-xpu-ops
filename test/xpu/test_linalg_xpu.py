@@ -1,5 +1,6 @@
 # Owner(s): ["module: intel"]
 
+import contextlib
 import itertools
 import math
 import unittest
@@ -13,7 +14,10 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     precisionOverride,
 )
-from torch.testing._internal.common_dtype import floating_and_complex_types_and
+from torch.testing._internal.common_dtype import (
+    floating_and_complex_types_and,
+    floating_types_and,
+)
 from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_utils import (
     IS_WINDOWS,
@@ -23,8 +27,6 @@ from torch.testing._internal.common_utils import (
     setLinalgBackendsToDefaultFinally,
     TestCase,
 )
-from torch.testing._internal.common_dtype import floating_types_and
-import contextlib
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -393,8 +395,17 @@ def matmul_small_brute_force_3d_Nd(self, device, dtype):
 def ck_blas_library(self):
     pass
 
-@precisionOverride({torch.double: 1e-8, torch.float: 1e-4, torch.bfloat16: 5e-2,
-                            torch.half: 5e-2, torch.cfloat: 1e-4, torch.cdouble: 1e-8})
+
+@precisionOverride(
+    {
+        torch.double: 1e-8,
+        torch.float: 1e-4,
+        torch.bfloat16: 5e-2,
+        torch.half: 5e-2,
+        torch.cfloat: 1e-4,
+        torch.cdouble: 1e-8,
+    }
+)
 @dtypes(*floating_types_and(torch.bfloat16, torch.half))
 @tf32_on_and_off(0.05)
 @reduced_f32_on_and_off(0.05)
@@ -404,11 +415,23 @@ def addmm_relu_tunableop_rocm(self, device, dtype):
         torch.xpu.tunable.set_max_tuning_iterations(1)
         self._test_addmm_impl(torch._addmm_activation, "relu", device, dtype)
 
+
+def get_tunableop_untuned_filename():
+    import os
+
+    ordinal = torch.xpu.current_device()
+    untuned_filename_env = os.getenv("PYTORCH_TUNABLEOP_UNTUNED_FILENAME")
+    untuned_filename_base, _, _ = untuned_filename_env.rpartition(".")
+    untuned_filename = f"{untuned_filename_base}{ordinal}.csv"
+    return untuned_filename
+
+
 @contextlib.contextmanager
 def __tunableop_ctx(self):
     # Initialize and then tear down TunableOp
     import glob
     import os
+
     self._set_tunableop_defaults()
     torch.xpu.tunable.enable(True)
 
@@ -420,10 +443,13 @@ def __tunableop_ctx(self):
 
         # clean up, remove any files that were generated
         results_filename = torch.xpu.tunable.get_filename()
-        results_filename_pattern, _, _ = results_filename.rpartition('.')
+        results_filename_pattern, _, _ = results_filename.rpartition(".")
         untuned_filename = get_tunableop_untuned_filename()
-        untuned_filename_pattern, _, _ = untuned_filename.rpartition('.')
-        patterns = [f"{results_filename_pattern[:-1]}*.csv", f"{untuned_filename_pattern[:-1]}*.csv"]
+        untuned_filename_pattern, _, _ = untuned_filename.rpartition(".")
+        patterns = [
+            f"{results_filename_pattern[:-1]}*.csv",
+            f"{untuned_filename_pattern[:-1]}*.csv",
+        ]
         files = [f for pattern in patterns for f in glob.glob(pattern)]
         for file in files:
             try:
@@ -435,14 +461,17 @@ def __tunableop_ctx(self):
         # undo all the environment variables set
         # loop through a list of potentially used
         # environment variables.
-        env_list = ["PYTORCH_TUNABLEOP_BLAS_LOG",
-                    "PYTORCH_TUNABLEOP_NUMERICAL_CHECK",
-                    "PYTORCH_TUNABLEOP_UNTUNED_FILENAME"]
+        env_list = [
+            "PYTORCH_TUNABLEOP_BLAS_LOG",
+            "PYTORCH_TUNABLEOP_NUMERICAL_CHECK",
+            "PYTORCH_TUNABLEOP_UNTUNED_FILENAME",
+        ]
         for env in env_list:
             try:
                 del os.environ[env]
             except KeyError:
                 pass
+
 
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
