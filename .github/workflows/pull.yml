@@ -98,8 +98,13 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
+<<<<<<< HEAD
       pytorch: distributed_2.9
       runner: PVC-7358
+=======
+      pytorch: distributed_2.8
+      runner: pvc_e2e
+>>>>>>> 680c2cce (update)
 
   linux-ut:
     needs: [conditions-filter, linux-build]
