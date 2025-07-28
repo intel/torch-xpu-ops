@@ -394,7 +394,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
     onecclComm_t comm = nullptr;
     onecclResult_t result = onecclSuccess;
-    result = onecclSetDevice(rank);
+    result = onecclSetDevice(device.index());
     if (result != onecclSuccess) {
       std::cerr << "Failed to set device.\n";
     }
@@ -446,12 +446,12 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 }
 
 void ProcessGroupXCCL::groupStart() {
-  xccl::onecclGroupStart();
+  xccl::oneccl_v2_group_start();
   ++xcclActiveGroupCounter_;
 }
 
 void ProcessGroupXCCL::groupEnd() {
-  xccl::onecclGroupEnd();
+  xccl::oneccl_v2_group_end();
   --xcclActiveGroupCounter_;
 }
 
@@ -551,16 +551,19 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   std::unique_ptr<ccl::stream> cclstream;
   std::unique_ptr<sycl::queue> syclQueue;
   if (asyncOp) {
-    cclstream = std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).cclStream);
-    syclQueue = std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).syclQueue);
+    cclstream =
+        std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).cclStream);
+    syclQueue =
+        std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).syclQueue);
     syncStream(device, xcclEventsMap_[key], stream);
   } else {
     auto StreamKey = key + "_" +
         std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
     if (xcclStreamsMap_.find(StreamKey) != xcclStreamsMap_.end()) {
-      cclstream =
-          std::make_unique<ccl::stream>(xcclStreamsMap_.at(StreamKey).cclStream);
-      syclQueue = std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).syclQueue);
+      cclstream = std::make_unique<ccl::stream>(
+          xcclStreamsMap_.at(StreamKey).cclStream);
+      syclQueue =
+          std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).syclQueue);
     } else {
       LOG(INFO) << "Current stream id changed, create new ccl stream";
       // update xcclStreamsMap_ with current stream key
@@ -569,7 +572,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       syclQueue = std::make_unique<sycl::queue>(stream.queue());
       std::lock_guard<std::mutex> lock(mutex_);
       xcclStreamsMap_.emplace(
-          StreamKey, XCCLStream{at::xpu::XPUStream(stream), *cclstream, *syclQueue});
+          StreamKey,
+          XCCLStream{at::xpu::XPUStream(stream), *cclstream, *syclQueue});
     }
   }
 
@@ -1226,8 +1230,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
-        const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
             input,
             output,
@@ -1804,7 +1806,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         outputSplitSizes, // outSplitSizes
         -1, // globalRankStart
         -1, // globalRankStride
-        this->getSize()); // worldSize
+        this->getSize(), // worldSize
+        opts.asyncOp, // async_op
+        "N/A"); // reductionOp
   }
   return collective(
       inputTensor,

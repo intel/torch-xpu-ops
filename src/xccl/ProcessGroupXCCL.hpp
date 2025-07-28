@@ -261,11 +261,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // `xcclActiveGroupCounter_` is introduced to track group calls made
           // in the frontend. In this scenario, the `groupStart` wrap API is
           // used.
-          xccl::onecclGroupStart();
+          xccl::oneccl_v2_group_start();
         },
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
-          xccl::onecclGroupEnd();
+          xccl::oneccl_v2_group_end();
         },
         opType,
         asyncOp,

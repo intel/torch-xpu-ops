@@ -3,7 +3,7 @@
 namespace c10d {
 namespace xccl {
 
-void onecclGroupStart() {
+void oneccl_v2_group_start() {
   if (isCCLV2EnabledCached()) {
     onecclGroupStart();
   } else {
@@ -11,7 +11,7 @@ void onecclGroupStart() {
   }
 }
 
-void onecclGroupEnd() {
+void oneccl_v2_group_end() {
   if (isCCLV2EnabledCached()) {
     onecclGroupEnd();
   } else {
@@ -416,7 +416,7 @@ void onecclAllToAll(
             std::get<onecclComm_t>(comm),
             &SyclQueue);
       }
-      if (sendcounts[r] != 0) {
+      if (recvcounts[r] != 0) {
         onecclRecv(
             ((char*)recvbuff) + recvdispls[r] * size,
             recvcounts[r],
@@ -438,7 +438,7 @@ void onecclAllToAll(
             std::get<ccl::communicator>(comm),
             xcclStream);
       }
-      if (sendcounts[r] != 0) {
+      if (recvcounts[r] != 0) {
         ccl::recv(
             ((char*)recvbuff) + recvdispls[r] * size,
             recvcounts[r],
