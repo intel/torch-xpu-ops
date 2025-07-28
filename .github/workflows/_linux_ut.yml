@@ -374,7 +374,7 @@ jobs:
           path: ${{ github.workspace }}/ut_log
 
   distributed_ut_test:
-    runs-on: PVC-7358
+    runs-on: pvc_e2e
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 600
     env:
