@@ -383,7 +383,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(SYCL_device_link_flags
         ${link_type_flag}
         ${important_host_flags}
-        ${SYCL_FLAGS}
+        ${SYCL_LINK_FLAGS}
         ${SYCL_DEVICE_LINK_FLAGS})
 
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
