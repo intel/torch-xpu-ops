@@ -11,7 +11,7 @@ on:
       keep_torch_xpu_ops:
         required: false
         type: string
-        default: 'https://github.com/intel/torch-xpu-ops/tree/daisyden/distributed_2.8'
+        default: 'https://github.com/intel/torch-xpu-ops/tree/daisyden/distributed_2.9'
         description: Keep torch-xpu-ops pin. `true` means use pined commit
       driver:
         required: false
@@ -85,7 +85,7 @@ jobs:
           fi
           if [[ "${{ inputs.keep_torch_xpu_ops }}" == *"https://"* ]];then
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            TORCH_XPU_OPS_VERSION="daisyden/distributed_2.8"
+            TORCH_XPU_OPS_VERSION="daisyden/distributed_2.9"
           elif [ "${{ inputs.keep_torch_xpu_ops }}" == "true" ];then
             TORCH_XPU_OPS_VERSION="pinned"
           else

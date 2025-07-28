@@ -99,8 +99,8 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
-      pytorch: distributed_2.8
-      runner: pvc_e2e
+      pytorch: distributed_2.9
+      runner: PVC-7358
 
   preci-linux-ut:
     name: preci-linux
@@ -109,4 +109,4 @@ jobs:
     with:
       disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
       ut: xpu_distributed
-      runner: pvc_e2e
+      runner: PVC-7358
