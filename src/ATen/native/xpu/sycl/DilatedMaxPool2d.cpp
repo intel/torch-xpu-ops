@@ -173,7 +173,10 @@ struct MaxPool2dChannelLastVec {
       for (int i = 0; i < vec_size; i++) {
         maxVal_vec[i] = at::numeric_limits<scalar_t>::lower_bound();
       }
-      int64_t maxIndex[vec_size] = {int64_t(-1)};
+      int64_t maxIndex[vec_size];
+      for (int i = 0; i < vec_size; i++) {
+        maxIndex[i] = int64_t(-1);
+      }
       int StartH = outputH * dH_ - padH_;
       int StartW = outputW * dW_ - padW_;
       int EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
