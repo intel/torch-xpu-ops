@@ -84,11 +84,12 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu' || inputs.ut }}
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
+      keep_going: ${{ github.event_name == 'schedule' && 'true' }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e

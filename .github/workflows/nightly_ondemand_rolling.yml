@@ -85,7 +85,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,torch_xpu' || inputs.ut }}
+      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
       pytorch: ${{ needs.Linux-Nightly-Ondemand-Build-Rolling.outputs.torch_commit_id }}
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
