@@ -146,12 +146,17 @@ jobs:
               "test_max_autotune.py\n" \
               "test_mkldnn_pattern_matcher.py\n" \
               "test_triton_kernels.py\n" \
+              "test_compiled_optimizers.py\n" \
+              "test_compiled_autograd.py" \
               > test_files_1.txt
               for line in $(cat test_files_1.txt)
               do
                 echo "=== Starting test: ${line} ==="
+                start=$(date +%s)
                 python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
                   tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                end=$(date +%s)
+                echo -e "${line} duration: $((end - start))s"
                 echo "=== Finished test: ${line} ==="
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_1/"
@@ -201,14 +206,15 @@ jobs:
               "test_torchinductor.py\n" \
               "test_torchinductor_opinfo.py\n" \
               "test_compile_subprocess.py\n" \
-              "test_compiled_optimizers.py\n" \
-              "test_compiled_autograd.py" \
               > test_files_2.txt
               for line in $(cat test_files_2.txt)
               do
                 echo "=== Starting test: ${line} ==="
+                start=$(date +%s)
                 python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test_error.log | \
                   tee $GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test.log
+                end=$(date +%s)
+                echo -e "${line} duration: $((end - start))s"
                 echo "=== Finished test: ${line} ==="
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_2/"
@@ -260,8 +266,11 @@ jobs:
               for line in $(cat test_files_3.txt)
               do
                 echo "=== Starting test: ${line} ==="
+                start=$(date +%s)
                 python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test_error.log | \
                   tee $GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test.log
+                end=$(date +%s)
+                echo -e "${line} duration: $((end - start))s"
                 echo "=== Finished test: ${line} ==="
               done
               cp -r test/test-reports/*.log "$GITHUB_WORKSPACE/ut_log/torch_xpu_3/"

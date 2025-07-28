@@ -216,6 +216,8 @@ def process_xml_file(xml_file):
 
         for suite in xml:
             ut_name = f"{ut.split('-')[0]}_rerun" if suite.tests == 1 else ut.split('-')[0]
+            if "rerun" in ut_name:
+                continue
             suite_summary = {
                 'Category': category,
                 'UT': ut_name,
