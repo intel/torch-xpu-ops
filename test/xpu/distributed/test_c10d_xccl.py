@@ -13,6 +13,7 @@ from enum import auto, Enum
 from unittest import mock
 
 import torch
+import torch._C._distributed_c10d
 import torch.distributed as c10d
 
 if not c10d.is_available() or not c10d.is_xccl_available():
@@ -23,6 +24,7 @@ import torch.distributed as dist
 import torch.testing._internal.common_utils as common
 from torch.testing._internal.common_distributed import MultiProcessTestCase
 from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
     parametrize,
     retry_on_connect_failures,
     run_tests,
@@ -561,6 +563,7 @@ class XCCLTraceTestBase(MultiProcessTestCase):
         super().setUp()
         os.environ["TORCH_FR_BUFFER_SIZE"] = "1000"
         self.tempdir = tempfile.TemporaryDirectory()
+        os.environ["TORCH_FR_DUMP_TEMP_FILE"] = self._trace_basename()
         os.environ["TORCH_FR_DEBUG_INFO_PIPE_FILE"] = self._trace_basename()
         self._spawn_processes()
 
@@ -642,17 +645,17 @@ class XCCLTraceTestBase(MultiProcessTestCase):
     def _trace_name(self, rank):
         return self._trace_basename() + str(rank)
 
-    def started_or_scheduled(self, timing_enabled):
+    def started_or_scheduled(self, timing_enabled=False):
         return "started" if timing_enabled else "scheduled"
 
 
 class XCCLTraceTest(XCCLTraceTestBase):
-    def _verify_trace(self, t, include_collectives, timing_enabled, is_json):
+    def _verify_trace(self, t, include_collectives, is_json, timing_enabled=False):
         ver = t["version"]
         self.assertEqual(ver, "2.9")
-        xccl_version = t["nccl_version"]
-        torch_xccl_version = torch.distributed.get_xccl_version()
-        self.assertEqual(xccl_version, ".".join(str(v) for v in torch_xccl_version))
+        xccl_version = t["xccl_version"]
+        torch_xccl_version = torch._C._distributed_c10d.get_xccl_version()
+        self.assertEqual(xccl_version, torch_xccl_version)
         pg_config = t["pg_config"]
         self.assertEqual(len(pg_config), 1)
         default_pg_info = pg_config["0"]
@@ -738,9 +741,8 @@ class XCCLTraceTest(XCCLTraceTestBase):
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
-    @parametrize("timing_enabled", [True, False])
     @parametrize("include_collectives", [True, False])
-    def test_short_pickle(self, timing_enabled, include_collectives):
+    def test_short_pickle(self, include_collectives, timing_enabled=False):
         if self.rank == self.MAIN_PROCESS_RANK:
             return
         pg = self._create_process_group_xccl()
@@ -763,8 +765,8 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self._verify_trace(
             t,
             include_collectives=include_collectives,
-            timing_enabled=timing_enabled,
             is_json=True,
+            timing_enabled=timing_enabled,
         )
         dist.destroy_process_group()
 
@@ -807,7 +809,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_long(self):
-        os.environ["TORCH_FR_TRACE_BUFFER_SIZE"] = "10"
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
         if self.rank == self.MAIN_PROCESS_RANK:
             return
         pg = self._create_process_group_xccl()
@@ -831,9 +833,9 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(len(t), 10)
         first = t[0]
         last = t[-1]
-        self.assertEqual(last["profiling_name"], "nccl:all_reduce")
+        self.assertEqual(last["profiling_name"], "xccl:all_reduce")
         self.assertEqual(last["state"], "completed")
-        self.assertIn("test_c10d_nccl.py", str(last["frames"]))
+        self.assertIn("test_c10d_xccl.py", str(last["frames"]))
         self.assertEqual(last["input_sizes"], ((3, 4),))
         self.assertEqual(last["input_dtypes"], ["Float"])
         self.assertEqual(last["output_sizes"], ((3, 4),))
@@ -845,7 +847,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_barrier_profiling(self):
-        os.environ["TORCH_FR_TRACE_BUFFER_SIZE"] = "10"
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
         if self.rank == self.MAIN_PROCESS_RANK:
             return
         pg = self._create_process_group_xccl()
@@ -860,317 +862,11 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(len(t), 2)
         first = t[0]
         last = t[-1]
-        self.assertEqual(first["profiling_name"], "nccl:all_reduce_barrier")
-        self.assertEqual(last["profiling_name"], "nccl:all_reduce")
+        self.assertEqual(first["profiling_name"], "xccl:all_reduce_barrier")
+        self.assertEqual(last["profiling_name"], "xccl:all_reduce")
         dist.destroy_process_group()
 
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    def test_trace_while_all_works_retired(self):
-        os.environ["TORCH_FR_TRACE_BUFFER_SIZE"] = "10"
-        if self.rank == self.MAIN_PROCESS_RANK:
-            return
-        pg = self._create_process_group_xccl()
-        device = self.local_device
-        # send more works than the buffer size to overwrite the previous entry
-        for _ in range(12):
-            a = [torch.ones(3, 4, device=device)]
-            pg.broadcast(a).wait()
-        torch.xpu.synchronize(device=device)
-
-        # wait for all works to be retired
-        pg._wait_for_pending_works()
-        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-        t = t["entries"]
-        self.assertEqual(len(t), 10)
-        last = t[-1]
-        self.assertEqual(last["retired"], True)
-        self.assertEqual(last["state"], "completed")
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    @parametrize("timing_enabled", [True, False])
-    @parametrize("only_active", [True, False])
-    def test_trace_while_active(self, timing_enabled, only_active):
-        if self.rank == self.MAIN_PROCESS_RANK:
-            for c in self.children_pipes:
-                self.assertEqual(c.recv(), "next")
-            for c in self.children_pipes:
-                c.send("next")
-            return
-
-        pg = self._create_process_group_xccl()
-        if timing_enabled:
-            pg._enable_collectives_timing()
-        device = self.local_device
-        with torch.xpu.device(device):
-            a = torch.full((3, 4), float(self.rank), device=device)
-
-            pg.allreduce(a).wait()
-            e = torch.xpu.Event()
-            e.record()
-            if self.rank != 0:
-                pg.allreduce(a).wait()
-            e.synchronize()
-            t = pickle.loads(
-                torch._C._distributed_c10d._dump_xccl_trace(onlyActive=only_active)
-            )
-            t = t["entries"]
-            if only_active:
-                if self.rank == 0:
-                    self.assertEqual(len(t), 0)
-                else:
-                    self.assertEqual(len(t), 1)
-            if not only_active:
-                if self.rank == 0:
-                    self.assertEqual(t[-1]["profiling_name"], "nccl:all_reduce")
-                    self.assertEqual(t[-1]["collective_seq_id"], 1)
-                    self.assertEqual(t[-1]["state"], "completed")
-                else:
-                    self.assertEqual(t[-1]["profiling_name"], "nccl:all_reduce")
-                    self.assertEqual(t[-1]["collective_seq_id"], 2)
-
-                    # ROCm runtime used to call uSleep(20 µs)inside the default‑signal busy-wait loop.
-                    # Now, this sleep is removed which lets the host thread spin continuously
-                    # Therefore, the state can either be scheduled or started before test dumps the trace.
-                    if (
-                        torch.version.hip
-                        and _get_torch_rocm_version() >= (6, 4)
-                        and timing_enabled
-                    ):
-                        assert t[-1]["state"] in ("scheduled", "started")
-                    else:
-                        self.assertEqual(
-                            t[-1]["state"], self.started_or_scheduled(timing_enabled)
-                        )
-
-            self.parent.send("next")
-            self.assertEqual("next", self.parent.recv())
-            if self.rank == 0:
-                pg.allreduce(a).wait()
-            torch.xpu.synchronize(device=device)
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    @parametrize("timing_enabled", [True, False])
-    def test_trace_while_stuck(self, timing_enabled):
-        if self.rank == self.MAIN_PROCESS_RANK:
-            for c in self.children_pipes:
-                self.assertEqual(c.recv(), "next")
-            for c in self.children_pipes:
-                c.send("next")
-            return
-
-        pg = self._create_process_group_xccl()
-        if timing_enabled:
-            pg._enable_collectives_timing()
-
-        device = self.local_device
-        with torch.xpu.device(device):
-            a = torch.full((3, 4), float(self.rank), device=device)
-
-            pg.allreduce(a).wait()
-            e = torch.xpu.Event()
-            e.record()
-
-            def gather_trace():
-                e.synchronize()
-                # give the other thread some time to fill the xpu buffer
-                time.sleep(5)
-                t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-                t = t["entries"]
-                self.assertEqual(t[-1]["profiling_name"], "nccl:all_reduce")
-                if self.rank == 0:
-                    self.assertEqual(t[-1]["collective_seq_id"], 1)
-                    self.assertEqual(t[-1]["state"], "completed")
-                else:
-                    self.assertEqual(t[-1]["collective_seq_id"], 2)
-                    self.assertEqual(
-                        t[-1]["state"], self.started_or_scheduled(timing_enabled)
-                    )
-                    self.assertIsNone(t[-1]["time_discovered_completed_ns"])
-                # this will eventually cause the missing rank 0
-                # to continue which will unblock the non-zero ranks
-                self.parent.send("next")
-
-            if self.rank != 0:
-                pg.allreduce(a).wait()
-                th = threading.Thread(target=gather_trace)
-                th.start()
-                # fill the buffer, at around 1024 events
-                # this will stall
-                for _ in range(2000):
-                    a = a + a
-                th.join()
-            else:
-                gather_trace()
-
-            self.assertEqual("next", self.parent.recv())
-            if self.rank == 0:
-                pg.allreduce(a).wait()
-            torch.xpu.synchronize(device=device)
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    @parametrize(
-        "op_sizes_per_coalesce",
-        [
-            [(2, 3)],
-            [(2, 3), (5, 5), (1,)],
-        ],
-    )
-    @parametrize("timing_enabled", [True, False])
-    def test_batched_send_recv(self, op_sizes_per_coalesce, timing_enabled):
-        """
-        'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
-        a destructed Work obj's events
-        """
-
-        if self.rank == self.MAIN_PROCESS_RANK:
-            return
-        pg = self._create_process_group_xccl()
-        if timing_enabled:
-            pg._enable_collectives_timing()
-
-        num_coalesced_ops = 20
-        ops_per_coalesce = len(op_sizes_per_coalesce)
-        for _ in range(num_coalesced_ops):
-            ops = []
-            for input_sizes in op_sizes_per_coalesce:
-                tensor = torch.zeros(input_sizes).to(self.local_device)
-                if self.rank == 0:
-                    ops.append(dist.P2POp(dist.irecv, tensor, 1))
-                elif self.rank == 1:
-                    tensor *= 2
-                    ops.append(dist.P2POp(dist.isend, tensor, 0))
-
-            dist.batch_isend_irecv(ops).pop().wait()
-
-        torch.xpu.synchronize(device=self.local_device)
-
-        if timing_enabled:
-            # wait for watchdog thread to process the queue of works
-            time.sleep(1)
-
-        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-        self.assertEqual(len(t["entries"]), num_coalesced_ops * (ops_per_coalesce + 1))
-
-        expected_record_id = 0
-        expected_seq = 1
-        expected_op_id = 1
-        for seq in range(num_coalesced_ops):
-            first_op = seq * (ops_per_coalesce + 1)
-            coalesced_op = first_op + ops_per_coalesce
-            for p2p_op_idx, input_sizes in zip(
-                range(first_op, coalesced_op, 1), op_sizes_per_coalesce
-            ):
-                # the indivudal ops inside the coalescing group the individual op metadata,
-                # but not the timing info coming from the actual coalesced kernel
-                profiling_name = (
-                    "nccl:recv 0<-1" if self.rank == 0 else "nccl:send 1->0"
-                )
-                self.assertEqual(
-                    t["entries"][p2p_op_idx]["record_id"], expected_record_id
-                )
-                expected_record_id += 1
-                self.assertEqual(
-                    t["entries"][p2p_op_idx]["profiling_name"], profiling_name
-                )
-                # we don't increment collective_seq_id for p2p ops.
-                self.assertEqual(t["entries"][p2p_op_idx]["collective_seq_id"], 0)
-                self.assertEqual(t["entries"][p2p_op_idx]["p2p_seq_id"], expected_seq)
-                self.assertEqual(t["entries"][p2p_op_idx]["op_id"], expected_op_id)
-                expected_op_id += 1
-                self.assertEqual(t["entries"][p2p_op_idx]["input_sizes"], [input_sizes])
-                self.assertEqual(
-                    t["entries"][p2p_op_idx]["output_sizes"], [input_sizes]
-                )
-                # duration doesn't get tagged onto individual ops yet, nor is their state updated
-                self.assertEqual(t["entries"][p2p_op_idx]["state"], "scheduled")
-                self.assertTrue("duration_ms" not in t["entries"][p2p_op_idx])
-
-            # the coalesced op has no metadata but indicates that coalescing was used,
-            # and accurately reflects the timing and state info for the whole group
-            self.assertEqual(
-                t["entries"][coalesced_op]["record_id"], expected_record_id
-            )
-            expected_record_id += 1
-            self.assertEqual(
-                t["entries"][coalesced_op]["profiling_name"], "nccl:coalesced"
-            )
-            self.assertEqual(t["entries"][coalesced_op]["p2p_seq_id"], expected_seq)
-            expected_seq += 1
-            self.assertEqual(t["entries"][coalesced_op]["state"], "completed")
-            self.assertEqual(t["entries"][coalesced_op]["input_sizes"], [])
-            self.assertEqual(t["entries"][coalesced_op]["output_sizes"], [])
-            if timing_enabled:
-                duration = t["entries"][coalesced_op]["duration_ms"]
-                self.assertTrue(0.001 < duration < 10000, duration)
-            else:
-                self.assertTrue("duration_ms" not in t["entries"][coalesced_op])
-            self.assertEqual(t["entries"][coalesced_op]["timeout_ms"], 600000)
-
-    @requires_xccl()
-    @skip_if_lt_x_gpu(2)
-    @parametrize(
-        "op_sizes",
-        [
-            [(2, 3)],
-            [(2, 3), (5, 5), (1,)],
-        ],
-    )
-    @parametrize("timing_enabled", [True, False])
-    def test_individual_send_recv(self, op_sizes, timing_enabled):
-        """
-        'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
-        a destructed Work obj's events
-        """
-
-        if self.rank == self.MAIN_PROCESS_RANK:
-            return
-        pg = self._create_process_group_xccl()
-        if timing_enabled:
-            pg._enable_collectives_timing()
-        num_repeats = 10
-        ops_per_repeat = len(op_sizes)
-        for _ in range(num_repeats):
-            for input_sizes in op_sizes:
-                tensor = torch.zeros(input_sizes).to(self.local_device)
-                if self.rank == 0:
-                    dist.recv(tensor, 1)
-                elif self.rank == 1:
-                    tensor *= 2
-                    dist.send(tensor, 0)
-
-        torch.xpu.synchronize(device=self.local_device)
-        if timing_enabled:
-            # wait for watchdog thread to process the queue of works
-            time.sleep(1)
-
-        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-        self.assertEqual(len(t["entries"]), num_repeats * (ops_per_repeat))
-        expected_seq = 1
-        expected_op_id = 1
-        for seq in range(num_repeats * ops_per_repeat):
-            input_sizes = op_sizes[seq % ops_per_repeat]
-            profiling_name = "nccl:recv 0<-1" if self.rank == 0 else "nccl:send 1->0"
-            self.assertEqual(t["entries"][seq]["profiling_name"], profiling_name)
-            # we don't increment collective_seq_id for p2p ops.
-            self.assertEqual(t["entries"][seq]["collective_seq_id"], 0)
-            self.assertEqual(t["entries"][seq]["p2p_seq_id"], expected_seq)
-            expected_seq += 1
-            self.assertEqual(t["entries"][seq]["op_id"], expected_op_id)
-            expected_op_id += 1
-            self.assertEqual(t["entries"][seq]["input_sizes"], [input_sizes])
-            self.assertEqual(t["entries"][seq]["output_sizes"], [input_sizes])
-            self.assertEqual(t["entries"][seq]["state"], "completed")
-
-            if timing_enabled:
-                duration = t["entries"][seq]["duration_ms"]
-                self.assertTrue(0.001 < duration < 10000, duration)
-            else:
-                self.assertTrue("duration_ms" not in t["entries"][seq])
-
+instantiate_parametrized_tests(XCCLTraceTest)
 
 class SetDeviceMethod(Enum):
     TORCH_XPU_SET = auto()  # torch.xpu.set_device

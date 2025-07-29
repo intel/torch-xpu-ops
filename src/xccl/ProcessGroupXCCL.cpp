@@ -362,13 +362,14 @@ ProcessGroupXCCL::ProcessGroupXCCL(
 
   this->setGroupUid(options_->group_name);
   // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just do it here.
+  const auto XcclVersion = getXcclVersion();
   FlightRecorderXCCL::get()->record_pg_ranks(
       std::make_tuple(pg_uid_, pg_desc_), groupRanks());
+  FlightRecorderXCCL::get()->record_accelerator_version(XcclVersion, "xccl_version");
   init();
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
-  const auto XcclVersion = getXcclVersion();
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
             << "size: " << size << ", global rank: " << rank_;
 
@@ -416,12 +417,12 @@ const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
   return options_->global_ranks_in_group;
 }
 
-void ProcessGroupXCCL::setStartedPgStatus(
+void ProcessGroupXCCL::setEnqueuedPgStatus(
     c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-  pgStatus_->lastStartedSeq = static_cast<int64_t>(work->getSequencenumber());
-  pgStatus_->lastStartedWorkName = opTypeToString(work->opType_);
-  pgStatus_->lastStartedNumelIn = work->numelIn_;
-  pgStatus_->lastStartedNumelOut = work->numelOut_;
+  pgStatus_->lastEnqueuedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastEnqueuedWorkName = opTypeToString(work->opType_);
+  pgStatus_->lastEnqueuedNumelIn = work->numelIn_;
+  pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
 }
 
 void ProcessGroupXCCL::setCompletedPgStatus(
@@ -626,7 +627,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
-  setStartedPgStatus(work);
+  setEnqueuedPgStatus(work);
 
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
@@ -765,7 +766,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   for (const auto& output : outputs) {
     work->numelOut_ += output.numel();
   }
-  setStartedPgStatus(work);
+  setEnqueuedPgStatus(work);
 
   return asyncOp ? work : nullptr;
 }
@@ -867,7 +868,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         });
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
-    setStartedPgStatus(work);
+    setEnqueuedPgStatus(work);
     return work;
   } else {
     FlightRecorderXCCL::get()->record(
