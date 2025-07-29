@@ -225,8 +225,8 @@ XcclRedOp getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
 
 namespace xccl {
 
-void onecclGroupStart();
-void onecclGroupEnd();
+void oneccl_v2_group_start();
+void oneccl_v2_group_end();
 void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,

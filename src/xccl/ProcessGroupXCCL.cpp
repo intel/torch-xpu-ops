@@ -357,7 +357,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 
   for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
     (void)i;
-    xccl::onecclGroupEnd();
+    xccl::oneccl_v2_group_end();
   }
 
   int numRanks, rank;
@@ -421,7 +421,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
 
   for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
     (void)i;
-    xccl::onecclGroupStart();
+    xccl::oneccl_v2_group_start();
   }
 
   // The oneCCL group API requires retaining the SYCL queue (xcclstream) object
@@ -1230,6 +1230,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
+        const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
             input,
             output,
@@ -1894,7 +1896,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        xccl::onecclGroupStart();
+        xccl::oneccl_v2_group_start();
         for (const int r :
              c10::irange(static_cast<int>(outputTensors.size()))) {
           at::Tensor& input = inputTensors[r];
@@ -1906,7 +1908,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
             xccl::onecclRecv(output, comm, r, stream, xcclStream, SyclQueue);
           }
         }
-        xccl::onecclGroupEnd();
+        xccl::oneccl_v2_group_end();
 
         return;
       },

@@ -402,7 +402,7 @@ void onecclAllToAll(
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   auto xcclDataType = getXcclDataType(_type);
-  xccl::onecclGroupStart();
+  xccl::oneccl_v2_group_start();
   if (isCCLV2EnabledCached()) {
     int numranks = 0;
     onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
@@ -449,7 +449,7 @@ void onecclAllToAll(
       }
     }
   }
-  xccl::onecclGroupEnd();
+  xccl::oneccl_v2_group_end();
   return;
 }
 
