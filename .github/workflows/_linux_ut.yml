@@ -63,7 +63,7 @@ jobs:
           - name: 'op_regression'
             condition: ${{ contains(inputs.ut, 'op_regression') }}
             directory: 'test/regressions'
-            command: 'pytest --timeout 600 -v --junit-xml=../../ut_log/op_regression.xml'
+            command: 'pytest --timeout 600 --timeout_method=thread -v --junit-xml=../../ut_log/op_regression.xml'
             log_prefix: 'op_regression'
             additional_steps: |
               clinfo --list
