@@ -620,7 +620,7 @@ void gpu_kernel_nocast(TensorIteratorBase& iter, const func_t& f) {
   gpu_kernel_impl_nocast(iter, f);
 }
 
-template <typename func_t>
+template <typename func_t, bool enable_broadcast_vec = true>
 void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
   for (int arg = 0; arg < iter.ntensors(); arg++) {
     TORCH_INTERNAL_ASSERT(
@@ -637,12 +637,14 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
 
   if (!iter.can_use_32bit_indexing()) {
     for (auto& sub_iter : iter.with_32bit_indexing()) {
-      gpu_kernel(sub_iter, f);
+      // Broadcasting vectorization is disabled for sub-iterators to prevent
+      // potential output offset calculation issues.
+      gpu_kernel<func_t, false>(sub_iter, f);
     }
     return;
   }
 
-  gpu_kernel_impl(iter, f);
+  gpu_kernel_impl<func_t, enable_broadcast_vec>(iter, f);
 }
 
 template <typename arg1_t, typename arg2_t, typename return_t, typename func_t>
