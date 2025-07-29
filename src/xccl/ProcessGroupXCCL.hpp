@@ -33,6 +33,9 @@ static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = {
     "XCCL_COORD_CHECK_MILSEC"};
 
 using xcclComm_t = ccl::communicator;
+
+static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
+
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
 
 class TensorShelf {
@@ -177,7 +180,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       Fn fn,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr) {
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true) {
     return collective<Fn>(
         input,
         output,
@@ -188,7 +192,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
         asyncOp,
-        profilingTitle);
+        profilingTitle,
+        nanCheck);
   }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
@@ -200,11 +205,20 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       PostProcess post,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr) {
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true) {
     auto inputs = std::vector<at::Tensor>{input};
     auto outputs = std::vector<at::Tensor>{output};
     return collective(
-        inputs, outputs, fn, pre, post, opType, asyncOp, profilingTitle);
+        inputs,
+        outputs,
+        fn,
+        pre,
+        post,
+        opType,
+        asyncOp,
+        profilingTitle,
+        nanCheck);
   }
 
   template <typename Fn>
@@ -214,7 +228,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       Fn fn,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr) {
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true) {
     return collective<Fn>(
         inputs,
         outputs,
@@ -225,7 +240,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
         asyncOp,
-        profilingTitle);
+        profilingTitle,
+        nanCheck);
   }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
@@ -237,7 +253,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       PostProcess post,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr);
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collectiveCoalesced(
@@ -271,7 +288,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         },
         opType,
         asyncOp,
-        profilingTitle);
+        profilingTitle,
+        /*nanCheck =*/false);
   }
 
   template <typename Fn>
@@ -391,6 +409,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
+  void setEnableNanCheck(bool enableNanCheck);
+
   c10::DeviceIndex guessDeviceId() const;
 
   const std::vector<uint64_t>& groupRanks() const;
@@ -424,6 +444,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       std::make_shared<ProcessGroupStatus>();
   std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;
   int traceBufferSize_;
+  bool enableNanCheck_;
 
   friend class HeartbeatMonitorXCCL;
 
