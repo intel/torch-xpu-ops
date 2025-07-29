@@ -86,6 +86,7 @@ compare_and_filter_logs() {
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
     grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
+    grep -E "Timeout" "${ut_suite}"_test.log | grep "test" | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
@@ -111,8 +112,10 @@ fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
     grep -E "FAILED" op_ut_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
     grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "Timeout" op_ut_with_only_test.log | grep "test" | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
     echo -e "========================================================================="
