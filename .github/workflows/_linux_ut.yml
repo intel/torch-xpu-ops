@@ -44,7 +44,7 @@ on:
         default: 'lts'
         description: Driver lts/rolling
       keep_going:
-        required: true
+        required: false
         type: string
         default: 'false'
         description: Define the Inductor UT test mechanism
