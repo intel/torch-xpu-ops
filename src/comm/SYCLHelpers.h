@@ -5,7 +5,7 @@
 
 #ifndef SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS
 #error FATAL ERROR: The SYCL_EXT_ONEAPI_ENQUEUE_FUNCTIONS is excepted to be defined \
-  to enqueue kernel without returning event. But the undef is detected! 
+  to enqueue kernel without returning event. But the undef is detected!
 #endif
 
 // sycl access address space
