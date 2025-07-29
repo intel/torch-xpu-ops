@@ -152,8 +152,8 @@ jobs:
               "test_mkldnn_pattern_matcher.py\n" \
               "test_triton_kernels.py\n" \
               "test_compiled_optimizers.py\n" \
-              "test_compiled_autograd.py" \
-              "test_compile_subprocess.py\n" \
+              "test_compiled_autograd.py\n" \
+              "test_compile_subprocess.py" \
               > test_files_1.txt
               for line in $(cat test_files_1.txt)
               do
@@ -215,18 +215,18 @@ jobs:
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
               echo -e \
               "test_torchinductor.py\n" \
-              "test_torchinductor_opinfo.py\n" \
+              "test_torchinductor_opinfo.py" \
               > test_files_2.txt
               for line in $(cat test_files_2.txt)
               do
                 echo "=== Starting test: ${line} ==="
                 start=$(date +%s)
                 if [[ "${{ inputs.keep_going }}" == "true" ]];then
-                  python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
-                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                  python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test_error.log | \
+                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test.log
                 else
-                  python test/run_test.py --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
-                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                  python test/run_test.py --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test_error.log | \
+                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_2/torch_xpu_${line}_test.log
                 fi
                 end=$(date +%s)
                 echo -e "${line} duration: $((end - start))s"
@@ -276,18 +276,18 @@ jobs:
               export PYTORCH_TEST_WITH_SLOW=1
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
               echo -e \
-              "test_aot_inductor.py\n" \
+              "test_aot_inductor.py" \
               > test_files_3.txt
               for line in $(cat test_files_3.txt)
               do
                 echo "=== Starting test: ${line} ==="
                 start=$(date +%s)
                 if [[ "${{ inputs.keep_going }}" == "true" ]];then
-                  python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
-                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                  python test/run_test.py --keep-going --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test_error.log | \
+                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test.log
                 else
-                  python test/run_test.py --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test_error.log | \
-                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_1/torch_xpu_${line}_test.log
+                  python test/run_test.py --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test_error.log | \
+                    tee $GITHUB_WORKSPACE/ut_log/torch_xpu_3/torch_xpu_${line}_test.log
                 fi
                 end=$(date +%s)
                 echo -e "${line} duration: $((end - start))s"
