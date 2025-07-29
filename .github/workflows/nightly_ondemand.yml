@@ -89,7 +89,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
       triton: ${{ github.event_name == 'schedule' && '' || inputs.triton }}
       runner: linux.idc.xpu
-      keep_going: ${{ github.event_name == 'schedule' && 'true' }}
+      keep_going: true
 
   Linux-Nightly-Ondemand-E2E-Tests:
     runs-on: pvc_e2e

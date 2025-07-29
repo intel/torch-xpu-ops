@@ -44,7 +44,7 @@ on:
         default: 'lts'
         description: Driver lts/rolling
       keep_going:
-        required: false
+        required: true
         type: string
         default: 'false'
         description: Define the Inductor UT test mechanism
@@ -151,7 +151,6 @@ jobs:
               "test_max_autotune.py\n" \
               "test_mkldnn_pattern_matcher.py\n" \
               "test_triton_kernels.py\n" \
-              "test_torchinductor.py\n" \
               "test_compiled_optimizers.py\n" \
               "test_compiled_autograd.py" \
               "test_compile_subprocess.py\n" \
@@ -215,6 +214,7 @@ jobs:
               export PYTORCH_TEST_WITH_SLOW=1
               export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
               echo -e \
+              "test_torchinductor.py\n" \
               "test_torchinductor_opinfo.py\n" \
               > test_files_2.txt
               for line in $(cat test_files_2.txt)
