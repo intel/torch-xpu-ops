@@ -1,0 +1,150 @@
+name: Standalone Test
+
+on:
+  workflow_call:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'master_next'
+        description: Pytorch branch/commit
+      keep_torch_xpu_ops:
+        required: false
+        type: string
+        default: 'false'
+        description: Keep torch-xpu-ops pin. `true` means use pined commit
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      runner:
+        required: true
+        type: string
+        default: 'linux.idc.xpu'
+        description: Runner label
+      ut:
+        required: true
+        type: string
+        default: ''
+        description: UT scope. `op_standalone` Delimiter is comma
+      test_type:
+        required: true
+        type: string
+        default: ''
+        description: test type.
+      dep_path:
+        required: false
+        type: string
+        default: ''
+        description: Dependency path. If not set, will pull latest to workspace
+
+permissions: read-all
+
+jobs:
+  standalone_ut_test:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 3000
+    env: 
+      standalone_ut_runable: ${{ inputs.test_type }}
+      MAX_RETRIES: 3
+      DEPENDENCY_DIR: ${{ inputs.dep_path }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare Stock Pytorch
+        run: |
+          pwd
+          which conda && conda clean -ay
+          conda remove --all -y -n xpu_op_test || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/xpu_op_test
+          conda create -n xpu_op_test python=${{ inputs.python }} cmake ninja -y
+          source activate xpu_op_test
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
+          pip install requests
+          git clone https://github.com/intel-innersource/frameworks.ai.pytorch.private-gpu.git pytorch
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}
+      - name: Install Pytorch XPU
+        run: |
+          source activate xpu_op_test
+          cd ../pytorch
+          pip install -r requirements.txt
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          pip install -r .ci/docker/requirements-ci.txt
+      - name: Run standalone UT
+        if: contains(inputs.ut, 'op_standalone')
+        run: |
+          set -e
+          source activate xpu_op_test
+          if [[ -z "${{ inputs.dep_path }}" ]]; then
+            bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh
+          fi
+          source ${{ github.workspace }}/.github/scripts/env.sh
+          mkdir -p ${{ github.workspace }}/ut_log
+          git clone https://github.com/intel-innersource/frameworks.ai.pytorch.gpu-models.git
+          cd frameworks.ai.pytorch.gpu-models/presi-models/test
+          repo="${{ github.repository }}"
+          gh --repo $repo issue view $standalone_ut_runable --json body -q .body | sed '/^$/d' > standalone_ut_runable.log
+          list=`cat standalone_ut_runable.log`
+          for i in $list; do
+            start=$(date +%s);
+            echo `date`;
+            timeout 3600s pytest -vs $i --durations=0 -vv;
+            end=$(date +%s);
+            echo -e "$i duration: $((end - start))s";
+          done  2>&1 | tee ${{ github.workspace }}/ut_log/standalone_ut_results.log
+
+          # check the coral connection error
+          if grep "TbxSocketsImp Error" ${{ github.workspace }}/ut_log/standalone_ut_results.log; then
+            echo "::error::Found 'TbxSocketsImp Error' in logs - failing job"
+            exit 1
+          fi
+      - name: Upload Standalone UT Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/ut_log
+  
+  standalone_ut_test_results_check:
+    needs: standalone_ut_test
+    runs-on: lint_check
+    timeout-minutes: 30
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Download XPU Standalone UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/ut_log
+      - name: Check UT Results
+        shell: bash
+        run: |
+          repo="${{ github.repository }}"
+          function contains() {
+              contains_status="echo 'Start $2 ...'"
+              {
+                [[ $1 =~ (^|,)$2($|,) ]]
+              } || {
+                echo "[Warning] $2 is not suppotted type! Skipped!"
+                contains_status="continue"
+              }
+          }
+          set -xe
+          echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          cd ${{ github.workspace }}/ut_log
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          bash ut_result_check.sh 'op_standalone'
+      - name: Upload Standalone UT Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}-checked
+          path: ${{ github.workspace }}/ut_log

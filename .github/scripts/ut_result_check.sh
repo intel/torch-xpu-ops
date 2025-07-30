@@ -242,3 +242,21 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
+
+if [[ "${ut_suite}" == 'op_standalone' ]]; then
+    grep -E "FAILED" standalone_ut_results.log | awk '{print $1}' | grep -v "FAILED" > ./standalone_ut_results_failed.log
+    grep -E "Error" standalone_ut_results.log | awk '{print $1}' >> ./standalone_ut_results_failed.log
+    grep -E "PASSED" standalone_ut_results.log | awk '{print $1}' > ./standalone_ut_results_passed.log
+    num_failed=$(wc -l < "./standalone_ut_results_failed.log")
+    num_passed=$(wc -l < "./standalone_ut_results_passed.log")
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite}"
+    echo -e "========================================================================="
+    cat "./standalone_ut_results_failed.log"
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
+      echo -e "[ERROR] UT ${ut_suite} test Fail"
+      exit 1
+    else
+      echo -e "[PASS] UT ${ut_suite} test Pass"
+    fi
+fi

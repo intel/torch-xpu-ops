@@ -1,11 +1,11 @@
 #!/bin/bash
 
-XPU_ONEAPI_PATH="${XPU_ONEAPI_PATH:-"/opt/intel/oneapi"}"
-
-source ${XPU_ONEAPI_PATH}/compiler/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/pti/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/umf/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/ccl/latest/env/vars.sh
-source ${XPU_ONEAPI_PATH}/mpi/latest/env/vars.sh
+DEPENDENCY_DIR=${DEPENDENCY_DIR:-$GITHUB_WORKSPACE/../dependencies}
+source ${DEPENDENCY_DIR}/DPCPP_JGS/setvars.sh
+export _profiling_tools_root=${DEPENDENCY_DIR}/PROFILING_TOOLS_JGS/
+export LD_LIBRARY_PATH=${_profiling_tools_root}/lib:$LD_LIBRARY_PATH
+export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-$(dirname "$(which conda)")/../}:${_profiling_tools_root}:${CMAKE_PREFIX_PATH}
+grep "Build URL" ${DEPENDENCY_DIR}/DPCPP_JGS/version.txt
+grep "Build URL" ${DEPENDENCY_DIR}/PROFILING_TOOLS_JGS/version.txt
 icpx --version
 sycl-ls

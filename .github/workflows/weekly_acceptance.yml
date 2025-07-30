@@ -1,0 +1,64 @@
+name: Acceptance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'master_next'
+        description: Pytorch branch/commit
+      keep_torch_xpu_ops:
+        required: false
+        type: string
+        default: 'false'
+        description: Keep torch-xpu-ops pin. `true` means use pined commit
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+      runner:
+        required: true
+        type: string
+        default: 'acceptance_test'
+        description: Runner label
+      ut:
+        required: true
+        type: string
+        default: ''
+        description: UT scope. `op_standalone` Delimiter is comma
+      test_type:
+        required: true
+        type: string
+        default: '8'
+        description: Test type, correlate to issue number
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.python }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  Linux-Acceptance-Build:
+    name: linux-acceptance-ondemand-build
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: ${{ inputs.pytorch }}
+      keep_torch_xpu_ops: ${{ inputs.keep_torch_xpu_ops }}
+      python: ${{ inputs.python }}
+      runner: ${{ inputs.runner }}
+  
+  Linux-Acceptance-Test:
+    name: linux-acceptance-ondemand-test
+    secrets: inherit
+    needs: Linux-Acceptance-Build
+    uses: ./.github/workflows/_standalone_tests.yml
+    with:
+      pytorch: ${{ inputs.pytorch }}
+      runner: ${{ inputs.runner }}
+      ut: ${{ inputs.ut }}
+      python: ${{ inputs.python }}
+      test_type: ${{ inputs.test_type }}
