@@ -940,6 +940,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(last["profiling_name"], "xccl:all_reduce")
         dist.destroy_process_group()
 
+
 instantiate_parametrized_tests(XCCLTraceTest)
 instantiate_parametrized_tests(ProcessGroupXCCLTest)
 
