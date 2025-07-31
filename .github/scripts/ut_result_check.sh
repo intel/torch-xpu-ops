@@ -105,9 +105,16 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     fi
 fi
 if [[ "${ut_suite}" =~ ^torch_xpu_[123]$ ]]; then
-    grep -E "FAILED" inductor_test*.log | awk '{print $3}' | grep -v "/inductor" | awk '!seen[$0]++' > ./"${ut_suite}"_failed.log
+    grep -E "FAILED" inductor_test*.log | awk '{print $3}' | grep -v "/inductor" | awk '!seen[$0]++' | sed '/^\[[0-9.]*s\]\|^\[[0-9]\+%\]/d' > ./"${ut_suite}"_failed.log
     grep -E "have failures" inductor_test*.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep "PASSED" inductor_test*.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite}"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite}"
+    echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
     if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
       num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
@@ -115,10 +122,6 @@ if [[ "${ut_suite}" =~ ^torch_xpu_[123]$ ]]; then
       num_failed=$(wc -l < "./${ut_suite}_failed.log")
     fi
     num_passed=$(wc -l < "./${ut_suite}_passed.log")
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite}"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_failed.log"
     if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
