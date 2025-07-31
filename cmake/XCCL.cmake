@@ -17,10 +17,4 @@ if(NOT __XCCL_INCLUDED)
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
     ${XCCL_LIBRARY})
-  set_property(
-    TARGET torch::xccl APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES
-    /usr/include)
-  set_property(
-    TARGET torch::xccl APPEND PROPERTY INTERFACE_LINK_LIBRARIES
-    /usr/lib/x86_64-linux-gnu/libze_loader.so)
 endif()
