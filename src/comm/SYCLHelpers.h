@@ -145,7 +145,8 @@ sycl_kernel_submit(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
   };
-  ::sycl::ext::oneapi::experimental::submit(q, cgf);
+  // ::sycl::ext::oneapi::experimental::submit(q, cgf);
+  q.submit(cgf);
 }
 
 #define SYCL_KERNEL_STRING(var, str) \
