@@ -101,8 +101,10 @@ static inline void _embedding(
   auto slmkfn = SLMKernelClass(
       output, weight, index, num_embeddings, embedding_dim, indices_length);
   // 2 work group share 1 Xe core, so slm is 64KB
-  if (num_embeddings * embedding_dim * sizeof(scalar_t) <=
-      syclLocalMemSize() / 2)
+  if (static_cast<uint64_t>(num_embeddings) * 
+      static_cast<uint64_t>(embedding_dim) * 
+      static_cast<uint64_t>(sizeof(scalar_t)) <= 
+      static_cast<uint64_t>(syclLocalMemSize() / 2))
     sycl_kernel_submit(
         num_work_group * work_group_size,
         work_group_size,
