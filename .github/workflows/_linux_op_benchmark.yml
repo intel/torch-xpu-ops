@@ -116,42 +116,65 @@ jobs:
           do
             python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
+          pip install pandas openpyxl
           # Summary forward op time
-          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
+          python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/forward_op_summary.csv
           # Summary backward op time
-          bash ${{ github.workspace }}/.github/scripts/microbench_summary.sh ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv True
+          python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --backward
+      - name: Upload Inductor XPU OP benchmark Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/op_benchmark
+
+  op_benchmark_test_results_check:
+    needs: op_benchmark_test
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      reference_issue: 1689
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}/op_benchmark
       - name: Download OP Baseline
         continue-on-error: true
         id: reference_id
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          conda install gh --channel conda-forge -y
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
-          rm -rf ${GITHUB_WORKSPACE:-"/tmp"}/reference
-          mkdir ${GITHUB_WORKSPACE:-"/tmp"}/reference
-          mv Inductor-XPU-OP-Benchmark-Data-*/* ${GITHUB_WORKSPACE:-"/tmp"}/reference
+          rm -rf ${{ github.workspace }}/reference
+          mkdir -p ${{ github.workspace }}/reference
+          mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
 
-          mkdir ${{ github.workspace }}/baseline
-          if [[ -f "${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+          mkdir -p ${{ github.workspace }}/baseline
+          if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
+            cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
+            cp ${{ github.workspace }}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
           else
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
-            cp ${GITHUB_WORKSPACE:-"/tmp"}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+            cp ${{ github.workspace }}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+            cp ${{ github.workspace }}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
           fi
       - name: Check the OP Regression
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install tabulate
+          pip install tabulate pandas
           # Compare forward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
           # Compare backward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
       - name: Update OP Baseline
         run: |
-          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install tabulate pandas
           mkdir ${{ github.workspace }}/new_baseline
           cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
           # Update forward op
@@ -163,7 +186,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
         run: |

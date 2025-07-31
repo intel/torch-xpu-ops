@@ -19,7 +19,7 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
         xpu_reader = csv.DictReader(f, delimiter=';')
         xpu_rows = list(xpu_reader)
         xpu_fieldnames = xpu_reader.fieldnames  # Keep original field order
-        fieldnames = [f for f in xpu_fieldnames if f != 'time(us)']
+        fieldnames = [f for f in xpu_fieldnames if f not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']]
         xpu_data = {make_key(row, fieldnames): (float(row['time(us)']), row) for row in xpu_rows}
 
     with open(baseline_file) as f:
@@ -29,7 +29,7 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
 
     # To add new parameter of new ops into baseline file
     all_fieldnames = xpu_fieldnames + [f for f in baseline_fieldnames if f not in xpu_fieldnames]
-    fieldnames = [f for f in all_fieldnames if f != 'time(us)']
+    fieldnames = [f for f in all_fieldnames if f not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']]
 
     baseline_keys = {make_key(row, fieldnames) for row in baseline_rows}
     xpu_keys = set(xpu_data.keys())
@@ -46,6 +46,8 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
                 for field in all_fieldnames:
                     updated_row[field] = xpu_row.get(field, row.get(field, ''))
                 updated_row['time(us)'] = str(xpu_time)
+                if 'E2E total time(us)' in row:
+                    updated_row['E2E total time(us)'] = row['E2E total time(us)']
                 updated_cases.append((key, baseline_time, xpu_time, updated_row))
                 updated_rows.append(updated_row)
             else:
@@ -82,7 +84,7 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
             print(f"Time: {time} us")
             print("Parameters:")
             for k, v in row.items():
-                if k != 'time(us)':
+                if k not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']:
                     print(f"  {k}: {v}")
         print("-" * 60)
 
@@ -93,7 +95,7 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
             print(f"Time: {old_time} us → {new_time} us")
             print("Parameters:")
             for k, v in row.items():
-                if k != 'time(us)':
+                if k not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']:
                     print(f"  {k}: {v}")
         print("-" * 60)
 
@@ -104,7 +106,7 @@ def update_baseline(xpu_file, baseline_file, remove_missing=False):
             print(f"Time: {time} us")
             print("Parameters:")
             for k, v in row.items():
-                if k != 'time(us)':
+                if k not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']:
                     print(f"  {k}: {v}")
         print("-" * 60)
 
