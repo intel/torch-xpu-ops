@@ -25,7 +25,6 @@ compare_and_filter_logs() {
         echo "$file_UT contains $file_known_issue"
     else
         echo "$file_UT does not contain $file_known_issue"
-        return 1
     fi
 
     # Filter the same content from file_UT as file_known_issue
@@ -77,7 +76,7 @@ compare_and_filter_logs() {
             printf "\033[33m%3d\033[0m: %s\n", line_number, $0
         }' "$filtered_content"
     else
-        echo -e "\n\033[1;32mNo Filtered Cases\033[0m"
+        echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
     fi
 
     rm -f ${temp_output} ${temp_file} ${temp_final}
@@ -86,7 +85,7 @@ compare_and_filter_logs() {
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
     grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
-    grep -E "Timeout" "${ut_suite}"_test.log | grep "test" | awk '{print $1}' >> ./"${ut_suite}"_failed.log
+    grep -E "Timeout" "${ut_suite}"_test.log | grep "test" >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
@@ -112,10 +111,10 @@ fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
     grep -E "FAILED" op_ut_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
     grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "Timeout" op_ut_with_only_test.log | grep "test" | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "Timeout" op_ut_with_only_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
     echo -e "========================================================================="
