@@ -1,10 +1,10 @@
 #pragma once
 
-#include <sycl/sycl.hpp>
 #include <ATen/ATen.h>
-#include <xccl/XPUSymmetricMemoryTypes.hpp>
+#include <sycl/sycl.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
+#include <xccl/XPUSymmetricMemoryTypes.hpp>
 
 namespace c10d::symmetric_memory {
 
@@ -65,7 +65,7 @@ class XPUSymmetricMemory : public SymmetricMemory {
   void barrier(int channel, size_t timeout_ms) override;
   void put_signal(int dst_rank, int channel, size_t timeout_ms) override;
   void wait_signal(int src_rank, int channel, size_t timeout_ms) override;
-  void copy_buffer(at::Tensor src, at::Tensor dst , size_t size) override;
+  void copy_buffer(at::Tensor src, at::Tensor dst, size_t size) override;
 
   int get_rank() override;
   int get_world_size() override;
@@ -117,7 +117,7 @@ class XPUSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       void* ptr,
       const std::optional<std::string>& group_name) override;
   bool has_multicast_support(int device_idx) override;
-//  void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr);
+  //  void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr);
   c10::DeviceType supported_device_type() override;
   std::string name() override;
 

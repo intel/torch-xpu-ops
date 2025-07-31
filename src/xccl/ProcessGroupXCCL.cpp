@@ -1872,7 +1872,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   }
 
   auto currentStream = at::xpu::getCurrentXPUStream(barDevIdx);
-//  currentStream.synchronize(); // zl_debug workaround for symm barrier
+  //  currentStream.synchronize(); // zl_debug workaround for symm barrier
   return nullptr;
 }
 
