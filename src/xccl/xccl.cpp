@@ -23,12 +23,10 @@ void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    const c10d::ReduceOp& reduceOp,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
+    XcclRedOp& xcclReduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-  auto xcclReduceOp = getXcclReduceOp(reduceOp, input);
   if (isCCLV2EnabledCached()) {
     onecclAllReduce(
         input.data_ptr(),
@@ -55,13 +53,11 @@ void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    const c10d::ReduceOp& reduceOp,
+    XcclDataType& xcclDataType,
+    XcclRedOp& xcclReduceOp,
     const int root,
-    at::xpu::XPUStream& stream,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-  auto xcclReduceOp = getXcclReduceOp(reduceOp, input);
   if (isCCLV2EnabledCached()) {
     onecclReduce(
         input.data_ptr(),
@@ -91,10 +87,9 @@ void onecclBroadcast(
     at::Tensor& output,
     xcclComm_t& comm,
     const int root,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(input.scalar_type());
   if (isCCLV2EnabledCached()) {
     onecclBroadcast(
         input.data_ptr(),
@@ -121,12 +116,10 @@ void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    const ReduceOp& reduceOp,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
+    XcclRedOp& xcclReduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-  auto xcclReduceOp = getXcclReduceOp(reduceOp, input);
   if (isCCLV2EnabledCached()) {
     onecclReduceScatter(
         input.data_ptr(),
@@ -153,10 +146,9 @@ void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(input.scalar_type());
   if (isCCLV2EnabledCached()) {
     onecclAllGather(
         input.data_ptr(),
@@ -181,10 +173,9 @@ void onecclSend(
     at::Tensor& input,
     xcclComm_t& comm,
     const int dstRank,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(input.scalar_type());
   if (isCCLV2EnabledCached()) {
     onecclSend(
         input.data_ptr(),
@@ -209,10 +200,9 @@ void onecclRecv(
     at::Tensor& output,
     xcclComm_t& comm,
     const int srcRank,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(output.scalar_type());
   if (isCCLV2EnabledCached()) {
     onecclRecv(
         output.data_ptr(),
@@ -238,10 +228,9 @@ void onecclGather(
     std::vector<at::Tensor>& outputs,
     xcclComm_t& comm,
     const int root,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(inputs.scalar_type());
   size_t count = inputs.numel();
 
   if (isCCLV2EnabledCached()) {
@@ -314,7 +303,7 @@ void onecclScatter(
     at::Tensor& outputs,
     xcclComm_t& comm,
     const int root,
-    at::xpu::XPUStream& stream,
+    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
@@ -326,11 +315,10 @@ void onecclScatter(
       for (const auto r : c10::irange(numranks)) {
         if (r != root) {
           size_t send_count = inputs[r].numel();
-          auto send_type = getXcclDataType(inputs[r].scalar_type());
           onecclSend(
               inputs[r].data_ptr(),
               send_count,
-              std::get<onecclDataType_t>(send_type),
+              std::get<onecclDataType_t>(xcclDataType),
               r,
               std::get<onecclComm_t>(comm),
               &SyclQueue);
@@ -341,11 +329,10 @@ void onecclScatter(
       }
     } else {
       size_t recv_count = outputs.numel();
-      auto recv_type = getXcclDataType(outputs.scalar_type());
       onecclRecv(
           outputs.data_ptr(),
           recv_count,
-          std::get<onecclDataType_t>(recv_type),
+          std::get<onecclDataType_t>(xcclDataType),
           root,
           std::get<onecclComm_t>(comm),
           &SyclQueue);
@@ -359,11 +346,10 @@ void onecclScatter(
       for (const auto r : c10::irange(numranks)) {
         if (r != root) {
           size_t send_count = inputs[r].numel();
-          auto send_type = getXcclDataType(inputs[r].scalar_type());
           ccl::send(
               inputs[r].data_ptr(),
               send_count,
-              std::get<ccl::datatype>(send_type),
+              std::get<ccl::datatype>(xcclDataType),
               r,
               std::get<ccl::communicator>(comm),
               xcclStream);
@@ -374,11 +360,10 @@ void onecclScatter(
       }
     } else {
       size_t recv_count = outputs.numel();
-      auto recv_type = getXcclDataType(outputs.scalar_type());
       ccl::recv(
           outputs.data_ptr(),
           recv_count,
-          std::get<ccl::datatype>(recv_type),
+          std::get<ccl::datatype>(xcclDataType),
           root,
           std::get<ccl::communicator>(comm),
           xcclStream);
@@ -396,12 +381,10 @@ void onecclAllToAll(
     const size_t* recvcounts,
     const size_t* recvdispls,
     size_t size,
-    c10::ScalarType _type,
+    XcclDataType& xcclDataType,
     xcclComm_t& comm,
-    at::xpu::XPUStream& stream,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  auto xcclDataType = getXcclDataType(_type);
   xccl::oneccl_v2_group_start();
   if (isCCLV2EnabledCached()) {
     int numranks = 0;
