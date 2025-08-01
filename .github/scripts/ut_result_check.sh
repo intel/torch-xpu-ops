@@ -9,6 +9,10 @@ compare_and_filter_logs() {
     local file_known_issue="$2"
     local output_file="${3:-${file_UT%.*}_filtered.log}"
     local filtered_content="${file_UT%.*}_removed.log"
+    local temp_file="temp_parts.log"
+    local temp_file_labeled="temp_parts_labeled.log"
+    local temp_output="${3:-${file_UT%.*}_filtered_temp.log}"
+    local temp_final="${file_UT%.*}_final_temp.log"
 
     if [[ $# -lt 2 ]]; then
         echo "[ERROR] Need 2 files to compare"
@@ -21,7 +25,6 @@ compare_and_filter_logs() {
         echo "$file_UT contains $file_known_issue"
     else
         echo "$file_UT does not contain $file_known_issue"
-        return 1
     fi
 
     # Filter the same content from file_UT as file_known_issue
@@ -31,8 +34,41 @@ compare_and_filter_logs() {
     # Keep the filtered UT cases
     grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
     echo "Filtered cases file: $filtered_content"
+    true > "$temp_file"
+    true > "$temp_file_labeled"
+    true > "$temp_output"
+    true > "$temp_final"
+    grep -E '\.py$|,' "$output_file" > "$temp_output"
+    while IFS= read -r line; do
+        IFS=',' read -ra parts <<< "$line"
+        for part in "${parts[@]}"; do
+            part_trimmed=$(echo "$part" | xargs)
+            if [[ -n "$part_trimmed" ]] && ! grep -qF "$part_trimmed" "$file_known_issue"; then
+                echo "$part_trimmed" >> "$temp_file"
+                echo -e "\n\033[1;33m[Check the failed cases in summary line]\033[0m"
+                echo -e "\033[1;33mCase not found in ${file_known_issue}: '${part_trimmed}' (from line: '${line}')\033[0m"
+            else
+                echo -e "\n\033[1;33m[Check the failed cases in summary line]\033[0m"
+                echo -e "\n\033[1;32m${part_trimmed} found in ${file_known_issue} (from line: '${line}')\033[0m"
+            fi
+        done
+    done < "$temp_output"
+
+    awk '{print $0 " [in summary line]"}' "$temp_file" > "$temp_file_labeled"
+    grep -vE '\.py$|,' "$output_file" > "$temp_final"
+    cat "$temp_file_labeled" >> "$temp_final"
+    mv "$temp_final" "$output_file"
+
+    echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
+    if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
+        echo -e "\033[1;32mNo new failed cases found\033[0m"
+    else
+        echo -e "\n\033[1;31mNew failed cases, not in known issues\033[0m"
+        cat "$output_file"
+    fi
+
     if [[ -s "$filtered_content" ]]; then
-        echo -e "\n\033[1;31m[Filtered Cases]\033[0m"
+        echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
         awk -F':' '{
             line_number = $1
             $1 = ""
@@ -40,14 +76,24 @@ compare_and_filter_logs() {
             printf "\033[33m%3d\033[0m: %s\n", line_number, $0
         }' "$filtered_content"
     else
-        echo -e "\n\033[1;32mNo Filtered Cases\033[0m"
+        echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
     fi
+
+    rm -f ${temp_output} ${temp_file} ${temp_final}
 }
 
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
     grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
+    grep -E "Timeout" "${ut_suite}"_test.log | grep "test" >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite}"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite}"
+    echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
     if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
       num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
@@ -55,10 +101,6 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
       num_failed=$(wc -l < "./${ut_suite}_failed.log")
     fi
     num_passed=$(wc -l < "./${ut_suite}_passed.log")
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite}"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_failed.log"
     if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
@@ -69,28 +111,36 @@ fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
     grep -E "FAILED" op_ut_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
     grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "Timeout" op_ut_with_only_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} with skip"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_with_skip_test_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite} with skip"
+    echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_with_skip_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_with_skip_test_failed_filtered.log" ]]; then
       num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed_filtered.log")
     else
       num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed.log")
     fi
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} with only"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_with_only_test_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite} with only"
+    echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_with_only_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_with_only_test_failed_filtered.log" ]]; then
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
     else
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
     fi
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} with skip"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_with_skip_test_failed.log"
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} with only"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_with_only_test_failed.log"
     ((num_failed=num_failed_with_skip+num_failed_with_only))
     grep "PASSED" op_ut_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
     grep "PASSED" op_ut_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
@@ -136,16 +186,19 @@ fi
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
     grep -E "have failures" xpu_distributed_test.log | awk '{print $1}' >> ./"${ut_suite}"_xpu_distributed_test_failed.log
+    echo -e "========================================================================="
+    echo -e "Show Failed cases in ${ut_suite} xpu distributed"
+    echo -e "========================================================================="
+    cat "./${ut_suite}_xpu_distributed_test_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite} xpu distributed"
+    echo -e "========================================================================="
     compare_and_filter_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_xpu_distributed_test_failed_filtered.log" ]]; then
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_filtered.log")
     else
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
     fi
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} xpu distributed"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_xpu_distributed_test_failed.log"
     ((num_failed=num_failed_xpu_distributed))
     if [[ $num_failed -gt 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
