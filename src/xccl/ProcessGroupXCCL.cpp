@@ -273,59 +273,6 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
   return r;
 }
 
-void ProcessGroupXCCL::broadcastUniqueXCCLID(
-    onecclUniqueId* xcclID,
-    bool isSingleP2POp,
-    const std::string& p2pKey,
-    int p2pRank) {
-  std::string storeKey;
-  if (!isSingleP2POp) {
-    storeKey = std::to_string(xcclCommCounter_++);
-  } else {
-    storeKey = p2pKey;
-  }
-  if (rank_ == 0 || (isSingleP2POp && p2pRank == 0)) {
-    auto vec = std::vector<uint8_t>(
-        reinterpret_cast<uint8_t*>(xcclID),
-        reinterpret_cast<uint8_t*>(xcclID) + ONECCL_UNIQUE_ID_BYTES);
-    store_->set(storeKey, vec);
-  } else {
-    try {
-      auto vec = store_->get(storeKey);
-      TORCH_CHECK_WITH(
-          DistBackendError,
-          vec.size() == ONECCL_UNIQUE_ID_BYTES,
-          "Invalid size for xcclUniqueId");
-      std::memcpy(xcclID, vec.data(), vec.size());
-    } catch (const std::exception& e) {
-      std::string exceptionMsg = c10::str(
-          "[",
-          rank_,
-          "] is setting up XCCL communicator and "
-          "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
-          storeKey,
-          "', but store->get('",
-          storeKey,
-          "') got error: ");
-      C10_THROW_ERROR(
-          DistBackendError,
-          exceptionMsg + e.what() +
-              ". This may indicate a possible application crash on rank 0 or a network set up issue.");
-    } catch (...) {
-      C10_THROW_ERROR(
-          DistBackendError,
-          c10::str(
-              "Unknown exception while [",
-              rank_,
-              "] is setting up XCCL communicator and "
-              "retrieving xcclUniqueId from [0] via c10d key-value store by key '",
-              storeKey,
-              "'",
-              ". This may indicate a possible application crash on rank 0 or a network set up issue."));
-    }
-  }
-}
-
 std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     const std::string& deviceKey,
     at::Device& device,
@@ -377,33 +324,17 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
-  bool useCCLV2 = isCCLV2EnabledCached();
-  if (!useCCLV2) {
-    auto ctx = ccl::create_context(q.get_context());
-    ccl::vector_class<ccl::pair_class<int, ccl::device>> devs_rank;
-    devs_rank.emplace_back(rank, ccl::create_device(q.get_device()));
-
-    auto xccl_kvs = get_kvs(rank_, *store_, singleP2POp, deviceKey, p2pRank);
-    auto comms = ccl::create_communicators(numRanks, devs_rank, ctx, xccl_kvs);
-    XCCLComm = std::make_shared<xcclComm_t>(std::move(comms[0]));
-  } else {
-    onecclUniqueId xcclID;
-    if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
-      onecclGetUniqueId(&xcclID);
-    }
-    broadcastUniqueXCCLID(&xcclID, singleP2POp, deviceKey, p2pRank);
-    onecclComm_t comm = nullptr;
-    onecclResult_t result = onecclSuccess;
-    result = onecclSetDevice(device.index());
-    if (result != onecclSuccess) {
-      std::cerr << "Failed to set device.\n";
-    }
-    result = onecclCommInitRank(&comm, numRanks, xcclID, rank);
-    if (result != onecclSuccess) {
-      std::cerr << "Failed to initialize communicator.\n";
-    }
-    XCCLComm = std::make_shared<xcclComm_t>(comm);
-  }
+  XCCLComm = createXCCLCommHelper(
+      rank,
+      numRanks,
+      rank_,
+      device,
+      q,
+      deviceKey,
+      store_.get(),
+      singleP2POp,
+      p2pRank,
+      xcclCommCounter_);
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -559,18 +490,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   } else {
     auto StreamKey = key + "_" +
         std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
-    if (xcclStreamsMap_.find(StreamKey) != xcclStreamsMap_.end()) {
-      cclstream = std::make_unique<ccl::stream>(
-          xcclStreamsMap_.at(StreamKey).cclStream);
-      syclQueue =
-          std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).syclQueue);
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = xcclStreamsMap_.find(StreamKey);
+    if (it != xcclStreamsMap_.end()) {
+      cclstream = std::make_unique<ccl::stream>(it->second.cclStream);
+      syclQueue = std::make_unique<sycl::queue>(it->second.syclQueue);
     } else {
       LOG(INFO) << "Current stream id changed, create new ccl stream";
-      // update xcclStreamsMap_ with current stream key
       cclstream =
           std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
       syclQueue = std::make_unique<sycl::queue>(stream.queue());
-      std::lock_guard<std::mutex> lock(mutex_);
       xcclStreamsMap_.emplace(
           StreamKey,
           XCCLStream{at::xpu::XPUStream(stream), *cclstream, *syclQueue});
@@ -753,7 +682,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue,
           int dst) {
-        xccl::onecclSend(input, comm, dst, stream, xcclStream, SyclQueue);
+        auto xcclDataType = getXcclDataType(input.scalar_type());
+        xccl::onecclSend(input, comm, dst, xcclDataType, xcclStream, SyclQueue);
         return;
       },
       dstRank,
@@ -798,7 +728,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue,
           int src) {
-        xccl::onecclRecv(output, comm, src, stream, xcclStream, SyclQueue);
+        auto xcclDataType = getXcclDataType(output.scalar_type());
+        xccl::onecclRecv(
+            output, comm, src, xcclDataType, xcclStream, SyclQueue);
         return;
       },
       srcRank,
@@ -882,8 +814,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const auto root = opts.rootRank;
+        auto xcclDataType = getXcclDataType(inputTensor.scalar_type());
         xccl::onecclGather(
-            inputTensor, outputs, comm, root, stream, xcclStream, SyclQueue);
+            inputTensor,
+            outputs,
+            comm,
+            root,
+            xcclDataType,
+            xcclStream,
+            SyclQueue);
         return;
       },
       OpType::GATHER,
@@ -974,8 +913,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
                 input.storage().data_ptr(), stream);
           }
         }
+        auto xcclDataType = getXcclDataType(outputTensor.scalar_type());
         xccl::onecclScatter(
-            inputs, outputTensor, comm, root, stream, xcclStream, SyclQueue);
+            inputs,
+            outputTensor,
+            comm,
+            root,
+            xcclDataType,
+            xcclStream,
+            SyclQueue);
       },
       OpType::SCATTER,
       opts.asyncOp,
@@ -996,8 +942,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, stream, xcclStream, SyclQueue);
+            input,
+            output,
+            comm,
+            xcclDataType,
+            xcclReduceOp,
+            xcclStream,
+            SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1086,8 +1040,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, stream, xcclStream, SyclQueue);
+            input,
+            output,
+            comm,
+            xcclDataType,
+            xcclReduceOp,
+            xcclStream,
+            SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1146,8 +1108,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type());
         xccl::onecclBroadcast(
-            input, output, comm, root, stream, xcclStream, SyclQueue);
+            input, output, comm, root, xcclDataType, xcclStream, SyclQueue);
         return;
       },
       OpType::BROADCAST,
@@ -1176,8 +1139,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type());
         xccl::onecclBroadcast(
-            input, output, comm, root, stream, xcclStream, SyclQueue);
+            input, output, comm, root, xcclDataType, xcclStream, SyclQueue);
         return;
       },
       OpType::BROADCAST,
@@ -1230,15 +1194,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
-        const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
             input,
             output,
             comm,
-            opts.reduceOp,
+            xcclDataType,
+            xcclReduceOp,
             root,
-            stream,
             xcclStream,
             SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1275,13 +1239,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
+        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
             input,
             output,
             comm,
-            opts.reduceOp,
+            xcclDataType,
+            xcclReduceOp,
             root,
-            stream,
             xcclStream,
             SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1345,8 +1311,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream,
             sycl::queue& SyclQueue) {
+          auto xcclDataType = getXcclDataType(input.scalar_type());
           xccl::onecclAllGather(
-              input, output, comm, stream, xcclStream, SyclQueue);
+              input, output, comm, xcclDataType, xcclStream, SyclQueue);
           return;
         },
         [](at::xpu::XPUStream&,
@@ -1424,8 +1391,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type());
         xccl::onecclAllGather(
-            input, output, comm, stream, xcclStream, SyclQueue);
+            input, output, comm, xcclDataType, xcclStream, SyclQueue);
         return;
       },
       OpType::_ALLGATHER_BASE,
@@ -1467,8 +1435,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type());
         xccl::onecclAllGather(
-            input, output, comm, stream, xcclStream, SyclQueue);
+            input, output, comm, xcclDataType, xcclStream, SyclQueue);
         return;
       },
       OpType::COALESCED,
@@ -1519,12 +1488,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream,
             sycl::queue& SyclQueue) {
+          auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+          auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
           xccl::onecclReduceScatter(
               input,
               output,
               comm,
-              opts.reduceOp,
-              stream,
+              xcclDataType,
+              xcclReduceOp,
               xcclStream,
               SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1613,8 +1584,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, stream, xcclStream, SyclQueue);
+            input,
+            output,
+            comm,
+            xcclDataType,
+            xcclReduceOp,
+            xcclStream,
+            SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1665,8 +1644,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
+        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
+        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, stream, xcclStream, SyclQueue);
+            input,
+            output,
+            comm,
+            xcclDataType,
+            xcclReduceOp,
+            xcclStream,
+            SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1831,7 +1818,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
             outputSplitSizes, output, &recv_lengths, &recv_offsets);
         c10::xpu::XPUCachingAllocator::recordStream(
             output.storage().data_ptr(), stream);
-
+        auto xcclDataType = getXcclDataType(input.scalar_type());
         xccl::onecclAllToAll(
             input.data_ptr(),
             send_lengths.data(),
@@ -1840,9 +1827,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
             recv_lengths.data(),
             recv_offsets.data(),
             input.element_size(),
-            input.scalar_type(),
+            xcclDataType,
             comm,
-            stream,
             xcclStream,
             SyclQueue);
 
@@ -1902,14 +1888,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
           at::Tensor& input = inputTensors[r];
           at::Tensor& output = outputTensors[r];
           if (input.numel() != 0) {
-            xccl::onecclSend(input, comm, r, stream, xcclStream, SyclQueue);
+            auto dtype = getXcclDataType(input.scalar_type());
+            xccl::onecclSend(input, comm, r, dtype, xcclStream, SyclQueue);
           }
           if (output.numel() != 0) {
-            xccl::onecclRecv(output, comm, r, stream, xcclStream, SyclQueue);
+            auto dtype = getXcclDataType(output.scalar_type());
+            xccl::onecclRecv(output, comm, r, dtype, xcclStream, SyclQueue);
           }
         }
         xccl::oneccl_v2_group_end();
-
         return;
       },
       OpType::ALLTOALL,
