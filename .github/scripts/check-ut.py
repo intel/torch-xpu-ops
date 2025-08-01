@@ -240,6 +240,17 @@ def print_summary():
     print("### Results Summary")
     print_header = True
 
+    totals = {
+        'Category': '**Total**',
+        'UT': '',
+        'Test cases': 0,
+        'Passed': 0,
+        'Skipped': 0,
+        'Failures': 0,
+        'Errors': 0,
+        'Source': ''
+    }
+
     for summary in summaries:
         if summary['Test cases'] == 0:
             continue
@@ -254,6 +265,14 @@ def print_summary():
             'Source': summary['Source']
         }, print_header)
         print_header = False
+
+        totals['Test cases'] += summary['Test cases']
+        totals['Passed'] += summary['Passed']
+        totals['Skipped'] += summary['Skipped']
+        totals['Failures'] += summary['Failures']
+        totals['Errors'] += summary['Errors']
+
+    print_md_row(totals)
 
 def main():
     for input_file in args.input_files:
