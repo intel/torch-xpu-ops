@@ -55,7 +55,7 @@ jobs:
   ut_test:
     runs-on: ${{ matrix.test.runner || inputs.runner }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 600
+    timeout-minutes: 450
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
