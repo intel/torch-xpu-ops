@@ -114,7 +114,7 @@ runs:
         python -u test/profiling/triton_xpu_ops_time.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
         # All xpu ut under test/profiler
-        cd ../pytorch/test/profiler
+        cd ../../test/profiler
         python -m pytest --timeout 600 -vs test_cpp_thread.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
         python -m pytest --timeout 600 -vs test_execution_trace.py | \
