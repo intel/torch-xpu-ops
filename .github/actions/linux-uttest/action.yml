@@ -14,8 +14,6 @@ runs:
     - name: Reinstall torch
       shell: bash -xe {0}
       run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
         pip list |grep -E 'intel|torch'
     - name: ut_regression
       shell: bash -xe {0}
