@@ -500,6 +500,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       cclstream =
           std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
       syclQueue = std::make_unique<sycl::queue>(stream.queue());
+      std::lock_guard<std::mutex> lock(mutex_);
       xcclStreamsMap_.emplace(
           StreamKey,
           XCCLStream{at::xpu::XPUStream(stream), *cclstream, *syclQueue});
