@@ -63,18 +63,16 @@ jobs:
           - name: 'op_regression'
             condition: ${{ contains(inputs.ut, 'op_regression') }}
             directory: 'test/regressions'
-            command: 'pytest --timeout 600 -v --junit-xml=../../ut_log/op_regression.xml'
+            command: 'pytest --timeout 600 --timeout_method=thread -v --junit-xml=../../ut_log/op_regression.xml'
             log_prefix: 'op_regression'
-            timeout: 8000
             additional_steps: |
               clinfo --list
               pip install pytest pytest-timeout
           - name: 'op_regression_dev1'
             condition: ${{ contains(inputs.ut, 'op_regression_dev1') }}
             directory: 'test/regressions'
-            command: 'pytest --timeout 600 -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
+            command: 'pytest --timeout 600 --timeout_method=thread -v test_operation_on_device_1.py --junit-xml=$GITHUB_WORKSPACE/ut_log/op_regression_dev1.xml'
             log_prefix: 'op_regression_dev1'
-            timeout: 8000
             additional_steps: |
               clinfo --list
               unset ZE_AFFINITY_MASK
@@ -83,9 +81,8 @@ jobs:
           - name: 'op_transformers'
             condition: ${{ contains(inputs.ut, 'op_transformers') }}
             directory: '../pytorch'
-            command: 'pytest --timeout 600 -v test/test_transformers.py -k xpu --junit-xml=$GITHUB_WORKSPACE/ut_log/op_transformers.xml'
+            command: 'pytest --timeout 600 --timeout_method=thread -v test/test_transformers.py -k xpu --junit-xml=$GITHUB_WORKSPACE/ut_log/op_transformers.xml'
             log_prefix: 'op_transformers'
-            timeout: 3600
             additional_steps: |
               pip install pytest pytest-timeout
               export PYTORCH_TEST_WITH_SLOW=1
@@ -94,7 +91,6 @@ jobs:
             directory: '../pytorch/third_party/torch-xpu-ops/test/xpu/extended/'
             command: 'python run_test_with_skip.py'
             log_prefix: 'op_extended'
-            timeout: 10000
             additional_steps: |
               pip install pytest pytest-timeout
               export PYTORCH_TEST_WITH_SLOW=1
@@ -107,7 +103,7 @@ jobs:
             command_script: |
               export PYTORCH_ENABLE_XPU_FALLBACK=1
               export PYTORCH_TEST_WITH_SLOW=1
-              timeout 10000 python run_test_with_skip.py \
+              python run_test_with_skip.py \
                 2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_skip_test_error.log | \
                 tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_skip_test.log
               cp *.xml $GITHUB_WORKSPACE/ut_log
@@ -147,7 +143,6 @@ jobs:
               eval $test_cmd 2>$GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test_error.log | \
                 tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
             log_prefix: 'torch_xpu'
-            timeout: 10000
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'xpu_profiling'
@@ -188,11 +183,13 @@ jobs:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Create unique workspace
+        shell: bash -xe {0}
         run: |
           # Create unique conda env for each UT test
           random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
           echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}_${random}" >> $GITHUB_ENV
       - name: Create Conda Env
+        shell: bash -xe {0}
         run: |
           pwd
           which conda
@@ -206,6 +203,7 @@ jobs:
         with:
           name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
       - name: Prepare Stock Pytorch
+        shell: bash -xe {0}
         run: |
           cd ../
           rm -rf ./pytorch || sudo rm -rf ./pytorch
@@ -229,6 +227,7 @@ jobs:
           git show -s && git status && git diff
           pip install -r .ci/docker/requirements-ci.txt
       - name: Prepare Torch-xpu-ops
+        shell: bash -xe {0}
         run: |
           cd ../pytorch
           rm -rf third_party/torch-xpu-ops
@@ -247,10 +246,12 @@ jobs:
           name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}
       - name: Install Triton
+        shell: bash -xe {0}
         run: |
           source activate $CONDA_ENV_NAME
           pip install --force-reinstall ${{ github.workspace }}/pytorch_triton_xpu-*.whl
       - name: Torch Config
+        shell: bash -xe {0}
         run: |
           source activate $CONDA_ENV_NAME
           python -c "import torch; print(torch.__config__.show())"
@@ -264,6 +265,7 @@ jobs:
           rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
           echo "UT_NAME=${{ matrix.test.name }}" >> "${GITHUB_ENV}"
       - name: Run XPU UT Test
+        shell: bash -xe {0}
         if: ${{ matrix.test.condition }}
         run: |
           set -e
@@ -282,12 +284,13 @@ jobs:
             ${{ matrix.test.command_script }}
           SCRIPT
           else
-            timeout ${{ matrix.test.timeout }} ${{ matrix.test.command }} \
+            ${{ matrix.test.command }} \
               2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
               tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test.log
             ${{ matrix.test.xml_post_processing || '' }}
           fi
       - name: UT Test Results Summary
+        shell: bash -xe {0}
         if: ${{ matrix.test.condition }}
         run: |
           source activate $CONDA_ENV_NAME
