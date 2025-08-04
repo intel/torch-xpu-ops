@@ -64,7 +64,10 @@ runs:
       if: ${{ ! contains(inputs.test_type, 'wheel') }}
       uses: actions/download-artifact@v4
       with:
-        pattern: Torch-XPU-Wheel-*
+        name: manywheel-py3_10-xpu
+        github-token: ${{ github.token }}
+        repository: pytorch/pytorch
+        run-id: 16667550028
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |

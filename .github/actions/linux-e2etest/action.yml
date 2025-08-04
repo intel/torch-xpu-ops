@@ -62,10 +62,12 @@ runs:
           pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
         fi
         pip install -U numpy==1.26.4
-        pip list |grep -E 'intel|torch'
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
+        pip uninstall -y torch && pip uninstall -y torch
+        pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
+        pip list |grep -E 'intel|torch'
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
         # check param

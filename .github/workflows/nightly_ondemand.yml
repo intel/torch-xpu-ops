@@ -126,7 +126,7 @@ jobs:
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: linux.idc.xpu
+      runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
@@ -141,7 +141,7 @@ jobs:
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: pvc_rolling
+      runner: ${{ contains(inputs.scenario, 'performance') && 'PVC-03006' || 'pvc_rolling' }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
@@ -151,27 +151,3 @@ jobs:
       mode: ${{ github.event_name == 'schedule' && 'inference' || inputs.mode }}
       scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
-
-  Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
-    name: linux-microbench
-    permissions: write-all
-    needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    uses: ./.github/workflows/_linux_op_benchmark.yml
-    with:
-      runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
-      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-
-  Windows-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
-    name: windows
-    uses: ./.github/workflows/_windows_ut.yml
-    with:
-      ut: ${{ github.event_name == 'schedule' && 'ut_extended,ut_torch' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-      src_changed: false
-      has_label: true
-      runner: Windows_CI
