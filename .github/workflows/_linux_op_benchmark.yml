@@ -103,8 +103,8 @@ jobs:
           path: ${{ github.workspace }}/op_benchmark
 
   op_benchmark_test_results_check:
-    needs: op_benchmark_test
-    runs-on: ubuntu-22.04
+    needs: op_benchmark
+    runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
       reference_issue: 1689

@@ -17,7 +17,7 @@ runs:
       run: |
         mkdir -p ut_log/ut_regression
         cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --timeout 600 -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
+        pytest --timeout 600 --timeout_method=thread -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
           2> ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test.log
     - name: ut_transformers
@@ -27,7 +27,7 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/ut_transformers
         cd pytorch
-        pytest --timeout 600 -v test/test_transformers.py -k xpu \
+        pytest --timeout 600 --timeout_method=thread -v test/test_transformers.py -k xpu \
           --junit-xml=${{ github.workspace }}/ut_log/ut_transformers.xml \
           2> ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test.log
@@ -38,7 +38,7 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/ut_extended
         cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
-        timeout 3600 python run_test_with_skip.py \
+        python run_test_with_skip.py \
           2> ${{ github.workspace }}/ut_log/ut_extended/ut_extended_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_extended/ut_extended_test.log
         cp ut_extended.xml ${{ github.workspace }}/ut_log
@@ -50,7 +50,7 @@ runs:
         export PYTORCH_ENABLE_XPU_FALLBACK=1
         mkdir -p ut_log/ut_op
         cd pytorch/third_party/torch-xpu-ops/test/xpu
-        timeout 10000 python run_test_with_skip.py \
+        python run_test_with_skip.py \
           2> ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test.log
         cp *.xml ${{ github.workspace }}/ut_log
@@ -71,7 +71,7 @@ runs:
         # when XPU implementatoin is done.
         # test_foreach, test_decomp
         # Run with only
-        timeout 10000 python run_test_with_only.py \
+        python run_test_with_only.py \
           2> ${{ github.workspace }}/ut_log/ut_op/ut_op_with_only_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_op/ut_op_with_only_test.log
         cp ut_op_with_only.xml ${{ github.workspace }}/ut_log
