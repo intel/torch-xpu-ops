@@ -66,7 +66,7 @@ runs:
       shell: bash -xe {0}
       run: |
         pip uninstall -y torch && pip uninstall -y torch
-        pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
+        pip install --no-deps $(find ${{ github.workspace }}/ -name "*torch*.whl")
         pip list |grep -E 'intel|torch'
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
