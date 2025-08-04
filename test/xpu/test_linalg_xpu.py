@@ -1,5 +1,6 @@
 # Owner(s): ["module: intel"]
 
+import contextlib
 import itertools
 import math
 import unittest
@@ -13,8 +14,11 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     precisionOverride,
 )
-from torch.testing._internal.common_dtype import floating_and_complex_types_and
-from torch.testing._internal.common_mkldnn import bf32_on_and_off
+from torch.testing._internal.common_dtype import (
+    floating_and_complex_types_and,
+    floating_types_and,
+)
+from torch.testing._internal.common_mkldnn import reduced_f32_on_and_off
 from torch.testing._internal.common_utils import (
     IS_WINDOWS,
     parametrize,
@@ -98,7 +102,7 @@ def preferred_linalg_library(self):
 @precisionOverride({torch.half: 0.05, torch.bfloat16: 0.05})
 @dtypes(*floating_and_complex_types_and(torch.bfloat16, torch.half))
 @tf32_on_and_off(0.05)
-@bf32_on_and_off(0.05)
+@reduced_f32_on_and_off(0.05)
 def addbmm(self, device, dtype):
     num_batches = 2
     M, N, O = 16, 17, 18
@@ -392,6 +396,83 @@ def ck_blas_library(self):
     pass
 
 
+@precisionOverride(
+    {
+        torch.double: 1e-8,
+        torch.float: 1e-4,
+        torch.bfloat16: 5e-2,
+        torch.half: 5e-2,
+        torch.cfloat: 1e-4,
+        torch.cdouble: 1e-8,
+    }
+)
+@dtypes(*floating_types_and(torch.bfloat16, torch.half))
+@tf32_on_and_off(0.05)
+@reduced_f32_on_and_off(0.05)
+def addmm_relu_tunableop_rocm(self, device, dtype):
+    with self._tunableop_ctx():
+        torch.xpu.tunable.set_rotating_buffer_size(0)
+        torch.xpu.tunable.set_max_tuning_iterations(1)
+        self._test_addmm_impl(torch._addmm_activation, "relu", device, dtype)
+
+
+def get_tunableop_untuned_filename():
+    import os
+
+    ordinal = torch.xpu.current_device()
+    untuned_filename_env = os.getenv("PYTORCH_TUNABLEOP_UNTUNED_FILENAME")
+    untuned_filename_base, _, _ = untuned_filename_env.rpartition(".")
+    untuned_filename = f"{untuned_filename_base}{ordinal}.csv"
+    return untuned_filename
+
+
+@contextlib.contextmanager
+def __tunableop_ctx(self):
+    # Initialize and then tear down TunableOp
+    import glob
+    import os
+
+    self._set_tunableop_defaults()
+    torch.xpu.tunable.enable(True)
+
+    try:
+        yield
+    finally:
+        # disables TunableOp
+        torch.xpu.tunable.enable(False)
+
+        # clean up, remove any files that were generated
+        results_filename = torch.xpu.tunable.get_filename()
+        results_filename_pattern, _, _ = results_filename.rpartition(".")
+        untuned_filename = get_tunableop_untuned_filename()
+        untuned_filename_pattern, _, _ = untuned_filename.rpartition(".")
+        patterns = [
+            f"{results_filename_pattern[:-1]}*.csv",
+            f"{untuned_filename_pattern[:-1]}*.csv",
+        ]
+        files = [f for pattern in patterns for f in glob.glob(pattern)]
+        for file in files:
+            try:
+                os.remove(file)
+            # NB: The file is locked on Windows
+            except (FileNotFoundError, PermissionError):
+                pass
+
+        # undo all the environment variables set
+        # loop through a list of potentially used
+        # environment variables.
+        env_list = [
+            "PYTORCH_TUNABLEOP_BLAS_LOG",
+            "PYTORCH_TUNABLEOP_NUMERICAL_CHECK",
+            "PYTORCH_TUNABLEOP_UNTUNED_FILENAME",
+        ]
+        for env in env_list:
+            try:
+                del os.environ[env]
+            except KeyError:
+                pass
+
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -410,6 +491,8 @@ TestLinalg.test_matmul_small_brute_force_1d_Nd = matmul_small_brute_force_1d_Nd
 TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
+TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
+TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)
