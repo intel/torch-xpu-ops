@@ -136,7 +136,7 @@ const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
     {at::kDouble, onecclDataType_t::onecclFloat64},
     {at::kBFloat16, onecclDataType_t::onecclBfloat16},
     {at::kBool, onecclDataType_t::onecclUint8},
-    // use for non-reducetion op like allgather
+    // use for non-reduction op like allgather
     {at::kFloat8_e5m2, onecclDataType_t::onecclUint8},
     {at::kFloat8_e4m3fn, onecclDataType_t::onecclUint8},
     {at::kFloat8_e4m3fnuz, onecclDataType_t::onecclUint8},
