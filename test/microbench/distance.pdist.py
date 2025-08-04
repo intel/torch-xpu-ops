@@ -1,8 +1,10 @@
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
-
+num_iter = 20
 forward_shape_list = [(2048, 256), (2048, 8192), (16, 8192 * 4)]
 backward_shape_list = [(256, 256), (256, 8192), (16, 8192 * 4)]
 
@@ -29,3 +31,16 @@ for backward in [False, True]:
                         gy = torch.empty_like(b)
                         b.backward(gy)
             print(prof.key_averages().table(sort_by="xpu_time_total"))
+
+            # E2E time
+            torch.xpu.synchronize()
+            t1 = time.time()
+            for i in range(num_iter):
+                b = torch.nn.functional.pdist(input, 2)
+                if backward:
+                    gy = torch.empty_like(b)
+                    b.backward(gy)
+            torch.xpu.synchronize()
+            t2 = time.time()
+            e2e_time = (t2 - t1) / num_iter
+            print("E2E total time:", f"{float(e2e_time):.20f}")
