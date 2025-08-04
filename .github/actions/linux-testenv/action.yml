@@ -61,7 +61,6 @@ runs:
         source ${HOME}/intel/oneapi/setvars.sh
         sycl-ls && icpx -v
     - name: Download Pytorch wheel
-      if: ${{ ! contains(inputs.test_type, 'wheel') }}
       uses: actions/download-artifact@v4
       with:
         name: manywheel-py3_10-xpu
