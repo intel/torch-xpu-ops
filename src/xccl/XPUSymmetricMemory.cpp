@@ -123,11 +123,7 @@ void XPUSymmetricMemory::copy_buffer(
 
   size_t copy_size = size * c10::elementSize(src.scalar_type());
 
-  //    std::cout << "[Native] zl_debug start to copy from src to dst with size
-  //    " << copy_size << std::endl;
   current_queue.memcpy(dst_ptr, src_ptr, copy_size);
-  //    current_queue.wait();
-  //    std::cout << "[Native] zl_debug copy done " << std::endl;
 }
 at::Tensor XPUSymmetricMemory::get_buffer(
     int rank,
@@ -152,9 +148,7 @@ at::Tensor XPUSymmetricMemory::get_buffer(
       storage_offset * element_size;
   auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
   auto options = at::TensorOptions().dtype(dtype).device(device);
-  //  std::cout << "[Native] zl_debug in get_buffer on rank = " << rank << "
-  //  buffer ptr=" << buffers_[rank] << " offset=" <<storage_offset *
-  //  element_size << " dtype=" << dtype<< std::endl;
+
   return at::for_blob(data_ptr, sizes)
       .options(options)
       .target_device(device)
@@ -190,12 +184,11 @@ at::Tensor XPUSymmetricMemory::get_signal_pad(
   const auto req_size = (numel + storage_offset) * element_size;
   TORCH_CHECK(
       req_size <= signal_pad_size,
-      "CUDASymmetricMemory::get_signal_pad: the requested size (",
+      "XPUSymmetricMemory::get_signal_pad: the requested size (",
       req_size,
       " bytes) exceeds the allocated size (",
       signal_pad_size,
       " bytes)");
-  //  std::cout << "[Native] zl_debug get singnal_pads " << std::endl;
   auto data_ptr = reinterpret_cast<uint8_t*>(signal_pads_[rank]) +
       storage_offset * element_size;
   auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
@@ -224,61 +217,12 @@ void check_channel(int channel, int world_size) {
 }
 
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
-  //  LOG(ERROR) << "XPUSymmetricMemory::barrier not supported";
   check_channel(channel, world_size_);
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-  //  std::cout << "zl_debug start to do barrier " << std::endl;
-  //
-  //    int *peer_address[MAX_RANK];
-  //    int *local_address[MAX_RANK];
-  //
-  //    for (int i = 0; i < world_size_; i++) {
-  //          peer_address[i] = static_cast<int*>(singnal_pads[i]) + world_size_
-  //          * channel + rank_; local_address[i] =
-  //          static_cast<int*>(singnal_pads[rank]) + world_size_ * channel + i;
-  //    }
-  //    int tmp_rank = rank_;
-  //    current_queue.submit([&](sycl::handler& cgh) {
-  //        cgh.parallel_for<class test_read_kernel>(
-  //          sycl::range<1>{ world_size_ }, [=](sycl::item<1> idx)
-  //          SYCL_ESIMD_KERNEL{
-  //            int target_rank = idx.get_linear_id();
-  //            sycl::ext::oneapi::experimental::printf("DEBUG loop to rank%d:
-  //            \n", target_rank); if (target_rank != tmp_rank) {
-  //              simd<int, 1> grf;
-  //              grf[0] = 1;
-  //              lsc_block_store<int, 1, lsc_data_size::default_size,
-  //              cache_hint::uncached,
-  //              cache_hint::uncached>(peer_address[target_rank], grf);
-  //              sycl::ext::oneapi::experimental::printf("DEBUG block store
-  //              done rank%d: \n", target_rank); do {
-  ////                lsc_fence<lsc_memory_kind::untyped_global,
-  /// lsc_fence_op::none, lsc_scope::gpu>();
-  //                fence<memory_kind::global, fence_flush_op::none,
-  //                fence_scope::gpu>(); grf = lsc_block_load<int, 1,
-  //                lsc_data_size::default_size, cache_hint::uncached,
-  //                cache_hint::uncached>
-  //                  (local_address[idx]);
-  //                sycl::ext::oneapi::experimental::printf("DEBUG block load
-  //                wip rank%d: \n", target_rank);
-  //              } while (grf[0] == 0);
-  //              grf[0] = 0;
-  //              sycl::ext::oneapi::experimental::printf("DEBUG block load wip
-  //              rank%d: \n", target_rank); lsc_block_store<int, 1,
-  //              lsc_data_size::default_size, cache_hint::uncached,
-  //              cache_hint::uncached>(local_address[target_rank], grf);
-  //              sycl::ext::oneapi::experimental::printf("DEBUG block store
-  //              back rank%d:\n", target_rank);
-  //            }
-  //          }
-  //        );
-  //      });
-  //  current_queue.wait();
-  //  std::cout << "zl_debug finish to do barrier " << std::endl;
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -286,18 +230,6 @@ void XPUSymmetricMemory::put_signal(
     int channel,
     size_t timeout_ms) {
   LOG(ERROR) << "XPUSymmetricMemory::put_signal not supported";
-
-  //  check_channel(channel, world_size_);
-  //  c10::cuda::CUDAGuard guard(local_device_idx_);
-  //  put_signal_kernel<<<1, C10_WARP_SIZE, 0,
-  //  at::cuda::getCurrentCUDAStream()>>>(
-  //      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-  //      dst_rank,
-  //      channel,
-  //      rank_,
-  //      world_size_,
-  //      timeout_ms);
-  //  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 void XPUSymmetricMemory::wait_signal(
@@ -305,17 +237,6 @@ void XPUSymmetricMemory::wait_signal(
     int channel,
     size_t timeout_ms) {
   LOG(ERROR) << "XPUSymmetricMemory::wait_signal not supported";
-  //  check_channel(channel, world_size_);
-  //  c10::cuda::CUDAGuard guard(local_device_idx_);
-  //  wait_signal_kernel<<<1, C10_WARP_SIZE, 0,
-  //  at::cuda::getCurrentCUDAStream()>>>(
-  //      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-  //      src_rank,
-  //      channel,
-  //      rank_,
-  //      world_size_,
-  //      timeout_ms);
-  //  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 int XPUSymmetricMemory::get_rank() {
@@ -346,11 +267,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
     const std::optional<std::string>& group_name) {
   size_t signal_pad_offset = at::round_up(size, 16UL);
   size_t block_size = signal_pad_offset + signal_pad_size;
-  //  std::cout << "[Native] zl_debug in allocation with original size " << size
-  //  << " with pad size= " << signal_pad_size << " with total block size= " <<
-  //  block_size << std::endl;
 
-  // 获取 SYCL/Level Zero context 和 device
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   sycl::context sycl_ctx = current_queue.get_context();
   sycl::device sycl_dev = current_queue.get_device();
@@ -359,48 +276,19 @@ void* XPUSymmetricMemoryAllocator::alloc(
   ze_device_handle_t ze_dev =
       sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
 
-  // 获取 granularity
   ze_physical_mem_desc_t phys_desc = {
       ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC, nullptr, 0, block_size};
 
-  // 创建物理内存句柄
   ze_physical_mem_handle_t handle = nullptr;
-  //  ze_result_t status = zePhysicalMemCreate(ze_ctx, ze_dev, &phys_desc,
-  //  &handle); TORCH_CHECK(status == ZE_RESULT_SUCCESS, "zePhysicalMemCreate
-  //  failed");
 
-  // 分配虚拟地址空间（只映射，不物理分配）
-  //  void* ptr = nullptr;
-  // map_block(&ptr, handle, block_size, device_idx);
   ze_device_mem_alloc_desc_t default_device_mem_alloc_desc = {
       .stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,
       .pNext = nullptr,
       .flags = 0,
       .ordinal = 0};
 
-  // zl_debug create a device memory by sycl
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
-
-  //  std::cout << "[Native] zl_debug allocate memory with size = " << size << "
-  //  allocated ptr=" << ptr << std::endl;
-
-  // zeMemAllocDevice(ze_ctx, &default_device_mem_alloc_desc, size, 128, ze_dev,
-  // &ptr);
-  // uint8_t* raw_ptr = xpu_tensor.data_ptr<uint8_t>();
-  // std::cout << "zl_debug start copy to local " << std::endl;
-  // current_queue.memcpy(raw_ptr, ptr, 100).wait();
-  // std::cout << "zl_debug end copy to local " << std::endl;
-  //
-  // std::cout << "zl_debug map virtual to physical done " << std::endl;
-
-  // 初始化（memset）
-  // memset(ptr, 0, block_size);  // You may want zeCommandListMemset for
-  // GPU-based memset
-
-  // 构造 Block 和 AllocationRef（假设这些结构未变）
-  // auto alloc_ref = c10::make_intrusive<AllocationRef>(ptr, handle,
-  // block_size, device_idx);
   auto alloc_ref =
       c10::make_intrusive<AllocationRef>(ptr, ptr, block_size, device_idx);
   auto block = c10::make_intrusive<Block>(
@@ -545,8 +433,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   // initialize MPI done
   allreducer<sycl::half> ar;
   ar.init(current_queue, rank, world_size);
-  //  std::cout << "!!!![Native] zl_debug torch-ccl exchange done" << std::endl;
-  //
+
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
       .pid = getpid(),
@@ -565,7 +452,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 
   // do IPC exchange for all peer ranks
   ar.exchange_peer_ipc_mem(current_queue, ptr);
-  std::cout << "[Native] zl_debug finished ipc exchange " << std::endl;
 
   //  auto imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
 
@@ -584,24 +470,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       handles[r] = ar.buffers[r]; // ar.ipc_handle[r];
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
     }
-
-    //    //double check this buffer
-    //    auto host_ptr = (float *)sycl::malloc_host(tmp_count * sizeof(float),
-    //    current_queue); auto tmp_ptr = (float *)sycl::malloc_device(tmp_count
-    //    * sizeof(float), current_queue); std::cout << "[Native] zl_debug start
-    //    to copy exchanged data to local host " << std::endl;
-    //    current_queue.memcpy(tmp_ptr, physical_buffer_ptr, tmp_count *
-    //    sizeof(int)); current_queue.memcpy(host_ptr, tmp_ptr, tmp_count *
-    //    sizeof(int)); current_queue.wait(); std::cout << "[Native] zl_debug
-    //    finish copy exchanged data to local host" << std::endl;
-    //
-    //    for (int i = 0; i < tmp_count; i++) {
-    //        std::cout << host_ptr[i] << " ";
-    //    }
-    //     std::cout << std::flush;
-
-    //    signal_pads[r] = (void*)((uintptr_t)buffers[r] +
-    //    block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
 
