@@ -3,6 +3,9 @@
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
 
+namespace syclext = sycl::ext::oneapi;
+namespace syclexp = sycl::ext::oneapi::experimental;
+
 // sycl access address space
 static constexpr auto sycl_priv_space =
     sycl::access::address_space::private_space;
@@ -132,6 +135,28 @@ sycl_kernel_submit(
     ker_t ker) {
   auto cgf = [&](::sycl::handler& cgh) {
     cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<1>(
+            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
+        ker);
+  };
+  q.submit(cgf);
+}
+
+// For SYCL free function
+template <auto* kptr, typename... Kargs>
+static inline void sycl_kernel_submit(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    Kargs... args) {
+  sycl::context ctxt = q.get_context();
+  auto exe_bndl =
+      syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
+  sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
+  auto args_tuple = std::make_tuple(std::forward<Kargs>(args)...);
+  auto cgf = [&](::sycl::handler& cgh) {
+    std::apply([&](auto&&... args_) { cgh.set_args(args_...); }, args_tuple);
+    cgh.parallel_for(
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
