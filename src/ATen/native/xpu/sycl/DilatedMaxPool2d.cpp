@@ -663,7 +663,7 @@ void launch_max_pool2d_backward_kernel(
       case 4:
         LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
             scalar_t,
-            1,
+            4,
             num_wg,
             wg_size,
             queue,
