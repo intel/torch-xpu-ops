@@ -372,7 +372,6 @@ struct MaxPool2dBackwardChannelLastVec {
       int phend = p_end(inputH, pad_h_, gradOutputSizeH_, stride_h_);
       int pwstart = p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
       int pwend = p_end(inputW, pad_w_, gradOutputSizeW_, stride_w_);
-      scalar_t grad = 0;
       int64_t load_offset, store_offset;
       store_offset = inputIndex;
       vec_t grad_vec;
