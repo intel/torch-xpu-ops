@@ -34,7 +34,7 @@ jobs:
           igc=$(apt search libigc-dev 2>&1 |grep 'installed')
           level_zero="$((apt search level-zero-dev && apt search libze-dev) 2>&1 |grep 'installed')"
           icc=$(icpx -v 2>&1 |grep 'Compiler' |sed 's/.*(//;s/).*//')
-          gcc="gcc: $((gcc -v && g++ -v) 2>&1 |grep 'g.. version' |awk '{printf("%s/", $3)}')"
+          gcc="$((gcc -v && g++ -v) 2>&1 |grep 'g.. version' |awk '{printf("%s/", $3)}')"
           # network
           tic=$(date +%s)
           git clone https://github.com/pytorch/pytorch
