@@ -709,13 +709,13 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             local_sum_gamma_[(i + 1) * tile_size_n_ + local_n];
       }
       if (db_data_ != nullptr)
-        db_data_[tile_id_m * tile_size_n_ + actual_column] =
+        db_data_[tile_id_m * N_ + actual_column] =
             (static_cast<weight_t>(output_sum_beta[0]) +
              static_cast<weight_t>(output_sum_beta[1])) +
             (static_cast<weight_t>(output_sum_beta[2]) +
              static_cast<weight_t>(output_sum_beta[3]));
       if (dg_data_ != nullptr)
-        dg_data_[tile_id_m * tile_size_n_ + actual_column] =
+        dg_data_[tile_id_m * N_ + actual_column] =
             (static_cast<weight_t>(output_sum_gamma[0]) +
              static_cast<weight_t>(output_sum_gamma[1])) +
             (static_cast<weight_t>(output_sum_gamma[2]) +
@@ -1151,8 +1151,8 @@ void _layer_norm_backward_kernel(
     sycl_kernel_submit<
         GammaBetaReduceFunctor<scalar_t, accscalar_t, mean_t, weight_t>,
         3>(
-        {num_workgroup, local_size_x, static_cast<size_t>(N < SIMD ? N : SIMD)},
-        {1, local_size_x, static_cast<size_t>(N < SIMD ? N : SIMD)},
+        {num_workgroup, local_size_x, static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+        {1, local_size_x, static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
         getCurrentSYCLQueue(),
         kfn);
     dgamma = dgamma_blocks.sum(0);
