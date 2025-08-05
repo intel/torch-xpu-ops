@@ -265,8 +265,7 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
               }
             }
           }
-        }
-        else {
+        } else {
           int offset = batch * out_n_stride_ + plane * out_cf_c_stride_;
           for (int ph = phstart; ph < phend; ++ph) {
             for (int pw = pwstart; pw < pwend; ++pw) {
