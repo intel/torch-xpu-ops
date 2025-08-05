@@ -17,12 +17,6 @@ jobs:
         node_name: [PVC-7362,PVC-7363]
     name: check-nodes-env-for-${{ matrix.node_name }}
     steps:
-      - name: Set head
-        run: |
-          if [ $(grep -c 'Disk | CPU' ${GITHUB_STEP_SUMMARY}) -eq 0 ];then
-            echo "| Host | Disk | CPU | Mem | Scaling | OS | GPU Driver | Kernel | IGC | L0 | ICC | GCC | Network |" >> ${GITHUB_STEP_SUMMARY}
-            echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |" >> ${GITHUB_STEP_SUMMARY}
-          fi
       - name: Check env
         run: |
           set -xe
@@ -46,4 +40,6 @@ jobs:
           git clone https://github.com/pytorch/pytorch
           toc=$(date +%s)
           elapsed=$(echo "$tic,$toc" |awk -F, '{printf("%d", $2 - $1)}')
+          echo "| Host | Disk | CPU | Mem | Scaling | OS | GPU Driver | Kernel | IGC | L0 | ICC | GCC | Network |" >> ${GITHUB_STEP_SUMMARY}
+          echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |" >> ${GITHUB_STEP_SUMMARY}
           echo "| ${HOSTNAME} | ${disk} | ${cpu} | ${memory} | ${scaling_governor} | ${PRETTY_NAME} | ${driver} | ${kernel} | ${igc} | ${level_zero} | ${icc} | ${gcc} | ${elapsed} |" >> ${GITHUB_STEP_SUMMARY}
