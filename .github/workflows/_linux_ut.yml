@@ -104,7 +104,6 @@ jobs:
           test_type: ${{ matrix.test }}
       - name: UT Test Results Summary
         if: ${{ contains(inputs.ut, matrix.test) }}
-
         run: |
           pip install junitparser
           python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
@@ -112,17 +111,19 @@ jobs:
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
       - name: Upload Inductor XPU UT Log
-        if: ${{ contains(inputs.ut, matrix.test) }}
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
           path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
       - name: Upload XPU UT Failure list
-        if: ${{ contains(inputs.ut, matrix.test) }}
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          if-no-files-found: ignore
 
   devices:
     runs-on: pvc_rolling
