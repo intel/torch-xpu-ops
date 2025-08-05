@@ -19,6 +19,8 @@ jobs:
     strategy:
       matrix:
         test_case: [target, baseline]
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: cleanup
         run: |
