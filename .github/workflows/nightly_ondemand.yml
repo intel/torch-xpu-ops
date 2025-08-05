@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
     inputs:
       node_name:
-        required: true
         type: string
         default: ''
 
@@ -15,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: ${{ toJson(inputs.node_name) }}
+        node_name: [PVC-7362,PVC-7363]
     name: check-nodes-env-for-${{ matrix.node_name }}
     steps:
       - name: Set head
