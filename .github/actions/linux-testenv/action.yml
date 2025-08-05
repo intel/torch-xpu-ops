@@ -45,7 +45,7 @@ runs:
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
         rm -rf ~/.triton /tmp/*inductor*
-        pip install pandas psutil scipy requests pytest-timeout
+        pip install pandas psutil scipy requests pytest-timeout pytest-xdist
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
