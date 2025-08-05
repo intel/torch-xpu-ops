@@ -89,49 +89,40 @@ struct UnrolledElementwiseKernel {
 };
 
 template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
-struct VectorizedElementwiseKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
-    int grpid = item.get_group(0);
-    int lid = item.get_local_id(0);
-    int group_work_size = vec_size * grpsz;
-    int remaining = numel_ - grpid * group_work_size;
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void vectorized_elementwise_kernel(
+    int numel,
+    const func_t f,
+    array_t data,
+    in_calc_t ic) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int grpsz = item.get_local_range(0);
+  int grpid = item.get_group(0);
+  int lid = item.get_local_id(0);
+  int group_work_size = vec_size * grpsz;
+  int remaining = numel - grpid * group_work_size;
 
-    // ic_
-    if (remaining < group_work_size) {
-      auto oc = TrivialOffsetCalculator<1>();
-      auto l = at::native::memory::LoadWithoutCast();
-      auto s = at::native::memory::StoreWithoutCast();
-      auto policy = at::native::memory::policies::unroll<
-          vec_size,
-          array_t,
-          decltype(ic_),
-          decltype(oc),
-          at::native::memory::LoadWithoutCast,
-          at::native::memory::StoreWithoutCast>(
-          data_, remaining, ic_, oc, l, s, lid, grpid, grpsz);
-      elementwise_kernel_helper<vec_size>(f_, policy);
-    } else {
-      auto policy = at::native::memory::policies::
-          vectorized<vec_size, array_t, in_calc_t>(
-              data_, ic_, lid, grpid, grpsz);
-      elementwise_kernel_helper<vec_size>(f_, policy);
-    }
+  // ic_
+  if (remaining < group_work_size) {
+    auto oc = TrivialOffsetCalculator<1>();
+    auto l = at::native::memory::LoadWithoutCast();
+    auto s = at::native::memory::StoreWithoutCast();
+    auto policy = at::native::memory::policies::unroll<
+        vec_size,
+        array_t,
+        decltype(ic),
+        decltype(oc),
+        at::native::memory::LoadWithoutCast,
+        at::native::memory::StoreWithoutCast>(
+        data, remaining, ic, oc, l, s, lid, grpid, grpsz);
+    elementwise_kernel_helper<vec_size>(f, policy);
+  } else {
+    auto policy =
+        at::native::memory::policies::vectorized<vec_size, array_t, in_calc_t>(
+            data, ic, lid, grpid, grpsz);
+    elementwise_kernel_helper<vec_size>(f, policy);
   }
-
-  VectorizedElementwiseKernel(
-      int numel,
-      const func_t f,
-      array_t data,
-      in_calc_t ic)
-      : numel_(numel), f_(f), data_(data), ic_(ic) {}
-
- private:
-  int numel_;
-  const func_t f_;
-  array_t data_;
-  in_calc_t ic_;
-};
+}
 
 template <
     int num_outputs,
@@ -391,16 +382,24 @@ static inline void launch_vectorized_kernel(
   using traits = function_traits<func_t>;
   auto wg_sz = syclMaxWorkItemsPerSubSlice();
 
-#define VEC_KER(vec_size)                                                    \
-  {                                                                          \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
-      auto ker =                                                             \
-          VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
-              N, f, data, input_calc);                                       \
-      int num_wg = ceil_div<int>(N, wg_sz * vec_size);                       \
-      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
-    }                                                                        \
+#define VEC_KER(vec_size)                               \
+  {                                                     \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);      \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {  \
+      int num_wg = ceil_div<int>(N, wg_sz * vec_size);  \
+      sycl_kernel_submit<vectorized_elementwise_kernel< \
+          vec_size,                                     \
+          func_t,                                       \
+          array_t,                                      \
+          in_calc_t>>(                                  \
+          wg_sz * num_wg,                               \
+          wg_sz,                                        \
+          getCurrentSYCLQueue(),                        \
+          N,                                            \
+          f,                                            \
+          data,                                         \
+          input_calc);                                  \
+    }                                                   \
   }
 
   switch (vec_size) {
