@@ -14,7 +14,7 @@ jobs:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: [PVC-7362,PVC-7363]
+        node_name: [PVC-7900]
     name: check-nodes-env-for-${{ matrix.node_name }}
     steps:
       - name: Check env
