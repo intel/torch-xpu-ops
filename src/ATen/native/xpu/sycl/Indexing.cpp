@@ -692,7 +692,7 @@ void index_put_deterministic_kernel(
         " vs ",
         expandedValue.numel());
 
-    if (sliceSize != 1) {
+    if (sliceSize > SIMD) {
       AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
           at::ScalarType::ComplexHalf,
           at::ScalarType::BFloat16,
