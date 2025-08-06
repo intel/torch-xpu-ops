@@ -14,10 +14,11 @@ jobs:
     runs-on: ${{ matrix.node_name }}
     strategy:
       matrix:
-        node_name: [PVC-7900]
+        node_name: [PVC-7362,PVC-7363,PVC-7364,PVC-7365,PVC-7366,PVC-7900,PVC-03004,PVC-03006]
     name: check-nodes-env-for-${{ matrix.node_name }}
     steps:
       - name: Check env
+        if: ${{ contains(inputs.node_name, matrix.node_name) }}
         run: |
           set -xe
           sudo rm -rf ./*
