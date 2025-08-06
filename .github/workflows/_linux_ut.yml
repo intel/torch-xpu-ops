@@ -127,7 +127,7 @@ jobs:
   devices:
     runs-on: pvc_rolling
     if: ${{ contains(inputs.ut, 'xpu_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 5
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/xpu-tool
