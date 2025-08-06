@@ -43,3 +43,10 @@ jobs:
           echo "| Host | Disk | CPU | Mem | Scaling | OS | GPU Driver | Kernel | IGC | L0 | ICC | GCC | Network |" >> ${GITHUB_STEP_SUMMARY}
           echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |" >> ${GITHUB_STEP_SUMMARY}
           echo "| ${HOSTNAME} | ${disk} | ${cpu} | ${memory} | ${scaling_governor} | ${PRETTY_NAME} | ${driver} | ${kernel} | ${igc} | ${level_zero} | ${icc} | ${gcc} | ${elapsed} |" >> ${GITHUB_STEP_SUMMARY}
+          rsync -avz --delete ~/mengfeil/logs/ ${{ github.workspace }}/logs/
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline
+          path: ${{ github.workspace }}/logs
