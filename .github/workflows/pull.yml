@@ -121,7 +121,6 @@ jobs:
       runner: pvc_rolling
       test_type: build-cicd
       pytorch: main
-      torch_xpu_ops: cicd
 
   windows:
     name: windows
