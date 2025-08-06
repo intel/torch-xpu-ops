@@ -95,7 +95,7 @@ jobs:
             if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
               pytorch="${{ inputs.pytorch }}"
-              torch_xpu_ops="pinned"
+              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
             else
               test_type="build-ondemand"
               pytorch="${{ inputs.pytorch }}"
