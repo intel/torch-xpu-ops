@@ -14,6 +14,7 @@
 #include <ATen/native/xpu/sycl/Indexing.h>
 #include <ATen/native/xpu/sycl/IndexingUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
 #include <ATen/ops/arange.h>
@@ -675,17 +676,15 @@ void index_put_deterministic_kernel(
 
     linearIndex.divide_(sliceSize, "trunc");
 
-    sorted_indices.copy_(linearIndex);
-    pstl::itoa(
-        orig_indices.data_ptr<int64_t>(),
-        orig_indices.data_ptr<int64_t>() + linearIndex.numel(),
-        (int64_t)0);
-    pstl::sort<int64_t, int64_t>(
+    auto range = at::arange(num_indices, linearIndex.options());
+    sort_pairs<int64_t, int64_t>(
         linearIndex.const_data_ptr<int64_t>(),
-        sorted_indices.data_ptr<int64_t>(),
-        orig_indices.data_ptr<int64_t>(),
-        linearIndex.numel(),
+        sorted_indices.mutable_data_ptr<int64_t>(),
+        range.const_data_ptr<int64_t>(),
+        orig_indices.mutable_data_ptr<int64_t>(),
+        num_indices,
         false);
+
     TORCH_INTERNAL_ASSERT(
         linearIndex.numel() * sliceSize * nElemBefore == expandedValue.numel(),
         "number of flattened indices did not match number of elements in the value tensor: ",
