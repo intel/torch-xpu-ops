@@ -7,20 +7,18 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import time
-
+import argparse
 import torch
 from torch.profiler import profile, ProfilerActivity
-
-device = "xpu"
 
 shape_list = [
     (8, 512, 32, 32, (7, 7)),
     (8, 256, 56, 56, (14, 14)),
 ]
-num_iter = 20
+backward = True
 
 
-def Adaptive_AVGPool2d(shape, dtype, channels_last, backward):
+def Adaptive_AVGPool2d(shape, dtype, channels_last, backward, device):
     N, C, H, W, output_size = (
         shape[0],
         shape[1],
@@ -55,14 +53,34 @@ def Adaptive_AVGPool2d(shape, dtype, channels_last, backward):
     if backward:
         output[0].backward(grad)
 
+def run_profile(shape, dtype, channels_last, backward, device, num_iter):
+    with profile(
+        activities=[ProfilerActivity.CPU, 
+                  ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
+        record_shapes=True,
+    ) as prof:
+        for _ in range(num_iter):
+            Adaptive_AVGPool2d(shape, dtype, channels_last, backward, device)
+    print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
 
-if __name__ == "__main__":
-    backward = True
+def run_e2e(shape, dtype, channels_last, backward, device, num_iter):
+    if device in ['xpu', 'cuda']:
+        torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+    t1 = time.time()
+    for _ in range(num_iter):
+        Adaptive_AVGPool2d(shape, dtype, channels_last, backward, device)
+    if device in ['xpu', 'cuda']:
+        torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+    t2 = time.time()
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
+
+def benchmark(args):
     for shape in shape_list:
         for dtype in [torch.bfloat16, torch.float16, torch.float32]:
             for channels_last in [False, True]:
                 # warm up
-                Adaptive_AVGPool2d(shape, dtype, channels_last, backward)
+                Adaptive_AVGPool2d(shape, dtype, channels_last, backward, args.device)
 
                 # go
                 print(
@@ -77,20 +95,25 @@ if __name__ == "__main__":
                     "; backward:",
                     backward,
                 )
-                with profile(
-                    activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-                    record_shapes=True,
-                ) as prof:
-                    for i in range(num_iter):
-                        Adaptive_AVGPool2d(shape, dtype, channels_last, backward)
-                print(prof.key_averages().table(sort_by="xpu_time_total"))
+                if not args.e2e_only:
+                    run_profile(shape, dtype, channels_last, backward, args.device, args.num_iter)
 
-                # E2E time
-                torch.xpu.synchronize()
-                t1 = time.time()
-                for i in range(num_iter):
-                    Adaptive_AVGPool2d(shape, dtype, channels_last, backward)
-                torch.xpu.synchronize()
-                t2 = time.time()
-                e2e_time = (t2 - t1) / num_iter
-                print("E2E total time:", f"{float(e2e_time):.20f}")
+                if not args.profile_only:
+                    run_e2e(shape, dtype, channels_last, backward, args.device, args.num_iter)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='OP Benchmark')
+    parser.add_argument('--device', type=str, default='xpu', 
+                        help='Device to run on (e.g., "cpu", "cuda", "xpu")')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--profile-only', action='store_true', 
+                       help='Only Run profile timing')
+    group.add_argument('--e2e-only', action='store_true', 
+                       help='Only Run E2E timing')
+    parser.add_argument('--num-iter', type=int, default=20, 
+                        help='Number of iterations')
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    args = parse_args()
+    benchmark(args)
