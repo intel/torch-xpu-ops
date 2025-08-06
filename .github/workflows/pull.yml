@@ -108,6 +108,7 @@ jobs:
       runner: linux.idc.xpu
       test_type: build-cicd
       pytorch: main
+      torch_xpu_ops: cicd
       ut: ut_regression,ut_transformers,ut_extended,ut_op,xpu_dev1,xpu_distributed
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
@@ -120,6 +121,7 @@ jobs:
       runner: pvc_rolling
       test_type: build-cicd
       pytorch: main
+      torch_xpu_ops: cicd
 
   windows:
     name: windows
