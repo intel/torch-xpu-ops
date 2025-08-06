@@ -1056,7 +1056,7 @@ void _layer_norm_backward_kernel(
       config_w.workgroup_num * config_w.block_row * config_w.workgroup_size;
   int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
   // use two stage col reduction if norm config occupancy < 50%
-  // TODO: we can releax this restriction in future for better perf
+  // TODO: we can relax this restriction in future for better perf
   bool use_two_stage_col_reduction =
       (dY.dtype() == kFloat || dY.dtype() == kBFloat16 ||
        dY.dtype() == kHalf) &&
@@ -1077,7 +1077,7 @@ void _layer_norm_backward_kernel(
     int num_tile_n = (N + tile_size_n - 1) / tile_size_n;
     bool adjust_m = true;
     // for M = 64*1024, N = 1, we choose tile size (256, 16) on pvc
-    // TODO: we can tune these conditions in future
+    // TODO: Consider tuning the tile size selection logic (tile_size_m, tile_size_n) and occupancy calculation
     for (auto i = 0; i < 3; i++) {
       // occupancy <= 50%
       if (num_tile_m * num_tile_n * local_size_x * SIMD /
@@ -1097,7 +1097,8 @@ void _layer_norm_backward_kernel(
       }
     }
     // tile size can be (1024,32), (512,32), (512,16), (256, 16)
-    // Change these parameters will cause changes in kernel
+    // Modifying these parameters (num_subgroup, workgroup_size, tile_size, elements_per_thread)
+    // will alter the kernel configuration, potentially affecting performance and behavior.
     const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
     const scalar_t* X_data = X.const_data_ptr<scalar_t>();
     weight_t* dg_data =
