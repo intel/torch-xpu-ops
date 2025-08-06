@@ -366,7 +366,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   const auto XcclVersion = getXcclVersion();
   FlightRecorderXCCL::get()->record_pg_ranks(
       std::make_tuple(pg_uid_, pg_desc_), groupRanks());
-  FlightRecorderXCCL::get()->record_accelerator_version(XcclVersion, "xccl_version");
+  FlightRecorderXCCL::get()->record_accelerator_version(XcclVersion);
   enableNanCheck_ = getCvarBool(TORCH_XCCL_NAN_CHECK, false);
   init();
   const std::string OFF = "OFF";
@@ -412,7 +412,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
 }
 
 const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
-  if (options_->global_ranks_in_group.empty()) {
+  if (options_->global_ranks_in_group.empty() && local_id_ == 0) {
     static std::vector<uint64_t> globalRanks(size_);
     std::iota(globalRanks.begin(), globalRanks.end(), 0);
     return globalRanks;
