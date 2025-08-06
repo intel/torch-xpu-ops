@@ -624,7 +624,9 @@ template <
     typename scalar_t,
     typename accscalar_t,
     typename mean_t,
-    typename weight_t>
+    typename weight_t,
+    bool have_gamma = true,
+    bool have_beta = true>
 struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<3> item) const {
     auto local_n = item.get_local_id(2); // [0, 32)
@@ -639,87 +641,70 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // slm_row 0, 8, 16...56
       for (auto slm_row = 0; slm_row < tile_size_m_ / elements_per_thread_;
            slm_row += num_subgroup_) {
-        accscalar_t sum_beta[8] = {accscalar_t(0)};
-        accscalar_t sum_gamma[8] = {accscalar_t(0)};
+        accscalar_t sum_beta = accscalar_t(0);
+        accscalar_t sum_gamma = accscalar_t(0);
         // row 0, 128, 256, ...896
         auto row = tile_actual_row_base + slm_row * elements_per_thread_;
         for (int i = 0; i < elements_per_thread_; i++) {
           // row_local: row + 0, 8, 16, ...120
           auto row_local = row + i * num_subgroup_;
           auto actual_row = row_local + local_m;
-          // TODO: tree reduction here for better acc
-          if (actual_row < M_ && db_data_ != nullptr) {
-            sum_beta[i / 2] += static_cast<accscalar_t>(
-                dY_data_[actual_row * N_ + actual_column]);
+          // TODO: try tree reduction here if accuracy loss
+          if (actual_row < M_) {
+            if constexpr (have_beta) {
+              sum_beta += static_cast<accscalar_t>(
+                  dY_data_[actual_row * N_ + actual_column]);
+            }
+            if constexpr (have_gamma) {
+              sum_gamma += static_cast<accscalar_t>(
+                               dY_data_[actual_row * N_ + actual_column]) *
+                  (static_cast<accscalar_t>(
+                       X_data_[actual_row * N_ + actual_column]) -
+                   static_cast<accscalar_t>(mean_data_[actual_row])) *
+                  static_cast<accscalar_t>(var_data_[actual_row]);
+            }
           }
-          if (actual_row < M_ && dg_data_ != nullptr) {
-            sum_gamma[i / 2] += static_cast<accscalar_t>(
-                                    dY_data_[actual_row * N_ + actual_column]) *
-                (static_cast<accscalar_t>(
-                     X_data_[actual_row * N_ + actual_column]) -
-                 static_cast<accscalar_t>(mean_data_[actual_row])) *
-                static_cast<accscalar_t>(var_data_[actual_row]);
-          }
-        }
-        for (int i = 0; i < 4; i++) {
-          sum_beta[i] += sum_beta[i + 4];
-          sum_gamma[i] += sum_gamma[i + 4];
         }
 
         local_sum_beta_[(slm_row + local_m) * tile_size_n_ + local_n] =
-            (sum_beta[0] + sum_beta[1]) + (sum_beta[2] + sum_beta[3]);
+            sum_beta;
         local_sum_gamma_[(slm_row + local_m) * tile_size_n_ + local_n] =
-            (sum_gamma[0] + sum_gamma[1]) + (sum_gamma[2] + sum_gamma[3]);
+            sum_gamma;
       }
 
       // item.barrier(sycl_local_fence);
-      accscalar_t slm_sum_beta[4] = {accscalar_t(0)};
-      accscalar_t slm_sum_gamma[4] = {accscalar_t(0)};
+      accscalar_t slm_sum_beta = accscalar_t(0);
+      accscalar_t slm_sum_gamma = accscalar_t(0);
       // slm row 64, 8 subgroup, i = 0,2,4,6
       // slm row 32, 8 subgroup, i = 0,2
       // slm row 16, 8 subgroup, i = 0
       for (int i = 0; i < tile_size_m_ / elements_per_thread_ / num_subgroup_;
-           i = i + 2) {
-        slm_sum_beta[i / 2] =
-            local_sum_beta_
-                [(i * num_subgroup_ + local_m) * tile_size_n_ + local_n] +
-            local_sum_beta_
-                [((i + 1) * num_subgroup_ + local_m) * tile_size_n_ + local_n];
-        slm_sum_gamma[i / 2] =
-            local_sum_gamma_
-                [(i * num_subgroup_ + local_m) * tile_size_n_ + local_n] +
-            local_sum_gamma_
-                [((i + 1) * num_subgroup_ + local_m) * tile_size_n_ + local_n];
+           i = i + 1) {
+        slm_sum_beta += local_sum_beta_
+            [(i * num_subgroup_ + local_m) * tile_size_n_ + local_n];
+        slm_sum_gamma += local_sum_gamma_
+            [(i * num_subgroup_ + local_m) * tile_size_n_ + local_n];
       }
-      local_sum_beta_[local_m * tile_size_n_ + local_n] =
-          (slm_sum_beta[0] + slm_sum_beta[1]) +
-          (slm_sum_beta[2] + slm_sum_beta[3]);
-      local_sum_gamma_[local_m * tile_size_n_ + local_n] =
-          (slm_sum_gamma[0] + slm_sum_gamma[1]) +
-          (slm_sum_gamma[2] + slm_sum_gamma[3]);
+      local_sum_beta_[local_m * tile_size_n_ + local_n] = slm_sum_beta;
+      local_sum_gamma_[local_m * tile_size_n_ + local_n] = slm_sum_gamma;
     }
     item.barrier(sycl_local_fence);
-    accscalar_t output_sum_beta[4] = {accscalar_t(0)};
-    accscalar_t output_sum_gamma[4] = {accscalar_t(0)};
+    accscalar_t output_sum_beta = accscalar_t(0);
+    accscalar_t output_sum_gamma = accscalar_t(0);
     if (local_m == 0 && actual_column < N_) {
-      for (int i = 0; i < num_subgroup_; i = i + 2) {
-        output_sum_beta[i / 2] = local_sum_beta_[i * tile_size_n_ + local_n] +
-            local_sum_beta_[(i + 1) * tile_size_n_ + local_n];
-        output_sum_gamma[i / 2] = local_sum_gamma_[i * tile_size_n_ + local_n] +
-            local_sum_gamma_[(i + 1) * tile_size_n_ + local_n];
+      for (int i = 0; i < num_subgroup_; i = i + 1) {
+        output_sum_beta += local_sum_beta_[i * tile_size_n_ + local_n];
+        output_sum_gamma += local_sum_gamma_[i * tile_size_n_ + local_n];
       }
-      if (db_data_ != nullptr)
+      if constexpr (have_beta) {
         db_data_[tile_id_m * N_ + actual_column] =
-            (static_cast<weight_t>(output_sum_beta[0]) +
-             static_cast<weight_t>(output_sum_beta[1])) +
-            (static_cast<weight_t>(output_sum_beta[2]) +
-             static_cast<weight_t>(output_sum_beta[3]));
-      if (dg_data_ != nullptr)
+            static_cast<weight_t>(output_sum_beta);
+      }
+
+      if constexpr (have_gamma) {
         dg_data_[tile_id_m * N_ + actual_column] =
-            (static_cast<weight_t>(output_sum_gamma[0]) +
-             static_cast<weight_t>(output_sum_gamma[1])) +
-            (static_cast<weight_t>(output_sum_gamma[2]) +
-             static_cast<weight_t>(output_sum_gamma[3]));
+            static_cast<weight_t>(output_sum_gamma);
+      }
     }
   }
 
@@ -739,7 +724,6 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       const scalar_t* X_data,
       weight_t* dg_block_data,
       weight_t* db_block_data,
-      int64_t num_tile_m,
       int64_t num_tile_n,
       int64_t tile_size_m,
       int64_t tile_size_n,
@@ -753,7 +737,6 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         X_data_(X_data),
         dg_data_(dg_block_data),
         db_data_(db_block_data),
-        num_tile_m_(num_tile_m),
         num_tile_n_(num_tile_n),
         tile_size_m_(tile_size_m),
         tile_size_n_(tile_size_n),
@@ -771,7 +754,6 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const scalar_t* X_data_;
   weight_t* dg_data_;
   weight_t* db_data_;
-  int64_t num_tile_m_;
   int64_t num_tile_n_;
   int64_t tile_size_m_;
   int64_t tile_size_n_;
@@ -1132,35 +1114,132 @@ void _layer_norm_backward_kernel(
     }
 
     size_t num_workgroup = num_tile_m * num_tile_n;
-    GammaBetaReduceFunctor<scalar_t, accscalar_t, mean_t, weight_t> kfn(
-        mean_data,
-        var_data,
-        dY_data,
-        X_data,
-        dgamma_blocks_ptr,
-        dbeta_blocks_ptr,
-        num_tile_m,
-        num_tile_n,
-        tile_size_m,
-        tile_size_n,
-        elements_per_thread,
-        local_size_x,
-        M,
-        N);
+    if (dgamma.defined() && dbeta.defined()) {
+      GammaBetaReduceFunctor<
+          scalar_t,
+          accscalar_t,
+          mean_t,
+          weight_t,
+          true,
+          true>
+          kfn(mean_data,
+              var_data,
+              dY_data,
+              X_data,
+              dgamma_blocks_ptr,
+              dbeta_blocks_ptr,
+              num_tile_n,
+              tile_size_m,
+              tile_size_n,
+              elements_per_thread,
+              local_size_x,
+              M,
+              N);
 
-    sycl_kernel_submit<
-        GammaBetaReduceFunctor<scalar_t, accscalar_t, mean_t, weight_t>,
-        3>(
-        {num_workgroup, local_size_x, static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
-        {1, local_size_x, static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
-        getCurrentSYCLQueue(),
-        kfn);
-    dgamma = dgamma_blocks.sum(0);
-    dbeta = dbeta_blocks.sum(0);
+      sycl_kernel_submit<
+          GammaBetaReduceFunctor<
+              scalar_t,
+              accscalar_t,
+              mean_t,
+              weight_t,
+              true,
+              true>,
+          3>(
+          {num_workgroup,
+           local_size_x,
+           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+          {1,
+           local_size_x,
+           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+          getCurrentSYCLQueue(),
+          kfn);
+      dgamma = dgamma_blocks.sum(0);
+      dbeta = dbeta_blocks.sum(0);
+    } else if (dgamma.defined() && !dbeta.defined()) {
+      GammaBetaReduceFunctor<
+          scalar_t,
+          accscalar_t,
+          mean_t,
+          weight_t,
+          true,
+          false>
+          kfn(mean_data,
+              var_data,
+              dY_data,
+              X_data,
+              dgamma_blocks_ptr,
+              dbeta_blocks_ptr,
+              num_tile_n,
+              tile_size_m,
+              tile_size_n,
+              elements_per_thread,
+              local_size_x,
+              M,
+              N);
+
+      sycl_kernel_submit<
+          GammaBetaReduceFunctor<
+              scalar_t,
+              accscalar_t,
+              mean_t,
+              weight_t,
+              true,
+              false>,
+          3>(
+          {num_workgroup,
+           local_size_x,
+           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+          {1,
+           local_size_x,
+           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+          getCurrentSYCLQueue(),
+          kfn);
+      dgamma = dgamma_blocks.sum(0);
+    } else if (!dgamma.defined() && dbeta.defined()) {
+      GammaBetaReduceFunctor<
+          scalar_t,
+          accscalar_t,
+          mean_t,
+          weight_t,
+          false,
+          true>
+          kfn(mean_data,
+              var_data,
+              dY_data,
+              X_data,
+              dgamma_blocks_ptr,
+              dbeta_blocks_ptr,
+              num_tile_n,
+              tile_size_m,
+              tile_size_n,
+              elements_per_thread,
+              local_size_x,
+              M,
+              N);
+
+      sycl_kernel_submit<
+          GammaBetaReduceFunctor<
+              scalar_t,
+              accscalar_t,
+              mean_t,
+              weight_t,
+              false,
+              true>,
+          3>(
+          {num_workgroup,
+           local_size_x,
+           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+          {1,
+           local_size_x,
+           static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
+          getCurrentSYCLQueue(),
+          kfn);
+      dbeta = dbeta_blocks.sum(0);
+    } else {
+      return;
+    }
 
   } else {
-    auto config_w = NormConfig(M, N, 0, sizeof(scalar_t));
-
     gamma_beta_bwd_simple_kernel<scalar_t, accscalar_t, mean_t, weight_t>(
         dY, X, mean_data, var_data, dgamma, dbeta, config_w);
   }
