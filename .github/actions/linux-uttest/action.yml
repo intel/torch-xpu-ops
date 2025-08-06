@@ -17,7 +17,7 @@ runs:
       run: |
         mkdir -p ut_log/ut_regression
         cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --timeout 600 --timeout_method=thread -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
+        pytest --timeout 600 -n 4 --timeout_method=thread -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
           2> ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test.log
     - name: ut_transformers
@@ -27,7 +27,7 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/ut_transformers
         cd pytorch
-        pytest --timeout 600 --timeout_method=thread -v test/test_transformers.py -k xpu \
+        pytest --timeout 600 -n 4 --timeout_method=thread -v test/test_transformers.py -k xpu \
           --junit-xml=${{ github.workspace }}/ut_log/ut_transformers.xml \
           2> ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test.log
@@ -115,13 +115,13 @@ runs:
           tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
         # All xpu ut under test/profiler
         cd ../../test/profiler
-        python -m pytest --timeout 600 -vs test_cpp_thread.py | \
+        python -m pytest --timeout 600 -n 4 -vs test_cpp_thread.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
-        python -m pytest --timeout 600 -vs test_execution_trace.py | \
+        python -m pytest --timeout 600 -n 4 -vs test_execution_trace.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/test_execution_trace.log
-        python -m pytest --timeout 600 -vs test_memory_profiler.py | \
+        python -m pytest --timeout 600 -n 4 -vs test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/test_memory_profiler.log
-        python -m pytest --timeout 600 -vs test_profiler_tree.py | \
+        python -m pytest --timeout 600 -n 4 -vs test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/test_profiler_tree.log
 
     - name: xpu_dev1
