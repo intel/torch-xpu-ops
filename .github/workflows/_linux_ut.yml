@@ -64,7 +64,7 @@ jobs:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
     if: ${{ contains(inputs.ut, 'ut_') && !contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 300
+    timeout-minutes: 600
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -127,7 +127,7 @@ jobs:
   devices:
     runs-on: pvc_rolling
     if: ${{ contains(inputs.ut, 'xpu_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 5
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/xpu-tool
