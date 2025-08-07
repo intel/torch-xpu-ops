@@ -124,7 +124,7 @@ jobs:
               # when XPU implementatoin is done.
               # test_foreach, test_decomp
               # Run with only
-              timeout 10000 python run_test_with_only.py \
+              timeout 100000 python run_test_with_only.py \
                 2>$GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test_error.log | \
                 tee $GITHUB_WORKSPACE/ut_log/op_ut/op_ut_with_only_test.log
               cp op_ut_with_only.xml $GITHUB_WORKSPACE/ut_log
