@@ -7,70 +7,92 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import time
-
+import argparse
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-device = "xpu"
-backward = True
-num_iter = 20
 shape_list = [
     (8732, 8732),
     (8192, 8732),
 ]
+backward = True
 
-cache_r = torch.randn((1024 * 1024 * 1024), device=device)
-cache_w = torch.randn((1024 * 1024 * 1024), device=device)
 
-for reduce in ["none", "mean"]:
-    for shape in shape_list:
-        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-            B = shape[0]
-            S = shape[1]
-            input = torch.randn((B, S), requires_grad=True).to(
-                dtype=dtype, device=device
-            )
-            target = torch.randn((B, S)).to(dtype=dtype, device=device)
-            loss = torch.nn.L1Loss(reduction=reduce)
+def L1_loss(loss, input, target, dtype, backward, device):
+    output_xpu = loss(input, target)
+    if backward:
+        output_xpu.backward(torch.ones_like(output_xpu, dtype=dtype, device=device))
 
-            # warm up
-            output_xpu = loss(input, target)
-            output_xpu.backward(torch.ones_like(output_xpu, dtype=dtype, device=device))
+def run_profile(loss, input, target, dtype, backward, cache_r, cache_w, device, num_iter):
+    with profile(
+        activities=[ProfilerActivity.CPU, 
+                  ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
+        record_shapes=True,
+    ) as prof:
+        for i in range(num_iter):
+            cache_r = cache_w * i
+            L1_loss(loss, input, target, dtype, backward, device)
+    print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
 
-            # go
-            print(
-                "shape:",
-                (B, S),
-                "; datatype:",
-                dtype,
-                "; backward:",
-                backward,
-                "; reduce: 0" if (reduce == "none") else "; reduce: 1",
-            )
-            with profile(
-                activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-                record_shapes=True,
-            ) as prof:
-                for i in range(num_iter):
-                    cache_r = cache_w * i
-                    output_xpu = loss(input, target)
-                    cache_r = cache_w * i
-                    output_xpu.backward(
-                        torch.ones_like(output_xpu, dtype=dtype, device=device)
-                    )
-            print(prof.key_averages().table(sort_by="xpu_time_total"))
+def run_e2e(loss, input, target, dtype, backward, cache_r, cache_w, device, num_iter):
+    if device in ['xpu', 'cuda']:
+        torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+    t1 = time.time()
+    for i in range(num_iter):
+        cache_r = cache_w * i
+        L1_loss(loss, input, target, dtype, backward, device)
+    if device in ['xpu', 'cuda']:
+        torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+    t2 = time.time()
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
 
-            # E2E time
-            torch.xpu.synchronize()
-            t1 = time.time()
-            for i in range(num_iter):
-                cache_r = cache_w * i
-                output_xpu = loss(input, target)
-                cache_r = cache_w * i
-                output_xpu.backward(
-                    torch.ones_like(output_xpu, dtype=dtype, device=device)
+def benchmark(args):
+    for reduce in ["none", "mean"]:
+        for shape in shape_list:
+            for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+                B = shape[0]
+                S = shape[1]
+                input = torch.randn((B, S), requires_grad=True).to(
+                    dtype=dtype, device=args.device
                 )
-            torch.xpu.synchronize()
-            t2 = time.time()
-            e2e_time = (t2 - t1) / num_iter
-            print("E2E total time:", f"{float(e2e_time):.20f}")
+                target = torch.randn((B, S)).to(dtype=dtype, device=args.device)
+                loss = torch.nn.L1Loss(reduction=reduce)
+                cache_r = torch.randn((1024 * 1024 * 1024), device=args.device)
+                cache_w = torch.randn((1024 * 1024 * 1024), device=args.device)
+
+                # warm up
+                L1_loss(loss, input, target, dtype, backward, args.device)
+
+                # go
+                print(
+                    "shape:",
+                    (B, S),
+                    "; datatype:",
+                    dtype,
+                    "; backward:",
+                    backward,
+                    "; reduce: 0" if (reduce == "none") else "; reduce: 1",
+                )
+                if not args.e2e_only:
+                    run_profile(loss, input, target, dtype, backward, cache_r, cache_w, args.device, args.num_iter)
+
+                if not args.profile_only:
+                    run_e2e(loss, input, target, dtype, backward, cache_r, cache_w, args.device, args.num_iter)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='OP Benchmark')
+    parser.add_argument('--device', type=str, default='xpu', 
+                        help='Device to run on (e.g., "cpu", "cuda", "xpu")')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--profile-only', action='store_true', 
+                       help='Only Run profile timing')
+    group.add_argument('--e2e-only', action='store_true', 
+                       help='Only Run E2E timing')
+    parser.add_argument('--num-iter', type=int, default=20, 
+                        help='Number of iterations')
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    args = parse_args()
+    benchmark(args)

@@ -31,7 +31,7 @@ def run_profile(shape, dtype, backward, device, num_iter):
                   ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
         record_shapes=True,
     ) as prof:
-        for _ in range(num_iter):
+        for i in range(num_iter):
             Im2col(shape, dtype, backward, device)
     print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
 
@@ -39,7 +39,7 @@ def run_e2e(shape, dtype, backward, device, num_iter):
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
     t1 = time.time()
-    for _ in range(num_iter):
+    for i in range(num_iter):
         Im2col(shape, dtype, backward, device)
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
