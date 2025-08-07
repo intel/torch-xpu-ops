@@ -153,15 +153,9 @@ static inline void sycl_kernel_submit(
   auto exe_bndl =
       syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
   sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
-  auto args_tuple = std::make_tuple(std::forward<Kargs>(args)...);
-  auto cgf = [&](::sycl::handler& cgh) {
-    std::apply([&](auto&&... args_) { cgh.set_args(args_...); }, args_tuple);
-    cgh.parallel_for(
-        ::sycl::nd_range<1>(
-            ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
-        ker);
-  };
-  q.submit(cgf);
+  syclexp::launch_config cfg{::sycl::nd_range<1>(
+      ::sycl::range<1>(global_range), ::sycl::range<1>(local_range))};
+  syclexp::nd_launch(q, cfg, ker, args...);
 }
 
 #define SYCL_KERNEL_STRING(var, str) \
