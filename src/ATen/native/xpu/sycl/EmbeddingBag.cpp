@@ -36,7 +36,8 @@ template <
     int mode,
     int vec_size,
     bool per_sample_weights_defined,
-    bool padding_idx_defined>
+    bool padding_idx_defined,
+    bool block_load = false>
 void embedding_bag(
     scalar_t* const output,
     const scalar_t* const weights,
@@ -65,7 +66,8 @@ void embedding_bag(
       vec_acc_t,
       vec_idx_t,
       per_sample_weights_defined,
-      padding_idx_defined>;
+      padding_idx_defined,
+      block_load>;
 
   vec_t* o_vec = reinterpret_cast<vec_t*>(output);
   const vec_t* w_vec = reinterpret_cast<const vec_t*>(weights);
@@ -102,6 +104,123 @@ void embedding_bag(
       getCurrentSYCLQueue(),
       kfn);
 }
+
+#define EMBBAG_KERNEL_ACC_BLOCK(                               \
+    scalar_t,                                                  \
+    accscalar_t,                                               \
+    index_t,                                                   \
+    mode,                                                      \
+    vec_size,                                                  \
+    output,                                                    \
+    weight,                                                    \
+    input,                                                     \
+    offset,                                                    \
+    offset2bag,                                                \
+    bag_size,                                                  \
+    max_indices,                                               \
+    per_sample_weights,                                        \
+    index_len,                                                 \
+    bag_num,                                                   \
+    feature_dim,                                               \
+    padding_idx,                                               \
+    ignore_offsets,                                            \
+    num_row)                                                   \
+  if (per_sample_weights.defined() && padding_idx != -1)       \
+    embedding_bag<                                             \
+        scalar_t,                                              \
+        accscalar_t,                                           \
+        index_t,                                               \
+        mode,                                                  \
+        vec_size,                                              \
+        true,                                                  \
+        true,                                                  \
+        true>(                                                 \
+        output.mutable_data_ptr<scalar_t>(),                   \
+        weight.const_data_ptr<scalar_t>(),                     \
+        indices.const_data_ptr<index_t>(),                     \
+        offsets.const_data_ptr<index_t>(),                     \
+        offset2bag.mutable_data_ptr<index_t>(),                \
+        bag_size.mutable_data_ptr<index_t>(),                  \
+        max_indices.mutable_data_ptr<index_t>(),               \
+        per_sample_weights.const_data_ptr<scalar_t>(),         \
+        index_size,                                            \
+        bag_num,                                               \
+        feature_dim,                                           \
+        padding_idx,                                           \
+        ignore_offsets,                                        \
+        num_row);                                              \
+  else if (!per_sample_weights.defined() && padding_idx != -1) \
+    embedding_bag<                                             \
+        scalar_t,                                              \
+        accscalar_t,                                           \
+        index_t,                                               \
+        mode,                                                  \
+        vec_size,                                              \
+        false,                                                 \
+        true,                                                  \
+        true>(                                                 \
+        output.mutable_data_ptr<scalar_t>(),                   \
+        weight.const_data_ptr<scalar_t>(),                     \
+        indices.const_data_ptr<index_t>(),                     \
+        offsets.const_data_ptr<index_t>(),                     \
+        offset2bag.mutable_data_ptr<index_t>(),                \
+        bag_size.mutable_data_ptr<index_t>(),                  \
+        max_indices.mutable_data_ptr<index_t>(),               \
+        nullptr,                                               \
+        index_size,                                            \
+        bag_num,                                               \
+        feature_dim,                                           \
+        padding_idx,                                           \
+        ignore_offsets,                                        \
+        num_row);                                              \
+  else if (per_sample_weights.defined() && padding_idx == -1)  \
+    embedding_bag<                                             \
+        scalar_t,                                              \
+        accscalar_t,                                           \
+        index_t,                                               \
+        mode,                                                  \
+        vec_size,                                              \
+        true,                                                  \
+        false,                                                 \
+        true>(                                                 \
+        output.mutable_data_ptr<scalar_t>(),                   \
+        weight.const_data_ptr<scalar_t>(),                     \
+        indices.const_data_ptr<index_t>(),                     \
+        offsets.const_data_ptr<index_t>(),                     \
+        offset2bag.mutable_data_ptr<index_t>(),                \
+        bag_size.mutable_data_ptr<index_t>(),                  \
+        max_indices.mutable_data_ptr<index_t>(),               \
+        per_sample_weights.const_data_ptr<scalar_t>(),         \
+        index_size,                                            \
+        bag_num,                                               \
+        feature_dim,                                           \
+        padding_idx,                                           \
+        ignore_offsets,                                        \
+        num_row);                                              \
+  else                                                         \
+    embedding_bag<                                             \
+        scalar_t,                                              \
+        accscalar_t,                                           \
+        index_t,                                               \
+        mode,                                                  \
+        vec_size,                                              \
+        false,                                                 \
+        false,                                                 \
+        true>(                                                 \
+        output.mutable_data_ptr<scalar_t>(),                   \
+        weight.const_data_ptr<scalar_t>(),                     \
+        indices.const_data_ptr<index_t>(),                     \
+        offsets.const_data_ptr<index_t>(),                     \
+        offset2bag.mutable_data_ptr<index_t>(),                \
+        bag_size.mutable_data_ptr<index_t>(),                  \
+        max_indices.mutable_data_ptr<index_t>(),               \
+        nullptr,                                               \
+        index_size,                                            \
+        bag_num,                                               \
+        feature_dim,                                           \
+        padding_idx,                                           \
+        ignore_offsets,                                        \
+        num_row);
 
 #define EMBBAG_KERNEL_ACC(                                                     \
     scalar_t,                                                                  \
@@ -308,6 +427,29 @@ void embedding_bag_sum_template(
     int64_t padding_idx,
     bool ignore_offsets) {
   uint64_t num_row = weights.size(0);
+
+#define EXTEND_EMBBAG_SUM_KERNEL_VEC_BLOCK(vec_size) \
+  EMBBAG_KERNEL_ACC_BLOCK(                           \
+      scalar_t,                                      \
+      accscalar_t,                                   \
+      index_t,                                       \
+      MODE_SUM,                                      \
+      vec_size,                                      \
+      output,                                        \
+      weights,                                       \
+      input,                                         \
+      offset,                                        \
+      offset2bag,                                    \
+      bag_size,                                      \
+      max_indices,                                   \
+      per_sample_weights,                            \
+      index_len,                                     \
+      bag_num,                                       \
+      feature_dim,                                   \
+      padding_idx,                                   \
+      ignore_offsets,                                \
+      num_row);
+
 #define EXTEND_EMBBAG_SUM_KERNEL_VEC(vec_size) \
   EMBBAG_KERNEL_ACC(                           \
       scalar_t,                                \
@@ -354,20 +496,42 @@ void embedding_bag_sum_template(
                   break;
                 }
               }
-              switch (vec_size) {
-                case 8:
-                  EXTEND_EMBBAG_SUM_KERNEL_VEC(8);
-                  break;
-                case 4:
-                  EXTEND_EMBBAG_SUM_KERNEL_VEC(4);
-                  break;
-                case 2:
-                  EXTEND_EMBBAG_SUM_KERNEL_VEC(2);
-                  break;
-                default:
-                  EXTEND_EMBBAG_SUM_KERNEL_VEC(1);
-                  break;
-              };
+              vec_size=2;
+              bool block_load = false;
+              if (vec_size * 32 == feature_dim) {
+                block_load = true;
+              }
+              if (block_load) {
+                switch (vec_size) {
+                  case 8:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC_BLOCK(8);
+                    break;
+                  case 4:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC_BLOCK(4);
+                    break;
+                  case 2:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC_BLOCK(2);
+                    break;
+                  default:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC_BLOCK(1);
+                    break;
+                };
+              } else {
+                switch (vec_size) {
+                  case 8:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC(8);
+                    break;
+                  case 4:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC(4);
+                    break;
+                  case 2:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC(2);
+                    break;
+                  default:
+                    EXTEND_EMBBAG_SUM_KERNEL_VEC(1);
+                    break;
+                };
+              }
             });
       });
 #undef EXTEND_EMBBAG_SUM_KERNEL_VEC

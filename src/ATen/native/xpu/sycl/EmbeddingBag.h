@@ -13,6 +13,15 @@ constexpr int MODE_SUM = 0;
 constexpr int MODE_MEAN = 1;
 constexpr int MODE_MAX = 2;
 
+template <typename T>
+auto get_multi_ptr(T* raw_ptr) {
+  auto multi_ptr = sycl::address_space_cast<
+      sycl::access::address_space::global_space,
+      sycl::access::decorated::yes>(raw_ptr);
+
+  return multi_ptr;
+}
+
 template <
     typename scalar_t,
     typename accscalar_t,
@@ -23,10 +32,13 @@ template <
     typename vec_acc_t,
     typename vec_idx_t,
     bool per_sample_weights_defined,
-    bool padding_idx_defined>
+    bool padding_idx_defined,
+    bool block_load = false>
 struct EmbeddingBagKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_global_linear_id();
+    auto sg = item.get_sub_group();
+    auto sg_range = 32;
     if (thread_id < bag_num_ * vectorized_feature_dim_len_) {
       auto current_feature = thread_id % vectorized_feature_dim_len_;
       auto current_bag = thread_id / vectorized_feature_dim_len_;
@@ -58,8 +70,18 @@ struct EmbeddingBagKernelFunctor {
       index_t index_offset, weight_index;
       vec_t wei_load;
       auto handle_non_padding = [&]() {
-        wei_load = w_vec_
-            [weight_index * vectorized_feature_dim_len_ + current_feature];
+        if constexpr (block_load && vec_size > 1) {
+          // sg.load only accept sycl::vec, 
+          wei_load = c10::bit_cast<
+              vec_t>(sg.load<vec_size * sizeof(scalar_t) / sizeof(float)>(
+              get_multi_ptr(
+                  reinterpret_cast<const float*>(
+                      &w_vec_[weight_index * vectorized_feature_dim_len_]))));
+
+        } else if constexpr (!block_load || vec_size < 2) {
+          wei_load = w_vec_
+              [weight_index * vectorized_feature_dim_len_ + current_feature];
+        }
 
         if constexpr (mode == MODE_SUM) {
 #pragma unroll
