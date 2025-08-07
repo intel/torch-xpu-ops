@@ -1,5 +1,5 @@
 #!/bin/bash
-ut_suite="${1:-op_regression}"   # op_regression / op_extended / op_ut / torch_xpu
+ut_suite="${1:-ut_regression}"   # ut_regression / ut_extended / ut_op / ut_torch
 
 # usage
 # compare_and_filter_logs <UT'log> <Known_issue.log> [output.log]
@@ -82,7 +82,7 @@ compare_and_filter_logs() {
     rm -f ${temp_output} ${temp_file} ${temp_final}
 }
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
+if [[ "${ut_suite}" == 'ut_regression' || "${ut_suite}" == 'xpu_dev1' || "${ut_suite}" == 'ut_extended' || "${ut_suite}" == 'ut_transformers' ]]; then
     grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep -E "Timeout" "${ut_suite}"_test.log | grep "test" >> ./"${ut_suite}"_failed.log
@@ -108,13 +108,13 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-if [[ "${ut_suite}" == 'op_ut' ]]; then
-    grep -E "FAILED" op_ut_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "Timeout" op_ut_with_only_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
+if [[ "${ut_suite}" == 'ut_op' ]]; then
+    grep -E "FAILED" ut_op_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "have failures" ut_op_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "Timeout" ut_op_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
+    grep -E "FAILED" ut_op_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "have failures" ut_op_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
+    grep -E "Timeout" ut_op_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
     echo -e "========================================================================="
@@ -142,8 +142,8 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
     fi
     ((num_failed=num_failed_with_skip+num_failed_with_only))
-    grep "PASSED" op_ut_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
-    grep "PASSED" op_ut_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
+    grep "PASSED" ut_op_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
+    grep "PASSED" ut_op_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
     num_passed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_passed.log")
     num_passed_with_only=$(wc -l < "./${ut_suite}_with_only_test_passed.log")
     ((num_passed=num_passed_with_skip+num_passed_with_only))
@@ -154,13 +154,13 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-if [[ "${ut_suite}" == 'torch_xpu' ]]; then
+if [[ "${ut_suite}" == 'ut_torch' ]]; then
     echo "Pytorch XPU binary UT checking"
     cd ../../pytorch || exit
     for xpu_case in build/bin/*{xpu,sycl}*; do
       if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
         case_name=$(basename "$xpu_case")
-        cd ../ut_log/torch_xpu || exit
+        cd ../ut_log/ut_torch || exit
         grep -E "FAILED|have failures" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_failed.log
         wc -l < "./binary_ut_${ut_suite}_${case_name}_failed.log" | tee -a ./binary_ut_"${ut_suite}"_failed_summary.log
         grep -E "PASSED|Pass" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_passed.log
@@ -171,7 +171,7 @@ if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    cd ../ut_log/torch_xpu || exit
+    cd ../ut_log/ut_torch || exit
     cat "./binary_ut_${ut_suite}_${case_name}_failed.log"
     num_failed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_"${ut_suite}"_failed_summary.log)
     num_passed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_"${ut_suite}"_passed_summary.log)
