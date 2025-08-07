@@ -31,4 +31,4 @@ mkdir -p ${DEPENDENCY_DIR}
 cd ${DEPENDENCY_DIR} && pwd || exit 1
 download_with_retry https://artifactory-kfs.habana-labs.com/artifactory/bin-generic-dev-local/DPCPP_JGS/latest/DPCPP_JGS-master.tgz
 download_with_retry https://artifactory-kfs.habana-labs.com/artifactory/bin-generic-dev-local/PROFILING_TOOLS_JGS/latest/PROFILING_TOOLS_JGS-master.tgz
-for f in *.tgz; do filename=$f; woext="${filename%%-*}"; echo $woext ; mkdir $woext; tar -xzf $f -C $woext ; rm $f ; cat $woext/version.txt ; done
+for f in *.tgz; do filename=$f; woext="${filename%%-*}"; echo $woext ; mkdir $woext; tar -xzf $f -C $woext ; cat $woext/version.txt ; done

@@ -146,6 +146,8 @@ jobs:
           source activate xpu_op_build
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
+          echo "TORCH_XPU_OPS_COMMIT_ID=$(git -C ${{ github.workspace }}/pytorch/third_party/torch-xpu-ops rev-parse HEAD)"
+          echo "ONEDNN_COMMIT_ID=$(git -C ${{ github.workspace }}/pytorch/build/xpu_mkldnn_proj-prefix/src/xpu_mkldnn_proj rev-parse HEAD)"
       - name: Upload Torch XPU Wheel
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

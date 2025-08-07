@@ -16,23 +16,36 @@ on:
       python:
         required: false
         type: string
-        default: '3.10'
+        default: '3.12'
         description: Python version
       runner:
         required: true
-        type: string
+        type: choice
         default: 'acceptance_test'
         description: Runner label
+        options:
+          - 'acceptance_test'
+          - 'private_torch_ci'
       ut:
         required: true
         type: string
-        default: ''
+        default: 'op_standalone'
         description: UT scope. `op_standalone` Delimiter is comma
       test_type:
         required: true
         type: string
         default: '8'
         description: Test type, correlate to issue number
+      onednn:
+        required: false
+        type: string
+        default: ''
+        description: OneDNN commit. Use prv-gpu HEAD by default
+      dep_path:
+        required: false
+        type: string
+        default: ''
+        description: Dependency path. If not set, will pull latest to workspace
 
 permissions: read-all
 
@@ -50,6 +63,8 @@ jobs:
       keep_torch_xpu_ops: ${{ inputs.keep_torch_xpu_ops }}
       python: ${{ inputs.python }}
       runner: ${{ inputs.runner }}
+      onednn: ${{ inputs.onednn }}
+      dep_path: ${{ inputs.dep_path }}
   
   Linux-Acceptance-Test:
     name: linux-acceptance-ondemand-test
@@ -62,3 +77,4 @@ jobs:
       ut: ${{ inputs.ut }}
       python: ${{ inputs.python }}
       test_type: ${{ inputs.test_type }}
+      dep_path: ${{ inputs.dep_path }}
