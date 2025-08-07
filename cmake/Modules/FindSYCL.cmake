@@ -401,6 +401,11 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       set(verbose_output OFF)
     endif()
 
+    set(offline_compiler_args "")
+    if(DEFINED SYCL_OFFLINE_COMPILER_FLAGS)
+      set(offline_compiler_args -Xs ${SYCL_OFFLINE_COMPILER_FLAGS})
+    endif()
+
     # Build the generated file and dependency file ##########################
     add_custom_command(
       OUTPUT ${output_file}
@@ -408,7 +413,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
       COMMAND ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
-      # -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
+      ${offline_compiler_args}
       -o ${output_file}
       COMMENT "Building SYCL device link file ${output_file_relative_path}"
       )
