@@ -50,7 +50,7 @@ def mp3d(shape, dtype, channels_last, backward, device):
 
 def run_profile(shape, dtype, channels_last, backward, device, num_iter):
     with profile(
-        activities=[ProfilerActivity.CPU, 
+        activities=[ProfilerActivity.CPU,
                   ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
         record_shapes=True,
     ) as prof:
@@ -96,14 +96,14 @@ def benchmark(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='OP Benchmark')
-    parser.add_argument('--device', type=str, default='xpu', 
+    parser.add_argument('--device', type=str, default='xpu',
                         help='Device to run on (e.g., "cpu", "cuda", "xpu")')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--profile-only', action='store_true', 
+    group.add_argument('--profile-only', action='store_true',
                        help='Only Run profile timing')
-    group.add_argument('--e2e-only', action='store_true', 
+    group.add_argument('--e2e-only', action='store_true',
                        help='Only Run E2E timing')
-    parser.add_argument('--num-iter', type=int, default=20, 
+    parser.add_argument('--num-iter', type=int, default=20,
                         help='Number of iterations')
     return parser.parse_args()
 

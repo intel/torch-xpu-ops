@@ -56,7 +56,7 @@ def benchmark(shape, dtype, mode, device, num_iter, do_profile, do_e2e):
     )
     if not do_e2e:
         with profile(
-            activities=[ProfilerActivity.CPU, 
+            activities=[ProfilerActivity.CPU,
                 ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
             record_shapes=True,
         ) as prof:

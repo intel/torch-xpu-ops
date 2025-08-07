@@ -15,26 +15,25 @@ shape_list = [(8192, 8192)]
 backward = False
 
 
-def Random(shape, dtype, backward, device):
-    input = torch.randn(shape, dtype=dtype, device=device)
+def Random(input, device):
     input.random_(-(2**8), 2**8)
 
-def run_profile(shape, dtype, backward, device, num_iter):
+def run_profile(input, device, num_iter):
     with profile(
-        activities=[ProfilerActivity.CPU, 
+        activities=[ProfilerActivity.CPU,
                   ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
         record_shapes=True,
     ) as prof:
-        for _ in range(num_iter):
-            Random(shape, dtype, backward, device)
+        for i in range(num_iter):
+            Random(input, device)
     print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
 
-def run_e2e(shape, dtype, backward, device, num_iter):
+def run_e2e(input, device, num_iter):
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
     t1 = time.time()
-    for _ in range(num_iter):
-        Random(shape, dtype, backward, device)
+    for i in range(num_iter):
+        Random(input, device)
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
     t2 = time.time()
@@ -44,27 +43,28 @@ def run_e2e(shape, dtype, backward, device, num_iter):
 def benchmark(args):
     for shape in shape_list:
         for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            input = torch.randn(shape, dtype=dtype, device=args.device)
             # warm up
-            Random(shape, dtype, backward, args.device)
+            Random(input, args.device)
 
             # go
             print("shape:", (shape), "; datatype:", dtype, "; backward:", backward)
             if not args.e2e_only:
-                run_profile(shape, dtype, backward, args.device, args.num_iter)
+                run_profile(input, args.device, args.num_iter)
 
             if not args.profile_only:
-                run_e2e(shape, dtype, backward, args.device, args.num_iter)
+                run_e2e(input, args.device, args.num_iter)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='OP Benchmark')
-    parser.add_argument('--device', type=str, default='xpu', 
+    parser.add_argument('--device', type=str, default='xpu',
                         help='Device to run on (e.g., "cpu", "cuda", "xpu")')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--profile-only', action='store_true', 
+    group.add_argument('--profile-only', action='store_true',
                        help='Only Run profile timing')
-    group.add_argument('--e2e-only', action='store_true', 
+    group.add_argument('--e2e-only', action='store_true',
                        help='Only Run E2E timing')
-    parser.add_argument('--num-iter', type=int, default=20, 
+    parser.add_argument('--num-iter', type=int, default=20,
                         help='Number of iterations')
     return parser.parse_args()
 

@@ -18,15 +18,7 @@ shape_list = [
 ]
 backward = True
 
-def Grad_sample2d(shape, dtype, backward, mode, padding_mode, align_corners, device):
-    N, C, H, W = shape
-    input = torch.randn(N, C, H, W, dtype=dtype, device=device)
-    grid = torch.randn(N, H, W, 2, dtype=dtype, device=device)
-
-    if backward:
-        input.requires_grad_(True)
-        grid.requires_grad_(True)
-
+def Grad_sample2d(input, grid, backward, mode, padding_mode, align_corners, device):
     output = torch.nn.functional.grid_sample(
         input,
         grid,
@@ -37,22 +29,22 @@ def Grad_sample2d(shape, dtype, backward, mode, padding_mode, align_corners, dev
     if backward:
         output.sum().backward()
 
-def run_profile(shape, dtype, backward, mode, padding_mode, align_corners, device, num_iter):
+def run_profile(input, grid, backward, mode, padding_mode, align_corners, device, num_iter):
     with profile(
-        activities=[ProfilerActivity.CPU, 
+        activities=[ProfilerActivity.CPU,
                   ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
         record_shapes=True,
     ) as prof:
-        for _ in range(num_iter):
-            Grad_sample2d(shape, dtype, backward, mode, padding_mode, align_corners, device)
+        for i in range(num_iter):
+            Grad_sample2d(input, grid, backward, mode, padding_mode, align_corners, device)
     print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
 
-def run_e2e(shape, dtype, backward, mode, padding_mode, align_corners, device, num_iter):
+def run_e2e(input, grid, backward, mode, padding_mode, align_corners, device, num_iter):
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
     t1 = time.time()
-    for _ in range(num_iter):
-        Grad_sample2d(shape, dtype, backward, mode, padding_mode, align_corners, device)
+    for i in range(num_iter):
+        Grad_sample2d(input, grid, backward, mode, padding_mode, align_corners, device)
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
     t2 = time.time()
@@ -65,8 +57,16 @@ def benchmark(args):
             for mode in ["bilinear", "nearest", "bicubic"]:
                 for padding_mode in ["zeros", "border", "reflection"]:
                     for align_corners in [True, False]:
+                        N, C, H, W = shape
+                        input = torch.randn(N, C, H, W, dtype=dtype, device=args.device)
+                        grid = torch.randn(N, H, W, 2, dtype=dtype, device=args.device)
+
+                        if backward:
+                            input.requires_grad_(True)
+                            grid.requires_grad_(True)
+
                         # warm up
-                        Grad_sample2d(shape, dtype, backward, mode, padding_mode, align_corners, args.device)
+                        Grad_sample2d(input, grid, backward, mode, padding_mode, align_corners, args.device)
 
                         # go
                         print(
@@ -84,21 +84,21 @@ def benchmark(args):
                             backward,
                         )
                         if not args.e2e_only:
-                            run_profile(shape, dtype, backward, mode, padding_mode, align_corners, args.device, args.num_iter)
+                            run_profile(input, grid, backward, mode, padding_mode, align_corners, args.device, args.num_iter)
 
                         if not args.profile_only:
-                            run_e2e(shape, dtype, backward, mode, padding_mode, align_corners, args.device, args.num_iter)
+                            run_e2e(input, grid, backward, mode, padding_mode, align_corners, args.device, args.num_iter)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='OP Benchmark')
-    parser.add_argument('--device', type=str, default='xpu', 
+    parser.add_argument('--device', type=str, default='xpu',
                         help='Device to run on (e.g., "cpu", "cuda", "xpu")')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--profile-only', action='store_true', 
+    group.add_argument('--profile-only', action='store_true',
                        help='Only Run profile timing')
-    group.add_argument('--e2e-only', action='store_true', 
+    group.add_argument('--e2e-only', action='store_true',
                        help='Only Run E2E timing')
-    parser.add_argument('--num-iter', type=int, default=20, 
+    parser.add_argument('--num-iter', type=int, default=20,
                         help='Number of iterations')
     return parser.parse_args()
 

@@ -74,7 +74,7 @@ def maxUnpool3d(shape, dtype, channels_last, backward, device):
 
 def run_profile(shape, dtype, channels_last, backward, device, num_iter):
     with profile(
-        activities=[ProfilerActivity.CPU, 
+        activities=[ProfilerActivity.CPU,
                   ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
         record_shapes=True,
     ) as prof:
