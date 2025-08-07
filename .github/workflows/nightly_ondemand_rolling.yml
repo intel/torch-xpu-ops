@@ -9,6 +9,9 @@ on:
       test_case:
         type: string
         default: 'target,baseline'
+      onednn_verbose:
+        type: string
+        default: '0'
 
 permissions: read-all
 
@@ -24,6 +27,7 @@ jobs:
         test_case: [target, baseline]
     env:
       GH_TOKEN: ${{ github.token }}
+      ONEDNN_VERBOSE: ${{ inputs.onednn_verbose }}
     steps:
       - name: cleanup
         run: |
