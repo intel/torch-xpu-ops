@@ -496,9 +496,9 @@ void embedding_bag_sum_template(
                   break;
                 }
               }
-              vec_size=2;
+              vec_size=4;
               bool block_load = false;
-              if (vec_size * 32 == feature_dim) {
+              if (vec_size * 16 == feature_dim) {
                 block_load = true;
               }
               if (block_load) {

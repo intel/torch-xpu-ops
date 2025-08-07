@@ -15,27 +15,25 @@ constexpr int MODE_MAX = 2;
 
 template <typename T>
 auto get_multi_ptr(T* raw_ptr) {
-  auto multi_ptr = sycl::address_space_cast<
-      sycl::access::address_space::global_space,
-      sycl::access::decorated::yes>(raw_ptr);
+  auto multi_ptr =
+      sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::yes>(raw_ptr);
 
   return multi_ptr;
 }
 
-template <
-    typename scalar_t,
-    typename accscalar_t,
-    typename index_t,
-    int mode,
-    int vec_size,
-    typename vec_t,
-    typename vec_acc_t,
-    typename vec_idx_t,
-    bool per_sample_weights_defined,
-    bool padding_idx_defined,
-    bool block_load = false>
+template <typename scalar_t,
+          typename accscalar_t,
+          typename index_t,
+          int mode,
+          int vec_size,
+          typename vec_t,
+          typename vec_acc_t,
+          typename vec_idx_t,
+          bool per_sample_weights_defined,
+          bool padding_idx_defined,
+          bool block_load = false>
 struct EmbeddingBagKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
+  [[sycl::reqd_sub_group_size(block_load ? 16 : 32)]] void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_global_linear_id();
     auto sg = item.get_sub_group();
     auto sg_range = 32;
@@ -71,16 +69,13 @@ struct EmbeddingBagKernelFunctor {
       vec_t wei_load;
       auto handle_non_padding = [&]() {
         if constexpr (block_load && vec_size > 1) {
-          // sg.load only accept sycl::vec, 
-          wei_load = c10::bit_cast<
-              vec_t>(sg.load<vec_size * sizeof(scalar_t) / sizeof(float)>(
-              get_multi_ptr(
-                  reinterpret_cast<const float*>(
-                      &w_vec_[weight_index * vectorized_feature_dim_len_]))));
-
+          auto props = sycl::ext::oneapi::experimental::properties{
+              sycl::ext::oneapi::experimental::contiguous_memory,
+              sycl::ext::oneapi::experimental::alignment<sizeof(scalar_t) * vec_size>};
+          sycl::ext::oneapi::experimental::group_load(
+              sg, w_vec_ + weight_index * vectorized_feature_dim_len_, wei_load, props);
         } else if constexpr (!block_load || vec_size < 2) {
-          wei_load = w_vec_
-              [weight_index * vectorized_feature_dim_len_ + current_feature];
+          wei_load = w_vec_[weight_index * vectorized_feature_dim_len_ + current_feature];
         }
 
         if constexpr (mode == MODE_SUM) {
@@ -109,8 +104,7 @@ struct EmbeddingBagKernelFunctor {
         }
       };
 
-      for (index_t offset_in_bag = start; offset_in_bag < end;
-           offset_in_bag++) {
+      for (index_t offset_in_bag = start; offset_in_bag < end; offset_in_bag++) {
         index_offset = offset_in_bag;
         weight_index = index_[index_offset];
         SYCL_KERNEL_ASSERT(weight_index < num_row_);
@@ -134,8 +128,7 @@ struct EmbeddingBagKernelFunctor {
         bag_size_[current_bag] = bsize;
       }
 
-      index_t o_off =
-          current_bag * vectorized_feature_dim_len_ + current_feature;
+      index_t o_off = current_bag * vectorized_feature_dim_len_ + current_feature;
       if constexpr (mode == MODE_SUM) {
         vec_t o;
 #pragma unroll
@@ -157,33 +150,29 @@ struct EmbeddingBagKernelFunctor {
         for (int i = 0; i < vec_size; i++) {
           padding[i] = 0;
         }
-        o_vec_[o_off] =
-            value_max[0] == at::numeric_limits<accscalar_t>::lower_bound()
-            ? padding
-            : value_max;
+        o_vec_[o_off] = value_max[0] == at::numeric_limits<accscalar_t>::lower_bound() ? padding : value_max;
         if (max_index_) {
           max_idx_vec_[o_off] = index_max;
         }
       }
     }
   }
-  EmbeddingBagKernelFunctor(
-      const index_t* const index,
-      const index_t* const offset,
-      index_t* const offset2bag,
-      index_t* const bag_size,
-      index_t* const max_index,
-      const scalar_t* const per_sample_weights,
-      int64_t index_size,
-      int64_t bag_num,
-      int64_t vectorized_feature_dim_len,
-      index_t padding_idx,
-      bool ignore_offsets,
-      vec_t* o_vec,
-      const vec_t* w_vec,
-      vec_idx_t* max_idx_vec,
-      index_t fixing_bag_size,
-      index_t num_row)
+  EmbeddingBagKernelFunctor(const index_t* const index,
+                            const index_t* const offset,
+                            index_t* const offset2bag,
+                            index_t* const bag_size,
+                            index_t* const max_index,
+                            const scalar_t* const per_sample_weights,
+                            int64_t index_size,
+                            int64_t bag_num,
+                            int64_t vectorized_feature_dim_len,
+                            index_t padding_idx,
+                            bool ignore_offsets,
+                            vec_t* o_vec,
+                            const vec_t* w_vec,
+                            vec_idx_t* max_idx_vec,
+                            index_t fixing_bag_size,
+                            index_t num_row)
       : index_(index),
         offset_(offset),
         offset2bag_(offset2bag),
@@ -232,26 +221,19 @@ struct EmbeddingBagPerSampleWeightsBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     int idx = item_id.get_global_linear_id();
     auto sg = item_id.get_sub_group();
-    int sgSize = static_cast<int>(
-        sg.get_local_range()[0]); // number of work-items in this sub-group
+    int sgSize = static_cast<int>(sg.get_local_range()[0]); // number of work-items in this sub-group
     int sgId = idx / sgSize; // subgroup index
-    int sglid = static_cast<int>(
-        sg.get_local_id()[0]); // index of the work-item in this sub-group
+    int sglid = static_cast<int>(sg.get_local_id()[0]); // index of the work-item in this sub-group
 
     int num_sg = num_group_ * max_group_size_ / sgSize; // number of sub-groups
-    for (int sample_idx = sgId; sample_idx < num_samples_;
-         sample_idx += num_sg) {
+    for (int sample_idx = sgId; sample_idx < num_samples_; sample_idx += num_sg) {
       accscalar_t result = 0.;
       const int bag_idx = (int)offset2bag_[sample_idx];
       const int embedding_idx = (int)indices_[sample_idx];
       if (embedding_idx != padding_idx_) {
-        for (int feature_idx = sglid; feature_idx < embedding_features_;
-             feature_idx += sgSize) {
-          result +=
-              grad_[grad_stride0_ * bag_idx + grad_stride1_ * feature_idx] *
-              weight_
-                  [weight_stride0_ * embedding_idx +
-                   weight_stride1_ * feature_idx];
+        for (int feature_idx = sglid; feature_idx < embedding_features_; feature_idx += sgSize) {
+          result += grad_[grad_stride0_ * bag_idx + grad_stride1_ * feature_idx] *
+              weight_[weight_stride0_ * embedding_idx + weight_stride1_ * feature_idx];
         }
       }
       // subgroup reduce sum
@@ -263,21 +245,20 @@ struct EmbeddingBagPerSampleWeightsBackwardKernelFunctor {
       }
     }
   }
-  EmbeddingBagPerSampleWeightsBackwardKernelFunctor(
-      const scalar_t* grad,
-      int64_t grad_stride0,
-      int64_t grad_stride1,
-      const scalar_t* weight,
-      int64_t weight_stride0,
-      int64_t weight_stride1,
-      const index_t* indices,
-      const index_t* offset2bag,
-      int64_t num_samples,
-      int64_t embedding_features,
-      scalar_t* output,
-      index_t padding_idx,
-      int64_t num_group,
-      int64_t max_group_size)
+  EmbeddingBagPerSampleWeightsBackwardKernelFunctor(const scalar_t* grad,
+                                                    int64_t grad_stride0,
+                                                    int64_t grad_stride1,
+                                                    const scalar_t* weight,
+                                                    int64_t weight_stride0,
+                                                    int64_t weight_stride1,
+                                                    const index_t* indices,
+                                                    const index_t* offset2bag,
+                                                    int64_t num_samples,
+                                                    int64_t embedding_features,
+                                                    scalar_t* output,
+                                                    index_t padding_idx,
+                                                    int64_t num_group,
+                                                    int64_t max_group_size)
       : grad_(grad),
         grad_stride0_(grad_stride0),
         grad_stride1_(grad_stride1),
