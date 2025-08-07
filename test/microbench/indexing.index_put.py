@@ -6,8 +6,9 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-import time
 import argparse
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
@@ -17,13 +18,21 @@ backward = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="OP Benchmark")
-    parser.add_argument("--device", type=str, default="xpu", help='Device to run on (e.g., "cpu", "cuda", "xpu")')
-    parser.add_argument("--num_iter", type=int, default=20, help='Number of iterations')
-    parser.add_argument("--profile-only", action="store_true", help='Only Run profile timing')
-    parser.add_argument("--e2e-only", action="store_true", help='Only Run E2E timing')
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="xpu",
+        help='Device to run on (e.g., "cpu", "cuda", "xpu")',
+    )
+    parser.add_argument("--num_iter", type=int, default=20, help="Number of iterations")
+    parser.add_argument(
+        "--profile-only", action="store_true", help="Only Run profile timing"
+    )
+    parser.add_argument("--e2e-only", action="store_true", help="Only Run E2E timing")
 
     args = parser.parse_args()
     return args
+
 
 def benchmark(shape, dtype, mode, device, num_iter, do_profile, do_e2e):
     d = torch.rand(4, 15000, dtype=dtype, device=device)
@@ -56,8 +65,10 @@ def benchmark(shape, dtype, mode, device, num_iter, do_profile, do_e2e):
     )
     if not do_e2e:
         with profile(
-            activities=[ProfilerActivity.CPU,
-                ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
+            activities=[
+                ProfilerActivity.CPU,
+                ProfilerActivity.XPU if device == "xpu" else ProfilerActivity.CUDA,
+            ],
             record_shapes=True,
         ) as prof:
             for i in range(num_iter):
@@ -69,19 +80,20 @@ def benchmark(shape, dtype, mode, device, num_iter, do_profile, do_e2e):
 
     # E2E time
     if not do_profile:
-        if device in ['xpu', 'cuda']:
-            torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+        if device in ["xpu", "cuda"]:
+            torch.xpu.synchronize() if device == "xpu" else torch.cuda.synchronize()
         t1 = time.time()
         for i in range(num_iter):
             if mode == "with_nonzero":
                 d[f] = g
             else:
                 d[index] = g
-        if device in ['xpu', 'cuda']:
-            torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+        if device in ["xpu", "cuda"]:
+            torch.xpu.synchronize() if device == "xpu" else torch.cuda.synchronize()
         t2 = time.time()
         e2e_time = (t2 - t1) / num_iter
         print("E2E total time:", f"{float(e2e_time):.20f}")
+
 
 def main():
     args = parse_args()
@@ -97,6 +109,7 @@ def main():
                     do_profile=args.profile_only,
                     do_e2e=args.e2e_only,
                 )
+
 
 if __name__ == "__main__":
     main()
