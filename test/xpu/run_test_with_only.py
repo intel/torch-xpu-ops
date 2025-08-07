@@ -14,8 +14,8 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            "pytest --timeout 600 -v "
-            + "--junit-xml=./op_ut_with_only.xml "
+            "pytest --timeout 600 -n 4 -v "
+            + "--junit-xml=./ut_op_with_only.xml "
             + test_case
             + skip_options
         )
@@ -27,15 +27,16 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            "pytest --timeout 600 -v "
-            + "--junit-xml=./op_ut_with_only.xml "
+            "pytest --timeout 600 -n 4 -v "
+            + "--junit-xml=./ut_op_with_only.xml "
             + test_case
             + exe_options
         )
         return os.system(test_command)
     else:
         test_command = (
-            "pytest --timeout 600 -v --junit-xml=./op_ut_with_only.xml " + test_case
+            "pytest --timeout 600 -n 4 -v --junit-xml=./ut_op_with_only.xml "
+            + test_case
         )
         return os.system(test_command)
 
