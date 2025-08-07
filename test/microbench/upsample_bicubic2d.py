@@ -7,79 +7,9 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import time
-
+import argparse
 import torch
 from torch.profiler import profile, ProfilerActivity
-
-device = "xpu"
-backward = True
-num_iter = 20
-cache_r = torch.randn((1024 * 1024 * 1024), device="xpu")
-cache_w = torch.randn((1024 * 1024 * 1024), device="xpu")
-
-
-def simple_test(in_shape, scale_factor, backward, dtype):
-    in_tensor = torch.randn(
-        in_shape, dtype=dtype, device=device, requires_grad=backward
-    )
-    output = torch.nn.functional.interpolate(
-        in_tensor, mode="bicubic", scale_factor=scale_factor, align_corners=True
-    )
-
-    # warm_up
-    for _ in range(10):
-        output = torch.nn.functional.interpolate(
-            in_tensor, mode="bicubic", scale_factor=scale_factor, align_corners=True
-        )
-
-    # go
-    print(
-        "shape:",
-        (in_shape),
-        "; datatype:",
-        dtype,
-        "; scale_factor:",
-        scale_factor,
-        "; backward:",
-        backward,
-    )
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-    ) as prof:
-        for i in range(num_iter):
-            cache_r = cache_w + 1
-            output = torch.nn.functional.interpolate(
-                in_tensor,
-                mode="bicubic",
-                scale_factor=scale_factor,
-                align_corners=True,
-            )
-            if backward:
-                output = torch.autograd.grad(
-                    output, in_tensor, grad_outputs=torch.ones_like(output)
-                )
-    print(prof.key_averages().table(sort_by="xpu_time_total"))
-
-    # E2E time
-    torch.xpu.synchronize()
-    t1 = time.time()
-    for i in range(num_iter):
-        cache_r = cache_w + 1
-        output = torch.nn.functional.interpolate(
-            in_tensor,
-            mode="bicubic",
-            scale_factor=scale_factor,
-            align_corners=True,
-        )
-        if backward:
-            output = torch.autograd.grad(
-                output, in_tensor, grad_outputs=torch.ones_like(output)
-            )
-    torch.xpu.synchronize()
-    t2 = time.time()
-    e2e_time = (t2 - t1) / num_iter
-    print("E2E total time:", f"{float(e2e_time):.20f}")
-
 
 shape_list = [
     [1, 3, 1200, 1200],
@@ -88,6 +18,87 @@ shape_list = [
     [128, 128, 5, 5],
 ]
 scale_factor = [[3, 3], [3, 3], [7, 7], [7, 7]]
-for sp, sf in zip(shape_list, scale_factor):
-    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-        simple_test(sp, sf, backward, dtype)
+backward = True
+
+
+def Bicubic2d(in_tensor, scale, backward, device):
+    output = torch.nn.functional.interpolate(
+        in_tensor,
+        mode="bicubic",
+        scale_factor=scale,
+        align_corners=True,
+    )
+    if backward:
+        output = torch.autograd.grad(
+            output, in_tensor, grad_outputs=torch.ones_like(output)
+        )
+
+def run_profile(in_tensor, scale, backward, cache_r, cache_w, device, num_iter):
+    with profile(
+        activities=[ProfilerActivity.CPU, 
+                  ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
+        record_shapes=True,
+    ) as prof:
+        for _ in range(num_iter):
+            cache_r = cache_w + 1
+            Bicubic2d(in_tensor, scale, backward, device)
+    print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
+
+def run_e2e(in_tensor, scale, backward, cache_r, cache_w, device, num_iter):
+    if device in ['xpu', 'cuda']:
+        torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+    t1 = time.time()
+    for _ in range(num_iter):
+        cache_r = cache_w + 1
+        Bicubic2d(in_tensor, scale, backward, device)
+    if device in ['xpu', 'cuda']:
+        torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
+    t2 = time.time()
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
+
+def benchmark(args):
+    for in_shape, scale in zip(shape_list, scale_factor):
+        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            in_tensor = torch.randn(
+                in_shape, dtype=dtype, device=args.device, requires_grad=backward
+            )
+            cache_r = torch.randn((1024 * 1024 * 1024), device=args.device)
+            cache_w = torch.randn((1024 * 1024 * 1024), device=args.device)
+
+            # warm_up
+            Bicubic2d(in_tensor, scale, backward, args.device)
+
+            # go
+            print(
+                "shape:",
+                (in_shape),
+                "; datatype:",
+                dtype,
+                "; scale_factor:",
+                scale,
+                "; backward:",
+                backward,
+            )
+            if not args.e2e_only:
+                run_profile(in_tensor, scale, backward, cache_r, cache_w, args.device, args.num_iter)
+
+            if not args.profile_only:
+                run_e2e(in_tensor, scale, backward, cache_r, cache_w, args.device, args.num_iter)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='OP Benchmark')
+    parser.add_argument('--device', type=str, default='xpu', 
+                        help='Device to run on (e.g., "cpu", "cuda", "xpu")')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--profile-only', action='store_true', 
+                       help='Only Run profile timing')
+    group.add_argument('--e2e-only', action='store_true', 
+                       help='Only Run E2E timing')
+    parser.add_argument('--num-iter', type=int, default=20, 
+                        help='Number of iterations')
+    return parser.parse_args()
+
+if __name__ == "__main__":
+    args = parse_args()
+    benchmark(args)

@@ -55,11 +55,11 @@ def Adaptive_AVGPool2d(shape, dtype, channels_last, backward, device):
 
 def run_profile(shape, dtype, channels_last, backward, device, num_iter):
     with profile(
-        activities=[ProfilerActivity.CPU, 
+        activities=[ProfilerActivity.CPU,
                   ProfilerActivity.XPU if device == 'xpu' else ProfilerActivity.CUDA],
         record_shapes=True,
     ) as prof:
-        for _ in range(num_iter):
+        for i in range(num_iter):
             Adaptive_AVGPool2d(shape, dtype, channels_last, backward, device)
     print(prof.key_averages().table(sort_by="{}_time_total".format(device)))
 
@@ -67,7 +67,7 @@ def run_e2e(shape, dtype, channels_last, backward, device, num_iter):
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
     t1 = time.time()
-    for _ in range(num_iter):
+    for i in range(num_iter):
         Adaptive_AVGPool2d(shape, dtype, channels_last, backward, device)
     if device in ['xpu', 'cuda']:
         torch.xpu.synchronize() if device == 'xpu' else torch.cuda.synchronize()
@@ -103,14 +103,14 @@ def benchmark(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='OP Benchmark')
-    parser.add_argument('--device', type=str, default='xpu', 
+    parser.add_argument('--device', type=str, default='xpu',
                         help='Device to run on (e.g., "cpu", "cuda", "xpu")')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--profile-only', action='store_true', 
+    group.add_argument('--profile-only', action='store_true',
                        help='Only Run profile timing')
-    group.add_argument('--e2e-only', action='store_true', 
+    group.add_argument('--e2e-only', action='store_true',
                        help='Only Run E2E timing')
-    parser.add_argument('--num-iter', type=int, default=20, 
+    parser.add_argument('--num-iter', type=int, default=20,
                         help='Number of iterations')
     return parser.parse_args()
 
