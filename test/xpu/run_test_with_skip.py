@@ -9,7 +9,7 @@ fail_test = []
 
 for key in skip_dict:
     skip_list = skip_dict[key]
-    fail = launch_test(key)
+    fail = launch_test(key, skip_list)
     res += fail
     if fail:
         fail_test.append(key)
