@@ -43,11 +43,9 @@ void error_handle(int32_t* infos, const oneapi::mkl::lapack::batch_error& be) {
   auto ids = be.ids();
 
   if (!errs.size()) {
-    std::cout << "Cathed lapack exception:"
-              << "\nWhat: " << be.what() << "\nInfo: " << be.info()
-              << std::endl;
+    TORCH_WARN("Caught lapack exception:\nWhat: ", be.what(), "\nInfo: ", be.info());
     for (auto& i : ids) {
-      std::cout << "Error in martix #" << i << std::endl;
+      TORCH_WARN("Error in matrix #", i);
       infos[i] = 1;
     }
     return;
