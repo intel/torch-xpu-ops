@@ -79,6 +79,9 @@ runs:
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
           bash valprep.sh
         fi
+        pip uninstall -y torch && pip uninstall -y torch
+        pip install --no-deps $(find ${{ github.workspace }}/ -name "*torch*.whl")
+        pip list |grep -E 'intel|torch'
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
