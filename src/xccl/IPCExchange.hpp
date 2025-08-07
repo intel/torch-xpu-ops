@@ -144,28 +144,24 @@ bool wait_for_socket_file(const char* path, int max_seconds = 10) {
 }
 
 int client_connect(const char* server, const char* client) {
-  // std::cout << "zl_debug in client connect " << server << "___" << client
-  //          << std::endl;
   if (!wait_for_socket_file(server, 10)) {
     std::cerr << "Error: timeout waiting for server socket file: " << server
               << std::endl;
     exit(EXIT_FAILURE);
   }
   auto sock = prepare_socket(client);
-  // std::cout << "zl_debug prepare socket done " << std::endl;
   sockaddr_un sun;
   memset(&sun, 0, sizeof(sun));
   sun.sun_family = AF_UNIX;
   strcpy(sun.sun_path, server);
   auto len = offsetof(sockaddr_un, sun_path) + strlen(server);
-  // connect重试
   const int max_retries = 50;
   int retry = 0;
   int ret = -1;
   while (retry < max_retries) {
     ret = connect(sock, (sockaddr*)&sun, len);
     if (ret == 0)
-      break; // 连接成功
+      break;
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     retry++;
   }
@@ -175,7 +171,6 @@ int client_connect(const char* server, const char* client) {
   }
 
   // sysCheck(connect(sock, (sockaddr*)&sun, len));
-  // std::cout << "zl_debug connect done " << std::endl;
   return sock;
 }
 
@@ -314,33 +309,17 @@ class allreducer {
   void init(sycl::queue& queue, uint32_t rank_in, uint32_t world_in) {
     if (initialized)
       return;
-    /**
-    int flag = 0;
-    MPI_Initialized(&flag);
 
-    if (!flag) {
-      auto ret = MPI_Init(NULL, NULL);
-      if (ret == MPI_ERR_OTHER) {
-        std::cout << "MPI init error" << std::endl;
-        return;
-      } else {
-        std::cout << "MPI init in torch-xpu-ops" << std::endl;
-      }
-    } else {
-      std::cout << "MPI already initialized.\n";
+    // 动态加载 Level Zero
+    if (!load_level_zero_library()) {
+      throw std::runtime_error("Failed to initialize Level Zero");
     }
-    **/
 
-    zeCheck(zeInit(0));
+    zeCheck_dynamic(zeInit_dynamic(0));
     int tmp_rank, tmp_world;
 
-    // MPI_Comm_size(MPI_COMM_WORLD, &tmp_world);
-    // MPI_Comm_rank(MPI_COMM_WORLD, &tmp_rank);
     tmp_world = world_in;
     tmp_rank = rank_in;
-    // std::cout << "zl_debug get rank & world size after MPI init " <<
-    // tmp_world
-    //          << "   " << tmp_rank << std::endl;
 
     rank = tmp_rank;
     world = tmp_world;
@@ -348,12 +327,21 @@ class allreducer {
   }
   void allreduce(sycl::queue& queue, void* inout_buffer, uint32_t size) {}
   void release(sycl::queue& queue) {
+    if (!initialized)
+      return;
+
     // Clean up, close/put ipc handles, free memory, etc.
+    if (!load_level_zero_library()) {
+      std::cerr << "Warning: Level Zero not available for cleanup" << std::endl;
+      return;
+    }
+
     auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(
         queue.get_context());
     for (int i = 0; i < world; i++) {
       if (i != rank) {
-        zeCheck(zeMemCloseIpcHandle(l0_ctx, (char*)buffers[i] - offsets[i]));
+        zeCheck_dynamic(zeMemCloseIpcHandle_dynamic(
+            l0_ctx, (char*)buffers[i] - offsets[i]));
       }
     }
 
@@ -377,32 +365,34 @@ class allreducer {
   }
   // buffer_size as element size
   void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr) {
+    if (!load_level_zero_library()) {
+      throw std::runtime_error("Level Zero not available");
+    }
+
     // Step 1: Get base address of the pointer
     sycl::context ctx = queue.get_context();
     auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
 
     void* base_addr;
     size_t base_size;
-    zeCheck(zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size));
-    // std::cout << "zl_debug get base address " << base_addr << " base size "
-    //          << base_size << std::endl;
+    zeCheck_dynamic(
+        zeMemGetAddressRange_dynamic(l0_ctx, ptr, &base_addr, &base_size));
 
     // Step 2: Get IPC mem handle from base address
     alignas(64) exchange_contents send_buf;
     alignas(64) exchange_contents recv_buf[world];
 
     // fill in the exchange info
-    zeCheck(zeMemGetIpcHandle(l0_ctx, base_addr, &send_buf.ipc_handle));
+    zeCheck_dynamic(
+        zeMemGetIpcHandle_dynamic(l0_ctx, base_addr, &send_buf.ipc_handle));
     send_buf.offset = (char*)ptr - (char*)base_addr;
-    // std::cout << "zl_debug get address base offset  " << send_buf.offset
-    //          << std::endl;
+
     send_buf.pid = getpid();
 
     // Step 3: Exchange the handles and offsets
     memset(recv_buf, 0, sizeof(recv_buf));
     // Overkill if we don't really needs all peer's handles
     un_allgather(&send_buf, recv_buf, rank, world);
-    // std::cout << "zl_debug after un allgather" << std::endl;
     for (uint32_t i = 0; i < world; i++) {
       // Step 4: Prepare pid file descriptor of next process
       auto* peer = recv_buf + i;
@@ -411,15 +401,13 @@ class allreducer {
           queue.get_device());
       void* peer_base;
 
-      zeCheck(zeMemOpenIpcHandle(
+      zeCheck_dynamic(zeMemOpenIpcHandle_dynamic(
           l0_ctx,
           l0_device,
           peer->ipc_handle,
           ZE_IPC_MEMORY_FLAG_BIAS_CACHED,
           &peer_base));
-      //            std::cout << "zl_debug get peer " << i <<  " with base
-      //            address: " << peer_base << " offset: " << peer->offset <<
-      //            std::endl;
+
       buffers[i] = (char*)peer_base + peer->offset;
       // make sure data correction
       //            debug_print_buffer(queue, static_cast<int*>(buffers[i]),
