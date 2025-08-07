@@ -16,7 +16,7 @@ constexpr int MODE_MAX = 2;
 template <typename T>
 auto get_multi_ptr(T* raw_ptr) {
   auto multi_ptr =
-      sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::yes>(raw_ptr);
+      sycl::address_space_cast<sycl::access::address_space::global_space, sycl::access::decorated::no>(raw_ptr);
 
   return multi_ptr;
 }
@@ -66,14 +66,37 @@ struct EmbeddingBagKernelFunctor {
         }
       }
       index_t index_offset, weight_index;
+      // hard code vectorized_feature_dim_len_
+      sycl::ext::oneapi::experimental::matrix::joint_matrix<sycl::sub_group,
+                                                            sycl::half,
+                                                            sycl::ext::oneapi::experimental::matrix::use::accumulator,
+                                                            1,
+                                                            16>
+          wei_load_2d;
+      sycl::ext::oneapi::experimental::matrix::joint_matrix<sycl::sub_group,
+                                                            float,
+                                                            sycl::ext::oneapi::experimental::matrix::use::accumulator,
+                                                            1,
+                                                            16>
+          value_2d;
+      sycl::ext::oneapi::experimental::matrix::joint_matrix<sycl::sub_group,
+                                                            sycl::half,
+                                                            sycl::ext::oneapi::experimental::matrix::use::accumulator,
+                                                            1,
+                                                            16>
+          out_2d;
+      sycl::ext::oneapi::experimental::matrix::joint_matrix_fill(sg, value_2d, accscalar_t(0));
+
       vec_t wei_load;
       auto handle_non_padding = [&]() {
-        if constexpr (block_load && vec_size > 1) {
-          auto props = sycl::ext::oneapi::experimental::properties{
-              sycl::ext::oneapi::experimental::contiguous_memory,
-              sycl::ext::oneapi::experimental::alignment<sizeof(scalar_t) * vec_size>};
-          sycl::ext::oneapi::experimental::group_load(
-              sg, w_vec_ + weight_index * vectorized_feature_dim_len_, wei_load, props);
+        if constexpr (block_load && vec_size > 1 && std::is_same<scalar_t, c10::Half>::value && std::is_same<accscalar_t, float>::value) {
+          sycl::ext::oneapi::experimental::matrix::joint_matrix_load(
+              sg, wei_load_2d, get_multi_ptr(reinterpret_cast<const sycl::half*>(&w_vec_[weight_index * vectorized_feature_dim_len_])), 1,sycl::ext::oneapi::experimental::matrix::layout::row_major);
+          sycl::ext::oneapi::experimental::matrix::joint_matrix_apply(
+              sg, wei_load_2d, value_2d, [=](const sycl::half& x, float& y) {
+              y += static_cast<float>(x);
+              });
+          return;
         } else if constexpr (!block_load || vec_size < 2) {
           wei_load = w_vec_[weight_index * vectorized_feature_dim_len_ + current_feature];
         }
@@ -129,6 +152,15 @@ struct EmbeddingBagKernelFunctor {
       }
 
       index_t o_off = current_bag * vectorized_feature_dim_len_ + current_feature;
+      if constexpr (block_load && vec_size>1 &&std::is_same<scalar_t, c10::Half>::value &&std::is_same<accscalar_t, float>::value) {
+        sycl::ext::oneapi::experimental::matrix::joint_matrix_apply(
+              sg, value_2d, out_2d, [=](const float& x, sycl::half& y) {
+                  y = static_cast<sycl::half>(x);
+              });
+        sycl::ext::oneapi::experimental::matrix::joint_matrix_store(sg, out_2d, get_multi_ptr(reinterpret_cast<sycl::half*>(&o_vec_[current_bag * vectorized_feature_dim_len_])), 1, sycl::ext::oneapi::experimental::matrix::layout::row_major);
+
+        return;
+      }
       if constexpr (mode == MODE_SUM) {
         vec_t o;
 #pragma unroll
