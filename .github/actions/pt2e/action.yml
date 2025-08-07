@@ -39,18 +39,6 @@ runs:
         fi
         # deps
         if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            rm -rf pt2e-audio
-            git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
-            cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-            cd ../
-            rm -rf pt2e-vision
-            git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
-            cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-            cd ../
-          fi
           # torchbench
           python -c "import torch, torchvision, torchaudio"
           cd pt2e-performance
