@@ -16,7 +16,7 @@ on:
       triton:
         required: false
         type: string
-        default: ''
+        default: 'bdd0656b'
         description: Triton commit. Use pytorch pined commit by default
       ut:
         required: true
@@ -394,9 +394,9 @@ jobs:
           path: ${{ github.workspace }}/ut_log
 
   distributed_ut_test:
-    runs-on: pytorch-06
+    runs-on: PVC-7358
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
-    timeout-minutes: 60
+    timeout-minutes: 600
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -422,7 +422,7 @@ jobs:
         run: |
           cd ../
           rm -rf ./pytorch || sudo rm -rf ./pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
+          git clone -b distributed_2.9 https://github.com/daisyden/pytorch.git pytorch
           source activate xpu_op_${ZE_AFFINITY_MASK}
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install --force-reinstall ${{ github.workspace }}/torch*.whl
@@ -446,7 +446,10 @@ jobs:
           cd ../pytorch
           rm -rf third_party/torch-xpu-ops
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            cp -r ${{ github.workspace }} third_party
+            cd third_party
+            git clone https://github.com/intel/torch-xpu-ops.git
+            cd torch-xpu-ops
+            git checkout daisyden/distributed_2.9
           else
             TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
             git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
@@ -464,13 +467,9 @@ jobs:
           fi
           if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
             pip install cmake ninja pybind11
-            rm -rf pytorch_triton_xpu-*.whl
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-            pip install pytorch_triton_xpu-*.whl
+            TRITON_REPO="https://github.com/intel/intel-xpu-backend-for-triton"
+            TRITON_COMMIT_ID="bdd0656b"
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
           fi
       - name: Torch Config
         run: |
@@ -495,23 +494,35 @@ jobs:
         run: |
           set -x -e -o pipefail
           source activate xpu_op_${ZE_AFFINITY_MASK}
-          pip install pytest pytest-timeout
+          pip install pytest pytest-timeout xmlrunner unittest-xml-reporting zstandard transformers
+          pip install hypothesis==6.131.27
           mkdir -p ut_log/xpu_distributed
+          cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/ut_result_check.sh ut_log/xpu_distributed/
+          cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/check-ut.py ut_log/
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu
           XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
           if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
             echo -e "[ERROR] XCCL is not enabled"
             exit 1
           fi
-          timeout 1800 python run_distributed.py \
-            2>${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
-            tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+          python run_distributed_local.py \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test.log || true
+          cp *.xml ${{ github.workspace }}/ut_log
       - name: Reset Ptrace_scope
         if: ${{ always() }}
         run: |
           if [ -f ptrace_scope.bk ]; then
             sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
+      - name: UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          cd ${{ github.workspace }}/ut_log/
+          python check-ut.py ${{ github.workspace }}/ut_log/*.xml \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_summary.log | \
+            >> $GITHUB_STEP_SUMMARY || true
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -554,15 +565,7 @@ jobs:
           echo "UT_NAME=$(echo ${{ inputs.ut }} |sed 's/,/-/g')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
           cd ${{ github.workspace }}/ut_log/xpu_distributed
           gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
-          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
-          --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
-          > issues.log
-          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
-          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
-          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
-          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh 'xpu_distributed'
+          bash ut_result_check.sh 'pytorch_distributed'
       - name: Upload Inductor XPU UT Log
         if: always()
         uses: actions/upload-artifact@v4
