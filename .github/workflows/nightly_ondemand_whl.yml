@@ -22,7 +22,7 @@ jobs:
       - name: Cleanup
         run: |
           sudo rm -rf ./*
-          mkdir -p logs
+          mkdir -p ${{ github.workspace }}/logs
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Build
