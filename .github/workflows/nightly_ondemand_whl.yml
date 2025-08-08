@@ -29,13 +29,15 @@ jobs:
       - name: Build
         run: |
           source /opt/intel/oneapi/setvars.sh
+          set -xe
           git clone https://github.com/uxlfoundation/oneDNN ${{ matrix.onednn }}
           cd ${{ matrix.onednn }}
           git checkout ${{ matrix.onednn }}
           git show -s
           mkdir build
           cd build
-          cmake .. -DONEDNN_CPU_RUNTIME=SYCL -DONEDNN_GPU_RUNTIME=SYCL |tee ${{ github.workspace }}/logs/build.log
+          cmake .. -DONEDNN_CPU_RUNTIME=SYCL -DONEDNN_GPU_RUNTIME=SYCL 2>&1 |tee ${{ github.workspace }}/logs/build.log
+          make -j 192
       - name: Test
         run: |
           source /opt/intel/oneapi/compiler/latest/env/vars.sh
@@ -44,6 +46,7 @@ jobs:
           source /opt/intel/oneapi/ccl/latest/env/vars.sh
           source /opt/intel/oneapi/mpi/latest/env/vars.sh
           source /opt/intel/oneapi/tbb/latest/env/vars.sh
+          set -xe
           rsync -avz --delete ${{ github.workspace }}/benchdnn.txt ~/mengfeil/benchdnn.txt
           cd ${{ matrix.onednn }}/build/test/benchdnn
           while read line
