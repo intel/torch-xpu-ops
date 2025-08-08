@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
@@ -8,6 +10,7 @@ shape_list = [
     (16, 1984, 7, 7, 7, (3, 2, 2), (2, 1, 2)),
     (64, 1024, 14, 14, 14, (6), (4)),
 ]
+num_iter = 20
 
 
 def AVGPool3d(shape, dtype, channels_last, backward):
@@ -79,6 +82,16 @@ if __name__ == "__main__":
                     activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                     record_shapes=True,
                 ) as prof:
-                    for i in range(20):
+                    for i in range(num_iter):
                         AVGPool3d(shape, dtype, channels_last, backward=True)
                 print(prof.key_averages().table(sort_by="xpu_time_total"))
+
+                # E2E time
+                torch.xpu.synchronize()
+                t1 = time.time()
+                for i in range(num_iter):
+                    AVGPool3d(shape, dtype, channels_last, backward=True)
+                torch.xpu.synchronize()
+                t2 = time.time()
+                e2e_time = (t2 - t1) / num_iter
+                print("E2E total time:", f"{float(e2e_time):.20f}")

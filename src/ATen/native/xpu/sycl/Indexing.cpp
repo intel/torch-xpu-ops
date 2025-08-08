@@ -14,6 +14,7 @@
 #include <ATen/native/xpu/sycl/Indexing.h>
 #include <ATen/native/xpu/sycl/IndexingUtils.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <ATen/ops/_sparse_coo_tensor_with_dims_and_tensors.h>
 #include <ATen/ops/arange.h>
@@ -609,6 +610,21 @@ void index_put_kernel(
   }
 }
 
+DimVector valsShape(
+    IntArrayRef self_sizes,
+    int64_t dims_before,
+    int64_t dims_indexed,
+    IntArrayRef replacement_shape) {
+  auto shape = DimVector(self_sizes);
+  int64_t end = dims_before + dims_indexed;
+  shape.erase(shape.begin() + dims_before, shape.begin() + end);
+  shape.insert(
+      shape.begin() + dims_before,
+      replacement_shape.begin(),
+      replacement_shape.end());
+  return shape;
+}
+
 void index_put_deterministic_kernel(
     Tensor& self,
     const c10::List<std::optional<Tensor>>& indices,
@@ -633,30 +649,21 @@ void index_put_deterministic_kernel(
   bool self_contiguous = self.is_contiguous();
   auto self_ = self_contiguous ? self : self.contiguous();
   Tensor linearIndex, src, expandedValue = value;
-  int64_t nElemBefore, strideBefore, sliceSize;
+  int64_t nElemBefore, strideBefore, sliceSize, dims_before, dims_indexed;
   std::vector<int64_t> inversePerm;
   std::tie(
-      linearIndex, src, nElemBefore, strideBefore, sliceSize, inversePerm) =
-      makeLinearIndex(self_, indices, !unsafe);
+      linearIndex,
+      src,
+      nElemBefore,
+      strideBefore,
+      sliceSize,
+      inversePerm,
+      dims_before,
+      dims_indexed) = makeLinearIndex(self_, indices, !unsafe);
+  auto vals_shape =
+      valsShape(src.sizes(), dims_before, dims_indexed, linearIndex.sizes());
   int64_t num_indices = linearIndex.numel();
-
-  if (expandedValue.numel() < num_indices * nElemBefore * sliceSize) {
-    auto expanded_size = at::DimVector(expandedValue.sizes());
-
-    auto size1 = expandedValue.sizes();
-    auto size2 = linearIndex.sizes();
-    if (are_expandable(size1, size2)) {
-      expanded_size = infer_size_dimvector(size1, size2);
-    }
-    if (nElemBefore > 1) {
-      expanded_size.insert(expanded_size.begin(), nElemBefore);
-    }
-    if (sliceSize > 1) {
-      expanded_size.insert(expanded_size.end(), sliceSize);
-    }
-    expandedValue = expandedValue.expand(expanded_size);
-  }
-  expandedValue = expandedValue.contiguous();
+  expandedValue = expandedValue.expand(vals_shape).contiguous();
 
   if (num_indices > 0 && sliceSize > 0) {
     const bool permuted = !src.is_contiguous();
@@ -669,42 +676,66 @@ void index_put_deterministic_kernel(
 
     linearIndex.divide_(sliceSize, "trunc");
 
-    sorted_indices.copy_(linearIndex);
-    pstl::itoa(
-        orig_indices.data_ptr<int64_t>(),
-        orig_indices.data_ptr<int64_t>() + linearIndex.numel(),
-        (int64_t)0);
-    pstl::sort<int64_t, int64_t>(
+    auto range = at::arange(num_indices, linearIndex.options());
+    sort_pairs<int64_t, int64_t>(
         linearIndex.const_data_ptr<int64_t>(),
-        sorted_indices.data_ptr<int64_t>(),
-        orig_indices.data_ptr<int64_t>(),
-        linearIndex.numel(),
+        sorted_indices.mutable_data_ptr<int64_t>(),
+        range.const_data_ptr<int64_t>(),
+        orig_indices.mutable_data_ptr<int64_t>(),
+        num_indices,
         false);
+
     TORCH_INTERNAL_ASSERT(
         linearIndex.numel() * sliceSize * nElemBefore == expandedValue.numel(),
         "number of flattened indices did not match number of elements in the value tensor: ",
         linearIndex.numel() * sliceSize * nElemBefore,
         " vs ",
         expandedValue.numel());
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
-        expandedValue.scalar_type(),
-        "index_put_deterministic_kernel",
-        [&] {
-          launch_index_put_deterministic_kernel<scalar_t>(
-              sorted_indices.mutable_data_ptr<int64_t>(),
-              orig_indices.mutable_data_ptr<int64_t>(),
-              expandedValue.const_data_ptr<scalar_t>(),
-              src_.mutable_data_ptr<scalar_t>(),
-              num_indices,
-              sliceSize,
-              strideBefore,
-              nElemBefore,
-              accumulate);
-        });
+
+    if (sliceSize > SIMD) {
+      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+          at::ScalarType::ComplexHalf,
+          at::ScalarType::BFloat16,
+          at::ScalarType::Half,
+          at::ScalarType::Bool,
+          expandedValue.scalar_type(),
+          "index_put_deterministic_kernel",
+          [&] {
+            launch_index_put_deterministic_kernel<scalar_t, scalar_t>(
+                sorted_indices.mutable_data_ptr<int64_t>(),
+                orig_indices.mutable_data_ptr<int64_t>(),
+                expandedValue.const_data_ptr<scalar_t>(),
+                src_.mutable_data_ptr<scalar_t>(),
+                num_indices,
+                sliceSize,
+                strideBefore,
+                nElemBefore,
+                accumulate);
+          });
+    } else {
+      // Align acc type with CUDA
+      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+          at::ScalarType::ComplexHalf,
+          at::ScalarType::BFloat16,
+          at::ScalarType::Half,
+          at::ScalarType::Bool,
+          expandedValue.scalar_type(),
+          "index_put_deterministic_kernel",
+          [&] {
+            using accscalar_t = at::opmath_type<scalar_t>;
+            launch_index_put_deterministic_kernel<scalar_t, accscalar_t>(
+                sorted_indices.mutable_data_ptr<int64_t>(),
+                orig_indices.mutable_data_ptr<int64_t>(),
+                expandedValue.const_data_ptr<scalar_t>(),
+                src_.mutable_data_ptr<scalar_t>(),
+                num_indices,
+                sliceSize,
+                strideBefore,
+                nElemBefore,
+                accumulate);
+          });
+    }
+
     if (permuted)
       self.copy_(src_.permute(inversePerm));
     else if (!self_contiguous) {
@@ -1471,8 +1502,8 @@ void index_reduce_func_xpu_template(
                     getTensorInfo<const index_t, unsigned int>(index);
                 indexInfo.collapseDims();
 
-                // A reasonable choice for when to have each thread iterate over
-                // index to choose
+                // A reasonable choice for when to have each thread iterate
+                // over index to choose
                 if (numIndex <= 16) {
                   auto caller =
                       SMALL_INDEX(scalar_t, index_t, unsigned int, func_t);
@@ -1701,8 +1732,8 @@ static inline ForwardIt find_bound(
     const T& value) {
   ForwardIt it;
   typename std::iterator_traits<ForwardIt>::difference_type count, step;
-  // NOTE: std::distance(first, last) compiles but produces wrong results here,
-  // so only legacy random access iterators are safe in this code.
+  // NOTE: std::distance(first, last) compiles but produces wrong results
+  // here, so only legacy random access iterators are safe in this code.
   count = last - first;
 
   while (count > 0) {

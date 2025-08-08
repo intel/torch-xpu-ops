@@ -887,7 +887,7 @@ struct IndexPutDeterministicKernelFunctor {
   BatchKernelConfig cfg_;
 };
 
-template <typename scalar_t>
+template <typename scalar_t, typename accscalar_t>
 void launch_index_put_deterministic_kernel(
     int64_t* sorted_indices,
     int64_t* indices,
@@ -902,8 +902,6 @@ void launch_index_put_deterministic_kernel(
     return;
   }
   int64_t v_stride_before = numel * stride;
-  // align with precision of CPU backend.
-  using accscalar_t = scalar_t; /* acc_type<scalar_t>; */
   using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t>;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       /* num of indices */ numel,

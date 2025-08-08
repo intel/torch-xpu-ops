@@ -40,14 +40,30 @@ def write_to_github_summary(content):
         with open(github_step_summary, 'a') as f:
             f.write(content + "\n")
 
-def display_comparison(results, threshold):
+def format_parameters(record):
+    params = []
+    for key, value in record.items():
+        if key not in ['case_name', 'op_name', 'datatype', 'time_xpu_file', 'time_baseline_file', 'difference', 'change', 'E2E total time(us)', 'E2E forward time(us)']:
+            if value != "NULL":
+                params.append(f"{key}: {value}")
+    return "<br>".join(params)
+
+def display_comparison(results, threshold, xpu_file):
+    if 'forward' in xpu_file.lower():
+        direction = "Forward"
+    elif 'backward' in xpu_file.lower():
+        direction = "Backward"
+    else:
+        direction = "Operation"
+
     if results.empty:
-        print(f"\n No outlier exceeding ({threshold:.0%})")
-        write_to_github_summary(f"## No outlier exceeding ({threshold:.0%})")
+        print(f"\n {direction} No outlier exceeding ({threshold:.0%})")
+        write_to_github_summary(f"## {direction} No outlier exceeding ({threshold:.0%})")
         return
 
-    regression = results[results['change'] == '↓']
-    improvement = results[results['change'] == '↑']
+    results['diff_float'] = results['difference'].str.rstrip('%').astype(float)
+    regression = results[results['change'] == '↓'].sort_values('diff_float', ascending=False)
+    improvement = results[results['change'] == '↑'].sort_values('diff_float')
 
     if not regression.empty:
         print("\n🔴 Regression:")
@@ -55,7 +71,10 @@ def display_comparison(results, threshold):
         for _, row in regression.iterrows():
             record = display_row(row)
             display_records.append({
-                **{k: v for k, v in record.items() if k not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change']},
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
+                'Datatype': record['datatype'],
+                'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
                 'Difference': record['difference']
@@ -75,7 +94,10 @@ def display_comparison(results, threshold):
         for _, row in improvement.iterrows():
             record = display_row(row)
             display_records.append({
-                **{k: v for k, v in record.items() if k not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change']},
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
+                'Datatype': record['datatype'],
+                'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
                 'Difference': record['difference']
@@ -89,14 +111,17 @@ def display_comparison(results, threshold):
             floatfmt=".2f"
         ))
     # Print Summary on Github Action Summary
-    summary_output = "## Performance Comparison Results\n"
+    summary_output = f"## {direction} Performance Comparison Results\n"
     if not regression.empty:
-        summary_output += "\n### 🔴 Regression\n"
+        summary_output += f"\n### 🔴 {direction} Regression\n"
         display_records = []
         for _, row in regression.iterrows():
             record = display_row(row)
             display_records.append({
-                **{k: v for k, v in record.items() if k not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change']},
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
+                'Datatype': record['datatype'],
+                'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
                 'Difference': record['difference']
@@ -111,12 +136,15 @@ def display_comparison(results, threshold):
         ) + "\n"
 
     if not improvement.empty:
-        summary_output += "\n### 🟢 Improvement\n"
+        summary_output += f"\n### 🟢 {direction} Improvement\n"
         display_records = []
         for _, row in improvement.iterrows():
             record = display_row(row)
             display_records.append({
-                **{k: v for k, v in record.items() if k not in ['time_xpu_file', 'time_baseline_file', 'difference', 'change']},
+                'Case Name': record['case_name'],
+                'Op Name': record['op_name'],
+                'Datatype': record['datatype'],
+                'Parameters': format_parameters(record),
                 'Current Time(us)': record['time_xpu_file'],
                 'Baseline Time(us)': record['time_baseline_file'],
                 'Difference': record['difference']
@@ -140,12 +168,12 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
     records_baseline = [preprocess_row(row) for _, row in df_baseline.iterrows()]
 
     dict_xpu = {
-        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'):
+        tuple((k, str(v)) for k, v in record.items() if k not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']):
         record['time(us)']
         for record in records_xpu
     }
     dict_baseline = {
-        tuple((k, str(v)) for k, v in record.items() if k != 'time(us)'):
+        tuple((k, str(v)) for k, v in record.items() if k not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)']):
         record['time(us)']
         for record in records_baseline
     }
@@ -156,8 +184,8 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
         time_xpu = dict_xpu[key]
         time_baseline = dict_baseline[key]
 
-        # Skip comparison if time_xpu is 0
-        if time_xpu == 0:
+        # Skip comparison if time_xpu or time_baseline is 0
+        if time_xpu == 0 or time_baseline == 0:
             continue
 
         diff = (time_baseline - time_xpu) / time_xpu
@@ -174,7 +202,7 @@ def compare_op_time_values(xpu_file, baseline_file, threshold=0.05, output_file=
             results.append(record)
 
     result_df = pd.DataFrame(results) if results else pd.DataFrame()
-    display_comparison(result_df, threshold)
+    display_comparison(result_df, threshold, xpu_file)
 
 
 def main():
