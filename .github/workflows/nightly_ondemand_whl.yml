@@ -17,8 +17,6 @@ jobs:
         onednn: [v3.8.1, v3.9-rc]
     name: Benchdnn with ${{ matrix.onednn }}
     env:
-      CC: icx
-      CXX: icpx
       ZE_AFFINITY_MASK: 0
     steps:
       - name: Cleanup
@@ -36,6 +34,8 @@ jobs:
           git show -s
           mkdir build
           cd build
+          export CC=icx
+          export CXX=icpx
           cmake .. -DONEDNN_CPU_RUNTIME=SYCL -DONEDNN_GPU_RUNTIME=SYCL 2>&1 |tee ${{ github.workspace }}/logs/build.log
           make -j 192
       - name: Test
