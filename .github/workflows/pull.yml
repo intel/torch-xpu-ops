@@ -95,7 +95,6 @@ jobs:
   preci-linux-build:
     name: preci-linux
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all')}}
-    needs: [preci-conditions-filter]
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -104,7 +103,7 @@ jobs:
 
   preci-linux-ut:
     name: preci-linux
-    needs: [preci-conditions-filter, preci-linux-build]
+    needs: [preci-linux-build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
