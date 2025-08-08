@@ -50,7 +50,7 @@ jobs:
           set -xe
           mkdir -p ${{ github.workspace }}/logs
           rsync -avz --delete ${{ github.workspace }}/benchdnn.txt ~/mengfeil/benchdnn.txt
-          cd ${{ matrix.onednn }}/build/test/benchdnn
+          cd ${{ matrix.onednn }}/build/tests/benchdnn
           while read line
           do
             numactl -l -C 0-11 ./benchdnn --mode=P $line |tee -a ${{ github.workspace }}/logs/test.log
