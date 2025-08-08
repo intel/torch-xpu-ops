@@ -10,6 +10,10 @@
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <oneapi/mkl.hpp>
+#include <torch/library.h>
+#include <ATen/ATen.h>
+#include <ATen/xpu/XPUContext.h>
+#include <oneapi/mkl/blas.hpp>
 
 using namespace oneapi::mkl::dft;
 
@@ -578,3 +582,61 @@ Tensor& _fft_r2c_mkl_out(
 }
 
 } // namespace at::native::xpu
+
+
+namespace at::native::xpu {
+
+at::Tensor& mm_out_xpu(at::Tensor &out, const at::Tensor &self, const at::Tensor &mat2) {
+    at::Tensor self_cont = self.contiguous();
+    at::Tensor mat2_cont = mat2.contiguous();
+    at::Tensor out_cont = out.contiguous();
+
+    const int64_t m = self_cont.sizes().at(0);
+    const int64_t n = mat2_cont.sizes().at(1);
+    const int64_t k = self_cont.sizes().at(1);
+
+    constexpr std::complex<float> alpha = {1.0f, 0.0f};
+    constexpr std::complex<float> beta = {0.0f, 0.0f};
+
+    oneapi::mkl::blas::row_major::gemm(
+        at::xpu::getCurrentSYCLQueue(),
+        oneapi::mkl::transpose::nontrans,
+        oneapi::mkl::transpose::nontrans,
+        m,
+        n,
+        k,
+        alpha,
+        reinterpret_cast<const std::complex<float>*>(self_cont.const_data_ptr()),
+        k,
+        reinterpret_cast<const std::complex<float>*>(mat2_cont.const_data_ptr()),
+        n,
+        beta,
+        reinterpret_cast<std::complex<float>*>(out_cont.data_ptr()),
+        n);
+
+    return out;
+}
+
+Tensor mm_xpu(const Tensor& self, const Tensor& other) {
+    TORCH_CHECK(self.is_xpu() && other.is_xpu(),
+                "mm_xpu only supports XPU tensors");
+
+    // Your SYCL implementation here
+    auto result = at::empty({self.size(0), other.size(1)}, self.options());
+
+    std::cout << "Example change" << std::endl;
+    mm_out_xpu(result, self, other);
+
+    return result;
+}
+
+} // namespace at::native::xpu
+
+// Register ONLY for XPU
+TORCH_LIBRARY(xpu_ops, m) {
+  m.def("mm_xpu(Tensor self, Tensor other) -> Tensor");
+}
+
+TORCH_LIBRARY_IMPL(xpu_ops, XPU, m) {
+  m.impl("mm_xpu", TORCH_FN(at::native::xpu::mm_xpu));
+}
