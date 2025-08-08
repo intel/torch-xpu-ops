@@ -22,13 +22,13 @@ jobs:
       - name: Cleanup
         run: |
           sudo rm -rf ./*
-          mkdir -p ${{ github.workspace }}/logs
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Build
         run: |
           source /opt/intel/oneapi/setvars.sh
           set -xe
+          mkdir -p ${{ github.workspace }}/logs
           git clone https://github.com/uxlfoundation/oneDNN ${{ matrix.onednn }}
           cd ${{ matrix.onednn }}
           git checkout ${{ matrix.onednn }}
@@ -48,6 +48,7 @@ jobs:
           source /opt/intel/oneapi/mpi/latest/env/vars.sh
           source /opt/intel/oneapi/tbb/latest/env/vars.sh
           set -xe
+          mkdir -p ${{ github.workspace }}/logs
           rsync -avz --delete ${{ github.workspace }}/benchdnn.txt ~/mengfeil/benchdnn.txt
           cd ${{ matrix.onednn }}/build/test/benchdnn
           while read line
