@@ -11,9 +11,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-// todo: check this point
-#include <level_zero/ze_api.h>
-
 // todo: fixed with kernel barrier
 #include <mpi.h>
 
