@@ -8,9 +8,8 @@
 #include <unistd.h>
 #include <future>
 #include <system_error>
+#include "xccl/ze_exception.hpp"
 
-#include <level_zero/ze_api.h>
-//#include <mpi.h>
 #include <sycl/sycl.hpp>
 
 #include <pwd.h>
@@ -18,8 +17,6 @@
 #include <unistd.h>
 #include <chrono> // for std::chrono::milliseconds
 #include <thread> // for std::this_thread::sleep_for
-
-#include "xccl/ze_exception.hpp"
 
 #define ELE_COUNT 128
 
@@ -305,12 +302,35 @@ class allreducer {
     size_per_buffer = 0;
     buffer_index = 0;
   }
+  allreducer(const allreducer&) = delete;
+  allreducer& operator=(const allreducer&) = delete;
+  allreducer(allreducer&& other) noexcept {
+    *this = std::move(other);
+  }
+  allreducer& operator=(allreducer&& other) noexcept {
+    if (this != &other) {
+      initialized = other.initialized;
+      rank = other.rank;
+      world = other.world;
+      std::memcpy(buffers, other.buffers, sizeof(buffers));
+      std::memcpy(offsets, other.offsets, sizeof(offsets));
+      std::memcpy(ipc_handle, other.ipc_handle, sizeof(ipc_handle));
+
+      other.initialized = false;
+    }
+    return *this;
+  }
+  ~allreducer() {
+    if (initialized) {
+      std::cerr << "Warning: allreducer destroyed without calling release()"
+                << std::endl;
+    }
+  }
 
   void init(sycl::queue& queue, uint32_t rank_in, uint32_t world_in) {
     if (initialized)
       return;
 
-    // 动态加载 Level Zero
     if (!load_level_zero_library()) {
       throw std::runtime_error("Failed to initialize Level Zero");
     }
@@ -329,22 +349,19 @@ class allreducer {
   void release(sycl::queue& queue) {
     if (!initialized)
       return;
-
-    // Clean up, close/put ipc handles, free memory, etc.
-    if (!load_level_zero_library()) {
-      std::cerr << "Warning: Level Zero not available for cleanup" << std::endl;
-      return;
-    }
-
-    auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(
-        queue.get_context());
-    for (int i = 0; i < world; i++) {
-      if (i != rank) {
-        zeCheck_dynamic(zeMemCloseIpcHandle_dynamic(
-            l0_ctx, (char*)buffers[i] - offsets[i]));
+    try {
+      auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(
+          queue.get_context());
+      for (int i = 0; i < world; i++) {
+        if (i != rank) {
+          zeCheck_dynamic(zeMemCloseIpcHandle_dynamic(
+              l0_ctx, (char*)buffers[i] - offsets[i]));
+        }
       }
+    } catch (const std::exception& e) {
+      std::cerr << "Warning: Level Zero cleanup failed: " << e.what()
+                << std::endl;
     }
-
     sycl::free(buffers[rank], queue);
     initialized = false;
   }
