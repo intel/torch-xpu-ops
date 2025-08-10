@@ -363,8 +363,9 @@ struct MaxPool2dBackwardChannelLastVec {
       int64_t input_hw_index;
 
       plane = inputIndex % (numPlane_ / vec_size);
-      input_hw_index =
-          ((inputIndex % in_n_stride_) - plane) / (numPlane_ / vec_size);
+
+      input_hw_index = ((inputIndex % (in_n_stride_ / vec_size)) - plane) /
+          (numPlane_ / vec_size);
 
       int inputW = input_hw_index % gradInputSizeW_;
       int inputH = input_hw_index / gradInputSizeW_;
@@ -372,19 +373,18 @@ struct MaxPool2dBackwardChannelLastVec {
       int phend = p_end(inputH, pad_h_, gradOutputSizeH_, stride_h_);
       int pwstart = p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
       int pwend = p_end(inputW, pad_w_, gradOutputSizeW_, stride_w_);
-      int64_t load_offset, store_offset;
-      store_offset = inputIndex;
       vec_t grad_vec;
 #pragma unroll
       for (int i = 0; i < vec_size; i++) {
         grad_vec[i] = 0;
       }
 
-      int offset = batch * (out_n_stride_ / vec_size) + plane;
+      int offset = batch * out_n_stride_ / vec_size + plane;
       for (int ph = phstart; ph < phend; ++ph) {
         for (int pw = pwstart; pw < pwend; ++pw) {
-          load_offset =
-              offset + (ph * gradOutputSizeW_ + pw) * (numPlane_ / vec_size);
+          int load_offset = offset +
+              ph * gradOutputSizeW_ * numPlane_ / vec_size +
+              pw * numPlane_ / vec_size;
           vec_t gout_val_vec = gradOutput_[load_offset];
 #pragma unroll
           for (int i = 0; i < vec_size; i++) {
@@ -396,7 +396,7 @@ struct MaxPool2dBackwardChannelLastVec {
         }
       }
 
-      gradInput_[store_offset] = grad_vec;
+      gradInput_[inputIndex] = grad_vec;
     }
   }
   MaxPool2dBackwardChannelLastVec(
@@ -409,8 +409,6 @@ struct MaxPool2dBackwardChannelLastVec {
       int gradOutputSizeH,
       int gradOutputSizeW,
       int64_t gradInputSize,
-      int out_cf_c_stride,
-      int in_cf_c_stride,
       int out_n_stride,
       int in_n_stride,
       int kernel_h,
@@ -430,8 +428,6 @@ struct MaxPool2dBackwardChannelLastVec {
         gradOutputSizeH_(gradOutputSizeH),
         gradOutputSizeW_(gradOutputSizeW),
         gradInputSize_(gradInputSize),
-        out_cf_c_stride_(out_cf_c_stride),
-        in_cf_c_stride_(in_cf_c_stride),
         out_n_stride_(out_n_stride),
         in_n_stride_(in_n_stride),
         kernel_h_(kernel_h),
@@ -453,8 +449,6 @@ struct MaxPool2dBackwardChannelLastVec {
   int gradOutputSizeH_;
   int gradOutputSizeW_;
   int64_t gradInputSize_;
-  int out_cf_c_stride_;
-  int in_cf_c_stride_;
   int out_n_stride_;
   int in_n_stride_;
   int kernel_h_;
@@ -466,6 +460,7 @@ struct MaxPool2dBackwardChannelLastVec {
   int dilation_h_;
   int dilation_w_;
 };
+
 
 template <typename scalar_t, bool is_channels_last>
 void launch_max_pool2d_kernel(
@@ -530,8 +525,6 @@ void launch_max_pool2d_kernel(
     gradOutputSizeH,                                                           \
     gradOutputSizeW,                                                           \
     gradInputSize,                                                             \
-    out_cf_c_stride,                                                           \
-    in_cf_c_stride,                                                            \
     out_n_stride,                                                              \
     in_n_stride,                                                               \
     kernel_h,                                                                  \
@@ -556,8 +549,6 @@ void launch_max_pool2d_kernel(
         gradOutputSizeH,                                                       \
         gradOutputSizeW,                                                       \
         gradInputSize,                                                         \
-        out_cf_c_stride,                                                       \
-        in_cf_c_stride,                                                        \
         out_n_stride,                                                          \
         in_n_stride,                                                           \
         kernel_h,                                                              \
@@ -609,7 +600,6 @@ void launch_max_pool2d_backward_kernel(
   // with CUDA in alexnet To avoid future problem, we decided to always use
   // deterministic path.
 
-
   int vec_size = 1;
   int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
   int num_sub_wg;
@@ -630,7 +620,7 @@ void launch_max_pool2d_backward_kernel(
         break;
       }
     }
-  switch (vec_size) {
+    switch (vec_size) {
       case 8:
         LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
             scalar_t,
@@ -647,8 +637,6 @@ void launch_max_pool2d_backward_kernel(
             gradOutputSizeH,
             gradOutputSizeW,
             gradInputSize,
-            out_cf_c_stride,
-            in_cf_c_stride,
             out_n_stride,
             in_n_stride,
             kernel_h,
@@ -676,8 +664,6 @@ void launch_max_pool2d_backward_kernel(
             gradOutputSizeH,
             gradOutputSizeW,
             gradInputSize,
-            out_cf_c_stride,
-            in_cf_c_stride,
             out_n_stride,
             in_n_stride,
             kernel_h,
@@ -705,8 +691,6 @@ void launch_max_pool2d_backward_kernel(
             gradOutputSizeH,
             gradOutputSizeW,
             gradInputSize,
-            out_cf_c_stride,
-            in_cf_c_stride,
             out_n_stride,
             in_n_stride,
             kernel_h,
@@ -934,7 +918,6 @@ void max_pool2d_with_indices_backward_kernel(
       inputHeight, kH, padH, dH, dilationH, ceil_mode);
   int64_t outputWidth = pooling_output_shape<int64_t>(
       inputWidth, kW, padW, dW, dilationW, ceil_mode);
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
