@@ -363,7 +363,10 @@ skip_dict = {
     "../../../../test/distributed/elastic/events/lib_test.py": None,
     "../../../../test/distributed/elastic/metrics/api_test.py": None,
     "../../../../test/distributed/elastic/multiprocessing/api_test.py": None,
-    "../../../../test/distributed/elastic/test_control_plane.py": None,
+    "../../../../test/distributed/elastic/test_control_plane.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1871 same failure on cuda
+        "test_tcp",
+    ),
     "../../../../test/distributed/elastic/timer/api_test.py": None,
     "../../../../test/distributed/elastic/timer/local_timer_example.py": None,
     "../../../../test/distributed/elastic/timer/local_timer_test.py": None,
