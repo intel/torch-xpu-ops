@@ -44,7 +44,7 @@ permissions: read-all
 jobs:
   standalone_ut_test:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 3000
+    timeout-minutes: 120
     env: 
       standalone_ut_runable: ${{ inputs.test_type }}
       MAX_RETRIES: 3
@@ -80,8 +80,9 @@ jobs:
       - name: Run standalone UT
         if: contains(inputs.ut, 'op_standalone')
         run: |
-          set -e
+          set -e -o pipefail
           source activate xpu_op_test
+          pip install pytest pytest-timeout
           if [[ -z "${{ inputs.dep_path }}" ]]; then
             bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh
           fi
@@ -93,14 +94,23 @@ jobs:
           gh --repo $repo issue view $standalone_ut_runable --json body -q .body | sed '/^$/d' > standalone_ut_runable.log
           list=`cat standalone_ut_runable.log`
           for i in $list; do
-            start=$(date +%s);
-            echo `date`;
-            timeout 3600s pytest -vs $i --durations=0 -vv;
-            end=$(date +%s);
-            echo -e "$i duration: $((end - start))s";
-          done  2>&1 | tee ${{ github.workspace }}/ut_log/standalone_ut_results.log
+            start=$(date +%s)
+            echo $(date)
+            # check the coral connection error
+            temp_file=$(mktemp)
+            pytest --timeout 1200 --timeout_method=thread -vs $i --durations=0 -vv 2>&1 | tee "$temp_file" || true
+            end=$(date +%s)
+            echo -e "$i duration: $((end - start))s"
 
-          # check the coral connection error
+            if grep "TbxSocketsImp Error" "$temp_file"; then
+                echo "::error::Found 'TbxSocketsImp Error' in logs - failing job"
+                rm "$temp_file"
+                exit 1
+            fi
+            rm "$temp_file"
+          done 2>&1 | tee ${{ github.workspace }}/ut_log/standalone_ut_results.log
+
+          # Double check the coral connection error
           if grep "TbxSocketsImp Error" ${{ github.workspace }}/ut_log/standalone_ut_results.log; then
             echo "::error::Found 'TbxSocketsImp Error' in logs - failing job"
             exit 1

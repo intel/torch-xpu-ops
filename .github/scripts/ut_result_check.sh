@@ -245,7 +245,8 @@ fi
 
 if [[ "${ut_suite}" == 'op_standalone' ]]; then
     grep -E "FAILED" standalone_ut_results.log | awk '{print $1}' | grep -v "FAILED" > ./standalone_ut_results_failed.log
-    grep -E "Error" standalone_ut_results.log | awk '{print $1}' >> ./standalone_ut_results_failed.log
+    grep -E "Error|error|Exception" standalone_ut_results.log | awk '{print $1}' >> ./standalone_ut_results_failed.log
+    grep -E "Timeout" standalone_ut_results.log | grep "test" >> ./standalone_ut_results_failed.log
     grep -E "PASSED" standalone_ut_results.log | awk '{print $1}' > ./standalone_ut_results_passed.log
     num_failed=$(wc -l < "./standalone_ut_results_failed.log")
     num_passed=$(wc -l < "./standalone_ut_results_passed.log")

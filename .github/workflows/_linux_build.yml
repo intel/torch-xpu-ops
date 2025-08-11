@@ -104,6 +104,7 @@ jobs:
         run: |
           set -xe -o pipefail
           source activate xpu_op_build
+          rm -rf ${{ github.workspace }}/torch*.whl
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_VERSION="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"

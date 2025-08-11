@@ -27,7 +27,7 @@ fi
 export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046"
 
 # This has already been cached in the docker image
-lintrunner init 2> /dev/null
+lintrunner init #2> /dev/null
 
 # Do build steps necessary for linters
 if [[ "${CLANG}" == "1" ]]; then
