@@ -76,6 +76,8 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        TORCH_HOME: /tmp/.cache/_torch
+        HF_HOME: /tmp/.cache/_huggingface
     strategy:
       fail-fast: false
       matrix:
