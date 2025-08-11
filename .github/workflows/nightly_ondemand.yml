@@ -32,7 +32,7 @@ on:
         description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,ut_torch,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
         default: '[]'
-        description: Dynamo benchmarks test suite. `[huggingface,timm_models,torchbench,pt2e]`. Delimiter is comma
+        description: Dynamo benchmarks test suite. `["huggingface","timm_models","torchbench","pt2e"]`. Delimiter is comma
       dt:
         type: string
         default: ''
