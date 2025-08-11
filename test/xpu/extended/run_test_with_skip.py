@@ -17,7 +17,7 @@ for skip_case in skip_list[1:]:
 skip_options += '"'
 
 os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-test_command = "pytest --timeout 600 -v --junit-xml=./op_extended.xml test_ops_xpu.py"
+test_command = "pytest --timeout 600 -v --timeout_method=thread --junit-xml=./op_extended.xml test_ops_xpu.py"
 test_command += skip_options
 res = os.system(test_command)
 sys.exit(res)
