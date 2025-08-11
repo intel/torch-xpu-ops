@@ -89,6 +89,7 @@ jobs:
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
         SEARCH_CRITERIA: ${{ inputs.search_criteria }}
+        TORCH_XPU_ARCH_LIST: pvc
     defaults:
       run:
         shell: bash -xe {0}
