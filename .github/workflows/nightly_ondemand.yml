@@ -84,7 +84,8 @@ jobs:
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
         GH_TOKEN: ${{ github.token }}
-        HF_HOME: /tmp/_tools/huggingface
+        TORCH_HOME: /tmp/.cache/_torch
+        HF_HOME: /tmp/.cache/_huggingface
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
