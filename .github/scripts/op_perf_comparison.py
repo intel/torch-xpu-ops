@@ -114,7 +114,7 @@ def display_comparison(results, threshold, xpu_file, compare_both):
     # Print results
     if regression_records:
         print("\n🔴 Regression:")
-        regression_display = [r for r in display_records 
+        regression_display = [r for r in display_records
                             if r['Case Name'] in [x['case_name'] for x in regression_records]]
         print(tabulate(
             regression_display,
@@ -126,7 +126,7 @@ def display_comparison(results, threshold, xpu_file, compare_both):
 
     if improvement_records:
         print("\n🟢 Improvement:")
-        improvement_display = [r for r in display_records 
+        improvement_display = [r for r in display_records
                              if r['Case Name'] in [x['case_name'] for x in improvement_records]]
         print(tabulate(
             improvement_display,
@@ -187,7 +187,7 @@ def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=Fa
 
     for record, source in [(records_xpu, 'xpu'), (records_baseline, 'baseline')]:
         for r in record:
-            key = tuple((k, str(v)) for k, v in r.items() 
+            key = tuple((k, str(v)) for k, v in r.items()
                    if k not in ['time(us)', 'E2E total time(us)', 'E2E forward time(us)'])
 
             for time_type in ['profile', 'e2e']:
@@ -202,7 +202,7 @@ def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=Fa
 
     results = []
     compare_both = not profile_only and not e2e_only
-    all_keys = set().union(*[set(data_dict[s][t].keys()) 
+    all_keys = set().union(*[set(data_dict[s][t].keys())
                           for s in data_dict for t in data_dict[s]])
 
     for key in all_keys:
@@ -262,9 +262,9 @@ def main():
     parser.add_argument('-b', '--baseline_file', required=True, help="XPU OP baseline result csv files dir")
     parser.add_argument('-t', '--threshold', type=float, default=0.10,
                        help='Threshold for time difference (default: 0.10 for 10%)')
-    parser.add_argument('--profile-only', action='store_true', 
+    parser.add_argument('--profile-only', action='store_true',
                        help='Only compare profile time (time(us))')
-    parser.add_argument('--e2e-only', action='store_true', 
+    parser.add_argument('--e2e-only', action='store_true',
                        help='Only compare E2E time (E2E total time(us))')
     args = parser.parse_args()
 
