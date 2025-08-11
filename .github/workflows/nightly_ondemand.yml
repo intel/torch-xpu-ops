@@ -1,4 +1,4 @@
-name: Bisect Search
+name: Nightly-OnDemand Tests
 
 on:
   workflow_dispatch:
