@@ -228,3 +228,9 @@ jobs:
             echo -e "\n\n\n${reulst_log}" |tee -a ${GITHUB_STEP_SUMMARY}
             cat ${reulst_log} |tee -a ${GITHUB_STEP_SUMMARY}
           done
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bisect-search
+          path: ${{ github.workspace }}/gs-logs
