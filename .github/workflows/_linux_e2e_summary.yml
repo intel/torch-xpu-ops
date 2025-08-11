@@ -11,10 +11,6 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      suite:
-        type: string
-        default: 'huggingface'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
 permissions: read-all
 
@@ -66,7 +62,8 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           pip install pandas requests
-          if [ "${{ inputs.suite }}" != 'pt2e' ];then
+          e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
+          if [ -f "${e2e_summary_csv}" ];then
             bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then

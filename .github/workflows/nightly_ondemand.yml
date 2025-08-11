@@ -31,7 +31,7 @@ on:
         default: ''
         description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,ut_torch,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
-        default: ''
+        default: '[]'
         description: Dynamo benchmarks test suite. `[huggingface,timm_models,torchbench,pt2e]`. Delimiter is comma
       dt:
         type: string
@@ -134,7 +134,7 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op' || inputs.ut }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
+    if: ${{ github.event_name == 'schedule' || inputs.suite != '[]' }}
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
@@ -154,15 +154,12 @@ jobs:
       scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-      suite: ${{ github.event_name == 'schedule' && 'huggingface' || inputs.suite }}
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
