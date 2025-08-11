@@ -126,7 +126,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: linux.idc.xpu
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-ut
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
@@ -144,7 +144,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
@@ -159,7 +159,7 @@ jobs:
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
@@ -169,7 +169,7 @@ jobs:
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-mb
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
