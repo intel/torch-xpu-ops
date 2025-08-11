@@ -137,11 +137,11 @@ jobs:
     if: ${{ github.event_name == 'schedule' || inputs.suite != '[]' }}
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
-    uses: ./.github/workflows/_linux_e2e.yml
     strategy:
       fail-fast: false
       matrix:
         suite: ${{ fromJSON(inputs.suite) }}
+    uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
