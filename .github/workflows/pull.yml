@@ -127,6 +127,7 @@ jobs:
       pytorch: main
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
+    name: linux-e2e
     permissions: write-all
     needs: [linux-e2e]
     uses: ./.github/workflows/_linux_e2e_summary.yml

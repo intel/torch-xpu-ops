@@ -152,7 +152,7 @@ jobs:
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
-    name: linux-e2e-summary
+    name: linux-e2e
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
     uses: ./.github/workflows/_linux_e2e_summary.yml
