@@ -138,6 +138,7 @@ jobs:
           echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> ${GITHUB_ENV}
       - name: Prepare test env
         run: |
+          pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
           if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers==4.44.2
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
@@ -145,30 +146,14 @@ jobs:
             pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
             model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
-            pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
             git clone https://github.com/pytorch/benchmark gs-benchmark
             cd gs-benchmark
             echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
             python install.py ${model_name}
-            pip uninstall -y torch
           else
             pip install -r gs-pytorch/.ci/docker/requirements-ci.txt
           fi
-      - name: Triton Installation
-        run: |
-          cd gs-pytorch
-          rm -rf pytorch_triton_xpu-*.whl
-          if [ "${{ inputs.triton }}" != "pinned" ];then
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          else
-            TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
-          fi
-          TRITON_VERSION_NAME="$(
-            curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                    grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-          )"
-          python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-          pip install pytorch_triton_xpu-*.whl
+          pip uninstall -y torch && pip uninstall -y torch
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
