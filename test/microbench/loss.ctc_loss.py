@@ -1,8 +1,11 @@
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
 backward = True
+num_iter = 20
 # T,N,C,S
 shape_list = [(32, 32, 32, 16), (128, 128, 128, 128), (8, 8, 4, 8)]
 
@@ -32,7 +35,7 @@ def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
     ) as prof:
-        for i in range(20):
+        for i in range(num_iter):
             loss_dpcpp = torch.nn.functional.ctc_loss(
                 log_probs_dpcpp,
                 targets_dpcpp,
@@ -41,6 +44,22 @@ def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
             )
             loss_dpcpp.backward()
     print(prof.key_averages().table(sort_by="xpu_time_total"))
+
+    # E2E time
+    torch.xpu.synchronize()
+    t1 = time.time()
+    for i in range(num_iter):
+        loss_dpcpp = torch.nn.functional.ctc_loss(
+            log_probs_dpcpp,
+            targets_dpcpp,
+            input_lengths_dpcpp,
+            target_lengths_dpcpp,
+        )
+        loss_dpcpp.backward()
+    torch.xpu.synchronize()
+    t2 = time.time()
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
 
 
 for shape in shape_list:
