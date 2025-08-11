@@ -35,7 +35,7 @@ runs:
         if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
           python -c "import torch, torchvision, torchaudio"
           cd ./pytorch
-          TORCHBENCH_COMMIT_ID=$(cat .github/ci_commit_pins/torchbench.txt)
+          TORCHBENCH_COMMIT_ID=$(cat .github/ci_commit_pins/torchbench.txt 2> /dev/null || cat .ci/docker/ci_commit_pins/torchbench.txt)
           git clone https://github.com/pytorch/benchmark.git xpu-benchmark
           cd xpu-benchmark && git checkout $TORCHBENCH_COMMIT_ID
           # remove deps which will reinstall torch

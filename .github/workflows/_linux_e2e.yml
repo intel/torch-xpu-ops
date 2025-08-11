@@ -102,7 +102,7 @@ jobs:
 
       # CICD launch
       - name: Nightly Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') }}
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -110,21 +110,21 @@ jobs:
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          env_prepare: true
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: accuracy,performance
       - name: Nightly Timm_models BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') }}
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
           suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
           dt: bfloat16
           mode: training
           scenario: accuracy,performance

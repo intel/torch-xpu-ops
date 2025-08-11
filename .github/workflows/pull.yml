@@ -116,11 +116,17 @@ jobs:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
     permissions: write-all
     needs: [conditions-filter, linux-build]
+    name: ${{ matrix.suite }}
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
       test_type: build-cicd
       pytorch: main
+      suite: ${{ matrix.suite }}
 
   windows:
     name: windows
