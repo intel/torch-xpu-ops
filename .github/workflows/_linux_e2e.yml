@@ -131,7 +131,7 @@ jobs:
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -139,17 +139,8 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          env_prepare: true
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: accuracy,performance
       - name: Nightly Timm_models FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -157,8 +148,17 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
       - name: Nightly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -166,8 +166,8 @@ jobs:
           scenario: accuracy,performance
 
       # Weekly launch
-      - name: Nightly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
+      - name: Weekly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -175,17 +175,8 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          env_prepare: true
-          suite: torchbench
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: accuracy,performance
-      - name: Nightly Timm_models FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
+      - name: Weekly Timm_models Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -193,8 +184,17 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Nightly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
+      - name: Weekly Torchbench Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Weekly PT2E Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -202,16 +202,34 @@ jobs:
           scenario: accuracy,performance
 
       # On-demand launch
-      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: ${{ contains(inputs.test_type, 'ondemand') && inputs.suite != 'pt2e' }}
+      - name: OnDemand Test (huggingface)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
-          suite: ${{ inputs.suite }}
+          suite: huggingface
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      - name: OnDemand Test (timm_models)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand Test (torchbench)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:

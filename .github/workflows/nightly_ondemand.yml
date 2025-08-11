@@ -31,9 +31,8 @@ on:
         default: ''
         description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,ut_torch,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
-        type: string
         default: ''
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+        description: Dynamo benchmarks test suite. `[huggingface,timm_models,torchbench,pt2e]`. Delimiter is comma
       dt:
         type: string
         default: ''
@@ -139,13 +138,17 @@ jobs:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.suite) }}
     with:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-      suite: ${{ github.event_name == 'schedule' && 'huggingface' || inputs.suite }}
+      suite: ${{ matrix.suite }}
       dt: ${{ github.event_name == 'schedule' && 'float32' || inputs.dt }}
       mode: ${{ github.event_name == 'schedule' && 'inference' || inputs.mode }}
       scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
