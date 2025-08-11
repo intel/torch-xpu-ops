@@ -1,0 +1,100 @@
+name: Linux E2E Test
+
+on:
+  workflow_call:
+    inputs:
+      test_type:
+        type: string
+        default: 'build-from-source'
+        description: Build from source or install nightly wheel
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+      suite:
+        type: string
+        default: 'huggingface'
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+
+permissions: read-all
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    if: ${{ ! cancelled() }}
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFERENCE_ISSUE_ID: 1645
+      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    steps:
+      - name: Install gh-cli
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh rsync ca-certificates -y
+          find ./ |grep -v "^\./$" |xargs rm -rf
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Download Target Artifact
+        run: |
+          mkdir target/
+          cd target/
+          target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*"
+          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "${target_dir}"
+          mv Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*/* .
+      - name: Download Baseline Artifact
+        run: |
+          mkdir baseline/
+          cd baseline/
+          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/;s/cicd/weekly/')"
+          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
+          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+          if [ "${REFERENCE_RUN_ID}" != "" ];then
+            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+            mv Inductor-*-XPU-E2E-*/* .
+          fi
+      - name: Get summary
+        if: ${{ ! cancelled() }}
+        run: |
+          pip install pandas requests
+          if [ "${{ inputs.suite }}" != 'pt2e' ];then
+            bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
+            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+            if [ ${exit_label} -ne 0 ];then
+              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+              echo "There are ${exit_label} cases that need look into!!! Please check them"
+              exit ${exit_label}
+            fi
+          fi
+          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            cat ${pt2e_summary_csv}
+            failed_num=$(grep -c ',failed' ${pt2e_summary_csv})
+            if [ ${failed_num} -ne 0 ];then
+              echo "[Warning] PT2E has failures!"
+            fi
+          fi
+      - name: Upload Reference Run ID
+        if: ${{ ! (contains(inputs.test_type, 'ondemand') || contains(inputs.test_type, 'cicd')) && github.repository_owner == 'intel' }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
+          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt)"
+          if [ ${has_or_not} -ne 0 ];then
+            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
+          else
+            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
+          fi
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
+      - name: Set permissions
+        if: ${{ always() }}
+        run: |
+          find ./ |grep -v "^\./$" |xargs rm -rf

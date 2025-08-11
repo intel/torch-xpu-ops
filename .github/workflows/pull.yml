@@ -114,7 +114,6 @@ jobs:
 
   linux-e2e:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
-    permissions: write-all
     needs: [conditions-filter, linux-build]
     name: ${{ matrix.suite }}
     strategy:
@@ -127,6 +126,12 @@ jobs:
       test_type: build-cicd
       pytorch: main
       suite: ${{ matrix.suite }}
+  linux-e2e-summary:
+    permissions: write-all
+    needs: [linux-e2e]
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: build-cicd
 
   windows:
     name: windows

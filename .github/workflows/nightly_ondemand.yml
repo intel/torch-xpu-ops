@@ -137,7 +137,6 @@ jobs:
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
-    permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
@@ -151,6 +150,17 @@ jobs:
       mode: ${{ github.event_name == 'schedule' && 'inference' || inputs.mode }}
       scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
+  Linux-Nightly-Ondemand-E2E-Tests-Summary:
+    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
+    name: linux-e2e-summary
+    permissions: write-all
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      runner: pvc_rolling
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
+      suite: ${{ github.event_name == 'schedule' && 'huggingface' || inputs.suite }}
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
