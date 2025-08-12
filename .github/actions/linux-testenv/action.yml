@@ -84,7 +84,7 @@ runs:
           cd benchmark
           git checkout e03a63be43e33596f7f0a43b0f530353785e4a59
           pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14
+          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           python install.py --continue_on_fail
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
@@ -92,7 +92,7 @@ runs:
           git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
           cd benchmark
           pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14
+          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           python install.py --continue_on_fail
         fi
