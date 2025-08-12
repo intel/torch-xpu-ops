@@ -176,12 +176,13 @@ jobs:
           if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            bisect_status="$(git bisect start ${new_commit} ${old_commit} \
-                    ${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
+            rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
+            git bisect start ${new_commit} ${old_commit}
+            git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
-                    --PYTORCH_VERSION="$(git rev-parse HEAD)" \
+                    --PYTORCH_VERSION="search" \
                     --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
-                    > ${{ github.workspace }}/gs-logs/bisect-pytorch.log 2>&1 && echo $? || echo $?)"
+                    2>&1 |tee ${{ github.workspace }}/gs-logs/bisect-pytorch.log
             git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log
           else
             echo "Checked and no regression !"
@@ -208,13 +209,13 @@ jobs:
           if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            bisect_status="$(
-            git bisect start ${new_commit} ${old_commit} \
-                    ${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
+            rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
+            git bisect start ${new_commit} ${old_commit}
+            git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                    --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)" \
-                    > ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log 2>&1 && echo $? || echo $?)"
+                    --TORCH_XPU_OPS_VERSION="search" \
+                    2>&1 |tee ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log
             git bisect log |tee ${{ github.workspace }}/gs-logs/result-torch-xpu-ops.log
           else
             echo "Checked and no regression !"
