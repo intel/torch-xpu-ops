@@ -63,7 +63,7 @@ runs:
         fi
         pip list |grep -E 'intel|torch'
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -xe {0}
+      shell: bash -x {0}
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
@@ -103,12 +103,12 @@ runs:
                   for xpu_id in $(seq 0 $[ ${xpu_num} - 1 ])
                   do
                     cpu_list="$(echo "${cores_per_instance} ${xpu_id}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-                    numactl --localalloc --physcpubind=${cpu_list} bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${xpu_id} &
+                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${xpu_id} &
                   done
                 else
                   for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
                   do
-                    numactl --localalloc bash inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
+                    numactl --localalloc bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
                   done
                 fi
                 wait
