@@ -1,10 +1,6 @@
 skip_dict = {
     "../../../../test/distributed/fsdp/test_checkpoint_wrapper.py": None,
-    # https://github.com/intel/torch-xpu-ops/issues/1536
-    # "../../../../test/distributed/fsdp/test_distributed_checkpoint.py": (
-    #    "test_distributed_checkpoint_state_dict_type0_xpu",
-    #    "test_distributed_checkpoint_state_dict_type1_xpu",
-    # ),
+    "../../../../test/distributed/fsdp/test_distributed_checkpoint.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_backward_prefetch.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": None,
