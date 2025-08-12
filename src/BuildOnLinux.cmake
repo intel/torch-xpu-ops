@@ -14,7 +14,6 @@ macro(setup_common_libraries)
     ${ATen_XPU_XCCL_SRCS})
 
   if(USE_C10D_XCCL)
-    add_dependencies(torch_xpu_ops generate-torch-sources)
     target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
     target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
   endif()
