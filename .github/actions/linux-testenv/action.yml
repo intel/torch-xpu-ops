@@ -21,6 +21,10 @@ inputs:
     type: string
     default: '3.10'
     description: Python version
+  suite:
+    type: string
+    default: 'huggingface'
+    description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
 permissions: read-all
 
@@ -64,6 +68,36 @@ runs:
       uses: actions/download-artifact@v4
       with:
         pattern: Torch-XPU-Wheel-*
+    - name: Install E2E Requirements
+      if: ${{ ! contains(inputs.test_type, 'e2e') }}
+      shell: bash -xe {0}
+      run: |
+        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        pip install pandas psutil scipy
+        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          pip install transformers==4.44.2
+        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+          pip install timm==1.0.14
+        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          rm -rf ./benchmark
+          git clone https://github.com/pytorch/benchmark
+          cd benchmark
+          git checkout e03a63be43e33596f7f0a43b0f530353785e4a59
+          pip install -r requirements.txt
+          pip install -U transformers==4.44.2 timm==1.0.14
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          python install.py --continue_on_fail
+        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
+          rm -rf ./benchmark
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
+          cd benchmark
+          pip install -r requirements.txt
+          pip install -U transformers==4.44.2 timm==1.0.14
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          python install.py --continue_on_fail
+        fi
+        pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
+        pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -77,7 +111,6 @@ runs:
         else
           pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
         fi
-        pip list |grep torch
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
@@ -87,12 +120,6 @@ runs:
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
         git checkout ${TORCH_COMMIT_ID}
-        if [[ "${{ inputs.test_type }}" == *"-e2e" ]];then
-          pip install pandas psutil scipy
-        else
-          pip install pytest-timeout
-          pip install -r .ci/docker/requirements-ci.txt
-        fi
         # apply extra PRs for stock pytorch
         pip install requests
         if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then

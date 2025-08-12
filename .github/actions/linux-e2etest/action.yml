@@ -28,43 +28,10 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Prepare ENV
-      if: ${{ inputs.env_prepare }}
-      shell: bash -xe {0}
-      run: |
-        if [[ ${{ inputs.suite }} == *"torchbench"* ]]; then
-          python -c "import torch, torchvision, torchaudio"
-          cd ./pytorch
-          TORCHBENCH_COMMIT_ID=$(cat .github/ci_commit_pins/torchbench.txt 2> /dev/null || cat .ci/docker/ci_commit_pins/torchbench.txt)
-          git clone https://github.com/pytorch/benchmark.git xpu-benchmark
-          cd xpu-benchmark && git checkout $TORCHBENCH_COMMIT_ID
-          # remove deps which will reinstall torch
-          pip install --no-deps accelerate
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
-          pip install -U transformers==4.44.2
-          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g;s/^transformers.*//g'  requirements.txt
-          git status && git diff
-          pip install -r requirements.txt
-          python install.py --continue_on_fail
-          # deps for torchrec_dlrm
-          pip install pyre_extensions
-          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/cpu
-          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
-        fi
-        if [[ ${{ inputs.suite }} == *"huggingface"* ]]; then
-          pip install -U transformers==4.44.2
-        fi
-        if [[ ${{ inputs.suite }} == *"timm_models"* ]]; then
-          # install timm without dependencies
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
-          # install timm dependencies without torch and torchvision
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
-        fi
-        pip list |grep -E 'intel|torch'
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -x {0}
       run: |
+        pip list |grep -E 'intel|torch'
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
         # check param
