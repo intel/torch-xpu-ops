@@ -90,14 +90,17 @@ jobs:
       run:
         shell: bash -xe {0}
     steps:
+      - name: Check runner
+        run: |
+          ls -al
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          sudo rm -rf /tmp/_tools
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
       - name: Check runner
         run: |
-          ls -al
-          find ./ |grep -v "^\./$" |xargs rm -rf
           hostname && whoami && id
           clinfo --list
           gcc -v && g++ -v
