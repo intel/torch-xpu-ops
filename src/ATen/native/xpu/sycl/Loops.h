@@ -395,6 +395,7 @@ static inline void launch_vectorized_kernel(
           wg_sz * num_wg,                               \
           wg_sz,                                        \
           getCurrentSYCLQueue(),                        \
+          0,                                            \
           N,                                            \
           f,                                            \
           data,                                         \

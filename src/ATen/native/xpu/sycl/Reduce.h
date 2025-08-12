@@ -32,11 +32,11 @@ template <class arg_t, class item_t, class CombineFunc, int out_vec_sz = 1>
 inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
     item_t item,
     int wg_size,
-    sycl_local_ptr<void> shared,
+    char* shared,
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
-  sycl_local_ptr<vec_t> shared_(shared);
+  vec_t* shared_ = reinterpret_cast<vec_t*>(shared_);
   int l_x = item.get_local_linear_id();
   // int dim_x = wg_size;
   auto sg = item.get_sub_group();
@@ -101,11 +101,11 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
 template <class arg_t, class item_t, class CombineFunc, int out_vec_sz = 1>
 inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
     item_t item,
-    sycl_local_ptr<void> shared,
+    char* shared,
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
-  sycl_local_ptr<vec_t> shared_(shared);
+  vec_t* shared_ = reinterpret_cast<vec_t*>(shared_);
   int l_x = item.get_local_id(1), l_y = item.get_local_id(0);
   int g_x = item.get_local_range(1);
   int dim_x = g_x;
@@ -143,11 +143,11 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
 template <class arg_t, class item_t, class CombineFunc, int out_vec_sz = 1>
 inline at::detail::Array<arg_t, out_vec_sz> group_y_reduce(
     item_t item,
-    sycl_local_ptr<void> shared,
+    char* shared,
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
-  sycl_local_ptr<vec_t> shared_(shared);
+  vec_t* shared_ = reinterpret_cast<vec_t*>(shared_);
   int l_x = item.get_local_id(1), l_y = item.get_local_id(0);
   int g_x = item.get_local_range(1);
   int dim_y = item.get_local_range(0);
@@ -238,9 +238,9 @@ struct ReduceConfig {
   int input_vec_size = 1;
   int output_vec_size = 1;
 
-  template <typename T, class KernelClass>
+  template <typename T, auto* K>
   void set_group_dimension(int64_t dim0, int64_t dim1) {
-    auto max_wg_sz = syclMaxWorkGroupSize<KernelClass>();
+    auto max_wg_sz = syclMaxWorkGroupSize<K>();
     // Bypass reduction on SLM by sparing workload to other SGs. As the
     // result, reduction of small shape input only requires some shift
     // operations in side of SG. It is functional WA. We got case failures on
@@ -377,26 +377,10 @@ struct ReduceConfig {
 std::ostream& operator<<(std::ostream& out, const ReduceConfig& config);
 
 template <int output_vec_size, typename R>
-class ReduceKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
- public:
-  ReduceKernel(R reduction, sycl::range<1> slm_sz)
-      : reduction_(reduction), slm_sz_(slm_sz), shared_(), finished_() {}
-
-  void operator()(sycl::nd_item<2> pos) const {
-    reduction_.template run<output_vec_size>(pos, shared_, finished_);
-  }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<char>(slm_sz_, cgh);
-    finished_ = sycl_local_acc_t<bool>({1}, cgh);
-  }
-
- private:
-  R reduction_;
-  sycl::range<1> slm_sz_;
-  sycl_local_acc_t<char> shared_; /* group tree reduce */
-  sycl_local_acc_t<bool> finished_; /* last WG flag to broadcast inner WG */
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+void reduce_kernel(R reduction) {
+  reduction.template run<output_vec_size>();
+}
 
 template <typename index_t>
 static OffsetCalculator<2, index_t> make_output_calculator(
@@ -528,10 +512,9 @@ struct ReduceOp {
   }
 
   template <int output_vec_size>
-  void run(
-      sycl::nd_item<2> pos,
-      sycl_local_ptr<char> shared,
-      sycl_local_ptr<bool> finished) const {
+  void run() const {
+    auto pos = syclext::this_work_item::get_nd_item<2>();
+    char* shared = (char*)syclexp::get_work_group_scratch_memory();
     index_t output_idx = config.output_idx<output_vec_size>(pos);
     index_t input_idx = config.input_idx(pos);
     auto base_offsets1 = output_calc.get(output_idx)[1];
@@ -598,7 +581,7 @@ struct ReduceOp {
     }
 
     if (config.should_global_reduce()) {
-      value = global_reduce<output_vec_size>(pos, value, acc, shared, finished);
+      value = global_reduce<output_vec_size>(pos, value, acc, shared);
     } else if (config.should_store(pos, output_idx)) {
       if (accumulate) {
 #pragma unroll
@@ -823,8 +806,8 @@ struct ReduceOp {
   }
 
   // In/out from slm pointers
-  void mark_group_finished(sycl::nd_item<2> pos, sycl_local_ptr<bool> finished)
-      const {
+  bool mark_group_finished(sycl::nd_item<2> pos) const {
+    syclexp::work_group_static<bool> finished;
     pos.barrier(sycl_local_fence);
 
     if (pos.get_local_linear_id() == 0) {
@@ -832,9 +815,10 @@ struct ReduceOp {
       int prev_groups_finished = count.fetch_add(
           1, sycl_mem_odr_acq_rel
           /* , default memory scope is device */);
-      finished[0] = (prev_groups_finished == (int)(pos.get_group_range(0) - 1));
+      finished = (prev_groups_finished == (int)(pos.get_group_range(0) - 1));
     }
     pos.barrier(sycl_local_fence);
+    return finished;
   }
 
   template <int output_vec_size, bool can_acc>
@@ -922,8 +906,7 @@ struct ReduceOp {
       sycl::nd_item<2> pos,
       at::detail::Array<arg_t, output_vec_size> value,
       at::detail::Array<arg_t, output_vec_size>* acc,
-      sycl_local_ptr<char> shared_memory,
-      sycl_local_ptr<bool> is_last_group_done) const {
+      char* shared_memory) const {
     using arg_vec_t = at::detail::Array<arg_t, output_vec_size>;
     using out_ptr_vec_t = at::detail::Array<out_scalar_t*, output_vec_size>;
     using offset_vec_t = at::detail::Array<index_t, output_vec_size>;
@@ -945,9 +928,9 @@ struct ReduceOp {
       reduce_buffer[offset] = value;
     }
 
-    mark_group_finished(pos, is_last_group_done);
+    bool is_last_group_done = mark_group_finished(pos);
 
-    if (is_last_group_done[0]) {
+    if (is_last_group_done) {
       value = ident;
       if (config.should_group_x_reduce()) {
         index_t input_offset =
@@ -1039,21 +1022,34 @@ static void launch_reduce_kernel(
     const ReduceConfig& config,
     const R& reduction) {
   auto& queue = getCurrentSYCLQueue();
-  sycl::range<1> slm_sz{static_cast<uint32_t>(config.slm_sz())};
+  int shared_memory = config.slm_sz();
+  ;
   switch (config.output_vec_size) {
     case 4: {
-      auto kfn = ReduceKernel<4, R>(reduction, slm_sz);
-      sycl_kernel_submit(config.global_sz(), config.group_sz(), queue, kfn);
+      sycl_kernel_submit<reduce_kernel<4, R>>(
+          config.global_sz(),
+          config.group_sz(),
+          queue,
+          shared_memory,
+          reduction);
       break;
     }
     case 2: {
-      auto kfn = ReduceKernel<2, R>(reduction, slm_sz);
-      sycl_kernel_submit(config.global_sz(), config.group_sz(), queue, kfn);
+      sycl_kernel_submit<reduce_kernel<2, R>>(
+          config.global_sz(),
+          config.group_sz(),
+          queue,
+          shared_memory,
+          reduction);
       break;
     }
     default: {
-      auto kfn = ReduceKernel<1, R>(reduction, slm_sz);
-      sycl_kernel_submit(config.global_sz(), config.group_sz(), queue, kfn);
+      sycl_kernel_submit<reduce_kernel<1, R>>(
+          config.global_sz(),
+          config.group_sz(),
+          queue,
+          shared_memory,
+          reduction);
       break;
     }
   }
@@ -1297,15 +1293,15 @@ inline void gpu_reduce_kernel(
   using R = ReduceOp<scalar_t, ops_t, uint32_t, out_scalar_t, vt0>;
   switch (config.output_vec_size) {
     case 4: {
-      config.set_group_dimension<scalar_t, ReduceKernel<4, R>>(dim0, dim1);
+      config.set_group_dimension<scalar_t, reduce_kernel<4, R>>(dim0, dim1);
       break;
     }
     case 2: {
-      config.set_group_dimension<scalar_t, ReduceKernel<2, R>>(dim0, dim1);
+      config.set_group_dimension<scalar_t, reduce_kernel<2, R>>(dim0, dim1);
       break;
     }
     default: {
-      config.set_group_dimension<scalar_t, ReduceKernel<1, R>>(dim0, dim1);
+      config.set_group_dimension<scalar_t, reduce_kernel<1, R>>(dim0, dim1);
       break;
     }
   }
