@@ -84,6 +84,8 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         GH_TOKEN: ${{ github.token }}
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        TORCH_HOME: /tmp/.cache/_torch
+        HF_HOME: /tmp/.cache/_huggingface
         MODEL_ONLY_NAME: ${{ inputs.model }}
     steps:
       - name: Cleanup workspace
@@ -101,8 +103,8 @@ jobs:
           python: ${{ inputs.python }}
 
       # CICD launch
-      - name: Nightly Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') }}
+      - name: CICD Huggingface BF16 & FP16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -110,17 +112,8 @@ jobs:
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          env_prepare: true
-          suite: torchbench
-          dt: bfloat16
-          mode: training
-          scenario: accuracy,performance
-      - name: Nightly Timm_models BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') }}
+      - name: CICD Timm_models BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -128,19 +121,8 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
-
-      # Nihglty launch
-      - name: Nightly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          env_prepare: true
-          suite: huggingface
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
+      - name: CICD Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -148,8 +130,19 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+
+      # Nihglty launch
+      - name: Nightly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
       - name: Nightly Timm_models FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -157,8 +150,17 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
       - name: Nightly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') }}
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -166,8 +168,8 @@ jobs:
           scenario: accuracy,performance
 
       # Weekly launch
-      - name: Nightly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
+      - name: Weekly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -175,17 +177,8 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
-        uses: ./.github/actions/linux-e2etest
-        with:
-          env_prepare: true
-          suite: torchbench
-          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
-          mode: inference,training
-          scenario: accuracy,performance
-      - name: Nightly Timm_models FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
+      - name: Weekly Timm_models Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
@@ -193,8 +186,17 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Nightly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') }}
+      - name: Weekly Torchbench Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Weekly PT2E Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           env_prepare: true
@@ -202,16 +204,34 @@ jobs:
           scenario: accuracy,performance
 
       # On-demand launch
-      - name: OnDemand Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-        if: ${{ contains(inputs.test_type, 'ondemand') && inputs.suite != 'pt2e' }}
+      - name: OnDemand Test (huggingface)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           env_prepare: true
-          suite: ${{ inputs.suite }}
+          suite: huggingface
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-      - name: OnDemand PT2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      - name: OnDemand Test (timm_models)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand Test (torchbench)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
@@ -228,85 +248,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}
           path: ${{ github.workspace }}/upload_files
-
-  summary:
-    runs-on: ubuntu-latest
-    if: ${{ ! cancelled() }}
-    needs: test
-    permissions:
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REFERENCE_ISSUE_ID: 1645
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-    steps:
-      - name: Install gh-cli
-        run: |
-          sudo apt-get update
-          sudo apt-get install gh rsync ca-certificates -y
-          find ./ |grep -v "^\./$" |xargs rm -rf
-      - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ inputs.python }}
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Download Target Artifact
-        run: |
-          mkdir target/
-          cd target/
-          target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}"
-          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -n "${target_dir}"
-      - name: Download Baseline Artifact
-        run: |
-          mkdir baseline/
-          artifact_type="$(echo ${{ inputs.test_type }} |sed 's/ondemand/weekly/;s/cicd/weekly/')"
-          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
-          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
-          if [ "${REFERENCE_RUN_ID}" != "" ];then
-            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-            baseline_dir="$(find . -name 'Inductor-*-XPU-E2E-*' -type d)"
-            if [ -d "${baseline_dir}" ];then
-              rsync -avzq --delete ${baseline_dir}/ baseline/
-              ls -al baseline/
-              rm -rf ${baseline_dir}/
-            fi
-          fi
-      - name: Get summary
-        if: ${{ ! cancelled() }}
-        run: |
-          pip install pandas requests
-          if [ "${{ inputs.suite }}" != 'pt2e' ];then
-            bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
-            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
-            if [ ${exit_label} -ne 0 ];then
-              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
-              echo "There are ${exit_label} cases that need look into!!! Please check them"
-              exit ${exit_label}
-            fi
-          fi
-          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
-          if [ -f "${pt2e_summary_csv}" ];then
-            cat ${pt2e_summary_csv}
-            failed_num=$(grep -c ',failed' ${pt2e_summary_csv})
-            if [ ${failed_num} -ne 0 ];then
-              echo "[Warning] PT2E has failures!"
-            fi
-          fi
-      - name: Upload Reference Run ID
-        if: ${{ ! (contains(inputs.test_type, 'ondemand') || contains(inputs.test_type, 'cicd')) && github.repository_owner == 'intel' }}
-        run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
-          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt)"
-          if [ ${has_or_not} -ne 0 ];then
-            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
-          else
-            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
-          fi
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
-      - name: Set permissions
-        if: ${{ always() }}
-        run: |
-          find ./ |grep -v "^\./$" |xargs rm -rf

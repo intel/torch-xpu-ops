@@ -865,7 +865,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
   TORCH_CHECK(inputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto inputTensor = inputTensors.back();
-
+  checkSingleTensor(inputTensor);
   std::vector<at::Tensor> outputs;
 
   if (getRank() == opts.rootRank) {

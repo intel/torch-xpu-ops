@@ -45,7 +45,6 @@ runs:
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
         rm -rf ~/.triton /tmp/*inductor*
-        pip install pandas psutil scipy requests pytest-timeout pytest-xdist
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
@@ -88,8 +87,14 @@ runs:
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
         git checkout ${TORCH_COMMIT_ID}
-        pip install -r .ci/docker/requirements-ci.txt
+        if [[ "${{ inputs.test_type }}" == *"-e2e" ]];then
+          pip install pandas psutil scipy
+        else
+          pip install pytest-timeout pytest-xdist
+          pip install -r .ci/docker/requirements-ci.txt
+        fi
         # apply extra PRs for stock pytorch
+        pip install requests
         if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
         else

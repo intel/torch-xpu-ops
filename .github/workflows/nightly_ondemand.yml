@@ -31,9 +31,8 @@ on:
         default: ''
         description: UT scope. `ut_regression,ut_transformers,ut_extended,ut_op,ut_profiling,ut_torch,xpu_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
       suite:
-        type: string
-        default: ''
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+        default: '[]'
+        description: Dynamo benchmarks test suite. `["huggingface","timm_models","torchbench","pt2e"]`. Delimiter is comma
       dt:
         type: string
         default: ''
@@ -127,7 +126,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: linux.idc.xpu
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-ut
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
@@ -135,22 +134,32 @@ jobs:
       ut: ${{ github.event_name == 'schedule' && 'ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op' || inputs.ut }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
+    if: ${{ github.event_name == 'schedule' || inputs.suite != '[]' }}
     name: linux-e2e
-    permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.suite) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-      suite: ${{ github.event_name == 'schedule' && 'huggingface' || inputs.suite }}
+      suite: ${{ matrix.suite }}
       dt: ${{ github.event_name == 'schedule' && 'float32' || inputs.dt }}
       mode: ${{ github.event_name == 'schedule' && 'inference' || inputs.mode }}
       scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
+  Linux-Nightly-Ondemand-E2E-Tests-Summary:
+    name: linux-e2e
+    permissions: write-all
+    needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
@@ -160,7 +169,7 @@ jobs:
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-mb
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
