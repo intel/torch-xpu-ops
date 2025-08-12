@@ -53,12 +53,14 @@ struct WeightNormReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         value *= value;
     }
 
+    char* shared_ptr = reinterpret_cast<char*>(
+        shared_.template get_multi_ptr<sycl::access::decorated::no>().get());
     if (cfg_.problem_along_x_) {
       value = group_x_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     } else {
       value = group_y_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     }
 
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -289,12 +291,14 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
+    char* shared_ptr = reinterpret_cast<char*>(
+        shared_.template get_multi_ptr<sycl::access::decorated::no>().get());
     if (cfg_.problem_along_x_) {
       value = group_x_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     } else {
       value = group_y_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     }
 
     int n_slid = (int)id.glb_batch % batch_wg_range_;
@@ -500,12 +504,14 @@ struct WeightNormBackwardReduceKernelFunctor
       }
     }
 
+    char* shared_ptr = reinterpret_cast<char*>(
+        shared_.template get_multi_ptr<sycl::access::decorated::no>().get());
     if (cfg_.problem_along_x_) {
       value = group_x_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     } else {
       value = group_y_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     }
 
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -813,12 +819,14 @@ struct WeightNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
+    char* shared_ptr = reinterpret_cast<char*>(
+        shared_.template get_multi_ptr<sycl::access::decorated::no>().get());
     if (cfg_.problem_along_x_) {
       value = group_x_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     } else {
       value = group_y_reduce(
-          item, shared_, vec_t(value), ReduceAdd<accscalar_t>())[0];
+          item, shared_ptr, vec_t(value), ReduceAdd<accscalar_t>())[0];
     }
 
     int n_slid = (int)id.glb_batch % batch_wg_range_;
