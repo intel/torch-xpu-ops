@@ -10,6 +10,13 @@ for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
 
+if [ "${PYTORCH_VERSION}" == "search" ];then
+    PYTORCH_VERSION="$(git rev-parse HEAD)"
+fi
+if [ "${TORCH_XPU_OPS_VERSION}" == "search" ];then
+    TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)"
+fi
+
 # Clean WORKSPACE
 mkdir -p ${WORKSPACE}
 rm -rf "${WORKSPACE:?}/"* || sudo rm -rf "${WORKSPACE:?}/"*

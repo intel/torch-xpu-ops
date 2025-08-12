@@ -26,13 +26,9 @@ on:
         type: string
         default: '0.1'
         description: Criteria for performance check, default is 10%
-      triton:
-        type: string
-        default: 'pinned'
-        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
       oneapi:
         type: string
-        default: ''
+        default: '2025.1.3'
         description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
@@ -75,19 +71,25 @@ jobs:
   biisect-search:
     needs: get_runner
     runs-on: ${{ needs.get_runner.outputs.test_host }}
-    env:
-      AGENT_TOOLSDIRECTORY: /tmp/_tools
-      HF_HOME: /tmp/.cache/huggingface
-      TORCH_HOME: /tmp/.cache/torch
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      SEARCH_COMMITS: ${{ inputs.search_commits }}
-      SEARCH_CHECK: ${{ inputs.search_check }}
-      SEARCH_CASE: ${{ inputs.search_case }}
-      SEARCH_CRITERIA: ${{ inputs.search_criteria }}
-      TORCH_XPU_ARCH_LIST: pvc
-      USE_XCCL: 0
-      USE_KINETO: 0
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
+              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/_tools
+        HF_HOME: /tmp/.cache/huggingface
+        TORCH_HOME: /tmp/.cache/torch
+        GH_TOKEN: ${{ github.token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        SEARCH_COMMITS: ${{ inputs.search_commits }}
+        SEARCH_CHECK: ${{ inputs.search_check }}
+        SEARCH_CASE: ${{ inputs.search_case }}
+        SEARCH_CRITERIA: ${{ inputs.search_criteria }}
+        TORCH_XPU_ARCH_LIST: pvc
+        USE_XCCL: 0
+        USE_KINETO: 0
     defaults:
       run:
         shell: bash -xe {0}
@@ -95,8 +97,8 @@ jobs:
       - name: Check runner
         run: |
           ls -al
-          find ./ |grep -v "^\./$" |xargs rm -rf
-          rm -rf /tmp/_tools
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          sudo rm -rf /tmp/_tools
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
@@ -185,12 +187,13 @@ jobs:
           if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            bisect_status="$(git bisect start ${new_commit} ${old_commit} \
-                    ${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
+            rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
+            git bisect start ${new_commit} ${old_commit}
+            git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
-                    --PYTORCH_VERSION="$(git rev-parse HEAD)" \
+                    --PYTORCH_VERSION="search" \
                     --TORCH_XPU_OPS_VERSION="${LATEST_XPU_COMMIT}" \
-                    > ${{ github.workspace }}/gs-logs/bisect-pytorch.log 2>&1 && echo $? || echo $?)"
+                    2>&1 |tee ${{ github.workspace }}/gs-logs/bisect-pytorch.log
             git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log
           else
             echo "Checked and no regression !"
@@ -217,13 +220,13 @@ jobs:
           if [ "${old_status}" != "${new_status}" ];then
             cd gs-pytorch
             git reset --hard
-            bisect_status="$(
-            git bisect start ${new_commit} ${old_commit} \
-                    ${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
+            rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
+            git bisect start ${new_commit} ${old_commit}
+            git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_VERSION="${LATEST_PT_COMMIT}" \
-                    --TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)" \
-                    > ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log 2>&1 && echo $? || echo $?)"
+                    --TORCH_XPU_OPS_VERSION="search" \
+                    2>&1 |tee ${{ github.workspace }}/gs-logs/bisect-torch-xpu-ops.log
             git bisect log |tee ${{ github.workspace }}/gs-logs/result-torch-xpu-ops.log
           else
             echo "Checked and no regression !"
@@ -240,5 +243,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: bisect-search-logs
+          name: bisect-search
           path: ${{ github.workspace }}/gs-logs
