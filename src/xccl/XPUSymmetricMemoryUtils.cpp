@@ -5,7 +5,7 @@
 #include <c10/xpu/XPUFunctions.h>
 
 #include <level_zero/ze_api.h>
-#include <sycl/sycl.hpp>
+// #include <sycl/sycl.hpp>
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -16,17 +16,17 @@ namespace c10d {
 namespace symmetric_memory {
 
 std::string getSymmMemBackendXPU() {
-  static auto val = c10::utils::get_env("TORCH_SYMMMEM_XPU");
+  static auto val = c10::utils::get_env("TORCH_SYMMMEM");
   if (val.has_value()) {
     TORCH_CHECK(
         val.value() == "XPU",
-        "TORCH_SYMMMEM_XPU environment variable must be 'XPU'.");
+        "TORCH_SYMMMEM environment variable must be 'XPU'.");
     return val.value();
   }
   return "XPU";
 }
 
-bool xpu_device_has_multicast_support(int device_idx) {
+bool device_has_multicast_support(int device_idx) {
   // XPU/Level Zero doesn't currently have equivalent multicast support like
   // CUDA
   return false;

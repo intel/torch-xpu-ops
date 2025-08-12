@@ -11,7 +11,7 @@ namespace symmetric_memory {
 std::string getSymmMemBackendXPU();
 
 // Check if XPU device supports multicast (Level Zero IPC extensions)
-bool xpu_device_has_multicast_support(int device_idx);
+bool device_has_multicast_support(int device_idx);
 
 bool allow_overlapping_devices();
 

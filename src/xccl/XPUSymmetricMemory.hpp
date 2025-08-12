@@ -89,6 +89,7 @@ struct XPUBlock : public c10::intrusive_ptr_target {
   size_t signal_pad_offset;
   std::optional<std::string> default_group_name;
   std::map<std::string, c10::intrusive_ptr<XPUSymmetricMemory>> symm_mems;
+  size_t base_offset; // Offset from IPC base address to actual pointer
 
   XPUBlock(
       c10::intrusive_ptr<XPUAllocationRef> alloc_ref,

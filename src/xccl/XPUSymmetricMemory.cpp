@@ -46,9 +46,10 @@ XPUAllocationRef::~XPUAllocationRef() {
     sycl::queue queue(sycl_context, sycl_device);
     queue.wait();
 
-    // Get Level Zero context for memory cleanup
+    // Get Level Zero context from SYCL context
+    sycl::context ctx = queue.get_context();
     ze_context_handle_t context =
-        sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_context);
+        sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
 
     if (ptr != nullptr) {
       zeMemFree(context, ptr);
@@ -370,12 +371,15 @@ void* XPUSymmetricMemoryAllocator::alloc(
 
   c10::xpu::set_device(device_idx);
 
-  // Get Level Zero context and device
+  // Get SYCL queue and context in the correct way
   auto& sycl_device = c10::xpu::get_raw_device(device_idx);
   auto& sycl_context = c10::xpu::get_device_context();
+  sycl::queue queue(sycl_context, sycl_device);
 
+  // Get Level Zero context from SYCL context
+  sycl::context ctx = queue.get_context();
   ze_context_handle_t ze_context =
-      sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_context);
+      sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
   ze_device_handle_t ze_device =
       sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_device);
 
@@ -399,7 +403,6 @@ void* XPUSymmetricMemoryAllocator::alloc(
       result == ZE_RESULT_SUCCESS, "Failed to get Level Zero IPC handle");
 
   // Zero out the memory
-  sycl::queue queue(sycl_context, sycl_device);
   queue.memset(ptr, 0, block_size).wait();
 
   auto alloc_ref = c10::make_intrusive<XPUAllocationRef>(
@@ -536,10 +539,15 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     }
 
     // Map remote memory using Level Zero IPC
-    auto& sycl_context = c10::xpu::get_device_context();
+    c10::xpu::set_device(block->device_idx);
     auto& sycl_device = c10::xpu::get_raw_device(block->device_idx);
+    auto& sycl_context = c10::xpu::get_device_context();
+    sycl::queue queue(sycl_context, sycl_device);
+
+    // Get Level Zero context from SYCL context
+    sycl::context ctx = queue.get_context();
     ze_context_handle_t ze_context =
-        sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_context);
+        sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
     ze_device_handle_t ze_device =
         sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_device);
 
@@ -606,7 +614,7 @@ c10::intrusive_ptr<XPUBlock> XPUSymmetricMemoryAllocator::find_block(
 struct RegisterXPUSymmetricMemoryAllocator {
   RegisterXPUSymmetricMemoryAllocator() {
     auto allocator = c10::make_intrusive<XPUSymmetricMemoryAllocator>();
-    // Query backend used for XPU tensor
+    // Query backend used for XPU
     if (getSymmMemBackendXPU() == "XPU") {
       // Direct set (static registration)
       register_allocator(c10::DeviceType::XPU, allocator);
