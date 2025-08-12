@@ -71,7 +71,6 @@ XPUSymmetricMemory::XPUSymmetricMemory(
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx);
   c10::DeviceGuard guard(local_device);
 
-  // todo: zl_debug
   at::xpu::getCurrentXPUStream().queue().memcpy(
       buffers_dev_, buffers_.data(), arr_size);
   at::xpu::getCurrentXPUStream().queue().memcpy(
@@ -499,7 +498,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 }
 
 bool XPUSymmetricMemoryAllocator::has_multicast_support(int device_idx) {
-  return device_has_multicast_support(device_idx);
+  return false;
 }
 
 c10::DeviceType XPUSymmetricMemoryAllocator::supported_device_type() {
@@ -521,12 +520,17 @@ c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
 
 struct RegisterXPUSymmetricMemoryAllocator {
   RegisterXPUSymmetricMemoryAllocator() {
-    register_allocator(
-        c10::DeviceType::XPU,
-        c10::make_intrusive<XPUSymmetricMemoryAllocator>());
+    auto allocator = c10::make_intrusive<XPUSymmetricMemoryAllocator>();
+    // Query backend used for XPU
+    if (getSymmMemBackendXPU() == "XPU") {
+      // Direct set (static registration)
+      register_allocator(c10::DeviceType::XPU, allocator);
+    } else {
+      // Register availability in case `set_backend` is called dynamically
+      register_availability("XPU", allocator);
+    }
   }
 };
-
 static RegisterXPUSymmetricMemoryAllocator register_allocator_;
 
 } // namespace symmetric_memory

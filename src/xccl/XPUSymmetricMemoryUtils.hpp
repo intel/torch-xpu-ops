@@ -6,6 +6,8 @@
 namespace c10d {
 namespace symmetric_memory {
 
+std::string getSymmMemBackendXPU();
+
 bool device_has_multicast_support(int device_idx);
 
 bool allow_overlapping_devices();
