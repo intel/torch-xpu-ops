@@ -6,7 +6,7 @@ import pathlib
 # Reference last updated is https://github.com/intel/torch-xpu-ops/pull/1223
 
 parser = argparse.ArgumentParser(description="Accuracy Check", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--driver", type=str, default="rolling", help="rolling or lts")
+parser.add_argument("--driver", type=str, default="lts", help="rolling or lts")
 parser.add_argument("--category", type=str, default="inductor", help="inductor")
 parser.add_argument("--suite", type=str, required=True, help="huggingface, timm_models or torchbench")
 parser.add_argument("--mode", type=str, required=True, help="inference or training")
