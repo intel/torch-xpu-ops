@@ -305,9 +305,7 @@ jobs:
             [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
             export PYTORCH_TEST_WITH_SLOW=1
             export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-            cat <<EOF > test_files.txt
-            ${{ matrix.test_files }}
-            EOF
+            printf "%s\n" "${{ matrix.test_files }}" > test_files.txt
             cat test_files.txt
             for line in $(cat test_files.txt)
             do
