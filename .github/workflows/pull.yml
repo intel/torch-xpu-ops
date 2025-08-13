@@ -113,9 +113,9 @@ jobs:
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
   linux-e2e:
+    name: linux-e2e
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
     needs: [conditions-filter, linux-build]
-    name: ${{ matrix.suite }}
     strategy:
       fail-fast: false
       matrix:
