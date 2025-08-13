@@ -117,15 +117,22 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     friend class ProcessGroupXCCL;
   };
 
-  static c10::intrusive_ptr<Backend::Options> createOptions() {
-    return c10::make_intrusive<Backend::Options>(XCCL_BACKEND_NAME);
-  }
+  struct Options : public Backend::Options {
+    explicit Options();
+
+    static c10::intrusive_ptr<Options> create() {
+      return c10::make_intrusive<Options>();
+    }
+
+    std::vector<uint64_t> global_ranks_in_group;
+    std::string group_name;
+  };
 
   ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
     int size,
-    c10::intrusive_ptr<Backend::Options> options = createOptions());
+    c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
@@ -432,7 +439,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t op_id_{0};
   size_t local_id_;
   std::string logPrefix_;
-  const c10::intrusive_ptr<Backend::Options> options_;
+  const c10::intrusive_ptr<Options> options_;
   std::shared_ptr<ProcessGroupStatus> pgStatus_ =
       std::make_shared<ProcessGroupStatus>();
   std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;

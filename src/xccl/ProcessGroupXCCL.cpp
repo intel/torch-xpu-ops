@@ -317,6 +317,10 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
+ProcessGroupXCCL::Options::Options()
+    : Backend::Options(XCCL_BACKEND_NAME) {}
+
+
 static std::atomic<size_t> process_group_id = 0;
 
 constexpr const char* MULTI_DEVICE_ERROR_MSG =
@@ -347,7 +351,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
     int size,
-    c10::intrusive_ptr<Backend::Options> options)
+    c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
       store_(store),
       options_(std::move(options)),
