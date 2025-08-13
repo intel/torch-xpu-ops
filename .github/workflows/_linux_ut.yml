@@ -305,11 +305,8 @@ jobs:
             [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
             export PYTORCH_TEST_WITH_SLOW=1
             export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-            echo "TEST_FILES<<EOF" >> $GITHUB_ENV
-            echo "${{ matrix.test_files }}" >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
             cat <<EOF > test_files.txt
-            $TEST_FILES
+            ${{ matrix.test_files }}
             EOF
             cat test_files.txt
             for line in $(cat test_files.txt)
