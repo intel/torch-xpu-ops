@@ -98,7 +98,7 @@ Empty means the cases NOT run\n\n"
         suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
         mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
         dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
+        python "${check_file}" --driver "${LTS_OR_ROLLING:-"lts"}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
         test_result="$(sed 's/, /,/g' "/tmp/tmp-${suite}-${mode}-${dtype}.txt" |awk '{
             if($0 ~/Total/){
                 total = $3;
