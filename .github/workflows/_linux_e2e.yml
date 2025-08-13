@@ -101,6 +101,7 @@ jobs:
           torch_xpu_ops: skipped
           oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
+          suite: ${{ inputs.suite }}
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test

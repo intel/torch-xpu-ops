@@ -127,6 +127,7 @@ jobs:
       pytorch: main
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
+    if: ${{ ! cancelled() }}
     name: linux-e2e
     permissions: write-all
     needs: [linux-e2e]

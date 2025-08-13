@@ -37,25 +37,6 @@ runs:
           rm -rf pt2e-performance
           git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
         fi
-        # deps
-        if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
-          # torchbench
-          python -c "import torch, torchvision, torchaudio"
-          cd pt2e-performance
-          # remove deps which will reinstall torch
-          pip install --no-deps accelerate
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
-          pip install -U transformers==4.44.2
-          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g;s/^transformers.*//g'  requirements.txt
-          git status && git diff
-          pip install -r requirements.txt
-          python install.py --continue_on_fail
-          # deps for torchrec_dlrm
-          pip install pyre_extensions
-          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/cpu
-          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
-        fi
         # dataset
         if [ ! -d ${HOME}/datasets/imagenet ];then
           rm -rf ${HOME}/datasets/imagenet

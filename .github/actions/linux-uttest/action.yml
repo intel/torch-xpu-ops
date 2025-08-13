@@ -11,6 +11,11 @@ permissions: read-all
 runs:
   using: composite
   steps:
+    - name: requirements
+      shell: bash -xe {0}
+      run: |
+        pip install -r pytorch/.ci/docker/requirements-ci.txt
+        pip install -U pytest-timeout
     - name: ut_regression
       shell: bash -xe {0}
       if: ${{ inputs.test_type == 'ut_regression' }}
