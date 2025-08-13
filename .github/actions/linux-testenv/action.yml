@@ -69,7 +69,7 @@ runs:
       with:
         pattern: Torch-XPU-Wheel-*
     - name: Install E2E Requirements
-      if: ${{ ! contains(inputs.test_type, 'e2e') }}
+      if: ${{ contains(inputs.test_type, 'e2e') }}
       shell: bash -xe {0}
       run: |
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
