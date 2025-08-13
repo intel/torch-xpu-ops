@@ -63,11 +63,11 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /opt/xpu-tool
-        GH_TOKEN: ${{ github.token }}
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         TORCH_HOME: /tmp/.cache/_torch
         HF_HOME: /tmp/.cache/_huggingface
         REFERENCE_ISSUE: 1689
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Cleanup workspace
         run: |

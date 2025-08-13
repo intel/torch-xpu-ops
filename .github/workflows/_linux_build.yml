@@ -69,9 +69,10 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
         PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        GH_TOKEN: ${{ github.token }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+    env:
+      GH_TOKEN: ${{ github.token }}
     timeout-minutes: 300
     steps:
       - name: Install gh-cli

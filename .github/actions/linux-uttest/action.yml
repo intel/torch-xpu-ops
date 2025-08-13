@@ -10,6 +10,8 @@ permissions: read-all
 
 runs:
   using: composite
+  env:
+    HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   steps:
     - name: requirements
       shell: bash -xe {0}
