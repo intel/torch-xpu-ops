@@ -45,7 +45,10 @@ def write_to_github_summary(content):
 def format_parameters(record):
     params = []
     for key, value in record.items():
-        if key not in ['case_name', 'op_name', 'datatype', 'time_xpu_file', 'time_baseline_file', 'difference', 'change', 'E2E total time(us)', 'E2E forward time(us)']:
+        if key not in ['case_name', 'op_name', 'datatype',
+                       'profile_time_xpu', 'profile_time_base', 'profile_diff', 'profile_change',
+                       'e2e_time_xpu', 'e2e_time_base', 'e2e_diff', 'e2e_change',
+                       'E2E total time(us)', 'E2E forward time(us)']:
             if value != "NULL":
                 params.append(f"{key}: {value}")
     return "<br>".join(params)
