@@ -148,24 +148,18 @@ jobs:
               test_compiled_optimizers.py
               test_compiled_autograd.py
               test_compile_subprocess.py
-            env:
-              TEST_FILES: ${{ matrix.test_files }}
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu_2'
             condition: ${{ contains(inputs.ut, 'torch_xpu') }}
             directory: '../pytorch'
             test_files: "test_torchinductor_opinfo.py"
-            env:
-              TEST_FILES: ${{ matrix.test_files }}
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu_3'
             condition: ${{ contains(inputs.ut, 'torch_xpu') }}
             directory: '../pytorch'
             test_files: "test_aot_inductor.py"
-            env:
-              TEST_FILES: ${{ matrix.test_files }}
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'xpu_profiling'
@@ -311,6 +305,9 @@ jobs:
             [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
             export PYTORCH_TEST_WITH_SLOW=1
             export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+            echo "TEST_FILES<<EOF" >> $GITHUB_ENV
+            echo "${{ matrix.test_files }}" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
             cat <<EOF > test_files.txt
             $TEST_FILES
             EOF
