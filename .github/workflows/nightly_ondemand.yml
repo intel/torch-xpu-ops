@@ -178,6 +178,7 @@ jobs:
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows
+    needs: [Conditions-Filter]
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: ${{ github.event_name == 'schedule' && 'ut_extended,ut_torch' || inputs.ut }}
