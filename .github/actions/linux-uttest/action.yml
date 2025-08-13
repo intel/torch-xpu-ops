@@ -20,7 +20,6 @@ runs:
       shell: bash -xe {0}
       if: ${{ inputs.test_type == 'ut_regression' }}
       run: |
-        pip install -r .ci/docker/requirements-ci.txt
         mkdir -p ut_log/ut_regression
         cd pytorch/third_party/torch-xpu-ops/test/regressions
         pytest --timeout 600 --timeout_method=thread -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
