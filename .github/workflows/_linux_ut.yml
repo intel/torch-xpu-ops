@@ -147,36 +147,43 @@ jobs:
               pip install pytest pytest-timeout
           - name: 'xpu_profiling'
             condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
+            directory: '$GITHUB_WORKSPACE'
             command_script: |
+              mkdir -p $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce
               # RN50 Test
               PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
-              cp profiling.fp32.train.pt $GITHUB_WORKSPACE/ut_log/profile_test
+              cp profiling.fp32.train.pt $GITHUB_WORKSPACE/ut_log/xpu_profiling
 
               # All Issue Reproduce UT
               python -u test/profiling/correlation_id_mixed.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/correlation_id_mixed.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce/correlation_id_mixed.log
               python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce/reproducer.missing.gpu.kernel.time.log
               python -u test/profiling/time_precision_in_profile.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/time_precision_in_profile.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce/time_precision_in_profile.log
               python -u test/profiling/profile_partial_runtime_ops.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/profile_partial_runtime_ops.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
               python -u test/profiling/triton_xpu_ops_time.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
-
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
+              
+              # llama case for calls number test
+              python test/profiling/llama.py | \
+                tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
+              python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
+              bash .github/scripts/check_baseline.sh .github/scripts/llama_baseline.csv ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
+              
               # All xpu ut under test/profiler
               cd ../pytorch/test/profiler
               python -m pytest --timeout 600 -vs test_cpp_thread.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_cpp_thread.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/test_cpp_thread.log
               python -m pytest --timeout 600 -vs test_execution_trace.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_execution_trace.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/test_execution_trace.log
               python -m pytest --timeout 600 -vs test_memory_profiler.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_memory_profiler.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/test_memory_profiler.log
               python -m pytest --timeout 600 -vs test_profiler_tree.py | \
-                tee $GITHUB_WORKSPACE/ut_log/profile_test/test_profiler_tree.log
+                tee $GITHUB_WORKSPACE/ut_log/xpu_profiling/test_profiler_tree.log
             additional_steps: |
-              pip install pytest pytest-timeout
-              mkdir -p ut_log/profile_test/issue_reproduce
+              pip install pytest pytest-timeout transformers
     outputs: 
       ut_name: ${{ steps.set-output.outputs.UT_NAME || '' }}
     steps:
