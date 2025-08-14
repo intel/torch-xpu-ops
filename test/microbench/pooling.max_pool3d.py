@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
@@ -6,6 +8,7 @@ shape_list = [
     (1, 4, 144, 144, 144, 72, 72, 72),
     (512, 512, 12, 12, 12, 6, 6, 6),
 ]
+num_iter = 20
 
 
 def fmp3d(shape, dtype, channels_last, backward):
@@ -56,11 +59,23 @@ def fmp3d(shape, dtype, channels_last, backward):
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
     ) as prof:
-        for i in range(20):
+        for i in range(num_iter):
             output = fmp(input)
             if backward:
                 output[0].backward(grad)
     print(prof.key_averages().table(sort_by="xpu_time_total"))
+
+    # E2E time
+    torch.xpu.synchronize()
+    t1 = time.time()
+    for i in range(num_iter):
+        output = fmp(input)
+        if backward:
+            output[0].backward(grad)
+    torch.xpu.synchronize()
+    t2 = time.time()
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
 
 
 if __name__ == "__main__":
