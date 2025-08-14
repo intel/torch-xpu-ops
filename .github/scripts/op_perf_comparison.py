@@ -164,7 +164,9 @@ def display_comparison(results, threshold, xpu_file, compare_both):
     if regression_records:
         summary_output += "\n### 🔴 Regression\n"
         summary_output += tabulate(
-            [r for r in display_records if r['Case Name'] in [x['case_name'] for x in regression_records]],
+            [r for r in display_records
+                if (r.get('Profile Change', '') == '↓' or r.get('E2E Change', '') == '↓')
+                and not (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')],
             headers="keys",
             tablefmt='github',
             showindex=False,
@@ -174,7 +176,9 @@ def display_comparison(results, threshold, xpu_file, compare_both):
     if improvement_records:
         summary_output += "\n### 🟢 Improvement\n"
         summary_output += tabulate(
-            [r for r in display_records if r['Case Name'] in [x['case_name'] for x in improvement_records]],
+            [r for r in display_records
+                if (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')
+                and not (r.get('Profile Change', '') == '↓' or r.get('E2E Change', '') == '↓')],
             headers="keys",
             tablefmt='github',
             showindex=False,
@@ -185,7 +189,9 @@ def display_comparison(results, threshold, xpu_file, compare_both):
         summary_output += "\n### 🟡 Mixed Changes\n"
         summary_output += "One metric improves while another regression\n"
         summary_output += tabulate(
-            [r for r in display_records if r['Case Name'] in [x['case_name'] for x in mixed_records]],
+            [r for r in display_records
+                if ((r.get('Profile Change', '') == '↑' and r.get('E2E Change', '') == '↓') or
+                    (r.get('Profile Change', '') == '↓' and r.get('E2E Change', '') == '↑'))],
             headers="keys",
             tablefmt='github',
             showindex=False,
