@@ -16,13 +16,25 @@ runs:
       run: |
         pip install -r pytorch/.ci/docker/requirements-ci.txt
         pip install -U pytest-timeout pytest-xdist
+        xpu_num=$(clinfo --list |awk 'BEGIN{gpu=0;}{if(gpu==1 && $0~/Platform/){gpu=0;}; if(gpu==1){print $0;}; if($0~/Platform.*Graphics/){gpu=1;}}' |wc -l)
+        parallel_options=""
+        if [ ${xpu_num} -gt 1 ];then
+          parallel_options+=" --dist worksteal "
+          for x in $(seq 0 $[ ${xpu_num} - 1 ])
+          do
+            parallel_options+=" --tx popen//env:ZE_AFFINITY_MASK=${x} "
+          done
+        else
+          parallel_options+=" -n 1 "
+        fi
+        echo " --timeout 600 --timeout_method=thread ${parallel_options} " > ${{ github.workspace }}/test-options.txt
     - name: ut_regression
       shell: bash -xe {0}
       if: ${{ inputs.test_type == 'ut_regression' }}
       run: |
         mkdir -p ut_log/ut_regression
         cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --timeout 600 -n 1 --timeout_method=thread -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
+        pytest $(cat ${{ github.workspace }}/test-options.txt) -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
           2> ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test.log
     - name: ut_transformers
@@ -32,7 +44,7 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/ut_transformers
         cd pytorch
-        pytest --timeout 600 -n 1 --timeout_method=thread -v test/test_transformers.py -k xpu \
+        pytest $(cat ${{ github.workspace }}/test-options.txt) -v test/test_transformers.py -k xpu \
           --junit-xml=${{ github.workspace }}/ut_log/ut_transformers.xml \
           2> ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test.log
@@ -128,13 +140,13 @@ runs:
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
-        python -m pytest --timeout 600 -n 1 -vs test_cpp_thread.py | \
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_cpp_thread.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_cpp_thread.log
-        python -m pytest --timeout 600 -n 1 -vs test_execution_trace.py | \
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_execution_trace.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
-        python -m pytest --timeout 600 -n 1 -vs test_memory_profiler.py | \
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest --timeout 600 -n 1 -vs test_profiler_tree.py | \
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: xpu_dev1

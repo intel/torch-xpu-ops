@@ -1163,6 +1163,14 @@ def copy_tests(
 def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
+
+    # pytest options
+    xpu_num = torch.xpu.device_count()
+    parallel_options = ' --dist worksteal ' + \
+            ' '.join([f'--tx popen//env:ZE_AFFINITY_MASK={x}' for x in range(xpu_num)]) \
+            if xpu_num > 1 else ' -n 1 '
+    test_options = f' --timeout 600 --timeout_method=thread {parallel_options} '
+
     if skip_list is not None:
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
@@ -1170,7 +1178,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest --timeout 600 -n 1 -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
+            f" pytest {test_options} -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
             + test_case
         )
         test_command += skip_options
@@ -1181,13 +1189,13 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest --timeout 600 -n 1 -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
+            f" pytest {test_options} -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
             + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest --timeout 600 -n 1 -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
+            f" pytest {test_options} -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
             + test_case
         )
     return os.system(test_command)
