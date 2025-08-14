@@ -50,7 +50,6 @@ git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
 python -m pip install mkl-static==2025.1.0 mkl-include==2025.1.0
 export USE_STATIC_MKL=1
-export USE_XCCL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
         intel-cmplr-lib-rt==2025.1.1 | \

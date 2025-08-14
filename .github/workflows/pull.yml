@@ -51,8 +51,7 @@ jobs:
           bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
 
   conditions-filter:
-    if: ${{ github.event.pull_request.draft == false }}
-    needs: [preci-lint-check]
+    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -92,7 +91,7 @@ jobs:
 
   linux-build:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all')}}
-    needs: [conditions-filter]
+    needs: [conditions-filter, preci-lint-check]
     secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
@@ -113,9 +112,9 @@ jobs:
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
   linux-e2e:
+    name: linux-e2e
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
     needs: [conditions-filter, linux-build]
-    name: ${{ matrix.suite }}
     strategy:
       fail-fast: false
       matrix:
@@ -138,7 +137,7 @@ jobs:
   windows:
     name: windows
     if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
-    needs: [conditions-filter]
+    needs: [conditions-filter, preci-lint-check]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
       ut: ut_extended,ut_torch

@@ -145,7 +145,7 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ];then
+        if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ] || [ "${{ inputs.torch_xpu_ops }}" == "triggered" ];then
           cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
         else
