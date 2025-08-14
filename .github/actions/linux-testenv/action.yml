@@ -66,7 +66,7 @@ runs:
         name: manywheel-py3_10-xpu
         github-token: ${{ github.token }}
         repository: pytorch/pytorch
-        run-id: 16873438797
+        run-id: 16957605333
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
