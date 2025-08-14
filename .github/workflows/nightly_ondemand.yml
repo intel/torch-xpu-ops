@@ -91,14 +91,12 @@ jobs:
               torch_xpu_ops="main"
             fi
           else
+            pytorch="${{ inputs.pytorch }}"
+            torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
             if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
-              pytorch="${{ inputs.pytorch }}"
-              torch_xpu_ops="pinned"
             else
               test_type="build-ondemand"
-              pytorch="${{ inputs.pytorch }}"
-              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
             fi
           fi
           echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
