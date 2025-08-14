@@ -27,7 +27,7 @@ runs:
         else
           parallel_options+=" -n 1 "
         fi
-        echo " --timeout 600 --timeout_method=thread ${parallel_options} " > ${{ github.workspace }}/test-options.txt
+        printf " --timeout 600 --timeout_method=thread ${parallel_options} " > ${{ github.workspace }}/test-options.txt
     - name: ut_regression
       shell: bash -xe {0}
       if: ${{ inputs.test_type == 'ut_regression' }}
