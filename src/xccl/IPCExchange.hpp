@@ -426,9 +426,6 @@ class allreducer {
           &peer_base));
 
       buffers[i] = (char*)peer_base + peer->offset;
-      // make sure data correction
-      //            debug_print_buffer(queue, static_cast<int*>(buffers[i]),
-      //            ELE_COUNT);
       offsets[i] = peer->offset;
       ipc_handle[i] = send_buf.ipc_handle;
     }
