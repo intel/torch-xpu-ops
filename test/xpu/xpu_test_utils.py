@@ -1166,10 +1166,13 @@ def launch_test(test_case, skip_list=None, exe_list=None):
 
     # pytest options
     xpu_num = torch.xpu.device_count()
-    parallel_options = ' --dist worksteal ' + \
-            ' '.join([f'--tx popen//env:ZE_AFFINITY_MASK={x}' for x in range(xpu_num)]) \
-            if xpu_num > 1 else ' -n 1 '
-    test_options = f' --timeout 600 --timeout_method=thread {parallel_options} '
+    parallel_options = (
+        " --dist worksteal "
+        + " ".join([f"--tx popen//env:ZE_AFFINITY_MASK={x}" for x in range(xpu_num)])
+        if xpu_num > 1
+        else " -n 1 "
+    )
+    test_options = f" --timeout 600 --timeout_method=thread {parallel_options} "
 
     if skip_list is not None:
         skip_options = ' -k "not ' + skip_list[0]
