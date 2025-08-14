@@ -124,6 +124,7 @@ jobs:
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           # gcc 11
           source /opt/rh/gcc-toolset-11/enable
+          export USE_XCCL=1
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
             --PYTORCH_REPO="${PYTORCH_REPO}" \
