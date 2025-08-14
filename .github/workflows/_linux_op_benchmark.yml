@@ -117,18 +117,25 @@ jobs:
           # baseline
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
-          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
           rm -rf ${{ github.workspace }}/reference
           mkdir -p ${{ github.workspace }}/reference
-          mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
-
           mkdir -p ${{ github.workspace }}/baseline
-          if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
-            cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
-            cp ${{ github.workspace }}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+          if [[ -n "${REFERENCE_RUN_ID}" ]]; then
+            echo "Using reference run ID: ${REFERENCE_RUN_ID}"
+            gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
+            mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
+
+            if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
+              cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
+              cp ${{ github.workspace }}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+            else
+              cp ${{ github.workspace }}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+              cp ${{ github.workspace }}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+            fi
           else
-            cp ${{ github.workspace }}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
-            cp ${{ github.workspace }}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+            echo "No reference run ID found, using local op_benchmark as baseline"
+            cp ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+            cp ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
           fi
       - name: Check the OP Regression
         run: |
@@ -139,7 +146,8 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
       - name: Update OP Baseline
         run: |
-          mkdir ${{ github.workspace }}/new_baseline
+          pip install tabulate pandas
+          mkdir -p ${{ github.workspace }}/new_baseline
           cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
           # Update forward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
