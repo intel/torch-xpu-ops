@@ -100,25 +100,30 @@ def display_comparison(results, threshold, xpu_file, compare_both):
     # Classify records based on changes
     regression_records = []
     improvement_records = []
+    mixed_records = []
 
     for record in results.to_dict('records'):
-        has_profile_change = 'profile_change' in record and record['profile_change'] in ('↑', '↓')
-        has_e2e_change = 'e2e_change' in record and record['e2e_change'] in ('↑', '↓')
+        profile_change = record.get('profile_change')
+        e2e_change = record.get('e2e_change')
 
-        # If either metric shows regression, count as regression
-        if (has_profile_change and record['profile_change'] == '↓') or \
-           (has_e2e_change and record['e2e_change'] == '↓'):
+        profile_regression = profile_change == '↓'
+        profile_improve = profile_change == '↑'
+        e2e_regression = e2e_change == '↓'
+        e2e_improve = e2e_change == '↑'
+
+        if (profile_regression and e2e_improve) or (profile_improve and e2e_regression):
+            mixed_records.append(record)
+        elif profile_regression or e2e_regression:
             regression_records.append(record)
-        # If either metric shows improvement, count as improvement
-        elif (has_profile_change and record['profile_change'] == '↑') or \
-             (has_e2e_change and record['e2e_change'] == '↑'):
+        elif profile_improve or e2e_improve:
             improvement_records.append(record)
 
     # Print results
     if regression_records:
         print("\n🔴 Regression:")
         regression_display = [r for r in display_records
-                            if r['Case Name'] in [x['case_name'] for x in regression_records]]
+                            if (r.get('Profile Change', '') == '↓' or r.get('E2E Change', '') == '↓')
+                            and not (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')]
         print(tabulate(
             regression_display,
             headers="keys",
@@ -130,9 +135,23 @@ def display_comparison(results, threshold, xpu_file, compare_both):
     if improvement_records:
         print("\n🟢 Improvement:")
         improvement_display = [r for r in display_records
-                             if r['Case Name'] in [x['case_name'] for x in improvement_records]]
+                             if (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')
+                             and not (r.get('Profile Change', '') == '↓' or r.get('E2E Change', '') == '↓')]
         print(tabulate(
             improvement_display,
+            headers="keys",
+            tablefmt='grid',
+            showindex=False,
+            floatfmt=".2f"
+        ))
+
+    if mixed_records:
+        print("\n🟡 Mixed Changes (one metric improves, another regression):")
+        mixed_display = [r for r in display_records
+                       if ((r.get('Profile Change', '') == '↑' and r.get('E2E Change', '') == '↓') or
+                           (r.get('Profile Change', '') == '↓' and r.get('E2E Change', '') == '↑'))]
+        print(tabulate(
+            mixed_display,
             headers="keys",
             tablefmt='grid',
             showindex=False,
@@ -156,6 +175,17 @@ def display_comparison(results, threshold, xpu_file, compare_both):
         summary_output += "\n### 🟢 Improvement\n"
         summary_output += tabulate(
             [r for r in display_records if r['Case Name'] in [x['case_name'] for x in improvement_records]],
+            headers="keys",
+            tablefmt='github',
+            showindex=False,
+            floatfmt=".2f"
+        ) + "\n"
+
+    if mixed_records:
+        summary_output += "\n### 🟡 Mixed Changes\n"
+        summary_output += "One metric improves while another regression\n"
+        summary_output += tabulate(
+            [r for r in display_records if r['Case Name'] in [x['case_name'] for x in mixed_records]],
             headers="keys",
             tablefmt='github',
             showindex=False,
