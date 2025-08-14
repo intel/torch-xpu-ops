@@ -348,7 +348,7 @@ void embedding_bag_sum_template(
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
-                  // peak occurancy = num_sub_wg / thread_slots
+                  // peak occupancy = num_sub_wg / thread_slots
                   // it should > 50%
                   vec_size = v;
                   break;
@@ -428,7 +428,7 @@ void embedding_bag_mean_template(
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
-                  // peak occurancy = num_sub_wg / thread_slots
+                  // peak occupancy = num_sub_wg / thread_slots
                   // it should > 50%
                   vec_size = v;
                   break;
@@ -507,7 +507,7 @@ void embedding_bag_max_template(
               for (int v = vec_size; v != 1;
                    v = v / 2, num_sub_wg = num_sub_wg * 2) {
                 if (2 * num_sub_wg > thread_slots) {
-                  // peak occurancy = num_sub_wg / thread_slots
+                  // peak occupancy = num_sub_wg / thread_slots
                   // it should > 50%
                   vec_size = v;
                   break;
