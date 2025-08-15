@@ -215,17 +215,13 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream(local_device_idx_);
-
-  auto world_size = world_size_;
-  auto rank = rank_;
-  auto signal_pads_dev = signal_pads_dev_;
+  auto stream = at::xpu::getCurrentXPUStream();
 
   barrier_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev),
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
       channel,
-      rank,
-      world_size,
+      rank_,
+      world_size_,
       timeout_ms,
       stream);
 }
@@ -238,18 +234,14 @@ void XPUSymmetricMemory::put_signal(
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream(local_device_idx_);
-
-  auto world_size = world_size_;
-  auto rank = rank_;
-  auto signal_pads_dev = signal_pads_dev_;
+  auto stream = at::xpu::getCurrentXPUStream();
 
   put_signal_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev),
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
       dst_rank,
       channel,
-      rank,
-      world_size,
+      rank_,
+      world_size_,
       timeout_ms,
       stream);
 }
@@ -262,18 +254,14 @@ void XPUSymmetricMemory::wait_signal(
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream(local_device_idx_);
-
-  auto world_size = world_size_;
-  auto rank = rank_;
-  auto signal_pads_dev = signal_pads_dev_;
+  auto stream = at::xpu::getCurrentXPUStream();
 
   wait_signal_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev),
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
       src_rank,
       channel,
-      rank,
-      world_size,
+      rank_,
+      world_size_,
       timeout_ms,
       stream);
 }

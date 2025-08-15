@@ -31,7 +31,7 @@ constexpr size_t ns_per_ms = 1e6;
 
 // Device-compatible version using a simple counter approach
 template <std::memory_order Sem>
-bool try_put_signal_device(uint32_t* addr, size_t max_iterations = 1000000) {
+bool try_put_signal_device(uint32_t* addr, size_t max_iterations = 1000) {
   size_t iterations = 0;
   while (cas<Sem>(addr, 0, 1) != 0) {
     if (max_iterations != 0 && iterations++ > max_iterations) {
@@ -42,7 +42,7 @@ bool try_put_signal_device(uint32_t* addr, size_t max_iterations = 1000000) {
 }
 
 template <std::memory_order Sem>
-bool try_wait_signal_device(uint32_t* addr, size_t max_iterations = 1000000) {
+bool try_wait_signal_device(uint32_t* addr, size_t max_iterations = 1000) {
   size_t iterations = 0;
   while (cas<Sem>(addr, 1, 0) != 1) {
     if (max_iterations != 0 && iterations++ > max_iterations) {
