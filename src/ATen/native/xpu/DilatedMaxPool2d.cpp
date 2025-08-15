@@ -4,9 +4,9 @@
 #include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
 #include <comm/RegisterUtils.h>
 
-#include <xpu/ATen/ops/max.h>
-#include <xpu/ATen/ops/max_pool2d_with_indices_backward_native.h>
-#include <xpu/ATen/ops/max_pool2d_with_indices_native.h>
+#include <ATen/ops/max.h>
+#include <ATen/ops/max_pool2d_with_indices_backward_native.h>
+#include <ATen/ops/max_pool2d_with_indices_native.h>
 
 namespace at {
 namespace native {
