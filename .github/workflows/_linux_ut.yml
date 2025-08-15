@@ -43,6 +43,11 @@ on:
         type: string
         default: 'lts'
         description: Driver lts/rolling
+      keep_going:
+        required: false
+        type: string
+        default: 'false'
+        description: Define the Inductor UT test mechanism
 
 permissions: read-all
 
@@ -50,7 +55,7 @@ jobs:
   ut_test:
     runs-on: ${{ matrix.test.runner || inputs.runner }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 300
+    timeout-minutes: 450
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -130,19 +135,31 @@ jobs:
               cp op_ut_with_only.xml $GITHUB_WORKSPACE/ut_log
             additional_steps: |
               pip install pytest pytest-timeout
-          - name: 'torch_xpu'
+          - name: 'torch_xpu_1'
             condition: ${{ contains(inputs.ut, 'torch_xpu') }}
             directory: '../pytorch'
-            command_script: |
-              export PYTORCH_TEST_WITH_SLOW=1
-              export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-              test_cmd="python test/run_test.py --include "
-              for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-              for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-              if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-              eval $test_cmd 2>$GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test_error.log | \
-                tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
-            log_prefix: 'torch_xpu'
+            test_files:
+              - 'test_codecache.py'
+              - 'test_kernel_benchmark.py'
+              - 'test_max_autotune.py'
+              - 'test_mkldnn_pattern_matcher.py'
+              - 'test_triton_kernels.py'
+              - 'test_torchinductor.py'
+              - 'test_compiled_optimizers.py'
+              - 'test_compiled_autograd.py'
+              - 'test_compile_subprocess.py'
+            additional_steps: |
+              pip install pytest pytest-timeout
+          - name: 'torch_xpu_2'
+            condition: ${{ contains(inputs.ut, 'torch_xpu') }}
+            directory: '../pytorch'
+            test_files: 'test_torchinductor_opinfo.py'
+            additional_steps: |
+              pip install pytest pytest-timeout
+          - name: 'torch_xpu_3'
+            condition: ${{ contains(inputs.ut, 'torch_xpu') }}
+            directory: '../pytorch'
+            test_files: 'test_aot_inductor.py'
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'xpu_profiling'
@@ -285,11 +302,59 @@ jobs:
 
           cd ${{ matrix.test.directory }}
 
-          if [[ "${{ matrix.test.name }}" == "op_ut" ]] || [[ "${{ matrix.test.name }}" == "xpu_profiling" ]] || [[ "${{ matrix.test.name }}" == "torch_xpu" ]]; then
+          if [[ "${{ matrix.test.name }}" =~ ^(op_ut|xpu_profiling)$ ]]; then
             bash << "SCRIPT"
             set -e
             ${{ matrix.test.command_script }}
           SCRIPT
+          elif [[ "${{ matrix.test.name }}" =~ ^(torch_xpu_[123])$ ]]; then
+            keep_going_flag=""
+            [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
+            export PYTORCH_TEST_WITH_SLOW=1
+            export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+            printf "%s\n" ${{ join(matrix.test.test_files, ' ') }} > test_files.txt
+            cat test_files.txt
+            for line in $(cat test_files.txt)
+            do
+              echo "=== Starting test: ${line} ==="
+              start=$(date +%s)
+              python test/run_test.py $keep_going_flag --xpu --include inductor/${line} 2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line}_test_error.log | \
+                tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line}_test.log
+              end=$(date +%s)
+              echo -e "${line} duration: $((end - start))s"
+              echo "=== Finished test: ${line} ==="
+            done
+            cp -r test/test-reports/*.log "${{ github.workspace }}/ut_log/${{ matrix.test.name }}/"
+            function read_dir(){
+              for file in `ls $1`
+              do
+                if [ -d $1"/"$file ]
+                then
+                  cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+                else
+                  echo "[Warning] $file has no xml"
+                fi
+              done
+            }
+            read_dir "test/test-reports/python-pytest"
+            function rename_inductor_files() {
+                local target_dir="${1:-.}"
+                if [ ! -d "$target_dir" ]; then
+                    echo "Error: Directory '$target_dir' does not exist" >&2
+                    return 1
+                fi
+                find "$target_dir" -name 'inductor.*' -exec bash -c '
+                    for file; do
+                        newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                        if [ "$file" != "$newfile" ]; then
+                            echo "Renaming: $file -> $newfile"
+                            mv -v "$file" "$newfile"
+                        fi
+                    done
+                ' bash {} +
+            }
+            rename_inductor_files "${{ github.workspace }}/ut_log/${{ matrix.test.name }}"
+            rename_inductor_files "${{ github.workspace }}/ut_log/"
           else
             ${{ matrix.test.command }} \
               2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/${{ matrix.test.log_prefix }}_test_error.log | \
@@ -351,7 +416,11 @@ jobs:
           condition: ${{ contains(inputs.ut, 'op_extended') }}
         - name: 'op_ut'
           condition: ${{ contains(inputs.ut, 'op_ut') }}
-        - name: 'torch_xpu'
+        - name: 'torch_xpu_1'
+          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
+        - name: 'torch_xpu_2'
+          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
+        - name: 'torch_xpu_3'
           condition: ${{ contains(inputs.ut, 'torch_xpu') }}
         - name: 'xpu_profiling'
           condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
