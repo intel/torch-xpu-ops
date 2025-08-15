@@ -1,0 +1,254 @@
+name: Linux E2E Test
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+        default: 'pvc_rolling'
+        description: Runner label
+      test_type:
+        type: string
+        default: 'build-from-source'
+        description: Build from source or install nightly wheel
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      oneapi:
+        type: string
+        default: 'installed'
+        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+      suite:
+        type: string
+        default: 'huggingface'
+        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+      dt:
+        type: string
+        default: 'float32'
+        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
+      mode:
+        type: string
+        default: 'inference'
+        description: Test mode. `inference,training`. Delimiter is comma
+      scenario:
+        type: string
+        default: 'accuracy'
+        description: Test scenario. `accuracy,performance`. Delimiter is comma
+      model:
+        required: false
+        type: string
+        default: ''
+        description: Model. Will only run this one mode if set
+
+permissions: read-all
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+jobs:
+  runner:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
+    steps:
+      - name: Cleanup workspace
+        run: |
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  test:
+    runs-on: ${{ needs.runner.outputs.runner_id }}
+    needs: runner
+    timeout-minutes: 3600
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        TORCH_HOME: /tmp/.cache/_torch
+        HF_HOME: /tmp/.cache/_huggingface
+        MODEL_ONLY_NAME: ${{ inputs.model }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+    steps:
+      - name: Cleanup workspace
+        run: |
+          find ./ |grep -v "^\./$" |xargs rm -rf
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Launch Test on ${{ needs.runner.outputs.hostname }}
+        uses: ./.github/actions/linux-testenv
+        with:
+          test_type: ${{ inputs.test_type }}
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: skipped
+          oneapi: ${{ inputs.oneapi }}
+          python: ${{ inputs.python }}
+          suite: ${{ inputs.suite }}
+
+      # CICD launch
+      - name: CICD Huggingface BF16 & FP16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'huggingface') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: bfloat16,float16
+          mode: training
+          scenario: accuracy,performance
+      - name: CICD Timm_models BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'timm_models') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+      - name: CICD Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+
+      # Nihglty launch
+      - name: Nightly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Nightly Timm_models FP16 Training Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: float16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly Torchbench BF16 Training Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: bfloat16
+          mode: training
+          scenario: accuracy,performance
+      - name: Nightly PT2E Full Test
+        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: float32,int8
+          scenario: accuracy,performance
+
+      # Weekly launch
+      - name: Weekly Huggingface Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'huggingface') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Weekly Timm_models Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Weekly Torchbench Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: float32,bfloat16,float16,amp_bf16,amp_fp16
+          mode: inference,training
+          scenario: accuracy,performance
+      - name: Weekly PT2E Full Test
+        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: float32,int8
+          scenario: accuracy,performance
+
+      # On-demand launch
+      - name: OnDemand Test (huggingface)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: huggingface
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand Test (timm_models)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: timm_models
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand Test (torchbench)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          env_prepare: true
+          suite: torchbench
+          dt: ${{ inputs.dt }}
+          mode: ${{ inputs.mode }}
+          scenario: ${{ inputs.scenario }}
+      - name: OnDemand PT2E Test (pt2e)
+        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
+        uses: ./.github/actions/pt2e
+        with:
+          env_prepare: true
+          dt: ${{ inputs.dt }}
+          scenario: ${{ inputs.scenario }}
+
+      - name: Get archieve files
+        if: ${{ ! cancelled() }}
+        run: |
+          rm -rf ${{ github.workspace }}/upload_files
+          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}
+          path: ${{ github.workspace }}/upload_files
