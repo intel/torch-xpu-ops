@@ -27,6 +27,8 @@ static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "XCCL_BLOCKING_WAIT"};
 
 using xcclComm_t = onecclComm_t;
+static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
+
 constexpr const char* XCCL_BACKEND_NAME = "xccl";
 
 class TensorShelf {
@@ -159,7 +161,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       Fn fn,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr) {
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true) {
     return collective<Fn>(
         input,
         output,
@@ -170,7 +173,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
         asyncOp,
-        profilingTitle);
+        profilingTitle,
+        nanCheck);
   }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
@@ -182,11 +186,20 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       PostProcess post,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr) {
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true) {
     auto inputs = std::vector<at::Tensor>{input};
     auto outputs = std::vector<at::Tensor>{output};
     return collective(
-        inputs, outputs, fn, pre, post, opType, asyncOp, profilingTitle);
+        inputs,
+        outputs,
+        fn,
+        pre,
+        post,
+        opType,
+        asyncOp,
+        profilingTitle,
+        nanCheck);
   }
 
   template <typename Fn>
@@ -196,7 +209,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       Fn fn,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr) {
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true) {
     return collective<Fn>(
         inputs,
         outputs,
@@ -207,7 +221,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {},
         opType,
         asyncOp,
-        profilingTitle);
+        profilingTitle,
+        nanCheck);
   }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
@@ -219,7 +234,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       PostProcess post,
       OpType opType,
       bool asyncOp,
-      const char* profilingTitle = nullptr);
+      const char* profilingTitle = nullptr,
+      bool nanCheck = true);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collectiveCoalesced(
@@ -253,7 +269,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         },
         opType,
         asyncOp,
-        profilingTitle);
+        profilingTitle,
+        /*nanCheck =*/false);
   }
 
   template <typename Fn>
@@ -373,6 +390,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
+  void setEnableNanCheck(bool enableNanCheck);
+
+  c10::DeviceIndex guessDeviceId() const;
+
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, sycl::queue>>
       xcclStreamsMap_;
@@ -393,6 +414,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t seqP2P_{0};
   size_t local_id_;
   std::string logPrefix_;
+  bool enableNanCheck_;
+
 };
 } // namespace c10d
 
@@ -460,12 +483,15 @@ inline std::string reduceOpToString(c10d::ReduceOp op) {
     outSplitSizes,                                                          \
     globalRankStart,                                                        \
     globalRankStride,                                                       \
-    worldSize)                                                              \
+    worldSize,                                                              \
+    async_op,                                                               \
+    reduce_op)                                                              \
   do {                                                                      \
-    LOG(INFO) << "collective_name: " << collective_name                     \
+    LOG(INFO) << std::boolalpha << "collective_name: " << collective_name   \
               << ", inNelems: " << inNelems << ", outNelems: " << outNelems \
               << ", dType: " << dType << ", root/src rank: " << rank        \
-              << ", worldSize: " << worldSize;                              \
+              << ", worldSize: " << worldSize << ", async_op: " << async_op \
+              << ", reduction op: " << reduce_op;                           \
     RECORD_PARAM_COMMS_DATA(                                                \
         seq,                                                                \
         pg_name_tuple,                                                      \

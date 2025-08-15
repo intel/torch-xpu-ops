@@ -1,6 +1,7 @@
 #ifdef USE_C10D_XCCL
 
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
+#include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
 namespace c10d {
@@ -339,6 +340,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
+  enableNanCheck_ = getCvarBool(TORCH_XCCL_NAN_CHECK, false);
   init();
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
@@ -350,7 +352,8 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
             << "XCCL version: " << XcclVersion
             << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
-            << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug;
+            << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug
+            << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_;
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() = default;
@@ -359,6 +362,10 @@ void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
 uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
   return seqCollective_;
+}
+
+void ProcessGroupXCCL::setEnableNanCheck(bool enableNanCheck) {
+  enableNanCheck_ = enableNanCheck;
 }
 
 c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
@@ -615,7 +622,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     PostProcess post,
     OpType opType,
     bool asyncOp,
-    const char* profilingTitle) {
+    const char* profilingTitle,
+    bool nanCheck) {
+  nanCheck &= enableNanCheck_;
   seqCollective_++;
   auto device = inputs[0].device();
   const auto key = std::to_string(device.index());
@@ -681,6 +690,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   }
 
   c10::OptionalDeviceGuard gpuGuard(device);
+
+  if (nanCheck) {
+    for (const auto& input : inputs) {
+      checkForNan(input, stream);
+    }
+  }
 
   pre(stream, work);
 
@@ -759,6 +774,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   auto cclstream = xcclStreamsMap_.at(key).second;
   syncStream(device, xcclEventsMap_[key], stream);
 
+  if (enableNanCheck_ && opType == OpType::SEND) {
+    checkForNan(tensor, stream);
+  }
+
   if (!coalescing_state_) {
     auto work =
         initWork(device, rank_, opType, true, profilingTitle, {tensor}, {});
@@ -817,7 +836,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      "N/A", // async_op
+      "N/A"); // reductionOp
 
   auto ret = pointToPoint(
       tensor,
@@ -866,7 +887,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      "N/A", // async_op
+      "N/A"); // reductionOp
 
   auto ret = pointToPoint(
       tensor,
@@ -904,7 +927,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
   TORCH_CHECK(inputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto inputTensor = inputTensors.back();
-
+  checkSingleTensor(inputTensor);
   std::vector<at::Tensor> outputs;
 
   if (getRank() == opts.rootRank) {
@@ -951,7 +974,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   auto inputs = std::vector<at::Tensor>{inputTensor};
   return collective(
@@ -1065,9 +1090,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   const auto root = opts.rootRank;
+  bool nanCheck = (rank_ == root);
 
   auto outputs = std::vector<at::Tensor>{outputTensor};
   return collective(
@@ -1121,7 +1149,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
       },
       OpType::SCATTER,
       opts.asyncOp,
-      "xccl:scatter");
+      "xccl:scatter",
+      nanCheck);
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
@@ -1193,7 +1222,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      size_); // worldSize
+      size_, // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return allreduce_impl(tensor, "xccl:all_reduce", opts);
 }
@@ -1219,7 +1250,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collectiveCoalesced(
       tensors,
@@ -1281,9 +1314,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   const auto root = opts.rootRank + opts.rootTensor;
+  bool nanCheck = (root == rank_);
 
   return collective(
       tensor,
@@ -1306,7 +1342,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
       },
       OpType::BROADCAST,
       opts.asyncOp,
-      "xccl:broadcast");
+      "xccl:broadcast",
+      nanCheck);
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
@@ -1319,6 +1356,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
         "Tensor input and output of _broadcast_oop must have the same number of elements ");
   }
   const auto root = opts.rootRank + opts.rootTensor;
+  bool nanCheck = (root == rank_);
   return collective(
       inputTensor,
       outputTensor,
@@ -1340,7 +1378,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
       },
       OpType::BROADCAST,
       opts.asyncOp,
-      "xccl:_broadcast_oop");
+      "xccl:_broadcast_oop",
+      nanCheck);
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
@@ -1373,7 +1412,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collective(
       tensor,
@@ -1482,7 +1523,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   bool same_size = checkSameSize(outputTensors_);
   if (same_size) {
@@ -1569,7 +1612,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
       std::vector<int64_t>(), // outSplitSize
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   return collective(
       input_tensor,
@@ -1615,7 +1660,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   return collectiveCoalesced(
       inputs,
@@ -1666,7 +1713,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   bool same_size = checkSameSize(inputTensors_);
   if (same_size) {
@@ -1763,7 +1812,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
 
   return collective(
       inputTensor,
@@ -1803,6 +1854,27 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
     std::vector<at::Tensor>& outputs,
     std::vector<at::Tensor>& inputs,
     const ReduceScatterOptions& opts) {
+  RECORD_PARAM_COMMS_DATA_WITH_LOG(
+      std::make_tuple(
+          static_cast<int64_t>(seqCollective_) + 1,
+          false), // seq + 1 to match collective and assume only one collective
+                  // in coalesced range
+      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+      inputs, // inputTensors
+      outputs, // outputTensors
+      rank_, // rank
+      "reduce_scatter_tensor_coalesced", // collective name
+      getTensorsNumel(inputs), // inNelems
+      getTensorsNumel(outputs), // outNelems
+      inputs[0].scalar_type(), // dType
+      std::vector<int64_t>(), // inSplitSizes
+      std::vector<int64_t>(), // outSplitSizes
+      -1, // globalRankStart
+      -1, // globalRankStride
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      reduceOpToString(opts.reduceOp)); // reductionOp
+
   return collectiveCoalesced(
       inputs,
       outputs,
@@ -1837,6 +1909,25 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
       "xccl:reduce_scatter_tensor_coalesced");
 }
 
+c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
+  if (getBoundDeviceId().has_value()) {
+    return getBoundDeviceId().value().index();
+  } else if (!usedDeviceIdxs_.empty()) {
+    return *usedDeviceIdxs_.begin();
+  }
+  int devIdx =
+      static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
+  LOG(WARNING)
+      << logPrefix()
+      << c10::str(
+             " using GPU ",
+             devIdx,
+             " as device used by this process is currently unknown. ",
+             "This can potentially cause a hang if this rank to GPU mapping is incorrect. ",
+             "You can specify device_id in init_process_group() to force use of a particular device.");
+  return static_cast<c10::DeviceIndex>(devIdx);
+}
+
 c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   RECORD_PARAM_COMMS(
       static_cast<int>(
@@ -1853,18 +1944,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
       -1, // globalRankStride
       this->getSize()); // worldSize
   // Device to use for barrier
-  int barDevIdx = -1;
+  c10::DeviceIndex barDevIdx = -1;
 
   // See nccl barrier comments
   if (!opts.device_ids.empty()) {
-    barDevIdx = opts.device_ids[0];
-  } else if (getBoundDeviceId()) {
-    barDevIdx = (*getBoundDeviceId()).index();
-  } else if (!usedDeviceIdxs_.empty()) {
-    barDevIdx = *usedDeviceIdxs_.begin();
+    barDevIdx = static_cast<c10::DeviceIndex>(opts.device_ids[0]);
   } else {
-    barDevIdx =
-        static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
+    barDevIdx = guessDeviceId();
   }
 
   TORCH_CHECK_WITH(
@@ -1876,12 +1962,20 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
   at::Tensor barrierTensor =
       at::zeros({1}, at::TensorOptions().device(barDevice).dtype(at::kFloat));
 
-  auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier");
+  AllreduceOptions arOpts = AllreduceOptions();
+  arOpts.asyncOp = opts.asyncOp;
+  auto work = allreduce_impl(barrierTensor, "xccl:all_reduce_barrier", arOpts);
 
-  auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
-  TORCH_CHECK(xcclWork);
-  xcclWork->isBarrierOp_ = true;
-  return work;
+  if (opts.asyncOp) {
+    auto xcclWork = dynamic_cast<ProcessGroupXCCL::WorkXCCL*>(work.get());
+    TORCH_CHECK(xcclWork);
+    xcclWork->isBarrierOp_ = true;
+    return work;
+  }
+
+  auto currentStream = at::xpu::getCurrentXPUStream(barDevIdx);
+  currentStream.synchronize();
+  return nullptr;
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
@@ -1909,7 +2003,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         std::vector<int64_t>(), // outSplitSizes
         -1, // globalRankStart
         -1, // globalRankStride
-        this->getSize()); // worldSize
+        this->getSize(), // worldSize
+        opts.asyncOp, // async_op
+        "N/A"); // reductionOp
+
     TORCH_CHECK(
         outputTensor.numel() == inputTensor.numel() &&
             outputTensor.scalar_type() == inputTensor.scalar_type(),
@@ -2022,7 +2119,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       std::vector<int64_t>(), // outSplitSizes
       -1, // globalRankStart
       -1, // globalRankStride
-      this->getSize()); // worldSize
+      this->getSize(), // worldSize
+      opts.asyncOp, // async_op
+      "N/A"); // reductionOp
 
   return collective(
       inputTensors,

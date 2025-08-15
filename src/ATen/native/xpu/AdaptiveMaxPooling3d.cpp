@@ -4,8 +4,8 @@
 #include <ATen/native/xpu/sycl/AdaptiveMaxPooling3dKernels.h>
 
 #include <ATen/ops/empty.h>
-#include <xpu/ATen/ops/adaptive_max_pool3d_backward_native.h>
-#include <xpu/ATen/ops/adaptive_max_pool3d_native.h>
+#include <ATen/ops/adaptive_max_pool3d_backward_native.h>
+#include <ATen/ops/adaptive_max_pool3d_native.h>
 
 namespace at {
 namespace native {
