@@ -49,44 +49,31 @@ template <
     typename in_calc_t,
     typename out_calc_t,
     typename loader_t,
-    typename storer_t>
-struct UnrolledElementwiseKernel {
-  static constexpr int item_work_size = 4;
-
-  void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
-    int grpid = item.get_group(0);
-    int lid = item.get_local_id(0);
-    int remaining = numel_ - item_work_size * grpsz * grpid;
-    auto policy = at::native::memory::policies::unroll<
-        item_work_size,
-        array_t,
-        in_calc_t,
-        out_calc_t,
-        loader_t,
-        storer_t>(data_, remaining, ic_, oc_, l_, s_, lid, grpid, grpsz);
-    elementwise_kernel_helper<item_work_size>(f_, policy);
-  };
-
-  UnrolledElementwiseKernel(
-      int numel,
-      func_t f,
-      array_t data,
-      in_calc_t ic,
-      out_calc_t oc,
-      loader_t l,
-      storer_t s)
-      : numel_(numel), f_(f), data_(data), ic_(ic), oc_(oc), l_(l), s_(s) {}
-
- private:
-  int numel_;
-  func_t f_;
-  array_t data_;
-  in_calc_t ic_;
-  out_calc_t oc_;
-  loader_t l_;
-  storer_t s_;
-};
+    typename storer_t,
+    int item_work_size>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void unrolled_elementwise_kernel(
+    int numel,
+    func_t f,
+    array_t data,
+    in_calc_t ic,
+    out_calc_t oc,
+    loader_t l,
+    storer_t s) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int grpsz = item.get_local_range(0);
+  int grpid = item.get_group(0);
+  int lid = item.get_local_id(0);
+  int remaining = numel - item_work_size * grpsz * grpid;
+  auto policy = at::native::memory::policies::unroll<
+      item_work_size,
+      array_t,
+      in_calc_t,
+      out_calc_t,
+      loader_t,
+      storer_t>(data, remaining, ic, oc, l, s, lid, grpid, grpsz);
+  elementwise_kernel_helper<item_work_size>(f, policy);
+}
 
 template <int vec_size, typename func_t, typename array_t, typename in_calc_t>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
@@ -129,120 +116,58 @@ template <
     typename func_t,
     typename array_t,
     typename in_calc_t,
-    typename out_calc_t>
-struct UnrolledElementwiseForMultiOutputsKernel {
-  static constexpr int item_work_size = 4;
-
-  void operator()(sycl::nd_item<1> item_id) const {
-    int grpsz = item_id.get_local_range(0);
-    int grpid = item_id.get_group(0);
-    int lid = item_id.get_local_id(0);
-    int remaining = numel_ - item_work_size * grpsz * grpid;
-    auto policy = at::native::memory::policies::multi_outputs_unroll<
-        item_work_size,
-        array_t,
-        in_calc_t,
-        out_calc_t,
-        num_outputs>(data_, remaining, ic_, oc_, lid, grpid, grpsz);
-    elementwise_kernel_helper<item_work_size>(f_, policy);
-  };
-
-  UnrolledElementwiseForMultiOutputsKernel(
-      int numel,
-      func_t f,
-      array_t data,
-      in_calc_t ic,
-      out_calc_t oc)
-      : numel_(numel), f_(f), data_(data), ic_(ic), oc_(oc) {}
-
- private:
-  int numel_;
-  func_t f_;
-  array_t data_;
-  in_calc_t ic_;
-  out_calc_t oc_;
-};
-
-template <
-    int num_outputs,
-    typename func_t,
-    typename array_t,
-    typename in_calc_t,
-    typename out_calc_t>
-struct UnrolledElementwiseKernelForMultiOutputs {
-  static constexpr int item_work_size = 4;
-
-  void operator()(sycl::nd_item<1> item) const {
-    int grpsz = item.get_local_range(0);
-    int grpid = item.get_group(0);
-    int lid = item.get_local_id(0);
-    int remaining = numel_ - item_work_size * grpsz * grpid;
-    auto policy = at::native::memory::policies::multi_outputs_unroll<
-        item_work_size,
-        array_t,
-        in_calc_t,
-        out_calc_t,
-        num_outputs>(data_, remaining, ic_, oc_, lid, grpid, grpsz);
-    elementwise_kernel_helper<item_work_size>(f_, policy);
-  };
-
-  UnrolledElementwiseKernelForMultiOutputs(
-      int numel,
-      func_t f,
-      array_t data,
-      in_calc_t ic,
-      out_calc_t oc)
-      : numel_(numel), f_(f), data_(data), ic_(ic), oc_(oc) {}
-
- private:
-  int numel_;
-  func_t f_;
-  array_t data_;
-  in_calc_t ic_;
-  out_calc_t oc_;
-};
+    typename out_calc_t,
+    int item_work_size>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void unrolled_elementwise_for_multi_outputs_kernel(
+    int numel,
+    func_t f,
+    array_t data,
+    in_calc_t ic,
+    out_calc_t oc) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int grpsz = item.get_local_range(0);
+  int grpid = item.get_group(0);
+  int lid = item.get_local_id(0);
+  int remaining = numel - item_work_size * grpsz * grpid;
+  auto policy = at::native::memory::policies::multi_outputs_unroll<
+      item_work_size,
+      array_t,
+      in_calc_t,
+      out_calc_t,
+      num_outputs>(data, remaining, ic, oc, lid, grpid, grpsz);
+  elementwise_kernel_helper<item_work_size>(f, policy);
+}
 
 template <int vec_size, typename func_t>
-struct ElementwiseGroupRangeKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    int wg_sz = item.get_local_range(0);
-    int group_work_size = wg_sz * vec_size;
-    int idx = group_work_size * item.get_group(0) + item.get_local_id(0);
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void elementwise_group_range_kernel(int numel, func_t f) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int wg_sz = item.get_local_range(0);
+  int group_work_size = wg_sz * vec_size;
+  int idx = group_work_size * item.get_group(0) + item.get_local_id(0);
 #pragma unroll
-    for (int i = 0; i < vec_size; i++) {
-      if (idx < numel_) {
-        f_(idx);
-        idx += wg_sz;
-      }
+  for (int i = 0; i < vec_size; i++) {
+    if (idx < numel) {
+      f(idx);
+      idx += wg_sz;
     }
-  };
-
-  ElementwiseGroupRangeKernel(int numel, func_t f) : numel_(numel), f_(f) {}
-
- private:
-  int numel_;
-  func_t f_;
-};
+  }
+}
 
 template <typename func_t>
-struct ElementwiseGlobalRangeKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    int linear_idx =
-        item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-    for (int idx = linear_idx; idx < numel_;
-         idx += item.get_group_range(0) * item.get_local_range(0)) {
-      if (idx < numel_) {
-        f_(idx);
-      }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void elementwise_global_range_kernel(int numel, func_t f) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  int linear_idx =
+      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+  for (int idx = linear_idx; idx < numel;
+       idx += item.get_group_range(0) * item.get_local_range(0)) {
+    if (idx < numel) {
+      f(idx);
     }
-  };
-
-  ElementwiseGlobalRangeKernel(int numel, func_t f) : numel_(numel), f_(f) {}
-
- private:
-  int numel_;
-  func_t f_;
-};
+  }
+}
 
 template <
     typename arg0_t,
@@ -265,7 +190,7 @@ struct LegacyKernelScalarFunctor {
  private:
   at::detail::Array<char*, ntensors> data_;
   offset_calc_t offset_calc_;
-  const func_t f_;
+  func_t f_;
 };
 
 template <
@@ -293,7 +218,7 @@ struct LegacyKernelWithCastScalarFunctor {
   at::detail::Array<char*, ntensors> data_;
   at::detail::Array<ScalarType, ntensors> dtypes_;
   offset_calc_t offset_calc_;
-  const func_t f_;
+  func_t f_;
 };
 
 template <int vec_size, typename func_t>
@@ -303,11 +228,10 @@ static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
     return;
   }
 
-  auto ker = ElementwiseGroupRangeKernel<vec_size, func_t>(N, f);
-
   int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = ceil_div<int>(N, wg_sz * vec_size);
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  sycl_kernel_submit<elementwise_group_range_kernel<vec_size, func_t>>(
+      wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
 }
 
 template <typename func_t>
@@ -317,13 +241,12 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
     return;
   }
 
-  auto ker = ElementwiseGlobalRangeKernel<func_t>(N, f);
-
   int wg_sz = syclMaxWorkItemsPerSubSlice();
   int num_wg = ceil_div<int>(N, wg_sz);
   int hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  sycl_kernel_submit<elementwise_global_range_kernel<func_t>>(
+      wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
 }
 
 template <
@@ -343,12 +266,28 @@ static inline void launch_unrolled_kernel(
     storer_t s) {
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
 
-  auto ker = UnrolledElementwiseKernel(N, f, data, ic, oc, l, s);
-  using ker_t = decltype(ker);
-
+  static constexpr int item_work_size = 4;
   auto wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  int num_wg = ceil_div<int>(N, wg_sz * item_work_size);
+  sycl_kernel_submit<unrolled_elementwise_kernel<
+      func_t,
+      array_t,
+      in_calc_t,
+      out_calc_t,
+      loader_t,
+      storer_t,
+      item_work_size>>(
+      wg_sz * num_wg,
+      wg_sz,
+      getCurrentSYCLQueue(),
+      0,
+      N,
+      f,
+      data,
+      ic,
+      oc,
+      l,
+      s);
 }
 
 constexpr int max_scalar_size_(std::tuple<>) {
@@ -417,17 +356,37 @@ static inline void launch_vectorized_kernel(
       VEC_KER(2);
       break;
     case 1: {
-      auto input_calc = TrivialOffsetCalculator<traits::arity>();
-      auto output_calc = TrivialOffsetCalculator<1>();
-      auto loader = memory::LoadWithoutCast();
-      auto storer = memory::StoreWithoutCast();
+      using in_calc_trivial_t = TrivialOffsetCalculator<traits::arity>;
+      using out_calc_trivial_t = TrivialOffsetCalculator<1>;
+      using loader_t = memory::LoadWithoutCast;
+      using storer_t = memory::StoreWithoutCast;
 
-      auto ker = UnrolledElementwiseKernel(
-          N, f, data, input_calc, output_calc, loader, storer);
-      using ker_t = decltype(ker);
+      auto input_calc = in_calc_trivial_t();
+      auto output_calc = out_calc_trivial_t();
+      auto loader = loader_t();
+      auto storer = storer_t();
 
-      int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
-      sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+      static constexpr int item_work_size = 4;
+      int num_wg = ceil_div<int>(N, wg_sz * item_work_size);
+      sycl_kernel_submit<unrolled_elementwise_kernel<
+          func_t,
+          array_t,
+          in_calc_trivial_t,
+          out_calc_trivial_t,
+          loader_t,
+          storer_t,
+          item_work_size>>(
+          wg_sz * num_wg,
+          wg_sz,
+          getCurrentSYCLQueue(),
+          0,
+          N,
+          f,
+          data,
+          input_calc,
+          output_calc,
+          loader,
+          storer);
       break;
     }
     default:
@@ -449,17 +408,17 @@ static inline void launch_unrolled_kernel_for_multi_outputs(
     out_calc_t oc) {
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
 
-  auto ker = UnrolledElementwiseForMultiOutputsKernel<
+  static constexpr int item_work_size = 4;
+  int wg_sz = syclMaxWorkItemsPerSubSlice();
+  int num_wg = ceil_div<int>(N, item_work_size * wg_sz);
+  sycl_kernel_submit<unrolled_elementwise_for_multi_outputs_kernel<
       num_outputs,
       func_t,
       array_t,
       in_calc_t,
-      out_calc_t>(N, f, data, ic, oc);
-  using ker_t = decltype(ker);
-
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, ker_t::item_work_size * wg_sz);
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+      out_calc_t,
+      item_work_size>>(
+      wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f, data, ic, oc);
 }
 
 template <typename func_t, typename data_t>
