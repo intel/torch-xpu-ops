@@ -1,4 +1,5 @@
 #include <xccl/IPCExchange.hpp>
+#include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 
@@ -19,9 +20,6 @@
 namespace c10d {
 namespace symmetric_memory {
 
-/* Start of XPUSymmetricMemory implementation */
-
-// A set of exchange methods with prefix "XPUSymmetricMemory"
 static StoreExchange storeExchange = StoreExchange("XPUSymmetricMemory");
 
 AllocationRef::AllocationRef(
@@ -217,22 +215,55 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
 
-  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
+  barrier_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
 }
 
 void XPUSymmetricMemory::put_signal(
     int dst_rank,
     int channel,
     size_t timeout_ms) {
-  LOG(ERROR) << "XPUSymmetricMemory::put_signal not supported";
+  check_channel(channel, world_size_);
+
+  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
+
+  put_signal_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      dst_rank,
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
 }
 
 void XPUSymmetricMemory::wait_signal(
     int src_rank,
     int channel,
     size_t timeout_ms) {
-  LOG(ERROR) << "XPUSymmetricMemory::wait_signal not supported";
+  check_channel(channel, world_size_);
+
+  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
+
+  wait_signal_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      src_rank,
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
 }
 
 int XPUSymmetricMemory::get_rank() {
@@ -265,24 +296,6 @@ void* XPUSymmetricMemoryAllocator::alloc(
   size_t block_size = signal_pad_offset + signal_pad_size;
 
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-  sycl::context sycl_ctx = current_queue.get_context();
-  sycl::device sycl_dev = current_queue.get_device();
-  ze_context_handle_t ze_ctx =
-      sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_ctx);
-  ze_device_handle_t ze_dev =
-      sycl::get_native<sycl::backend::ext_oneapi_level_zero>(sycl_dev);
-
-  ze_physical_mem_desc_t phys_desc = {
-      ZE_STRUCTURE_TYPE_PHYSICAL_MEM_DESC, nullptr, 0, block_size};
-
-  ze_physical_mem_handle_t handle = nullptr;
-
-  ze_device_mem_alloc_desc_t default_device_mem_alloc_desc = {
-      .stype = ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,
-      .pNext = nullptr,
-      .flags = 0,
-      .ordinal = 0};
-
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
   auto alloc_ref =
@@ -299,8 +312,6 @@ void* XPUSymmetricMemoryAllocator::alloc(
     std::unique_lock lock(mutex_);
     ptr_to_block_.emplace(ptr, std::move(block));
   }
-  // check this ptr copy to sycl buffer
-
   return ptr;
 }
 
@@ -354,29 +365,6 @@ void validate_rendezvous_requests(
   }
 }
 
-static bool check_group_multicast_support(
-    const std::vector<RendezvousRequest>& reqs) {
-  std::vector<size_t> ranks_with_multicast_support;
-  for (size_t r = 0; r < reqs.size(); ++r) {
-    if (reqs[r].has_multicast_support) {
-      ranks_with_multicast_support.push_back(r);
-    }
-  }
-  if (ranks_with_multicast_support.size() == reqs.size()) {
-    return true;
-  } else {
-    // We don't expect this to happen. But we want to let the user to know if
-    // this happens.
-    if (ranks_with_multicast_support.size() != 0) {
-      LOG(WARNING)
-          << "Only a subset of ranks in the group has multicast support: "
-          << ranks_with_multicast_support << " (world_size=" << reqs.size()
-          << "). Skipping multicast initialization because this is unexpected.";
-    }
-    return false;
-  }
-}
-
 c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     void* ptr,
     const std::optional<std::string>& group_name) {
@@ -417,16 +405,10 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   auto store = group_info.store;
   int rank = group_info.rank;
   int world_size = group_info.world_size;
-  int block_fd;
 
   // Step 6: Open IPC handle of remote peer
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-  sycl::context ctx = current_queue.get_context();
-  auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
-  sycl::device dev = current_queue.get_device();
-  auto l0_dev = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(dev);
-  // check with original ones // debug code
-  // initialize MPI done
+
   allreducer<sycl::half> ar;
   ar.init(current_queue, rank, world_size);
 
@@ -449,8 +431,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   // do IPC exchange for all peer ranks
   ar.exchange_peer_ipc_mem(current_queue, ptr);
 
-  //  auto imported_fds = ipc_channel.all_gather_fds(rank, pids, block_fd);
-
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
   std::vector<void*> signal_pads(world_size, nullptr);
@@ -471,8 +451,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
 
   HandleType mc_handle{};
   void* mc_addr = nullptr;
-  bool group_has_multicast_support = check_group_multicast_support(reqs);
-  // todo: not support multicast now
+
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs;
   for (int r = 0; r < world_size; ++r) {
     if (r == rank) {

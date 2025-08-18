@@ -6,6 +6,7 @@
 #include <c10/util/error.h>
 
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <level_zero/ze_api.h>
 #include <sycl/sycl.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
