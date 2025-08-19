@@ -85,10 +85,6 @@ jobs:
       matrix:
         test: [ut_regression, ut_transformers, ut_extended, ut_op, ut_torch, ut_profiling]
     steps:
-      - name: Cleanup workspace
-        if: ${{ contains(inputs.ut, matrix.test) }}
-        run: |
-          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
         if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/checkout@v4
@@ -142,8 +138,6 @@ jobs:
         run: |
           cat /etc/os-release
           echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
-          ls -al
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           sudo find /tmp/ |grep -v "^/tmp/$" |xargs sudo rm -rf
           sudo rm -rf ~/.triton ~/.torch
           xpu-smi discovery

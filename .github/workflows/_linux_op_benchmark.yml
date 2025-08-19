@@ -70,9 +70,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Cleanup workspace
-        run: |
-          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Launch Test on ${{ needs.runner.outputs.hostname }}
