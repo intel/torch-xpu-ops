@@ -65,8 +65,9 @@ runs:
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install --no-deps $(find ${{ github.workspace }}/ -name "*torch*.whl")
+        pip uninstall -y torch pytorch-triton-xpu && pip uninstall -y torch pytorch-triton-xpu
+        pip install pytorch-triton-xpu==3.4.0+git0958dc9b --index-url https://download.pytorch.org/whl/nightly/xpu
+        pip install $(find ${{ github.workspace }}/ -name "*torch*.whl")
         pip list |grep -E 'intel|torch'
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
