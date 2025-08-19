@@ -88,7 +88,7 @@ jobs:
       - name: Checkout torch-xpu-ops
         if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/checkout@v4
-      - name: Launch Test on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/linux-testenv
         with:
@@ -143,7 +143,7 @@ jobs:
           xpu-smi discovery
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Launch Test on ${{ steps.cleanup.outputs.hostname }}
+      - name: Prepare test env on ${{ steps.cleanup.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}
@@ -182,7 +182,7 @@ jobs:
           xpu-smi topology -m
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Launch Test on ${{ steps.cleanup.outputs.hostname }}
+      - name: Prepare test env on ${{ steps.cleanup.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}

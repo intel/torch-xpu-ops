@@ -72,7 +72,7 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Launch Test on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
           test_type: ${{ inputs.test_type }}
