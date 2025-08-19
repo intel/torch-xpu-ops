@@ -11,8 +11,8 @@ inputs:
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'main'
-    description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+    default: 'cicd'
+    description: Torch-xpu-ops workflow triggered branch by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   oneapi:
     type: string
     default: 'installed'
