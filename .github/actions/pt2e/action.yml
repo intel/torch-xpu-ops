@@ -1,9 +1,6 @@
 name: inductor-xpu-pt2e-test
 
 inputs:
-  env_prepare:
-    required: false
-    description: If set to any value, will prepare suite test env
   dt:
     required: true
     type: string
@@ -24,7 +21,6 @@ runs:
   using: composite
   steps:
     - name: Prepare ENV
-      if: ${{ inputs.env_prepare }}
       shell: bash -xe {0}
       run: |
         # accuracy code

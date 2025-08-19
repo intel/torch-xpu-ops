@@ -1,9 +1,6 @@
 name: Linux E2E Test
 
 inputs:
-  env_prepare:
-    required: false
-    description: If set to any value, will prepare suite test env
   suite:
     required: true
     type: string
