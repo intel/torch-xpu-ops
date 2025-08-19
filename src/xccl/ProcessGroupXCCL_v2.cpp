@@ -2,7 +2,7 @@
 
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/NanCheck_XPU.hpp>
-#include <xccl/ProcessGroupXCCL.hpp>
+#include <xccl/ProcessGroupXCCL_v2.hpp>
 
 namespace c10d {
 
@@ -2034,7 +2034,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         outputSplitSizes, // outSplitSizes
         -1, // globalRankStart
         -1, // globalRankStride
-        this->getSize()); // worldSize
+        this->getSize(), // worldSize
+        opts.asyncOp, // async_op
+        "N/A"); // reductionOp
   }
   return collective(
       inputTensor,

@@ -2,6 +2,11 @@
 
 file(GLOB xccl_h "*.hpp")
 file(GLOB xccl_cpp "*.cpp")
+if(BUILD_XCCL_V1)
+  list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/ProcessGroupXCCL_v2.cpp")
+else()
+  list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/ProcessGroupXCCL_v1.cpp")
+endif()
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/NanCheck_XPU.cpp")
 
 list(APPEND ATen_XPU_XCCL_SRCS ${xccl_cpp})
