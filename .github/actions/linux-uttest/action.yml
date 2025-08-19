@@ -48,7 +48,7 @@ runs:
         python run_test_with_skip.py \
           2> ${{ github.workspace }}/ut_log/ut_extended/ut_extended_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_extended/ut_extended_test.log
-        cp ut_extended.xml ${{ github.workspace }}/ut_log
+        cp *.xml ${{ github.workspace }}/ut_log || true
     - name: ut_op
       shell: bash -xe {0}
       if: ${{ inputs.test_type == 'ut_op' }}
@@ -61,6 +61,7 @@ runs:
           2> ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test_error.log | \
           tee ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test.log
         cp *.xml ${{ github.workspace }}/ut_log
+        mkdir -p ut_op_with_skip_nn ut_op_with_skip_quantization/core
         find ut_op_with_skip_nn ut_op_with_skip_quantization/core -type f -exec sh -c '
             dir_path=$(dirname "$1");
             case "$dir_path" in
@@ -71,8 +72,8 @@ runs:
             esac;
             mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
         ' _ {} \;
-        cp ut_op_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
-        cp ut_op_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+        cp ut_op_with_skip_nn/*.xml ${{ github.workspace }}/ut_log || true
+        cp ut_op_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log || true
         # Cases run with a on-demand white list, since some suites are too
         # slow to go through all operators on CPU. So add cases on-demand
         # when XPU implementatoin is done.
@@ -117,7 +118,7 @@ runs:
         python -u test/profiling/triton_xpu_ops_time.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/issue_reproduce/triton_xpu_ops_time.log
         # All xpu ut under test/profiler
-        cd ../pytorch/test/profiler
+        cd ../../test/profiler
         python -m pytest --timeout 600 -vs test_cpp_thread.py | \
           tee ${{ github.workspace }}/ut_log/profile_test/test_cpp_thread.log
         python -m pytest --timeout 600 -vs test_execution_trace.py | \
