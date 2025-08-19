@@ -141,6 +141,31 @@ jobs:
             echo "Build pytorch got failed"
             exit 1
           fi
+      - name: Build Torchvision and Torchaudio
+        run: |
+          # gcc 11
+          source /opt/rh/gcc-toolset-11/enable
+          cd ./pytorch
+          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
+          TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
+          git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
+          cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
+          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
+          if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
+            echo "Build torchvision got failed"
+            exit 1
+          fi
+          pip install dist/*.whl
+          cp dist/*.whl ${{ github.workspace }}
+          git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
+          cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
+          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
+          if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
+            echo "Build torchaudio got failed"
+            exit 1
+          fi
+          pip install dist/*.whl
+          cp dist/*.whl ${{ github.workspace }}
       - name: Build Triton
         run: |
           # gcc 13
@@ -166,32 +191,6 @@ jobs:
           fi
           pip install pytorch_triton_xpu-*.whl
           cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
-      - name: Build Torchvision and Torchaudio
-        run: |
-          # gcc 13
-          dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
-          source /opt/rh/gcc-toolset-13/enable
-          cd ./pytorch
-          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
-          TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
-          git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
-          cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
-            echo "Build torchvision got failed"
-            exit 1
-          fi
-          pip install dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}
-          git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
-          cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
-            echo "Build torchaudio got failed"
-            exit 1
-          fi
-          pip install dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}
       - name: Torch Config
         run: |
           printenv
