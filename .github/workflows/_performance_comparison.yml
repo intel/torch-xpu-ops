@@ -20,7 +20,7 @@ jobs:
   Performance-Comparison:
     env:
       GH_TOKEN: ${{ github.token }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Cleanup workspace
         run: |

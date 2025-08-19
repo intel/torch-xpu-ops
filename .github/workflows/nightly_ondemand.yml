@@ -58,7 +58,7 @@ jobs:
   Conditions-Filter:
     name: conditions-filter
     if: ${{ github.repository_owner == 'intel' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     outputs:
       test_type: ${{ steps.inputs-check.outputs.test_type }}
