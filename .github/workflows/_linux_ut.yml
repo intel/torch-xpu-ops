@@ -316,19 +316,27 @@ jobs:
             printf "%s\n" ${{ join(matrix.test.test_files, ' ') }} > test_files.txt
             cat test_files.txt
             while IFS= read -r line; do
-              (
-                echo "=== Starting test: ${line} ==="
-                start=$(date +%s)
-                python test/run_test.py $keep_going_flag --xpu --include inductor/${line} 2>${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line}_test_error.log | \
-                  tee ${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line}_test.log
-                end=$(date +%s)
-                echo -e "${line} duration: $((end - start))s"
-                echo "=== Finished test: ${line} ==="
-              ) &
+              echo "=== Starting test: ${line} ==="
+              start=$(date +%s)
+              for shard in {0..3}; do
+                (
+                  echo "Starting shard $shard"
+                  python test/run_test.py \
+                    $keep_going_flag \
+                    --xpu \
+                    --include inductor/"$line" \
+                    --pytest-k-expr "hash(__file__) % 4 == $shard" \
+                    2>"${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line%.*}_shard${shard}_error.log" | \
+                    tee "${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line%.*}_shard${shard}.log"
+                ) &
+              done
+              wait
+              end=$(date +%s)
+              echo -e "${line} duration: $((end - start))s"
+              echo "=== Finished test: ${line} ==="
             done < test_files.txt
-
-            wait
             echo "Parallel execution completed"
+
             cp -r test/test-reports/*.log "${{ github.workspace }}/ut_log/${{ matrix.test.name }}/"
             function read_dir(){
               for file in `ls $1`
