@@ -97,7 +97,6 @@ runs:
           python install.py --continue_on_fail
         fi
         pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
-        pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
