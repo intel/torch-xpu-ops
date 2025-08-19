@@ -325,7 +325,7 @@ jobs:
                     $keep_going_flag \
                     --xpu \
                     --include inductor/"$line" \
-                    --pytest-k-expr "hash(__file__) % 4 == $shard" \
+                    --pytest-k-expr "test_* and hash('{}') % 4 == $shard" \
                     2>"${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line%.*}_shard${shard}_error.log" | \
                     tee "${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line%.*}_shard${shard}.log"
                 ) &
