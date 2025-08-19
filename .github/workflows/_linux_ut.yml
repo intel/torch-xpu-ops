@@ -148,6 +148,7 @@ jobs:
               - 'test_compiled_optimizers.py'
               - 'test_compiled_autograd.py'
               - 'test_compile_subprocess.py'
+              - 'test_torchinductor_opinfo.py'
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu_2'
