@@ -68,35 +68,6 @@ runs:
       uses: actions/download-artifact@v4
       with:
         pattern: Torch-XPU-Wheel-*
-    - name: Install E2E Requirements
-      if: ${{ contains(inputs.test_type, 'e2e') }}
-      shell: bash -xe {0}
-      run: |
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-        pip install pandas psutil scipy
-        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
-          pip install transformers==4.44.2
-        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          pip install timm==1.0.14
-        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          rm -rf ./benchmark
-          git clone https://github.com/pytorch/benchmark
-          cd benchmark
-          git checkout e03a63be43e33596f7f0a43b0f530353785e4a59
-          pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-          python install.py --continue_on_fail
-        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
-          rm -rf ./benchmark
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
-          cd benchmark
-          pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-          python install.py --continue_on_fail
-        fi
-        pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -129,7 +100,6 @@ runs:
         git status && git diff && git show -s
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
-      if: ${{ inputs.torch_xpu_ops != 'skipped' }}
       run: |
         cd pytorch
         rm -rf third_party/torch-xpu-ops
@@ -153,6 +123,38 @@ runs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
         fi
         git status && git diff && git show -s
+    - name: Install E2E Requirements
+      if: ${{ contains(inputs.test_type, 'e2e') }}
+      shell: bash -xe {0}
+      run: |
+        cd pytorch
+        pip install pandas psutil scipy
+        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
+          TRANSFORMERS_VERSION_ID="$(python -c 'import transformers; print(transformers.__version__)')"
+        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
+          rm -rf ./benchmark
+          git clone https://github.com/pytorch/benchmark
+          cd benchmark
+          git checkout ${TORCHBENCH_COMMIT_ID}
+          pip install -r requirements.txt
+          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          python install.py --continue_on_fail
+        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
+          rm -rf ./benchmark
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
+          cd benchmark
+          TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
+          pip install -r requirements.txt
+          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          python install.py --continue_on_fail
+        fi
     - name: Torch Config
       shell: bash -xe {0}
       run: |
