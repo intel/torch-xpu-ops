@@ -315,17 +315,26 @@ jobs:
             export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
             printf "%s\n" ${{ join(matrix.test.test_files, ' ') }} > test_files.txt
             cat test_files.txt
+            get_shard_expr() {
+              case $1 in
+                0) echo "len('{}') % 4 == 0" ;;
+                1) echo "len('{}') % 4 == 1" ;;
+                2) echo "len('{}') % 4 == 2" ;;
+                3) echo "len('{}') % 4 == 3" ;;
+              esac
+            }
             while IFS= read -r line; do
               echo "=== Starting test: ${line} ==="
               start=$(date +%s)
               for shard in {0..3}; do
                 (
                   echo "Starting shard $shard"
+                  expr=$(get_shard_expr $shard)
                   python test/run_test.py \
                     $keep_going_flag \
                     --xpu \
                     --include inductor/"$line" \
-                    --pytest-k-expr "len('{}') % 4 == $shard" \
+                    --pytest-k-expr "$expr" \
                     2>"${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line%.*}_shard${shard}_error.log" | \
                     tee "${{ github.workspace }}/ut_log/${{ matrix.test.name }}/torch_xpu_${line%.*}_shard${shard}.log"
                 ) &
