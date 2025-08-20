@@ -104,7 +104,7 @@ jobs:
     with:
       runner: pvc_rolling
       pytorch: main
-      ut: ut_regression,ut_transformers,ut_extended,ut_op,xpu_dev1,xpu_distributed
+      ut: op_regression,op_transformers,op_extended,op_ut,op_regression_dev1,xpu_distributed
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
   linux-e2e:
@@ -133,7 +133,7 @@ jobs:
     needs: [conditions-filter, preci-lint-check]
     uses: ./.github/workflows/_windows_ut.yml
     with: 
-      ut: ut_extended,ut_torch
+      ut: op_extended,torch_xpu
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
       has_label: ${{ needs.conditions-filter.outputs.has_label }}

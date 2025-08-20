@@ -186,14 +186,14 @@ def parse_log_file(log_file):
     return summary
 
 def determine_category(ut):
-    if ut == 'ut_regression':
-        return 'ut_regression'
-    elif ut == 'xpu_dev1':
-        return 'xpu_dev1'
-    elif ut == 'ut_extended':
-        return 'ut_extended'
-    elif 'ut_op' in ut:
-        return 'ut_op'
+    if ut == 'op_regression':
+        return 'op_regression'
+    elif ut == 'op_regression_dev1':
+        return 'op_regression_dev1'
+    elif ut == 'op_extended':
+        return 'op_extended'
+    elif 'op_ut' in ut:
+        return 'op_ut'
     else:
         return 'unknown'
 
