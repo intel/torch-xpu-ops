@@ -317,10 +317,10 @@ jobs:
             cat test_files.txt
             get_shard_expr() {
               case $1 in
-                0) echo "len('{}') % 4 == 0" ;;
-                1) echo "len('{}') % 4 == 1" ;;
-                2) echo "len('{}') % 4 == 2" ;;
-                3) echo "len('{}') % 4 == 3" ;;
+                0) echo "'{}'[5] in 'abcdefg'" ;;
+                1) echo "'{}'[5] in 'hijklmn'" ;;
+                2) echo "'{}'[5] in 'opqrstu'" ;;
+                3) echo "'{}'[5] in 'vwxyz0123456789_'" ;;
               esac
             }
             while IFS= read -r line; do
