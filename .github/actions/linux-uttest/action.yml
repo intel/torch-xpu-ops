@@ -1,10 +1,10 @@
 name: Linux Unit Test
 
 inputs:
-  test_type:
+  ut_name:
     required: true
     type: string
-    description: Test scope
+    description: Which ut to launch
 
 permissions: read-all
 
@@ -18,7 +18,7 @@ runs:
         pip install -U pytest-timeout
     - name: ut_regression
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'ut_regression' }}
+      if: ${{ inputs.ut_name == 'ut_regression' }}
       run: |
         mkdir -p ut_log/ut_regression
         cd pytorch/third_party/torch-xpu-ops/test/regressions
@@ -27,7 +27,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test.log
     - name: ut_transformers
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'ut_transformers' }}
+      if: ${{ inputs.ut_name == 'ut_transformers' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/ut_transformers
@@ -38,7 +38,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test.log
     - name: ut_extended
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'ut_extended' }}
+      if: ${{ inputs.ut_name == 'ut_extended' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/ut_extended
@@ -50,7 +50,7 @@ runs:
         cp *.xml ${{ github.workspace }}/ut_log
     - name: ut_op
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'ut_op' }}
+      if: ${{ inputs.ut_name == 'ut_op' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_ENABLE_XPU_FALLBACK=1
@@ -86,7 +86,7 @@ runs:
         cp *.xml ${{ github.workspace }}/ut_log
     - name: ut_torch
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'ut_torch' }}
+      if: ${{ inputs.ut_name == 'ut_torch' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
@@ -100,7 +100,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/ut_torch/torch_xpu_test.log
     - name: ut_profiling
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'ut_profiling' }}
+      if: ${{ inputs.ut_name == 'ut_profiling' }}
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
@@ -139,7 +139,7 @@ runs:
 
     - name: xpu_dev1
       shell: bash -xe {0}
-      if: ${{ inputs.test_type == 'xpu_dev1' }}
+      if: ${{ inputs.ut_name == 'xpu_dev1' }}
       run: |
         mkdir -p ut_log/xpu_dev1
         cd pytorch/third_party/torch-xpu-ops/test/regressions
@@ -150,7 +150,7 @@ runs:
 
     - name: xpu_distributed
       shell: bash -x -e -o pipefail {0}
-      if: ${{ inputs.test_type == 'xpu_distributed' }}
+      if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         mkdir -p ut_log/xpu_distributed
         cd pytorch/third_party/torch-xpu-ops/test/xpu

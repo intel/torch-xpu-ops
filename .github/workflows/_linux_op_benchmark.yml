@@ -8,10 +8,6 @@ on:
         type: string
         default: 'pvc_rolling'
         description: Runner label
-      test_type:
-        type: string
-        default: 'build-from-source'
-        description: Build from source or install nightly wheel
       pytorch:
         type: string
         default: 'main'
@@ -71,7 +67,6 @@ jobs:
       - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: skipped
           python: ${{ inputs.python }}

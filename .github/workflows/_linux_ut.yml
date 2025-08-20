@@ -7,10 +7,6 @@ on:
         required: true
         type: string
         description: Runner label
-      test_type:
-        required: true
-        type: string
-        description: Test scope
       pytorch:
         type: string
         default: 'main'
@@ -88,7 +84,6 @@ jobs:
         if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/linux-testenv
         with:
-          test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
@@ -96,7 +91,7 @@ jobs:
         if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/linux-uttest
         with:
-          test_type: ${{ matrix.test }}
+          ut_name: ${{ matrix.test }}
       - name: UT Test Results Summary
         if: ${{ contains(inputs.ut, matrix.test) }}
         run: |
@@ -141,14 +136,13 @@ jobs:
       - name: Prepare test env on ${{ steps.cleanup.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
-          test_type: xpu_dev1
+          ut_name: xpu_dev1
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -179,7 +173,6 @@ jobs:
       - name: Prepare test env on ${{ steps.cleanup.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
@@ -194,7 +187,7 @@ jobs:
       - name: Run Torch XPU Distributed UT
         uses: ./.github/actions/linux-uttest
         with:
-          test_type: xpu_distributed
+          ut_name: xpu_distributed
       - name: Reset Ptrace_scope
         if: ${{ always() }}
         run: |

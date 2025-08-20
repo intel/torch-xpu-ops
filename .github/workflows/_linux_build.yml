@@ -8,10 +8,6 @@ on:
         type: string
         default: 'pvc_rolling'
         description: Runner label
-      test_type:
-        type: string
-        default: 'build-from-source'
-        description: Build from source or install nightly wheel
       pytorch:
         type: string
         default: 'main'
@@ -58,7 +54,7 @@ jobs:
   build:
     name: ${{ inputs.pytorch }}
     needs: runner
-    if: ${{ ! contains(inputs.test_type, 'wheel') }}
+    if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
@@ -99,7 +95,7 @@ jobs:
         run: |
           export USE_XCCL=1
           # only build pvc for CI
-          if [ "${{ inputs.test_type }}" == "build-cicd" ];then
+          if [ "${{ github.event.name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then

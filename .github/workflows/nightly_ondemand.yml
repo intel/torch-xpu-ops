@@ -57,6 +57,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     outputs:
+      # Test type, (build or wheel)-(nightly, weekly or ondemand)
       test_type: ${{ steps.inputs-check.outputs.test_type }}
       pytorch: ${{ steps.inputs-check.outputs.pytorch }}
       torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
@@ -82,9 +83,8 @@ jobs:
               pytorch="nightly_wheel"
               torch_xpu_ops="pinned"
             else
-              test_type="unknown"
-              pytorch="main"
-              torch_xpu_ops="main"
+              echo "No such scheduler: ${{ github.event.schedule }}"
+              exit 1
             fi
           else
             pytorch="${{ inputs.pytorch }}"
@@ -106,7 +106,6 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ github.event_name == 'schedule' && 'pinned' || inputs.triton }}
@@ -119,7 +118,6 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: linux.idc.xpu
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-ut
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
@@ -136,7 +134,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       suite: ${{ matrix.suite }}
@@ -151,7 +149,7 @@ jobs:
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
@@ -161,7 +159,6 @@ jobs:
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-mb
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 

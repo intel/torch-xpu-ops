@@ -1,10 +1,6 @@
 name: Setup Test Environment
 
 inputs:
-  test_type:
-    required: true
-    type: string
-    description: Test scope
   pytorch:
     type: string
     default: 'main'
@@ -19,7 +15,7 @@ inputs:
     description: Python version
   suite:
     type: string
-    default: 'huggingface'
+    default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
 permissions: read-all
@@ -50,7 +46,7 @@ runs:
       with:
         path: torch-xpu-ops
     - name: Download Pytorch wheel
-      if: ${{ ! contains(inputs.test_type, 'wheel') }}
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
         pattern: Torch-XPU-Wheel-*
@@ -78,7 +74,7 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
-        if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
+        if [ "${{ github.event.name }}" == "pull_request" ];then
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
         else
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -110,7 +106,6 @@ runs:
         fi
         git status && git diff && git show -s
     - name: Install E2E Requirements
-      if: ${{ contains(inputs.test_type, 'e2e') }}
       shell: bash -xe {0}
       run: |
         cd pytorch

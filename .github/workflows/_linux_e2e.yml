@@ -6,12 +6,11 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
         description: Runner label
       test_type:
         type: string
-        default: 'build-from-source'
-        description: Build from source or install nightly wheel
+        default: "build-cicd"
+        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
       pytorch:
         type: string
         default: 'main'
@@ -91,7 +90,6 @@ jobs:
       - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: skipped
           python: ${{ inputs.python }}
@@ -99,7 +97,7 @@ jobs:
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'huggingface') }}
+        if: ${{ contains(github.event.name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
@@ -107,7 +105,7 @@ jobs:
           mode: training
           scenario: accuracy,performance
       - name: CICD Timm_models BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'timm_models') }}
+        if: ${{ contains(github.event.name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
@@ -115,7 +113,7 @@ jobs:
           mode: training
           scenario: accuracy,performance
       - name: CICD Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'torchbench') }}
+        if: ${{ contains(github.event.name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench

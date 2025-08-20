@@ -96,18 +96,14 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      test_type: build-cicd
       pytorch: main
-      torch_xpu_ops: cicd
 
   linux-ut:
     needs: [conditions-filter, linux-build]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: linux.idc.xpu
-      test_type: build-cicd-ut
+      runner: pvc_rolling
       pytorch: main
-      torch_xpu_ops: cicd
       ut: ut_regression,ut_transformers,ut_extended,ut_op,xpu_dev1,xpu_distributed
       disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
 
@@ -122,7 +118,6 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: build-cicd-e2e
       pytorch: main
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
@@ -131,8 +126,6 @@ jobs:
     permissions: write-all
     needs: [linux-e2e]
     uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: build-cicd-e2e
 
   windows:
     name: windows
