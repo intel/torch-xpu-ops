@@ -13,10 +13,6 @@ inputs:
     type: string
     default: 'cicd'
     description: Torch-xpu-ops workflow triggered branch by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
-  oneapi:
-    type: string
-    default: 'installed'
-    description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
   python:
     type: string
     default: '3.10'
@@ -53,16 +49,6 @@ runs:
       uses: actions/checkout@v4
       with:
         path: torch-xpu-ops
-    - name: Install oneAPI DLE
-      shell: bash -xe {0}
-      if: ${{ inputs.oneapi != 'installed' }}
-      run: |
-        rm -rf ~/intel ~/.intel
-        wget -q -O oneapi.sh "${{ inputs.oneapi }}"
-        bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
-        echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
-        source ${HOME}/intel/oneapi/setvars.sh
-        sycl-ls && icpx -v
     - name: Download Pytorch wheel
       if: ${{ ! contains(inputs.test_type, 'wheel') }}
       uses: actions/download-artifact@v4

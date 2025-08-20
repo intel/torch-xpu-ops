@@ -25,10 +25,6 @@ on:
         type: string
         default: 'pinned'
         description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
-      oneapi:
-        type: string
-        default: 'installed'
-        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
         default: '3.10'
@@ -122,13 +118,6 @@ jobs:
           fi
           # gcc 11
           source /opt/rh/gcc-toolset-11/enable
-          # oneAPI DLE
-          if [ "${{ inputs.oneapi }}" != "installed" ];then
-            rm -rf ${HOME}/intel ${HOME}/.intel /opt/intel
-            wget -q -O oneapi.sh "${{ inputs.oneapi }}"
-            bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
-            export XPU_ONEAPI_PATH="/opt/intel/oneapi"
-          fi
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \

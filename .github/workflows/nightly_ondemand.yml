@@ -22,10 +22,6 @@ on:
         type: string
         default: 'pinned'
         description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
-      oneapi:
-        type: string
-        default: 'installed'
-        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       ut:
         type: string
         default: ''
@@ -114,7 +110,6 @@ jobs:
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ github.event_name == 'schedule' && 'pinned' || inputs.triton }}
-      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 
   Linux-Nightly-Ondemand-UT-Tests:
@@ -127,7 +122,6 @@ jobs:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-ut
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       ut: ${{ github.event_name == 'schedule' && 'ut_regression,xpu_dev1,ut_transformers,ut_extended,ut_op' || inputs.ut }}
 
@@ -144,7 +138,6 @@ jobs:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-e2e
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
       suite: ${{ matrix.suite }}
       dt: ${{ github.event_name == 'schedule' && 'float32' || inputs.dt }}
@@ -170,7 +163,6 @@ jobs:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}-mb
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      oneapi: ${{ github.event_name == 'schedule' && 'installed' || inputs.oneapi }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 
   Windows-Nightly-Ondemand-UT-Tests:

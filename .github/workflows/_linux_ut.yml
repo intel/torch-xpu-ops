@@ -19,10 +19,6 @@ on:
         type: string
         default: 'cicd'
         description: Torch-xpu-ops workflow triggered branch by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
-      oneapi:
-        type: string
-        default: 'installed'
-        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
         default: '3.10'
@@ -95,7 +91,6 @@ jobs:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-          oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
         if: ${{ contains(inputs.ut, matrix.test) }}
@@ -149,7 +144,6 @@ jobs:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-          oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
@@ -188,7 +182,6 @@ jobs:
           test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-          oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
       - name: Set Ptrace_scope
         if: ${{ always() }}
