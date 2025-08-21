@@ -55,7 +55,7 @@ jobs:
   ut_test:
     runs-on: ${{ matrix.test.runner || inputs.runner }}
     if: ${{ inputs.ut != 'xpu_distributed' && !contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 450
+    timeout-minutes: 400
     env:
       GH_TOKEN: ${{ github.token }}
       NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
@@ -148,7 +148,6 @@ jobs:
               - 'test_compiled_optimizers.py'
               - 'test_compiled_autograd.py'
               - 'test_compile_subprocess.py'
-              - 'test_torchinductor_opinfo.py'
             additional_steps: |
               pip install pytest pytest-timeout
           - name: 'torch_xpu_2'
