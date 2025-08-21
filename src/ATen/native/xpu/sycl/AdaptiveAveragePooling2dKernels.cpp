@@ -301,8 +301,8 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
     index_t istartW = item.get_local_id(1) + item.get_group(1) * iW;
     index_t iendW = std::min(istartW + iW, isizeW_);
 
-    // Stride for threads, each subgroup can reuse L1 as they go. So theoretically
-    // better chance to survive cache eviction.
+    // Stride for threads, each subgroup can reuse L1 as they go. So
+    // theoretically better chance to survive cache eviction.
     for (index_t ih = istartH; ih < iendH; ih += item.get_local_range(0)) {
       index_t ostartH = START_IND_INT(ih, isizeH_, osizeH_);
       index_t oendH = END_IND_INT(ih, isizeH_, osizeH_);
