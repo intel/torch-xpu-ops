@@ -122,7 +122,7 @@ jobs:
         ut_name: ${{ fromJSON(github.event_name == 'schedule' && '["op_regression","op_regression_dev1","op_transformers","op_extended","op_ut"]' || inputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: linux.idc.xpu
+      runner: pvc_rolling
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
