@@ -13,20 +13,21 @@ on:
       pytorch:
         type: string
         default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'cicd'
-        description: Torch-xpu-ops workflow triggered branch by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        default: 'main'
+        description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         type: string
         default: 'pinned'
         description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
       ut:
         type: string
-        default: ''
-        description: UT scope. `op_regression,op_transformers,op_extended,op_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows`. Delimiter is comma
+        default: '[]'
+        description: UT scope. `["op_regression","op_transformers","op_extended","op_ut","xpu_profiling","torch_xpu","op_regression_dev1","xpu_distributed","microbench","windows"]`. Delimiter is comma
       suite:
+        type: string
         default: '[]'
         description: Dynamo benchmarks test suite. `["huggingface","timm_models","torchbench","pt2e"]`. Delimiter is comma
       dt:
@@ -112,16 +113,20 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
+    if: ${{ github.event_name == 'schedule' || inputs.ut != '[]' }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: ${{ fromJSON(github.event_name == 'schedule' && '["op_regression","op_regression_dev1","op_transformers","op_extended","op_ut"]' || inputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: linux.idc.xpu
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
-      ut: ${{ github.event_name == 'schedule' && 'op_regression,op_regression_dev1,op_transformers,op_extended,op_ut' || inputs.ut }}
+      ut: ${{ matrix.ut_name }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || inputs.suite != '[]' }}

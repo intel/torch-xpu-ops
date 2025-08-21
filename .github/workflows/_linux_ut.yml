@@ -22,11 +22,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. `op_regression,op_transformers,op_extended,op_ut,torch_xpu,op_regression_dev1` Delimiter is comma
-      disabled_tests:
-        type: string
-        default: ''
-        description: List disabled tests, such as disable_ut or disable_distributed
+        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,torch_xpu,op_regression_dev1`
 
 permissions: read-all
 
@@ -53,11 +49,9 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  normal:
+  test:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    if: ${{ ! contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 300
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -72,28 +66,20 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-    strategy:
-      fail-fast: false
-      matrix:
-        test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling]
     steps:
       - name: Checkout torch-xpu-ops
-        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/checkout@v4
       - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
-        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
       - name: Run XPU UT Test
-        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: ./.github/actions/linux-uttest
         with:
-          ut_name: ${{ matrix.test }}
+          ut_name: ${{ inputs.ut }}
       - name: UT Test Results Summary
-        if: ${{ contains(inputs.ut, matrix.test) }}
         run: |
           pip install junitparser
           python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
@@ -104,136 +90,45 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
-
-  devices:
-    runs-on: pvc_rolling
-    if: ${{ contains(inputs.ut, 'op_regression_dev1') && ! contains(inputs.disabled_tests, 'disable_ut') }}
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
-      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/xpu-tool
-    steps:
-      - name: Cleanup workspace
-        id: cleanup
-        run: |
-          cat /etc/os-release
-          echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
-          sudo find /tmp/ |grep -v "^/tmp/$" |xargs sudo rm -rf
-          sudo rm -rf ~/.triton ~/.torch
-          xpu-smi discovery
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env on ${{ steps.cleanup.outputs.hostname }}
-        uses: ./.github/actions/linux-testenv
-        with:
-          pytorch: ${{ inputs.pytorch }}
-          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-          python: ${{ inputs.python }}
-      - name: Run XPU UT Test
-        uses: ./.github/actions/linux-uttest
-        with:
-          ut_name: op_regression_dev1
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-op_regression_dev1
-          path: ${{ github.workspace }}/ut_log
-
-  distributed:
-    runs-on: pytorch-06
-    if: ${{ contains(inputs.ut, 'xpu_distributed') && ! contains(inputs.disabled_tests, 'disable_distribute') }}
-    timeout-minutes: 60
-    env:
-      GH_TOKEN: ${{ github.token }}
-      AGENT_TOOLSDIRECTORY: ${{ github.workspace }}/xpu-tool
-    steps:
-      - name: Cleanup workspace
-        id: cleanup
-        run: |
-          cat /etc/os-release
-          echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
-          ls -al
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo find /tmp/ |grep -v "^/tmp/$" |xargs sudo rm -rf
-          sudo rm -rf ~/.triton ~/.torch
-          xpu-smi topology -m
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env on ${{ steps.cleanup.outputs.hostname }}
-        uses: ./.github/actions/linux-testenv
-        with:
-          pytorch: ${{ inputs.pytorch }}
-          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-          python: ${{ inputs.python }}
-      - name: Set Ptrace_scope
-        if: ${{ always() }}
-        run: |
-          set -x -e -u -o pipefail
-          sudo rm -rf ptrace_scope.bk
-          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
-          cat ptrace_scope.bk
-          echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
-      - name: Run Torch XPU Distributed UT
-        uses: ./.github/actions/linux-uttest
-        with:
-          ut_name: xpu_distributed
       - name: Reset Ptrace_scope
         if: ${{ always() }}
         run: |
-          if [ -f ptrace_scope.bk ]; then
-            sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
+            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
-          path: ${{ github.workspace }}/ut_log
 
   summary:
-    needs: [normal, devices, distributed]
+    needs: test
     if: ${{ ! cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        test: [op_regression, op_transformers, op_extended, op_ut, torch_xpu, xpu_profiling, op_regression_dev1, xpu_distributed]
     env:
       GH_TOKEN: ${{ github.token }}
       UT_SKIP_ISSUE: 1624
     steps:
-      - name: Cleanup workspace
-        if: ${{ contains(inputs.ut, matrix.test) }}
-        run: |
-          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
-        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
-        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
-        if: ${{ contains(inputs.ut, matrix.test) }}
         shell: bash
         run: |
           repo="${{ github.repository }}"
           ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/${{ matrix.test }}
+          cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
           gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
             --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
@@ -243,10 +138,10 @@ jobs:
           cat issues_temp.log | awk '{print $1}' >> Known_issue.log
           awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh ${{ matrix.test }}
+          bash ut_result_check.sh ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log
-        if: ${{ contains(inputs.ut, matrix.test) }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test }}-checked
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log
+          overwrite: true

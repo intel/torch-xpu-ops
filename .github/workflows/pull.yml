@@ -100,12 +100,29 @@ jobs:
 
   linux-ut:
     needs: [conditions-filter, linux-build]
+    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut')}}
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [op_regression,op_transformers,op_extended,op_ut,op_regression_dev1,xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
       pytorch: main
-      ut: op_regression,op_transformers,op_extended,op_ut,op_regression_dev1,xpu_distributed
-      disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
+      ut: ${{ matrix.ut_name }}
+
+  linux-distributed:
+    needs: [conditions-filter, linux-build]
+    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute')}}
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [xpu_distributed]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: pvc_rolling
+      pytorch: main
+      ut: ${{ matrix.ut_name }}
 
   linux-e2e:
     name: linux-e2e
