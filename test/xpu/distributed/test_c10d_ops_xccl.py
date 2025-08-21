@@ -23,7 +23,7 @@ import torch.distributed as dist
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import init_multigpu_helper, requires_xccl
-from torch.testing._internal.common_distributed import MultiProcContinousTest
+from torch.testing._internal.common_distributed import MultiProcContinuousTest
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
@@ -42,7 +42,7 @@ if TEST_WITH_DEV_DBG_ASAN:
 TEST_MULTIGPU = TEST_XPU and torch.xpu.device_count() >= 2
 
 
-class ProcessGroupXCCLOpTest(MultiProcContinousTest):
+class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
     @classmethod
     def backend_str(cls) -> str:
         return "xccl"
@@ -259,6 +259,28 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
                     ValueError, "Cannot use " + err + " with XCCL"
                 ):
                     reduce(tensors, self.rank, rt, op)
+
+        for factor in (3.0, torch.tensor([5.0], device=local_device_id)):
+            if isinstance(factor, torch.Tensor):
+                factor_ref = factor.cpu().item()
+            else:
+                factor_ref = factor
+            float_tensors = [
+                torch.tensor(
+                    [self.rank + 1.0], device=f"xpu:{local_device_id}"
+                )
+            ]
+            float_tensors_ref = [
+                torch.tensor(
+                    [(self.rank + 1.0) * factor_ref],
+                    device=f"xpu:{local_device_id}",
+                )
+            ]
+
+            reduce(float_tensors_ref, rt, 0)
+            reduce(float_tensors, rt, 0, c10d._make_xccl_premul_sum(factor))
+            if self.rank == rt:
+                self.assertEqual(float_tensors_ref[0], float_tensors[0])
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
@@ -712,6 +734,21 @@ class ProcessGroupXCCLOpTest(MultiProcContinousTest):
             prod_val = prod_val * (self.rank + 1 + k)
         expected = torch.tensor(prod_val)
         self.assertEqual(expected, output_tensor)
+
+        for factor in (3.0, torch.tensor([5.0], device=self.rank)):
+            if isinstance(factor, torch.Tensor):
+                factor_ref = factor.cpu().item()
+            else:
+                factor_ref = factor
+            output = [t.float() for t in output]
+            tensor_lists = [[t.float() for t in tl] for tl in tensor_lists]
+            output_ref = [t.float() for t in output]
+            tensor_lists_ref = [
+                [t.float() * factor_ref for t in tl] for tl in tensor_lists
+            ]
+            reduce_scatter(output, tensor_lists, c10d._make_xccl_premul_sum(factor))
+            reduce_scatter(output_ref, tensor_lists_ref, c10d.ReduceOp.SUM)
+            self.assertEqual(output_ref, output)
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")

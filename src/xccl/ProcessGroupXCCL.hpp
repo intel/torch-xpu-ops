@@ -129,10 +129,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   };
 
   ProcessGroupXCCL(
-    const c10::intrusive_ptr<Store>& store,
-    int rank,
-    int size,
-    c10::intrusive_ptr<Options> options = Options::create());
+      const c10::intrusive_ptr<Store>& store,
+      int rank,
+      int size,
+      c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
@@ -415,7 +415,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::vector<uint64_t>& groupRanks() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-  void setCompletedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void setCompletedPgStatus(
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
@@ -493,6 +494,24 @@ TORCH_API std::string dump_xccl_trace(
     bool onlyActive);
 
 TORCH_API std::string getXcclVersion();
+
+struct XCCLPreMulSumSupplement : _SupplementBase {
+  double double_factor{0.0};
+  at::Tensor tensor_factor;
+  XCCLPreMulSumSupplement(double f) : double_factor{f} {}
+  XCCLPreMulSumSupplement(at::Tensor t) : tensor_factor{std::move(t)} {
+    TORCH_CHECK_EQ(tensor_factor.numel(), 1);
+  }
+};
+
+template <typename T>
+ReduceOp makeXCCLPreMulSum(const T& factor) {
+  ReduceOp rop;
+  rop.op_ = ReduceOp::PREMUL_SUM;
+  rop.supplement_ = c10::make_intrusive<XCCLPreMulSumSupplement>(factor);
+  return rop;
+}
+
 } // namespace c10d
 
 namespace {
