@@ -16,12 +16,12 @@ on:
         description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
-        description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        default: 'triggerd'
+        description: Torch-xpu-ops by default is the run triggered branch, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         type: string
         default: 'pinned'
-        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
       ut:
         type: string
         default: '[]'
@@ -89,7 +89,11 @@ jobs:
             fi
           else
             pytorch="${{ inputs.pytorch }}"
-            torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
+            if [ "${{ inputs.torch_xpu_ops }}" == "triggerd" ];then
+              torch_xpu_ops="${{ github.ref_name }}"
+            else
+              torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
+            fi
             if [[ "${{ inputs.pytorch }}" == *"_wheel" ]];then
               test_type="wheel-ondemand"
             else
