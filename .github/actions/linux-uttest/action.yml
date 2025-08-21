@@ -17,7 +17,7 @@ runs:
         pip install -r pytorch/.ci/docker/requirements-ci.txt
         pip install -U pytest-timeout
     - name: op_regression
-      shell: bash -xe {0}
+      shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' }}
       run: |
         mkdir -p ut_log/op_regression
@@ -26,7 +26,7 @@ runs:
           2> ${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
     - name: op_transformers
-      shell: bash -xe {0}
+      shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_transformers' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -37,7 +37,7 @@ runs:
           2> ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test.log
     - name: op_extended
-      shell: bash -xe {0}
+      shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -49,7 +49,7 @@ runs:
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
     - name: op_ut
-      shell: bash -xe {0}
+      shell: timeout 18000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -85,7 +85,7 @@ runs:
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
     - name: torch_xpu
-      shell: bash -xe {0}
+      shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -99,7 +99,7 @@ runs:
         eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
           tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
     - name: xpu_profiling
-      shell: bash -xe {0}
+      shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce
@@ -138,7 +138,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: op_regression_dev1
-      shell: bash -xe {0}
+      shell: timeout 300 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' }}
       run: |
         clinfo --list
@@ -150,7 +150,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
 
     - name: xpu_distributed
-      shell: bash -xeu -o pipefail {0}
+      shell: timeout 3600 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
@@ -165,6 +165,6 @@ runs:
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
-        timeout 1800 python run_distributed.py \
+        python run_distributed.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
