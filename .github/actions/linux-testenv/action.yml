@@ -141,6 +141,8 @@ runs:
           # for dlrm
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
         fi
+        pip uninstall pytorch-triton-xpu triton -y
+        pip install git+https://github.com/intel/intel-xpu-backend-for-triton@a6572fb0be5b9b0a19b0641a0ce05810fa04e44c
     - name: Torch Config
       shell: bash -xe {0}
       run: |
