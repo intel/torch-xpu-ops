@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 480
     defaults:
       run:
-        shell: bash -xe {0}
+        shell: timeout 3 bash -xe {0}
     strategy:
       matrix:
         test_case: [target, baseline]
