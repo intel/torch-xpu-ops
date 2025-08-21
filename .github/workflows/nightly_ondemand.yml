@@ -104,6 +104,10 @@ jobs:
     needs: [Conditions-Filter]
     name: linux-build
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
@@ -161,6 +165,10 @@ jobs:
     name: linux-microbench
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    strategy:
+      fail-fast: false
+      matrix:
+        microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: pvc_rolling
