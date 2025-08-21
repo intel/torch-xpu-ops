@@ -80,6 +80,7 @@ runs:
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         fi
         git status && git diff && git show -s
+        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
@@ -109,32 +110,36 @@ runs:
       shell: bash -xe {0}
       run: |
         cd pytorch
+        TRANSFORMERS_VERSION_ID="$((cat .ci/docker/ci_commit_pins/huggingface-requirements.txt || echo 'transformers==4.54.0') 2>&1 |grep '^transformers==' |sed 's/.*==//')"
+        TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
+        TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
         pip install pandas psutil scipy
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
-          pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt
-          TRANSFORMERS_VERSION_ID="$(python -c 'import transformers; print(transformers.__version__)')"
+          pip install transformers==${TRANSFORMERS_VERSION_ID}
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
           rm -rf ./benchmark
           git clone https://github.com/pytorch/benchmark
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
           pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           python install.py --continue_on_fail
+          pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          # for dlrm
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
           rm -rf ./benchmark
           git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
           cd benchmark
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           python install.py --continue_on_fail
+          pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          # for dlrm
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
         fi
     - name: Torch Config
       shell: bash -xe {0}
@@ -148,3 +153,8 @@ runs:
         python -c "import triton; print(triton.__version__)"
         python pytorch/torch/utils/collect_env.py
         pip list |grep -E 'torch|intel'
+        TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
+          echo "Torch is re-installed when installing deps, please check"
+          exit
+        fi
