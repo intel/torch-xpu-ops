@@ -7,8 +7,8 @@ inputs:
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'cicd'
-    description: Torch-xpu-ops workflow triggered branch by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+    default: 'main'
+    description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
     default: '3.10'
@@ -96,7 +96,7 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ];then
+        if [ "${{ github.event.name }}" == "pull_request" ];then
           cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
         else

@@ -112,7 +112,7 @@ jobs:
       python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'ut_') || contains(inputs.ut, 'xpu_') }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     uses: ./.github/workflows/_linux_ut.yml

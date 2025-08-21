@@ -91,7 +91,6 @@ jobs:
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
-          torch_xpu_ops: skipped
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
 

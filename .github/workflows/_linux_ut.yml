@@ -56,7 +56,7 @@ jobs:
   normal:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    if: ${{ contains(inputs.ut, 'ut_') && !contains(inputs.disabled_tests, 'disable_ut') }}
+    if: ${{ ! contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 300
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
@@ -117,7 +117,7 @@ jobs:
 
   devices:
     runs-on: pvc_rolling
-    if: ${{ contains(inputs.ut, 'op_regression_dev1') && !contains(inputs.disabled_tests, 'disable_ut') }}
+    if: ${{ contains(inputs.ut, 'op_regression_dev1') && ! contains(inputs.disabled_tests, 'disable_ut') }}
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
@@ -152,7 +152,7 @@ jobs:
 
   distributed:
     runs-on: pytorch-06
-    if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
+    if: ${{ contains(inputs.ut, 'xpu_distributed') && ! contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 60
     env:
       GH_TOKEN: ${{ github.token }}
