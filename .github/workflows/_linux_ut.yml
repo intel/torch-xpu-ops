@@ -63,6 +63,7 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         TORCH_HOME: /tmp/.cache/_torch
         HF_HOME: /tmp/.cache/_huggingface
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}

@@ -22,7 +22,7 @@ runs:
       run: |
         mkdir -p ut_log/op_regression
         cd pytorch/third_party/torch-xpu-ops/test/regressions
-        pytest --timeout 600 --timeout_method=thread -v --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
+        pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
           2> ${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
     - name: op_transformers
@@ -32,7 +32,7 @@ runs:
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/op_transformers
         cd pytorch
-        pytest --timeout 600 --timeout_method=thread -v test/test_transformers.py -k xpu \
+        pytest test/test_transformers.py -k xpu \
           --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
           2> ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test.log
@@ -128,13 +128,13 @@ runs:
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
-        python -m pytest --timeout 600 -vs test_cpp_thread.py | \
+        python -m pytest -s test_cpp_thread.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_cpp_thread.log
-        python -m pytest --timeout 600 -vs test_execution_trace.py | \
+        python -m pytest -s test_execution_trace.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
-        python -m pytest --timeout 600 -vs test_memory_profiler.py | \
+        python -m pytest -s test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest --timeout 600 -vs test_profiler_tree.py | \
+        python -m pytest -s -vs test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: op_regression_dev1
@@ -144,7 +144,7 @@ runs:
         clinfo --list
         mkdir -p ut_log/op_regression_dev1
         cd pytorch/third_party/torch-xpu-ops/test/regressions
-        timeout 180 pytest --timeout 200 -v test_operation_on_device_1.py \
+        timeout 180 pytest test_operation_on_device_1.py \
           --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
           2> ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
