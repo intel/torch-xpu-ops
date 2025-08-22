@@ -575,7 +575,7 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-inductor_ut
           path: ${{ github.workspace }}/ut_log_all_shards
           pattern: Inductor-XPU-UT-Data-*-inductor_ut-*
-        merge-multiple: true
+          merge-multiple: true
       - name: Merge all shard logs for processing
         run: |
           mkdir -p ${{ github.workspace }}/ut_log_merged/torch_xpu
