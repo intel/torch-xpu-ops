@@ -1467,6 +1467,27 @@ skip_dict = {
         "test_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
         # case need to port for xpu
         "test_gemm_bias_offline_tunableop_xpu_bfloat16",
+        # Exception is temporarily unavailable due to regression in oneMKL
+        "test_inv_errors_and_warnings_xpu_complex128",
+        "test_inv_errors_and_warnings_xpu_complex64",
+        "test_inv_errors_and_warnings_xpu_float32",
+        "test_inv_errors_and_warnings_xpu_float64",
+        "test_inverse_errors_large_xpu_complex128",
+        "test_inverse_errors_large_xpu_complex64",
+        "test_inverse_errors_large_xpu_float32",
+        "test_inverse_errors_large_xpu_float64",
+        "test_inverse_errors_xpu_complex128",
+        "test_inverse_errors_xpu_complex64",
+        "test_inverse_errors_xpu_float32",
+        "test_inverse_errors_xpu_float64",
+        "test_inv_ex_singular_xpu_complex128",
+        "test_inv_ex_singular_xpu_complex64",
+        "test_inv_ex_singular_xpu_float32",
+        "test_inv_ex_singular_xpu_float64",
+        "test_tensorinv_singular_input_xpu_complex128",
+        "test_tensorinv_singular_input_xpu_complex64",
+        "test_tensorinv_singular_input_xpu_float32",
+        "test_tensorinv_singular_input_xpu_float64",
     ),
     "test_ops_fwd_gradients_xpu.py": (
         # All of the followings are oneDNN issues
