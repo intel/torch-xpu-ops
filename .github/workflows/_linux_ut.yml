@@ -130,21 +130,6 @@ jobs:
               cp op_ut_with_only.xml $GITHUB_WORKSPACE/ut_log
             additional_steps: |
               pip install pytest pytest-timeout
-          - name: 'torch_xpu'
-            condition: ${{ contains(inputs.ut, 'torch_xpu') }}
-            directory: '../pytorch'
-            command_script: |
-              export PYTORCH_TEST_WITH_SLOW=1
-              export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-              test_cmd="python test/run_test.py --include "
-              for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-              for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-              if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-              eval $test_cmd 2>$GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test_error.log | \
-                tee $GITHUB_WORKSPACE/ut_log/torch_xpu/torch_xpu_test.log
-            log_prefix: 'torch_xpu'
-            additional_steps: |
-              pip install pytest pytest-timeout
           - name: 'xpu_profiling'
             condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
             directory: '$GITHUB_WORKSPACE'
@@ -351,8 +336,6 @@ jobs:
           condition: ${{ contains(inputs.ut, 'op_extended') }}
         - name: 'op_ut'
           condition: ${{ contains(inputs.ut, 'op_ut') }}
-        - name: 'torch_xpu'
-          condition: ${{ contains(inputs.ut, 'torch_xpu') }}
         - name: 'xpu_profiling'
           condition: ${{ inputs.driver == 'rolling' && contains(inputs.ut, 'xpu_profiling') }}
     steps:
@@ -399,6 +382,239 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ matrix.test.name }}-checked
           path: ${{ github.workspace }}/ut_log
+
+  inductor_ut_test:
+    runs-on: ${{ matrix.test.runner || inputs.runner }}
+    if: ${{ contains(inputs.ut, 'torch_xpu') && !contains(inputs.disabled_tests, 'torch_xpu') }}
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
+      ut_skip_issue: 1624
+    strategy:
+      fail-fast: false
+      matrix:
+        shard-index: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Create unique workspace
+        shell: bash -xe {0}
+        run: |
+          # Create unique conda env for each UT test
+          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
+          echo "CONDA_ENV_NAME=xpu_op_${ZE_AFFINITY_MASK}_${{ matrix.test.name }}_${random}" >> $GITHUB_ENV
+      - name: Create Conda Env
+        shell: bash -xe {0}
+        run: |
+          pwd
+          which conda
+          conda remove --all -y -n $CONDA_ENV_NAME || \
+                rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          conda create -n $CONDA_ENV_NAME python=${{ inputs.python }} cmake ninja -y
+          source activate $CONDA_ENV_NAME
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+      - name: Prepare Stock Pytorch
+        shell: bash -xe {0}
+        run: |
+          cd ../
+          rm -rf ./pytorch || sudo rm -rf ./pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
+          source activate $CONDA_ENV_NAME
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+            cd ./pytorch
+            git checkout ${TORCH_COMMIT_ID}
+            rm -rf vision || sudo rm -rf vision
+            git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          else
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+            TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+            cd ./pytorch
+            git checkout ${TORCH_COMMIT_ID}
+          fi
+          pip install requests
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+          git show -s && git status && git diff
+          pip install -r .ci/docker/requirements-ci.txt
+      - name: Prepare Torch-xpu-ops
+        shell: bash -xe {0}
+        run: |
+          cd ../pytorch
+          rm -rf third_party/torch-xpu-ops
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cp -r ${{ github.workspace }} third_party
+          else
+            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+            cd third_party/torch-xpu-ops
+            git checkout ${TORCH_XPU_OPS_COMMIT}
+          fi
+      - name: Download Triton wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
+          path: ${{ github.workspace }}
+      - name: Install Triton
+        shell: bash -xe {0}
+        run: |
+          source activate $CONDA_ENV_NAME
+          pip install --force-reinstall ${{ github.workspace }}/pytorch_triton_xpu-*.whl
+      - name: Torch Config
+        shell: bash -xe {0}
+        run: |
+          source activate $CONDA_ENV_NAME
+          python -c "import torch; print(torch.__config__.show())"
+          python -c "import torch; print(torch.__config__.parallel_info())"
+          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+          python -c "import triton; print(triton.__version__)"
+
+          cd ..
+          python pytorch/torch/utils/collect_env.py
+          rm -rf /tmp/torchinductor_* || sudo rm -rf /tmp/torchinductor_*
+          rm -rf ~/.triton/cache || sudo rm -rf ~/.triton/cache
+          echo "UT_NAME=${{ matrix.test.name }}" >> "${GITHUB_ENV}"
+      - name: Run XPU UT Test
+        shell: bash -xe {0}
+        run: |
+          set -e
+          mkdir -p ${{ github.workspace }}/ut_log/torch_xpu
+          source activate $CONDA_ENV_NAME
+          pip install pytest pytest-timeout
+          keep_going_flag=""
+          [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
+          export NUM_TEST_SHARDS=8
+          export PYTORCH_TEST_WITH_SLOW=1
+          export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+          python test/run_test.py $keep_going_flag --xpu \
+            --include inductor/test_torchinductor inductor/test_torchinductor_opinfo \
+                      inductor/test_codecache.py inductor/test_kernel_benchmark.py inductor/test_max_autotune.py \
+                      inductor/test_mkldnn_pattern_matcher.py inductor/test_triton_kernels.py \
+                      inductor/test_compile_subprocess.py inductor/test_compiled_optimizers.py inductor/test_compiled_autograd.py \
+            --shard ${{ matrix.shard-index }} $NUM_TEST_SHARDS \
+            --verbose 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+
+          cp -r test/test-reports/*.log "${{ github.workspace }}/ut_log/torch_xpu/"
+            function read_dir(){
+              for file in `ls $1`
+              do
+                if [ -d $1"/"$file ]
+                then
+                  cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+                else
+                  echo "[Warning] $file has no xml"
+                fi
+              done
+            }
+            read_dir "test/test-reports/python-pytest"
+            function rename_inductor_files() {
+                local target_dir="${1:-.}"
+                if [ ! -d "$target_dir" ]; then
+                    echo "Error: Directory '$target_dir' does not exist" >&2
+                    return 1
+                fi
+                find "$target_dir" -name 'inductor.*' -exec bash -c '
+                    for file; do
+                        newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                        if [ "$file" != "$newfile" ]; then
+                            echo "Renaming: $file -> $newfile"
+                            mv -v "$file" "$newfile"
+                        fi
+                    done
+                ' bash {} +
+            }
+            rename_inductor_files "${{ github.workspace }}/ut_log/torch_xpu"
+            rename_inductor_files "${{ github.workspace }}/ut_log/"
+      - name: UT Test Results Summary
+        shell: bash -xe {0}
+        run: |
+          source activate $CONDA_ENV_NAME
+          pip install junitparser
+          python .github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          if [ -e "ut_failure_list.csv" ];then
+              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          fi
+      - name: Clean up
+        if: ${{ always() }}
+        run: |
+          if [ -n "$CONDA_ENV_NAME" ]; then
+            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          fi
+      - name: Upload Inductor XPU UT Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-inductor_ut-${{ matrix.shard-index }}
+          path: ${{ github.workspace }}/ut_log
+      - name: Upload XPU UT Failure list
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-inductor_ut-${{ matrix.shard-index }}
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+
+  inductor_ut_test_results_check:
+    needs: inductor_ut_test
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ut_skip_issue: 1624
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Download all XPU UT Logs from matrix shards
+        uses: actions/download-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-inductor_ut
+          path: ${{ github.workspace }}/ut_log_all_shards
+          pattern: Inductor-XPU-UT-Data-*-inductor_ut-*
+        merge-multiple: true
+      - name: Merge all shard logs for processing
+        run: |
+          mkdir -p ${{ github.workspace }}/ut_log_merged/torch_xpu
+
+          for shard_dir in ${{ github.workspace }}/ut_log_all_shards/*inductor_ut*; do
+            if [ -d "$shard_dir/ut_log/torch_xpu" ]; then
+              cp -r "$shard_dir/ut_log/torch_xpu/"* ${{ github.workspace }}/ut_log_merged/torch_xpu/ 2>/dev/null || true
+            fi
+          done
+      - name: Check UT Results
+        shell: bash
+        run: |
+          repo="${{ github.repository }}"
+          function contains() {
+              contains_status="echo 'Start $2 ...'"
+              {
+                [[ $1 =~ (^|,)$2($|,) ]]
+              } || {
+                echo "[Warning] $2 is not suppotted type! Skipped!"
+                contains_status="continue"
+              }
+          }
+          set -xe
+          cd ${{ github.workspace }}/ut_log_merged/torch_xpu
+          gh --repo $repo issue view $ut_skip_issue --json body -q .body | sed '/^$/d' > Known_issue.log
+          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
+          --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' \
+          > issues.log
+          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
+          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
+          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
+          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          bash ut_result_check.sh torch_xpu
+      - name: Upload Inductor XPU UT Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-inductor_ut-checked
+          path: ${{ github.workspace }}/ut_log_merged
 
   distributed_ut_test:
     runs-on: pytorch-06

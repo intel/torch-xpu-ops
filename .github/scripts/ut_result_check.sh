@@ -191,28 +191,28 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     fi
 fi
 if [[ "${ut_suite}" == 'torch_xpu' ]]; then
-    echo "Pytorch XPU binary UT checking"
-    cd ../../pytorch || exit
-    for xpu_case in build/bin/*{xpu,sycl}*; do
-      if [[ "$xpu_case" != *"*"* && "$xpu_case" != *.so && "$xpu_case" != *.a ]]; then
-        case_name=$(basename "$xpu_case")
-        cd ../ut_log/torch_xpu || exit
-        grep -E "FAILED|have failures" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_failed.log
-        wc -l < "./binary_ut_${ut_suite}_${case_name}_failed.log" | tee -a ./binary_ut_"${ut_suite}"_failed_summary.log
-        grep -E "PASSED|Pass" binary_ut_"${ut_suite}"_"${case_name}"_test.log | awk '{print $2}' > ./binary_ut_"${ut_suite}"_"${case_name}"_passed.log
-        wc -l < "./binary_ut_${ut_suite}_${case_name}_passed.log" | tee -a ./binary_ut_"${ut_suite}"_passed_summary.log
-        cd - || exit
-      fi
-    done
+    grep -E "FAILED" inductor_test*.log | awk '{print $3}' | grep -v "/inductor" | awk '!seen[$0]++' | grep '^[a-zA-Z]' > ./"${ut_suite}"_failed.log
+    grep -E "have failures" inductor_test*.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
+    grep "PASSED" inductor_test*.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    cd ../ut_log/torch_xpu || exit
-    cat "./binary_ut_${ut_suite}_${case_name}_failed.log"
-    num_failed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_"${ut_suite}"_failed_summary.log)
-    num_passed_binary_ut=$(awk '{sum += $1};END {print sum}' binary_ut_"${ut_suite}"_passed_summary.log)
-    ((num_failed=num_failed_binary_ut))
-    if [[ $num_failed -gt 0 ]] || [[ $num_passed_binary_ut -le 0 ]]; then
+    cat "./${ut_suite}_failed.log"
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite}"
+    echo -e "========================================================================="
+    compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
+    echo -e "========================================================================="
+    echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
+    echo -e "========================================================================="
+    check_passed_known_issues "${ut_suite}"_passed.log Known_issue.log
+    if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
+      num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
+    else
+      num_failed=$(wc -l < "./${ut_suite}_failed.log")
+    fi
+    num_passed=$(wc -l < "./${ut_suite}_passed.log")
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
