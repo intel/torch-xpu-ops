@@ -496,6 +496,7 @@ jobs:
           keep_going_flag=""
           [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
           export NUM_TEST_SHARDS=8
+          export SHARD_INDEX=$((${{ matrix.shard-index }} + 1))
           export PYTORCH_TEST_WITH_SLOW=1
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
           cd ../pytorch
@@ -504,7 +505,7 @@ jobs:
                       inductor/test_codecache.py inductor/test_kernel_benchmark.py inductor/test_max_autotune.py \
                       inductor/test_mkldnn_pattern_matcher.py inductor/test_triton_kernels.py \
                       inductor/test_compile_subprocess.py inductor/test_compiled_optimizers.py inductor/test_compiled_autograd.py \
-            --shard ${{ matrix.shard-index }} $NUM_TEST_SHARDS \
+            --shard $SHARD_INDEX $NUM_TEST_SHARDS \
             --verbose 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
             tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
 
