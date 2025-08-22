@@ -43,6 +43,11 @@ on:
         type: string
         default: 'lts'
         description: Driver lts/rolling
+      keep_going:
+        required: false
+        type: string
+        default: 'false'
+        description: Define the Inductor UT test mechanism
 
 permissions: read-all
 
