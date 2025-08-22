@@ -117,7 +117,7 @@ runs:
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
           pip install transformers==${TRANSFORMERS_VERSION_ID}
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
           rm -rf ./benchmark
           git clone https://github.com/pytorch/benchmark
@@ -126,7 +126,7 @@ runs:
           pip install -r requirements.txt
           python install.py --continue_on_fail
           pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
@@ -137,7 +137,7 @@ runs:
           pip install -r requirements.txt
           python install.py --continue_on_fail
           pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
         fi
