@@ -1,6 +1,6 @@
 #!/bin/bash
 
-XPU_ONEAPI_PATH=${XPU_ONEAPI_PATH:-"/opt/intel/oneapi"}
+XPU_ONEAPI_PATH="${XPU_ONEAPI_PATH:-"/opt/intel/oneapi"}"
 
 source ${XPU_ONEAPI_PATH}/compiler/latest/env/vars.sh
 source ${XPU_ONEAPI_PATH}/pti/latest/env/vars.sh

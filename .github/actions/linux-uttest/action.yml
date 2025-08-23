@@ -1,0 +1,176 @@
+name: Linux Unit Test
+
+inputs:
+  test_type:
+    required: true
+    type: string
+    description: Test scope
+
+permissions: read-all
+
+runs:
+  using: composite
+  steps:
+    - name: requirements
+      shell: bash -xe {0}
+      run: |
+        pip install -r pytorch/.ci/docker/requirements-ci.txt
+        pip install -U pytest-timeout pytest-xdist
+        xpu_num=$(clinfo --list |awk 'BEGIN{gpu=0;}{if(gpu==1 && $0~/Platform/){gpu=0;}; if(gpu==1){print $0;}; if($0~/Platform.*Graphics/){gpu=1;}}' |wc -l)
+        parallel_options=""
+        if [ ${xpu_num} -gt 1 ];then
+          parallel_options+=" --dist worksteal "
+          for x in $(seq 0 $[ ${xpu_num} - 1 ])
+          do
+            parallel_options+=" --tx popen//env:ZE_AFFINITY_MASK=${x} "
+          done
+        else
+          parallel_options+=" -n 1 "
+        fi
+        printf " --timeout 600 --timeout_method=thread ${parallel_options} " > ${{ github.workspace }}/test-options.txt
+    - name: ut_regression
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'ut_regression' }}
+      run: |
+        mkdir -p ut_log/ut_regression
+        cd pytorch/third_party/torch-xpu-ops/test/regressions
+        pytest $(cat ${{ github.workspace }}/test-options.txt) -v --junit-xml=${{ github.workspace }}/ut_log/ut_regression.xml \
+          2> ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/ut_regression/ut_regression_test.log
+    - name: ut_transformers
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'ut_transformers' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        mkdir -p ut_log/ut_transformers
+        cd pytorch
+        pytest $(cat ${{ github.workspace }}/test-options.txt) -v test/test_transformers.py -k xpu \
+          --junit-xml=${{ github.workspace }}/ut_log/ut_transformers.xml \
+          2> ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/ut_transformers/ut_transformers_test.log
+    - name: ut_extended
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'ut_extended' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        mkdir -p ut_log/ut_extended
+        cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
+        python run_test_with_skip.py \
+          2> ${{ github.workspace }}/ut_log/ut_extended/ut_extended_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/ut_extended/ut_extended_test.log
+        ls -al
+        cp *.xml ${{ github.workspace }}/ut_log
+    - name: ut_op
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'ut_op' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_ENABLE_XPU_FALLBACK=1
+        mkdir -p ut_log/ut_op
+        cd pytorch/third_party/torch-xpu-ops/test/xpu
+        python run_test_with_skip.py \
+          2> ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/ut_op/ut_op_with_skip_test.log
+        ls -al
+        cp *.xml ${{ github.workspace }}/ut_log
+        find ut_op_with_skip_nn ut_op_with_skip_quantization/core -type f -exec sh -c '
+            dir_path=$(dirname "$1");
+            case "$dir_path" in
+                *"ut_op_with_skip_quantization/core"*)
+                    dir_name="ut_op_with_skip_quantization_core";;
+                *)
+                    dir_name=$(basename "$dir_path");;
+            esac;
+            mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+        ' _ {} \;
+        ls -al ut_op_with_skip_nn ut_op_with_skip_quantization/core
+        cp ut_op_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
+        cp ut_op_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+        # Cases run with a on-demand white list, since some suites are too
+        # slow to go through all operators on CPU. So add cases on-demand
+        # when XPU implementatoin is done.
+        # test_foreach, test_decomp
+        # Run with only
+        python run_test_with_only.py \
+          2> ${{ github.workspace }}/ut_log/ut_op/ut_op_with_only_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/ut_op/ut_op_with_only_test.log
+        ls -al
+        cp *.xml ${{ github.workspace }}/ut_log
+    - name: ut_torch
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'ut_torch' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        mkdir -p ut_log/ut_torch
+        cd pytorch
+        test_cmd="python test/run_test.py --include "
+        for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
+        for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
+        if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
+        eval $test_cmd 2> ${{ github.workspace }}/ut_log/ut_torch/torch_xpu_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/ut_torch/torch_xpu_test.log
+    - name: ut_profiling
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'ut_profiling' }}
+      run: |
+        mkdir -p ut_log/xpu_profiling/issue_reproduce
+        cd pytorch/third_party/torch-xpu-ops
+        # RN50 Test
+        PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
+        cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling
+        # All Issue Reproduce UT
+        python -u test/profiling/correlation_id_mixed.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/correlation_id_mixed.log
+        python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+        python -u test/profiling/time_precision_in_profile.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/time_precision_in_profile.log
+        python -u test/profiling/profile_partial_runtime_ops.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
+        python -u test/profiling/triton_xpu_ops_time.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
+
+        # llama case for calls number test
+        pip install transformers
+        python test/profiling/llama.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
+        python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
+        bash .github/scripts/check_baseline.sh .github/scripts/llama_baseline.csv ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
+
+        # All xpu ut under test/profiler
+        cd ../../test/profiler
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_cpp_thread.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_cpp_thread.log
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_execution_trace.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_memory_profiler.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
+        python -m pytest $(cat ${{ github.workspace }}/test-options.txt) -vs test_profiler_tree.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
+
+    - name: xpu_dev1
+      shell: bash -xe {0}
+      if: ${{ inputs.test_type == 'xpu_dev1' }}
+      run: |
+        mkdir -p ut_log/xpu_dev1
+        cd pytorch/third_party/torch-xpu-ops/test/regressions
+        pytest --timeout 200 -v test_operation_on_device_1.py \
+          --junit-xml=${{ github.workspace }}/ut_log/xpu_dev1.xml \
+          2> ${{ github.workspace }}/ut_log/xpu_dev1/xpu_dev1_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/xpu_dev1/xpu_dev1_test.log
+
+    - name: xpu_distributed
+      shell: bash -x -e -o pipefail {0}
+      if: ${{ inputs.test_type == 'xpu_distributed' }}
+      run: |
+        mkdir -p ut_log/xpu_distributed
+        cd pytorch/third_party/torch-xpu-ops/test/xpu
+        XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+        if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
+          echo -e "[ERROR] XCCL is not enabled"
+          exit 1
+        fi
+        timeout 1800 python run_distributed.py \
+          2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
