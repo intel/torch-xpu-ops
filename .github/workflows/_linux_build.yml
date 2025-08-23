@@ -170,6 +170,7 @@ jobs:
           }')"
           if [ "${built_version}" != "None" ];then
             pip download --index-url https://download.pytorch.org/whl/nightly/xpu --pre pytorch-triton-xpu==${built_version} --dest ${{ github.workspace }}/
+            pip install ${{ github.workspace }}/*triton*.whl
           else
             TRITON_VERSION_NAME="$(
               curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
