@@ -231,7 +231,7 @@ inline T reduceGroupWithNThreadLocalReductions(
 
 template <typename T, unsigned int Power2Size>
 struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(32)]] void operator()(
+  [[sycl::reqd_sub_group_size(32)]] void operator()(
       sycl::nd_item<3> item) const {
     int tidx = item.get_local_id(2);
     int stidx = item.get_local_range(2) +
