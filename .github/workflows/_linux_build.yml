@@ -95,7 +95,7 @@ jobs:
         run: |
           export USE_XCCL=1
           # only build pvc for CI
-          if [ "${{ github.event.name }}" == "pull_request" ];then
+          if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then

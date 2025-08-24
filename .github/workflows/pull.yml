@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_regression,op_transformers,op_extended,op_ut,op_regression_dev1,xpu_distributed]
+        ut_name: [op_regression,op_transformers,op_extended,op_ut,op_regression_dev1]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling

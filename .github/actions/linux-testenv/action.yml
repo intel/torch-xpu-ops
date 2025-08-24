@@ -74,7 +74,7 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
-        if [ "${{ github.event.name }}" == "pull_request" ];then
+        if [ "${{ github.event_name }}" == "pull_request" ];then
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
         else
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -97,7 +97,7 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ github.event.name }}" == "pull_request" ];then
+        if [ "${{ github.event_name }}" == "pull_request" ];then
           cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
         else
