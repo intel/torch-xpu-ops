@@ -1,10 +1,13 @@
 #ifdef USE_C10D_XCCL
 
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
+#include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
 namespace c10d {
+
+using FlightRecorderXCCL = FlightRecorder<at::xpu::XPUEvent>;
 
 namespace {
 
@@ -200,6 +203,17 @@ void syncStream(
 
 } // namespace
 
+std::string dump_xccl_trace(
+    bool includeCollectives,
+    bool includeStackTraces,
+    bool onlyActive) {
+    auto xcclDumpMap = std::unordered_map<
+        std::string,
+        std::unordered_map<std::string, std::string>>();
+    return FlightRecorderXCCL::get()->dump(
+        xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
+}
+
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
@@ -303,6 +317,10 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
+ProcessGroupXCCL::Options::Options()
+    : Backend::Options(XCCL_BACKEND_NAME) {}
+
+
 static std::atomic<size_t> process_group_id = 0;
 
 constexpr const char* MULTI_DEVICE_ERROR_MSG =
@@ -332,19 +350,28 @@ const std::string& ProcessGroupXCCL::logPrefix() const {
 ProcessGroupXCCL::ProcessGroupXCCL(
     const c10::intrusive_ptr<Store>& store,
     int rank,
-    int size)
+    int size,
+    c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
       store_(store),
+      options_(std::move(options)),
       xcclCommCounter_(0),
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
+  traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
+
+  this->setGroupUid(options_->group_name);
+  // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just do it here.
+  const auto XcclVersion = getXcclVersion();
+  FlightRecorderXCCL::get()->record_pg_ranks(
+      std::make_tuple(pg_uid_, pg_desc_), groupRanks());
+  FlightRecorderXCCL::get()->record_accelerator_version(XcclVersion);
   enableNanCheck_ = getCvarBool(TORCH_XCCL_NAN_CHECK, false);
   init();
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
-  const auto XcclVersion = getXcclVersion();
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
             << "size: " << size << ", global rank: " << rank_;
 
@@ -353,9 +380,63 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug
             << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_;
+
+  // Heartbeat monitor thread dumps debug info on write to pipe
+  heartbeatMonitor_ = std::make_unique<HeartbeatMonitorXCCL>(this);
+  heartbeatMonitor_->start();
 }
 
-ProcessGroupXCCL::~ProcessGroupXCCL() = default;
+ProcessGroupXCCL::~ProcessGroupXCCL() {
+  heartbeatMonitor_->stop();
+  // Wait for all threads to finish before returning
+  heartbeatMonitor_->join();
+}
+
+bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
+  STATIC_SCOPED_WAIT_COUNTER(pytorch.ProcessGroupXCCL__dumpDebuggingInfo);
+  LOG(ERROR)
+      << logPrefix()
+      << "ProcessGroupXCCL preparing to dump debug info. Include stack trace: "
+      << includeStackTrace;
+  if (traceBufferSize_ > 0) {
+    // TODO: dump_xccl_trace
+    auto xcclTrace = dump_xccl_trace(true, includeStackTrace, false);
+    DebugInfoWriter& writer = DebugInfoWriter::getWriter(rank_);
+    LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
+              << writer.getWriterTarget();
+    writer.write(xcclTrace);
+    LOG(INFO) << logPrefix() << "Flight Recorder trace successfully dumped.";
+    return true;
+  }
+  return false;
+}
+
+const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
+  if (options_->global_ranks_in_group.empty() && local_id_ == 0) {
+    static std::vector<uint64_t> globalRanks(size_);
+    std::iota(globalRanks.begin(), globalRanks.end(), 0);
+    return globalRanks;
+  }
+  return options_->global_ranks_in_group;
+}
+
+void ProcessGroupXCCL::setEnqueuedPgStatus(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+  pgStatus_->lastEnqueuedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastEnqueuedWorkName = opTypeToString(work->opType_);
+  pgStatus_->lastEnqueuedNumelIn = work->numelIn_;
+  pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
+}
+
+void ProcessGroupXCCL::setCompletedPgStatus(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
+  pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
+  pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
+  pgStatus_->lastCompletedNumelIn = work->numelIn_;
+  pgStatus_->lastCompletedNumelOut = work->numelOut_;
+  // To avoid complexity, we're not computing duration.
+  FlightRecorderXCCL::get()->retire_id(work->trace_id_, /*compute_duration*/false);
+}
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
@@ -384,6 +465,21 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle,
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
                                 : std::nullopt);
+
+  r->trace_id_ = FlightRecorderXCCL::get()->record(
+      local_id_,
+      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+      seqCollective_,
+      seqP2P_,
+      op_id_,
+      profilingTitle ? profilingTitle : "",
+      inputs,
+      outputs,
+      nullptr,
+      r->xcclEndEvent_.get(),
+      options_->timeout,
+      pgStatus_,
+      isP2P);
   return r;
 }
 
@@ -538,6 +634,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
+  setEnqueuedPgStatus(work);
 
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
@@ -572,6 +669,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     if ((coalescing_state_ & CoalColl) == 0) {
       seqCollective_++;
     }
+    op_id_++;
     coalescing_state_ |= CoalColl;
     if (coalescedDevice_.index() < 0) {
       coalescedDevice_ = device;
@@ -614,6 +712,22 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   work =
       initWork(device, rank_, opType, false, profilingTitle, inputs, outputs);
+  if (coalescing_state_) {
+    FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle ? profilingTitle : "",
+        inputs,
+        outputs,
+        nullptr,
+        nullptr,
+        options_->timeout,
+        pgStatus_,
+        false);
+  }
 
   work->outputs_ = std::make_shared<std::vector<at::Tensor>>(outputs);
 
@@ -653,7 +767,21 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
+  work->future_->addCallback(
+      [this, work](at::ivalue::Future&) {
+          this->setCompletedPgStatus(work);
+      });
   work->blockingWait_ = blockingWait_;
+
+  work->numelIn_ = 0;
+  work->numelOut_ = 0;
+  for (const auto& input : inputs) {
+    work->numelIn_ += input.numel();
+  }
+  for (const auto& output : outputs) {
+    work->numelOut_ += output.numel();
+  }
+  setEnqueuedPgStatus(work);
 
   return asyncOp ? work : nullptr;
 }
@@ -687,6 +815,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
   }
 
+  op_id_++;
   auto comm = getXCCLComm(key, device, opType, p2pRank, isSendRecvSelf);
 
   if (coalescing_state_ & CoalActive) {
@@ -722,6 +851,21 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
+    work->trace_id_ = FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle,
+        {tensor},
+        {tensor},
+        nullptr,
+        work->xcclEndEvent_.get(),
+        options_->timeout,
+        pgStatus_,
+        true);
+
     c10::OptionalDeviceGuard gpuGuard(device);
 
     c10::xpu::XPUCachingAllocator::recordStream(
@@ -737,8 +881,29 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
+    work->future_->addCallback(
+        [this, work](at::ivalue::Future&) {
+            this->setCompletedPgStatus(work);
+        });
+
+    work->numelIn_ = work->numelOut_ = tensor.numel();
+    setEnqueuedPgStatus(work);
     return work;
   } else {
+    FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle,
+        {tensor},
+        {tensor},
+        nullptr,
+        nullptr,
+        options_->timeout,
+        pgStatus_,
+        true);
     c10::OptionalDeviceGuard gpuGuard(device);
 
     c10::xpu::XPUCachingAllocator::recordStream(
@@ -865,7 +1030,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
   TORCH_CHECK(inputTensors.size() == 1, MULTI_DEVICE_ERROR_MSG);
   // @lint-ignore CLANGTIDY
   auto inputTensor = inputTensors.back();
-
+  checkSingleTensor(inputTensor);
   std::vector<at::Tensor> outputs;
 
   if (getRank() == opts.rootRank) {
@@ -2133,6 +2298,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       OpType::ALLTOALL,
       opts.asyncOp,
       "xccl:all_to_all");
+}
+
+std::string getXcclVersion() {
+  auto xccl_version = ccl::get_library_version();
+  std::string versionString = std::to_string(xccl_version.major) + "." +
+      std::to_string(xccl_version.minor) + "." +
+      std::to_string(xccl_version.update);
+  return versionString;
 }
 
 } // namespace c10d
