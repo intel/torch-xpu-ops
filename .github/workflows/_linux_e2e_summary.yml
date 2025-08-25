@@ -1,4 +1,4 @@
-name: Linux E2E Test
+name: Linux E2E Summary
 
 on:
   workflow_call:
