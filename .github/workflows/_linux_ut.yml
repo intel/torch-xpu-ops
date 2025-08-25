@@ -401,7 +401,7 @@ jobs:
           path: ${{ github.workspace }}/ut_log
 
   distributed_ut_test:
-    runs-on: pytorch-06
+    runs-on: pvc_rolling
     if: ${{ contains(inputs.ut, 'xpu_distributed') && !contains(inputs.disabled_tests, 'disable_distribute') }}
     timeout-minutes: 60
     env:
