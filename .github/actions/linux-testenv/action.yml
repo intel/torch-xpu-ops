@@ -40,7 +40,7 @@ runs:
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
-        rm -rf ~/.triton /tmp/*inductor*
+        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
@@ -113,7 +113,7 @@ runs:
         TRANSFORMERS_VERSION_ID="$((cat .ci/docker/ci_commit_pins/huggingface-requirements.txt || echo 'transformers==4.54.0') 2>&1 |grep '^transformers==' |sed 's/.*==//')"
         TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
         TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
-        pip install pandas psutil scipy
+        pip install pandas psutil scipy soxr
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
           pip install transformers==${TRANSFORMERS_VERSION_ID}
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then

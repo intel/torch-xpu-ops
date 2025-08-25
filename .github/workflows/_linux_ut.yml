@@ -34,6 +34,7 @@ jobs:
   runner:
     runs-on: ${{ inputs.runner }}
     name: get-runner
+    if: ${{ ! contains(inputs.ut, 'distributed') }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
@@ -49,9 +50,10 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  test:
+  docker:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    if: ${{ ! contains(inputs.ut, 'distributed') }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -108,8 +110,61 @@ jobs:
             sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
 
+  host:
+    runs-on: ${{ inputs.runner }}
+    if: ${{ contains(inputs.ut, 'distributed') }}
+    env:
+      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
+      GH_TOKEN: ${{ github.token }}
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+    steps:
+      - name: Init test
+        run: |
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          sudo rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare test env on ${{ inputs.runner }}
+        uses: ./.github/actions/linux-testenv
+        with:
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+          python: ${{ inputs.python }}
+      - name: Run XPU UT Test
+        uses: ./.github/actions/linux-uttest
+        with:
+          ut_name: ${{ inputs.ut }}
+      - name: UT Test Results Summary
+        run: |
+          pip install junitparser
+          python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          if [ -e ut_failure_list.csv ];then
+              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
+          fi
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
+      - name: Upload XPU UT Failure list
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          if-no-files-found: ignore
+      - name: Reset Ptrace_scope
+        if: ${{ always() }}
+        run: |
+          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
+            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          fi
+
   summary:
-    needs: test
+    needs: [docker, host]
     if: ${{ ! cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
