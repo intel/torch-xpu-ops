@@ -444,7 +444,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     } else {
       buffers[r] = ar.buffers[r];
       handles[r] = ar.buffers[r]; // ar.ipc_handle[r];
-      signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
+      signal_pads[r] =
+          (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
     }
   }
   storeExchange.barrier(store, rank, world_size);

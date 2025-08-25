@@ -192,8 +192,6 @@ void un_allgather(
   unlink(server_name);
   auto s_listen = server_listen(server_name);
 
-  // MPI_Barrier(MPI_COMM_WORLD);
-
   pollfd fdarray[world];
   int recv_socks[world - 1];
 
