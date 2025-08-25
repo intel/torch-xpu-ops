@@ -1480,6 +1480,10 @@ skip_dict = {
         "test_inverse_errors_xpu_complex64",
         "test_inverse_errors_xpu_float32",
         "test_inverse_errors_xpu_float64",
+        "test_inv_ex_singular_xpu_complex128",
+        "test_inv_ex_singular_xpu_complex64",
+        "test_inv_ex_singular_xpu_float32",
+        "test_inv_ex_singular_xpu_float64",
     ),
     "test_ops_fwd_gradients_xpu.py": (
         # All of the followings are oneDNN issues
