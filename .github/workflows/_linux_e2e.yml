@@ -78,12 +78,11 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        TORCH_HOME: /tmp/.cache/_torch
-        HF_HOME: /tmp/.cache/_huggingface
         MODEL_ONLY_NAME: ${{ inputs.model }}
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

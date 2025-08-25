@@ -43,5 +43,7 @@ runs:
         if [ "${PWD}" != "/" ];then
           ls -al
           sudo chmod 777 -R torch-xpu-ops _temp _actions _tool || true
-          sudo rm -rf _temp
+          # mount HOME dir to use caches to save time
+          rm -rf _temp && mkdir _temp
+          ln -sf ${HOME} _temp/_github_home
         fi
