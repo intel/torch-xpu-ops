@@ -24,11 +24,13 @@ skip_dict = {
         "test_mixture_of_experts_offload_false_no_shard_xpu",
         "test_mixture_of_experts_offload_false_none_xpu",
         "test_mixture_of_experts_offload_false_shard_grad_op_xpu",
+        "test_mixture_of_experts_offload_true_no_shard_xpu",
         "test_mixture_of_experts_offload_true_none_xpu",
         "test_mixture_of_experts_offload_true_shard_grad_op_xpu",
         "test_mixture_of_experts_with_delay_before_free_offload_false_no_shard_xpu",
         "test_mixture_of_experts_with_delay_before_free_offload_false_none_xpu",
         "test_mixture_of_experts_with_delay_before_free_offload_false_shard_grad_op_xpu",
+        "test_mixture_of_experts_with_delay_before_free_offload_true_no_shard_xpu",
         "test_mixture_of_experts_with_delay_before_free_offload_true_none_xpu",
         "test_mixture_of_experts_with_delay_before_free_offload_true_shard_grad_op_xpu",
         "test_nested_always_wrap_model_offload_false_no_shard_xpu",
@@ -77,7 +79,11 @@ skip_dict = {
         "test_parity_with_ddp_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_fx.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_input.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_input.py": (
+        # will bring back after oneccl upgrade to 2021.16.1
+        "test_input_type_dict_xpu",
+        "test_input_type_list_xpu",
+    ),
     "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": (
         "test_transformer_no_grad_mixed_precision_True_xpu",

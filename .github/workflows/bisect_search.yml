@@ -16,7 +16,7 @@ on:
       search_check:
         type: string
         default: ''
-        description: Test case type, 'performance, accuracy, <ut_regressions/ut_extended/ut_xpu> or others'
+        description: Test case type, 'performance, accuracy, <op_regressions/op_extended/ut_xpu> or others'
       search_case:
         required: true
         type: string
@@ -79,10 +79,6 @@ jobs:
               -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/_tools
-        HF_HOME: /tmp/.cache/huggingface
-        TORCH_HOME: /tmp/.cache/torch
-        GH_TOKEN: ${{ github.token }}
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
@@ -90,6 +86,10 @@ jobs:
         TORCH_XPU_ARCH_LIST: pvc
         USE_XCCL: 0
         USE_KINETO: 0
+    env:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
     defaults:
       run:
         shell: bash -xe {0}
