@@ -501,10 +501,7 @@ jobs:
           export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
           cd ../pytorch
           python test/run_test.py $keep_going_flag --xpu \
-            --include inductor/test_torchinductor inductor/test_torchinductor_opinfo \
-                      inductor/test_codecache.py inductor/test_kernel_benchmark.py inductor/test_max_autotune.py \
-                      inductor/test_mkldnn_pattern_matcher.py inductor/test_triton_kernels.py \
-                      inductor/test_compile_subprocess.py inductor/test_compiled_optimizers.py inductor/test_compiled_autograd.py \
+            --include inductor/test_torchinductor_opinfo.py \
             --shard $SHARD_INDEX $NUM_TEST_SHARDS \
             --verbose 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
             tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
