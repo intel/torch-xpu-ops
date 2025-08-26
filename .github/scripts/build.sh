@@ -53,6 +53,12 @@ export USE_STATIC_MKL=1
 export USE_XCCL=0
 export USE_ONEMKL_XPU=0
 
+if [ "${PYTORCH_VERSION}" == "CRI_master_next" ];then
+    echo -e "\n==================== Build for CRI ===================="
+    export USE_KINETO=OFF
+    export TORCH_XPU_ARCH_LIST=cri
+fi
+
 # Build
 sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
 if [ -n "${ONEDNN_COMMIT}" ];then

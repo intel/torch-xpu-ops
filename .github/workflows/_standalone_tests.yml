@@ -38,6 +38,11 @@ on:
         type: string
         default: ''
         description: Dependency path. If not set, will pull latest to workspace
+      artifact_name:
+        required: false
+        type: string
+        default: ''
+        description: Artifact name for uploading file.
 
 permissions: read-all
 
@@ -49,6 +54,7 @@ jobs:
       standalone_ut_runable: ${{ inputs.test_type }}
       MAX_RETRIES: 3
       DEPENDENCY_DIR: ${{ inputs.dep_path }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -68,7 +74,7 @@ jobs:
         if: ${{ inputs.pytorch != 'nightly_wheel' }}
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.artifact_name }}
           path: ${{ github.workspace }}
       - name: Install Pytorch XPU
         run: |
@@ -83,10 +89,17 @@ jobs:
           set -e -o pipefail
           source activate xpu_op_test
           pip install pytest pytest-timeout
-          if [[ -z "${{ inputs.dep_path }}" ]]; then
-            bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh
+          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+            PYTORCH_VERSION="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
+          else
+            PYTORCH_REPO="https://github.com/intel-innersource/frameworks.ai.pytorch.private-gpu.git"
+            PYTORCH_VERSION="${{ inputs.pytorch }}"
           fi
-          source ${{ github.workspace }}/.github/scripts/env.sh
+          if [[ -z "${{ inputs.dep_path }}" ]]; then
+            bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh ${PYTORCH_VERSION}
+          fi
+          source ${{ github.workspace }}/.github/scripts/env.sh ${PYTORCH_VERSION}
           mkdir -p ${{ github.workspace }}/ut_log
           git clone https://github.com/intel-innersource/frameworks.ai.pytorch.gpu-models.git
           cd frameworks.ai.pytorch.gpu-models/presi-models/test
@@ -119,7 +132,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.artifact_name }}
           path: ${{ github.workspace }}/ut_log
   
   standalone_ut_test_results_check:
@@ -132,7 +145,7 @@ jobs:
       - name: Download XPU Standalone UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.artifact_name }}
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         shell: bash
@@ -156,5 +169,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}-checked
+          name: Inductor-XPU-Standalone-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.artifact_name }}-checked
           path: ${{ github.workspace }}/ut_log

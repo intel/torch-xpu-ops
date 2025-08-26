@@ -103,8 +103,8 @@ jobs:
             echo "standalone_tests=false" | tee -a "${GITHUB_OUTPUT}"
           fi
 
-  preci-linux-build:
-    name: preci-linux
+  preci-linux-build-jgs:
+    name: preci-linux-jgs
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all') }}
     needs: [preci-conditions-filter]
     secrets: inherit
@@ -114,11 +114,12 @@ jobs:
       runner: private_torch_ci
       python: 3.12
       onednn: 570d235a5473a6b74f9486680b301f7bd06c7487
+      artifact_name: jgs
 
-  preci-standalone-ut:
-    name: preci-linux / standalone ut
+  preci-standalone-ut-jgs:
+    name: preci-linux-jgs / standalone ut
     if: ${{ needs.preci-conditions-filter.outputs.standalone_tests }}
-    needs: [preci-conditions-filter, preci-linux-build]
+    needs: [preci-conditions-filter, preci-linux-build-jgs]
     secrets: inherit
     uses: ./.github/workflows/_standalone_tests.yml
     with:
@@ -127,11 +128,39 @@ jobs:
       ut: op_standalone
       python: 3.12
       test_type: 7
+      artifact_name: jgs
+  
+  preci-linux-build-cri:
+    name: preci-linux-cri
+    if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_all') }}
+    needs: [preci-conditions-filter]
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: CRI_master_next
+      runner: private_torch_ci_cri
+      python: 3.12
+      onednn: 570d235a5473a6b74f9486680b301f7bd06c7487
+      artifact_name: cri
+  
+  preci-standalone-ut-cri:
+    name: preci-linux-cri / standalone ut
+    if: ${{ needs.preci-conditions-filter.outputs.standalone_tests }}
+    needs: [preci-conditions-filter, preci-linux-build-cri]
+    secrets: inherit
+    uses: ./.github/workflows/_standalone_tests.yml
+    with:
+      pytorch: CRI_master_next
+      runner: private_torch_ci_cri
+      ut: op_standalone
+      python: 3.12
+      test_type: 16
+      artifact_name: cri
 
   preci-linux-ut:
     if: ${{ needs.preci-conditions-filter.outputs.standalone_tests == 'false' }}
     name: preci-linux
-    needs: [preci-conditions-filter, preci-linux-build]
+    needs: [preci-conditions-filter, preci-linux-build-jgs]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
@@ -141,7 +170,7 @@ jobs:
   preci-linux-e2e:
     if: ${{ !contains(needs.preci-conditions-filter.outputs.disabled_tests, 'disable_e2e') && needs.preci-conditions-filter.outputs.standalone_tests == 'false'}}
     name: preci-linux / e2e_test
-    needs: [preci-conditions-filter, preci-linux-build]
+    needs: [preci-conditions-filter, preci-linux-build-jgs]
     runs-on: pvc_e2e
     env:
       GH_TOKEN: ${{ github.token }}

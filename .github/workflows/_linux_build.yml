@@ -28,11 +28,6 @@ on:
         type: string
         default: 'linux.idc.xpu'
         description: Runner label
-      triton:
-        required: false
-        type: string
-        default: ''
-        description: Triton commit. Use pytorch pined commit by default
       onednn:
         required: false
         type: string
@@ -43,6 +38,11 @@ on:
         type: string
         default: ''
         description: Dependency path. If not set, will pull latest to workspace
+      artifact_name:
+        required: false
+        type: string
+        default: ''
+        description: Artifact name for uploading file.
     outputs:
       torch_commit_id:
         description: The commit id of the torch build
@@ -79,27 +79,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
-      - name: Build Triton XPU
-        run: |
-          source activate xpu_op_build
-          cd ../ && rm -rf pytorch
-          git clone https://github.com/intel-innersource/frameworks.ai.pytorch.private-gpu pytorch
-          cd pytorch
-          if [ -z ${{ inputs.triton }} ]; then
-            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          fi
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            pip install cmake ninja pybind11
-            rm -rf pytorch_triton_xpu-*.whl
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME}
-            cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
-          fi
       - name: Build Pytorch XPU
         run: |
           set -xe -o pipefail
@@ -122,9 +101,9 @@ jobs:
           fi
           # toolchain
           if [[ -z "${{ inputs.dep_path }}" ]]; then
-            bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/setup_dependencies.sh
+            bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/setup_dependencies.sh ${PYTORCH_VERSION}
           fi
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${PYTORCH_VERSION}
 
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
@@ -136,7 +115,7 @@ jobs:
       - name: Torch Config
         run: |
           source activate xpu_op_build
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.pytorch }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -145,7 +124,7 @@ jobs:
         id: build_version
         run: |
           source activate xpu_op_build
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.pytorch }}
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
           echo "TORCH_XPU_OPS_COMMIT_ID=$(git -C ${{ github.workspace }}/pytorch/third_party/torch-xpu-ops rev-parse HEAD)"
           echo "ONEDNN_COMMIT_ID=$(git -C ${{ github.workspace }}/pytorch/build/xpu_mkldnn_proj-prefix/src/xpu_mkldnn_proj rev-parse HEAD)"
@@ -153,22 +132,16 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ inputs.artifact_name }}
           path: ${{ github.workspace }}/torch*.whl
-      - name: Upload Triton Wheel
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Triton-Wheel-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/pytorch_triton_xpu-*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ inputs.artifact_name }}
           path: ${{ github.workspace }}/pytorch_*.log
       - name: Cleanup
         if: always()
         run: |
           chmod 777 . -R
-          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl pytorch_triton_xpu-*.whl
+          rm -rf pytorch torch-xpu-ops pytorch_*.log torch*.whl
