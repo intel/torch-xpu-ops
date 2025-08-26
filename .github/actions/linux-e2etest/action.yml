@@ -41,7 +41,6 @@ runs:
               contains_status="continue"
             }
         }
-        xpu_num=$(clinfo --list |awk 'BEGIN{gpu=0;}{if(gpu==1 && $0~/Platform/){gpu=0;}; if(gpu==1){print $0;}; if($0~/Platform.*Graphics/){gpu=1;}}' |wc -l)
         cores_per_instance="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${xpu_num}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
         export OMP_NUM_THREADS=${cores_per_instance}
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')

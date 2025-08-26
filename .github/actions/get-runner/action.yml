@@ -9,6 +9,10 @@ outputs:
     value: ${{ steps.runner.outputs.render_id }}
   hostname:
     value: ${{ steps.runner.outputs.hostname }}
+  xpu_num:
+    value: ${{ steps.runner.outputs.xpu_num }}
+  pytest_extra_args:
+    value: ${{ steps.runner.outputs.pytest_extra_args }}
 
 permissions: read-all
 
@@ -31,6 +35,21 @@ runs:
         df -h
         cat /etc/os-release
         uname -a
+        clinfo --list
+        xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
+          if(gpu==1 && $0~/Platform/){gpu=0;}; if(gpu==1){print $0;}; if($0~/Platform.*Graphics/){gpu=1;}
+        }' |wc -l)"
+        pytest_extra_args="$(echo |awk -v x="${xpu_num}" '{
+          if (x > 0) {
+            for (i=0;i<x;i++) {
+              printf(" --tx popen//env:ZE_AFFINITY_MASK=%d ", i);
+            }
+          }else {
+            printf(" -n 1 ");
+          }
+        }')"
+        echo "xpu_num=${xpu_num}" |tee -a ${GITHUB_OUTPUT}
+        echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
     - name: Cleanup host
       shell: bash -xe {0}
       run: |
