@@ -79,11 +79,8 @@ skip_dict = {
         "test_parity_with_ddp_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_fx.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_input.py": (
-        # will bring back after oneccl upgrade to 2021.16.1
-        "test_input_type_dict_xpu",
-        "test_input_type_list_xpu",
-    ),
+    # will bring back after oneccl upgrade to 2021.16.1
+    # "../../../../test/distributed/fsdp/test_fsdp_input.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_multiple_forward.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_multiple_wrapping.py": (
         "test_transformer_no_grad_mixed_precision_True_xpu",
@@ -101,4 +98,8 @@ skip_dict = {
     #    "test_root_module_is_not_FSDP_xpu",
     # ),
     "../../../../test/distributed/fsdp/test_utils.py": None,
+    "distributed/test_c10d_xccl.py": (
+        # will bring back after oneccl upgrade to 2021.16.1
+        "test_xccl_barrier",
+    ),
 }
