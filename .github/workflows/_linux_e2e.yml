@@ -56,6 +56,7 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
+      xpu_num: ${{ steps.runner-info.outputs.xpu_num }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -79,6 +80,7 @@ jobs:
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         MODEL_ONLY_NAME: ${{ inputs.model }}
+        xpu_num: ${{ needs.runner.outputs.xpu_num }}
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
