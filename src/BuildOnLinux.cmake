@@ -134,6 +134,27 @@ else()
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
+if (USE_CUTLASS)
+  foreach(sycl_src ${ATen_XPU_CUTLASS_SYCL_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycl-cutlass-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      SHARED
+      SYCL_SOURCES ${sycl_src})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+
+    # Decouple with PyTorch cmake definition.
+    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
+    # Set Compile options for cutlass sycl kernels
+    target_compile_definitions(${sycl_lib} PRIVATE ${CUTLASS_SYCL_COMPILE_DEFINITIONS})
+    target_include_directories(${sycl_lib} PRIVATE ${CUTLASS_SYCL_INCLUDE_DIRS})
+    target_compile_options(${sycl_lib} PRIVATE -Xspirv-translator -spirv-ext=+SPV_INTEL_split_barrier)
+  endforeach()
+endif()
+
 foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
   torch_compile_options(${lib})

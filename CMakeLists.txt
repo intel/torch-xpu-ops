@@ -56,6 +56,11 @@ if(USE_XCCL)
   endif()
 endif()
 
+set(USE_CUTLASS ON)
+if (USE_CUTLASS)
+  include(${TORCH_XPU_OPS_ROOT}/cmake/CUTLASS.cmake)
+endif()
+
 if(BUILD_TEST)
   add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/sycl ${CMAKE_BINARY_DIR}/test_sycl)
 endif()
