@@ -8,14 +8,13 @@
 #ifdef USE_C10D_XCCL
 namespace c10d {
 
-// This definition will later be moved to a common header for ProcessGroups NCCL/Gloo/XCCL
+// This definition will later be moved to a common header for ProcessGroups
+// NCCL/Gloo/XCCL
 #if defined(__linux__)
 struct DumpPipe {
   DumpPipe(int rank) {
-    std::string fileStem =
-        getCvarString({"TORCH_FR_DEBUG_INFO_PIPE_FILE"}, "");
-    if (fileStem.empty() ||
-        getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0) <= 0) {
+    std::string fileStem = getCvarString({"TORCH_FR_DEBUG_INFO_PIPE_FILE"}, "");
+    if (fileStem.empty() || getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 0) <= 0) {
       return;
     }
     TORCH_CHECK(!fileStem.empty(), "TORCH_FR_DEBUG_INFO_PIPE_FILE is empty");
@@ -33,8 +32,9 @@ struct DumpPipe {
         ", Error: ",
         std::strerror(errno));
     fd_ = open(filename.c_str(), O_RDONLY | O_NONBLOCK);
-    LOG(INFO) << "Pipe file " << filename
-              << " has been opened, write to it to trigger ProcessGroup Debug Dump.";
+    LOG(INFO)
+        << "Pipe file " << filename
+        << " has been opened, write to it to trigger ProcessGroup Debug Dump.";
     TORCH_CHECK(fd_ != -1, "Error opening named pipe ", filename);
   }
   bool shouldDump() {
@@ -89,5 +89,5 @@ class HeartbeatMonitorXCCL {
   std::thread xcclHeartbeatMonitorThread_;
   std::atomic<bool> terminateHeartbeatMonitorThread_{false};
 };
-}
+} // namespace c10d
 #endif // USE_C10D_XCCL
