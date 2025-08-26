@@ -123,9 +123,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     static c10::intrusive_ptr<Options> create() {
       return c10::make_intrusive<Options>();
     }
-
-    std::vector<uint64_t> global_ranks_in_group;
-    std::string group_name;
   };
 
   ProcessGroupXCCL(

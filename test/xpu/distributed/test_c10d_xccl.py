@@ -1,16 +1,21 @@
 # Owner(s): ["oncall: distributed"]
 
+import json
 import math
 import os
+import pickle
 import random
 import signal
 import sys
+import tempfile
+import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import auto, Enum
 from unittest import mock
 
 import torch
+import torch._C._distributed_c10d
 import torch.distributed as c10d
 
 if not c10d.is_available() or not c10d.is_xccl_available():
@@ -627,6 +632,318 @@ class CommTest(MultiProcessTestCase):
                 )
 
 
+class XCCLTraceTestBase(MultiProcessTestCase):
+    def setUp(self):
+        super().setUp()
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "1000"
+        self.tempdir = tempfile.TemporaryDirectory()
+        os.environ["TORCH_FR_DUMP_TEMP_FILE"] = self._trace_basename()
+        os.environ["TORCH_FR_DEBUG_INFO_PIPE_FILE"] = self._trace_basename()
+        self._spawn_processes()
+
+    @classmethod
+    def _run(
+        cls,
+        parent_conn,
+        rank: int,
+        test_name: str,
+        file_name: str,
+        parent_pipe,
+        **kwargs,
+    ) -> None:
+        cls.parent = parent_conn
+        super()._run(rank, test_name, file_name, parent_pipe)
+
+    @property
+    def local_device(self):
+        return torch.device("xpu", self.rank_to_GPU[self.rank][0])
+
+    def _join_processes(self, fn):
+        # We need to patch sys.exit() as skip_if will use sys.exit() and
+        # the exit code from the this process will not be caught.
+        with mock.patch("sys.exit"):
+            fn()
+        super()._join_processes(fn)
+
+    def _spawn_processes(self) -> None:
+        proc = torch.multiprocessing.get_context("spawn").Process
+        self.children_pipes = []
+        parent_pipes = []
+        for _ in range(self.world_size):
+            parent_conn, child_conn = torch.multiprocessing.Pipe()
+            self.children_pipes.append(child_conn)
+            parent_pipes.append(parent_conn)
+        piter = iter(parent_pipes)
+
+        def wrap(*positional, args, **kwargs):
+            args = (next(piter), *args)
+            return proc(*positional, args=args, **kwargs)
+
+        self._start_processes(wrap)
+
+    def _create_process_group_xccl(
+        self, timeout=timedelta(seconds=600), device_id=None
+    ):
+        store = c10d.FileStore(self.file_name, self.world_size)
+        c10d.init_process_group(
+            "xccl",
+            world_size=self.world_size,
+            rank=self.rank,
+            store=store,
+            timeout=timeout,
+            device_id=device_id,
+        )
+        pg = c10d.distributed_c10d._get_default_group()
+        return pg
+
+    def tearDown(self):
+        super().tearDown()
+        try:
+            os.remove(self.file_name)
+        except OSError:
+            pass
+
+    @property
+    def world_size(self):
+        return 2
+
+    @property
+    def rank_to_GPU(self):
+        # return rank to GPU map
+        return init_multigpu_helper(self.world_size, "xccl")
+
+    def _trace_basename(self):
+        # we pass the base to the env, and the dump util will append rank
+        return os.path.join(self.tempdir.name, "trace_")
+
+    def _trace_name(self, rank):
+        return self._trace_basename() + str(rank)
+
+    def started_or_scheduled(self, timing_enabled=False):
+        return "started" if timing_enabled else "scheduled"
+
+
+class XCCLTraceTest(XCCLTraceTestBase):
+    def _verify_trace(self, t, include_collectives, is_json, timing_enabled=False):
+        print("Torch Comm", t)
+        ver = t["version"]
+        self.assertEqual(ver, "2.10")
+        comm_lib_version = t["comm_lib_version"]
+        torch_comm_lib_version = torch._C._distributed_c10d.get_xccl_version()
+        self.assertEqual(comm_lib_version, torch_comm_lib_version)
+        pg_config = t["pg_config"]
+        print("pg_config", pg_config)
+        self.assertEqual(len(pg_config), 1)
+        default_pg_info = pg_config["0"]
+        self.assertIn("name", default_pg_info)
+        self.assertIn("desc", default_pg_info)
+        self.assertIn("ranks", default_pg_info)
+        pg_status = t["pg_status"]
+        self.assertEqual(len(pg_status), 1)
+        self.assertEqual(str(pg_status["0"]["last_enqueued_collective"]), "2")
+        self.assertEqual(str(pg_status["0"]["last_completed_collective"]), "2")
+        self.assertEqual(
+            str(pg_status["0"]["last_started_collective"]),
+            "2" if timing_enabled else "-1",
+        )
+        global_ranks = pg_config["0"]["ranks"]
+        self.assertEqual(len(json.loads(global_ranks)), self.world_size)
+        if include_collectives:
+            self.assertEqual(len(t["entries"]), 2)
+            t = t["entries"]
+            last = t[-1]
+            self.assertEqual(last["thread_id"], str(threading.current_thread().ident))
+            self.assertEqual(last["thread_name"], "fr_test_thread")
+            self.assertEqual(last["process_group"], ("0", "default_pg"))
+            self.assertEqual(last["state"], "completed")
+            s = last["time_discovered_started_ns"]
+            f = last["time_discovered_completed_ns"]
+            self.assertEqual(last["record_id"], 1)
+            self.assertIsNotNone(f)
+            if timing_enabled:
+                self.assertIsNotNone(s)
+                self.assertTrue(s <= f)
+            # we don't collect stack traces in JSON at the moment
+            if not is_json:
+                self.assertIn("test_c10d_xccl.py", str(last["frames"]))
+            self.assertEqual(last["input_sizes"], ((3, 4),))
+            self.assertEqual(last["input_dtypes"], ["Float"])
+            self.assertEqual(last["output_sizes"], ((3, 4),))
+            self.assertEqual(last["output_dtypes"], ["Float"])
+            self.assertEqual(last["collective_seq_id"], 2)
+            self.assertEqual(last["timeout_ms"], 600000)
+            now = datetime.now()
+            event_created_time = datetime.fromtimestamp(
+                last["time_created_ns"] / 1000000000
+            )
+            before_test = now - timedelta(minutes=1)
+            self.assertTrue(before_test < event_created_time < now)
+            if timing_enabled:
+                # very loose bounds, measured 0.036 ms on devgpu
+                self.assertTrue(0 < last["duration_ms"] < 100)
+            else:
+                self.assertTrue("duration_ms" not in last)
+        else:
+            self.assertTrue("entries" not in t)
+
+    def load_libpthread_or_libc(self):
+        import ctypes.util
+
+        for base in ("pthread", "c"):
+            path = ctypes.util.find_library(base)
+            if path:
+                try:
+                    return ctypes.CDLL(path)
+                except OSError:
+                    continue
+        raise RuntimeError("Could not load pthread or libc")
+
+    # Directly set thread name using threading.current_thread().name does not work
+    # because we use pthread_getname_np to get the thread’s OS-level name in C++
+    def set_thread_name(self, name):
+        import ctypes
+
+        lib = self.load_libpthread_or_libc()
+        pthread_self = lib.pthread_self
+        pthread_self.restype = ctypes.c_void_p
+        pthread_setname_np = lib.pthread_setname_np
+        pthread_setname_np.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
+        # Get current pthread handle
+        tid = pthread_self()
+
+        # Set name
+        pthread_setname_np(tid, name.encode())
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize("include_collectives", [True, False])
+    def test_short_pickle(self, include_collectives, timing_enabled=False):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+        device = self.local_device
+        self.set_thread_name("fr_test_thread")
+        a = torch.full((3, 4), float(self.rank), device=device)
+        for _ in range(2):
+            f = pg.allreduce(a)
+        f.wait()
+        torch.xpu.synchronize(device=device)
+        # gah ok so now the duration_ms is populated best-effort since it can only happen outside "dump()" api
+        time.sleep(1)
+        t = pickle.loads(
+            torch._C._distributed_c10d._dump_xccl_trace(
+                includeCollectives=include_collectives
+            )
+        )
+        self._verify_trace(
+            t,
+            include_collectives=include_collectives,
+            is_json=True,
+            timing_enabled=timing_enabled,
+        )
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_dump_pipe(self):
+        def open_file_with_timeout(file_path, mode, timeout=1.0):
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                if os.path.exists(file_path):
+                    return open(file_path, mode)
+                time.sleep(0.1)
+            raise FileNotFoundError
+
+        if self.rank == self.MAIN_PROCESS_RANK:
+            for c in self.children_pipes:
+                self.assertEqual(c.recv(), "next")
+
+            dump_file = self._trace_name(rank=0)
+            pipe_file = dump_file + ".pipe"
+            with open_file_with_timeout(pipe_file, "w") as f:
+                f.write("1\n")
+            with open_file_with_timeout(dump_file, "rb", timeout=10.0) as f:
+                self.assertTrue("all_reduce" in str(pickle.load(f)))
+
+            for c in self.children_pipes:
+                c.send("next")
+            return
+
+        pg = self._create_process_group_xccl()
+        device = self.local_device
+        a = torch.full((3, 4), float(self.rank), device=device)
+        for _ in range(2):
+            f = pg.allreduce(a)
+        f.wait()
+        torch.xpu.synchronize(device=device)
+        self.parent.send("next")
+        self.parent.recv()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_long(self):
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        device = self.local_device
+        a = torch.full((3, 4), float(self.rank), device=device)
+        for _ in range(2):
+            # test some other primitives to make sure
+            # their strings are valid
+            xs = [torch.ones(3, 4, device=device)]
+            pg.broadcast(xs).wait()
+            pg.allreduce(xs).wait()
+            #pg.reduce(xs).wait() //Currently failing on XPU
+            ys = [[torch.empty(3, 4, device=device) for _ in range(self.world_size)]]
+            pg.allgather(ys, xs).wait()
+            pg.reduce_scatter(xs, ys).wait()
+            f = pg.allreduce(a)
+        f.wait()
+        torch.xpu.synchronize(device=device)
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+        t = t["entries"]
+        self.assertEqual(len(t), 10)
+        first = t[0]
+        last = t[-1]
+        self.assertEqual(last["profiling_name"], "xccl:all_reduce")
+        self.assertEqual(last["state"], "completed")
+        self.assertIn("test_c10d_xccl.py", str(last["frames"]))
+        self.assertEqual(last["input_sizes"], ((3, 4),))
+        self.assertEqual(last["input_dtypes"], ["Float"])
+        self.assertEqual(last["output_sizes"], ((3, 4),))
+        self.assertEqual(last["output_dtypes"], ["Float"])
+        self.assertEqual(last["timeout_ms"], 600000)
+        self.assertEqual(last["collective_seq_id"] - first["collective_seq_id"], 9)
+        dist.destroy_process_group()
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_barrier_profiling(self):
+        os.environ["TORCH_FR_BUFFER_SIZE"] = "10"
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        device = self.local_device
+        a = torch.full((3, 4), float(self.rank), device=device)
+        f = pg.barrier()
+        f = pg.allreduce(a)
+        f.wait()
+        torch.xpu.synchronize(device=device)
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+        t = t["entries"]
+        self.assertEqual(len(t), 2)
+        first = t[0]
+        last = t[-1]
+        self.assertEqual(first["profiling_name"], "xccl:all_reduce_barrier")
+        self.assertEqual(last["profiling_name"], "xccl:all_reduce")
+        dist.destroy_process_group()
+
+
+instantiate_parametrized_tests(XCCLTraceTest)
 instantiate_parametrized_tests(ProcessGroupXCCLTest)
 
 
