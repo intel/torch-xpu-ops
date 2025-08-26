@@ -186,13 +186,17 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
           gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
-          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
-            --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | \
-            grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
-          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
-          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
-          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
+          count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped" --jq 'length')
+          if [ "$count" -gt 0 ]; then
+            echo -e "$count issues with skipped label found"
+            gh api "repos/${{ github.repository }}/issues?labels=skipped" \
+              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+            awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | \
+              grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
+            awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
+            cat issues_temp.log | awk '{print $1}' >> Known_issue.log
+            awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
+          fi
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log

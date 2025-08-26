@@ -25,6 +25,8 @@ runs:
         pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
           2> ${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a reproduce.log
+        echo -e "Reproduce Command: pytest -sv $failed_case" | tee -a reproduce.log
     - name: op_transformers
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_transformers' }}
@@ -36,6 +38,8 @@ runs:
           --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
           2> ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test.log
+        echo -e "File Path: cd pytorch" | tee -a reproduce.log
+        echo -e "Reproduce Command: pytest -sv test/$failed_case -k xpu" | tee -a reproduce.log
     - name: op_extended
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' }}
@@ -48,6 +52,8 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a reproduce.log
+        echo -e "Reproduce Command: pytest -sv $failed_case" | tee -a reproduce.log
     - name: op_ut
       shell: timeout 18000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
@@ -84,6 +90,8 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a reproduce.log
+        echo -e "Reproduce Command: pytest -sv $failed_case" | tee -a reproduce.log
     - name: torch_xpu
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
