@@ -1181,7 +1181,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f" pytest {test_options} -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
+            f" pytest {test_options} --junit-xml=./ut_op_with_skip_{test_case}.xml "
             + test_case
         )
         test_command += skip_options
@@ -1192,13 +1192,13 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f" pytest {test_options} -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
+            f" pytest {test_options} --junit-xml=./ut_op_with_skip_{test_case}.xml "
             + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f" pytest {test_options} -v --junit-xml=./ut_op_with_skip_{test_case}.xml "
+            f" pytest {test_options} --junit-xml=./ut_op_with_skip_{test_case}.xml "
             + test_case
         )
     return os.system(test_command)

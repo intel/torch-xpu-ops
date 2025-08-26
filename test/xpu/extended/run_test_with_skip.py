@@ -29,7 +29,7 @@ test_options = f" --timeout 600 --timeout_method=thread {parallel_options} "
 
 os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
 test_command = (
-    f" pytest {test_options} -v --junit-xml=./ut_extended.xml test_ops_xpu.py "
+    f" pytest {test_options} --junit-xml=./ut_extended.xml test_ops_xpu.py "
 )
 test_command += skip_options
 res = os.system(test_command)

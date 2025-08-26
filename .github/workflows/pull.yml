@@ -22,7 +22,7 @@ concurrency:
 jobs:
   preci-lint-check:
     if: ${{ github.repository_owner == 'intel' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout torch-xpu-ops
@@ -52,7 +52,7 @@ jobs:
 
   conditions-filter:
     if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ github.token }}
@@ -93,23 +93,40 @@ jobs:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all')}}
     needs: [conditions-filter, preci-lint-check]
     secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      test_type: build-cicd
       pytorch: main
-      torch_xpu_ops: cicd
 
   linux-ut:
     needs: [conditions-filter, linux-build]
+    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut')}}
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [op_regression,op_transformers,op_extended,op_ut,op_regression_dev1]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: linux.idc.xpu
-      test_type: build-cicd-ut
+      runner: pvc_rolling
       pytorch: main
-      torch_xpu_ops: cicd
-      ut: ut_regression,ut_transformers,ut_extended,ut_op,xpu_dev1,xpu_distributed
-      disabled_tests: ${{ needs.conditions-filter.outputs.disabled_tests }}
+      ut: ${{ matrix.ut_name }}
+
+  linux-distributed:
+    needs: [conditions-filter, linux-build]
+    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute')}}
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [xpu_distributed]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: pvc_rolling
+      pytorch: main
+      ut: ${{ matrix.ut_name }}
 
   linux-e2e:
     name: linux-e2e
@@ -122,7 +139,6 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: build-cicd-e2e
       pytorch: main
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
@@ -131,8 +147,6 @@ jobs:
     permissions: write-all
     needs: [linux-e2e]
     uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: build-cicd-e2e
 
   windows:
     name: windows

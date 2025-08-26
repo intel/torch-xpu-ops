@@ -1,10 +1,6 @@
 name: Setup Test Environment
 
 inputs:
-  test_type:
-    required: true
-    type: string
-    description: Test scope
   pytorch:
     type: string
     default: 'main'
@@ -12,18 +8,14 @@ inputs:
   torch_xpu_ops:
     type: string
     default: 'main'
-    description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
-  oneapi:
-    type: string
-    default: 'installed'
-    description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
+    description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
     default: '3.10'
     description: Python version
   suite:
     type: string
-    default: 'huggingface'
+    default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
 permissions: read-all
@@ -48,56 +40,16 @@ runs:
         dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
-        rm -rf ~/.triton /tmp/*inductor*
+        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
         path: torch-xpu-ops
-    - name: Install oneAPI DLE
-      shell: bash -xe {0}
-      if: ${{ inputs.oneapi != 'installed' }}
-      run: |
-        rm -rf ~/intel ~/.intel
-        wget -q -O oneapi.sh "${{ inputs.oneapi }}"
-        bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
-        echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
-        source ${HOME}/intel/oneapi/setvars.sh
-        sycl-ls && icpx -v
     - name: Download Pytorch wheel
-      if: ${{ ! contains(inputs.test_type, 'wheel') }}
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
         pattern: Torch-XPU-Wheel-*
-    - name: Install E2E Requirements
-      if: ${{ contains(inputs.test_type, 'e2e') }}
-      shell: bash -xe {0}
-      run: |
-        pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-        pip install pandas psutil scipy
-        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
-          pip install transformers==4.44.2
-        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          pip install timm==1.0.14
-        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          rm -rf ./benchmark
-          git clone https://github.com/pytorch/benchmark
-          cd benchmark
-          git checkout e03a63be43e33596f7f0a43b0f530353785e4a59
-          pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-          python install.py --continue_on_fail
-        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
-          rm -rf ./benchmark
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
-          cd benchmark
-          pip install -r requirements.txt
-          pip install -U transformers==4.44.2 timm==1.0.14 pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-          python install.py --continue_on_fail
-        fi
-        pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
-        pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -122,15 +74,15 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
-        if [[ "${{ inputs.test_type }}" == *"cicd"* ]];then
+        if [ "${{ github.event_name }}" == "pull_request" ];then
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
         else
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         fi
         git status && git diff && git show -s
+        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
-      if: ${{ inputs.torch_xpu_ops != 'skipped' }}
       run: |
         cd pytorch
         rm -rf third_party/torch-xpu-ops
@@ -145,7 +97,7 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ inputs.torch_xpu_ops }}" == "cicd" ] || [ "${{ inputs.torch_xpu_ops }}" == "triggered" ];then
+        if [ "${{ github.event_name }}" == "pull_request" ];then
           cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
         else
@@ -154,6 +106,50 @@ runs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
         fi
         git status && git diff && git show -s
+    - name: Install E2E Requirements
+      shell: bash -xe {0}
+      run: |
+        cd pytorch
+        TRANSFORMERS_VERSION_ID="$((cat .ci/docker/ci_commit_pins/huggingface-requirements.txt || echo 'transformers==4.54.0') 2>&1 |grep '^transformers==' |sed 's/.*==//')"
+        TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
+        TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
+        pip install pandas psutil scipy soxr
+        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          pip install transformers==${TRANSFORMERS_VERSION_ID}
+        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          rm -rf ./benchmark
+          git clone https://github.com/pytorch/benchmark
+          cd benchmark
+          git checkout ${TORCHBENCH_COMMIT_ID}
+          pip install -r requirements.txt
+          python install.py --continue_on_fail
+          pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          # for dlrm
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
+          rm -rf ./benchmark
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
+          cd benchmark
+          TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
+          pip install -r requirements.txt
+          python install.py --continue_on_fail
+          pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
+          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          # for dlrm
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+        fi
+        # install the corresponding torchao
+        pip uninstall -y torchao
+        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/xpu
+        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu
+        else
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        fi
     - name: Torch Config
       shell: bash -xe {0}
       run: |
@@ -166,3 +162,8 @@ runs:
         python -c "import triton; print(triton.__version__)"
         python pytorch/torch/utils/collect_env.py
         pip list |grep -E 'torch|intel'
+        TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
+          echo "Torch is re-installed when installing deps, please check"
+          exit
+        fi

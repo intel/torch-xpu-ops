@@ -30,17 +30,16 @@ if [ "${TORCH_XPU_OPS_COMMIT,,}" == "pinned" ];then
     TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
     TORCH_XPU_OPS_COMMIT="$(cat ${WORKSPACE}/pytorch/third_party/xpu.txt)"
 fi
-if [ "${TORCH_XPU_OPS_COMMIT,,}" != "cicd" ];then
-    rm -rf ${WORKSPACE}/torch-xpu-ops
-    git clone ${TORCH_XPU_OPS_REPO} ${WORKSPACE}/torch-xpu-ops
-    cd ${WORKSPACE}/torch-xpu-ops
+rm -rf third_party/torch-xpu-ops
+if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
+    cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
+else
+    git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+    cd third_party/torch-xpu-ops
     git checkout ${TORCH_XPU_OPS_COMMIT}
 fi
-cd ${WORKSPACE}/torch-xpu-ops
+cd third_party/torch-xpu-ops
 git remote -v && git branch && git show -s
-cd ${WORKSPACE}/pytorch
-rm -rf third_party/torch-xpu-ops
-cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
 
 # Pre Build
 cd ${WORKSPACE}/pytorch

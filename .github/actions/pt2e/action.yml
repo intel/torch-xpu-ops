@@ -1,9 +1,6 @@
 name: inductor-xpu-pt2e-test
 
 inputs:
-  env_prepare:
-    required: false
-    description: If set to any value, will prepare suite test env
   dt:
     required: true
     type: string
@@ -24,7 +21,6 @@ runs:
   using: composite
   steps:
     - name: Prepare ENV
-      if: ${{ inputs.env_prepare }}
       shell: bash -xe {0}
       run: |
         # accuracy code
@@ -60,14 +56,15 @@ runs:
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               ${cmd_line} --model_list ${model_name} --is_fp32 2>&1 |tee "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || true
-              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || echo "failed a failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
+              # setup acc1 and acc5 to failed if test failed.
+              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || echo "failed & failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
                       END{printf("Accuracy,%s,float32,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               ${cmd_line}  --model_list ${model_name} 2>&1 |tee "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || true
-              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || echo "failed a failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
+              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || echo "failed & failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
                       END{printf("Accuracy,%s,int8,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv

@@ -6,20 +6,15 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
         description: Runner label
       test_type:
         type: string
-        default: 'build-from-source'
-        description: Build from source or install nightly wheel
+        default: "build-cicd"
+        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
       pytorch:
         type: string
         default: 'main'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
-      oneapi:
-        type: string
-        default: 'installed'
-        description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
         default: '3.10'
@@ -55,6 +50,7 @@ defaults:
 jobs:
   runner:
     runs-on: ${{ inputs.runner }}
+    name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
@@ -82,52 +78,42 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        TORCH_HOME: /tmp/.cache/_torch
-        HF_HOME: /tmp/.cache/_huggingface
         MODEL_ONLY_NAME: ${{ inputs.model }}
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
-      - name: Cleanup workspace
-        run: |
-          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Launch Test on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          test_type: ${{ inputs.test_type }}
           pytorch: ${{ inputs.pytorch }}
-          torch_xpu_ops: skipped
-          oneapi: ${{ inputs.oneapi }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'huggingface') }}
+        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: huggingface
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
       - name: CICD Timm_models BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'timm_models') }}
+        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: timm_models
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
       - name: CICD Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'cicd') && contains(inputs.suite, 'torchbench') }}
+        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: torchbench
           dt: bfloat16
           mode: training
@@ -138,7 +124,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
@@ -147,7 +132,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: timm_models
           dt: float16
           mode: training
@@ -156,7 +140,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: torchbench
           dt: bfloat16
           mode: training
@@ -165,7 +148,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          env_prepare: true
           dt: float32,int8
           scenario: accuracy,performance
 
@@ -174,7 +156,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
@@ -183,7 +164,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: timm_models
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
@@ -192,7 +172,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: torchbench
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
@@ -201,7 +180,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          env_prepare: true
           dt: float32,int8
           scenario: accuracy,performance
 
@@ -210,7 +188,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: huggingface
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
@@ -219,7 +196,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: timm_models
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
@@ -228,7 +204,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          env_prepare: true
           suite: torchbench
           dt: ${{ inputs.dt }}
           mode: ${{ inputs.mode }}
@@ -237,7 +212,6 @@ jobs:
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          env_prepare: true
           dt: ${{ inputs.dt }}
           scenario: ${{ inputs.scenario }}
 
