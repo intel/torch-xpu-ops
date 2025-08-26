@@ -185,6 +185,7 @@ jobs:
           repo="${{ github.repository }}"
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
+          touch Known_issue.log
           gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
           count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped" --jq 'length')
           if [ "$count" -gt 0 ]; then
