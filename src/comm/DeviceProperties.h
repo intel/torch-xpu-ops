@@ -16,13 +16,8 @@ static int64_t syclMaxWorkGroupSize(
   auto dev = q.get_device();
 
   auto kid = ::sycl::get_kernel_id<KernelClass>();
-  // The kernel won't be built for devices except for the first device.
-  // Launching kernel on devices except for the first device will raise
-  // runtime error. Here is an alternative as a temporary solution to
-  // provide an extra hint to SYCL runtime.
-  // https://github.com/intel/llvm/issues/15127
-  auto kbundle = ::sycl::get_kernel_bundle<::sycl::bundle_state::executable>(
-      ctx, {dev}, {kid});
+  auto kbundle =
+      ::sycl::get_kernel_bundle<::sycl::bundle_state::executable>(ctx, {kid});
 
   ::sycl::kernel k = kbundle.get_kernel(kid);
   return k.get_info<::sycl::info::kernel_device_specific::work_group_size>(dev);

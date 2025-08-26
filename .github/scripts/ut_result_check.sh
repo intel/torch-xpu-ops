@@ -86,15 +86,12 @@ check_passed_known_issues() {
     local file_passed_UT="$1"
     local file_known_issue="$2"
     local output_file="${3:-${file_passed_UT%.*}_passed_known_issues.log}"
-
     if [[ $# -lt 2 ]]; then
         echo "[ERROR] Need 2 files to compare"
         return 1
     fi
-
     echo "Checking for known issues that are now passing in $file_passed_UT"
     grep -Fxf "$file_passed_UT" "$file_known_issue" > "$output_file"
-
     echo -e "\n\033[1;32m[New passed cases Summary]\033[0m"
     if [[ -s "$output_file" ]]; then
         cat "$output_file"
