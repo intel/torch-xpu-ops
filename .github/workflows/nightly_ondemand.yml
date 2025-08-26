@@ -156,7 +156,7 @@ jobs:
       scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
-    if: ${{ ! cancelled() }}
+    if: ${{ ! cancelled() && inputs.suite != '[]' }}
     name: linux-e2e
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
