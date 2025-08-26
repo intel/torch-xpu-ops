@@ -63,7 +63,7 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal -n 1
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}

@@ -15,7 +15,7 @@ runs:
       shell: bash -xe {0}
       run: |
         pip install -r pytorch/.ci/docker/requirements-ci.txt
-        pip install -U pytest-timeout
+        pip install -U pytest-timeout pytest-xdist
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' }}
