@@ -36,11 +36,11 @@ struct CTCLossLogAlphaKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     constexpr scalar_t neginf = -INFINITY;
 
-    auto tid_x = item.get_local_id(1);
-    auto tid_y = item.get_local_id(0);
+    auto tid_x = static_cast<int64_t>(item.get_local_id(1));
+    auto tid_y = static_cast<int64_t>(item.get_local_id(0));
 
     // bookkeeping
-    int64_t b = tid_y + item.get_group(0) * item.get_local_range(0);
+    int64_t b = tid_y + static_cast<int64_t>(item.get_group(0)) * static_cast<int64_t>(item.get_local_range(0));
     int64_t input_length = input_lengths_[b];
     int64_t target_length = target_lengths_[b];
     int64_t lp_batch_offset = b * lp_batch_stride_;
@@ -63,7 +63,7 @@ struct CTCLossLogAlphaKernelFunctor {
     if (valid) {
       // first row (t=0), the three equations for alpha_1 above eq (6)
       for (int64_t block_s = 0; block_s < 2 * max_target_length_ + 1;
-           block_s += item.get_local_range(1)) {
+           block_s += static_cast<int64_t>(item.get_local_range(1))) {
         int64_t s = tid_x + block_s;
         scalar_t la;
         switch (s) {
@@ -93,12 +93,12 @@ struct CTCLossLogAlphaKernelFunctor {
     }
 
     for (int64_t block_s = 0; block_s < 2 * max_target_length_ + 1;
-         block_s += item.get_local_range(1)) {
+         block_s += static_cast<int64_t>(item.get_local_range(1))) {
       int64_t s = tid_x + block_s;
 
       // These two only depend on s, so we can cache them.
-      int64_t current_char; // l_s in eq (6)
-      bool have_three; // flag which of the two cases in eq (6) we have
+      int64_t current_char = BLANK_; // l_s in eq (6) - initialize to avoid uninitialized access
+      bool have_three = false; // flag which of the two cases in eq (6) we have - initialize to false
       if (valid && s < 2 * target_length + 1 && target_length > 0) {
         current_char = get_target_prime(
             targets_data_, tg_batch_offset, tg_target_stride_, s, BLANK_);
@@ -158,7 +158,7 @@ struct CTCLossLogAlphaKernelFunctor {
                    lp_char_stride_ * current_char];
         } else {
           // otherwise we just set to neginf
-          if (valid && s < 2 * max_target_length_ + 1)
+          if (valid && s < 2 * target_length + 1 && s < 2 * max_target_length_ + 1)
             log_alpha_data_
                 [la_batch_offset + la_input_stride_ * t +
                  la_target_stride_ * s] = neginf;
