@@ -140,6 +140,9 @@ runs:
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+        else
+          pip install -r pytorch/.ci/docker/requirements-ci.txt
+          pip install -U pytest-timeout pytest-xdist
         fi
         # install the corresponding torchao
         pip uninstall -y torchao
