@@ -155,10 +155,10 @@ jobs:
         run: |
           cd ./pytorch
           rm -rf pytorch_triton_xpu-*.whl
-          if [ "${{ inputs.triton }}" != "" ];then
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          else
+          if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
             TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
           built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
                   pytorch-triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
