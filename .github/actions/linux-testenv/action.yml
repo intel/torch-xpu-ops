@@ -23,10 +23,6 @@ permissions: read-all
 runs:
   using: composite
   steps:
-    - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python }}
     - name: Check runner
       shell: bash -xe {0}
       run: |
@@ -41,6 +37,13 @@ runs:
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
+        if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
+          rm -rf ${AGENT_TOOLSDIRECTORY}
+        fi
+    - name: Setup python-${{ inputs.python }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python }}
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
