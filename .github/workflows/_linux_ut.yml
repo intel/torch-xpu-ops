@@ -167,7 +167,7 @@ jobs:
 
   summary:
     needs: [docker, host]
-    if: ${{ ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
+    if: ${{ ! (endsWith(needs.docker.result, 'ed') || endsWith(needs.host.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
