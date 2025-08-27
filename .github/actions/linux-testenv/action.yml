@@ -115,7 +115,7 @@ runs:
         cd pytorch
         TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
         TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
-        pip install pandas psutil scipy
+        pip install pandas psutil scipy pyyaml
         if [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
