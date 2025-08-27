@@ -198,6 +198,7 @@ jobs:
             cat issues_temp.log | awk '{print $1}' >> Known_issue.log
             awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
           fi
+          cp ${{ github.workspace }}/ut_log/reproduce.log ./
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log
