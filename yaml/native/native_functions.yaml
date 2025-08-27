@@ -9452,3 +9452,5 @@
 
 - func: inverse(Tensor self) -> Tensor
   variants: function, method
+
+- func: inverse.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
