@@ -34,8 +34,6 @@ ExternalProject_Add(
     -DCMAKE_C_COMPILER=icx
     -DCMAKE_CXX_COMPILER=icpx
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-    -DATen_XPU_INCLUDE_STR=${ATen_XPU_INCLUDE_STR}
-    -DTORCH_XPU_OPS_INCLUDE_STR=${TORCH_XPU_OPS_INCLUDE_STR}
   BUILD_ALWAYS TRUE
   INSTALL_COMMAND ""
   BUILD_BYPRODUCTS "cutlass_sycl_kernels_proj-prefix/src/cutlass_sycl_kernels_proj-build/libcutlass_kernels.so"
