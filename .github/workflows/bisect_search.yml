@@ -78,7 +78,7 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
               -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/_tools
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         SEARCH_COMMITS: ${{ inputs.search_commits }}
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
@@ -98,7 +98,7 @@ jobs:
         run: |
           ls -al
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo rm -rf /tmp/_tools
+          sudo rm -rf /tmp/xpu-tool
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
