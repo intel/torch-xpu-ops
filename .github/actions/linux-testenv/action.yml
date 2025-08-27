@@ -146,7 +146,7 @@ runs:
         fi
         # transformers
         pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
-        TRANSFORMERS_VERSION_ID="$(python -c 'import transformers; print(transformers.__version__)')"
+        TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         # install the corresponding torchao
         pip uninstall -y torchao
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
