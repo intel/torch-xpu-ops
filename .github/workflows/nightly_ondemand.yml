@@ -101,7 +101,7 @@ jobs:
             python='3.10'
           else
             pytorch="${{ inputs.pytorch }}"
-            if [ "${{ inputs.torch_xpu_ops }}" == "" ];then
+            if [ -z ${{ inputs.torch_xpu_ops }} ];then
               torch_xpu_ops="${{ github.ref_name }}"
             else
               torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
@@ -141,7 +141,7 @@ jobs:
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     strategy:
@@ -157,7 +157,7 @@ jobs:
       ut: ${{ matrix.ut_name }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.suite != '' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     strategy:
