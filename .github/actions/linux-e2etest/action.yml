@@ -33,12 +33,15 @@ runs:
         repository: pytorch/pytorch
         run-id: 17256111241
         path: ${{ github.workspace }}/wheels
-    - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -x {0}
+    - name: Install test target
+      shell: bash -xe {0}
       run: |
         pip uninstall -y torch triton pytorch-triton-xpu && pip uninstall -y torch triton pytorch-triton-xpu
         pip install ${{ github.workspace }}/wheels/torch-*.whl --extra-index-url https://download.pytorch.org/whl/nightly/xpu
         pip list |grep -E 'intel|torch|triton'
+    - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      shell: bash -x {0}
+      run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
         # check param

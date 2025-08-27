@@ -20,6 +20,20 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Download Pytorch wheel
+      uses: actions/download-artifact@v4
+      with:
+        name: manywheel-py3_10-xpu
+        github-token: ${{ github.token }}
+        repository: pytorch/pytorch
+        run-id: 17256111241
+        path: ${{ github.workspace }}/wheels
+    - name: Install test target
+      shell: bash -xe {0}
+      run: |
+        pip uninstall -y torch triton pytorch-triton-xpu && pip uninstall -y torch triton pytorch-triton-xpu
+        pip install ${{ github.workspace }}/wheels/torch-*.whl --extra-index-url https://download.pytorch.org/whl/nightly/xpu
+        pip list |grep -E 'intel|torch|triton'
     - name: Prepare ENV
       shell: bash -xe {0}
       run: |
