@@ -176,10 +176,10 @@ jobs:
       scenario: ${{ github.event_name == 'schedule' && '' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
-    if: ${{ ! cancelled() && inputs.suite != '' }}
     name: linux-e2e
-    permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
+    if: ${{ ! endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
+    permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
