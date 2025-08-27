@@ -101,11 +101,24 @@ check_passed_known_issues() {
     fi
 }
 
+get_pass_fail_log() {
+  local p_row="$1"
+  local p_col="$2"
+  local ut_log="$3"
+  grep -E "${p_row}" "${ut_log}" | awk -v p="${p_col}" '{
+    for (i=1;i<=NF;i++) {
+      if ($i ~ p) {
+        print $i;
+      }
+    }
+  }'
+}
+
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
-    grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
+    get_pass_fail_log ".FAILED" "::.*::" "${ut_suite}"_test.log > ./"${ut_suite}"_failed.log
     grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
     grep -E "Timeout" "${ut_suite}"_test.log | grep "test" >> ./"${ut_suite}"_failed.log
-    grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
+    get_pass_fail_log "PASSED" "::.*::" "${ut_suite}"_test.log > ./"${ut_suite}"_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
@@ -132,14 +145,14 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     fi
 fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
-    grep -E "FAILED" op_ut_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
+    get_pass_fail_log ".FAILED" "::.*::" op_ut_with_skip_test.log > ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
     grep -E "Timeout" op_ut_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
-    grep "PASSED" op_ut_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
-    grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
+    get_pass_fail_log "PASSED" "::.*::" op_ut_with_skip_test.log > ./"${ut_suite}"_with_skip_test_passed.log
+    get_pass_fail_log ".FAILED" "::.*::" op_ut_with_only_test.log  > ./"${ut_suite}"_with_only_test_failed.log
     grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
     grep -E "Timeout" op_ut_with_only_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
-    grep "PASSED" op_ut_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
+    get_pass_fail_log "PASSED" "::.*::" op_ut_with_only_test.log > ./"${ut_suite}"_with_only_test_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
     echo -e "========================================================================="
@@ -175,8 +188,6 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
     fi
     ((num_failed=num_failed_with_skip+num_failed_with_only))
-    grep "PASSED" op_ut_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
-    grep "PASSED" op_ut_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
     num_passed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_passed.log")
     num_passed_with_only=$(wc -l < "./${ut_suite}_with_only_test_passed.log")
     ((num_passed=num_passed_with_skip+num_passed_with_only))

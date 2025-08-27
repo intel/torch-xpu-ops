@@ -119,7 +119,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
     steps:
       - name: Init test
         run: |
