@@ -168,7 +168,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       bool isP2P,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
-      const std::vector<at::Tensor>& outputs = {});
+      const std::vector<at::Tensor>& outputs = {},
+      bool record = false);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(

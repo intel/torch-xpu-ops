@@ -942,6 +942,256 @@ class XCCLTraceTest(XCCLTraceTestBase):
         self.assertEqual(last["profiling_name"], "xccl:all_reduce")
         dist.destroy_process_group()
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize(
+        "op_sizes_per_coalesce",
+        [
+            [(2, 3)],
+            [(2, 3), (5, 5), (1,)],
+        ],
+    )
+    @parametrize("timing_enabled", [False])
+    def test_batched_send_recv(self, op_sizes_per_coalesce, timing_enabled):
+        """
+        'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
+        a destructed Work obj's cuda events
+        """
+
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+
+        num_coalesced_ops = 20
+        ops_per_coalesce = len(op_sizes_per_coalesce)
+        for _ in range(num_coalesced_ops):
+            ops = []
+            for input_sizes in op_sizes_per_coalesce:
+                tensor = torch.zeros(input_sizes).to(self.local_device)
+                if self.rank == 0:
+                    ops.append(dist.P2POp(dist.irecv, tensor, 1))
+                elif self.rank == 1:
+                    tensor *= 2
+                    ops.append(dist.P2POp(dist.isend, tensor, 0))
+
+            dist.batch_isend_irecv(ops).pop().wait()
+
+        torch.xpu.synchronize(device=self.local_device)
+
+        if timing_enabled:
+            # wait for watchdog thread to process the queue of works
+            time.sleep(1)
+
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+        self.assertEqual(len(t["entries"]), num_coalesced_ops * (ops_per_coalesce ))
+
+        expected_record_id = 0
+        expected_seq = 1
+        expected_op_id = 1
+        for seq in range(num_coalesced_ops):
+            first_op = seq * (ops_per_coalesce)
+            coalesced_op = first_op + ops_per_coalesce
+            for p2p_op_idx, input_sizes in zip(
+                range(first_op, coalesced_op, 1), op_sizes_per_coalesce
+            ):
+                # the indivudal ops inside the coalescing group the individual op metadata,
+                # but not the timing info coming from the actual coalesced kernel
+                profiling_name = (
+                    "xccl:recv 0<-1" if self.rank == 0 else "xccl:send 1->0"
+                )
+                self.assertEqual(
+                    t["entries"][p2p_op_idx]["record_id"], expected_record_id
+                )
+                expected_record_id += 1
+                self.assertEqual(
+                    t["entries"][p2p_op_idx]["profiling_name"], profiling_name
+                )
+                # we don't increment collective_seq_id for p2p ops.
+                self.assertEqual(t["entries"][p2p_op_idx]["collective_seq_id"], 0)
+                self.assertEqual(t["entries"][p2p_op_idx]["p2p_seq_id"], expected_seq)
+                self.assertEqual(t["entries"][p2p_op_idx]["op_id"], expected_op_id)
+                expected_op_id += 1
+                self.assertEqual(t["entries"][p2p_op_idx]["input_sizes"], [input_sizes])
+                self.assertEqual(
+                    t["entries"][p2p_op_idx]["output_sizes"], [input_sizes]
+                )
+                # duration doesn't get tagged onto individual ops yet, nor is their state updated
+                self.assertEqual(t["entries"][p2p_op_idx]["state"], "scheduled")
+                self.assertTrue("duration_ms" not in t["entries"][p2p_op_idx])
+
+            # coalesced ops not yet supported in FR
+            expected_seq += 1
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize(
+        "op_sizes",
+        [
+            [(2, 3)],
+            [(2, 3), (5, 5), (1,)],
+        ],
+    )
+    @parametrize("timing_enabled", [False])
+    def test_individual_send_recv(self, op_sizes, timing_enabled):
+        """
+        'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
+        a destructed Work obj's cuda events
+        """
+
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+        num_repeats = 10
+        ops_per_repeat = len(op_sizes)
+        for _ in range(num_repeats):
+            for input_sizes in op_sizes:
+                tensor = torch.zeros(input_sizes).to(self.local_device)
+                if self.rank == 0:
+                    dist.recv(tensor, 1)
+                elif self.rank == 1:
+                    tensor *= 2
+                    dist.send(tensor, 0)
+
+        torch.xpu.synchronize(device=self.local_device)
+        if timing_enabled:
+            # wait for watchdog thread to process the queue of works
+            time.sleep(1)
+
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+        self.assertEqual(len(t["entries"]), num_repeats * (ops_per_repeat))
+        expected_seq = 1
+        expected_op_id = 1
+        for seq in range(num_repeats * ops_per_repeat):
+            input_sizes = op_sizes[seq % ops_per_repeat]
+            profiling_name = "xccl:recv 0<-1" if self.rank == 0 else "xccl:send 1->0"
+            self.assertEqual(t["entries"][seq]["profiling_name"], profiling_name)
+            # we don't increment collective_seq_id for p2p ops.
+            self.assertEqual(t["entries"][seq]["collective_seq_id"], 0)
+            self.assertEqual(t["entries"][seq]["p2p_seq_id"], expected_seq)
+            expected_seq += 1
+            self.assertEqual(t["entries"][seq]["op_id"], expected_op_id)
+            expected_op_id += 1
+            self.assertEqual(t["entries"][seq]["input_sizes"], [input_sizes])
+            self.assertEqual(t["entries"][seq]["output_sizes"], [input_sizes])
+            self.assertEqual(t["entries"][seq]["state"], "completed")
+
+            if timing_enabled:
+                duration = t["entries"][seq]["duration_ms"]
+                self.assertTrue(0.001 < duration < 10000, duration)
+            else:
+                self.assertTrue("duration_ms" not in t["entries"][seq])
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize("timing_enabled", [False])
+    def test_allgather_uneven(self, timing_enabled):
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+
+        output_split_sizes = [i + 1 for i in range(self.world_size)]
+        sum_len = sum(output_split_sizes)
+        output_tensor = torch.zeros(sum_len, 2).to(self.rank)
+        expected_tensor = torch.ones(sum_len, 2).to(self.rank)
+        input_tensor = torch.ones(output_split_sizes[self.rank], 2).to(self.rank)
+
+        dist.all_gather(
+            list(torch.split(output_tensor, output_split_sizes)), input_tensor
+        )
+        torch.xpu.synchronize(device=self.rank)
+        self.assertEqual(output_tensor, expected_tensor)
+        if timing_enabled:
+            # wait for watchdog thread to process the queue of works
+            time.sleep(1)
+
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+        for index, entry in enumerate(t["entries"]):
+            print(index, entry)
+        self.assertEqual(len(t["entries"]), self.world_size)
+        for i in range(self.world_size):
+            self.assertEqual(t["entries"][i]["profiling_name"], "xccl:_broadcast_oop")
+            # collective_seq_id should be incremented once.
+            self.assertEqual(t["entries"][i]["collective_seq_id"], 1)
+            self.assertEqual(t["entries"][i]["input_sizes"], [[i + 1, 2]])
+            self.assertEqual(
+                t["entries"][i]["output_sizes"],
+                [[i + 1, 2]],
+            )
+            self.assertEqual(t["entries"][i]["state"], "scheduled")
+            # No event is recorded for individual ops
+            self.assertTrue("time_discovered_completed_ns" in t["entries"][i])
+        # TODO: (frost-intel) Add coalesced op recording for FR
+
+    # TODO(whc) test out other ops (And combinations of ops, if that's valid?)
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    @parametrize("timing_enabled", [False])
+    def test_coalescing_manager_collective(self, timing_enabled):
+        """
+        The coalescing manager api works by accumulating operations in python via a contextmanager, and then making
+        one call into c++ to an <op>_coalesced API.  It has limited support for ops and has been added recently to
+        avoid overheads of making individual py-cpp calls.  This complicates flight recording..
+
+        For now, flight recording of coalescing_manager collectives is less detailed than cpp coalesced collectives.
+        """
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+        pg = self._create_process_group_xccl()
+        if timing_enabled:
+            pg._enable_collectives_timing()
+
+        output_tensors = torch.zeros(2, 2).to(self.rank)
+        input_tensors = [torch.ones(2, 2).to(self.rank) for _ in range(self.world_size)]
+
+        # TODO(whc) make this work with bigger world or something
+        self.assertEqual(self.world_size, 2, self.world_size)
+
+        with dist._coalescing_manager():
+            for i in range(self.world_size):
+                dist.reduce_scatter_tensor(output_tensors[i], input_tensors[i])
+        self.assertEqual(output_tensors, input_tensors[self.rank] * self.world_size)
+
+        torch.xpu.synchronize(device=self.rank)
+
+        if timing_enabled:
+            # wait for watchdog thread to process the queue of works
+            time.sleep(1)
+
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
+
+        self.assertEqual(
+            len(t["entries"]), 1
+        )  # one for the reduce_scatter_tensor_coalesced
+        self.assertEqual(
+            t["entries"][0]["profiling_name"], "xccl:reduce_scatter_tensor_coalesced"
+        )
+        # collective_seq_id should be incremented once.
+        self.assertEqual(t["entries"][0]["collective_seq_id"], 1)
+        self.assertEqual(t["entries"][0]["input_sizes"], [[2, 2], [2, 2]])
+        self.assertEqual(
+            t["entries"][0]["output_sizes"],
+            [
+                [
+                    2,
+                ],
+                [
+                    2,
+                ],
+            ],
+        )
+        self.assertEqual(t["entries"][0]["state"], "completed")
+        if timing_enabled:
+            duration = t["entries"][0]["duration_ms"]
+            self.assertTrue(0.001 < duration < 10000, duration)
+        else:
+            self.assertTrue("duration_ms" not in t["entries"][0])
+
 
 instantiate_parametrized_tests(XCCLTraceTest)
 instantiate_parametrized_tests(ProcessGroupXCCLTest)
