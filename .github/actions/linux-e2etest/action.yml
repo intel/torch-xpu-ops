@@ -41,8 +41,8 @@ runs:
               contains_status="continue"
             }
         }
-        cores_per_instance="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${xpu_num}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
-        export OMP_NUM_THREADS=${cores_per_instance}
+        cpus_per_xpu="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${xpu_num}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
+        export OMP_NUM_THREADS=${cpus_per_xpu}
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
           if [ "${suite}" == "pt2e" ];then
@@ -65,7 +65,7 @@ runs:
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
                   for xpu_id in $(seq 0 $[ ${xpu_num} - 1 ])
                   do
-                    cpu_list="$(echo "${cores_per_instance} ${xpu_id}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+                    cpu_list="$(echo "${cpus_per_xpu} ${xpu_id}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
                     numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${xpu_id} &
                   done
                 else
