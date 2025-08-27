@@ -29,11 +29,8 @@ runs:
         hostname && id
         cat /etc/os-release
         gcc -v && g++ -v
-        which python && python -V
-        which pip && pip list
-        pip install -U pip wheel setuptools
         uname -a
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
+        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
         clinfo --list
         cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
         rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
@@ -44,6 +41,12 @@ runs:
       uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python }}
+    - name: Check python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
+        pip install -U pip wheel setuptools
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
