@@ -21,5 +21,6 @@ jobs:
         run: |
           sudo apt update
           sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
+          sudo cpupower set -b 0
           sudo cpupower frequency-set -g performance
           sudo cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
