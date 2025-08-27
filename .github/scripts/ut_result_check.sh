@@ -106,7 +106,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     {
         grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}'
         grep -E "Timeout" "${ut_suite}"_test.log | grep "test"
-        grep -E "Segmentation fault" "${ut_suite}"_test.log | grep -Eo "*.*Segmentation fault"
+        grep -E "Segmentation fault" "${ut_suite}"_test.log | grep -Eo "^.*Segmentation fault"
     } >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     echo -e "========================================================================="
@@ -148,14 +148,14 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     {
         grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}'
         grep -E "Timeout" op_ut_with_skip_test.log | grep "test"
-        grep -E "Segmentation fault" op_ut_with_skip_test.log | grep -Eo "*.*Segmentation fault"
+        grep -E "Segmentation fault" op_ut_with_skip_test.log | grep -Eo "^.*Segmentation fault"
     } >> ./"${ut_suite}"_with_skip_test_failed.log
     grep "PASSED" op_ut_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
     grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
     {
         grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}'
         grep -E "Timeout" op_ut_with_only_test.log | grep "test"
-        grep -E "Segmentation fault" op_ut_with_only_test.log | grep -Eo "*.*Segmentation fault"
+        grep -E "Segmentation fault" op_ut_with_only_test.log | grep -Eo "^.*Segmentation fault"
     } >> ./"${ut_suite}"_with_only_test_failed.log
     grep "PASSED" op_ut_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
     echo -e "========================================================================="
@@ -180,7 +180,9 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     echo -e "========================================================================="
     if [[ $num_failed_with_skip -gt 0 ]]; then
       echo -e "Need reproduce command"
-      cat "./reproduce.log"
+      if [[ -f "reproduce.log" ]]; then
+        cat "./reproduce.log"
+      fi
     else
       echo -e "Not need reproduce command"
     fi
@@ -206,7 +208,9 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
     echo -e "========================================================================="
     if [[ $num_failed_with_only -gt 0 ]]; then
       echo -e "Need reproduce command"
-      cat "./reproduce.log"
+      if [[ -f "reproduce.log" ]]; then
+        cat "./reproduce.log"
+      fi
     else
       echo -e "Not need reproduce command"
     fi
