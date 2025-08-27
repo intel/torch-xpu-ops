@@ -109,6 +109,7 @@ add_custom_command(
   COMMAND
     ${XPU_INSTALL_HEADER_COMMAND}
   DEPENDS
+    torch_cpu
     ATEN_CPU_FILES_GEN_TARGET
     ATEN_XPU_FILES_GEN_TARGET
     ${XPUFallback_TEMPLATE}
