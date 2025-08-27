@@ -113,7 +113,7 @@ runs:
         TRANSFORMERS_VERSION_ID="$((cat .ci/docker/ci_commit_pins/huggingface-requirements.txt || echo 'transformers==4.54.0') 2>&1 |grep '^transformers==' |sed 's/.*==//')"
         TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
         TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
-        pip install pandas psutil scipy soxr
+        pip install pandas psutil scipy soxr pyyaml
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
           pip install transformers==${TRANSFORMERS_VERSION_ID}
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
