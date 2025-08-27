@@ -17,7 +17,7 @@ runs:
         name: manywheel-py3_10-xpu
         github-token: ${{ github.token }}
         repository: pytorch/pytorch
-        run-id: 17205482866
+        run-id: 17259746789
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
