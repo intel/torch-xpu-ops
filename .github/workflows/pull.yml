@@ -142,10 +142,10 @@ jobs:
       pytorch: main
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
-    if: ${{ ! cancelled() }}
     name: linux-e2e
-    permissions: write-all
     needs: [linux-e2e]
+    if: ${{ ! endsWith(needs.linux-e2e.result, 'ed') }}
+    permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
 
   windows:
