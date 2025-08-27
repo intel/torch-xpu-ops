@@ -53,7 +53,7 @@ on:
 
 permissions: read-all
 
-run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build') || (contains(github.event.schedule, '30') && 'Wheel') || inputs.pytorch }}
+run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
 
 jobs:
   Conditions-Filter:
