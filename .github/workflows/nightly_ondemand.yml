@@ -24,7 +24,7 @@ on:
         description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
       python:
         type: string
-        default: '3.'
+        default: '3.10'
         description: Python version by default is '3.10'
       ut:
         type: string
@@ -101,7 +101,7 @@ jobs:
             python='3.10'
           else
             pytorch="${{ inputs.pytorch }}"
-            if [ "${{ inputs.torch_xpu_ops }}" == "triggerd" ];then
+            if [ "${{ inputs.torch_xpu_ops }}" == "" ];then
               torch_xpu_ops="${{ github.ref_name }}"
             else
               torch_xpu_ops="${{ inputs.torch_xpu_ops }}"

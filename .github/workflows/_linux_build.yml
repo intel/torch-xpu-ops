@@ -19,7 +19,7 @@ on:
       triton:
         required: false
         type: string
-        default: 'pinned'
+        default: ''
         description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
       python:
         type: string
@@ -155,7 +155,7 @@ jobs:
         run: |
           cd ./pytorch
           rm -rf pytorch_triton_xpu-*.whl
-          if [ "${{ inputs.triton }}" != "pinned" ];then
+          if [ "${{ inputs.triton }}" != "" ];then
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           else
             TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
