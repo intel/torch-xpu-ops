@@ -897,7 +897,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             xs = [torch.ones(3, 4, device=device)]
             pg.broadcast(xs).wait()
             pg.allreduce(xs).wait()
-            #pg.reduce(xs).wait() //Currently failing on XPU
+            # pg.reduce(xs).wait() //Currently failing on XPU
             ys = [[torch.empty(3, 4, device=device) for _ in range(self.world_size)]]
             pg.allgather(ys, xs).wait()
             pg.reduce_scatter(xs, ys).wait()
@@ -985,7 +985,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             time.sleep(1)
 
         t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-        self.assertEqual(len(t["entries"]), num_coalesced_ops * (ops_per_coalesce ))
+        self.assertEqual(len(t["entries"]), num_coalesced_ops * ops_per_coalesce)
 
         expected_record_id = 0
         expected_seq = 1
@@ -1111,8 +1111,6 @@ class XCCLTraceTest(XCCLTraceTestBase):
             time.sleep(1)
 
         t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
-        for index, entry in enumerate(t["entries"]):
-            print(index, entry)
         self.assertEqual(len(t["entries"]), self.world_size)
         for i in range(self.world_size):
             self.assertEqual(t["entries"][i]["profiling_name"], "xccl:_broadcast_oop")
