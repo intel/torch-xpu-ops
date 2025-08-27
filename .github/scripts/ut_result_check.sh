@@ -103,9 +103,11 @@ check_passed_known_issues() {
 
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
     grep -E "FAILED" "${ut_suite}"_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_failed.log
-    grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}' >> ./"${ut_suite}"_failed.log
-    grep -E "Timeout" "${ut_suite}"_test.log | grep "test" >> ./"${ut_suite}"_failed.log
-    grep -E "Segmentation fault" "${ut_suite}"_test.log | grep -Eo "*.*Segmentation fault" >> ./"${ut_suite}"_failed.log
+    {
+        grep -E "have failures" "${ut_suite}"_test.log | awk '{print $1}'
+        grep -E "Timeout" "${ut_suite}"_test.log | grep "test"
+        grep -E "Segmentation fault" "${ut_suite}"_test.log | grep -Eo "*.*Segmentation fault"
+    } >> ./"${ut_suite}"_failed.log
     grep "PASSED" "${ut_suite}"_test.log | awk '{print $1}' > ./"${ut_suite}"_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
@@ -143,14 +145,18 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
 fi
 if [[ "${ut_suite}" == 'op_ut' ]]; then
     grep -E "FAILED" op_ut_with_skip_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "Segmentation fault" op_ut_with_skip_test.log | grep -Eo "*.*Segmentation fault" >> ./"${ut_suite}"_with_skip_test_failed.log
+    {
+        grep -E "have failures" op_ut_with_skip_test.log | awk '{print $1}'
+        grep -E "Timeout" op_ut_with_skip_test.log | grep "test"
+        grep -E "Segmentation fault" op_ut_with_skip_test.log | grep -Eo "*.*Segmentation fault"
+    } >> ./"${ut_suite}"_with_skip_test_failed.log
     grep "PASSED" op_ut_with_skip_test.log | awk '{print $1}' > ./"${ut_suite}"_with_skip_test_passed.log
     grep -E "FAILED" op_ut_with_only_test.log | awk '{print $1}' | grep -v "FAILED" > ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}' >> ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "Timeout" op_ut_with_only_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "Segmentation fault" op_ut_with_only_test.log | grep -Eo "*.*Segmentation fault" >> ./"${ut_suite}"_with_only_test_failed.log
+    {
+        grep -E "have failures" op_ut_with_only_test.log | awk '{print $1}'
+        grep -E "Timeout" op_ut_with_only_test.log | grep "test"
+        grep -E "Segmentation fault" op_ut_with_only_test.log | grep -Eo "*.*Segmentation fault"
+    } >> ./"${ut_suite}"_with_only_test_failed.log
     grep "PASSED" op_ut_with_only_test.log | awk '{print $1}' > ./"${ut_suite}"_with_only_test_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with skip"
