@@ -33,12 +33,12 @@ fi
 rm -rf third_party/torch-xpu-ops
 if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
     cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
+    cd third_party/torch-xpu-ops
 else
     git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
     cd third_party/torch-xpu-ops
     git checkout ${TORCH_XPU_OPS_COMMIT}
 fi
-cd third_party/torch-xpu-ops
 git remote -v && git branch && git show -s
 
 # Pre Build
