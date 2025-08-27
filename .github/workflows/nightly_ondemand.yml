@@ -11,23 +11,15 @@ permissions: read-all
 
 jobs:
   test1:
-    runs-on: ${{ inputs.test }}
+    runs-on: ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [PVC-7363, PVC-7366, PVC-7900, PVC-03004, PVC-03006]
     steps:
-      - name: test1
+      - name: Set performance mode
         run: |
-          ls
-  test2:
-    if: ${{ 0 == 1 }}
-    runs-on: ${{ inputs.test }}
-    steps:
-      - name: test2
-        run: |
-          ls
-  test3:
-    needs: [test1, test2]
-    runs-on: ${{ inputs.test }}
-    if: ${{ ! cancelled() && ! (endsWith(needs.test1.result, 'ed') && endsWith(needs.test2.result, 'ed'))  }}
-    steps:
-      - name: test3
-        run: |
-          echo "${{ needs.test1.result }}   ${{ needs.test2.result }}"
+          sudo apt update
+          sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
+          sudo cpupower frequency-set -g performance
+          sudo cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
