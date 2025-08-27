@@ -26,7 +26,7 @@ jobs:
   test3:
     needs: [test1, test2]
     runs-on: ${{ inputs.test }}
-    if: ${{  ! endsWith(needs.test1.result, 'ed') || ! endsWith(needs.test2.result, 'ed')  }}
+    if: ${{ ! cancelled() && ! (endsWith(needs.test1.result, 'ed') && endsWith(needs.test2.result, 'ed'))  }}
     steps:
       - name: test3
         run: |
