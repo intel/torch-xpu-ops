@@ -37,7 +37,23 @@ runs:
         df -h
         cat /etc/os-release
         uname -a
-        clinfo --list
+        # clinfo hang and reboot system to recover
+        timeout 120 clinfo --list || sudo reboot
+        scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq)
+        if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
+            if [ "${scaling_governor}" != "performance" ];then
+                # set frequency governor to performance mode
+                sudo apt-get update
+                sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
+                sudo cpupower set -b 0
+                sudo cpupower frequency-set -g performance
+            fi
+            # clean cache
+            sync; sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
+        else
+            echo "[INFO] You do NOT have ROOT permission to set system config."
+            echo "       The frequency governor is ${scaling_governor}."
+        fi
         cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
         xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
           if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}

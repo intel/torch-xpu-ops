@@ -24,7 +24,6 @@ runs:
       shell: timeout 300 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
       run: |
-        clinfo --list
         log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
         mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/regressions
