@@ -8,7 +8,7 @@ on:
         type: string
         default: 'main'
         description: Pytorch branch/commit
-      keep_torch_xpu_ops:
+      torch_xpu_ops:
         required: false
         type: string
         default: 'false'
@@ -89,7 +89,7 @@ jobs:
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
-          if ${{ inputs.keep_torch_xpu_ops }} == 'true' (
+          if ${{ inputs.torch_xpu_ops }} == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
             echo "Replace torch-xpu-ops!"

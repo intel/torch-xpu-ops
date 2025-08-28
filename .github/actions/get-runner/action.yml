@@ -1,0 +1,49 @@
+name: Get Runner Infos
+
+outputs:
+  runner_id:
+    value: ${{ steps.runner.outputs.runner_id }}
+  user_id:
+    value: ${{ steps.runner.outputs.user_id }}
+  render_id:
+    value: ${{ steps.runner.outputs.render_id }}
+  hostname:
+    value: ${{ steps.runner.outputs.hostname }}
+
+permissions: read-all
+
+runs:
+  using: composite
+  steps:
+    - name: Get runner
+      shell: bash -xe {0}
+      id: runner
+      run: |
+        # get test runner
+        echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
+        echo "user_id=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+        echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+        echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
+        # show host info
+        lscpu
+        lshw -C display
+        free -h
+        df -h
+        cat /etc/os-release
+        uname -a
+    - name: Cleanup host
+      shell: bash -xe {0}
+      run: |
+        # clean docker cache
+        docker system prune -af || true
+        # clean workspace
+        ls -al
+        sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+        cd ${RUNNER_WORKSPACE}/..
+        if [ "${PWD}" != "/" ];then
+          ls -al
+          sudo chmod 777 -R torch-xpu-ops _temp _actions _tool || true
+          # mount HOME dir to use caches to save time
+          rm -rf _temp && mkdir _temp
+          ln -sf ${HOME} _temp/_github_home
+        fi
