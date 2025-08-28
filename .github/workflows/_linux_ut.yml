@@ -34,7 +34,6 @@ jobs:
   runner:
     runs-on: ${{ inputs.runner }}
     name: get-runner
-    if: ${{ ! contains(inputs.ut, 'distributed') }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
@@ -184,17 +183,18 @@ jobs:
       - name: Check UT Results
         shell: bash
         run: |
-          repo="${{ github.repository }}"
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
-          gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
+          # get distributed known issues
+          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log
+          # get skipped known issues
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
             --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | \
-            grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
-          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
-          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
-          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
+          awk -v n="${{ inputs.ut }}" 'BEGIN{ print_row = 0 }{
+            if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
+            if ( print_row == 1 && $NF == n ) { print $1 };
+            if ( $0 ~ /Cases:/ ) { print_row = 1 };
+          }' issues.log >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log
