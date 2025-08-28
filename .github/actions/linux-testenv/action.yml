@@ -23,24 +23,28 @@ permissions: read-all
 runs:
   using: composite
   steps:
-    - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python }}
     - name: Check runner
       shell: bash -xe {0}
       run: |
         hostname && id
         cat /etc/os-release
         gcc -v && g++ -v
+        uname -a
+        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
+        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
+        if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
+          rm -rf ${AGENT_TOOLSDIRECTORY}
+        fi
+    - name: Setup python-${{ inputs.python }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python }}
+    - name: Check python
+      shell: bash -xe {0}
+      run: |
         which python && python -V
         which pip && pip list
         pip install -U pip wheel setuptools
-        uname -a
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-        clinfo --list
-        cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
-        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
@@ -110,37 +114,51 @@ runs:
       shell: bash -xe {0}
       run: |
         cd pytorch
-        TRANSFORMERS_VERSION_ID="$((cat .ci/docker/ci_commit_pins/huggingface-requirements.txt || echo 'transformers==4.54.0') 2>&1 |grep '^transformers==' |sed 's/.*==//')"
-        TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt)"
-        TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt)"
-        pip install pandas psutil scipy soxr
-        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
-          pip install transformers==${TRANSFORMERS_VERSION_ID}
-        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+        TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
+        TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
+        pip install pandas psutil scipy pyyaml
+        if [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          rm -rf ./benchmark
-          git clone https://github.com/pytorch/benchmark
-          cd benchmark
+          cd ../
+          rm -rf ./e2e-benchmark
+          git clone https://github.com/pytorch/benchmark e2e-benchmark
+          cd e2e-benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
           pip install -r requirements.txt
-          python install.py --continue_on_fail
-          pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            while read line
+            do
+              python install.py $(echo $line |awk -F, '{printf $1}')
+            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+          else
+            python install.py --continue_on_fail
+          fi
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
+          pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          cd ../pytorch
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
-          rm -rf ./benchmark
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
-          cd benchmark
+          cd ../
+          rm -rf ./pt2e-performance
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/pt2e-performance
+          cd pt2e-performance
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           pip install -r requirements.txt
           python install.py --continue_on_fail
-          pip install -U transformers==${TRANSFORMERS_VERSION_ID} pyre-extensions
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
+          pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          cd ../pytorch
+        else
+          pip install -r ./.ci/docker/requirements-ci.txt
+          pip install -U pytest-timeout pytest-xdist
         fi
+        # transformers
+        pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
+        TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         # install the corresponding torchao
         pip uninstall -y torchao
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then

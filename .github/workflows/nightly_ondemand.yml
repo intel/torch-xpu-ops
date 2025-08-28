@@ -16,32 +16,36 @@ on:
         description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'triggerd'
+        default: ''
         description: Torch-xpu-ops by default is the run triggered branch, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         type: string
-        default: 'pinned'
+        default: ''
         description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
+      python:
+        type: string
+        default: '3.10'
+        description: Python version by default is '3.10'
       ut:
         type: string
-        default: '[]'
-        description: UT scope. `["op_regression","op_transformers","op_extended","op_ut","xpu_profiling","torch_xpu","op_regression_dev1","xpu_distributed","microbench","windows"]`. Delimiter is comma
+        default: ''
+        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
       suite:
         type: string
-        default: '[]'
-        description: Dynamo benchmarks test suite. `["huggingface","timm_models","torchbench","pt2e"]`. Delimiter is comma
+        default: ''
+        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench,pt2e'. Delimiter is comma
       dt:
         type: string
         default: ''
-        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
+        description: Data precision of the test. 'float32,bfloat16,float16,amp_bf16,amp_fp16,int8'. Delimiter is comma
       mode:
         type: string
         default: ''
-        description: Test mode. `inference,training`. Delimiter is comma
+        description: Test mode. 'inference,training'. Delimiter is comma
       scenario:
         type: string
         default: ''
-        description: Test scenario. `accuracy,performance`. Delimiter is comma
+        description: Test scenario. 'accuracy,performance'. Delimiter is comma
       model:
         type: string
         default: ''
@@ -49,7 +53,7 @@ on:
 
 permissions: read-all
 
-run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Source Code') || (contains(github.event.schedule, '30') && 'CD Wheel') || inputs.pytorch }}
+run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}
 
 jobs:
   Conditions-Filter:
@@ -62,6 +66,10 @@ jobs:
       test_type: ${{ steps.inputs-check.outputs.test_type }}
       pytorch: ${{ steps.inputs-check.outputs.pytorch }}
       torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
+      ut: ${{ steps.inputs-check.outputs.ut }}
+      suite: ${{ steps.inputs-check.outputs.suite }}
+      triton: ${{ steps.inputs-check.outputs.triton }}
+      python: ${{ steps.inputs-check.outputs.python }}
     steps:
       - name: Inputs check
         id: inputs-check
@@ -87,9 +95,13 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
+            ut='["basic","op_ut","xpu_profiling","torch_xpu","xpu_distributed","microbench","windows"]'
+            suite='["huggingface","timm_models","torchbench","pt2e"]'
+            triton=''
+            python='3.10'
           else
             pytorch="${{ inputs.pytorch }}"
-            if [ "${{ inputs.torch_xpu_ops }}" == "triggerd" ];then
+            if [ -z ${{ inputs.torch_xpu_ops }} ];then
               torch_xpu_ops="${{ github.ref_name }}"
             else
               torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
@@ -99,10 +111,18 @@ jobs:
             else
               test_type="build-ondemand"
             fi
+            ut="$(echo ${{ inputs.ut }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            triton="${{ inputs.triton }}"
+            python="${{ inputs.python }}"
           fi
           echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
           echo "pytorch=${pytorch}" >> ${GITHUB_OUTPUT}
           echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
+          echo "ut=${ut}" >> ${GITHUB_OUTPUT}
+          echo "suite=${suite}" >> ${GITHUB_OUTPUT}
+          echo "triton=${triton}" >> ${GITHUB_OUTPUT}
+          echo "python=${python}" >> ${GITHUB_OUTPUT}
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
@@ -117,49 +137,49 @@ jobs:
       runner: pvc_rolling
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      triton: ${{ github.event_name == 'schedule' && 'pinned' || inputs.triton }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
+      triton: ${{ needs.Conditions-Filter.outputs.triton }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Linux-Nightly-Ondemand-UT-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.ut != '[]' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     strategy:
       fail-fast: false
       matrix:
-        ut_name: ${{ fromJSON(github.event_name == 'schedule' && '["op_regression","op_regression_dev1","op_transformers","op_extended","op_ut"]' || inputs.ut) }}
+        ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
-    if: ${{ github.event_name == 'schedule' || inputs.suite != '[]' }}
+    if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite) }}
+        suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
       suite: ${{ matrix.suite }}
-      dt: ${{ github.event_name == 'schedule' && 'float32' || inputs.dt }}
-      mode: ${{ github.event_name == 'schedule' && 'inference' || inputs.mode }}
-      scenario: ${{ github.event_name == 'schedule' && 'accuracy' || inputs.scenario }}
+      dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
+      mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
+      scenario: ${{ github.event_name == 'schedule' && '' || inputs.scenario }}
       model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
-    if: ${{ ! cancelled() }}
     name: linux-e2e
-    permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
+    if: ${{ ! cancelled() && ! endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
+    permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -177,7 +197,7 @@ jobs:
     with:
       runner: pvc_rolling
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
+      python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
@@ -185,8 +205,8 @@ jobs:
     needs: [Conditions-Filter]
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: ${{ github.event_name == 'schedule' && 'op_extended,torch_xpu' || inputs.ut }}
-      python: ${{ github.event_name == 'schedule' && '3.10' || '3.10' }}
+      ut: 'op_extended,torch_xpu'
+      python: ${{ needs.Conditions-Filter.outputs.python }}
       src_changed: false
       has_label: true
       runner: Windows_CI

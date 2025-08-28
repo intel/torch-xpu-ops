@@ -34,12 +34,12 @@ jobs:
   runner:
     runs-on: ${{ inputs.runner }}
     name: get-runner
-    if: ${{ ! contains(inputs.ut, 'distributed') }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
+      pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -63,7 +63,7 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -110,14 +110,15 @@ jobs:
           fi
 
   host:
-    runs-on: ${{ inputs.runner }}
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.runner_id }}
     if: ${{ contains(inputs.ut, 'distributed') }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
     steps:
       - name: Init test
         run: |
@@ -125,7 +126,7 @@ jobs:
           sudo rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ inputs.runner }}
+      - name: Prepare test env on ${{ needs.runner.outputs.runner_id }}
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
@@ -165,7 +166,7 @@ jobs:
 
   summary:
     needs: [docker, host]
-    if: ${{ ! cancelled() }}
+    if: ${{ ! cancelled() && ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -182,20 +183,31 @@ jobs:
       - name: Check UT Results
         shell: bash
         run: |
-          repo="${{ github.repository }}"
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
-          gh --repo $repo issue view $UT_SKIP_ISSUE --json body -q .body | sed '/^$/d' > Known_issue.log
+          # get distributed known issues
+          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
+          # get skipped known issues
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
             --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          awk '/Cases:/ {flag=1; next} /^\|\||^$/ {flag=0} flag' issues.log | \
-            grep -Eo 'test[^[:space:]]+( \|\| [^[:space:]]+)?' | sed 's/ *|| */ /g' | sort -u > issues_temp.log
-          awk '$2 == "op_ut" {print $1}' issues_temp.log > issues_op_ut.log
-          cat issues_temp.log | awk '{print $1}' >> Known_issue.log
-          awk -F'::' '{print $1}' issues_op_ut.log | sort -u | paste -sd ',' >> Known_issue.log
+          if [ "${{ inputs.ut }}" == "basic" ];then
+            ut_list="op_regression op_transformers op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh ${{ inputs.ut }}
+          for ut_name in ${ut_list}
+          do
+            cp Known_issue.log.tmp Known_issue.log
+            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
+              if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
+              if ( print_row == 1 && $NF ~ r ) { print $1 };
+              if ( $0 ~ /Cases:/ ) { print_row = 1 };
+            }' issues.log >> Known_issue.log
+            bash ut_result_check.sh ${ut_name}
+          done
       - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
