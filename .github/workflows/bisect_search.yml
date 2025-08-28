@@ -28,7 +28,7 @@ on:
         description: Criteria for performance check, default is 10%
       oneapi:
         type: string
-        default: '2025.1.3'
+        default: '2025.2'
         description: Installed oneAPI DLE on host by default, fill offline.sh url if needed
       python:
         type: string
@@ -121,10 +121,10 @@ jobs:
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
           rm -rf ~/intel ~/.intel /tmp/intel
-          if [ "${{ inputs.oneapi }}" == "2025.1.3" ];then
+          if [ "${{ inputs.oneapi }}" == "2025.1" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/3435dc45-055e-4f7a-86b1-779931772404/intel-deep-learning-essentials-2025.1.3.7_offline.sh"
-          elif [ "${{ inputs.oneapi }}" == "2025.2.0" ];then
-            ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/49d38360-b403-4b06-9104-86fa8d886e6d/intel-deep-learning-essentials-2025.2.0.558_offline.sh"
+          elif [ "${{ inputs.oneapi }}" == "2025.2" ];then
+            ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh"
           else
             ONEAPI_URL="${{ inputs.oneapi }}"
           fi
