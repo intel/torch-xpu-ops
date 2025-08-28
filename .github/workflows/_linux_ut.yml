@@ -198,6 +198,7 @@ jobs:
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           bash ut_result_check.sh ${{ inputs.ut }}
       - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
