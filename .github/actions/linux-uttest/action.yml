@@ -13,34 +13,45 @@ runs:
   steps:
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'op_regression' }}
+      if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
       run: |
-        mkdir -p ut_log/op_regression
+        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/regressions
         pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
-          2> ${{ github.workspace }}/ut_log/op_regression/op_regression_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_regression/op_regression_test.log
+          2> ${log_dir}/op_regression_test_error.log |tee ${log_dir}/op_regression_test.log
+    - name: op_regression_dev1
+      shell: timeout 300 bash -xe {0}
+      if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
+      run: |
+        clinfo --list
+        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        mkdir -p ${log_dir}
+        cd pytorch/third_party/torch-xpu-ops/test/regressions
+        timeout 180 pytest test_operation_on_device_1.py \
+          --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
+          2> ${log_dir}/op_regression_dev1_test_error.log |tee ${log_dir}/op_regression_dev1_test.log
     - name: op_transformers
       shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'op_transformers' }}
+      if: ${{ inputs.ut_name == 'op_transformers' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        mkdir -p ut_log/op_transformers
+        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        mkdir -p ${log_dir}
         cd pytorch
         pytest test/test_transformers.py -k xpu \
           --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
-          2> ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_transformers/op_transformers_test.log
+          2> ${log_dir}/op_transformers_test_error.log |tee ${log_dir}/op_transformers_test.log
     - name: op_extended
       shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'op_extended' }}
+      if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
-        mkdir -p ut_log/op_extended
+        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        mkdir -p ${log_dir}
         cd pytorch/third_party/torch-xpu-ops/test/xpu/extended
         python run_test_with_skip.py \
-          2> ${{ github.workspace }}/ut_log/op_extended/op_extended_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_extended/op_extended_test.log
+          2> ${log_dir}/op_extended_test_error.log |tee ${log_dir}/op_extended_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
     - name: op_ut
@@ -131,18 +142,6 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
         python -m pytest -s -vs test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
-
-    - name: op_regression_dev1
-      shell: timeout 300 bash -xe {0}
-      if: ${{ inputs.ut_name == 'op_regression_dev1' }}
-      run: |
-        clinfo --list
-        mkdir -p ut_log/op_regression_dev1
-        cd pytorch/third_party/torch-xpu-ops/test/regressions
-        timeout 180 pytest test_operation_on_device_1.py \
-          --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
-          2> ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_regression_dev1/op_regression_dev1_test.log
 
     - name: xpu_distributed
       shell: timeout 3600 bash -xeu -o pipefail {0}

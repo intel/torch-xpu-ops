@@ -190,13 +190,21 @@ jobs:
           # get skipped known issues
           gh api "repos/${{ github.repository }}/issues?labels=skipped" \
             --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          awk -v n="${{ inputs.ut }}" 'BEGIN{ print_row = 0 }{
+          awk -v 'BEGIN{ print_row = 0 }{
             if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-            if ( print_row == 1 && $NF == n ) { print $1 };
+            if ( print_row == 1 ) { print $1 };
             if ( $0 ~ /Cases:/ ) { print_row = 1 };
           }' issues.log >> Known_issue.log
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          bash ut_result_check.sh ${{ inputs.ut }}
+          if [ "${{ inputs.ut }}" == "basic" ];then
+            ut_list="op_regression op_transformers op_extended op_regression_dev1"
+          else
+            ut_list="${{ inputs.ut }}"
+          fi
+          for ut_name in ${ut_list}
+          do
+            bash ut_result_check.sh ${ut_name}
+          done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
