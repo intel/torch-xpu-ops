@@ -127,7 +127,14 @@ runs:
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
           pip install -r requirements.txt
-          python install.py --continue_on_fail
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            while read line
+            do
+              python install.py $(echo $line |awk -F, '{printf $1}')
+            done < benchmarks/dynamo/torchbench_models_list.txt
+          else
+            python install.py --continue_on_fail
+          fi
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           pip install pyre-extensions
