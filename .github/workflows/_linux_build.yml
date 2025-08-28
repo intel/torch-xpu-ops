@@ -200,7 +200,7 @@ jobs:
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
-          chmod 777 /__w /github -R
+          chmod 777 /__w /github ./ -R
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
