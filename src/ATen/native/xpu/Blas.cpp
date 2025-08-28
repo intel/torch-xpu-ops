@@ -1,6 +1,4 @@
 #include <ATen/ATen.h>
-#include <ATen/native/DispatchStub.h>
-#include <ATen/native/mkldnn/xpu/Blas.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/Runtime.h>
 #include <oneapi/mkl/blas.hpp>
@@ -129,15 +127,15 @@ at::Tensor& bmm_complex_out_xpu(
 
 template <typename T>
 at::Tensor& addmm_complex_out_xpu_impl(
-    const Tensor& input,
+    const Tensor& self,
     const Tensor& mat1,
     const Tensor& mat2,
     const Scalar& beta,
     const Scalar& alpha,
-    Tensor& result) {
+    Tensor& out) {
   at::Tensor mat1_cont = resolveViewsAndConjugation(mat1);
   at::Tensor mat2_cont = resolveViewsAndConjugation(mat2);
-  at::Tensor input_cont = resolveViewsAndConjugation(input).clone().detach();
+  at::Tensor self_cont = resolveViewsAndConjugation(self).clone().detach();
 
   const int64_t m = mat1_cont.sizes().at(0);
   const int64_t n = mat2_cont.sizes().at(1);
@@ -145,27 +143,27 @@ at::Tensor& addmm_complex_out_xpu_impl(
 
   // Some paths in the code below do not handle multiplications of the form [n, 0] x [0, m]
   if (k == 0) {
-    if (result.numel() == 0) {
-      return result;
+    if (out.numel() == 0) {
+      return out;
     }
     if (beta.toComplexDouble() == 0.0) {
-      result.zero_();
+      out.zero_();
     } else {
-      if (!input.is_same(result)) {
-        result.copy_(input);
+      if (!self.is_same(out)) {
+        out.copy_(self);
       }
-      result.mul_(beta);
+      out.mul_(beta);
     }
-    return result;
+    return out;
   }
 
   if (m == 0 || n == 0) {
-    return result;
+    return out;
   }
 
   const std::vector<int64_t> mm_output_size = {m, n};
-  if (input_cont.sizes() != mm_output_size) {
-    input_cont = at::broadcast_to(input_cont, mm_output_size).contiguous();
+  if (self_cont.sizes() != mm_output_size) {
+    self_cont = at::broadcast_to(self_cont, mm_output_size).contiguous();
   }
 
 
@@ -187,46 +185,46 @@ at::Tensor& addmm_complex_out_xpu_impl(
       reinterpret_cast<const std::complex<T>*>(mat2_cont.const_data_ptr()),
       n,
       complex_beta,
-      reinterpret_cast<std::complex<T>*>(input_cont.data_ptr()),
+      reinterpret_cast<std::complex<T>*>(self_cont.data_ptr()),
       n);
 
-  if (result.sizes() == input_cont.sizes()) {
-    result.copy_(input_cont);
+  if (out.sizes() == self_cont.sizes()) {
+    out.copy_(self_cont);
   } else {
-    result.copy_(input_cont.view(result.sizes()));
+    out.copy_(self_cont.view(out.sizes()));
   }
 
-  return result;
+  return out;
 }
 
 at::Tensor& addmm_complex_out_xpu(
-    const Tensor& input,
+    const Tensor& self,
     const Tensor& mat1,
     const Tensor& mat2,
     const Scalar& beta,
     const Scalar& alpha,
-    Tensor& result) {
+    Tensor& out) {
 
-  AT_DISPATCH_COMPLEX_TYPES(input.scalar_type(), "addmm_complex_out_xpu", [&] {
+  AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "addmm_complex_out_xpu", [&] {
     using underlying_t = typename c10::scalar_value_type<scalar_t>::type;
     addmm_complex_out_xpu_impl<underlying_t>(
-        input, mat1, mat2, beta, alpha, result);
+        self, mat1, mat2, beta, alpha, out);
   });
 
-  return result;
+  return out;
 }
 
 template <typename T>
 at::Tensor& baddbmm_complex_out_xpu_impl(
-    const Tensor& input,
+    const Tensor& self,
     const Tensor& batch1,
     const Tensor& batch2,
     const Scalar& beta,
     const Scalar& alpha,
-    Tensor& result) {
+    Tensor& out) {
   at::Tensor batch1_cont = resolveViewsAndConjugation(batch1);
   at::Tensor batch2_cont = resolveViewsAndConjugation(batch2);
-  at::Tensor input_cont = resolveViewsAndConjugation(input).clone().detach();
+  at::Tensor self_cont = resolveViewsAndConjugation(self).clone().detach();
 
   const int64_t batch_size = batch1_cont.sizes().at(0);
   const int64_t m = batch1_cont.sizes().at(1);
@@ -234,8 +232,8 @@ at::Tensor& baddbmm_complex_out_xpu_impl(
   const int64_t k = batch1_cont.sizes().at(2);
 
   const std::vector<int64_t> mm_output_size = {batch_size, m, n};
-  if (input_cont.sizes() != mm_output_size) {
-    input_cont = at::broadcast_to(input_cont, mm_output_size).contiguous();;
+  if (self_cont.sizes() != mm_output_size) {
+    self_cont = at::broadcast_to(self_cont, mm_output_size).contiguous();;
   }
 
   std::complex<T> complex_alpha =
@@ -258,41 +256,50 @@ at::Tensor& baddbmm_complex_out_xpu_impl(
       n,
       k * n,
       complex_beta,
-      reinterpret_cast<std::complex<T>*>(input_cont.data_ptr()),
+      reinterpret_cast<std::complex<T>*>(self_cont.data_ptr()),
       n,
       m * n,
       batch_size);
 
-  if (result.sizes() == input_cont.sizes()) {
-    result.copy_(input_cont);
+  if (out.sizes() == self_cont.sizes()) {
+    out.copy_(self_cont);
   } else {
-    result.copy_(input_cont.view(result.sizes()));
+    out.copy_(self_cont.view(out.sizes()));
   }
 
-  return result;
+  return out;
 }
 
 at::Tensor& baddbmm_complex_out_xpu(
-    const Tensor& input,
+    const Tensor& self,
     const Tensor& batch1,
     const Tensor& batch2,
     const Scalar& beta,
     const Scalar& alpha,
-    Tensor& result) {
+    Tensor& out) {
 
   AT_DISPATCH_COMPLEX_TYPES(
-      input.scalar_type(), "baddbmm_complex_out_xpu", [&] {
+      self.scalar_type(), "baddbmm_complex_out_xpu", [&] {
         using underlying_t = typename c10::scalar_value_type<scalar_t>::type;
         baddbmm_complex_out_xpu_impl<underlying_t>(
-            input, batch1, batch2, beta, alpha, result);
+            self, batch1, batch2, beta, alpha, out);
       });
 
-  return result;
+  return out;
 }
 
-REGISTER_XPU_DISPATCH(mm_complex_stub, &mm_complex_out_xpu)
-REGISTER_XPU_DISPATCH(bmm_complex_stub, &bmm_complex_out_xpu)
-REGISTER_XPU_DISPATCH(addmm_complex_stub, &addmm_complex_out_xpu)
-REGISTER_XPU_DISPATCH(baddbmm_complex_stub, &baddbmm_complex_out_xpu)
+TORCH_LIBRARY(xpu_mkl, m) {
+  m.def("xpu_mkl::mm(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)");
+  m.def("xpu_mkl::bmm(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)");
+  m.def("xpu_mkl::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)");
+  m.def("xpu_mkl::baddbmm(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)");
+}
+
+TORCH_LIBRARY_IMPL(xpu_mkl, XPU, m) {
+  m.impl("xpu_mkl::mm", mm_complex_out_xpu);
+  m.impl("xpu_mkl::bmm", bmm_complex_out_xpu);
+  m.impl("xpu_mkl::addmm", addmm_complex_out_xpu);
+  m.impl("xpu_mkl::baddbmm", baddbmm_complex_out_xpu);
+}
 
 } // namespace at::native
