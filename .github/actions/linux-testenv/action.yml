@@ -122,16 +122,17 @@ runs:
         if [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
           pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          rm -rf ./benchmark
-          git clone https://github.com/pytorch/benchmark
-          cd benchmark
+          cd ../
+          rm -rf ./e2e-benchmark
+          git clone https://github.com/pytorch/benchmark e2e-benchmark
+          cd e2e-benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
           pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
             while read line
             do
               python install.py $(echo $line |awk -F, '{printf $1}')
-            done < benchmarks/dynamo/torchbench_models_list.txt
+            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
             python install.py --continue_on_fail
           fi
@@ -139,10 +140,12 @@ runs:
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          cd ../pytorch
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
-          rm -rf ./benchmark
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark
-          cd benchmark
+          cd ../
+          rm -rf ./pt2e-performance
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/pt2e-performance
+          cd pt2e-performance
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           pip install -r requirements.txt
           python install.py --continue_on_fail
@@ -150,6 +153,7 @@ runs:
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
           pip install -U pytest-timeout pytest-xdist
