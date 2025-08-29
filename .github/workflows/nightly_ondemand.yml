@@ -67,5 +67,5 @@ jobs:
       runner: pvc_rolling
       pytorch: nightly_wheel
       torch_xpu_ops: pinned
-      python: 3.10
+      python: '3.10'
       ut: ${{ matrix.ut_name }}
