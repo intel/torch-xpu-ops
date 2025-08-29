@@ -63,7 +63,7 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -81,13 +81,6 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: UT Test Results Summary
-        run: |
-          pip install junitparser
-          python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          if [ -e ut_failure_list.csv ];then
-              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -95,121 +88,3 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
-      - name: Upload XPU UT Failure list
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          if-no-files-found: ignore
-      - name: Reset Ptrace_scope
-        if: ${{ always() }}
-        run: |
-          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
-            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
-          fi
-
-  host:
-    needs: runner
-    runs-on: ${{ needs.runner.outputs.runner_id }}
-    if: ${{ contains(inputs.ut, 'distributed') }}
-    env:
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
-    steps:
-      - name: Init test
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.runner_id }}
-        uses: ./.github/actions/linux-testenv
-        with:
-          pytorch: ${{ inputs.pytorch }}
-          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
-          python: ${{ inputs.python }}
-      - name: Run XPU UT Test
-        uses: ./.github/actions/linux-uttest
-        with:
-          ut_name: ${{ inputs.ut }}
-      - name: UT Test Results Summary
-        run: |
-          pip install junitparser
-          python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          if [ -e ut_failure_list.csv ];then
-              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-          fi
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
-          path: ${{ github.workspace }}/ut_log
-          if-no-files-found: ignore
-      - name: Upload XPU UT Failure list
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          if-no-files-found: ignore
-      - name: Reset Ptrace_scope
-        if: ${{ always() }}
-        run: |
-          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
-            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
-          fi
-
-  summary:
-    needs: [docker, host]
-    if: ${{ ! cancelled() && ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
-      UT_SKIP_ISSUE: 1624
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
-          path: ${{ github.workspace }}/ut_log
-      - name: Check UT Results
-        shell: bash
-        run: |
-          ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
-          # get distributed known issues
-          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
-          # get skipped known issues
-          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
-            --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          if [ "${{ inputs.ut }}" == "basic" ];then
-            ut_list="op_regression op_transformers op_extended op_regression_dev1"
-          else
-            ut_list="${{ inputs.ut }}"
-          fi
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          for ut_name in ${ut_list}
-          do
-            cp Known_issue.log.tmp Known_issue.log
-            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
-              if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-              if ( print_row == 1 && $NF ~ r ) { print $1 };
-              if ( $0 ~ /Cases:/ ) { print_row = 1 };
-            }' issues.log >> Known_issue.log
-            bash ut_result_check.sh ${ut_name}
-          done
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
-          path: ${{ github.workspace }}/ut_log
-          overwrite: true
