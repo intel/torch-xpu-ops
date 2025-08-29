@@ -10,6 +10,7 @@ skip_dict = {
         "test_ddp_parity_xpu",
     ),
     "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
+    "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_core.py": (
         "test_delayed_optim_step_offload_false_no_shard_xpu",
         "test_delayed_optim_step_offload_false_none_xpu",
@@ -102,4 +103,12 @@ skip_dict = {
         # will bring back after oneccl upgrade to 2021.16.1
         "test_xccl_barrier",
     ),
+    "../../../../test/distributed/fsdp/test_fsdp_misc.py": None,
+    "../../../../test/distributed/test_functional_api.py": (
+        # depends on https://github.com/pytorch/pytorch/pull/159473
+        "test_tracing_with_fakepg_xpu",
+    ),
+    "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
+    "../../../../test/distributed/_tools/test_mem_tracker.py": None,
+    "../../../../test/distributed/_tools/test_memory_tracker.py": None,
 }
