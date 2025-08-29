@@ -3,6 +3,7 @@ ut_suite="${1:-op_regression}"   # op_regression / op_extended / op_ut / torch_x
 
 # usage
 # compare_and_filter_logs <UT'log> <Known_issue.log> [output.log]
+all_pass=""
 
 compare_and_filter_logs() {
     local file_UT="$1"
@@ -71,6 +72,54 @@ check_passed_known_issues() {
     fi
 }
 
+check_test_cases() {
+    local log_file="$1"
+    declare -A expected_cases=(
+        ["op_extended"]=5349
+        ["op_regression"]=244
+        ["op_regression_dev1"]=1
+        ["op_transformers"]=237
+        ["op_ut"]=120408
+    )
+
+    if [[ ! -f "$log_file" ]]; then
+        echo "False"
+        echo "[ERROR] Need test file $log_file" >&2
+        return 1
+    fi
+
+    all_pass="true"
+    local current_category=""
+
+    while IFS= read -r line; do
+        if [[ $line =~ ^Category:\ ([^[:space:]]+) ]]; then
+            current_category="${BASH_REMATCH[1]}"
+        elif [[ $line =~ Test\ cases:\ ([0-9]+) ]] && [[ -n "$current_category" ]]; then
+            actual_cases="${BASH_REMATCH[1]}"
+            expected_cases_value="${expected_cases[$current_category]}"
+            
+            if [[ -n "$expected_cases_value" ]]; then
+                threshold=$(echo "$expected_cases_value * 0.95" | bc -l | awk '{print int($1+0.5)}')
+
+                echo "Category: $current_category"
+                echo "Expected number: $expected_cases_value"
+                echo "Current number: $actual_cases"
+                echo "Threshold(95%): $threshold"
+
+                if [[ "$actual_cases" -lt "$threshold" ]]; then
+                    echo "  Status: ❌ Abnormal (reduction exceeds 5%)"
+                    all_pass="false"
+                else
+                    reduction=$(echo "scale=2; ($actual_cases/$expected_cases_value - 1) * 100" | bc -l)
+                    echo "  Status: ✅ Normal (reduction ${reduction}%)"
+                fi
+                echo "----------------------------------------"
+            fi
+            current_category=""
+        fi
+    done < "$log_file"
+}
+
 
 if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' ]]; then
     echo -e "========================================================================="
@@ -85,6 +134,10 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
     echo -e "========================================================================="
     check_passed_known_issues passed_${ut_suite}.log Known_issue.log
+    echo -e "========================================================================="
+    echo -e "Checking Test case number for ${ut_suite}"
+    echo -e "========================================================================="
+    check_test_cases category_${ut_suite}.log
     if [[ -f "failures_${ut_suite}_filtered.log" ]]; then
       num_failed=$(wc -l < "./failures_${ut_suite}_filtered.log")
     else
@@ -102,7 +155,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     else
       echo -e "Not need reproduce command"
     fi
-    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]] || [[ "$all_pass" == 'false']]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else

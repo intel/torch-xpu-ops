@@ -14,6 +14,13 @@ summaries = []
 failures_by_category = defaultdict(list)
 passed_cases = []
 passed_by_category = defaultdict(list)
+category_totals = defaultdict(lambda: {
+    'Test cases': 0,
+    'Passed': 0,
+    'Skipped': 0,
+    'Failures': 0,
+    'Errors': 0
+})
 
 error_types = [
     "RuntimeError",
@@ -222,6 +229,13 @@ def parse_log_file(log_file):
         summary['Failures'] = failures_number
     summary['Passed'] = summary['Test cases'] - summary['Failures'] - summary['Skipped']
 
+    # Update category totals
+    category_totals[category]['Test cases'] += summary['Test cases']
+    category_totals[category]['Passed'] += summary['Passed']
+    category_totals[category]['Skipped'] += summary['Skipped']
+    category_totals[category]['Failures'] += summary['Failures']
+    category_totals[category]['Errors'] += summary['Errors']
+
     return summary
 
 def determine_category(ut):
@@ -264,6 +278,13 @@ def process_xml_file(xml_file):
             }
             summaries.append(suite_summary)
 
+            # Update category totals
+            category_totals[category]['Test cases'] += suite_summary['Test cases']
+            category_totals[category]['Passed'] += suite_summary['Passed']
+            category_totals[category]['Skipped'] += suite_summary['Skipped']
+            category_totals[category]['Failures'] += suite_summary['Failures']
+            category_totals[category]['Errors'] += suite_summary['Errors']
+
             for case in suite:
                 if get_result(case) not in ["passed", "skipped"]:
                     case._file_category = category
@@ -293,6 +314,23 @@ def generate_passed_log():
                 log_file.write(f"{category},{class_name},{test_name}\n")
 
         print(f"Passed log for {category} has been written to {log_filename}")
+
+def generate_category_totals_log():
+    """Generate log files with category totals"""
+    for category, totals in category_totals.items():
+        if totals['Test cases'] == 0:
+            continue
+
+        log_filename = f"category_{category}.log"
+        with open(log_filename, "w", encoding='utf-8') as log_file:
+            log_file.write(f"Category: {category}\n")
+            log_file.write(f"Test cases: {totals['Test cases']}\n")
+            log_file.write(f"Passed: {totals['Passed']}\n")
+            log_file.write(f"Skipped: {totals['Skipped']}\n")
+            log_file.write(f"Failures: {totals['Failures']}\n")
+            log_file.write(f"Errors: {totals['Errors']}\n")
+
+        print(f"Category totals log for {category} has been written to {log_filename}")
 
 def print_summary():
     print("### Results Summary")
@@ -344,6 +382,7 @@ def main():
 
     generate_failures_log()
     generate_passed_log()
+    generate_category_totals_log() 
     print_summary()
 
 
