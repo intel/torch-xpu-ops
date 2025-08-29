@@ -9,10 +9,6 @@ compare_and_filter_logs() {
     local file_known_issue="$2"
     local output_file="${3:-${file_UT%.*}_filtered.log}"
     local filtered_content="${file_UT%.*}_removed.log"
-    local temp_file="temp_parts.log"
-    local temp_file_labeled="temp_parts_labeled.log"
-    local temp_output="${3:-${file_UT%.*}_filtered_temp.log}"
-    local temp_final="${file_UT%.*}_final_temp.log"
 
     if [[ $# -lt 2 ]]; then
         echo "[ERROR] Need 2 files to compare"
@@ -34,38 +30,6 @@ compare_and_filter_logs() {
     # Keep the filtered UT cases
     grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
     echo "Filtered cases file: $filtered_content"
-    true > "$temp_file"
-    true > "$temp_file_labeled"
-    true > "$temp_output"
-    true > "$temp_final"
-    grep -E '\.py$|,' "$output_file" > "$temp_output"
-    while IFS= read -r line; do
-        IFS=',' read -ra parts <<< "$line"
-        for part in "${parts[@]}"; do
-            part_trimmed=$(echo "$part" | xargs)
-            if [[ -n "$part_trimmed" ]] && ! grep -qF "$part_trimmed" "$file_known_issue"; then
-                echo "$part_trimmed" >> "$temp_file"
-                echo -e "\n\033[1;33m[Check the failed cases in summary line]\033[0m"
-                echo -e "\033[1;33mCase not found in ${file_known_issue}: '${part_trimmed}' (from line: '${line}')\033[0m"
-            else
-                echo -e "\n\033[1;33m[Check the failed cases in summary line]\033[0m"
-                echo -e "\n\033[1;32m${part_trimmed} found in ${file_known_issue} (from line: '${line}')\033[0m"
-            fi
-        done
-    done < "$temp_output"
-
-    awk '{print $0 " [in summary line]"}' "$temp_file" > "$temp_file_labeled"
-    grep -vE '\.py$|,' "$output_file" > "$temp_final"
-    cat "$temp_file_labeled" >> "$temp_final"
-    mv "$temp_final" "$output_file"
-
-    echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
-    if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
-        echo -e "\033[1;32mNo new failed cases found\033[0m"
-    else
-        echo -e "\n\033[1;31mNew failed cases, not in known issues\033[0m"
-        cat "$output_file"
-    fi
 
     if [[ -s "$filtered_content" ]]; then
         echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
@@ -79,7 +43,13 @@ compare_and_filter_logs() {
         echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
     fi
 
-    rm -f ${temp_output} ${temp_file} ${temp_final}
+    echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
+    if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
+        echo -e "\033[1;32mNo new failed cases found\033[0m"
+    else
+        echo -e "\n\033[1;31mNew failed cases, not in known issues\033[0m"
+        cat "$output_file"
+    fi
 }
 
 check_passed_known_issues() {
@@ -101,41 +71,26 @@ check_passed_known_issues() {
     fi
 }
 
-get_pass_fail_log() {
-  local p_row="$1"
-  local p_col="$2"
-  local ut_log="$3"
-  grep -E "${p_row}" "${ut_log}" | awk -v p="${p_col}" '{
-    for (i=1;i<=NF;i++) {
-      if ($i ~ p) {
-        print $i;
-      }
-    }
-  }'
-}
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' ]]; then
-    get_pass_fail_log ".FAILED" "::.*::" "${ut_suite}"_test.log > ./"${ut_suite}"_failed.log
-    grep -E "Timeout" "${ut_suite}"_test.log | grep "test" >> ./"${ut_suite}"_failed.log
-    get_pass_fail_log "PASSED" "::.*::" "${ut_suite}"_test.log > ./"${ut_suite}"_passed.log
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut']]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    cat "./${ut_suite}_failed.log"
+    cat "./failures_${ut_suite}.log"
     echo -e "========================================================================="
     echo -e "Checking Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    compare_and_filter_logs "${ut_suite}"_failed.log Known_issue.log
+    compare_and_filter_logs failures_${ut_suite}.log Known_issue.log
     echo -e "========================================================================="
     echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
     echo -e "========================================================================="
-    check_passed_known_issues "${ut_suite}"_passed.log Known_issue.log
-    if [[ -f "${ut_suite}_failed_filtered.log" ]]; then
-      num_failed=$(wc -l < "./${ut_suite}_failed_filtered.log")
+    check_passed_known_issues passed_${ut_suite}.log Known_issue.log
+    if [[ -f "failures_${ut_suite}_filtered.log" ]]; then
+      num_failed=$(wc -l < "./failures_${ut_suite}_filtered.log")
     else
-      num_failed=$(wc -l < "./${ut_suite}_failed.log")
+      num_failed=$(wc -l < "./failures_${ut_suite}.log")
     fi
-    num_passed=$(wc -l < "./${ut_suite}_passed.log")
+    num_passed=$(wc -l < "./passed_${ut_suite}.log")
     echo -e "========================================================================="
     echo -e "Provide the reproduce command for ${ut_suite}"
     echo -e "========================================================================="
@@ -154,80 +109,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
 fi
-if [[ "${ut_suite}" == 'op_ut' ]]; then
-    get_pass_fail_log ".FAILED" "::.*::" op_ut_with_skip_test.log > ./"${ut_suite}"_with_skip_test_failed.log
-    grep -E "Timeout" op_ut_with_skip_test.log | grep "test" >> ./"${ut_suite}"_with_skip_test_failed.log
-    get_pass_fail_log "PASSED" "::.*::" op_ut_with_skip_test.log > ./"${ut_suite}"_with_skip_test_passed.log
-    get_pass_fail_log ".FAILED" "::.*::" op_ut_with_only_test.log  > ./"${ut_suite}"_with_only_test_failed.log
-    grep -E "Timeout" op_ut_with_only_test.log | grep "test" >> ./"${ut_suite}"_with_only_test_failed.log
-    get_pass_fail_log "PASSED" "::.*::" op_ut_with_only_test.log > ./"${ut_suite}"_with_only_test_passed.log
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} with skip"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_with_skip_test_failed.log"
-    echo -e "========================================================================="
-    echo -e "Checking Failed cases in ${ut_suite} with skip"
-    echo -e "========================================================================="
-    compare_and_filter_logs "${ut_suite}"_with_skip_test_failed.log Known_issue.log
-    echo -e "========================================================================="
-    echo -e "Checking New passed cases in Known issue list for ${ut_suite} with skip"
-    echo -e "========================================================================="
-    check_passed_known_issues "${ut_suite}"_with_skip_test_passed.log Known_issue.log
-    if [[ -f "${ut_suite}_with_skip_test_failed_filtered.log" ]]; then
-      num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed_filtered.log")
-    else
-      num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed.log")
-    fi
-    echo -e "========================================================================="
-    echo -e "Provide the reproduce command for ${ut_suite} with skip"
-    echo -e "========================================================================="
-    if [[ $num_failed_with_skip -gt 0 ]]; then
-      echo -e "Need reproduce command"
-      if [[ -f "reproduce.log" ]]; then
-        cat "./reproduce.log"
-      fi
-    else
-      echo -e "Not need reproduce command"
-    fi
-    echo -e "========================================================================="
-    echo -e "Show Failed cases in ${ut_suite} with only"
-    echo -e "========================================================================="
-    cat "./${ut_suite}_with_only_test_failed.log"
-    echo -e "========================================================================="
-    echo -e "Checking Failed cases in ${ut_suite} with only"
-    echo -e "========================================================================="
-    compare_and_filter_logs "${ut_suite}"_with_only_test_failed.log Known_issue.log
-    echo -e "========================================================================="
-    echo -e "Checking New passed cases in Known issue list for ${ut_suite} with only"
-    echo -e "========================================================================="
-    check_passed_known_issues "${ut_suite}"_with_only_test_passed.log Known_issue.log
-    if [[ -f "${ut_suite}_with_only_test_failed_filtered.log" ]]; then
-      num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
-    else
-      num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
-    fi
-    echo -e "========================================================================="
-    echo -e "Provide the reproduce command for ${ut_suite} with only"
-    echo -e "========================================================================="
-    if [[ $num_failed_with_only -gt 0 ]]; then
-      echo -e "Need reproduce command"
-      if [[ -f "reproduce.log" ]]; then
-        cat "./reproduce.log"
-      fi
-    else
-      echo -e "Not need reproduce command"
-    fi
-    ((num_failed=num_failed_with_skip+num_failed_with_only))
-    num_passed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_passed.log")
-    num_passed_with_only=$(wc -l < "./${ut_suite}_with_only_test_passed.log")
-    ((num_passed=num_passed_with_skip+num_passed_with_only))
-    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
-      echo -e "[ERROR] UT ${ut_suite} test Fail"
-      exit 1
-    else
-      echo -e "[PASS] UT ${ut_suite} test Pass"
-    fi
-fi
+
 if [[ "${ut_suite}" == 'torch_xpu' ]]; then
     echo "Pytorch XPU binary UT checking"
     cd ../../pytorch || exit
