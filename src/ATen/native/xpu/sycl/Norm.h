@@ -600,7 +600,7 @@ template <
     class Norm,
     bool one_moment = false>
 struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<3> item_id) const {
     accscalar_t sum1 = 0;
     accscalar_t sum2 = 0;
@@ -747,7 +747,7 @@ template <
     class Norm,
     bool one_moment = false>
 struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<3> item_id) const {
     index_t local_id = item_id.get_local_id(2);
 
