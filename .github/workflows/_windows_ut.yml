@@ -112,7 +112,7 @@ jobs:
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install cmake setuptools==72.1.0 clang-format
+          pip install cmake setuptools clang-format
           pip install mkl-static mkl-include
           set USE_STATIC_MKL=1
           copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
@@ -123,7 +123,7 @@ jobs:
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
           python setup.py clean
-          set MAX_JOBS=4
+          set MAX_JOBS=8
           python setup.py bdist_wheel > build_torch_wheel_log.log
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
