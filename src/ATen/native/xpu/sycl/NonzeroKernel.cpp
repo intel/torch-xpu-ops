@@ -81,9 +81,8 @@ struct CopyIfFunc<bool> {
 template <typename scalar_t>
 void nonzero_template(const Tensor& self_, Tensor& out) {
   Tensor self = self_.contiguous();
-
-const int64_t num_dim = self.dim();
-int64_t N = self.numel();
+  const int64_t num_dim = self.dim();
+  int64_t N = self.numel();
 
   Tensor idx_flat = at::empty(
       {N}, out.options().memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT));
