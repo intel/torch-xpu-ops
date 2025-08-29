@@ -141,7 +141,9 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "========================================================================="
     if [[ $num_failed -gt 0 ]]; then
       echo -e "Need reproduce command"
-      cat "./reproduce.log"
+      if [[ -f "reproduce.log" ]]; then
+        cat "./reproduce.log"
+      fi
     else
       echo -e "Not need reproduce command"
     fi
