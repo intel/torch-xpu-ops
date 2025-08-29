@@ -140,6 +140,24 @@ jobs:
         run: |
           pip install junitparser
           python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          
+          # Check the failure logs
+          failure_files=(${{ github.workspace }}/failures*.log)
+          if [ -e "${failure_files[0]}" ]; then
+            echo -e "Exist Failure logs"
+            echo "Found Failure logs as below: "
+            for file in "${failure_files[@]}"; do
+              echo "  - $file"
+            done
+            cp "${failure_files[@]}" ${{ github.workspace }}/ut_log
+            echo -e "Failure logs Copied"
+          else
+            echo -e "No Failure logs"
+          fi
+
+          # Copied the passed logs
+          cp passed*.log ${{ github.workspace }}/ut_log
+
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
@@ -185,6 +203,11 @@ jobs:
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
+
+          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed}_"${{ inputs.ut }}".log; do
+              [[ -f "$log_file" ]] && cp "$log_file" ./
+          done
+
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
           # get skipped known issues
@@ -199,7 +222,7 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
-          
+
           # Provide Reproduce Command
           if [[ -f "${{ github.workspace }}/ut_log/reproduce.log" ]]; then
             cp ${{ github.workspace }}/ut_log/reproduce.log ./
@@ -211,7 +234,7 @@ jobs:
             cp Known_issue.log.tmp Known_issue.log
             awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
               if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-              if ( print_row == 1 && $NF ~ r ) { print $1 };
+              if ( print_row == 1 && $1 ~ r ) { print $0 };
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
             }' issues.log >> Known_issue.log
             bash ut_result_check.sh ${ut_name}
