@@ -23,7 +23,7 @@ import torch.distributed as dist
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import init_multigpu_helper, requires_xccl
-from torch.testing._internal.common_distributed import MultiProcContinousTest
+from torch.testing._internal.common_distributed import MultiProcContinuousTest
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
@@ -42,7 +42,7 @@ if TEST_WITH_DEV_DBG_ASAN:
 TEST_MULTIGPU = TEST_XPU and torch.xpu.device_count() >= 2
 
 
-class ProcessGroupXCCLOpTest(MultiProcContinousTest):
+class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
     @classmethod
     def backend_str(cls) -> str:
         return "xccl"

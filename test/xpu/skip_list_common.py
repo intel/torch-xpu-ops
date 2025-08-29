@@ -648,8 +648,8 @@ skip_dict = {
     "test_indexing_xpu.py": (
         # XPU implementation doesn't claimn FP8 now
         # https://github.com/intel/torch-xpu-ops/issues/461
-        "test_index_put_src_datatype_xpu_float8_e5m2",
-        "test_index_put_src_datatype_xpu_float8_e4m3fn",
+        # https://github.com/intel/torch-xpu-ops/issues/1975
+        "float8",
     ),
     "nn/test_pooling_xpu.py": None,
     "nn/test_dropout_xpu.py": None,

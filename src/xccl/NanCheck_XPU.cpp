@@ -1,10 +1,10 @@
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
+#include <ATen/Tensor.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
 #include <stdint.h>
-#include <torch/torch.h>
 #include <xccl/NanCheck_XPU.hpp>
 #include <algorithm>
 
@@ -174,7 +174,7 @@ void checkfornan_impl_xpu(
     const at::Tensor& tensor,
     at::xpu::XPUStream& stream) {
   // skip check for non float types
-  if (!torch::is_floating_point(tensor)) {
+  if (!tensor.is_floating_point()) {
     return;
   }
 
