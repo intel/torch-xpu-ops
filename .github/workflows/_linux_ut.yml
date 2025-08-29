@@ -158,6 +158,9 @@ jobs:
           # Copied the passed logs
           cp passed*.log ${{ github.workspace }}/ut_log
 
+          # Copied the Summary logs
+          cp category*.log ${{ github.workspace }}/ut_log
+
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
@@ -204,8 +207,8 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
 
-          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed}_"${{ inputs.ut }}".log; do
-              [[ -f "$log_file" ]] && cp "$log_file" ./
+          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category}_"${{ inputs.ut }}".log; do
+            [[ -f "$log_file" ]] && cp "$log_file" ./
           done
 
           # get distributed known issues
