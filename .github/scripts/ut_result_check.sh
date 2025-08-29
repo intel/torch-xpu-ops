@@ -155,7 +155,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     else
       echo -e "Not need reproduce command"
     fi
-    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]] || [[ "$all_pass" == 'false']]; then
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]] || [[ "$all_pass" == 'false' ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
