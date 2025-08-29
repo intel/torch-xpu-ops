@@ -71,9 +71,9 @@ runs:
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
         else
-          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
