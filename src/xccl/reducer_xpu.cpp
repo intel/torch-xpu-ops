@@ -12,12 +12,11 @@ class XpuTimer : public Timer {
  private:
   c10::Device device;
   // at::xpu::XPUEvent(1) means enable_timing=true
-  // at::xpu::XPUEvent() means enable_timing=false
-  at::xpu::XPUEvent forward_start = at::xpu::XPUEvent();
-  at::xpu::XPUEvent backward_compute_start = at::xpu::XPUEvent();
-  at::xpu::XPUEvent backward_compute_end = at::xpu::XPUEvent();
-  at::xpu::XPUEvent backward_comm_start = at::xpu::XPUEvent();
-  at::xpu::XPUEvent backward_comm_end = at::xpu::XPUEvent();
+  at::xpu::XPUEvent forward_start = at::xpu::XPUEvent(1);
+  at::xpu::XPUEvent backward_compute_start = at::xpu::XPUEvent(1);
+  at::xpu::XPUEvent backward_compute_end = at::xpu::XPUEvent(1);
+  at::xpu::XPUEvent backward_comm_start = at::xpu::XPUEvent(1);
+  at::xpu::XPUEvent backward_comm_end = at::xpu::XPUEvent(1);
 
   at::xpu::XPUEvent& getEvent(Event event) {
     switch (event) {
@@ -57,10 +56,7 @@ class XpuTimer : public Timer {
 
     start_event.synchronize();
     end_event.synchronize();
-
-    // Event elapsed_time may cause stuck, disable it for now
-    // float milliseconds = start_event.elapsed_time(end_event);
-    float milliseconds = 0;
+    float milliseconds = start_event.elapsed_time(end_event);
 
     if (milliseconds < 0) {
       return std::nullopt;
