@@ -109,6 +109,7 @@ add_custom_command(
   COMMAND
     ${XPU_INSTALL_HEADER_COMMAND}
   DEPENDS
+    torch_cpu
     ATEN_CPU_FILES_GEN_TARGET
     ATEN_XPU_FILES_GEN_TARGET
     ${XPUFallback_TEMPLATE}
@@ -130,6 +131,17 @@ if(WIN32)
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
   )
+endif()
+
+# Ensure that all generated ATen XPU op files are built before compiling the
+# torch-xpu-ops library.
+include(${BUILD_TORCH_XPU_ATEN_GENERATED}/ops_generated_headers.cmake)
+add_custom_target(ATEN_XPU_OPS_FILES_GEN_TARGET DEPENDS
+  ${ops_generated_headers} ${OUTPUT_LIST})
+add_library(ATEN_XPU_OPS_FILES_GEN_LIB INTERFACE)
+add_dependencies(ATEN_XPU_OPS_FILES_GEN_LIB ATEN_XPU_OPS_FILES_GEN_TARGET)
+if(USE_PER_OPERATOR_HEADERS)
+  target_compile_definitions(ATEN_XPU_OPS_FILES_GEN_LIB INTERFACE AT_PER_OPERATOR_HEADERS)
 endif()
 
 set(ATen_XPU_GEN_SRCS

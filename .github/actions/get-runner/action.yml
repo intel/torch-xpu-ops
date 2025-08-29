@@ -1,0 +1,89 @@
+name: Get Runner Infos
+
+outputs:
+  runner_id:
+    value: ${{ steps.runner.outputs.runner_id }}
+  user_id:
+    value: ${{ steps.runner.outputs.user_id }}
+  render_id:
+    value: ${{ steps.runner.outputs.render_id }}
+  hostname:
+    value: ${{ steps.runner.outputs.hostname }}
+  xpu_num:
+    value: ${{ steps.runner.outputs.xpu_num }}
+  cpus_per_xpu:
+    value: ${{ steps.runner.outputs.cpus_per_xpu }}
+  pytest_extra_args:
+    value: ${{ steps.runner.outputs.pytest_extra_args }}
+
+permissions: read-all
+
+runs:
+  using: composite
+  steps:
+    - name: Get runner
+      shell: bash -xe {0}
+      id: runner
+      run: |
+        # get test runner
+        echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
+        echo "user_id=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+        echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
+        echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
+        # show host info
+        lscpu
+        lshw -C display
+        free -h
+        df -h
+        cat /etc/os-release
+        uname -a
+        # clinfo hang and reboot system to recover
+        timeout 120 clinfo --list || sudo reboot
+        scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq)
+        if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
+            if [ "${scaling_governor}" != "performance" ];then
+                # set frequency governor to performance mode
+                sudo apt-get update
+                sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
+                sudo cpupower set -b 0
+                sudo cpupower frequency-set -g performance
+            fi
+            # clean cache
+            sync; sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
+        else
+            echo "[INFO] You do NOT have ROOT permission to set system config."
+            echo "       The frequency governor is ${scaling_governor}."
+        fi
+        cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
+        xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
+          if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
+        }' |wc -l)"
+        cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${xpu_num}" '{printf c/x}')"
+        pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v cx="${cpus_per_xpu}" '{
+          if (x > 0) {
+            for (i=0;i<x;i++) {
+              printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"", i, cx, i*cx, (i+1)*cx-1);
+            }
+          }else {
+            printf(" -n 1 ");
+          }
+        }')"
+        echo "xpu_num=${xpu_num}" |tee -a ${GITHUB_OUTPUT}
+        echo "cpus_per_xpu=${cpus_per_xpu}" |tee -a ${GITHUB_OUTPUT}
+        echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
+    - name: Cleanup host
+      shell: bash -xe {0}
+      run: |
+        # clean docker cache
+        docker system prune -af || true
+        # clean workspace
+        ls -al
+        sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+        cd ${RUNNER_WORKSPACE}/..
+        if [ "${PWD}" != "/" ];then
+          ls -al
+          sudo chmod 777 -R torch-xpu-ops _temp _actions _tool || true
+          # mount HOME dir to use caches to save time
+          rm -rf _temp && mkdir _temp
+          ln -sf ${HOME} _temp/_github_home
+        fi
