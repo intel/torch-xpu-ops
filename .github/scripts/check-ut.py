@@ -382,7 +382,7 @@ def main():
 
     generate_failures_log()
     generate_passed_log()
-    generate_category_totals_log() 
+    generate_category_totals_log()
     print_summary()
 
 
