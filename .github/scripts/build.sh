@@ -19,7 +19,7 @@ done
 
 # Set pytorch
 rm -rf ${WORKSPACE}/pytorch
-git clone ${PYTORCH_REPO} ${WORKSPACE}/pytorch
+git clone https://github.com/daisyden/pytorch.git ${WORKSPACE}/pytorch
 cd ${WORKSPACE}/pytorch
 git checkout ${PYTORCH_COMMIT}
 git remote -v && git branch && git show -s
