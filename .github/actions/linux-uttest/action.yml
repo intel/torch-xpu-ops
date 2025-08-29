@@ -20,6 +20,8 @@ runs:
         cd pytorch/third_party/torch-xpu-ops/test/regressions
         pytest --junit-xml=${{ github.workspace }}/ut_log/op_regression.xml \
           2> ${log_dir}/op_regression_test_error.log |tee ${log_dir}/op_regression_test.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
     - name: op_regression_dev1
       shell: timeout 300 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
@@ -30,6 +32,8 @@ runs:
         timeout 180 pytest test_operation_on_device_1.py \
           --junit-xml=${{ github.workspace }}/ut_log/op_regression_dev1.xml \
           2> ${log_dir}/op_regression_dev1_test_error.log |tee ${log_dir}/op_regression_dev1_test.log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/regressions" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
     - name: op_transformers
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_transformers' || inputs.ut_name == 'basic' }}
@@ -41,6 +45,8 @@ runs:
         pytest test/test_transformers.py -k xpu \
           --junit-xml=${{ github.workspace }}/ut_log/op_transformers.xml \
           2> ${log_dir}/op_transformers_test_error.log |tee ${log_dir}/op_transformers_test.log
+        echo -e "File Path: cd pytorch" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
+        echo -e "Reproduce Command: pytest -sv test/failed_case -k xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
     - name: op_extended
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
@@ -53,6 +59,8 @@ runs:
           2> ${log_dir}/op_extended_test_error.log |tee ${log_dir}/op_extended_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
     - name: op_ut
       shell: timeout 18000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
@@ -89,6 +97,8 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
+        echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce.log
     - name: torch_xpu
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}

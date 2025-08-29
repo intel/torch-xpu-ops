@@ -136,6 +136,15 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
       num_failed=$(wc -l < "./${ut_suite}_failed.log")
     fi
     num_passed=$(wc -l < "./${ut_suite}_passed.log")
+    echo -e "========================================================================="
+    echo -e "Provide the reproduce command for ${ut_suite}"
+    echo -e "========================================================================="
+    if [[ $num_failed -gt 0 ]]; then
+      echo -e "Need reproduce command"
+      cat "./reproduce.log"
+    else
+      echo -e "Not need reproduce command"
+    fi
     if [[ $num_failed -gt 0 ]] || [[ $num_passed -le 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
@@ -168,6 +177,17 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
       num_failed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_failed.log")
     fi
     echo -e "========================================================================="
+    echo -e "Provide the reproduce command for ${ut_suite} with skip"
+    echo -e "========================================================================="
+    if [[ $num_failed_with_skip -gt 0 ]]; then
+      echo -e "Need reproduce command"
+      if [[ -f "reproduce.log" ]]; then
+        cat "./reproduce.log"
+      fi
+    else
+      echo -e "Not need reproduce command"
+    fi
+    echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} with only"
     echo -e "========================================================================="
     cat "./${ut_suite}_with_only_test_failed.log"
@@ -183,6 +203,17 @@ if [[ "${ut_suite}" == 'op_ut' ]]; then
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed_filtered.log")
     else
       num_failed_with_only=$(wc -l < "./${ut_suite}_with_only_test_failed.log")
+    fi
+    echo -e "========================================================================="
+    echo -e "Provide the reproduce command for ${ut_suite} with only"
+    echo -e "========================================================================="
+    if [[ $num_failed_with_only -gt 0 ]]; then
+      echo -e "Need reproduce command"
+      if [[ -f "reproduce.log" ]]; then
+        cat "./reproduce.log"
+      fi
+    else
+      echo -e "Not need reproduce command"
     fi
     ((num_failed=num_failed_with_skip+num_failed_with_only))
     num_passed_with_skip=$(wc -l < "./${ut_suite}_with_skip_test_passed.log")
