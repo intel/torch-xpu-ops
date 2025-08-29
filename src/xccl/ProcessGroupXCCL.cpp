@@ -716,8 +716,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   }
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
-  work =
-      initWork(device, rank_, opType, false, profilingTitle, inputs, outputs, !coalescing_state_);
+  work = initWork(
+      device,
+      rank_,
+      opType,
+      false,
+      profilingTitle,
+      inputs,
+      outputs,
+      !coalescing_state_);
   if (coalescing_state_) {
     FlightRecorderXCCL::get()->record(
         local_id_,
