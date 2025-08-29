@@ -72,7 +72,7 @@ check_passed_known_issues() {
 }
 
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut']]; then
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' ]]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
