@@ -15,8 +15,8 @@ struct FlattenIdxtoRealIdxKernelFunctor {
     auto global_id = item_id.get_global_linear_id();
 
     if (global_id < N_) {
-      auto index = global_id / num_dim_;
       auto dim = global_id % num_dim_;
+      auto index = global_id / num_dim_;
       out_begin_[global_id] =
           idx_flat_begin_[index] / divisor_[dim] % sizes_[dim];
     }
