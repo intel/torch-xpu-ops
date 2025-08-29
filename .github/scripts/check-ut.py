@@ -141,15 +141,14 @@ def generate_failures_log():
     for category, category_failures in failures_by_category.items():
         if not category_failures:
             continue
-            
+
         log_filename = f"failures_{category}.log"
-        
         with open(log_filename, "w", encoding='utf-8') as log_file:
             for case in category_failures:
                 class_name = get_classname(case)
                 test_name = get_name(case)
                 log_file.write(f"{category},{class_name},{test_name}\n")
-        
+
         print(f"Failures log for {category} has been written to {log_filename}")
 
 def parse_log_file(log_file):
@@ -284,16 +283,15 @@ def generate_passed_log():
     for category, category_passed in passed_by_category.items():
         if not category_passed:
             continue
-            
+
         log_filename = f"passed_{category}.log"
-        
         with open(log_filename, "w", encoding='utf-8') as log_file:
             for case in category_passed:
                 class_name = get_classname(case)
                 test_name = get_name(case)
                 status = get_result(case)
                 log_file.write(f"{category},{class_name},{test_name}\n")
-        
+
         print(f"Passed log for {category} has been written to {log_filename}")
 
 def print_summary():
@@ -345,7 +343,7 @@ def main():
         print_failures(failure_list=failure_list)
 
     generate_failures_log()
-    generate_passed_log() 
+    generate_passed_log()
     print_summary()
 
 
