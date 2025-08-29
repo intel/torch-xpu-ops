@@ -97,7 +97,7 @@ check_test_cases() {
         elif [[ $line =~ Test\ cases:\ ([0-9]+) ]] && [[ -n "$current_category" ]]; then
             actual_cases="${BASH_REMATCH[1]}"
             expected_cases_value="${expected_cases[$current_category]}"
-            
+
             if [[ -n "$expected_cases_value" ]]; then
                 threshold=$(echo "$expected_cases_value * 0.95" | bc -l | awk '{print int($1+0.5)}')
 
