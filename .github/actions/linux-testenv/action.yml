@@ -99,14 +99,9 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-        fi
+        git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+        cd third_party/torch-xpu-ops
+        git checkout ${TORCH_XPU_OPS_COMMIT}
         git status && git diff && git show -s
     - name: Install E2E Requirements
       shell: bash -xe {0}
