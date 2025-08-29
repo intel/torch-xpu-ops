@@ -12,7 +12,7 @@ on:
     inputs:
       pytorch:
         type: string
-        default: 'main'
+        default: 'nightly_wheel'
         description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
