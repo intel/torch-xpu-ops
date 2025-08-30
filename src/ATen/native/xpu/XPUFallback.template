@@ -198,7 +198,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "linalg_eigvals.out",
     "_linalg_eigh.eigenvalues",
     "linalg_householder_product",
-    "linalg_inv_ex.inverse",
     "linalg_ldl_factor_ex.out",
     "linalg_ldl_solve.out",
     "linalg_lstsq.out",
