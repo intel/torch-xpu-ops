@@ -11,6 +11,12 @@ permissions: read-all
 runs:
   using: composite
   steps:
+    - name: Install test target
+      shell: bash -xe {0}
+      run: |
+        pip uninstall -y torch && pip uninstall -y torch
+        pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
+        pip list |grep -E 'intel|torch|triton'
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}

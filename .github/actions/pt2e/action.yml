@@ -20,6 +20,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Install test target
+      shell: bash -xe {0}
+      run: |
+        pip uninstall -y torch && pip uninstall -y torch
+        pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
+        pip list |grep -E 'intel|torch|triton'
     - name: Prepare ENV
       shell: bash -xe {0}
       run: |
