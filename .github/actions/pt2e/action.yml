@@ -20,6 +20,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: install
+      shell: bash -x {0}
+      run: |
+        pip uninstall -y triton pytorch-triton-xpu && pip uninstall -y triton pytorch-triton-xpu
+        pip install ${{ github.workspace }}/wheels/*.whl
+        pip list |grep -E 'intel|torch|triton'
     - name: Prepare ENV
       shell: bash -xe {0}
       run: |
