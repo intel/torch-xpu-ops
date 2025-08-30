@@ -120,6 +120,7 @@ jobs:
   host:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
