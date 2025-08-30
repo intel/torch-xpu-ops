@@ -147,10 +147,6 @@ runs:
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
-        sudo rm -rf ${{ github.workspace }}/ptrace_scope.bk
-        sudo cp /proc/sys/kernel/yama/ptrace_scope ${{ github.workspace }}/ptrace_scope.bk
-        cat ${{ github.workspace }}/ptrace_scope.bk
-        echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
         mkdir -p ut_log/xpu_distributed
         pip install pytest pytest-timeout xmlrunner unittest-xml-reporting zstandard transformers
         cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/ut_result_check.sh ut_log/xpu_distributed/
