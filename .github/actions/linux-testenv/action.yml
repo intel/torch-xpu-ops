@@ -66,7 +66,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # install pytorch
-        pip install torch==2.9.0.dev20250829+xpu torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        pip install torch==2.9.0.dev20250828+xpu torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
