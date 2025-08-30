@@ -14,8 +14,6 @@ runs:
     - name: install
       shell: bash -x {0}
       run: |
-        pip uninstall -y triton pytorch-triton-xpu && pip uninstall -y triton pytorch-triton-xpu
-        pip install ${{ github.workspace }}/wheels/*.whl
         pip list |grep -E 'intel|torch|triton'
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
