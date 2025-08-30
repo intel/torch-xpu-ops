@@ -9,11 +9,11 @@ on:
         description: Runner label
       pytorch:
         type: string
-        default: 'main'
+        default: 'https://github.com/daisyden/pytorch.git@distributed_2.9'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'daisyden/distributed_2.9'
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
@@ -88,6 +88,14 @@ jobs:
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
+      - name: UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          cd ${{ github.workspace }}/ut_log/
+          python check-ut.py ${{ github.workspace }}/ut_log/*.xml \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_summary.log | \
+            >> $GITHUB_STEP_SUMMARY || true
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -108,25 +116,30 @@ jobs:
           if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
             sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
-
-  host:
+  
+  docker_dist:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+              -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PYTEST_ADDOPTS: -v 
     env:
-      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
     steps:
-      - name: Init test
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.runner_id }}
+      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
@@ -143,6 +156,14 @@ jobs:
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
+      - name: UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          cd ${{ github.workspace }}/ut_log/
+          python check-ut.py ${{ github.workspace }}/ut_log/*.xml \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_summary.log | \
+            >> $GITHUB_STEP_SUMMARY || true
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -163,9 +184,9 @@ jobs:
           if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
             sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
-
+          
   summary:
-    needs: [docker, host]
+    needs: [docker, docker_dist]
     if: ${{ ! cancelled() && ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -195,7 +216,6 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log

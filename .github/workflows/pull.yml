@@ -99,8 +99,8 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
-      pytorch: main
+      pytorch: distributed_2.9
+      runner: PVC-7358
 
   linux-ut:
     needs: [conditions-filter, linux-build]
@@ -124,8 +124,8 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
-      pytorch: main
+      runner: PVC-7358
+      pytorch: distributed_2.9
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
