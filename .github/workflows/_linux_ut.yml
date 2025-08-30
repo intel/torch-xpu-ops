@@ -117,7 +117,7 @@ jobs:
             sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
   
-  docker:
+  docker_dist:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 1200
@@ -186,7 +186,7 @@ jobs:
           fi
           
   summary:
-    needs: [docker]
+    needs: [docker, docker_dist]
     if: ${{ ! cancelled() && ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
