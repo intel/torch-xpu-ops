@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [PVC-7363, PVC-7366, PVC-7900, PVC-03004, PVC-03006]
+        node: [PVC-7364, PVC-7366, PVC-7900, PVC-03004, PVC-03006]
     steps:
       - name: Set performance mode
         run: |
@@ -24,3 +24,4 @@ jobs:
           sudo cpupower set -b 0
           sudo cpupower frequency-set -g performance
           sudo cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
+          ip a
