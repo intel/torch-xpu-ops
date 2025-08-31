@@ -20,19 +20,9 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Prepare ENV
+    - name: Prepare dataset
       shell: bash -xe {0}
       run: |
-        # accuracy code
-        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
-          rm -rf pt2e-accuracy
-          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
-        fi
-        # performance code
-        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
-          rm -rf pt2e-performance
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
-        fi
         # dataset
         if [ ! -d ${HOME}/datasets/imagenet ];then
           rm -rf ${HOME}/datasets/imagenet

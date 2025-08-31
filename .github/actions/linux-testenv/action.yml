@@ -141,8 +141,9 @@ runs:
           cd ../pytorch
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
           cd ../
-          rm -rf ./pt2e-performance
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/pt2e-performance
+          rm -rf ./pt2e-performance ./pt2e-accuracy
+          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark ./pt2e-performance
           cd pt2e-performance
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           pip install -r requirements.txt
