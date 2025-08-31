@@ -36,7 +36,7 @@ runs:
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
-        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
+        pt2e_logs_dir="${{ github.workspace }}/pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
