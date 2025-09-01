@@ -227,7 +227,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
-          path: "%GITHUB_WORKSPACE%\ut_log"
+          path: "${{ github.workspace }}/ut_log"
           if-no-files-found: ignore
 
   summary:
