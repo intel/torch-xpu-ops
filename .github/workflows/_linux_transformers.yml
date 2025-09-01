@@ -21,7 +21,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'linux.idc.xpu'
+        default: 'pvc_rolling'
         description: Runner label
       driver:
         required: false

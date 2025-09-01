@@ -66,9 +66,8 @@ jobs:
           disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
-  runner:
+  prepare:
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
-    name: get-runner
     needs: conditions-filter
     if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_accelerate')) }}
     outputs:
@@ -87,15 +86,15 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  Torch-XPU-Accelerate-Tests:
-    runs-on: ${{ needs.runner.outputs.runner_id }}
-    needs: runner
+  tests:
+    runs-on: ${{ needs.prepare.outputs.runner_id }}
+    needs: prepare
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+              -u ${{ needs.prepare.outputs.user_id }}:${{ needs.prepare.outputs.render_id }}
               -e ZE_AFFINITY_MASK
       env:
         WORK_DIR: 'accelerate'
@@ -104,7 +103,7 @@ jobs:
         HF_HUB_DOWNLOAD_TIMEOUT: 120
         PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
     env:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
