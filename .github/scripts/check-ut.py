@@ -156,8 +156,6 @@ def generate_failures_log():
                 test_name = get_name(case)
                 log_file.write(f"{category},{class_name},{test_name}\n")
 
-        print(f"Failures log for {category} has been written to {log_filename}")
-
 def parse_log_file(log_file):
     with open(log_file, encoding='utf-8') as f:
         content = f.read()
@@ -313,8 +311,6 @@ def generate_passed_log():
                 status = get_result(case)
                 log_file.write(f"{category},{class_name},{test_name}\n")
 
-        print(f"Passed log for {category} has been written to {log_filename}")
-
 def generate_category_totals_log():
     """Generate log files with category totals"""
     for category, totals in category_totals.items():
@@ -329,8 +325,6 @@ def generate_category_totals_log():
             log_file.write(f"Skipped: {totals['Skipped']}\n")
             log_file.write(f"Failures: {totals['Failures']}\n")
             log_file.write(f"Errors: {totals['Errors']}\n")
-
-        print(f"Category totals log for {category} has been written to {log_filename}")
 
 def print_summary():
     print("### Results Summary")

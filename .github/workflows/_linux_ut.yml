@@ -85,6 +85,36 @@ jobs:
         run: |
           pip install junitparser
           python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+
+          # Check the failure logs
+          if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
+            echo -e "Exist Failure logs"
+            echo "Found Failure logs as below: "
+            for file in ${{ github.workspace }}/failures*.log; do
+              echo "  - $file"
+              cp "$file" ${{ github.workspace }}/ut_log
+            done
+            echo -e "Failure logs Copied"
+          else
+            echo -e "No Failure logs"
+          fi
+
+          # Copied the passed logs
+          if ls passed*.log 1> /dev/null 2>&1; then
+            cp passed*.log ${{ github.workspace }}/ut_log
+            echo -e "Passed logs Copied"
+          else
+            echo -e "No Passed logs"
+          fi
+
+          # Copied the Summary logs
+          if ls category*.log 1> /dev/null 2>&1; then
+            cp category*.log ${{ github.workspace }}/ut_log
+            echo -e "Category logs Copied"
+          else
+            echo -e "No Category logs"
+          fi
+
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
@@ -140,27 +170,6 @@ jobs:
         run: |
           pip install junitparser
           python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          
-          # Check the failure logs
-          failure_files=(${{ github.workspace }}/failures*.log)
-          if [ -e "${failure_files[0]}" ]; then
-            echo -e "Exist Failure logs"
-            echo "Found Failure logs as below: "
-            for file in "${failure_files[@]}"; do
-              echo "  - $file"
-            done
-            cp "${failure_files[@]}" ${{ github.workspace }}/ut_log
-            echo -e "Failure logs Copied"
-          else
-            echo -e "No Failure logs"
-          fi
-
-          # Copied the passed logs
-          cp passed*.log ${{ github.workspace }}/ut_log
-
-          # Copied the Summary logs
-          cp category*.log ${{ github.workspace }}/ut_log
-
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
