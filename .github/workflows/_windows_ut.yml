@@ -124,6 +124,7 @@ jobs:
           )
           python setup.py clean
           set MAX_JOBS=16
+          set CMAKE_BUILD_PARALLEL_LEVEL=16
           python setup.py bdist_wheel > build_torch_wheel_log.log
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
@@ -187,8 +188,9 @@ jobs:
         run: |
           call conda activate windows_ci
           pip install junitparser
-          for %%f in ("%GITHUB_WORKSPACE%/ut_log/*.xml") do (
-            python ./.github/scripts/check-ut.py "%%f" >> "%GITHUB_STEP_SUMMARY%"
+          echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
+          for %i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
+            python .\.github\scripts\check-ut.py "%i" >> "%GITHUB_STEP_SUMMARY%"
           )
           @echo off
 
@@ -225,7 +227,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
-          path: "%GITHUB_WORKSPACE%/ut_log"
+          path: "%GITHUB_WORKSPACE%\ut_log"
           if-no-files-found: ignore
 
   summary:
