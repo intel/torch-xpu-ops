@@ -324,6 +324,7 @@ else()
       "-WHOLEARCHIVE:$<TARGET_FILE:${sycl_lib}>"
   )
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
+  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_aten)
 endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
