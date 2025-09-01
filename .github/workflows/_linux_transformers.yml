@@ -158,7 +158,7 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        test_case: [tests_backbone,tests_py,tests_generation,tests_models_2_0,tests_models_2_1,tests_trainer,tests_utils]
+        test_case: [tests_backbone,tests_py,tests_generation,tests_models_4_0,tests_models_4_1,tests_models_4_2,tests_models_4_3,tests_trainer,tests_utils]
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
