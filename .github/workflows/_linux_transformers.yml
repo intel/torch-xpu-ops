@@ -58,8 +58,6 @@ env:
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HF_HUB_ETAG_TIMEOUT: 120
   HF_HUB_DOWNLOAD_TIMEOUT: 120
-  NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-  DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
   python: ${{ inputs.python != '' && inputs.python || '3.10' }}
   accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.7.0'}}
   datasets: ${{ inputs.datasets != '' && inputs.datasets || 'v3.6.0'}}
@@ -76,8 +74,8 @@ env:
     libswresample-dev
     libswscale-dev
     pciutils
-  PYTEST_TIMEOUT: 600
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
+  AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
 
 jobs:
   conditions-filter:
@@ -101,7 +99,7 @@ jobs:
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
   prepare:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
     needs: conditions-filter
     if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_transformers')) }}
     outputs:
@@ -109,6 +107,11 @@ jobs:
       torchvision: ${{ steps.getver.outputs.torchvision }}
       torchaudio: ${{ steps.getver.outputs.torchaudio }}
       triton: ${{ steps.getver.outputs.triton }}
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
+      pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
     steps:
       - id: getver
         run: |
@@ -127,94 +130,30 @@ jobs:
           echo "torchvision=$torchvision" | tee -a "$GITHUB_OUTPUT"
           echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
           echo "triton=$triton" | tee -a "$GITHUB_OUTPUT"
+      - name: Cleanup workspace
+        run: |
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
+        id: runner-info
+        uses: ./.github/actions/get-runner
 
   tests:
     needs: prepare
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        test:
-          # Excluding tests due to:
-          # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
-          - test_case: 'tests_backbone'
-            cmd: '--ignore=tests/models/marian/test_modeling_marian.py -k backbone tests'
-          - test_case: "tests_py"
-            cmd: "tests/*.py"
-          # Excluding tests due to:
-          # * torch.distributed.* not yet supported by XPU
-          - test_case: 'tests_generation'
-            cmd: 'tests/generation'
-            filter: 'not TestFSDPGeneration'
-          # breaking for each shard to take ~15-30 minutes to complete
-          # Excluding tests due to:
-          # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
-          # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
-          - test_case: 'tests_models_0'
-            cmd: 'tests/models --num-shards 16 --shard-id 0 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_1'
-            cmd: 'tests/models --num-shards 16 --shard-id 1 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_2'
-            cmd: 'tests/models --num-shards 16 --shard-id 2 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_3'
-            cmd: 'tests/models --num-shards 16 --shard-id 3 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_4'
-            cmd: 'tests/models --num-shards 16 --shard-id 4 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_5'
-            cmd: 'tests/models --num-shards 16 --shard-id 5 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_6'
-            cmd: 'tests/models --num-shards 16 --shard-id 6 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_7'
-            cmd: 'tests/models --num-shards 16 --shard-id 7 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_8'
-            cmd: 'tests/models --num-shards 16 --shard-id 8 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_9'
-            cmd: 'tests/models --num-shards 16 --shard-id 9 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_10'
-            cmd: 'tests/models --num-shards 16 --shard-id 10 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_11'
-            cmd: 'tests/models --num-shards 16 --shard-id 11 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_12'
-            cmd: 'tests/models --num-shards 16 --shard-id 12 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_13'
-            cmd: 'tests/models --num-shards 16 --shard-id 13 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_14'
-            cmd: 'tests/models --num-shards 16 --shard-id 14 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          - test_case: 'tests_models_15'
-            cmd: 'tests/models --num-shards 16 --shard-id 15 --ignore=tests/models/marian/test_modeling_marian.py'
-            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
-          # Excluding tests due to:
-          # * Some ray tests hang, reason unknown
-          # * torch.distributed.* not yet supported by XPU
-          - test_case: 'tests_trainer'
-            cmd: 'tests/trainer'
-            filter: 'not ray and not TestTrainerDistributed and not TestTrainerDistributedXPU and not TestFSDPTrainer'
-          # Excluding tests due to:
-          # * Network proxy connection issue, reason unknown
-          # *'tests/utils/test_import_utils.py' invalidates state of the test engine causing
-          #   next tests to fail. See: https://github.com/huggingface/transformers/issues/36267
-          - test_case: 'tests_utils'
-            cmd: '--ignore=tests/utils/test_import_utils.py tests/utils'
-            filter: 'not test_load_img_url_timeout'
-    env:
-      PYTORCH_DEBUG_XPU_FALLBACK: '1'
-      TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
+    runs-on: ${{ needs.prepare.outputs.runner_id }}
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.prepare.outputs.user_id }}:${{ needs.prepare.outputs.render_id }}
+              -e ZE_AFFINITY_MASK
+      env:
+        PYTORCH_DEBUG_XPU_FALLBACK: '1'
+        TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
+        # enable pytest parallel run, and continue others if meets crash case such as segmentation fault
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -229,7 +168,6 @@ jobs:
       - name: Prepare test vars
         run: |
           echo "HF_HOME=$HOME/.hf_home_of_transformers_test" >> $GITHUB_ENV
-          echo "TEST_CASE=${{matrix.test.test_case}}" >> $GITHUB_ENV
       - name: Report HF cache directory
         run: |
           if [ -d "$HF_HOME" ]; then
@@ -253,20 +191,13 @@ jobs:
             sleep 1;
             if (( $SECONDS - start_time > 60 )); then false; fi
           done
-      - name: Create unique Conda ENV name
+      - name: Setup python-${{ env.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.python }}
+      - name: Prepare pytorch and deps
         run: |
-          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
-          echo "CONDA_ENV_NAME=hf_transformers_test_${ZE_AFFINITY_MASK}_${random}" >> $GITHUB_ENV
-      - name: Prepare Conda ENV
-        run: |
-          echo "Using Conda ENV name: $CONDA_ENV_NAME"
-          conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
-          source activate $CONDA_ENV_NAME
-          pip install junitparser pytest-shard pytest-timeout
-      - name: Prepare Stock XPU Pytorch
-        run: |
-          source activate $CONDA_ENV_NAME
+          pip install junitparser pytest-xdist pytest-timeout
           pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
@@ -275,7 +206,6 @@ jobs:
       - name: Prepare Transformers
         run: |
           pwd
-          source activate $CONDA_ENV_NAME
           cd transformers
           pip install \
             accelerate==${{ env.accelerate }} \
@@ -287,7 +217,6 @@ jobs:
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
         run: |
-          source activate $CONDA_ENV_NAME
           LOGS_DIR="${{ github.workspace }}/transformers/logs"
           echo "pip installed packages:"
           pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
@@ -299,7 +228,6 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          source activate $CONDA_ENV_NAME
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
           pip show torch | grep Version | grep xpu
@@ -308,45 +236,72 @@ jobs:
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run tests
         run: |
-          source activate $CONDA_ENV_NAME
+          set -x
+          set +e
           cd transformers
-          python3 -m pytest -rsf --make-reports=$TEST_CASE --junit-xml=reports/$TEST_CASE.xml \
-            -k "${{ matrix.test.filter}}" ${{ matrix.test.cmd }} || true
+          # Excluding tests due to:
+          # * torch.distributed.* not yet supported by XPU
+          # *'tests/utils/test_import_utils.py' invalidates state of the test engine causing
+          #   next tests to fail. See: https://github.com/huggingface/transformers/issues/36267
+          # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
+          # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
+
+          # tests_backbone
+          python3 -m pytest --make-reports=tests_backbone \
+                  --junit-xml=reports/tests_backbone.xml \
+                  --ignore=tests/models/marian/test_modeling_marian.py \
+                  -k backbone tests
+          # tests_py
+          python3 -m pytest --make-reports=tests_py --junit-xml=reports/tests_py.xml tests/*.py
+          # tests_generation
+          python3 -m pytest --make-reports=tests_generation --junit-xml=reports/tests_generation.xml \
+                  tests/generation -k "not TestFSDPGeneration"
+          # tests_models
+          python3 -m pytest --make-reports=tests_models \
+                  --junit-xml=reports/tests_models.xml \
+                  tests/models \
+                  --ignore=tests/models/marian/test_modeling_marian.py \
+                  -k "not test_resize_embeddings_untied and not test_resize_tokens_embeddings"
+          # tests_trainer
+          python3 -m pytest --make-reports=tests_trainer --junit-xml=reports/tests_trainer.xml \
+                  tests/trainer -k "not ray and not TestTrainerDistributed and not TestTrainerDistributedXPU and not TestFSDPTrainer"
+          # tests_utils
+          python3 -m pytest --make-reports=tests_utils --junit-xml=reports/tests_utils.xml \
+                  --ignore=tests/utils/test_import_utils.py tests/utils -k "not test_load_img_url_timeout"
       - name: Check for errors in tests
         run: |
-          source activate $CONDA_ENV_NAME
           python3 torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml
       - name: Print environment
         if: ${{ ! cancelled() }}
         uses: ./torch-xpu-ops/.github/actions/print-environment
         with:
-          conda: $CONDA_ENV_NAME
           pip_packages: 'accelerate datasets transformers'
           to: 'transformers/logs/environment-$TEST_CASE.md'
       - name: Clean up
         if: ${{ always() }}
         run: |
-          du -sh ${{ env.HF_HOME }} || true
-          if [ -n "$CONDA_ENV_NAME" ]; then
-            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
+          if [ -d "$HF_HOME" ]; then
+            ls -al ${{ env.HF_HOME }}
+            du -sh ${{ env.HF_HOME }}
+            rm -rf ${{ env.HF_HOME }}
           fi
       - name: Upload reports
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: reports-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
+          name: reports-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/reports
       - name: Upload logs
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: logs-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
+          name: logs-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/logs
 
   report:
     needs: tests
     if: ${{ success() || failure() }}
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+    runs-on: ubuntu-24.04
     steps:
       - name: Download reports
         uses: actions/download-artifact@v4
@@ -366,16 +321,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
-      - name: Create unique Conda ENV name
+      - name: Setup python-${{ env.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.python }}
+      - name: Install pip deps
         run: |
-          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
-          echo "CONDA_ENV_NAME=hf_transformers_test_${ZE_AFFINITY_MASK}_${random}" >> $GITHUB_ENV
-      - name: Prepare Conda ENV
-        run: |
-          echo "Using Conda ENV name: $CONDA_ENV_NAME"
-          conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
-          source activate $CONDA_ENV_NAME
           pip install junitparser
       - name: Print results table
         if: ${{ ! cancelled() }}
@@ -409,7 +360,6 @@ jobs:
       - name: Print baseline difference
         if: ${{ ! cancelled() }}
         run: |
-          source activate $CONDA_ENV_NAME
           python3 torch-xpu-ops/.github/scripts/check-transformers.py transformers/reports/*.xml >> $GITHUB_STEP_SUMMARY || true
       - name: Print failure lines
         if: ${{ ! cancelled() }}
@@ -477,9 +427,3 @@ jobs:
           for f in $(find transformers/logs -name "environment-*.md"); do
              diff $f $first_md
           done
-      - name: Clean up
-        if: ${{ always() }}
-        run: |
-          if [ -n "$CONDA_ENV_NAME" ]; then
-            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          fi
