@@ -187,7 +187,8 @@ struct MaxPool2dChannelLastVec {
         StartW += dilationW_;
       for (int h = StartH; h < EndH; h += dilationH_) {
         for (int w = StartW; w < EndW; w += dilationW_) {
-          load_offset = batch * inputSizeH_*inputSizeW_*numPlane_ / vec_size + plane +
+          load_offset =
+              batch * inputSizeH_ * inputSizeW_ * numPlane_ / vec_size + plane +
               h * inputSizeW_ * numPlane_ / vec_size + w * numPlane_ / vec_size;
           vec_t val_vec = input_vec_[load_offset];
 #pragma unroll
@@ -624,7 +625,7 @@ struct MaxPool2dBackwardChannelLastVec {
         dilationH,                                                  \
         dilationW,                                                  \
         stride);                                                    \
-    sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);      \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);       \
   }
 
 

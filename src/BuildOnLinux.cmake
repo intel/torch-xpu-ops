@@ -145,6 +145,7 @@ foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
   target_include_directories(${lib} PUBLIC ${SYCL_INCLUDE_DIR})
 
   target_link_libraries(${lib} PUBLIC ${SYCL_LIBRARY})
+  target_link_libraries(${lib} PRIVATE ${ATEN_XPU_OPS_FILES_GEN_LIB})
 endforeach()
 
 if(USE_ONEMKL_XPU)

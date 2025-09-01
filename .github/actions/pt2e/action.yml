@@ -1,9 +1,6 @@
 name: inductor-xpu-pt2e-test
 
 inputs:
-  env_prepare:
-    required: false
-    description: If set to any value, will prepare suite test env
   dt:
     required: true
     type: string
@@ -14,28 +11,18 @@ inputs:
     type: string
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
-  hf_token:
-    required: false
-    description: HUGGING_FACE_HUB_TOKEN for torchbench test
   pytorch:
     required: false
     type: string
     default: 'main'
     description: Pytorch branch/commit
-  driver:
-    required: false
-    type: string
-    default: 'lts'
-    description: Driver lts/rolling
 
 runs:
   using: composite
   steps:
     - name: Prepare ENV
-      if: ${{ inputs.env_prepare }}
-      shell: bash
+      shell: bash -xe {0}
       run: |
-        source activate e2e_ci
         # accuracy code
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           rm -rf pt2e-accuracy
@@ -46,38 +33,6 @@ runs:
           rm -rf pt2e-performance
           git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
         fi
-        # deps
-        if [[ ${{ inputs.scenario }} == *"performance"* ]]; then
-          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
-            rm -rf pt2e-audio
-            git clone --single-branch -b main https://github.com/pytorch/audio pt2e-audio
-            cd pt2e-audio && git checkout $TORCHAUDIO_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchaudio -y && pip install dist/*.whl
-            cd ../
-            rm -rf pt2e-vision
-            git clone --single-branch -b main https://github.com/pytorch/vision pt2e-vision
-            cd pt2e-vision && git checkout $TORCHVISION_COMMIT_ID
-            python setup.py bdist_wheel && pip uninstall torchvision -y && pip install dist/*.whl
-            cd ../
-          fi
-          # torchbench
-          python -c "import torch, torchvision, torchaudio"
-          cd pt2e-performance
-          # remove deps which will reinstall torch
-          pip install --no-deps accelerate
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@$TIMM_COMMIT_ID
-          pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/$TIMM_COMMIT_ID/requirements.txt | grep -vE torch)
-          pip install -U transformers==4.44.2
-          sed -i 's+.*pytorch-image-models.*++g;s+^accelerate.*++g;s/^transformers.*//g'  requirements.txt
-          git status && git diff
-          pip install -r requirements.txt
-          python install.py --continue_on_fail
-          # deps for torchrec_dlrm
-          pip install pyre_extensions
-          pip install fbgemm-gpu --index-url https://download.pytorch.org/whl/cpu
-          pip install --no-deps lightning-utilities==0.14.3 torchmetrics==1.0.3 tensordict torchrec
-        fi
-        pip install numpy==1.26.4
         # dataset
         if [ ! -d ${HOME}/datasets/imagenet ];then
           rm -rf ${HOME}/datasets/imagenet
@@ -89,14 +44,8 @@ runs:
           bash valprep.sh
         fi
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
-      env:
-        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
-        NEOReadDebugKeys: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-        DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
-      shell: bash
+      shell: bash -xe {0}
       run: |
-        source activate e2e_ci
-        set -xe
         pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
@@ -107,14 +56,15 @@ runs:
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               ${cmd_line} --model_list ${model_name} --is_fp32 2>&1 |tee "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || true
-              grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" '
+              # setup acc1 and acc5 to failed if test failed.
+              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-float32-${model_name}.log" || echo "failed & failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
                       END{printf("Accuracy,%s,float32,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               ${cmd_line}  --model_list ${model_name} 2>&1 |tee "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || true
-              grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" |tail -n 1 |awk -v m="${model_name}" '
+              (grep -i 'Acc.1.*Acc.5' "${pt2e_logs_dir}/accuracy-int8-${model_name}.log" || echo "failed & failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{acc1 = "failed"; acc5 = "failed";}
                       {acc1 = $(NF - 2); acc5 = $NF;}
                       END{printf("Accuracy,%s,int8,%s,%s\n", m, acc1, acc5) }' |tee -a ${pt2e_logs_dir}/summary.csv
