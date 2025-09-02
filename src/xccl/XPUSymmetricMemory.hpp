@@ -70,6 +70,10 @@ class XPUSymmetricMemory : public SymmetricMemory {
   int get_rank() override;
   int get_world_size() override;
 
+  void set_group_name(const std::string& group_name) {
+    group_name_ = group_name;
+  }
+
  private:
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs_;
   std::vector<void*> buffers_;
@@ -82,6 +86,7 @@ class XPUSymmetricMemory : public SymmetricMemory {
   int world_size_;
   void** buffers_dev_;
   void** signal_pads_dev_;
+  std::string group_name_;
 };
 
 struct Block : public c10::intrusive_ptr_target {
