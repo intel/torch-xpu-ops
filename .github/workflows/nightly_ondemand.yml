@@ -17,5 +17,5 @@ jobs:
     steps:
       - name: Set performance mode
         run: |
-          abc=(1 2 3)
+          eval abc=(1 2 3)
           echo "${abc[@]@Q}"
