@@ -33,12 +33,12 @@ fi
 rm -rf third_party/torch-xpu-ops
 if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
     cp -r ${WORKSPACE}/torch-xpu-ops third_party/torch-xpu-ops
+    cd third_party/torch-xpu-ops
 else
     git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
     cd third_party/torch-xpu-ops
     git checkout ${TORCH_XPU_OPS_COMMIT}
 fi
-cd third_party/torch-xpu-ops
 git remote -v && git branch && git show -s
 
 # Pre Build
@@ -47,30 +47,30 @@ python -m pip install requests
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
-python -m pip install mkl-static==2025.1.0 mkl-include==2025.1.0
+python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
 export USE_STATIC_MKL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
-        intel-cmplr-lib-rt==2025.1.1 | \
-        intel-cmplr-lib-ur==2025.1.1 | \
-        intel-cmplr-lic-rt==2025.1.1 | \
-        intel-sycl-rt==2025.1.1 | \
-        impi-rt==2021.15.0 | \
-        dpcpp-cpp-rt==2025.1.1 | \
-        oneccl-devel==2021.15.2 | \
-        oneccl==2021.15.2 | \
-        mkl==2025.1.0 | \
-        onemkl-sycl-blas==2025.1.0 | \
-        onemkl-sycl-dft==2025.1.0 | \
-        onemkl-sycl-lapack==2025.1.0 | \
-        onemkl-sycl-rng==2025.1.0 | \
-        onemkl-sycl-sparse==2025.1.0 | \
-        intel-opencl-rt==2025.1.1 | \
-        intel-openmp==2025.1.1 | \
-        tbb==2022.1.0 | \
-        tcmlib==1.3.0 | \
-        umf==0.10.0 | \
-        intel-pti==0.12.3
+        intel-cmplr-lib-rt==2025.2.1 | \
+        intel-cmplr-lib-ur==2025.2.1 | \
+        intel-cmplr-lic-rt==2025.2.1 | \
+        intel-sycl-rt==2025.2.1 | \
+        oneccl-devel==2021.16.1 | \
+        oneccl==2021.16.1 | \
+        impi-rt==2021.16.1 | \
+        onemkl-sycl-blas==2025.2.0 | \
+        onemkl-sycl-dft==2025.2.0 | \
+        onemkl-sycl-lapack==2025.2.0 | \
+        onemkl-sycl-rng==2025.2.0 | \
+        onemkl-sycl-sparse==2025.2.0 | \
+        dpcpp-cpp-rt==2025.2.1 | \
+        intel-opencl-rt==2025.2.1 | \
+        mkl==2025.2.0 | \
+        intel-openmp==2025.2.1 | \
+        tbb==2022.2.0 | \
+        tcmlib==1.4.0 | \
+        umf==0.11.0 | \
+        intel-pti==0.13.1
     "
 fi
 

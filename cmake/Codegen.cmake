@@ -72,6 +72,7 @@ if(NOT RETURN_VALUE EQUAL 0)
 endif()
 
 include(${BUILD_TORCH_XPU_ATEN_GENERATED}/xpu_ops_generated_headers.cmake)
+include(${BUILD_TORCH_XPU_ATEN_GENERATED}/ops_generated_headers.cmake)
 
 if(WIN32)
   set(FILE_DISPLAY_CMD type)
@@ -91,6 +92,7 @@ set(OUTPUT_LIST
   ${RegisterNestedTensorXPU_GENERATED}
   ${XPU_AOTI_SHIM_HEADER}
   ${XPU_AOTI_SHIM_SOURCE}
+  ${ops_generated_headers}
 )
 
 # Generate torch-xpu-ops codegen
@@ -131,6 +133,16 @@ if(WIN32)
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
   )
+endif()
+
+# Ensure that all generated ATen XPU op files are built before compiling the
+# torch-xpu-ops library.
+add_custom_target(ATEN_XPU_OPS_FILES_GEN_TARGET DEPENDS
+  ${ops_generated_headers} ${OUTPUT_LIST})
+add_library(ATEN_XPU_OPS_FILES_GEN_LIB INTERFACE)
+add_dependencies(ATEN_XPU_OPS_FILES_GEN_LIB ATEN_XPU_OPS_FILES_GEN_TARGET)
+if(USE_PER_OPERATOR_HEADERS)
+  target_compile_definitions(ATEN_XPU_OPS_FILES_GEN_LIB INTERFACE AT_PER_OPERATOR_HEADERS)
 endif()
 
 set(ATen_XPU_GEN_SRCS

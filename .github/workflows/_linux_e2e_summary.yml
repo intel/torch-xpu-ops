@@ -21,7 +21,6 @@ defaults:
 jobs:
   summary:
     runs-on: ubuntu-24.04
-    if: ${{ ! cancelled() }}
     permissions:
       issues: write
     env:
