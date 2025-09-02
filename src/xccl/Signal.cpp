@@ -9,23 +9,66 @@ struct barrierKernel {
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
+    // DPCPP_KER_PRINTF(
+    //     "[DEBUG] Barrier kernel start: thread_id=%zu, rank=%d, world_size=%d,
+    //     channel=%d\n", thread_id, rank, world_size, channel);
+
     if (thread_id < world_size) {
       auto target_rank = thread_id;
       if (target_rank == rank) {
+        DPCPP_KER_PRINTF("[DEBUG] Barrier skipping self rank %d\n", rank);
         return;
       }
-      auto put_success = try_put_signal_device<std::memory_order_release>(
-          signal_pads[target_rank] + world_size * channel + rank, 10000000);
+
+      uint32_t* put_addr =
+          signal_pads[target_rank] + world_size * channel + rank;
+      DPCPP_KER_PRINTF(
+          "[DEBUG] Barrier putting signal from rank %d to rank %zu at addr=%p\n",
+          rank,
+          target_rank,
+          put_addr);
+
+      auto put_success =
+          try_put_signal_device<std::memory_order_release>(put_addr, 10000000);
       if (!put_success) {
+        DPCPP_KER_PRINTF(
+            "[DEBUG] Barrier FAILED to put signal from rank %d to rank %zu\n",
+            rank,
+            target_rank);
         assert(0);
       }
 
+      DPCPP_KER_PRINTF(
+          "[DEBUG] Barrier successfully put signal from rank %d to rank %zu\n",
+          rank,
+          target_rank);
+
+      uint32_t* wait_addr =
+          signal_pads[rank] + world_size * channel + target_rank;
+      DPCPP_KER_PRINTF(
+          "[DEBUG] Barrier waiting for signal at rank %d from rank %zu at addr=%p\n",
+          rank,
+          target_rank,
+          wait_addr);
+
       auto wait_success = try_wait_signal_device<std::memory_order_acquire>(
-          signal_pads[rank] + world_size * channel + target_rank, 10000000);
+          wait_addr, 10000000);
       if (!wait_success) {
+        DPCPP_KER_PRINTF(
+            "[DEBUG] Barrier TIMEOUT waiting at rank %d for rank %zu\n",
+            rank,
+            target_rank);
         assert(0);
       }
+
+      DPCPP_KER_PRINTF(
+          "[DEBUG] Barrier successfully received signal at rank %d from rank %zu\n",
+          rank,
+          target_rank);
     }
+
+    // DPCPP_KER_PRINTF(
+    //     "[DEBUG] Barrier kernel complete for thread %zu\n", thread_id);
   }
 
   barrierKernel(
@@ -76,12 +119,32 @@ struct putSignalKernel {
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
+    // DPCPP_KER_PRINTF(
+    //     "[DEBUG] PutSignal kernel start: thread_id=%zu, rank=%d->%d,
+    //     channel=%d\n", thread_id, rank, dst_rank, channel);
+
     if (thread_id == 0) {
-      auto put_success = try_put_signal_device<std::memory_order_release>(
-          signal_pads[dst_rank] + world_size * channel + rank, 10000000);
+      uint32_t* put_addr = signal_pads[dst_rank] + world_size * channel + rank;
+      DPCPP_KER_PRINTF(
+          "[DEBUG] PutSignal putting signal from rank %d to rank %d at addr=%p\n",
+          rank,
+          dst_rank,
+          put_addr);
+
+      auto put_success =
+          try_put_signal_device<std::memory_order_release>(put_addr, 10000000);
       if (!put_success) {
+        DPCPP_KER_PRINTF(
+            "[DEBUG] PutSignal FAILED from rank %d to rank %d\n",
+            rank,
+            dst_rank);
         assert(0);
       }
+
+      DPCPP_KER_PRINTF(
+          "[DEBUG] PutSignal SUCCESS from rank %d to rank %d\n",
+          rank,
+          dst_rank);
     }
   }
 
@@ -138,14 +201,35 @@ struct waitSignalKernel {
   void operator()(sycl::nd_item<1> item) const {
     auto thread_id = item.get_local_id(0);
 
+    // DPCPP_KER_PRINTF(
+    //     "[DEBUG] WaitSignal kernel start: thread_id=%zu, rank=%d<-%d,
+    //     channel=%d\n", thread_id, rank, src_rank, channel);
+
     if (thread_id == 0) {
+      uint32_t* wait_addr = signal_pads[rank] + world_size * channel + src_rank;
+      DPCPP_KER_PRINTF(
+          "[DEBUG] WaitSignal waiting at rank %d for signal from rank %d at addr=%p\n",
+          rank,
+          src_rank,
+          wait_addr);
+
       auto wait_success = try_wait_signal_device<std::memory_order_acquire>(
-          signal_pads[rank] + world_size * channel + src_rank, 10000000);
+          wait_addr, 10000000);
       if (!wait_success) {
+        DPCPP_KER_PRINTF(
+            "[DEBUG] WaitSignal TIMEOUT at rank %d waiting for rank %d\n",
+            rank,
+            src_rank);
         assert(0);
       }
 
-      sycl::atomic_fence(sycl::memory_order_seq_cst, sycl::memory_scope_system);
+      DPCPP_KER_PRINTF(
+          "[DEBUG] WaitSignal SUCCESS at rank %d received from rank %d\n",
+          rank,
+          src_rank);
+
+      // sycl::atomic_fence(sycl::memory_order_seq_cst,
+      // sycl::memory_scope_system);
     }
   }
 

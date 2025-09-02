@@ -213,9 +213,19 @@ void check_channel(int channel, int world_size) {
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   check_channel(channel, world_size_);
 
+  printf(
+      "[DEBUG] Host barrier start: rank=%d, world_size=%d, channel=%d, timeout=%zu\n",
+      rank_,
+      world_size_,
+      channel,
+      timeout_ms);
+  printf("[DEBUG] Host barrier signal_pads_dev_=%p\n", signal_pads_dev_);
+
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
   auto stream = at::xpu::getCurrentXPUStream();
+
+  printf("[DEBUG] Host barrier launching kernel for rank %d\n", rank_);
 
   barrier_impl_xpu(
       reinterpret_cast<uint32_t**>(signal_pads_dev_),
@@ -224,6 +234,12 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
       world_size_,
       timeout_ms,
       stream);
+
+  printf(
+      "[DEBUG] Host barrier kernel launched, synchronizing stream for rank %d\n",
+      rank_);
+  stream.synchronize();
+  printf("[DEBUG] Host barrier complete for rank %d\n", rank_);
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -231,6 +247,12 @@ void XPUSymmetricMemory::put_signal(
     int channel,
     size_t timeout_ms) {
   check_channel(channel, world_size_);
+
+  printf(
+      "[DEBUG] Host put_signal: rank %d -> rank %d, channel=%d\n",
+      rank_,
+      dst_rank,
+      channel);
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
@@ -244,6 +266,12 @@ void XPUSymmetricMemory::put_signal(
       world_size_,
       timeout_ms,
       stream);
+
+  stream.synchronize();
+  printf(
+      "[DEBUG] Host put_signal complete: rank %d -> rank %d\n",
+      rank_,
+      dst_rank);
 }
 
 void XPUSymmetricMemory::wait_signal(
@@ -251,6 +279,12 @@ void XPUSymmetricMemory::wait_signal(
     int channel,
     size_t timeout_ms) {
   check_channel(channel, world_size_);
+
+  printf(
+      "[DEBUG] Host wait_signal: rank %d <- rank %d, channel=%d\n",
+      rank_,
+      src_rank,
+      channel);
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
@@ -264,6 +298,12 @@ void XPUSymmetricMemory::wait_signal(
       world_size_,
       timeout_ms,
       stream);
+
+  stream.synchronize();
+  printf(
+      "[DEBUG] Host wait_signal complete: rank %d <- rank %d\n",
+      rank_,
+      src_rank);
 }
 
 int XPUSymmetricMemory::get_rank() {
