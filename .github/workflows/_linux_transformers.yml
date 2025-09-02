@@ -239,7 +239,7 @@ jobs:
       - name: Sanity check installed packages
         run: |
           # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist
+          pip install -U pytest pytest-timeout pytest-xdist pytest-shard
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
           pip show torch | grep Version | grep xpu
