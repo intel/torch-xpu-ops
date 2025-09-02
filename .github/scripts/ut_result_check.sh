@@ -51,6 +51,8 @@ compare_and_filter_logs() {
         echo -e "\n\033[1;31mNew failed cases, not in known issues\033[0m"
         cat "$output_file"
     fi
+
+    rm -f ${filtered_content}
 }
 
 check_passed_known_issues() {
@@ -131,6 +133,14 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
       echo -e "\033[1;32mNo failed cases\033[0m"
     fi
     echo -e "========================================================================="
+    echo -e "Checking Test case number for ${ut_suite}"
+    echo -e "========================================================================="
+    check_test_cases category_${ut_suite}.log
+    echo -e "========================================================================="
+    echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
+    echo -e "========================================================================="
+    check_passed_known_issues passed_${ut_suite}.log Known_issue.log
+    echo -e "========================================================================="
     echo -e "Checking Failed cases in ${ut_suite}"
     echo -e "========================================================================="
     if [[ -f "failures_${ut_suite}.log" ]]; then
@@ -138,14 +148,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     else
       echo -e "\033[1;32mNo need to check failed cases\033[0m"
     fi
-    echo -e "========================================================================="
-    echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
-    echo -e "========================================================================="
-    check_passed_known_issues passed_${ut_suite}.log Known_issue.log
-    echo -e "========================================================================="
-    echo -e "Checking Test case number for ${ut_suite}"
-    echo -e "========================================================================="
-    check_test_cases category_${ut_suite}.log
+    
     if [[ -f "failures_${ut_suite}_filtered.log" ]]; then
       num_failed=$(wc -l < "./failures_${ut_suite}_filtered.log")
     elif [[ -f "failures_${ut_suite}.log" ]]; then
