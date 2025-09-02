@@ -150,7 +150,7 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     else
       echo -e "\033[1;32mNo need to check failed cases\033[0m"
     fi
-    
+
     if [[ -f "failures_${ut_suite}_filtered.log" ]]; then
       num_failed=$(wc -l < "./failures_${ut_suite}_filtered.log")
     elif [[ -f "failures_${ut_suite}.log" ]]; then
