@@ -125,11 +125,19 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    cat "./failures_${ut_suite}.log"
+    if [[ -f "failures_${ut_suite}.log" ]]; then
+      cat "./failures_${ut_suite}.log"
+    else
+      echo -e "\033[1;32mNo failed cases\033[0m"
+    fi
     echo -e "========================================================================="
     echo -e "Checking Failed cases in ${ut_suite}"
     echo -e "========================================================================="
-    compare_and_filter_logs failures_${ut_suite}.log Known_issue.log
+    if [[ -f "failures_${ut_suite}.log" ]]; then
+      compare_and_filter_logs failures_${ut_suite}.log Known_issue.log
+    else
+      echo -e "\033[1;32mNo need to check failed cases\033[0m"
+    fi
     echo -e "========================================================================="
     echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
     echo -e "========================================================================="
@@ -140,8 +148,10 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     check_test_cases category_${ut_suite}.log
     if [[ -f "failures_${ut_suite}_filtered.log" ]]; then
       num_failed=$(wc -l < "./failures_${ut_suite}_filtered.log")
-    else
+    elif [[ -f "failures_${ut_suite}.log" ]]; then
       num_failed=$(wc -l < "./failures_${ut_suite}.log")
+    else
+      num_failed=0
     fi
     num_passed=$(wc -l < "./passed_${ut_suite}.log")
     echo -e "========================================================================="
@@ -149,8 +159,8 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "========================================================================="
     if [[ $num_failed -gt 0 ]]; then
       echo -e "Need reproduce command"
-      if [[ -f "reproduce.log" ]]; then
-        cat "./reproduce.log"
+      if [[ -f "reproduce_${ut_suite}.log" ]]; then
+        cat "./reproduce_${ut_suite}.log"
       fi
     else
       echo -e "Not need reproduce command"

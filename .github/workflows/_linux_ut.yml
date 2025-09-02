@@ -216,7 +216,7 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
 
-          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category}_*.log; do
+          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
             [[ -f "$log_file" ]] && cp "$log_file" ./
           done
 
@@ -233,11 +233,6 @@ jobs:
             ut_list="op_regression op_transformers op_extended op_regression_dev1"
           else
             ut_list="${{ inputs.ut }}"
-          fi
-
-          # Provide Reproduce Command
-          if [[ -f "${{ github.workspace }}/ut_log/reproduce.log" ]]; then
-            cp ${{ github.workspace }}/ut_log/reproduce.log ./
           fi
 
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
