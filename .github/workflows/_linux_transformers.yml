@@ -203,7 +203,7 @@ jobs:
           python-version: ${{ env.python }}
       - name: Prepare pytorch and deps
         run: |
-          pip install junitparser pytest-xdist pytest-timeout
+          pip install junitparser
           pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
@@ -234,6 +234,8 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
+          # Use latest pytest
+          pip install -U pytest pytest-timeout pytest-xdist
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
           pip show torch | grep Version | grep xpu

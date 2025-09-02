@@ -155,7 +155,7 @@ runs:
           cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
-          pip install -U pytest-timeout pytest-xdist
+          pip install -U pytest pytest-timeout pytest-xdist
         fi
         # transformers
         pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
