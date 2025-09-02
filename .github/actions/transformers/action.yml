@@ -27,25 +27,25 @@ runs:
         PYTEST_ADDOPTS+=" ${shard_options} --make-reports=${{ inputs.test_name }} --junit-xml=reports/${{ inputs.test_name }}.xml "
         echo "PYTEST_ADDOPTS=\"${PYTEST_ADDOPTS}\"" >> ${GITHUB_ENV}
     - name: Run ${{ inputs.test_name }}
-      if: ${{ startsWith(inputs.test_case, "tests_backbone") }}
+      if: ${{ startsWith(inputs.test_case, 'tests_backbone') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest --ignore=tests/models/marian/test_modeling_marian.py -k backbone tests
     - name: Run ${{ inputs.test_name }}
-      if: ${{ startsWith(inputs.test_case, "tests_py") }}
+      if: ${{ startsWith(inputs.test_case, 'tests_py') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest tests/*.py
     - name: Run ${{ inputs.test_name }}
-      if: ${{ startsWith(inputs.test_case, "tests_generation") }}
+      if: ${{ startsWith(inputs.test_case, 'tests_generation') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest tests/generation -k "not TestFSDPGeneration"
     - name: Run ${{ inputs.test_name }}
-      if: ${{ startsWith(inputs.test_case, "tests_models") }}
+      if: ${{ startsWith(inputs.test_case, 'tests_models') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
@@ -53,14 +53,14 @@ runs:
                 --ignore=tests/models/marian/test_modeling_marian.py \
                 -k "not test_resize_embeddings_untied and not test_resize_tokens_embeddings"
     - name: Run tests_trainer
-      if: ${{ startsWith(inputs.test_case, "tests_trainer") }}
+      if: ${{ startsWith(inputs.test_case, 'tests_trainer') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest tests/trainer \
                 -k "not ray and not TestTrainerDistributed and not TestTrainerDistributedXPU and not TestFSDPTrainer"
     - name: Run tests_utils
-      if: ${{ startsWith(inputs.test_case, "tests_utils") }}
+      if: ${{ startsWith(inputs.test_case, 'tests_utils') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
