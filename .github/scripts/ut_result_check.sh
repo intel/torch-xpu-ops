@@ -72,6 +72,8 @@ check_passed_known_issues() {
     else
         echo -e "\033[1;33mNo known issues are now passing\033[0m"
     fi
+
+    rm -f ${output_file}
 }
 
 check_test_cases() {
