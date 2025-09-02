@@ -25,7 +25,7 @@ runs:
           shard_options=""
         fi
         PYTEST_ADDOPTS+=" ${shard_options} --make-reports=${{ inputs.test_case }} --junit-xml=reports/${{ inputs.test_case }}.xml "
-        echo "PYTEST_ADDOPTS=\"${PYTEST_ADDOPTS}\"" >> ${GITHUB_ENV}
+        echo "PYTEST_ADDOPTS=\'${PYTEST_ADDOPTS}\'" >> ${GITHUB_ENV}
     - name: Run ${{ inputs.test_case }}
       if: ${{ startsWith(inputs.test_case, 'tests_backbone') }}
       shell: bash -x +e {0}
