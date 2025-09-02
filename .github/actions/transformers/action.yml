@@ -18,33 +18,33 @@ runs:
         #   next tests to fail. See: https://github.com/huggingface/transformers/issues/36267
         # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
         # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
-        echo "Start test: ${{ inputs.test_name }}"
-        if [ $(echo ${{ inputs.test_name }} |grep -c "_[0-9]*$") -ne 0 ];then
-          shard_options="$(echo ${{ inputs.test_name }} |awk -F '_' '{printf("--num-shards %s --shard-id %s", $(NF-1), $NF)}')"
+        echo "Start test: ${{ inputs.test_case }}"
+        if [ $(echo ${{ inputs.test_case }} |grep -c "_[0-9]*$") -ne 0 ];then
+          shard_options="$(echo ${{ inputs.test_case }} |awk -F '_' '{printf("--num-shards %s --shard-id %s", $(NF-1), $NF)}')"
         else
           shard_options=""
         fi
-        PYTEST_ADDOPTS+=" ${shard_options} --make-reports=${{ inputs.test_name }} --junit-xml=reports/${{ inputs.test_name }}.xml "
+        PYTEST_ADDOPTS+=" ${shard_options} --make-reports=${{ inputs.test_case }} --junit-xml=reports/${{ inputs.test_case }}.xml "
         echo "PYTEST_ADDOPTS=\"${PYTEST_ADDOPTS}\"" >> ${GITHUB_ENV}
-    - name: Run ${{ inputs.test_name }}
+    - name: Run ${{ inputs.test_case }}
       if: ${{ startsWith(inputs.test_case, 'tests_backbone') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest --ignore=tests/models/marian/test_modeling_marian.py -k backbone tests
-    - name: Run ${{ inputs.test_name }}
+    - name: Run ${{ inputs.test_case }}
       if: ${{ startsWith(inputs.test_case, 'tests_py') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest tests/*.py
-    - name: Run ${{ inputs.test_name }}
+    - name: Run ${{ inputs.test_case }}
       if: ${{ startsWith(inputs.test_case, 'tests_generation') }}
       shell: bash -x +e {0}
       run: |
         cd transformers
         python -m pytest tests/generation -k "not TestFSDPGeneration"
-    - name: Run ${{ inputs.test_name }}
+    - name: Run ${{ inputs.test_case }}
       if: ${{ startsWith(inputs.test_case, 'tests_models') }}
       shell: bash -x +e {0}
       run: |
