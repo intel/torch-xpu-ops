@@ -134,7 +134,7 @@ runs:
         elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
           cd ../
           rm -rf ./pt2e-performance
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/pt2e-performance
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
           cd pt2e-performance
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           pip install -r requirements.txt
