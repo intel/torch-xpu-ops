@@ -11,17 +11,11 @@ permissions: read-all
 
 jobs:
   test1:
-    runs-on: ${{ matrix.node }}
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [PVC-7364, PVC-7366, PVC-7900, PVC-03004, PVC-03006]
+    runs-on: linux.idc.xpu
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
     steps:
       - name: Set performance mode
         run: |
-          sudo apt update
-          sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
-          sudo cpupower set -b 0
-          sudo cpupower frequency-set -g performance
-          sudo cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq -c
-          ip a
+          abc=(1 2 3)
+          echo "${abc[@]@Q}"
