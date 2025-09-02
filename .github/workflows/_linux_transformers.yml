@@ -77,6 +77,10 @@ env:
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
   AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
 
+defaults:
+  run:
+    shell: bash {0}
+
 jobs:
   conditions-filter:
     name: conditions-filter
