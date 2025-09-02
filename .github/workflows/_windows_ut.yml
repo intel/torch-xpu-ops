@@ -188,8 +188,8 @@ jobs:
           call conda activate windows_ci
           pip install junitparser
           echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
-          for %i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
-            python .\.github\scripts\check-ut.py "%i" >> "%GITHUB_STEP_SUMMARY%"
+          for %%i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
+            python .\.github\scripts\check-ut.py "%%i" >> "%GITHUB_STEP_SUMMARY%"
           )
           @echo off
 
@@ -202,25 +202,25 @@ jobs:
               copy "%%f" "%GITHUB_WORKSPACE%\ut_log\"
             )
             echo Failure logs Copied
-            ) else (
-              echo No Failure logs
-            )
+          ) else (
+            echo No Failure logs
+          )
 
-            REM Copied the passed logs
-            if exist "passed*.log" (
-              copy "passed*.log" "%GITHUB_WORKSPACE%\ut_log\"
-              echo Passed logs Copied
-            ) else (
-              echo No Passed logs
-            )
+          REM Copied the passed logs
+          if exist "passed*.log" (
+            copy "passed*.log" "%GITHUB_WORKSPACE%\ut_log\"
+            echo Passed logs Copied
+          ) else (
+            echo No Passed logs
+          )
 
-            REM Copied the Summary logs
-            if exist "category*.log" (
-              copy "category*.log" "%GITHUB_WORKSPACE%\ut_log\"
-              echo Category logs Copied
-            ) else (
-              echo No Category logs
-            )
+          REM Copied the Summary logs
+          if exist "category*.log" (
+            copy "category*.log" "%GITHUB_WORKSPACE%\ut_log\"
+            echo Category logs Copied
+          ) else (
+            echo No Category logs
+          )
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
