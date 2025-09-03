@@ -79,7 +79,6 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
-      pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -107,7 +106,7 @@ jobs:
         HF_HUB_DOWNLOAD_TIMEOUT: 120
         PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread -n 1
     env:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
@@ -152,13 +151,16 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
+          # Use latest pytest
+          pip install -U pytest pytest-timeout pytest-xdist
           # These checks are to exit earlier if for any reason torch
           # packages were reinstalled back to CUDA versions (not expected).
           pip show torch | grep Version | grep xpu
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
-      - name: Run tests
+          printenv
+      - name: Run tests on ${{ needs.prepare.outputs.hostname }}
         run: |
           cd $WORK_DIR && rm -rf reports && mkdir -p reports
           # Excluding tests due to:

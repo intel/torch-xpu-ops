@@ -246,7 +246,7 @@ jobs:
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
-      - name: Run ${{ matrix.test_case }}
+      - name: Run ${{ matrix.test_case }} on ${{ needs.prepare.outputs.hostname }}
         uses: ./torch-xpu-ops/.github/actions/transformers
         with:
           test_case: ${{ matrix.test_case }}
