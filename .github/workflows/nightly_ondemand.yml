@@ -85,7 +85,8 @@ jobs:
           cp ${{ github.workspace }}/run.sh .
           cp ${{ github.workspace }}/test.txt .
           ./run.sh performance 0 test.txt
-          rsync -avz --delete ${HOME}/mengfeil/logs/ ${{ github.workspace }}/logs/
+          rm -rf ${{ github.workspace }}/logs
+          cp -r ${HOME}/mengfeil/logs ${{ github.workspace }}/logs
 
       - name: Upload Inductor XPU E2E Data
         uses: actions/upload-artifact@v4
