@@ -108,7 +108,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_regression,op_transformers,op_extended,op_ut,op_regression_dev1]
+        ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
@@ -142,10 +142,10 @@ jobs:
       pytorch: main
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
-    if: ${{ ! cancelled() }}
-    name: linux-e2e
-    permissions: write-all
+    name: linux-e2e-summary
     needs: [linux-e2e]
+    if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
+    permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
 
   windows:

@@ -19,7 +19,7 @@ on:
       triton:
         required: false
         type: string
-        default: 'pinned'
+        default: ''
         description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
       python:
         type: string
@@ -155,10 +155,10 @@ jobs:
         run: |
           cd ./pytorch
           rm -rf pytorch_triton_xpu-*.whl
-          if [ "${{ inputs.triton }}" != "pinned" ];then
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
-          else
+          if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
             TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
           built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
                   pytorch-triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
@@ -169,7 +169,7 @@ jobs:
             printf("%s", v);
           }')"
           if [ "${built_version}" != "None" ];then
-            pip download --index-url https://download.pytorch.org/whl/nightly/xpu --pre pytorch-triton-xpu==${built_version} --dest ${{ github.workspace }}/
+            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre pytorch-triton-xpu==${built_version} --dest ${{ github.workspace }}/
             pip install ${{ github.workspace }}/*triton*.whl
           else
             TRITON_VERSION_NAME="$(
@@ -200,7 +200,7 @@ jobs:
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
-          chmod 777 /__w /github -R
+          chmod 777 /__w /github ./ -R
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
