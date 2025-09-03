@@ -725,14 +725,12 @@ class XCCLTraceTestBase(MultiProcessTestCase):
 
 class XCCLTraceTest(XCCLTraceTestBase):
     def _verify_trace(self, t, include_collectives, is_json, timing_enabled=False):
-        print("Torch Comm", t)
         ver = t["version"]
         self.assertEqual(ver, "2.10")
         comm_lib_version = t["comm_lib_version"]
         torch_comm_lib_version = torch._C._distributed_c10d.get_xccl_version()
         self.assertEqual(comm_lib_version, torch_comm_lib_version)
         pg_config = t["pg_config"]
-        print("pg_config", pg_config)
         self.assertEqual(len(pg_config), 1)
         default_pg_info = pg_config["0"]
         self.assertIn("name", default_pg_info)
@@ -832,7 +830,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         f.wait()
         torch.xpu.synchronize(device=device)
         # gah ok so now the duration_ms is populated best-effort since it can only happen outside "dump()" api
-        time.sleep(1)
+        time.sleep(2)
         t = pickle.loads(
             torch._C._distributed_c10d._dump_xccl_trace(
                 includeCollectives=include_collectives
@@ -903,6 +901,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             pg.reduce_scatter(xs, ys).wait()
             f = pg.allreduce(a)
         f.wait()
+        time.sleep(2)
         torch.xpu.synchronize(device=device)
         t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
         t = t["entries"]
