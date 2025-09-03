@@ -26,7 +26,7 @@ template <
     int res_arg_index = 0>
 struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   template <typename TLA, typename TLW>
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
@@ -117,7 +117,7 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename out_t, NormType norm_type, typename opmath_t, int SIMD>
 struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item_id) const {
     auto lid = item_id.get_local_linear_id();
     auto group_id = item_id.get_group(0);
@@ -482,7 +482,7 @@ std::vector<Tensor> foreach_norm_kernel(
 template <typename T, int SIMD>
 struct LpMaxFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   template <typename TLA, typename TLW>
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       int64_t chunk_size,
       TLA tlAddressMeta,
       TLW tlWGMeta,
@@ -555,7 +555,7 @@ struct LpMaxFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename T, int SIMD>
 struct LpmaxChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item_id) const {
     auto local_range = item_id.get_local_range(0);
     auto lid = item_id.get_local_linear_id();
