@@ -80,7 +80,7 @@ jobs:
 
       - name: Test
         run: |
-          pip install joblib
+          pip install joblib threadpoolctl
           cd pytorch
           cp ${{ github.workspace }}/run.sh .
           cp ${{ github.workspace }}/test.txt .

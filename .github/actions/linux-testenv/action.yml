@@ -118,7 +118,7 @@ runs:
         TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
         pip install pandas psutil scipy pyyaml
         if [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
           cd ../
           rm -rf ./e2e-benchmark
@@ -137,7 +137,7 @@ runs:
               python install.py $var
             done
           fi
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
@@ -151,7 +151,7 @@ runs:
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           pip install -r requirements.txt
           python install.py --continue_on_fail
-          pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
