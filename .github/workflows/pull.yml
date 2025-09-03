@@ -60,6 +60,7 @@ jobs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
       has_label: ${{ steps.check-label.outputs.has_label }}
       disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
+      pytorch: ${{ contains(steps.check-pr-desc.outputs.disabled_tests, 'disable_build') && 'nightly_wheel' || github.base_ref }}
     steps:
       - uses: dorny/paths-filter@v2
         id: check-files
@@ -100,7 +101,7 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ contains(needs.conditions-filter.outputs.disabled_tests, 'disable_build') && 'nightly_wheel' || 'main' }}
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
 
   linux-ut:
     needs: [conditions-filter, linux-build]
@@ -112,7 +113,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
-      pytorch: main
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
@@ -125,7 +126,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
-      pytorch: main
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
@@ -139,7 +140,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      pytorch: main
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
     name: linux-e2e-summary
