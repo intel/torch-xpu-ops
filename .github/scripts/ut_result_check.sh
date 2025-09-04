@@ -131,17 +131,22 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "========================================================================="
     echo -e "Checking Filtered cases for ${ut_suite}"
     echo -e "========================================================================="
-    check_filtered_logs failures_${ut_suite}.log Known_issue.log
-    if [[ -f "failures_${ut_suite}_removed.log" ]]; then
-        echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
-        awk -F':' '{
-            line_number = $1
-            $1 = ""
-            gsub(/^ /, "", $0)
-            printf "\033[33m%3d\033[0m: %s\n", line_number, $0
-        }' "failures_${ut_suite}_removed.log"
+    if [[ -f "failures_${ut_suite}.log" ]]; then
+      check_filtered_logs failures_${ut_suite}.log Known_issue.log
+      num_filtered=$(wc -l < "./failures_${ut_suite}_removed.log")
+      if [[ $num_filtered -gt 0 ]]; then
+          echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
+          awk -F':' '{
+              line_number = $1
+              $1 = ""
+              gsub(/^ /, "", $0)
+              printf "\033[33m%3d\033[0m: %s\n", line_number, $0
+          }' "failures_${ut_suite}_removed.log"
+      else
+          echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
+      fi
     else
-        echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
+      echo -e "\033[1;32mNo need to check filtered cases\033[0m"
     fi
     echo -e "========================================================================="
     echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
@@ -223,7 +228,8 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     echo -e "Checking Filtered cases for ${ut_suite} xpu distributed"
     echo -e "========================================================================="
     check_filtered_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
-    if [[ -f "${ut_suite}_xpu_distributed_test_failed_removed.log" ]]; then
+    num_filtered_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_removed.log")
+    if [[ $num_filtered_xpu_distributed -gt 0 ]]; then
         echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
         awk -F':' '{
             line_number = $1
