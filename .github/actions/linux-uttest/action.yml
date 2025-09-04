@@ -104,15 +104,15 @@ runs:
         cp *.xml ${{ github.workspace }}/ut_log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
-    - name: inductor_ut
+    - name: xpu_inductor
       shell: timeout 18000 bash -xe {0}
-      if: ${{ inputs.ut_name == 'inductor_ut' }}
+      if: ${{ inputs.ut_name == 'xpu_inductor' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
         keep_going_flag=""
         [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
-        mkdir -p ut_log/inductor_ut
+        mkdir -p ut_log/xpu_inductor
         cd pytorch
         echo -e \
         "test_codecache.py\n" \
@@ -132,8 +132,8 @@ runs:
           (
             echo "=== Starting test: ${line} ==="
             start=$(date +%s)
-            python test/run_test.py $keep_going_flag --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/inductor_ut/inductor_ut_${line}_test_error.log | \
-              tee $GITHUB_WORKSPACE/ut_log/inductor_ut/inductor_ut_${line}_test.log
+            python test/run_test.py $keep_going_flag --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test_error.log | \
+              tee $GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test.log
             end=$(date +%s)
             echo -e "${line} duration: $((end - start))s"
             echo "=== Finished test: ${line} ==="
