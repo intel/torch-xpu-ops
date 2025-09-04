@@ -114,19 +114,20 @@ runs:
         [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
         mkdir -p ut_log/xpu_inductor
         cd pytorch
-        echo -e \
-        "test_codecache.py\n" \
-        "test_kernel_benchmark.py\n" \
-        "test_max_autotune.py\n" \
-        "test_mkldnn_pattern_matcher.py\n" \
-        "test_triton_kernels.py\n" \
-        "test_torchinductor.py\n" \
-        "test_torchinductor_opinfo.py\n" \
-        "test_compile_subprocess.py\n" \
-        "test_compiled_optimizers.py\n" \
-        "test_compiled_autograd.py" \
-        "test_aot_inductor.py\n" \
-        > test_files.txt
+        files=(
+            "test_codecache.py"
+            "test_kernel_benchmark.py"
+            "test_max_autotune.py"
+            "test_mkldnn_pattern_matcher.py"
+            "test_triton_kernels.py"
+            "test_torchinductor.py"
+            "test_torchinductor_opinfo.py"
+            "test_compile_subprocess.py"
+            "test_compiled_optimizers.py"
+            "test_compiled_autograd.py"
+            "test_aot_inductor.py"
+        )
+        printf "%s\n" "${files[@]}" > test_files.txt
         cat test_files.txt
         while IFS= read -r line; do
           (
