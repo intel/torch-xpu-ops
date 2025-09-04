@@ -13,6 +13,10 @@ inputs:
     type: string
     default: '3.10'
     description: Python version
+  hf_token:
+    type: string
+    default: 'None'
+    description: Huggingface token to download models
   suite:
     type: string
     default: 'None'
@@ -171,7 +175,7 @@ runs:
         fi
         # login huggingface
         pip install -U huggingface-hub
-        hf auth login --add-to-git-credential --token ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        hf auth login --add-to-git-credential --token ${{ inputs.hf_token }}
     - name: Torch Config
       shell: bash -xe {0}
       run: |

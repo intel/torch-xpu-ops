@@ -95,6 +95,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test

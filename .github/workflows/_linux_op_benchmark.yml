@@ -67,6 +67,7 @@ jobs:
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       - name: Run Torch XPU Op Benchmark
         run: |

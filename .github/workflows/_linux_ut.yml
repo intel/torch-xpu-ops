@@ -75,6 +75,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:
@@ -128,6 +129,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:

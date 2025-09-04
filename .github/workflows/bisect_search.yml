@@ -88,6 +88,7 @@ jobs:
         USE_KINETO: 0
     env:
       GH_TOKEN: ${{ github.token }}
+      hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     defaults:
       run:
         shell: bash -xe {0}
@@ -117,7 +118,7 @@ jobs:
           echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
           # login huggingface
           pip install -U huggingface-hub
-          hf auth login --add-to-git-credential --token ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          hf auth login --add-to-git-credential --token ${{ env.hf_token }}
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
