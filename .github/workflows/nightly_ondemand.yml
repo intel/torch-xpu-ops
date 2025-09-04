@@ -12,6 +12,7 @@ permissions: read-all
 jobs:
   debug:
     runs-on: PVC-03006
+    if: ${{ 1 == 0 }}
     steps:
       - name: Test
         run: |
@@ -27,7 +28,6 @@ jobs:
 
   runner:
     runs-on: pvc_rolling
-    if: ${{ 1 == 0 }}
     name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
