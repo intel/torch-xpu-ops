@@ -12,6 +12,7 @@ permissions: read-all
 jobs:
   debug:
     runs-on: linux.idc.xpu
+    if: ${{ 1 == 0 }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -37,7 +38,6 @@ jobs:
 
   runner:
     runs-on: pvc_rolling
-    if: ${{ 1 == 0 }}
     name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
