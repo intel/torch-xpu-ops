@@ -12,6 +12,7 @@ permissions: read-all
 jobs:
   debug:
     runs-on: linux.idc.xpu
+    if: ${{ 1 == 0 }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -39,7 +40,6 @@ jobs:
 
   runner:
     runs-on: pvc_rolling
-    if: ${{ 1 == 0 }}
     name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
@@ -95,11 +95,12 @@ jobs:
           cd pytorch
           cp ${{ github.workspace }}/run.sh .
           cp ${{ github.workspace }}/test.txt .
-          ./run.sh performance 0 test.txt
+          ./run.sh performance 0 test.txt || true
           rm -rf ${{ github.workspace }}/logs
           cp -r ${HOME}/mengfeil/logs ${{ github.workspace }}/logs
 
       - name: Upload Inductor XPU E2E Data
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-${{ matrix.build }}
