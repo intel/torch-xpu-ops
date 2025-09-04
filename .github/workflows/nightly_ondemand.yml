@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 3600
     strategy:
       matrix:
-        build: [target, baseline]
+        build: [nightly, release]
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -57,26 +57,9 @@ jobs:
       - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          pytorch: nightly_wheel
+          pytorch: ${{ matrix.build == 'nightly' && 'nightly_wheel' || 'release_wheel' }}
           python: '3.10'
           suite: torchbench
-
-      - name: Download Pytorch wheel
-        if: ${{ matrix.build == 'target' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: pytorch-triton-wheel-3.10-xpu-manylinux_2_28_x86_64
-          github-token: ${{ github.token }}
-          repository: pytorch/pytorch
-          run-id: 17353994393
-          path: ${{ github.workspace }}/wheels
-      - name: Install test target
-        if: ${{ matrix.build == 'target' }}
-        shell: bash -xe {0}
-        run: |
-          pip uninstall -y triton pytorch-triton-xpu && pip uninstall -y triton pytorch-triton-xpu
-          pip install ${{ github.workspace }}/wheels/*.whl
-          pip list |grep -E 'intel|torch|triton'
 
       - name: Test
         run: |
