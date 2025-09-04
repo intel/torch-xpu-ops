@@ -35,9 +35,7 @@ jobs:
           python-version: '3.10'
       - name: debug
         run: |
-          pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cpu
-          pip install transformers
-          python abc/a.py
+          echo "${{ runner.temp }}"
 
   runner:
     runs-on: pvc_rolling
