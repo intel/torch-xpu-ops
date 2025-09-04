@@ -77,6 +77,11 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
+      - name: Login huggingface
+        run: |
+          pip install huggingface-hub
+          hf auth login --token ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+
       - name: Run XPU UT Test
         uses: ./.github/actions/linux-uttest
         with:

@@ -169,11 +169,6 @@ runs:
         else
           pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         fi
-    - name: Login huggingface
-      shell: bash +x -e {0}
-      run: |
-        pip install huggingface-hub
-        hf auth login --token ${{ env.HF_TOKEN }}
     - name: Torch Config
       shell: bash -xe {0}
       run: |

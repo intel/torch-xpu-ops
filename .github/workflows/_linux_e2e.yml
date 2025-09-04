@@ -97,6 +97,10 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
+      - name: Login huggingface
+        run: |
+          pip install huggingface-hub
+          hf auth login --token ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
