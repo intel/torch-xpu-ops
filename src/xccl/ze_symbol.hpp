@@ -156,7 +156,7 @@ inline bool load_level_zero_library() {
   if (ze_handle != nullptr) {
     return true;
   }
-  const char* lib_names[] = {"/usr/lib/x86_64-linux-gnu/libze_loader.so"};
+  const char* lib_names[] = {"libze_loader.so"};
 
   for (const char* lib_name : lib_names) {
     ze_handle = dlopen(lib_name, RTLD_LAZY);
