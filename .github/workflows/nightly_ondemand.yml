@@ -11,7 +11,15 @@ permissions: read-all
 
 jobs:
   debug:
-    runs-on: ubuntu-24.04
+    runs-on: linux.idc.xpu
+    container:
+      image: mengfeili/intel-pvc-driver:1146-1136
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u 1000:109 -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -19,6 +27,8 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+        with:
+          path: abc
       - name: Setup python
         uses: actions/setup-python@v5
         with:
@@ -27,7 +37,7 @@ jobs:
         run: |
           pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cpu
           pip install transformers
-          python a.py
+          python abc/a.py
 
   runner:
     runs-on: pvc_rolling
