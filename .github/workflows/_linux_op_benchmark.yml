@@ -56,7 +56,6 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /opt/xpu-tool
-        REFERENCE_ISSUE: 1689
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -157,6 +156,6 @@ jobs:
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
         run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE} --json body -q .body | \
+          gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} --json body -q .body | \
             sed "s/Inductor-XPU-OP-Benchmark-Data:.*/Inductor-XPU-OP-Benchmark-Data: ${GITHUB_RUN_ID}/" | sed '/^$/d' > new_body.txt
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE} --body-file new_body.txt
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${reference_issue} --body-file new_body.txt
