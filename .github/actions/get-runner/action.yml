@@ -84,6 +84,7 @@ runs:
           ls -al
           sudo chmod 777 -R torch-xpu-ops _temp _actions _tool || true
           # mount HOME dir to use caches to save time
-          rm -rf _temp && mkdir -p _temp/_github_home
-          rsync -avz --delete ${HOME}/ _temp/_github_home/
+          mkdir -p _temp/_github_home
+          sudo rsync -avz --delete ${HOME}/ _temp/_github_home/
+          sudo chmod 777 -R _temp/_github_home
         fi
