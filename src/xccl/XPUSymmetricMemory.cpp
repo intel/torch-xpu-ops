@@ -1,4 +1,5 @@
 #include <xccl/IPCExchange.hpp>
+#include <xccl/ProcessGroupXCCL.hpp>
 #include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
@@ -8,6 +9,7 @@
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 
 #include <sys/socket.h>
 #include <unistd.h>
