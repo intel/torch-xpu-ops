@@ -666,7 +666,7 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
       }
       vec_t output_value;
       for (int v = 0; v < vec_size; v++) {
-        output_value[v] = sum[v];
+        output_value[v] = static_cast<scalar_t>(sum[v]);
       }
       output_[index] = output_value;
     }
@@ -674,7 +674,6 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
   AdaptiveAvgPool2dKernelFunctor_cl(
       vec_t* output,
       const vec_t* input,
-
       int ih,
       int iw,
       int ob,
@@ -682,8 +681,8 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
       int oh,
       int ow,
       int64_t numel)
-      : input_(input),
-        output_(output),
+      : output_(output),
+        input_(input),
         ih_(ih),
         iw_(iw),
         ob_(ob),
@@ -749,7 +748,7 @@ void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
            8,
            memory::can_vectorize_up_to<scalar_t>(
                (char*)output.mutable_data_ptr<scalar_t>()));
-       vec_size >= 1;
+       vec_size > 1;
        vec_size /= 2) {
     if (oc % vec_size != 0)
       continue;
@@ -835,7 +834,7 @@ void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
           numel);
       return;
     default:
-      assert(false && "Unsupported vector size in adaptive average pooling");
+      TORCH_INTERNAL_ASSERT(false, "Unexpected vectorization size");
   }
 }
 #undef LAUNCH_AVGPOOL_CHANNEL_LAST_VEC
@@ -937,8 +936,13 @@ void adaptive_avg_pool2d_kernel(
         auto iacc = input_.packed_accessor64<const scalar_t, 4>();
         auto oacc = output.packed_accessor64<scalar_t, 4>();
         if (is_smf_channels_last(output)) {
-          launch_adaptive_avg_pool2d_kernel_cl<scalar_t, opmath_t>(
-              input_, output);
+          if (input_.is_contiguous(at::MemoryFormat::ChannelsLast)) {
+            launch_adaptive_avg_pool2d_kernel_cl<scalar_t, opmath_t>(
+                input_, output);
+          } else {
+            launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, true>(
+                iacc, oacc);
+          }
         } else {
           launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, false>(
               iacc, oacc);
