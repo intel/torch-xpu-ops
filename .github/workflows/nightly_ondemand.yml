@@ -95,7 +95,7 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","xpu_profiling","torch_xpu","xpu_distributed"]'
+            ut='["basic","op_ut","xpu_profiling","inductor_ut","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             triton=''
             python='3.10'
@@ -155,6 +155,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
+      keep_going: true
 
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}

@@ -5,6 +5,11 @@ inputs:
     required: true
     type: string
     description: Which ut to launch
+  keep_going:
+    required: false
+    type: string
+    default: 'false'
+    description: Define the Inductor UT test mechanism
 
 permissions: read-all
 
@@ -99,20 +104,72 @@ runs:
         cp *.xml ${{ github.workspace }}/ut_log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
-    - name: torch_xpu
-      shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'torch_xpu' }}
+    - name: inductor_ut
+      shell: timeout 18000 bash -xe {0}
+      if: ${{ inputs.ut_name == 'inductor_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        mkdir -p ut_log/torch_xpu
+        keep_going_flag=""
+        [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
+        mkdir -p ut_log/inductor_ut
         cd pytorch
-        test_cmd="python test/run_test.py --include "
-        for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-        for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-        if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-        eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+        echo -e \
+        "test_codecache.py\n" \
+        "test_kernel_benchmark.py\n" \
+        "test_max_autotune.py\n" \
+        "test_mkldnn_pattern_matcher.py\n" \
+        "test_triton_kernels.py\n" \
+        "test_torchinductor.py\n" \
+        "test_torchinductor_opinfo.py\n" \
+        "test_compile_subprocess.py\n" \
+        "test_compiled_optimizers.py\n" \
+        "test_compiled_autograd.py" \
+        "test_aot_inductor.py\n" \
+        > test_files.txt
+        cat test_files.txt
+        while IFS= read -r line; do
+          (
+            echo "=== Starting test: ${line} ==="
+            start=$(date +%s)
+            python test/run_test.py $keep_going_flag --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/inductor_ut/inductor_ut_${line}_test_error.log | \
+              tee $GITHUB_WORKSPACE/ut_log/inductor_ut/inductor_ut_${line}_test.log
+            end=$(date +%s)
+            echo -e "${line} duration: $((end - start))s"
+            echo "=== Finished test: ${line} ==="
+          ) &
+        done < test_files.txt
+ 
+        wait
+        function read_dir(){
+          for file in `ls $1`
+          do
+            if [ -d $1"/"$file ]
+            then
+              cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+            else
+              echo "[Warning] $file has no xml"
+            fi
+          done
+        }
+        read_dir "test/test-reports/python-pytest"
+        function rename_inductor_files() {
+          local target_dir="${1:-.}"
+          if [ ! -d "$target_dir" ]; then
+              echo "Error: Directory '$target_dir' does not exist" >&2
+              return 1
+          fi
+          find "$target_dir" -name 'inductor.*' -exec bash -c '
+              for file; do
+                  newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                  if [ "$file" != "$newfile" ]; then
+                      echo "Renaming: $file -> $newfile"
+                      mv -v "$file" "$newfile"
+                  fi
+              done
+          ' bash {} +
+        }
+        rename_inductor_files "${{ github.workspace }}/ut_log/"
     - name: xpu_profiling
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}

@@ -247,6 +247,8 @@ def determine_category(ut):
         return 'op_transformers'
     elif 'op_ut' in ut:
         return 'op_ut'
+    elif 'inductor_' in ut:
+        return 'inductor'
     else:
         return 'unknown'
 
@@ -342,6 +344,8 @@ def print_summary():
     }
 
     for summary in summaries:
+        if summary['Test cases'] == 0:
+            continue
         print_md_row({
             'Category': summary['Category'],
             'UT': summary['UT'],
