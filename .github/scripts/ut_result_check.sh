@@ -2,14 +2,13 @@
 ut_suite="${1:-op_regression}"   # op_regression / op_extended / op_ut / torch_xpu
 
 # usage
-# compare_and_filter_logs <UT'log> <Known_issue.log> [output.log]
+# check_new_failed <UT'log> <Known_issue.log> [output.log]
 all_pass=""
 
-compare_and_filter_logs() {
+check_new_failed() {
     local file_UT="$1"
     local file_known_issue="$2"
     local output_file="${3:-${file_UT%.*}_filtered.log}"
-    local filtered_content="${file_UT%.*}_removed.log"
 
     if [[ $# -lt 2 ]]; then
         echo "[ERROR] Need 2 files to compare"
@@ -28,22 +27,6 @@ compare_and_filter_logs() {
     echo "Filtering $file_known_issue for $file_UT"
     grep -vFxf "$file_known_issue" "$file_UT" > "$output_file"
 
-    # Keep the filtered UT cases
-    grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
-    echo "Filtered cases file: $filtered_content"
-
-    if [[ -s "$filtered_content" ]]; then
-        echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
-        awk -F':' '{
-            line_number = $1
-            $1 = ""
-            gsub(/^ /, "", $0)
-            printf "\033[33m%3d\033[0m: %s\n", line_number, $0
-        }' "$filtered_content"
-    else
-        echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
-    fi
-
     echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
     if [[ -z "$(tr -d ' \t\n\r\f' < "$output_file" 2>/dev/null)" ]]; then
         echo -e "\033[1;32mNo new failed cases found\033[0m"
@@ -51,8 +34,15 @@ compare_and_filter_logs() {
         echo -e "\n\033[1;31mNew failed cases, not in known issues\033[0m"
         cat "$output_file"
     fi
+}
 
-    rm -f ${filtered_content}
+check_filtered_logs() {
+  local file_UT="$1"
+  local file_known_issue="$2"
+  local filtered_content="${file_UT%.*}_removed.log"
+  # Keep the filtered UT cases
+  grep -noFf "$file_known_issue" "$file_UT" > "$filtered_content"
+  echo "Filtered cases file: $filtered_content"
 }
 
 check_passed_known_issues() {
@@ -139,14 +129,29 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
     echo -e "========================================================================="
     check_test_cases category_${ut_suite}.log
     echo -e "========================================================================="
+    echo -e "Checking Filtered cases for ${ut_suite}"
+    echo -e "========================================================================="
+    check_filtered_logs failures_${ut_suite}.log Known_issue.log
+    if [[ -f "failures_${ut_suite}_removed.log" ]]; then
+        echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
+        awk -F':' '{
+            line_number = $1
+            $1 = ""
+            gsub(/^ /, "", $0)
+            printf "\033[33m%3d\033[0m: %s\n", line_number, $0
+        }' "failures_${ut_suite}_removed.log"
+    else
+        echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
+    fi
+    echo -e "========================================================================="
     echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
     echo -e "========================================================================="
     check_passed_known_issues passed_${ut_suite}.log Known_issue.log
     echo -e "========================================================================="
-    echo -e "Checking Failed cases in ${ut_suite}"
+    echo -e "Checking New Failed cases in ${ut_suite}"
     echo -e "========================================================================="
     if [[ -f "failures_${ut_suite}.log" ]]; then
-      compare_and_filter_logs failures_${ut_suite}.log Known_issue.log
+      check_new_failed failures_${ut_suite}.log Known_issue.log
     else
       echo -e "\033[1;32mNo need to check failed cases\033[0m"
     fi
@@ -215,13 +220,28 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     echo -e "========================================================================="
     cat "./${ut_suite}_xpu_distributed_test_failed.log"
     echo -e "========================================================================="
-    echo -e "Checking Failed cases in ${ut_suite} xpu distributed"
+    echo -e "Checking Filtered cases for ${ut_suite} xpu distributed"
     echo -e "========================================================================="
-    compare_and_filter_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
+    check_filtered_logs "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
+    if [[ -f "${ut_suite}_xpu_distributed_test_failed_removed.log" ]]; then
+        echo -e "\n\033[1;31m[These failed cases are in skip list, will filter]\033[0m"
+        awk -F':' '{
+            line_number = $1
+            $1 = ""
+            gsub(/^ /, "", $0)
+            printf "\033[33m%3d\033[0m: %s\n", line_number, $0
+        }' "${ut_suite}_xpu_distributed_test_failed_removed.log"
+    else
+        echo -e "\n\033[1;32mNo Skipped Cases\033[0m"
+    fi
     echo -e "========================================================================="
     echo -e "Checking New passed cases in Known issue list for ${ut_suite}"
     echo -e "========================================================================="
     check_passed_known_issues "${ut_suite}"_xpu_distributed_test_passed.log Known_issue.log
+    echo -e "========================================================================="
+    echo -e "Checking Failed cases in ${ut_suite} xpu distributed"
+    echo -e "========================================================================="
+    check_new_failed "${ut_suite}"_xpu_distributed_test_failed.log Known_issue.log
     if [[ -f "${ut_suite}_xpu_distributed_test_failed_filtered.log" ]]; then
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed_filtered.log")
     else
