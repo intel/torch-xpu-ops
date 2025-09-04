@@ -50,7 +50,7 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  docker:
+  test-in-docker:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
     if: ${{ ! contains(inputs.ut, 'distributed') }}
@@ -139,7 +139,7 @@ jobs:
             sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
           fi
 
-  host:
+  test-in-host:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
     if: ${{ contains(inputs.ut, 'distributed') }}
@@ -195,7 +195,7 @@ jobs:
           fi
 
   summary:
-    needs: [docker, host]
+    needs: [test-in-docker, test-in-host]
     if: ${{ ! cancelled() && ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
