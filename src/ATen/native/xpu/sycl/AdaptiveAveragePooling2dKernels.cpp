@@ -835,7 +835,7 @@ void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
           numel);
       return;
     default:
-      assert(0);
+      assert(false && "Unsupported vector size in adaptive average pooling");
   }
 }
 #undef LAUNCH_AVGPOOL_CHANNEL_LAST_VEC
