@@ -123,7 +123,7 @@ jobs:
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
           python setup.py clean
-          set MAX_JOBS=32
+          set MAX_JOBS=16
           python setup.py bdist_wheel > build_torch_wheel_log.log
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
