@@ -83,6 +83,7 @@ jobs:
         MODEL_ONLY_NAME: ${{ inputs.model }}
         xpu_num: ${{ needs.runner.outputs.xpu_num }}
         cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
+        dataset_dir: ${{ runner.temp }}/../_datasets/imagenet
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
