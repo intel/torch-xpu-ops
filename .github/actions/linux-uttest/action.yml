@@ -170,6 +170,7 @@ runs:
 
     # Summary
     - name: UT Test Results Summary
+      shell: timeout 180 bash -xe {0}
       run: |
         pip install junitparser
         python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
