@@ -908,7 +908,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         first = t[0]
         last = t[-1]
         self.assertEqual(last["profiling_name"], "xccl:all_reduce")
-        # self.assertEqual(last["state"], "completed") # Current XCCL impl is not "completing" many works
+        self.assertEqual(last["state"], "completed")
         self.assertIn("test_c10d_xccl.py", str(last["frames"]))
         self.assertEqual(last["input_sizes"], ((3, 4),))
         self.assertEqual(last["input_dtypes"], ["Float"])

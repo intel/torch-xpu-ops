@@ -433,6 +433,10 @@ void ProcessGroupXCCL::setCompletedPgStatus(
   pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
   pgStatus_->lastCompletedNumelIn = work->numelIn_;
   pgStatus_->lastCompletedNumelOut = work->numelOut_;
+  while (!work->isCompleted()) {
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(kSynchronizeBusyWaitMillis));
+  }
   // To avoid complexity, we're not computing duration.
   FlightRecorderXCCL::get()->retire_id(
       work->trace_id_, /*compute_duration*/ false);
