@@ -656,15 +656,18 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
           auto read = input_
               [_ic + _iw * oc_vec_ + _ih * oc_vec_ * iw_ +
                _ib * ih_ * iw_ * oc_vec_];
+#pragma unroll
           for (int v = 0; v < vec_size; v++) {
             sum[v] += opmath_t(read[v]);
           }
         }
       }
+#pragma unroll
       for (int v = 0; v < vec_size; v++) {
         sum[v] /= kh * kw;
       }
       vec_t output_value;
+#pragma unroll
       for (int v = 0; v < vec_size; v++) {
         output_value[v] = static_cast<scalar_t>(sum[v]);
       }
