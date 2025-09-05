@@ -123,7 +123,7 @@ jobs:
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
           python setup.py clean
-          set MAX_JOBS=16
+          set MAX_JOBS=32
           python setup.py bdist_wheel > build_torch_wheel_log.log
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
@@ -249,7 +249,7 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
 
-          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category}_"${{ inputs.ut }}".log; do
+          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category}_*.log; do
             [[ -f "$log_file" ]] && cp "$log_file" ./
           done
 
