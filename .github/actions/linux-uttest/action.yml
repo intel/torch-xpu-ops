@@ -167,3 +167,38 @@ runs:
         python run_distributed.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+
+    # Summary
+    - name: UT Test Results Summary
+      run: |
+        pip install junitparser
+        python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        # Check the failure logs
+        if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
+          echo -e "Exist Failure logs"
+          echo "Found Failure logs as below: "
+          for file in ${{ github.workspace }}/failures*.log; do
+            echo "  - $file"
+            cp "$file" ${{ github.workspace }}/ut_log
+          done
+          echo -e "Failure logs Copied"
+        else
+          echo -e "No Failure logs"
+        fi
+        # Copied the passed logs
+        if ls passed*.log 1> /dev/null 2>&1; then
+          cp passed*.log ${{ github.workspace }}/ut_log
+          echo -e "Passed logs Copied"
+        else
+          echo -e "No Passed logs"
+        fi
+        # Copied the Summary logs
+        if ls category*.log 1> /dev/null 2>&1; then
+          cp category*.log ${{ github.workspace }}/ut_log
+          echo -e "Category logs Copied"
+        else
+          echo -e "No Category logs"
+        fi
+        if [ -e ut_failure_list.csv ];then
+            cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
+        fi
