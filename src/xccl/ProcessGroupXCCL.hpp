@@ -123,9 +123,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     static c10::intrusive_ptr<Options> create() {
       return c10::make_intrusive<Options>();
     }
-
-    std::vector<uint64_t> global_ranks_in_group;
-    std::string group_name;
   };
 
   ProcessGroupXCCL(
@@ -171,7 +168,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       bool isP2P,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
-      const std::vector<at::Tensor>& outputs = {});
+      const std::vector<at::Tensor>& outputs = {},
+      bool record = false);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
