@@ -249,10 +249,6 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
 
-          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category}_*.log; do
-            [[ -f "$log_file" ]] && cp "$log_file" ./
-          done
-
           # get skipped known issues
           count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped" --jq 'length')
           if [ "$count" -gt 0 ]; then
