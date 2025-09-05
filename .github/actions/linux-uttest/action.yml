@@ -105,7 +105,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
     - name: xpu_inductor
-      shell: timeout 18000 bash -xe {0}
+      shell: timeout 28000 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_inductor' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -114,34 +114,20 @@ runs:
         [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
         mkdir -p ut_log/xpu_inductor
         cd pytorch
-        files=(
-            "test_codecache.py"
-            "test_kernel_benchmark.py"
-            "test_max_autotune.py"
-            "test_mkldnn_pattern_matcher.py"
-            "test_triton_kernels.py"
-            "test_torchinductor.py"
-            "test_torchinductor_opinfo.py"
-            "test_compile_subprocess.py"
-            "test_compiled_optimizers.py"
-            "test_compiled_autograd.py"
-            "test_aot_inductor.py"
-        )
-        printf "%s\n" "${files[@]}" > test_files.txt
-        cat test_files.txt
-        while IFS= read -r line; do
-          (
-            echo "=== Starting test: ${line} ==="
-            start=$(date +%s)
-            PYTEST_ADDOPTS="-v --timeout 600 --timeout_method=thread" NUM_PROCS=16 python test/run_test.py $keep_going_flag --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test_error.log | \
-              tee $GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test.log
-            end=$(date +%s)
-            echo -e "${line} duration: $((end - start))s"
-            echo "=== Finished test: ${line} ==="
-          ) &
-        done < test_files.txt
 
-        wait
+        echo "=== Starting test ==="
+        start=$(date +%s)
+        PYTEST_ADDOPTS="-v --timeout 600 --timeout_method=thread" NUM_PROCS=16 python test/run_test.py $keep_going_flag --xpu \
+            --include inductor/test_torchinductor inductor/test_torchinductor_opinfo \
+                      inductor/test_codecache.py inductor/test_kernel_benchmark.py inductor/test_max_autotune.py \
+                      inductor/test_mkldnn_pattern_matcher.py inductor/test_triton_kernels.py inductor/test_aot_inductor.py \
+                      inductor/test_compile_subprocess.py inductor/test_compiled_optimizers.py inductor/test_compiled_autograd.py \
+                      --verbose 2>${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+        end=$(date +%s)
+        echo -e "duration: $((end - start))s"
+        echo "=== Finished test ==="
+
         function read_dir(){
           for file in `ls $1`
           do
