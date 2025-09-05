@@ -32,7 +32,7 @@ defaults:
 
 jobs:
   runner:
-    runs-on: ${{ contains(inputs.ut, 'distributed') && 'PVC-7364' || inputs.runner }}
+    runs-on: ${{ inputs.runner }}
     name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
