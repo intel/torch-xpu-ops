@@ -132,12 +132,6 @@ jobs:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
-      - name: Reset Ptrace_scope
-        if: ${{ always() }}
-        run: |
-          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
-            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
-          fi
 
   summary:
     needs: [test]
