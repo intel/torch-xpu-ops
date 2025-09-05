@@ -63,13 +63,13 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
 
-      - name: Run Torch XPU Op Benchmark
+      - name: Run Torch XPU Op Benchmark on ${{ needs.runner.outputs.hostname }}
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
           cd test/microbench

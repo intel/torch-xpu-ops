@@ -62,10 +62,16 @@ runs:
                 contains "accuracy,performance" $scenario
                 $contains_status
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  for xpu_id in $(seq 0 $[ ${xpu_num} - 1 ])
+                  for var in $(seq 0 $[ ${xpu_num} - 1 ])
                   do
-                    cpu_list="$(echo "${cpus_per_xpu} ${xpu_id}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${xpu_id} &
+                    cpu_list="$(echo "${cpus_per_xpu} ${var}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+                    if [ "${ZE_AFFINITY_MASK}" != "" ];then
+                      xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
+                      xpu_id=${xpu_list[$[ ${var} + 1 ]]}
+                    else
+                      xpu_id=${var}
+                    fi
+                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${var} &
                   done
                 else
                   for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
