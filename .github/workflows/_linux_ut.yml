@@ -9,11 +9,11 @@ on:
         description: Runner label
       pytorch:
         type: string
-        default: 'main'
+        default: 'https://github.com/daisyden/pytorch.git@distributed_2.9'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: 'daisyden/distributed_2.9'
         description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       python:
         type: string
@@ -118,6 +118,14 @@ jobs:
           if [ -e ut_failure_list.csv ];then
               cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
           fi
+      - name: UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          cd ${{ github.workspace }}/ut_log/
+          python check-ut.py ${{ github.workspace }}/ut_log/*.xml \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_summary.log | \
+            >> $GITHUB_STEP_SUMMARY || true
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -142,13 +150,14 @@ jobs:
   host:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
+      PYTEST_ADDOPTS: -v 
     steps:
       - name: Init test
         run: |
@@ -235,7 +244,6 @@ jobs:
             ut_list="${{ inputs.ut }}"
           fi
 
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
