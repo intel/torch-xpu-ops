@@ -129,16 +129,19 @@ runs:
         )
         printf "%s\n" "${files[@]}" > test_files.txt
         cat test_files.txt
-        for line in $(cat test_files.txt); do
-          echo "=== Starting test: ${line} ==="
-          start=$(date +%s)
-          PYTEST_ADDOPTS="-v --timeout 600 --timeout_method=thread" NUM_PROCS=8 python test/run_test.py $keep_going_flag --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test_error.log | \
-            tee $GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test.log
-          end=$(date +%s)
-          echo -e "${line} duration: $((end - start))s"
-          echo "=== Finished test: ${line} ==="
-        done
+        while IFS= read -r line; do
+          (
+            echo "=== Starting test: ${line} ==="
+            start=$(date +%s)
+            PYTEST_ADDOPTS="-v --timeout 600 --timeout_method=thread" NUM_PROCS=16 python test/run_test.py $keep_going_flag --xpu --include inductor/${line} 2>$GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test_error.log | \
+              tee $GITHUB_WORKSPACE/ut_log/xpu_inductor/xpu_inductor_${line}_test.log
+            end=$(date +%s)
+            echo -e "${line} duration: $((end - start))s"
+            echo "=== Finished test: ${line} ==="
+          ) &
+        done < test_files.txt
 
+        wait
         function read_dir(){
           for file in `ls $1`
           do
