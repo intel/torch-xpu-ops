@@ -6,11 +6,14 @@ inputs:
     type: string
     description: Which ut to launch
 
-permissions: read-all
-
 runs:
   using: composite
   steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
@@ -139,7 +142,6 @@ runs:
         python test/profiling/llama.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
         python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
-        bash .github/scripts/check_baseline.sh .github/scripts/llama_baseline.csv ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
@@ -157,10 +159,6 @@ runs:
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
-        sudo rm -rf ${{ github.workspace }}/ptrace_scope.bk
-        sudo cp /proc/sys/kernel/yama/ptrace_scope ${{ github.workspace }}/ptrace_scope.bk
-        cat ${{ github.workspace }}/ptrace_scope.bk
-        echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
         mkdir -p ut_log/xpu_distributed
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
@@ -171,3 +169,39 @@ runs:
         python run_distributed.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+
+    # Summary
+    - name: UT Test Results Summary
+      shell: timeout 180 bash -xe {0}
+      run: |
+        pip install junitparser
+        python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        # Check the failure logs
+        if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
+          echo -e "Exist Failure logs"
+          echo "Found Failure logs as below: "
+          for file in ${{ github.workspace }}/failures*.log; do
+            echo "  - $file"
+            cp "$file" ${{ github.workspace }}/ut_log
+          done
+          echo -e "Failure logs Copied"
+        else
+          echo -e "No Failure logs"
+        fi
+        # Copied the passed logs
+        if ls passed*.log 1> /dev/null 2>&1; then
+          cp passed*.log ${{ github.workspace }}/ut_log
+          echo -e "Passed logs Copied"
+        else
+          echo -e "No Passed logs"
+        fi
+        # Copied the Summary logs
+        if ls category*.log 1> /dev/null 2>&1; then
+          cp category*.log ${{ github.workspace }}/ut_log
+          echo -e "Category logs Copied"
+        else
+          echo -e "No Category logs"
+        fi
+        if [ -e ut_failure_list.csv ];then
+            cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
+        fi

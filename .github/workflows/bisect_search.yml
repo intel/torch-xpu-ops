@@ -37,6 +37,10 @@ on:
 
 permissions: read-all
 
+defaults:
+  run:
+    shell: bash -xe {0}
+
 jobs:
   get_runner:
     runs-on: ${{ inputs.runner }}
@@ -87,12 +91,9 @@ jobs:
         USE_XCCL: 0
         USE_KINETO: 0
     env:
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      GH_TOKEN: ${{ github.token }}
-    defaults:
-      run:
-        shell: bash -xe {0}
+       GH_TOKEN: ${{ github.token }}
+       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
       - name: Check runner
         run: |
