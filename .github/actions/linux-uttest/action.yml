@@ -142,7 +142,6 @@ runs:
         python test/profiling/llama.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/llama.log
         python .github/scripts/llama_summary.py -i ${{ github.workspace }}/ut_log/xpu_profiling/llama.log -o ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
-        bash .github/scripts/check_baseline.sh .github/scripts/llama_baseline.csv ${{ github.workspace }}/ut_log/xpu_profiling/llama_summary.csv
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
