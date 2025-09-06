@@ -12,7 +12,7 @@ permissions: read-all
 jobs:
   debug:
     runs-on: linux.idc.xpu
-    if: ${{ 1 == 0 }}
+    if: ${{ 1 == 1 }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -24,7 +24,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
       - name: Setup python
         uses: actions/setup-python@v5
@@ -33,11 +33,12 @@ jobs:
       - name: Test
         run: |
           pip install huggingface-hub
-          hf auth login --token ${{ env.HF_TOKEN }}
+          printenv
           
 
   runner:
     runs-on: pvc_rolling
+    if: ${{ 1 == 0 }}
     name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
