@@ -29,6 +29,9 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -62,9 +65,6 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
               -e ZE_AFFINITY_MASK
       env:
-        GH_TOKEN: ${{ github.token }}
-        HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
@@ -76,7 +76,10 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-
+      - name: Setup Huggingface
+        run: |
+          echo "HF_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
+          echo "HUGGING_FACE_HUB_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
       - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-uttest
         with:
@@ -101,9 +104,6 @@ jobs:
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
-      GH_TOKEN: ${{ github.token }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
     steps:
@@ -115,7 +115,10 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-
+      - name: Setup Huggingface
+        run: |
+          echo "HF_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
+          echo "HUGGING_FACE_HUB_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
       - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-uttest
         with:
@@ -159,7 +162,6 @@ jobs:
           for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
             [[ -f "$log_file" ]] && cp "$log_file" ./
           done
-
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
           # get skipped known issues
@@ -174,7 +176,6 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
-
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in ${ut_list}
           do

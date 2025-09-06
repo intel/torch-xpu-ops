@@ -46,6 +46,9 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -79,9 +82,6 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        GH_TOKEN: ${{ github.token }}
-        HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         xpu_num: ${{ needs.runner.outputs.xpu_num }}
         cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
@@ -96,7 +96,10 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
-
+      - name: Setup Huggingface
+        run: |
+          echo "HF_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
+          echo "HUGGING_FACE_HUB_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}

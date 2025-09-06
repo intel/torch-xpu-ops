@@ -22,6 +22,10 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  reference_issue: 1689
 
 jobs:
   runner:
@@ -55,9 +59,6 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        GH_TOKEN: ${{ github.token }}
-        HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         AGENT_TOOLSDIRECTORY: /opt/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
@@ -67,7 +68,10 @@ jobs:
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
-
+      - name: Setup Huggingface
+        run: |
+          echo "HF_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
+          echo "HUGGING_FACE_HUB_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
       - name: Run Torch XPU Op Benchmark on ${{ needs.runner.outputs.hostname }}
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
@@ -92,9 +96,6 @@ jobs:
   op_benchmark_test_results_check:
     needs: op_benchmark
     runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ github.token }}
-      reference_issue: 1689
     steps:
       - name: Install gh-cli
         run: |
