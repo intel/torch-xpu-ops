@@ -48,7 +48,6 @@ defaults:
     shell: bash -xe {0}
 env:
   GH_TOKEN: ${{ github.token }}
-  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -96,10 +95,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
-      - name: Setup Huggingface
-        run: |
-          echo "HF_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
-          echo "HUGGING_FACE_HUB_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
+
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
@@ -109,6 +105,7 @@ jobs:
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: CICD Timm_models BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -117,6 +114,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: CICD Torchbench BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -125,6 +123,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
@@ -135,6 +134,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -143,6 +143,7 @@ jobs:
           dt: float16
           mode: training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -151,12 +152,14 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Nightly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
@@ -167,6 +170,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Timm_models Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -175,6 +179,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly Torchbench Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -183,12 +188,14 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Weekly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
           scenario: accuracy,performance
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       # On-demand launch
       - name: Get test data types
@@ -208,6 +215,7 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (timm_models)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -216,6 +224,7 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand Test (torchbench)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -224,12 +233,14 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: ${{ steps.dtypes.outputs.pt2e_dtypes }}
           scenario: ${{ inputs.scenario }}
+          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
       - name: Get archieve files
         if: ${{ ! cancelled() }}

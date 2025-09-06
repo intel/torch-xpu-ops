@@ -5,6 +5,8 @@ inputs:
     required: true
     type: string
     description: Which ut to launch
+  hf_token:
+    description: Huggingface token for models download
 
 runs:
   using: composite
@@ -39,6 +41,9 @@ runs:
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_regression_dev1.log
     - name: op_transformers
       shell: timeout 3600 bash -xe {0}
+      env:
+        HF_TOKEN: ${{ inputs.hf_token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       if: ${{ inputs.ut_name == 'op_transformers' || inputs.ut_name == 'basic' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -66,6 +71,9 @@ runs:
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
     - name: op_ut
       shell: timeout 18000 bash -xe {0}
+      env:
+        HF_TOKEN: ${{ inputs.hf_token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -118,6 +126,9 @@ runs:
           tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
     - name: xpu_profiling
       shell: timeout 3600 bash -xe {0}
+      env:
+        HF_TOKEN: ${{ inputs.hf_token }}
+        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
         mkdir -p ut_log/xpu_profiling/issue_reproduce

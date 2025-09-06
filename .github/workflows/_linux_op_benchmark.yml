@@ -25,6 +25,7 @@ defaults:
 env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   reference_issue: 1689
 
 jobs:
@@ -68,10 +69,6 @@ jobs:
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
-      - name: Setup Huggingface
-        run: |
-          echo "HF_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
-          echo "HUGGING_FACE_HUB_TOKEN=${{ env.HF_TOKEN }}" >> ${GITHUB_ENV}
       - name: Run Torch XPU Op Benchmark on ${{ needs.runner.outputs.hostname }}
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
