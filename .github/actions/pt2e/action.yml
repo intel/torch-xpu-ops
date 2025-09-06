@@ -20,6 +20,11 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
     - name: Prepare dataset
       shell: bash -xe {0}
       run: |

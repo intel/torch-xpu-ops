@@ -11,6 +11,11 @@ permissions: read-all
 runs:
   using: composite
   steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}

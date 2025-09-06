@@ -25,10 +25,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -x {0}
       run: |
-        pip list |grep -E 'intel|torch'
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
         # check param

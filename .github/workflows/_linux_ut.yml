@@ -147,7 +147,6 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
-        shell: bash
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
