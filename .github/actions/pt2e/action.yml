@@ -16,8 +16,6 @@ inputs:
     type: string
     default: 'main'
     description: Pytorch branch/commit
-  hf_token:
-    description: Huggingface token for models download
 
 runs:
   using: composite
@@ -40,9 +38,6 @@ runs:
         fi
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
-      env:
-        HF_TOKEN: ${{ inputs.hf_token }}
-        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
         pt2e_logs_dir="${{ github.workspace }}/pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"

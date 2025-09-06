@@ -21,8 +21,6 @@ inputs:
     type: string
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
-  hf_token:
-    description: Huggingface token for models download
 
 runs:
   using: composite
@@ -34,9 +32,6 @@ runs:
         which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -x {0}
-      env:
-        HF_TOKEN: ${{ inputs.hf_token }}
-        HUGGING_FACE_HUB_TOKEN: ${{ inputs.hf_token }}
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch

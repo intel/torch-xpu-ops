@@ -144,6 +144,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    secrets: inherit
     strategy:
       fail-fast: false
       matrix:
@@ -160,6 +161,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    secrets: inherit
     strategy:
       fail-fast: false
       matrix:
@@ -189,6 +191,7 @@ jobs:
     name: linux-microbench
     permissions: write-all
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
+    secrets: inherit
     strategy:
       fail-fast: false
       matrix:
@@ -203,6 +206,7 @@ jobs:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
     name: windows
     needs: [Conditions-Filter]
+    secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,torch_xpu'

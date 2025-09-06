@@ -31,6 +31,8 @@ defaults:
     shell: bash -xe {0}
 env:
   GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
 
 jobs:
@@ -80,7 +82,6 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -116,7 +117,6 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-          hf_token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
