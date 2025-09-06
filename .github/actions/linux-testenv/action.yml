@@ -113,21 +113,32 @@ runs:
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
-        cd pytorch
-        TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
-        TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
+        # common
         pip install pandas psutil scipy pyyaml
-        if [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+        cd pytorch
+        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
+          TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
+        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
           pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
         elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
           cd ../
-          rm -rf ./e2e-benchmark
-          git clone https://github.com/pytorch/benchmark e2e-benchmark
-          cd e2e-benchmark
+          rm -rf ./benchmark
+          git clone https://github.com/pytorch/benchmark benchmark
+          cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
+          sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
-          python install.py --continue_on_fail
-          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            while read line
+            do
+              python install.py $(echo $line |awk -F, '{printf $1}')
+            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+          else
+            python install.py --continue_on_fail
+          fi
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
@@ -141,9 +152,9 @@ runs:
           git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
           cd pt2e-performance
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
+          sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
           python install.py --continue_on_fail
-          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
@@ -152,9 +163,6 @@ runs:
           pip install -r ./.ci/docker/requirements-ci.txt
           pip install -U pytest pytest-timeout pytest-xdist
         fi
-        # transformers
-        pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
-        TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         # install the corresponding torchao
         pip uninstall -y torchao
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then

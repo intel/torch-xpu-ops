@@ -190,6 +190,7 @@ jobs:
 
       # On-demand launch
       - name: Get test data types
+        if: ${{ contains(inputs.test_type, 'ondemand') }}
         id: dtypes
         run: |
           e2e_dtypes="$(echo "${{ inputs.dt }}" |sed 's/,int8//;s/int8,//')"

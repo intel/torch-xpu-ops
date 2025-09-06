@@ -161,6 +161,7 @@ jobs:
             cd gs-benchmark
             echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
             python install.py ${model_name}
+            pip install .
           else
             pip install -r gs-pytorch/.ci/docker/requirements-ci.txt
           fi
