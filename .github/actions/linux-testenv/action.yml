@@ -18,8 +18,6 @@ inputs:
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
-permissions: read-all
-
 runs:
   using: composite
   steps:

@@ -16,8 +16,6 @@ outputs:
   pytest_extra_args:
     value: ${{ steps.runner.outputs.pytest_extra_args }}
 
-permissions: read-all
-
 runs:
   using: composite
   steps:

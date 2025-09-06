@@ -6,8 +6,6 @@ inputs:
     type: string
     description: Which ut to launch
 
-permissions: read-all
-
 runs:
   using: composite
   steps:

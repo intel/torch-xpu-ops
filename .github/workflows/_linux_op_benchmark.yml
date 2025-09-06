@@ -55,11 +55,10 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
+        GH_TOKEN: ${{ github.token }}
+        HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         AGENT_TOOLSDIRECTORY: /opt/xpu-tool
-    env:
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
