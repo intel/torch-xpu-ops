@@ -25,6 +25,10 @@ check_new_failed() {
 
     # Filter the same content from file_UT as file_known_issue
     echo "Filtering $file_known_issue for $file_UT"
+    if grep -q $'\r' "$file_UT"; then
+        echo "Detected log from windows"
+        sed -i 's/\r$//' "$file_UT"
+    fi
     grep -vFxf "$file_known_issue" "$file_UT" > "$output_file"
 
     echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
