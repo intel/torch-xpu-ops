@@ -205,7 +205,7 @@ jobs:
     needs: [Conditions-Filter]
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: 'op_extended,torch_xpu'
+      ut: 'op_extended,test_xpu'
       python: ${{ needs.Conditions-Filter.outputs.python }}
       src_changed: false
       has_label: true

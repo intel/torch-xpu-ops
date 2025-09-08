@@ -169,7 +169,7 @@ jobs:
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
           copy op_extended.xml %GITHUB_WORKSPACE%\ut_log /Y
       - name: Run Test XPU UT
-        if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
         continue-on-error: true
         run: |
