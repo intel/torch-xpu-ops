@@ -20,4 +20,6 @@ os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
 test_command = "pytest --junit-xml=./op_extended.xml test_ops_xpu.py"
 test_command += skip_options
 res = os.system(test_command)
+if res:
+    print("test_ops_xpu.py has failures in extended unit tests")
 sys.exit(res)
