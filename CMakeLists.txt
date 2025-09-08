@@ -25,6 +25,7 @@ set(PROJECT_VERSION "2.3.0")
 # Avoid SYCL compiler error
 if(NOT WIN32)
   string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
+  string(APPEND CMAKE_CXX_FLAGS " -Werror=unused-variable")
 endif()
 
 cmake_policy(SET CMP0048 NEW)
