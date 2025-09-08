@@ -140,7 +140,7 @@ def print_failures(failure_list=None):
         if case_id not in seen_cases:
             seen_cases.add(case_id)
             unique_failures.append(case)
-    
+
     for case in unique_failures:
         print_md_row({
             'Category': get_category_from_case(case),
