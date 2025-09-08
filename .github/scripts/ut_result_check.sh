@@ -124,7 +124,7 @@ check_test_cases() {
 }
 
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' || "${ut_suite}" == 'torch_xpu' ]]; then
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' || "${ut_suite}" == 'test_xpu' ]]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
