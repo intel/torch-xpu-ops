@@ -1,6 +1,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
+#include <ATen/native/LinearAlgebraUtils.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -27,14 +28,11 @@ void lu_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(lu_solve_stub, &lu_solve_kernel_xpu);
 
-void lu_factor_kernel_xpu(
+void lu_factor_kernel_fallback(
     const Tensor& input,
     const Tensor& pivots,
     const Tensor& infos,
     bool compute_pivots) {
-#if defined(USE_ONEMKL_XPU)
-  native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
-#else
   auto input_cpu = input.to(input.options().device(kCPU));
   auto pivots_cpu = pivots.to(pivots.options().device(kCPU));
   const auto infos_cpu = infos.to(infos.options().device(kCPU));
@@ -44,6 +42,23 @@ void lu_factor_kernel_xpu(
   input.copy_(input_cpu);
   pivots.copy_(pivots_cpu);
   infos.copy_(infos_cpu);
+}
+
+void lu_factor_kernel_xpu(
+    const Tensor& input,
+    const Tensor& pivots,
+    const Tensor& infos,
+    bool compute_pivots) {
+#if defined(USE_ONEMKL_XPU)
+  int64_t batch_size = native::batchCount(input);
+  // TODO: optimize lu_factor performance on XPU when batch_size = 1
+  if (batch_size == 1) {
+    lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);
+  } else {
+    native::xpu::lu_factor_mkl(input, pivots, infos, compute_pivots);
+  }
+#else
+  lu_factor_kernel_fallback(input, pivots, infos, compute_pivots);
 #endif // USE_ONEMKL_XPU
 }
 
