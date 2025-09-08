@@ -74,6 +74,7 @@ check_test_cases() {
         ["op_regression_dev1"]=1
         ["op_transformers"]=237
         ["op_ut"]=120408
+        ["xpu_inductor"]=8330
     )
 
     if [[ ! -f "$log_file" ]]; then

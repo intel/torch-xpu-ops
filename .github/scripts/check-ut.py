@@ -106,6 +106,13 @@ def get_message(case):
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
+def get_case_identifier(case):
+    """Generate a unique identifier for a test case to detect duplicates"""
+    category = get_category_from_case(case)
+    classname = get_classname(case)
+    name = get_name(case)
+    return f"{category}:{classname}:{name}"
+
 def print_md_row(row, print_header=False, failure_list=None):
     if print_header:
         header = " | ".join([f"{key}" for key in row.keys()])
@@ -125,7 +132,16 @@ def print_failures(failure_list=None):
 
     print("### Test Failures")
     print_header = True
+
+    seen_cases = set()
+    unique_failures = []
     for case in failures:
+        case_id = get_case_identifier(case)
+        if case_id not in seen_cases:
+            seen_cases.add(case_id)
+            unique_failures.append(case)
+    
+    for case in unique_failures:
         print_md_row({
             'Category': get_category_from_case(case),
             'Class name': get_classname(case),
@@ -141,9 +157,15 @@ def generate_failures_log():
         print("No failures found, skipping log file creation.")
         return
 
+    seen_cases = set()
+    failures_by_category.clear()
+
     for case in failures:
-        category = get_category_from_case(case)
-        failures_by_category[category].append(case)
+        case_id = get_case_identifier(case)
+        if case_id not in seen_cases:
+            seen_cases.add(case_id)
+            category = get_category_from_case(case)
+            failures_by_category[category].append(case)
 
     for category, category_failures in failures_by_category.items():
         if not category_failures:
@@ -248,7 +270,7 @@ def determine_category(ut):
     elif 'op_ut' in ut:
         return 'op_ut'
     elif 'inductor_' in ut:
-        return 'inductor'
+        return 'xpu_inductor'
     else:
         return 'unknown'
 
@@ -266,9 +288,13 @@ def process_xml_file(xml_file):
         category = determine_category(ut)
 
         for suite in xml:
+            if 'inductor_' in ut:
+                ut_name = f"{ut.split('-')[0]}_rerun" if suite.tests == 1 else ut.split('-')[0]
+            else:
+                ut_name = ut
             suite_summary = {
                 'Category': category,
-                'UT': ut,
+                'UT': ut_name,
                 'Test cases': suite.tests,
                 'Passed': suite.tests - suite.skipped - suite.failures - suite.errors,
                 'Skipped': suite.skipped,
