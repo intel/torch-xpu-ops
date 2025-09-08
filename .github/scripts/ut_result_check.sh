@@ -58,6 +58,10 @@ check_passed_known_issues() {
         return 1
     fi
     echo "Checking for known issues that are now passing in $file_passed_UT"
+    if grep -q $'\r' "$file_passed_UT"; then
+        echo "Detected log from windows"
+        sed -i 's/\r$//' "$file_passed_UT"
+    fi
     grep -Fxf "$file_passed_UT" "$file_known_issue" > "$output_file"
     echo -e "\n\033[1;32m[New passed cases Summary]\033[0m"
     if [[ -s "$output_file" ]]; then
@@ -78,6 +82,7 @@ check_test_cases() {
         ["op_regression_dev1"]=1
         ["op_transformers"]=237
         ["op_ut"]=120408
+        ["test_xpu"]=69
     )
 
     if [[ ! -f "$log_file" ]]; then
