@@ -661,7 +661,7 @@ class CommTest(MultiProcessTestCase):
         # Work registry size is unchanged, since non-functional collectives not run under
         # the context manager is not registered in the work registry.
         self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
-        
+
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_wait_tensor(self) -> None:
@@ -706,6 +706,7 @@ class CommTest(MultiProcessTestCase):
         work.wait()
         self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
         self.assertEqual(input1, input2)
+
 
 instantiate_parametrized_tests(ProcessGroupXCCLTest)
 
