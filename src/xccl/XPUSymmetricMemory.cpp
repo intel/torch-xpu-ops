@@ -228,23 +228,30 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  auto barrier_input = at::tensor(
-      {rank_}, at::TensorOptions().dtype(torch::kInt32).device(local_device));
-  std::vector<std::vector<at::Tensor>> output_tensors(1);
-  output_tensors[0].reserve(world_size_);
-  for (int i = 0; i < world_size_; ++i) {
-    output_tensors[0].emplace_back(at::zeros_like(barrier_input));
+
+  static thread_local at::Tensor barrier_tensor;
+  if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
+    barrier_tensor = at::zeros(
+        {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
+  } else {
+    barrier_tensor.zero_();
   }
 
-  std::vector<at::Tensor> input_tensors = {barrier_input};
-  auto work = xcclPg->allgather(output_tensors, input_tensors);
-  bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-  TORCH_CHECK(
-      success,
-      "Barrier timeout after ",
-      timeout_ms,
-      " ms for group '",
-      group_name_);
+  c10d::AllreduceOptions arOpts;
+  arOpts.asyncOp = false;
+  auto work =
+      xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier", arOpts);
+
+  if (work) {
+    bool success = work->wait(std::chrono::milliseconds(timeout_ms));
+    TORCH_CHECK(
+        success,
+        "Barrier timeout after ",
+        timeout_ms,
+        " ms for group '",
+        group_name_,
+        "'");
+  }
   // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   // c10::DeviceGuard guard(local_device);
   // auto stream = at::xpu::getCurrentXPUStream();
