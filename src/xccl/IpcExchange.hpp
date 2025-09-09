@@ -15,10 +15,8 @@
 #include <pwd.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <chrono> // for std::chrono::milliseconds
-#include <thread> // for std::this_thread::sleep_for
-
-#define ELE_COUNT 128
+#include <chrono>
+#include <thread>
 
 struct exchange_contents {
   // first 4-byte is file descriptor for drmbuf or gem object
@@ -289,42 +287,11 @@ void un_allgather(
   recv_buf[rank] = *send_buf;
 }
 
-template <
-    typename data_type,
-    uint32_t max_rank = 8,
-    uint32_t max_buffer = 1024 /*KB*/>
-class allreducer {
+class IpcChannel {
  public:
-  allreducer() {
+  IpcChannel() {
     initialized = false;
-    size_per_buffer = 0;
-    buffer_index = 0;
   }
-  allreducer(const allreducer&) = delete;
-  allreducer& operator=(const allreducer&) = delete;
-  allreducer(allreducer&& other) noexcept {
-    *this = std::move(other);
-  }
-  allreducer& operator=(allreducer&& other) noexcept {
-    if (this != &other) {
-      initialized = other.initialized;
-      rank = other.rank;
-      world = other.world;
-      std::memcpy(buffers, other.buffers, sizeof(buffers));
-      std::memcpy(offsets, other.offsets, sizeof(offsets));
-      std::memcpy(ipc_handle, other.ipc_handle, sizeof(ipc_handle));
-
-      other.initialized = false;
-    }
-    return *this;
-  }
-  ~allreducer() {
-    if (initialized) {
-      std::cerr << "Warning: allreducer destroyed without calling release()"
-                << std::endl;
-    }
-  }
-
   void init(sycl::queue& queue, uint32_t rank_in, uint32_t world_in) {
     if (initialized)
       return;
@@ -343,7 +310,6 @@ class allreducer {
     world = tmp_world;
     initialized = true;
   }
-  void allreduce(sycl::queue& queue, void* inout_buffer, uint32_t size) {}
   void release(sycl::queue& queue) {
     if (!initialized)
       return;
@@ -364,22 +330,9 @@ class allreducer {
     initialized = false;
   }
 
-  void debug_print_buffer(sycl::queue& queue, int* address, int count) {
-    auto host_ptr = (int*)sycl::malloc_host(count * sizeof(int), queue);
-    auto tmp_ptr = (int*)sycl::malloc_device(count * sizeof(int), queue);
-
-    queue.memcpy(tmp_ptr, address, count * sizeof(int));
-    queue.memcpy(host_ptr, tmp_ptr, count * sizeof(int));
-
-    queue.wait();
-
-    for (int i = 0; i < count; i++) {
-      std::cout << host_ptr[i] << " ";
-    }
-    std::cout << std::endl;
-  }
   // buffer_size as element size
   void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr) {
+    if (!initialize) init();
     if (!load_level_zero_library()) {
       throw std::runtime_error("Level Zero not available");
     }
@@ -430,6 +383,7 @@ class allreducer {
   }
 
   bool initialized;
+  uint32_t max_rank = 16,
   void* buffers[max_rank];
   void* sync_buffer[max_rank];
   size_t offsets[max_rank];

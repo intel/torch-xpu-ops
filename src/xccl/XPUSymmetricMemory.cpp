@@ -1,4 +1,4 @@
-#include <xccl/IPCExchange.hpp>
+#include <xccl/IpcExchange.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
@@ -12,11 +12,6 @@
 
 #include <sys/socket.h>
 #include <unistd.h>
-
-// todo: fixed with kernel barrier
-#include <mpi.h>
-
-#define MAX_RANK 8
 
 namespace c10d {
 namespace symmetric_memory {
@@ -40,6 +35,9 @@ AllocationRef::~AllocationRef() {
   c10::Device local_device(c10::DeviceType::XPU, device_idx);
   c10::DeviceGuard guard(local_device);
   c10::xpu::syncStreamsOnDevice();
+  // todo: free this buffer if no reference
+  auto stream = at::xpu::getCurrentXPUStream();
+  sycl::free(ptr, stream);
 }
 
 XPUSymmetricMemory::XPUSymmetricMemory(
@@ -101,11 +99,11 @@ size_t XPUSymmetricMemory::get_signal_pad_size() {
 }
 
 bool XPUSymmetricMemory::has_multicast_support() {
-  return mc_addr_ != nullptr;
+  return false;
 }
 
 void* XPUSymmetricMemory::get_multicast_ptr() {
-  return mc_addr_;
+  return nullptr;
 }
 
 void XPUSymmetricMemory::copy_buffer(
@@ -155,43 +153,7 @@ at::Tensor XPUSymmetricMemory::get_signal_pad(
     c10::IntArrayRef sizes,
     std::optional<c10::ScalarType> dtype,
     int64_t storage_offset) {
-  // If the dtype is unspecified, default it to UInt32, as it
-  // is the most common type for signaling purposes.
-  if (!dtype.has_value()) {
-    dtype = c10::ScalarType::UInt32;
-  }
-
-  // If the shape is unspecified, treat the signal pad as a 1d tensor.
-  const auto element_size = c10::elementSize(*dtype);
-  std::vector<int64_t> shape;
-  if (sizes.size() != 0) {
-    shape = sizes.vec();
-  } else {
-    shape.push_back(signal_pad_size / element_size);
-  }
-
-  const size_t numel = std::accumulate(
-      shape.begin(),
-
-      shape.end(),
-      static_cast<size_t>(1),
-      std::multiplies<size_t>());
-  const auto req_size = (numel + storage_offset) * element_size;
-  TORCH_CHECK(
-      req_size <= signal_pad_size,
-      "XPUSymmetricMemory::get_signal_pad: the requested size (",
-      req_size,
-      " bytes) exceeds the allocated size (",
-      signal_pad_size,
-      " bytes)");
-  auto data_ptr = reinterpret_cast<uint8_t*>(signal_pads_[rank]) +
-      storage_offset * element_size;
-  auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
-  auto options = at::TensorOptions().dtype(*dtype).device(device);
-  return at::for_blob(data_ptr, shape)
-      .options(options)
-      .target_device(device)
-      .make_tensor();
+    LOG(ERROR) << "XPUSymmetricMemory::put_signal not supported";
 }
 
 void check_channel(int channel, int world_size) {
@@ -214,12 +176,13 @@ void check_channel(int channel, int world_size) {
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   check_channel(channel, world_size_);
 
+  // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL implementation.
   auto group = c10d::resolve_process_group(group_name_);
   if (group == nullptr) {
     TORCH_WARN(
         "Process group '",
         group_name_,
-        "' not found, falling back to original barrier");
+        "' not found, please init process group first before calling SymmetricMemory");
     throw std::runtime_error("Process group not found");
   }
   auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
@@ -337,7 +300,6 @@ struct RendezvousRequest {
   size_t buffer_size;
   size_t signal_pad_offset;
   bool has_multicast_support;
-  size_t base_offset;
 };
 
 void validate_rendezvous_requests(
@@ -349,14 +311,6 @@ void validate_rendezvous_requests(
   device_indices.reserve(world_size);
   for (auto req : reqs) {
     device_indices.insert(req.device_idx);
-  }
-  if (!allow_overlapping_devices() &&
-      device_indices.size() < (size_t)world_size) {
-    TORCH_CHECK(
-        false,
-        "XPUSymmetricMemoryAllocator::rendezvous: ",
-        "detected allocations from overlapping devices ",
-        "from different ranks.");
   }
 
   for (int r = 1; r < world_size; ++r) {
@@ -399,19 +353,13 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
   c10::DeviceGuard guard(local_device);
 
-  // Currently, IpcChannel is using a file based socket for inter-process
-  // communication
+  // IpcChannel is used to do inter-process communication
   IpcChannel ipc_channel;
   auto group_info = get_group_info(group_name_);
   auto store = group_info.store;
   int rank = group_info.rank;
   int world_size = group_info.world_size;
-
-  // Step 6: Open IPC handle of remote peer
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-
-  allreducer<sycl::half> ar;
-  ar.init(current_queue, rank, world_size);
 
   auto local_req = RendezvousRequest{
       .device_idx = block->device_idx,
@@ -419,8 +367,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       .block_size = block->block_size,
       .buffer_size = block->buffer_size,
       .signal_pad_offset = block->signal_pad_offset,
-      .has_multicast_support = false,
-      .base_offset = 0};
+      .has_multicast_support = false
+      };
   auto reqs = storeExchange.all_gather(store, rank, world_size, local_req);
   validate_rendezvous_requests(reqs, world_size);
 
@@ -430,8 +378,9 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   }
 
   // do IPC exchange for all peer ranks
-  ar.exchange_peer_ipc_mem(current_queue, ptr);
+  ipc_channel.exchange_peer_ipc_mem(current_queue, ptr);
 
+  // no physical memory handle, so handles and buffers are both for virtual address
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
   std::vector<void*> signal_pads(world_size, nullptr);
@@ -443,8 +392,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
     } else {
-      buffers[r] = ar.buffers[r];
-      handles[r] = ar.buffers[r]; // ar.ipc_handle[r];
+      buffers[r] = ipc_channel.buffers[r];
+      handles[r] = ipc_channel.buffers[r];
       signal_pads[r] =
           (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
     }
