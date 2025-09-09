@@ -260,11 +260,16 @@ jobs:
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
-            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
-              if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-              if ( print_row == 1 && $1 ~ r ) { print $0 };
-              if ( $0 ~ /Cases:/ ) { print_row = 1 };
-            }' issues.log > Known_issue.log
+            touch Known_issue.log
+            if [ -f "issues.log" ]; then
+              awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
+                if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
+                if ( print_row == 1 && $1 ~ r ) { print $0 };
+                if ( $0 ~ /Cases:/ ) { print_row = 1 };
+              }' issues.log > Known_issue.log
+            else
+              echo "Info: issues.log not found or empty, using empty Known_issue.log"
+            fi
             bash ut_result_check.sh ${ut_name}
           done
       - name: Upload Inductor XPU UT Log
