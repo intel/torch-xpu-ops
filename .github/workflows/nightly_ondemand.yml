@@ -36,7 +36,6 @@ jobs:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
     strategy:
-      fail-fast: false
       matrix:
         pytorch: [2.9.0.dev20250830+xpu, 2.9.0.dev20250906+xpu]
     container:
@@ -61,7 +60,6 @@ jobs:
           suite: timm_models
       - name: Test
         run: |
-          chmod +x 777 run.sh
           ./run.sh performance 0 cases.txt
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
