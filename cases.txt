@@ -1,0 +1,10 @@
+timm_models_amp_bf16_inference	gernet_l
+timm_models_amp_bf16_training	gernet_l
+timm_models_amp_fp16_inference	gernet_l
+timm_models_amp_fp16_training	gernet_l
+timm_models_bfloat16_inference	gernet_l
+timm_models_bfloat16_training	gernet_l
+timm_models_float16_inference	gernet_l
+timm_models_float16_training	gernet_l
+timm_models_float32_inference	gernet_l
+timm_models_float32_training	gernet_l
