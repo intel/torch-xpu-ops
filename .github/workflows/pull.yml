@@ -163,7 +163,6 @@ jobs:
     needs: [preci-conditions-filter, preci-linux-build-jgs]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      disabled_tests: ${{ needs.preci-conditions-filter.outputs.disabled_tests }}
       ut: op_regression,op_regression_dev1,op_transformers,op_extended,op_ut,xpu_distributed
       runner: linux.idc.xpu
 

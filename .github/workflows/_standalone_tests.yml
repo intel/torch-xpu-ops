@@ -100,6 +100,9 @@ jobs:
             bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh ${PYTORCH_VERSION}
           fi
           source ${{ github.workspace }}/.github/scripts/env.sh ${PYTORCH_VERSION}
+          if [[ "${{ inputs.runner }}" == "private_torch_ci" ]]; then
+            export IGC_LLVMOptions=-pisa-enable-generic-loadstore-lowering
+          fi
           mkdir -p ${{ github.workspace }}/ut_log
           git clone https://github.com/intel-innersource/frameworks.ai.pytorch.gpu-models.git
           cd frameworks.ai.pytorch.gpu-models/presi-models/test
