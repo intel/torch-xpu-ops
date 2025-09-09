@@ -7,9 +7,8 @@ namespace c10d {
 HeartbeatMonitorXCCL::HeartbeatMonitorXCCL(ProcessGroupXCCL* pg) {
   pg_ = pg;
   coordCheckIntervalMilSec_ = getCvarInt(TORCH_XCCL_COORD_CHECK_MILSEC, 1000);
-  LOG(INFO)
-      << pg_->logPrefix() << "HeartbeatMonitor environments: "
-      << "TORCH_XCCL_COORD_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
+  LOG(INFO) << pg_->logPrefix() << "HeartbeatMonitor environments: "
+            << "TORCH_XCCL_COORD_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
 }
 
 void HeartbeatMonitorXCCL::stop() {

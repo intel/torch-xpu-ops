@@ -20,38 +20,31 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Prepare ENV
+    - name: Check Python
       shell: bash -xe {0}
       run: |
-        # accuracy code
-        if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
-          rm -rf pt2e-accuracy
-          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
-        fi
-        # performance code
-        if [[ "${{ inputs.scenario }}" == *"performance"* ]];then
-          rm -rf pt2e-performance
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
-        fi
+        which python && python -V
+        which pip && pip list
+    - name: Prepare dataset
+      shell: bash -xe {0}
+      run: |
         # dataset
-        if [ ! -d ${HOME}/datasets/imagenet ];then
-          rm -rf ${HOME}/datasets/imagenet
-          mkdir -p ${HOME}/datasets/imagenet
-          cd ${HOME}/datasets/imagenet
-          wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
-          tar -xf ILSVRC2012_img_val.tar
+        if [ ! -d ${dataset_dir} ];then
+          rm -rf ${dataset_dir} && mkdir -p ${dataset_dir} && cd ${dataset_dir}
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+          wget -q https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
+          tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
-        pt2e_logs_dir="${{ github.workspace }}/../pytorch/inductor_log/pt2e"
+        pt2e_logs_dir="${{ github.workspace }}/pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
-          cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet "
+          cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${dataset_dir} "
           for model_name in $(echo $models |sed 's/,/ /g')
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
@@ -81,7 +74,7 @@ runs:
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
               rm -rf pt2e-performance/.userbenchmark
-              ${cmd_line} -m ${model_name} 2>&1 |tee "${pt2e_logs_dir}/performance-float32.log" || true
+              ${cmd_line} -m ${model_name} 2>&1 |tee "${pt2e_logs_dir}/performance-float32-${model_name}.log" || true
               (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
@@ -89,13 +82,13 @@ runs:
             fi
             if [[ "${{ inputs.dt }}" == *"int8"* ]];then
               rm -rf pt2e-performance/.userbenchmark
-              XPU_QUANT_CONFIG=ASYMM ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-ASYMM.log" || true
+              XPU_QUANT_CONFIG=ASYMM ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-ASYMM-${model_name}.log" || true
               (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}
                       END{printf("Performance,%s,ASYMM,%s\n", m, fps) }' |tee -a ${pt2e_logs_dir}/summary.csv
               rm -rf pt2e-performance/.userbenchmark
-              XPU_QUANT_CONFIG=SYMM  ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-SYMM.log" || true
+              XPU_QUANT_CONFIG=SYMM  ${cmd_line} -m ${model_name} --quantization pt2e 2>&1 |tee "${pt2e_logs_dir}/performance-SYMM-${model_name}.log" || true
               (grep -ir 'eval_throughput' pt2e-performance/.userbenchmark || echo "failed") 2>&1 |tail -n 1 |awk -v m="${model_name}" '
                       BEGIN{fps = "failed";}
                       {fps = $NF;}

@@ -46,6 +46,10 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -56,6 +60,8 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
+      xpu_num: ${{ steps.runner-info.outputs.xpu_num }}
+      cpus_per_xpu: ${{ steps.runner-info.outputs.cpus_per_xpu }}
     steps:
       - name: Cleanup workspace
         run: |
@@ -77,12 +83,11 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        xpu_num: ${{ needs.runner.outputs.xpu_num }}
+        cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
-    env:
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        dataset_dir: ${{ runner.temp }}/../_datasets/imagenet
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -184,12 +189,21 @@ jobs:
           scenario: accuracy,performance
 
       # On-demand launch
+      - name: Get test data types
+        if: ${{ contains(inputs.test_type, 'ondemand') }}
+        id: dtypes
+        run: |
+          e2e_dtypes="$(echo "${{ inputs.dt }}" |sed 's/,int8//;s/int8,//')"
+          pt2e_dtypes="$(echo "${{ inputs.dt }}" |\
+                  sed -E 's/,(bfloat16|float16|amp_bf16|amp_fp16)//g;s/(bfloat16|float16|amp_bf16|amp_fp16),//g')"
+          echo "e2e_dtypes=${e2e_dtypes}" >> ${GITHUB_OUTPUT}
+          echo "pt2e_dtypes=${pt2e_dtypes}" >> ${GITHUB_OUTPUT}
       - name: OnDemand Test (huggingface)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
-          dt: ${{ inputs.dt }}
+          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
       - name: OnDemand Test (timm_models)
@@ -197,7 +211,7 @@ jobs:
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
-          dt: ${{ inputs.dt }}
+          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
       - name: OnDemand Test (torchbench)
@@ -205,14 +219,14 @@ jobs:
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
-          dt: ${{ inputs.dt }}
+          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
       - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          dt: ${{ inputs.dt }}
+          dt: ${{ steps.dtypes.outputs.pt2e_dtypes }}
           scenario: ${{ inputs.scenario }}
 
       - name: Get archieve files

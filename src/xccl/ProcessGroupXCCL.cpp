@@ -1,7 +1,7 @@
 #ifdef USE_C10D_XCCL
 
-#include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
+#include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
@@ -207,11 +207,11 @@ std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
     bool onlyActive) {
-    auto xcclDumpMap = std::unordered_map<
-        std::string,
-        std::unordered_map<std::string, std::string>>();
-    return FlightRecorderXCCL::get()->dump(
-        xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
+  auto xcclDumpMap = std::unordered_map<
+      std::string,
+      std::unordered_map<std::string, std::string>>();
+  return FlightRecorderXCCL::get()->dump(
+      xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
 }
 
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
@@ -317,9 +317,7 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
-ProcessGroupXCCL::Options::Options()
-    : Backend::Options(XCCL_BACKEND_NAME) {}
-
+ProcessGroupXCCL::Options::Options() : Backend::Options(XCCL_BACKEND_NAME) {}
 
 static std::atomic<size_t> process_group_id = 0;
 
@@ -362,7 +360,8 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
 
   this->setGroupUid(options_->group_name);
-  // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just do it here.
+  // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just
+  // do it here.
   const auto XcclVersion = getXcclVersion();
   FlightRecorderXCCL::get()->record_pg_ranks(
       std::make_tuple(pg_uid_, pg_desc_), groupRanks());
@@ -435,7 +434,8 @@ void ProcessGroupXCCL::setCompletedPgStatus(
   pgStatus_->lastCompletedNumelIn = work->numelIn_;
   pgStatus_->lastCompletedNumelOut = work->numelOut_;
   // To avoid complexity, we're not computing duration.
-  FlightRecorderXCCL::get()->retire_id(work->trace_id_, /*compute_duration*/false);
+  FlightRecorderXCCL::get()->retire_id(
+      work->trace_id_, /*compute_duration*/ false);
 }
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
@@ -768,9 +768,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
   work->future_->addCallback(
-      [this, work](at::ivalue::Future&) {
-          this->setCompletedPgStatus(work);
-      });
+      [this, work](at::ivalue::Future&) { this->setCompletedPgStatus(work); });
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -881,10 +879,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
-    work->future_->addCallback(
-        [this, work](at::ivalue::Future&) {
-            this->setCompletedPgStatus(work);
-        });
+    work->future_->addCallback([this, work](at::ivalue::Future&) {
+      this->setCompletedPgStatus(work);
+    });
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
     setEnqueuedPgStatus(work);

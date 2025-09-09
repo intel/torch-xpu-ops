@@ -31,7 +31,7 @@ on:
       xpu_version:
         required: false
         type: string
-        default: '2025.1'
+        default: '2025.2'
         description: Python version
       src_changed:
         required: true

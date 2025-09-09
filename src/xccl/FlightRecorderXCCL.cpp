@@ -1,7 +1,7 @@
 #ifdef USE_C10D_XCCL
 
-#include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <ATen/xpu/XPUEvent.h>
+#include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
 namespace c10d {

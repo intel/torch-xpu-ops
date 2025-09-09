@@ -25,10 +25,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
       shell: bash -x {0}
       run: |
-        pip list |grep -E 'intel|torch'
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
         # check param
@@ -41,9 +45,7 @@ runs:
               contains_status="continue"
             }
         }
-        xpu_num=$(clinfo --list |awk 'BEGIN{gpu=0;}{if(gpu==1 && $0~/Platform/){gpu=0;}; if(gpu==1){print $0;}; if($0~/Platform.*Graphics/){gpu=1;}}' |wc -l)
-        cores_per_instance="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk -v i="${xpu_num}" 'BEGIN{sum=1}{sum*=$NF}END{print sum/i}')"
-        export OMP_NUM_THREADS=${cores_per_instance}
+        export OMP_NUM_THREADS=${cpus_per_xpu}
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
           if [ "${suite}" == "pt2e" ];then
@@ -64,10 +66,16 @@ runs:
                 contains "accuracy,performance" $scenario
                 $contains_status
                 if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  for xpu_id in $(seq 0 $[ ${xpu_num} - 1 ])
+                  for var in $(seq 0 $[ ${xpu_num} - 1 ])
                   do
-                    cpu_list="$(echo "${cores_per_instance} ${xpu_id}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${xpu_id} &
+                    cpu_list="$(echo "${cpus_per_xpu} ${var}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+                    if [ "${ZE_AFFINITY_MASK}" != "" ];then
+                      xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
+                      xpu_id=${xpu_list[$[ ${var} + 1 ]]}
+                    else
+                      xpu_id=${var}
+                    fi
+                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${var} &
                   done
                 else
                   for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
