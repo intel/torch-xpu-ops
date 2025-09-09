@@ -25,7 +25,7 @@ runs:
       run: |
         # get test runner
         echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
-        echo "user_id=$(id -u)" |tee -a ${GITHUB_OUTPUT}
+        echo "user_id=$(id -u):$(id -g)" |tee -a ${GITHUB_OUTPUT}
         echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
         echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
         # show host info

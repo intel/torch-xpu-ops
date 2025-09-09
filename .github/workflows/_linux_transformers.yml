@@ -150,8 +150,9 @@ jobs:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.prepare.outputs.user_id }}:${{ needs.prepare.outputs.render_id }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.prepare.outputs.render_id }}
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.prepare.outputs.user_id }}
               -e ZE_AFFINITY_MASK
       env:
         PYTORCH_DEBUG_XPU_FALLBACK: '1'
