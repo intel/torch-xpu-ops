@@ -108,7 +108,6 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        keep_going_flag=""
         mkdir -p ut_log/xpu_inductor
         cd pytorch
         files=(
