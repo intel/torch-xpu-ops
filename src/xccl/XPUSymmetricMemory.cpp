@@ -1,6 +1,5 @@
 #include <xccl/IPCExchange.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
-#include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 
@@ -252,57 +251,20 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
         group_name_,
         "'");
   }
-  // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  // c10::DeviceGuard guard(local_device);
-  // auto stream = at::xpu::getCurrentXPUStream();
-
-  // barrier_impl_xpu(
-  //     reinterpret_cast<uint32_t**>(signal_pads_dev_),
-  //     channel,
-  //     rank_,
-  //     world_size_,
-  //     timeout_ms,
-  //     stream);
 }
 
 void XPUSymmetricMemory::put_signal(
     int dst_rank,
     int channel,
     size_t timeout_ms) {
-  check_channel(channel, world_size_);
-
-  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream();
-
-  put_signal_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-      dst_rank,
-      channel,
-      rank_,
-      world_size_,
-      timeout_ms,
-      stream);
+  LOG(ERROR) << "XPUSymmetricMemory::put_signal not supported";
 }
 
 void XPUSymmetricMemory::wait_signal(
     int src_rank,
     int channel,
     size_t timeout_ms) {
-  check_channel(channel, world_size_);
-
-  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream();
-
-  wait_signal_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-      src_rank,
-      channel,
-      rank_,
-      world_size_,
-      timeout_ms,
-      stream);
+  LOG(ERROR) << "XPUSymmetricMemory::wait_signal not supported";
 }
 
 int XPUSymmetricMemory::get_rank() {
