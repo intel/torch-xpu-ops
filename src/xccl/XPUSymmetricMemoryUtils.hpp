@@ -12,32 +12,6 @@ bool device_has_multicast_support(int device_idx);
 
 bool allow_overlapping_devices();
 
-class IpcChannel {
- public:
-  IpcChannel();
-  ~IpcChannel();
-
-  void send_fd(int dst_pid, int fd);
-  int recv_fd();
-
-  std::vector<int> all_gather_fds(
-      int rank,
-      const std::vector<int>& pids,
-      int fd);
-
-  int broadcast_fds(
-      int rank,
-      int src_rank,
-      const std::vector<int>& pids,
-      int fd);
-
- private:
-  static std::string get_socket_name(int pid);
-
-  std::string socket_name_;
-  int socket_;
-};
-
 // A set of store-based exchange methods with a preset prefix typically type of
 // the SymmetricMemory.  Most used as static instances at respective
 // SymmetricMemory implementation files.
