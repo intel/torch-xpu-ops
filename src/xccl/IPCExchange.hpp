@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <future>
 #include <system_error>
-#include "xccl/ze_exception.hpp"
+#include "xccl/ze_symbol.hpp"
 
 #include <sycl/sycl.hpp>
 
