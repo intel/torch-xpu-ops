@@ -134,9 +134,6 @@ jobs:
           echo "torchvision=$torchvision" | tee -a "$GITHUB_OUTPUT"
           echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
           echo "triton=$triton" | tee -a "$GITHUB_OUTPUT"
-      - name: Cleanup workspace
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Get runner
