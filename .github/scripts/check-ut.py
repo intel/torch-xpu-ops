@@ -288,13 +288,9 @@ def process_xml_file(xml_file):
         category = determine_category(ut)
 
         for suite in xml:
-            if 'inductor_' in ut:
-                ut_name = f"{ut.split('-')[0]}_rerun" if suite.tests == 1 else ut.split('-')[0]
-            else:
-                ut_name = ut
             suite_summary = {
                 'Category': category,
-                'UT': ut_name,
+                'UT': ut,
                 'Test cases': suite.tests,
                 'Passed': suite.tests - suite.skipped - suite.failures - suite.errors,
                 'Skipped': suite.skipped,
