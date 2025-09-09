@@ -89,7 +89,7 @@ jobs:
   op_benchmark_test_results_check:
     needs: op_benchmark
     runs-on: ubuntu-24.04
-    permissions:
+    permissions: 
       issues: write
     steps:
       - name: Install gh-cli
