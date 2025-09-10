@@ -154,8 +154,7 @@ jobs:
           if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
             pip install transformers==4.44.2
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
-            pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
-            pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
+            pip install git+https://github.com/huggingface/pytorch-image-models@v1.0.14
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
             model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
             git clone https://github.com/pytorch/benchmark gs-benchmark

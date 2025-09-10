@@ -139,7 +139,7 @@ runs:
           fi
           # for dlrm
           pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           # for soft_actor_critic, temp fix
           pip install git+https://github.com/nocoding03/gym@fix-np
           cd ../pytorch
@@ -155,7 +155,7 @@ runs:
           python install.py --continue_on_fail
           # for dlrm
           pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
