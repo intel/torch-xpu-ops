@@ -23,6 +23,10 @@ import torch.distributed as dist
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from test_c10d_xccl import init_multigpu_helper, requires_xccl
+from torch.distributed._symmetric_memory import (
+    _fused_all_gather_matmul_fallback,
+    _fused_matmul_reduce_scatter_fallback,
+)
 from torch.testing._internal.common_distributed import MultiProcContinuousTest
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
@@ -920,6 +924,60 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         self.assertEqual(
             out.tolist(), list(zip(range(self.world_size), range(self.world_size)))
         )
+
+    @requires_xccl()
+    def test_fused_all_gather_matmul(self) -> None:
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        BATCH = 8
+        M = 64
+        N = 16
+        K = 32
+        group = dist.group.WORLD
+        rank = self.rank
+
+        torch.manual_seed(42 + rank)
+        A_shard = torch.rand(BATCH, M // self.world_size, K, device="xpu")
+        Bs = [torch.rand(K, N, device="xpu") for _ in range(3)]
+
+        ag_output_0, mm_outputs_0 = _fused_all_gather_matmul_fallback(
+            A_shard, Bs, gather_dim=0, group_name=group.group_name
+        )
+        ag_output_1, mm_outputs_1 = torch.ops.symm_mem.fused_all_gather_matmul(
+            A_shard, Bs, gather_dim=0, group_name=group.group_name
+        )
+
+        self.assertEqual(ag_output_0, ag_output_1)
+        self.assertEqual(ag_output_0.stride(), ag_output_1.stride())
+        for mm_output_0, mm_output_1 in zip(mm_outputs_0, mm_outputs_1):
+            self.assertEqual(mm_output_0, mm_output_1)
+            self.assertEqual(mm_output_0.stride(), mm_output_1.stride())
+
+    @requires_xccl()
+    @parametrize("scatter_dim", [0, 1])
+    def test_fused_matmul_reduce_scatter(self, scatter_dim: int) -> None:
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        BATCH = 8
+        M = 64
+        N = 16
+        K = 32
+        group = dist.group.WORLD
+        rank = self.rank
+
+        torch.manual_seed(42 + rank)
+        A = torch.rand(BATCH, M, K, device="xpu")
+        B = torch.rand(K, N, device="xpu")
+
+        output_0 = _fused_matmul_reduce_scatter_fallback(
+            A, B, "avg", scatter_dim=scatter_dim, group_name=group.group_name
+        )
+        output_1 = torch.ops.symm_mem.fused_matmul_reduce_scatter(
+            A, B, "avg", scatter_dim=scatter_dim, group_name=group.group_name
+        )
+
+        assert torch.allclose(output_0, output_1)
+        assert output_0.stride() == output_1.stride()
 
 
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
