@@ -251,7 +251,7 @@ jobs:
           cd ${{ github.workspace }}/ut_log
 
           # get skipped known issues
-          count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped_windows --jq 'length')
+          count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
           if [ "$count" -gt 0 ]; then
             echo -e "$count issues with skipped label found"
             gh api "repos/${{ github.repository }}/issues?labels=skipped_windows" \
