@@ -16,5 +16,5 @@ if(NOT __XCCL_INCLUDED)
     ${XCCL_INCLUDE_DIR})
   set_property(
     TARGET torch::xccl PROPERTY INTERFACE_LINK_LIBRARIES
-    ${XCCL_LIBRARY})
+    ${XCCL_LIBRARY} ${XCCL_LIBRARY_2_0})
 endif()
