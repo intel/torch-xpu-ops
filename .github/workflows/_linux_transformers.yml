@@ -38,6 +38,11 @@ on:
         type: string
         default: 'v1.7.0'
         description: Accelerate version
+      datasets:
+        required: false
+        type: string
+        default: 'v3.6.0'
+        description: Accelerate version
       transformers:
         required: false
         type: string
@@ -57,6 +62,7 @@ env:
   DisableScratchPages: ${{ inputs.driver == 'rolling' && '1' || '0' }}
   python: ${{ inputs.python != '' && inputs.python || '3.10' }}
   accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.7.0'}}
+  datasets: ${{ inputs.datasets != '' && inputs.datasets || 'v3.6.0'}}
   transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
   PACKAGES: |
     espeak-ng
@@ -271,7 +277,9 @@ jobs:
           pwd
           source activate $CONDA_ENV_NAME
           cd transformers
-          pip install accelerate==${{ env.accelerate }}
+          pip install \
+            accelerate==${{ env.accelerate }} \
+            datasets==${{ env.datasets }}
           pip install -e .
           pip install -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
@@ -313,7 +321,7 @@ jobs:
         uses: ./torch-xpu-ops/.github/actions/print-environment
         with:
           conda: $CONDA_ENV_NAME
-          pip_packages: 'accelerate transformers'
+          pip_packages: 'accelerate datasets transformers'
           to: 'transformers/logs/environment-$TEST_CASE.md'
       - name: Clean up
         if: ${{ always() }}
