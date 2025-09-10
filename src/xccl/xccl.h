@@ -80,31 +80,6 @@ using XcclDataType = std::variant<ccl::datatype, onecclDataType_t>;
 using XcclRedOp = std::variant<ccl::reduction, onecclRedOp_t>;
 
 namespace {
-inline std::string getXcclVersion() {
-  static std::string versionString = []() {
-    bool useCCLV2 = isCCLV2EnabledCached();
-    std::string versionString;
-    if (useCCLV2) {
-      int version = 0;
-      onecclGetVersion(&version);
-      const int majorBase = 10000;
-      const int minorBase = 100;
-      auto xcclMajor = version / majorBase;
-      auto xcclMinor = (version % majorBase) / minorBase;
-      auto xcclPatch =
-          version % (xcclMajor * majorBase + xcclMinor * minorBase);
-      versionString = std::to_string(xcclMajor) + "." +
-          std::to_string(xcclMinor) + "." + std::to_string(xcclPatch);
-    } else {
-      auto xccl_version = ccl::get_library_version();
-      versionString = std::to_string(xccl_version.major) + "." +
-          std::to_string(xccl_version.minor) + "." +
-          std::to_string(xccl_version.update);
-    }
-    return versionString;
-  }();
-  return versionString;
-}
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::MIN, onecclRedOp_t::onecclMin},
