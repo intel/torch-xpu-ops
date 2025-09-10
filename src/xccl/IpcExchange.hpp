@@ -331,8 +331,13 @@ class IpcChannel {
   }
 
   // buffer_size as element size
-  void exchange_peer_ipc_mem(sycl::queue& queue, void* ptr) {
-    if (!initialize) init();
+  void exchange_peer_ipc_mem(
+      sycl::queue& queue,
+      void* ptr,
+      uint32_t rank_in,
+      uint32_t world_in) {
+    if (!initialized)
+      init(queue, rank_in, world_in);
     if (!load_level_zero_library()) {
       throw std::runtime_error("Level Zero not available");
     }
@@ -383,7 +388,7 @@ class IpcChannel {
   }
 
   bool initialized;
-  uint32_t max_rank = 16,
+  static constexpr uint32_t max_rank = 16;
   void* buffers[max_rank];
   void* sync_buffer[max_rank];
   size_t offsets[max_rank];
