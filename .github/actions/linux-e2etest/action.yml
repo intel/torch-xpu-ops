@@ -75,12 +75,12 @@ runs:
                     else
                       xpu_id=${var}
                     fi
-                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${var} &
+                    bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${var} &
                   done
                 else
                   for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
                   do
-                    numactl --localalloc bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
+                    bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
                   done
                 fi
                 wait

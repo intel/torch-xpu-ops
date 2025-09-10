@@ -63,6 +63,7 @@ jobs:
       xpu_num: ${{ steps.runner-info.outputs.xpu_num }}
       cpus_per_xpu: ${{ steps.runner-info.outputs.cpus_per_xpu }}
       ZE_AFFINITY_MASK: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
+      numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -83,6 +84,7 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}
       env:
         ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ZE_AFFINITY_MASK }}
+        numactl_args: ${{ needs.runner.outputs.numactl_args }}
         xpu_num: ${{ needs.runner.outputs.xpu_num }}
         cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
         MODEL_ONLY_NAME: ${{ inputs.model }}

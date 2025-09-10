@@ -17,6 +17,8 @@ outputs:
     value: ${{ steps.tests.outputs.cpus_per_xpu }}
   pytest_extra_args:
     value: ${{ steps.tests.outputs.pytest_extra_args }}
+  numactl_args:
+    value: ${{ steps.tests.outputs.numactl_args }}
 
 runs:
   using: composite
@@ -85,6 +87,12 @@ runs:
         }' |sed 's/,$//')"
         cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${gpu_card_num}" '{printf c/x}')"
         # get pytest args for pytest parallel
+        numactl_args="$(echo |awk -v c="${cpus_per_xpu}" -v ze="${ZE_AFFINITY_MASK}" '{
+          split(ze, x, ",");
+          for (i in x) {
+            printf(" numactl -l -C %d-%d ;", c*x[i], c*x[i]+c-1);
+          }
+        }')"
         pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
           if (x > 0) {
             split(z, xpu_list, ",");
@@ -100,6 +108,7 @@ runs:
         echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
         echo "xpu_num=${xpu_num}" |tee -a ${GITHUB_OUTPUT}
         echo "cpus_per_xpu=${cpus_per_xpu}" |tee -a ${GITHUB_OUTPUT}
+        echo "numactl_args=${numactl_args}" |tee -a ${GITHUB_OUTPUT}
         echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
     - name: Cleanup runner
       shell: bash -xe {0}
