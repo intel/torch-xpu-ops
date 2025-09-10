@@ -68,14 +68,14 @@ runs:
         pci_base_class_display=0x00030000
         pci_vendor_id_intel=0x8086
         gpu_card_num=0
-        for var in `ls /sys/bus/pci/devices`
+        for var in $(ls /sys/bus/pci/devices)
         do
             pci_class="$(cat /sys/bus/pci/devices/${var}/class)"
             pci_vendor="$(cat /sys/bus/pci/devices/${var}/vendor)"
             is_xpu="$(python -c "if (${pci_class} & ${pci_base_class_mask}) == ${pci_base_class_display} and ${pci_vendor} == ${pci_vendor_id_intel}: print('yes')")"
             if [ "${is_xpu}" == "yes" ];then
                 echo "Detected Intel GPU at /sys/bus/pci/devices/${var}"
-                ((gpu_card_num++))
+                gpu_card_num=$[ $gpu_card_num + 1 ]
             fi
         done
         # get available gpus
