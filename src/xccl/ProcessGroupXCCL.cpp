@@ -490,7 +490,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   } else {
     auto StreamKey = key + "_" +
         std::to_string(at::xpu::getCurrentXPUStream(device.index()).id());
-    std::lock_guard<std::mutex> lock(mutex_);
     auto it = xcclStreamsMap_.find(StreamKey);
     if (it != xcclStreamsMap_.end()) {
       cclstream = std::make_unique<ccl::stream>(it->second.cclStream);
