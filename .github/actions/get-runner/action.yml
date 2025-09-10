@@ -9,26 +9,26 @@ outputs:
     value: ${{ steps.runner.outputs.render_id }}
   hostname:
     value: ${{ steps.runner.outputs.hostname }}
+  ZE_AFFINITY_MASK:
+    value: ${{ steps.tests.outputs.ZE_AFFINITY_MASK }}
   xpu_num:
-    value: ${{ steps.runner.outputs.xpu_num }}
+    value: ${{ steps.tests.outputs.xpu_num }}
   cpus_per_xpu:
-    value: ${{ steps.runner.outputs.cpus_per_xpu }}
+    value: ${{ steps.tests.outputs.cpus_per_xpu }}
   pytest_extra_args:
-    value: ${{ steps.runner.outputs.pytest_extra_args }}
+    value: ${{ steps.tests.outputs.pytest_extra_args }}
 
 runs:
   using: composite
   steps:
-    - name: Get runner
+    - name: Show runner
       shell: bash -xe {0}
       id: runner
       run: |
-        # get test runner
         echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
         echo "user_id=$(id -u):$(id -g)" |tee -a ${GITHUB_OUTPUT}
         echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
         echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
-        # show host info
         lscpu
         lshw -C display
         free -h
@@ -37,6 +37,9 @@ runs:
         uname -a
         # clinfo hang and reboot system to recover
         timeout 120 clinfo --list || sudo reboot
+    - name: Check scaling_governor
+      shell: bash -xe {0}
+      run: |
         scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq)
         if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
             if [ "${scaling_governor}" != "performance" ];then
@@ -52,31 +55,53 @@ runs:
             echo "[INFO] You do NOT have ROOT permission to set system config."
             echo "       The frequency governor is ${scaling_governor}."
         fi
+    - name: Info for tests
+      shell: bash -xe {0}
+      id: tests
+      run: |
+        # cpu number
         cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
-        xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
-          if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
-        }' |wc -l)"
-        cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${xpu_num}" '{printf c/x}')"
+        # available gpu card number
+        xpu_num="$(xpu-smi discovery --dump 1 2>&1 |grep -c "[0-9]")"
+        # total gpu card number
+        pci_base_class_mask=0x00ff0000
+        pci_base_class_display=0x00030000
+        pci_vendor_id_intel=0x8086
+        gpu_card_num=0
+        for var in `ls /sys/bus/pci/devices`
+        do
+            pci_class="$(cat /sys/bus/pci/devices/${var}/class)"
+            pci_vendor="$(cat /sys/bus/pci/devices/${var}/vendor)"
+            is_xpu="$(python -c "if (${pci_class} & ${pci_base_class_mask}) == ${pci_base_class_display} and ${pci_vendor} == ${pci_vendor_id_intel}: print('yes')")"
+            if [ "${is_xpu}" == "yes" ];then
+                echo "Detected Intel GPU at /sys/bus/pci/devices/${var}"
+                ((gpu_card_num++))
+            fi
+        done
+        # get available gpus
+        ZE_AFFINITY_MASK="$(xpu-smi discovery 2>&1 |grep 'DRM Device: /dev/' |sed 's/.*card//;s/[^0-9].*//' |sort -n |uniq |awk '{
+          if (NR == 1) { first = $1; }
+          if (first > 0) { printf("%s,", $1 - 1); } else { printf("%s,", $1); }
+        }' |sed 's/,$//')"
+        cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${gpu_card_num}" '{printf c/x}')"
+        # get pytest args for pytest parallel
         pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
           if (x > 0) {
             split(z, xpu_list, ",");
             for (i=0;i<x;i++) {
-              if (z != "") {
-                  ze = xpu_list[i+1];
-              } else {
-                  ze = i;
-              }
+              ze = xpu_list[i+1];
               printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
-                      ze, cx, i*cx, (i+1)*cx-1);
+                      ze, cx, ze*cx, (ze+1)*cx-1);
             }
           }else {
             printf(" -n 1 ");
           }
         }')"
+        echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
         echo "xpu_num=${xpu_num}" |tee -a ${GITHUB_OUTPUT}
         echo "cpus_per_xpu=${cpus_per_xpu}" |tee -a ${GITHUB_OUTPUT}
         echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
-    - name: Cleanup host
+    - name: Cleanup runner
       shell: bash -xe {0}
       run: |
         # clean docker cache

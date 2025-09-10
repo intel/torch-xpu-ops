@@ -62,6 +62,7 @@ jobs:
       hostname: ${{ steps.runner-info.outputs.hostname }}
       xpu_num: ${{ steps.runner-info.outputs.xpu_num }}
       cpus_per_xpu: ${{ steps.runner-info.outputs.cpus_per_xpu }}
+      ZE_AFFINITY_MASK: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -80,8 +81,8 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.runner.outputs.render_id }}
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}
-              -e ZE_AFFINITY_MASK
       env:
+        ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ZE_AFFINITY_MASK }}
         xpu_num: ${{ needs.runner.outputs.xpu_num }}
         cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
