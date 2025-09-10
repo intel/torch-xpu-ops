@@ -75,8 +75,10 @@ class StoreExchange {
   size_t seq_id_ = 0;
 };
 
-// Teturns a pointer of virtual address that is mapped to the physical memory
+// Returns a pointer of virtual address that is mapped to the physical memory
 // held by the handle.
+// todo: will follow such physical memory handle map with virtual address,
+// when L0 provides physical handle exchange API and we have multicast support.
 void map_block(
     void** ptr,
     ze_physical_mem_handle_t handle,

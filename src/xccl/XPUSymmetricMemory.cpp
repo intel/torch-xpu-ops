@@ -35,7 +35,6 @@ AllocationRef::~AllocationRef() {
   c10::Device local_device(c10::DeviceType::XPU, device_idx);
   c10::DeviceGuard guard(local_device);
   c10::xpu::syncStreamsOnDevice();
-  // todo: free this buffer if no reference
   auto stream = at::xpu::getCurrentXPUStream();
   sycl::free(ptr, stream);
 }
@@ -106,18 +105,6 @@ void* XPUSymmetricMemory::get_multicast_ptr() {
   return nullptr;
 }
 
-void XPUSymmetricMemory::copy_buffer(
-    at::Tensor src,
-    at::Tensor dst,
-    size_t size) {
-  sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
-  auto src_ptr = src.data_ptr();
-  auto dst_ptr = dst.data_ptr();
-
-  size_t copy_size = size * c10::elementSize(src.scalar_type());
-
-  current_queue.memcpy(dst_ptr, src_ptr, copy_size);
-}
 at::Tensor XPUSymmetricMemory::get_buffer(
     int rank,
     c10::IntArrayRef sizes,
