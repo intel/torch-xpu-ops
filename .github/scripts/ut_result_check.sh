@@ -25,6 +25,10 @@ check_new_failed() {
 
     # Filter the same content from file_UT as file_known_issue
     echo "Filtering $file_known_issue for $file_UT"
+    if grep -q $'\r' "$file_UT"; then
+        echo "Detected log from windows"
+        sed -i 's/\r$//' "$file_UT"
+    fi
     grep -vFxf "$file_known_issue" "$file_UT" > "$output_file"
 
     echo -e "\n\033[1;31m[New failed cases Summary]\033[0m"
@@ -54,6 +58,10 @@ check_passed_known_issues() {
         return 1
     fi
     echo "Checking for known issues that are now passing in $file_passed_UT"
+    if grep -q $'\r' "$file_passed_UT"; then
+        echo "Detected log from windows"
+        sed -i 's/\r$//' "$file_passed_UT"
+    fi
     grep -Fxf "$file_passed_UT" "$file_known_issue" > "$output_file"
     echo -e "\n\033[1;32m[New passed cases Summary]\033[0m"
     if [[ -s "$output_file" ]]; then
@@ -75,6 +83,7 @@ check_test_cases() {
         ["op_transformers"]=237
         ["op_ut"]=120408
         ["xpu_inductor"]=8330
+        ["test_xpu"]=69
     )
 
     if [[ ! -f "$log_file" ]]; then
@@ -116,7 +125,7 @@ check_test_cases() {
 }
 
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' || "${ut_suite}" == 'xpu_inductor' ]]; then
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' || "${ut_suite}" == 'test_xpu' || "${ut_suite}" == 'xpu_inductor' ]]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
