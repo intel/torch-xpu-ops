@@ -26,6 +26,10 @@ def run(test_command):
 
 test_command = ["python", "distributed/test_c10d_ops_xccl.py"]
 res += run(test_command)
+test_command = ["python", "distributed/test_c10d_xccl.py"]
+res += run(test_command)
+test_command = ["python", "distributed/test_symmetric_memory_xccl.py"]
+res += run(test_command)
 
 # run pytest with skiplist
 for key in skip_dict:
