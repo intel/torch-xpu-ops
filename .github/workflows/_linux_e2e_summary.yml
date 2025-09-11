@@ -65,6 +65,7 @@ jobs:
         if: ${{ ! cancelled() }}
         run: |
           pip install pandas requests
+          exit_label=0
           e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
           if [ -f "${e2e_summary_csv}" ];then
             bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
@@ -72,7 +73,6 @@ jobs:
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
               echo "There are ${exit_label} cases that need look into!!! Please check them"
-              exit ${exit_label}
             fi
           fi
           pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
@@ -83,6 +83,7 @@ jobs:
               echo "[Warning] PT2E has failures!"
             fi
           fi
+          exit ${exit_label}
       - name: Upload Reference Run ID
         if: ${{ endsWith(inputs.test_type, 'ly') }}
         run: |

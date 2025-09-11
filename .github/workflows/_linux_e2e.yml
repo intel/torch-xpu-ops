@@ -87,7 +87,7 @@ jobs:
         cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        dataset_dir: ${{ runner.temp }}/../_datasets/imagenet
+        dataset_dir: ${RUNNER_TEMP}/_datasets/imagenet
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
