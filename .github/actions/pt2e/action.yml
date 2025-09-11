@@ -29,6 +29,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # dataset
+        dataset_dir="$(eval echo ${dataset_dir})"
         if [ ! -d ${dataset_dir} ];then
           rm -rf ${dataset_dir} && mkdir -p ${dataset_dir} && cd ${dataset_dir}
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
