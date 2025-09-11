@@ -154,7 +154,8 @@ runs:
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
-          python install.py --continue_on_fail
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          # python install.py --continue_on_fail
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
