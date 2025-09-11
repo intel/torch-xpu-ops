@@ -20,17 +20,20 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
     - name: Prepare dataset
       shell: bash -xe {0}
       run: |
         # dataset
-        if [ ! -d ${HOME}/datasets/imagenet ];then
-          rm -rf ${HOME}/datasets/imagenet
-          mkdir -p ${HOME}/datasets/imagenet
-          cd ${HOME}/datasets/imagenet
-          wget https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
-          tar -xf ILSVRC2012_img_val.tar
+        if [ ! -d ${dataset_dir} ];then
+          rm -rf ${dataset_dir} && mkdir -p ${dataset_dir} && cd ${dataset_dir}
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
+          wget -q https://image-net.org/data/ILSVRC/2012/ILSVRC2012_img_val.tar
+          tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
@@ -41,7 +44,7 @@ runs:
         echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
-          cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${HOME}/datasets/imagenet "
+          cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${dataset_dir} "
           for model_name in $(echo $models |sed 's/,/ /g')
           do
             if [[ "${{ inputs.dt }}" == *"float32"* ]];then
