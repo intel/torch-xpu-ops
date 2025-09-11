@@ -110,6 +110,7 @@ jobs:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
+      exclude_newer: '2025-08-23'
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -121,32 +122,40 @@ jobs:
           repository: huggingface/accelerate
           ref: ${{ env.accelerate }}
           path: accelerate
-      - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+      - name: Install uv and python-${{ env.python }}
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.python }}
+      - name: Set python
+        run: |
+          echo "UV_PROJECT_ENVIRONMENT=$HOME/.local" >> $GITHUB_ENV
+          ls -al $HOME/.local
+          uv venv --allow-existing $HOME/.local
+          uv python install --default
       - name: Check python
         run: |
           which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
       - name: Install pytorch and deps
         run: |
-          pip install junitparser
-          pip install transformers==${{ env.transformers }}
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          uv pip install --exclude-newer ${{ env.exclude_newer}} \
+            junitparser \
+            pytest \
+            pytest-timeout \
+            pytest-xdist \
+            transformers==${{ env.transformers }}
       - name: Prepare Accelerate
         run: |
           cd $WORK_DIR
-          pip install -e .
-          pip install -e ".[testing]"
+          uv pip install --exclude-newer ${{ env.exclude_newer}} -e .
+          uv pip install --exclude-newer ${{ env.exclude_newer}} -e ".[testing]"
           rm -rf tests_log && mkdir -p tests_log
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
         run: |
           echo "pip installed packages:"
-          pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
+          uv pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee ${{ github.workspace }}/$WORK_DIR/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
@@ -155,13 +164,11 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist
           # These checks are to exit earlier if for any reason torch
           # packages were reinstalled back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
           printenv
       - name: Run tests on ${{ needs.prepare.outputs.hostname }}
