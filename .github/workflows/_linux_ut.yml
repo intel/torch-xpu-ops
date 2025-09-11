@@ -99,7 +99,6 @@ jobs:
 
   test-in-baremetal:
     needs: runner
-    runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 1200
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
