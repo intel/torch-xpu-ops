@@ -15,12 +15,9 @@ static int64_t syclMaxWorkGroupSize(
   auto ctx = q.get_context();
   auto dev = q.get_device();
 
-  auto kid = ::sycl::get_kernel_id<KernelClass>();
-  auto kbundle =
-      ::sycl::get_kernel_bundle<::sycl::bundle_state::executable>(ctx, {kid});
-
-  ::sycl::kernel k = kbundle.get_kernel(kid);
-  return k.get_info<::sycl::info::kernel_device_specific::work_group_size>(dev);
+  return ::sycl::ext::oneapi::get_kernel_info<
+      KernelClass,
+      ::sycl::info::kernel_device_specific::work_group_size>(ctx, dev);
 }
 
 template <class KernelClass>
