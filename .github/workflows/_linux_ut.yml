@@ -29,6 +29,11 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  UT_SKIP_ISSUE: 1624
 
 jobs:
   runner:
@@ -50,10 +55,10 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  docker:
+  test-in-container:
     needs: runner
-    runs-on: ${{ needs.runner.outputs.runner_id }}
     if: ${{ ! contains(inputs.ut, 'distributed') }}
+    runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -64,30 +69,19 @@ jobs:
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
-    env:
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
+      - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test
+      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: UT Test Results Summary
-        run: |
-          pip install junitparser
-          python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          if [ -e ut_failure_list.csv ];then
-              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -102,47 +96,27 @@ jobs:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
-      - name: Reset Ptrace_scope
-        if: ${{ always() }}
-        run: |
-          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
-            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
-          fi
 
-  host:
+  test-in-baremetal:
     needs: runner
-    runs-on: ${{ needs.runner.outputs.runner_id }}
     if: ${{ contains(inputs.ut, 'distributed') }}
+    runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
     steps:
-      - name: Init test
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.runner_id }}
+      - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test
+      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: UT Test Results Summary
-        run: |
-          pip install junitparser
-          python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
-          if [ -e ut_failure_list.csv ];then
-              cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
-          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -157,21 +131,12 @@ jobs:
           name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
-      - name: Reset Ptrace_scope
-        if: ${{ always() }}
-        run: |
-          if [ -f "${{ github.workspace }}/ptrace_scope.bk" ]; then
-            sudo cp ${{ github.workspace }}/ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
-          fi
 
   summary:
-    needs: [docker, host]
-    if: ${{ ! cancelled() && ! (endsWith(needs.docker.result, 'ed') && endsWith(needs.host.result, 'ed')) }}
+    needs: [test-in-container, test-in-baremetal]
+    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      GH_TOKEN: ${{ github.token }}
-      UT_SKIP_ISSUE: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -181,15 +146,22 @@ jobs:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
-        shell: bash
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
+
+          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
+            [[ -f "$log_file" ]] && cp "$log_file" ./
+          done
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
           # get skipped known issues
-          gh api "repos/${{ github.repository }}/issues?labels=skipped" \
-            --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+          count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped" --jq 'length')
+          if [ "$count" -gt 0 ]; then
+            echo -e "$count issues with skipped label found"
+            gh api "repos/${{ github.repository }}/issues?labels=skipped" \
+              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+          fi
           if [ "${{ inputs.ut }}" == "basic" ];then
             ut_list="op_regression op_transformers op_extended op_regression_dev1"
           else
@@ -201,7 +173,7 @@ jobs:
             cp Known_issue.log.tmp Known_issue.log
             awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
               if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-              if ( print_row == 1 && $NF ~ r ) { print $1 };
+              if ( print_row == 1 && $1 ~ r ) { print $0 };
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
             }' issues.log >> Known_issue.log
             bash ut_result_check.sh ${ut_name}
