@@ -163,6 +163,8 @@ runs:
         fi
         # To install requirements for tests as CUDA
         pip install -r ./.ci/docker/requirements-ci.txt
+        # yolov requires numpy>=1.23
+        pip install -U numpy==1.26.4
         # install the corresponding torchao
         pip uninstall -y torchao
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
