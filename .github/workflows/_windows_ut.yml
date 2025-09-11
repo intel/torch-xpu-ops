@@ -112,7 +112,7 @@ jobs:
           call conda activate windows_ci
           cd ../pytorch
           pip install -r requirements.txt
-          pip install cmake setuptools==72.1.0 clang-format
+          pip install cmake setuptools clang-format
           pip install mkl-static mkl-include
           set USE_STATIC_MKL=1
           copy "%CONDA_PREFIX%\Library\bin\libiomp*5md.dll" .\torch\lib
@@ -123,7 +123,8 @@ jobs:
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
           python setup.py clean
-          set MAX_JOBS=4
+          set MAX_JOBS=32
+          set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
           python setup.py bdist_wheel > build_torch_wheel_log.log
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
@@ -141,24 +142,22 @@ jobs:
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-
       - name: Upload Windows build log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\build_torch_wheel_log.log'
-
       - name: Upload Windows binary
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
-
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         shell: cmd
+        continue-on-error: true
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -168,9 +167,12 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           python run_test_with_skip_mtl.py
 
+          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
+          copy op_extended.xml %GITHUB_WORKSPACE%\ut_log /Y
       - name: Run Test XPU UT
-        if: contains(inputs.ut, 'torch_xpu') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
+        continue-on-error: true
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -178,3 +180,103 @@ jobs:
           call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_win_with_skip_mtl.py
+
+          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
+          copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
+      - name: UT Test Results Summary
+        shell: cmd
+        run: |
+          call conda activate windows_ci
+          pip install junitparser
+          echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
+          for %%i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
+            python .\.github\scripts\check-ut.py "%%i" >> "%GITHUB_STEP_SUMMARY%"
+          )
+          @echo off
+
+          REM Check the failure logs
+          if exist "%GITHUB_WORKSPACE%\failures*.log" (
+            echo Exist Failure logs
+            echo Found Failure logs as below: 
+            for %%f in ("%GITHUB_WORKSPACE%\failures*.log") do (
+              echo   - %%f
+              copy "%%f" "%GITHUB_WORKSPACE%\ut_log\"
+            )
+            echo Failure logs Copied
+          ) else (
+            echo No Failure logs
+          )
+
+          REM Copied the passed logs
+          if exist "passed*.log" (
+            copy "passed*.log" "%GITHUB_WORKSPACE%\ut_log\"
+            echo Passed logs Copied
+          ) else (
+            echo No Passed logs
+          )
+
+          REM Copied the Summary logs
+          if exist "category*.log" (
+            copy "category*.log" "%GITHUB_WORKSPACE%\ut_log\"
+            echo Category logs Copied
+          ) else (
+            echo No Category logs
+          )
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          path: "${{ github.workspace }}/ut_log"
+          if-no-files-found: ignore
+
+  summary:
+    needs: [ut_test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          path: ${{ github.workspace }}/ut_log
+      - name: Check UT Results
+        shell: bash
+        run: |
+          ls -al ${{ github.workspace }}/ut_log
+          cd ${{ github.workspace }}/ut_log
+
+          # get skipped known issues
+          count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
+          if [ "$count" -gt 0 ]; then
+            echo -e "$count issues with skipped label found"
+            gh api "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+          fi
+
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
+          for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
+          do
+            touch Known_issue.log
+            if [ -f "issues.log" ]; then
+              awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
+                if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
+                if ( print_row == 1 && $1 ~ r ) { print $0 };
+                if ( $0 ~ /Cases:/ ) { print_row = 1 };
+              }' issues.log > Known_issue.log
+            else
+              echo "Info: issues.log not found or empty, using empty Known_issue.log"
+            fi
+            bash ut_result_check.sh ${ut_name}
+          done
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          path: ${{ github.workspace }}/ut_log
+          overwrite: true

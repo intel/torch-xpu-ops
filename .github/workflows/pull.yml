@@ -159,7 +159,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with: 
-      ut: op_extended,torch_xpu
+      ut: op_extended,test_xpu
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
       has_label: ${{ needs.conditions-filter.outputs.has_label }}

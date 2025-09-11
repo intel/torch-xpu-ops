@@ -50,6 +50,7 @@ skip_dict = {
     # ),
     "../../../../test/distributed/fsdp/test_utils.py": None,
     "distributed/test_c10d_xccl.py": None,
+    "distributed/test_c10d_ops_xccl.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_misc.py": None,
     "../../../../test/distributed/test_functional_api.py": (
         # depends on https://github.com/pytorch/pytorch/pull/159473
