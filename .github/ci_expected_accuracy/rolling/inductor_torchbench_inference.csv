@@ -36,8 +36,7 @@ doctr_reco_predictor,pass,pass,pass,pass,pass
 drq,pass,pass,pass,pass,pass
 fastNLP_Bert,pass,pass,pass,pass,pass
 functorch_dp_cifar10,pass,pass,pass,pass,pass
-# https://github.com/intel/torch-xpu-ops/issues/1807
-functorch_maml_omniglot,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+functorch_maml_omniglot,pass,pass,pass,pass,pass
 hf_Albert,pass,pass,pass,pass,pass
 hf_Bart,pass,pass,pass,pass,pass
 hf_Bert,pass,pass,pass,pass,pass
@@ -62,8 +61,7 @@ llama_v2_7b_16h,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_s
 # https://github.com/intel/torch-xpu-ops/issues/1277
 llava,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 maml,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
-# https://github.com/intel/torch-xpu-ops/issues/1807
-maml_omniglot,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+maml_omniglot,pass,pass,pass,pass,pass
 microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
