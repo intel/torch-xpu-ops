@@ -469,6 +469,7 @@ macro(SYCL_ADD_LIBRARY sycl_target)
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
+    PRIVATE
     ${SYCL_LIBRARY})
 
   set_target_properties(${sycl_target}
@@ -528,6 +529,7 @@ macro(SYCL_ADD_EXECUTABLE sycl_target)
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
+    PRIVATE
     ${SYCL_LIBRARY})
 
   set_target_properties(${sycl_target}

@@ -26,7 +26,7 @@ endfunction()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # # -- Host flags (SYCL_CXX_FLAGS)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    list(APPEND SYCL_HOST_FLAGS /std:c++17)
+    list(APPEND SYCL_HOST_FLAGS /std:c++20)
     list(APPEND SYCL_HOST_FLAGS /MD)
     list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
     # SYCL headers warnings
@@ -34,7 +34,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     list(APPEND SYCL_HOST_FLAGS -fPIC)
-    list(APPEND SYCL_HOST_FLAGS -std=c++17)
+    list(APPEND SYCL_HOST_FLAGS -std=c++20)
     list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
     # SYCL headers warnings
     list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
