@@ -83,13 +83,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
   Tensor self = self_.contiguous();
 
   const int64_t num_dim = self.dim();
-  TORCH_CHECK(num_dim <= XPU_MAX_TENSORINFO_DIMS, "dim exceed max allowed dim");
-
-  int64_t N = self.numel();
-  if (N <= 0) {
-    out = out.resize_({num_dim, N}).contiguous().t();
-    return;
-  }
+  const int64_t N = self.numel();
 
   Tensor idx_flat = at::empty(
       {N}, out.options().memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT));
@@ -105,12 +99,12 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
   auto num_nonzeros = std::distance(idx_flat_begin, idx_flat_end);
 
   bool need_to_copy = out.dim() == 2 &&
-      out.sizes()[0] == num_nonzeros && out.sizes()[1] == self_.dim() &&
+      out.sizes()[0] == num_nonzeros && out.sizes()[1] == num_dim &&
       !out.t().is_contiguous();
   Tensor out_ = need_to_copy
       ? Tensor(at::detail::empty_xpu(
-            {self.dim(), num_nonzeros}, out.options()))
-      : out.resize_({self.dim(), num_nonzeros});
+            {num_dim, num_nonzeros}, out.options()))
+      : out.resize_({num_dim, num_nonzeros});
 
   if (num_nonzeros > 0 && num_dim > 0) {
     int64_t* out_begin = out_.data_ptr<int64_t>();
