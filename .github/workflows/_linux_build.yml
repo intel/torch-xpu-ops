@@ -101,9 +101,9 @@ jobs:
           fi
           # toolchain
           if [[ -z "${{ inputs.dep_path }}" ]]; then
-            bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/setup_dependencies.sh ${PYTORCH_VERSION}
+            bash ${{ github.workspace }}/torch-xpu-ops/.github/scripts/setup_dependencies.sh ${{ inputs.runner }}
           fi
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${PYTORCH_VERSION}
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.runner }}
 
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
@@ -111,11 +111,12 @@ jobs:
             --PYTORCH_VERSION="${PYTORCH_VERSION}" \
             --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
             --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
+            --RUNNER="${{ inputs.runner }}" \
             2>&1 |tee ${{ github.workspace }}/pytorch_build_${PYTORCH_VERSION//\//-}.log
       - name: Torch Config
         run: |
           source activate xpu_op_build
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.pytorch }}
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.runner }}
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -124,7 +125,7 @@ jobs:
         id: build_version
         run: |
           source activate xpu_op_build
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.pytorch }}
+          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh ${{ inputs.runner }}
           echo "TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')" |tee -a "${GITHUB_OUTPUT}"
           echo "TORCH_XPU_OPS_COMMIT_ID=$(git -C ${{ github.workspace }}/pytorch/third_party/torch-xpu-ops rev-parse HEAD)"
           echo "ONEDNN_COMMIT_ID=$(git -C ${{ github.workspace }}/pytorch/build/xpu_mkldnn_proj-prefix/src/xpu_mkldnn_proj rev-parse HEAD)"

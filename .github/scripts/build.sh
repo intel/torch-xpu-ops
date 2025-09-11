@@ -13,6 +13,7 @@ PYTORCH_REPO=${PYTORCH_REPO:-"https://github.com/intel-innersource/frameworks.ai
 PYTORCH_VERSION=${PYTORCH_VERSION:-"master_next"}
 TORCH_XPU_OPS_REPO=${TORCH_XPU_OPS_REPO:-"https://github.com/intel-innersource/frameworks.ai.pytorch.torch-xpu-ops.git"}
 TORCH_XPU_OPS_VERSION=${TORCH_XPU_OPS_VERSION:-"main"}
+RUNNER=${RUNNER:-"private_torch_ci"}
 for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
@@ -53,7 +54,7 @@ export USE_STATIC_MKL=1
 export USE_XCCL=0
 export USE_ONEMKL_XPU=0
 
-if [ "${PYTORCH_VERSION}" == "CRI_master_next" ];then
+if [[ "${RUNNER}" == "private_torch_ci_cri" ]]; then
     echo -e "\n==================== Build for CRI ===================="
     export USE_KINETO=OFF
     export TORCH_XPU_ARCH_LIST=cri

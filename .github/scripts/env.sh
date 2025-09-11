@@ -1,15 +1,15 @@
 #!/bin/bash
 
 DEPENDENCY_DIR=${DEPENDENCY_DIR:-$GITHUB_WORKSPACE/../dependencies}
-PYTORCH_VERSION="${1:-master_next}"
+RUNNER="${1:-private_torch_ci}"
 
 source ${DEPENDENCY_DIR}/DPCPP_JGS/setvars.sh
-if [ "${PYTORCH_VERSION}" == "master_next" ];then
+if [ "${RUNNER}" != "private_torch_ci_cri" ];then
     export _profiling_tools_root=${DEPENDENCY_DIR}/PROFILING_TOOLS_JGS/
     export LD_LIBRARY_PATH=${_profiling_tools_root}/lib:$LD_LIBRARY_PATH
     export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-$(dirname "$(which conda)")/../}:${_profiling_tools_root}:${CMAKE_PREFIX_PATH}
 fi
-if [ "${PYTORCH_VERSION}" == "master_next" ];then
+if [ "${RUNNER}" != "private_torch_ci_cri" ];then
     WORK_ROOT=${WORK_ROOT:-$HOME/trees/jgs}
     echo -e "\n==================== Coral version ===================="
     grep -A 10 "coral:" $WORK_ROOT/build-promotions/build.yml | grep -e asset_version -e revision | sed 's/^[ \t]*//'
@@ -28,9 +28,10 @@ fi
 echo -e "\n==================== DPCPP version ===================="
 grep "Build URL" ${DEPENDENCY_DIR}/DPCPP_JGS/version.txt
 
-if [ "${PYTORCH_VERSION}" == "CRI_master_next" ];then
+if [ "${RUNNER}" == "private_torch_ci_cri" ];then
     echo -e "\n==================== Enable CRI test ENV ===================="
     source ${HOME}/env_cri.sh
+    export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-$(dirname "$(which conda)")/../}:${CMAKE_PREFIX_PATH}
 fi
 
 icpx --version

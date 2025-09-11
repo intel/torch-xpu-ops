@@ -3,7 +3,7 @@ set -e
 
 WGET_RETRY_DELAY_SECONDS=10
 MAX_RETRIES=${MAX_RETRIES:-3}
-PYTORCH_VERSION="${1:-master_next}"
+RUNNER="${1:-private_torch_ci}"
 
 download_with_retry() {
     local url="$1"
@@ -31,7 +31,7 @@ DEPENDENCY_DIR=${GITHUB_WORKSPACE}/../dependencies
 rm -rf ${DEPENDENCY_DIR} || true
 mkdir -p ${DEPENDENCY_DIR}
 cd ${DEPENDENCY_DIR} && pwd || exit 1
-if [ "${PYTORCH_VERSION}" == "master_next" ];then
+if [ "${RUNNER}" != "private_torch_ci_cri" ];then
     download_with_retry https://artifactory-kfs.habana-labs.com/artifactory/bin-generic-dev-local/PROFILING_TOOLS_JGS/latest/PROFILING_TOOLS_JGS-master.tgz
 fi
 download_with_retry https://artifactory-kfs.habana-labs.com/artifactory/bin-generic-dev-local/DPCPP_JGS/latest/DPCPP_JGS-master.tgz

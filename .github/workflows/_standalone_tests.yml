@@ -89,17 +89,10 @@ jobs:
           set -e -o pipefail
           source activate xpu_op_test
           pip install pytest pytest-timeout
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-            PYTORCH_VERSION="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
-          else
-            PYTORCH_REPO="https://github.com/intel-innersource/frameworks.ai.pytorch.private-gpu.git"
-            PYTORCH_VERSION="${{ inputs.pytorch }}"
-          fi
           if [[ -z "${{ inputs.dep_path }}" ]]; then
-            bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh ${PYTORCH_VERSION}
+            bash ${{ github.workspace }}/.github/scripts/setup_dependencies.sh ${{ inputs.runner }}
           fi
-          source ${{ github.workspace }}/.github/scripts/env.sh ${PYTORCH_VERSION}
+          source ${{ github.workspace }}/.github/scripts/env.sh ${{ inputs.runner }}
           if [[ "${{ inputs.runner }}" == "private_torch_ci" ]]; then
             export IGC_LLVMOptions=-pisa-enable-generic-loadstore-lowering
           fi

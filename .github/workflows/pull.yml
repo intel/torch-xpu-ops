@@ -64,6 +64,7 @@ jobs:
       has_label: ${{ steps.check-label.outputs.has_label }}
       disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
       standalone_tests: ${{ steps.check-standalone-pr.outputs.standalone_tests }}
+      dep_path: ${{ steps.check-pr-desc.outputs.dep_path }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -94,6 +95,8 @@ jobs:
           dos2unix pr-info.txt
           disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
+          dep_path="$(awk -F ': ' '/dep_path:/{print $2}' pr-info.txt)"
+          echo "dep_path=${dep_path}" |tee "${GITHUB_OUTPUT}"
       - name: Check standalone PR
         id: check-standalone-pr
         run: |
@@ -142,6 +145,7 @@ jobs:
       python: 3.12
       onednn: 570d235a5473a6b74f9486680b301f7bd06c7487
       artifact_name: cri
+      dep_path: ${{ needs.preci-conditions-filter.outputs.dep_path || '' }}
   
   preci-standalone-ut-cri:
     name: preci-linux-cri / standalone ut
@@ -156,6 +160,7 @@ jobs:
       python: 3.12
       test_type: 16
       artifact_name: cri
+      dep_path: ${{ needs.preci-conditions-filter.outputs.dep_path || '' }}
 
   preci-linux-ut:
     if: ${{ needs.preci-conditions-filter.outputs.standalone_tests == 'false' }}
