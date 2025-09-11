@@ -105,11 +105,13 @@ jobs:
         HF_HUB_DOWNLOAD_TIMEOUT: 120
         PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist loadfile ${{ needs.prepare.outputs.pytest_extra_args }}
     env:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
+      exclude_newer: '2025-09-17'
+      VIRTUAL_ENV: ${{ github.workspace }}/.venv
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -121,32 +123,46 @@ jobs:
           repository: huggingface/accelerate
           ref: ${{ env.accelerate }}
           path: accelerate
-      - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+      - name: Install uv and python-${{ env.python }}
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.python }}
+      - name: Prepare environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pciutils python3-dev
+          rm -rf ${{ env.VIRTUAL_ENV }}
+          uv venv ${{ env.VIRTUAL_ENV }}
+          # Add path to virtual environment bin folder to make
+          # python and other executables visible
+          echo "${{ env.VIRTUAL_ENV }}/bin/" >> $GITHUB_PATH
       - name: Check python
         run: |
+          ls ${{ env.VIRTUAL_ENV }}/bin/
+          echo $PATH
+          echo $GITHUB_PATH
           which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
       - name: Install pytorch and deps
         run: |
-          pip install junitparser
-          pip install transformers==${{ env.transformers }}
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          uv pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          uv pip install --exclude-newer ${{ env.exclude_newer}} \
+            junitparser \
+            pytest \
+            pytest-timeout \
+            pytest-xdist \
+            transformers==${{ env.transformers }}
       - name: Prepare Accelerate
         run: |
           cd $WORK_DIR
-          pip install -e .
-          pip install -e ".[testing]"
+          uv pip install --exclude-newer ${{ env.exclude_newer}} -e .
+          uv pip install --exclude-newer ${{ env.exclude_newer}} -e ".[testing]"
           rm -rf tests_log && mkdir -p tests_log
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
         run: |
           echo "pip installed packages:"
-          pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
+          uv pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee ${{ github.workspace }}/$WORK_DIR/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
@@ -155,13 +171,11 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist
           # These checks are to exit earlier if for any reason torch
           # packages were reinstalled back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
           printenv
       - name: Run tests on ${{ needs.prepare.outputs.hostname }}
