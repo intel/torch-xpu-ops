@@ -35,8 +35,6 @@ AllocationRef::~AllocationRef() {
   c10::Device local_device(c10::DeviceType::XPU, device_idx);
   c10::DeviceGuard guard(local_device);
   c10::xpu::syncStreamsOnDevice();
-  auto stream = at::xpu::getCurrentXPUStream();
-  sycl::free(ptr, stream);
 }
 
 XPUSymmetricMemory::XPUSymmetricMemory(
