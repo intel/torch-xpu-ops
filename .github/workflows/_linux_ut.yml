@@ -45,7 +45,6 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
-      ZE_AFFINITY_MASK: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -64,8 +63,8 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.runner.outputs.render_id }}
               --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}
+              -e ZE_AFFINITY_MASK
       env:
-        ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ZE_AFFINITY_MASK }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
