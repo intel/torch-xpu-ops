@@ -138,7 +138,6 @@ def print_failures(failure_list=None):
 
 def generate_failures_log():
     if not failures:
-        print("No failures found, skipping log file creation.")
         return
 
     for case in failures:
@@ -245,6 +244,8 @@ def determine_category(ut):
         return 'op_extended'
     elif ut == 'op_transformers':
         return 'op_transformers'
+    elif ut == 'test_xpu':
+        return 'test_xpu'
     elif 'op_ut' in ut:
         return 'op_ut'
     else:
@@ -296,7 +297,6 @@ def process_xml_file(xml_file):
 
 def generate_passed_log():
     if not passed_cases:
-        print("No passed cases found, skipping log file creation.")
         return
 
     for category, category_passed in passed_by_category.items():

@@ -18,6 +18,7 @@ original_stdout = sys.stdout
 sys.stdout = StringIO()
 
 test_command = ["-k", skip_options, "../../../../test/test_xpu.py", "-v"]
+test_command.extend(["--junit-xml", "./test_xpu.xml"])
 res = pytest.main(test_command)
 
 output = sys.stdout.getvalue()
