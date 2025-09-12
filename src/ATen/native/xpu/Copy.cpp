@@ -71,8 +71,10 @@ void memcpyAsync(
   Device dst_device = iter.device(0);
   Device src_device = iter.device(1);
   if (dst_device == src_device) {
+    std::cout << "zl_debug: go to same device and specialized kernel" << std::endl;
     copy_kernel(iter);
   } else {
+    std::cout << "zl_debug: go to sycl copy kernel" << std::endl;
     TORCH_INTERNAL_ASSERT(p2p_enabled == true);
     auto dst = (char*)iter.data_ptr(0);
     auto src = (char*)iter.data_ptr(1);

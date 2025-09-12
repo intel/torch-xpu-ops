@@ -132,7 +132,9 @@ at::Tensor XPUSymmetricMemory::get_buffer(
       " bytes)");
   auto data_ptr = reinterpret_cast<uint8_t*>(buffers_[rank]) +
       storage_offset * element_size;
-  auto device = c10::Device(c10::DeviceType::XPU, local_device_idx_);
+  // check the device of this device buffer
+  auto ptr_to_device_id = c10::xpu::get_device_idx_from_pointer(data_ptr);
+  auto device = c10::Device(c10::DeviceType::XPU, ptr_to_device_id);
   auto options = at::TensorOptions().dtype(dtype).device(device);
 
   return at::for_blob(data_ptr, sizes)
