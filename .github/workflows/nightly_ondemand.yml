@@ -42,8 +42,9 @@ jobs:
           bash -xe install_xpu.sh lts2
 
   check-nodes:
+    if: ${{ inputs.setup_xpu != 'yes' }}
     runs-on: ${{ matrix.node_name }}
-    needs: [get-params, setup-xpu]
+    needs: [get-params]
     strategy:
       fail-fast: false
       matrix:
