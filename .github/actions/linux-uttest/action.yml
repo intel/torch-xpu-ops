@@ -120,6 +120,7 @@ runs:
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
+        export PYTEST_ADDOPTS="-v --timeout 600 --timeout_method=thread"
         mkdir -p ut_log/xpu_profiling/issue_reproduce
         cd pytorch/third_party/torch-xpu-ops
         # RN50 Test
