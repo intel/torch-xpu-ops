@@ -11,10 +11,10 @@ struct HardshrinkFunctor {
     return (a >= -lambd_ && a <= lambd_) ? scalar_t(0) : a;
   }
 
-  HardshrinkFunctor(const scalar_t lambd) : lambd_(lambd) {}
+  HardshrinkFunctor(scalar_t lambd) : lambd_(lambd) {}
 
  private:
-  const scalar_t lambd_;
+  scalar_t lambd_;
 };
 
 void hardshrink_kernel(TensorIteratorBase& iter, const Scalar& value) {
