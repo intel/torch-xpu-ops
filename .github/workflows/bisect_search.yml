@@ -130,11 +130,12 @@ jobs:
             python install.py ${model_name}
             cd ..
           fi
-          pip uninstall -y torch torchvision torchaudio
+          pip uninstall -y torchvision torchaudio
           git clone https://github.com/pytorch/vision gs-vision
           cd gs-vision
           python setup.py install
           cd ..
+          pip uninstall -y torch
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
