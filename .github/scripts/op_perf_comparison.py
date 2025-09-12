@@ -114,7 +114,7 @@ def display_comparison(results, threshold, xpu_file, compare_both, show_all):
 
         # Only count as regression if BOTH profile and E2E show regression
         is_regression = profile_regression and e2e_regression
-        
+
         if is_regression:
             regression_records.append(record)
         elif (profile_regression and e2e_improve) or (profile_improve and e2e_regression):
