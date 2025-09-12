@@ -41,14 +41,14 @@ jobs:
         run: |
           bash -xe install_xpu.sh lts2
 
-  check-nodes-env:
+  check-nodes:
     runs-on: ${{ matrix.node_name }}
+    needs: [get-params, setup-xpu]
     strategy:
+      fail-fast: false
       matrix:
-        node_name: [PVC-03006, PVC-03004, PVC-7900, PVC-7901]
-    name: check-nodes-env-for-${{ matrix.node_name }}
-    needs: setup-xpu
-    if: ${{ always() }}
+        node_name: ${{ fromJSON(needs.get-params.outputs.node_name) }}
+
     steps:
       - name: Check env
         run: |
