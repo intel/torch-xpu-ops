@@ -8,6 +8,7 @@ if [ "${RUNNER}" != "private_torch_ci_cri" ];then
     export _profiling_tools_root=${DEPENDENCY_DIR}/PROFILING_TOOLS_JGS/
     export LD_LIBRARY_PATH=${_profiling_tools_root}/lib:$LD_LIBRARY_PATH
     export CMAKE_PREFIX_PATH=${CONDA_PREFIX:-$(dirname "$(which conda)")/../}:${_profiling_tools_root}:${CMAKE_PREFIX_PATH}
+    export IGC_LLVMOptions=-pisa-enable-generic-loadstore-lowering
 fi
 if [ "${RUNNER}" != "private_torch_ci_cri" ];then
     WORK_ROOT=${WORK_ROOT:-$HOME/trees/jgs}
