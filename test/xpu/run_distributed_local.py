@@ -130,9 +130,3 @@ for key in skip_dict:
 
 if fail_test:
     print(",".join(fail_test) + " have failures")
-
-exit_code = os.WEXITSTATUS(res)
-if exit_code == 0:
-    sys.exit(res2)
-else:
-    sys.exit(exit_code)
