@@ -23,8 +23,9 @@ jobs:
       - name: Get params
         id: params
         run: |
+          set -xe
           node_node="$(echo ${{ inputs.node_name }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
-          echo "node_name=\"${node_node}\"" >> ${GITHUB_OUTPUT}
+          echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
 
   setup-xpu:
     if: ${{ inputs.setup_xpu == 'yes' }}
