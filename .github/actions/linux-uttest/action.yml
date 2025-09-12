@@ -102,20 +102,42 @@ runs:
         cp *.xml ${{ github.workspace }}/ut_log
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
-    - name: torch_xpu
-      shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'torch_xpu' }}
+    - name: xpu_inductor
+      shell: timeout 18000 bash -xe {0}
+      if: ${{ inputs.ut_name == 'xpu_inductor' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        mkdir -p ut_log/torch_xpu
+        mkdir -p ut_log/xpu_inductor
         cd pytorch
-        test_cmd="python test/run_test.py --include "
-        for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-        for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-        if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-        eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+        files=(
+            "test_codecache.py"
+            "test_kernel_benchmark.py"
+            "test_max_autotune.py"
+            "test_mkldnn_pattern_matcher.py"
+            "test_triton_kernels.py"
+            "test_torchinductor.py"
+            "test_torchinductor_opinfo.py"
+            "test_compile_subprocess.py"
+            "test_compiled_optimizers.py"
+            "test_compiled_autograd.py"
+            "test_aot_inductor.py"
+        )
+        printf "%s\n" "${files[@]}" > test_files.txt
+        cat test_files.txt
+        while IFS= read -r line; do
+          (
+            echo "=== Starting test: ${line} ==="
+            start=$(date +%s)
+            pytest -sv test/inductor/${line} --junit-xml=${{ github.workspace }}/ut_log/inductor_${line}.xml 2>${{ github.workspace }}/ut_log/xpu_inductor/xpu_inductor_${line}_test_error.log | \
+              tee ${{ github.workspace }}/ut_log/xpu_inductor/xpu_inductor_${line}_test.log
+            end=$(date +%s)
+            echo -e "${line} duration: $((end - start))s"
+            echo "=== Finished test: ${line} ==="
+          ) &
+        done < test_files.txt
+
+        wait
     - name: xpu_profiling
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
