@@ -4,6 +4,7 @@ To compare the op perf diff
 python op_perf_comparison.py --xpu_file /path/to/xpu/performance/result/dir/forward.csv --baseline_file /path/to/baselineence/dir/baseline.csv
 --profile-only: Only compare record['time(us)']
 --e2e-only: Only compare record['E2E total time(us)']
+--show-all: Show improvement and mixed changes in GitHub summary (default: only show regression)
 Default: Compare both record['time(us)'] and record['E2E total time(us)'] in same table
 """
 
@@ -53,7 +54,7 @@ def format_parameters(record):
                 params.append(f"{key}: {value}")
     return "<br>".join(params)
 
-def display_comparison(results, threshold, xpu_file, compare_both):
+def display_comparison(results, threshold, xpu_file, compare_both, show_all):
     if 'forward' in xpu_file.lower():
         direction = "Forward"
     elif 'backward' in xpu_file.lower():
@@ -111,19 +112,21 @@ def display_comparison(results, threshold, xpu_file, compare_both):
         e2e_regression = e2e_change == '↓'
         e2e_improve = e2e_change == '↑'
 
-        if (profile_regression and e2e_improve) or (profile_improve and e2e_regression):
-            mixed_records.append(record)
-        elif profile_regression or e2e_regression:
+        # Only count as regression if BOTH profile and E2E show regression
+        is_regression = profile_regression and e2e_regression
+        
+        if is_regression:
             regression_records.append(record)
+        elif (profile_regression and e2e_improve) or (profile_improve and e2e_regression):
+            mixed_records.append(record)
         elif profile_improve or e2e_improve:
             improvement_records.append(record)
 
-    # Print results
+    # Print results to console (always show all)
     if regression_records:
-        print("\n🔴 Regression:")
+        print("\n🔴 Regression (both profile and E2E regression):")
         regression_display = [r for r in display_records
-                            if (r.get('Profile Change', '') == '↓' or r.get('E2E Change', '') == '↓')
-                            and not (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')]
+                            if (r.get('Profile Change', '') == '↓' and r.get('E2E Change', '') == '↓')]
         print(tabulate(
             regression_display,
             headers="keys",
@@ -132,7 +135,7 @@ def display_comparison(results, threshold, xpu_file, compare_both):
             floatfmt=".2f"
         ))
 
-    if improvement_records:
+    if improvement_records and show_all:
         print("\n🟢 Improvement:")
         improvement_display = [r for r in display_records
                              if (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')
@@ -145,7 +148,7 @@ def display_comparison(results, threshold, xpu_file, compare_both):
             floatfmt=".2f"
         ))
 
-    if mixed_records:
+    if mixed_records and show_all:
         print("\n🟡 Mixed Changes (one metric improves, another regression):")
         mixed_display = [r for r in display_records
                        if ((r.get('Profile Change', '') == '↑' and r.get('E2E Change', '') == '↓') or
@@ -162,18 +165,17 @@ def display_comparison(results, threshold, xpu_file, compare_both):
     summary_output = f"## {direction} Performance Comparison Results\n"
 
     if regression_records:
-        summary_output += "\n### 🔴 Regression\n"
+        summary_output += "\n### 🔴 Regression (both profile and E2E regression)\n"
         summary_output += tabulate(
             [r for r in display_records
-                if (r.get('Profile Change', '') == '↓' or r.get('E2E Change', '') == '↓')
-                and not (r.get('Profile Change', '') == '↑' or r.get('E2E Change', '') == '↑')],
+                if (r.get('Profile Change', '') == '↓' and r.get('E2E Change', '') == '↓')],
             headers="keys",
             tablefmt='github',
             showindex=False,
             floatfmt=".2f"
         ) + "\n"
 
-    if improvement_records:
+    if improvement_records and show_all:
         summary_output += "\n### 🟢 Improvement\n"
         summary_output += tabulate(
             [r for r in display_records
@@ -185,7 +187,7 @@ def display_comparison(results, threshold, xpu_file, compare_both):
             floatfmt=".2f"
         ) + "\n"
 
-    if mixed_records:
+    if mixed_records and show_all:
         summary_output += "\n### 🟡 Mixed Changes\n"
         summary_output += "One metric improves while another regression\n"
         summary_output += tabulate(
@@ -200,7 +202,7 @@ def display_comparison(results, threshold, xpu_file, compare_both):
 
     write_to_github_summary(summary_output)
 
-def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=False, e2e_only=False):
+def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=False, e2e_only=False, show_all=False):
     def prepare_df(df):
         df.columns = df.columns.str.strip()
         if 'time(us)' not in df.columns:
@@ -293,7 +295,7 @@ def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=Fa
                 results.append(record)
 
     result_df = pd.DataFrame(results) if results else pd.DataFrame()
-    display_comparison(result_df, threshold, xpu_file, compare_both)
+    display_comparison(result_df, threshold, xpu_file, compare_both, show_all)
 
 def main():
     parser = argparse.ArgumentParser(description='Compare time values between two CSV files')
@@ -305,6 +307,8 @@ def main():
                        help='Only compare profile time (time(us))')
     parser.add_argument('--e2e-only', action='store_true',
                        help='Only compare E2E time (E2E total time(us))')
+    parser.add_argument('--show-all', action='store_true',
+                       help='Show improvement and mixed changes in GitHub summary (default: only show regression)')
     args = parser.parse_args()
 
     if args.profile_only and args.e2e_only:
@@ -333,7 +337,8 @@ def main():
         baseline_file=args.baseline_file,
         threshold=args.threshold,
         profile_only=args.profile_only,
-        e2e_only=args.e2e_only
+        e2e_only=args.e2e_only,
+        show_all=args.show_all
     )
 
 if __name__ == "__main__":
