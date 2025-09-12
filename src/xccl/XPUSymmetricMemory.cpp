@@ -22,19 +22,27 @@ AllocationRef::AllocationRef(
     void* ptr,
     HandleType handle,
     size_t block_size,
-    int device_idx)
+    int device_idx,
+    bool local_allocation)
     : ptr(ptr),
       handle(handle),
       block_size(block_size),
-      device_idx(device_idx) {}
+      device_idx(device_idx),
+      local_allocation(local_allocation){}
 
 AllocationRef::~AllocationRef() {
   if (is_finalizing()) {
     return;
   }
+  // Currently, we cannot free virtual memory exchanged from other device.
+  if (!local_allocation) {
+      return;
+  }
   c10::Device local_device(c10::DeviceType::XPU, device_idx);
   c10::DeviceGuard guard(local_device);
   c10::xpu::syncStreamsOnDevice();
+  auto stream = at::xpu::getCurrentXPUStream();
+  sycl::free(ptr, stream);
 }
 
 XPUSymmetricMemory::XPUSymmetricMemory(
@@ -284,7 +292,7 @@ void* XPUSymmetricMemoryAllocator::alloc(
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
   auto alloc_ref =
-      c10::make_intrusive<AllocationRef>(ptr, ptr, block_size, device_idx);
+      c10::make_intrusive<AllocationRef>(ptr, ptr, block_size, device_idx, true);
   auto block = c10::make_intrusive<Block>(
       std::move(alloc_ref),
       device_idx,
@@ -431,7 +439,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       continue;
     }
     alloc_refs.push_back(c10::make_intrusive<AllocationRef>(
-        buffers[r], handles[r], block->block_size, block->device_idx));
+        buffers[r], handles[r], block->block_size, block->device_idx, false));
   }
 
   auto symm_mem = c10::make_intrusive<XPUSymmetricMemory>(
