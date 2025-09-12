@@ -91,7 +91,7 @@ jobs:
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
-          rm -rf ~/intel ~/.intel /tmp/intel
+          rm -rf ~/intel ~/.intel ${HOME}/intel
           if [ "${{ inputs.oneapi }}" == "2025.1" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/3435dc45-055e-4f7a-86b1-779931772404/intel-deep-learning-essentials-2025.1.3.7_offline.sh"
           elif [ "${{ inputs.oneapi }}" == "2025.2" ];then
@@ -100,8 +100,8 @@ jobs:
             ONEAPI_URL="${{ inputs.oneapi }}"
           fi
           wget -q -O oneapi.sh "${ONEAPI_URL}"
-          bash oneapi.sh -a -s --eula accept --action install --install-dir /tmp/intel/oneapi
-          echo "XPU_ONEAPI_PATH=/tmp/intel/oneapi" >> ${GITHUB_ENV}
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
 
       - name: Summary file
         run: |
