@@ -86,7 +86,7 @@ jobs:
       - name: Prepare test env
         uses: ./gs-scripts/.github/actions/linux-testenv
         with:
-          pytorch: main
+          pytorch: nightly_wheel
           python: ${{ inputs.python }}
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
