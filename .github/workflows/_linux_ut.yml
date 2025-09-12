@@ -58,7 +58,7 @@ jobs:
   test-in-container:
     needs: runner
     if: ${{ ! contains(inputs.ut, 'distributed') }}
-    runs-on: PVC-7362
+    runs-on: PVC-7363
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
