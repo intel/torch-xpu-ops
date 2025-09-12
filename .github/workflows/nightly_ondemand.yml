@@ -16,7 +16,7 @@ permissions: read-all
 
 jobs:
   get-params:
-    runs-on: ubuntu:24.04
+    runs-on: ubuntu-24.04
     outputs:
       node_name: ${{ steps.params.outputs.node_name }}
     steps:
