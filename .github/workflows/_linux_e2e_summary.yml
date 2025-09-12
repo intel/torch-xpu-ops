@@ -30,14 +30,15 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
-      - name: Install gh-cli
-        run: |
-          sudo apt-get update
-          sudo apt-get install gh rsync ca-certificates -y
       - name: Setup python-${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
+      - name: Install gh-cli
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh rsync ca-certificates -y
+          pip install pandas requests
       - name: Download Target Artifact
         run: |
           mkdir target/
@@ -64,7 +65,6 @@ jobs:
       - name: Get summary
         if: ${{ ! cancelled() }}
         run: |
-          pip install pandas requests
           exit_label=0
           e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
           if [ -f "${e2e_summary_csv}" ];then
@@ -78,7 +78,7 @@ jobs:
           pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
           if [ -f "${pt2e_summary_csv}" ];then
             cat ${pt2e_summary_csv}
-            failed_num=$(grep -c ',failed' ${pt2e_summary_csv})
+            failed_num=$(grep -c ',failed' ${pt2e_summary_csv} || true)
             if [ ${failed_num} -ne 0 ];then
               echo "[Warning] PT2E has failures!"
             fi
