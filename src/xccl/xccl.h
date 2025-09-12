@@ -54,7 +54,6 @@ inline bool isCCLV2EnabledCached() {
   static const bool cachedValue = []() {
     const char* use_ccl_v2_env = std::getenv("USE_CCL_V2");
     if (use_ccl_v2_env) {
-      LOG(INFO) << "USE_CCL_V2";
       std::string value(use_ccl_v2_env);
       std::transform(
           value.begin(), value.end(), value.begin(), [](unsigned char c) {
@@ -338,6 +337,7 @@ std::shared_ptr<xcclComm_t> createXCCLCommHelper(
     auto comms = ccl::create_communicators(numRanks, devs_rank, ctx, xccl_kvs);
     return std::make_shared<xcclComm_t>(std::move(comms[0]));
   } else {
+    LOG(INFO) << "USE_CCL_V2=1";
     onecclUniqueId xcclID;
     if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
       onecclGetUniqueId(&xcclID);
