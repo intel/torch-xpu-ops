@@ -163,6 +163,7 @@ runs:
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           cd ../pytorch
         else
+          pip install -r ./.ci/docker/requirements-ci.txt
           pip install -U pytest pytest-timeout pytest-xdist
         fi
         # install the corresponding torchao
