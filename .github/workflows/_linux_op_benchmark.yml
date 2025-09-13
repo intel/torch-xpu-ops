@@ -50,8 +50,6 @@ jobs:
   op_benchmark:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    permissions: 
-      issues: write
     timeout-minutes: 900
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
@@ -93,6 +91,8 @@ jobs:
   op_benchmark_test_results_check:
     needs: op_benchmark
     runs-on: ubuntu-24.04
+    permissions:
+      issues: write
     steps:
       - name: Install gh-cli
         run: |
