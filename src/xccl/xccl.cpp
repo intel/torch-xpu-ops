@@ -23,27 +23,29 @@ void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclRedOp& xcclReduceOp,
+    const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
+    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
     onecclAllReduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
         xcclDataType,
-        std::get<onecclRedOp_t>(xcclReduceOp),
+        xcclReduceOp,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
+    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
     ccl::allreduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
         xcclDataType,
-        std::get<ccl::reduction>(xcclReduceOp),
+        xcclReduceOp,
         std::get<ccl::communicator>(comm),
         xcclStream);
   }
@@ -54,29 +56,31 @@ void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclRedOp& xcclReduceOp,
+    const c10d::ReduceOp& reduceOp,
     const int root,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
+    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
     onecclReduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
         xcclDataType,
-        std::get<onecclRedOp_t>(xcclReduceOp),
+        xcclReduceOp,
         root,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
+    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
     ccl::reduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
         xcclDataType,
-        std::get<ccl::reduction>(xcclReduceOp),
+        xcclReduceOp,
         root,
         std::get<ccl::communicator>(comm),
         xcclStream);
@@ -119,27 +123,29 @@ void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclRedOp& xcclReduceOp,
+    const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
+    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
     onecclReduceScatter(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)output.numel(),
         xcclDataType,
-        std::get<onecclRedOp_t>(xcclReduceOp),
+        xcclReduceOp,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
+    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
     ccl::reduce_scatter(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)output.numel(),
         xcclDataType,
-        std::get<ccl::reduction>(xcclReduceOp),
+        xcclReduceOp,
         std::get<ccl::communicator>(comm),
         xcclStream);
   }

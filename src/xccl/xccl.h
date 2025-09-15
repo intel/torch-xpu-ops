@@ -172,6 +172,7 @@ ccl::datatype getXcclDataTypeV1(
   return it->second;
 }
 
+// V2 specific function to avoid variant overhead
 onecclDataType_t getXcclDataTypeV2(
     at::ScalarType type,
     bool is_reduction_op = false) {
@@ -189,15 +190,11 @@ onecclDataType_t getXcclDataTypeV2(
   return it->second;
 }
 
-XcclRedOp getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
-  bool useCCLV2 = isCCLV2EnabledCached();
+ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
-        if (useCCLV2)
-          return onecclRedOp_t::onecclMax;
-        else
-          return ccl::reduction::max;
+        return ccl::reduction::max;
       }
 #ifdef XCCL_HAS_AVG
       if (reduceOp == ReduceOp::AVG) {
@@ -209,17 +206,37 @@ XcclRedOp getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
 #if !defined(XCCL_HAS_AVG)
     if (reduceOp == ReduceOp::AVG) {
       LOG(INFO) << "[Reduce] Use sum emulation for avg";
-      if (useCCLV2)
-        return onecclRedOp_t::onecclSum;
-      else
-        return ccl::reduction::sum;
+      return ccl::reduction::sum;
     }
 #endif
-    if (useCCLV2) {
-      return xcclOpsV2.at(reduceOp);
-    } else {
-      return xcclOpsV1.at(reduceOp);
+    return xcclOpsV1.at(reduceOp);
+  } catch (const std::out_of_range&) {
+    C10_THROW_ERROR(
+        ValueError,
+        "Cannot use ReduceOp." + reduceOpToString(reduceOp) + " with XCCL");
+  }
+}
+
+onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& input) {
+  try {
+    if (input.scalar_type() == at::kBool) {
+      if (reduceOp == ReduceOp::SUM) {
+        return onecclRedOp_t::onecclMax;
+      }
+#ifdef XCCL_HAS_AVG
+      if (reduceOp == ReduceOp::AVG) {
+        C10_THROW_ERROR(
+            TypeError, "Cannot use ReduceOp.AVG with boolean inputs");
+      }
+#endif // XCCL_HAS_AVG
     }
+#if !defined(XCCL_HAS_AVG)
+    if (reduceOp == ReduceOp::AVG) {
+      LOG(INFO) << "[Reduce] Use sum emulation for avg";
+      return onecclRedOp_t::onecclSum;
+    }
+#endif
+    return xcclOpsV2.at(reduceOp);
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
         ValueError,
@@ -379,14 +396,14 @@ void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclRedOp& xcclReduceOp,
+    const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclRedOp& xcclReduceOp,
+    const c10d::ReduceOp& reduceOp,
     const int root,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
@@ -401,7 +418,7 @@ void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclRedOp& xcclReduceOp,
+    const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclAllGather(
