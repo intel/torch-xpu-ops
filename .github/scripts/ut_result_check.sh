@@ -84,6 +84,7 @@ check_test_cases() {
         ["op_ut"]=120408
         ["xpu_inductor"]=8330
         ["test_xpu"]=69
+        ["torch_xpu"]=359
     )
 
     if [[ ! -f "$log_file" ]]; then
@@ -125,7 +126,7 @@ check_test_cases() {
 }
 
 
-if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' || "${ut_suite}" == 'test_xpu' || "${ut_suite}" == 'xpu_inductor' ]]; then
+if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' || "${ut_suite}" == 'op_extended' || "${ut_suite}" == 'op_transformers' || "${ut_suite}" == 'op_ut' || "${ut_suite}" == 'test_xpu' || "${ut_suite}" == 'xpu_inductor' || "${ut_suite}" == 'torch_xpu' ]]; then
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite}"
     echo -e "========================================================================="
