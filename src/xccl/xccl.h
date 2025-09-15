@@ -97,10 +97,7 @@ struct XCCLStream {
 };
 
 using xcclComm_t = std::variant<ccl::communicator, onecclComm_t>;
-using XcclDataType = std::variant<ccl::datatype, onecclDataType_t>;
 using XcclRedOp = std::variant<ccl::reduction, onecclRedOp_t>;
-
-namespace {
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::MIN, onecclRedOp_t::onecclMin},
@@ -156,7 +153,9 @@ const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV1 = {
     {at::kFloat8_e5m2fnuz, ccl::datatype::uint8},
 };
 
-XcclDataType getXcclDataType(
+namespace {
+
+ccl::datatype getXcclDataTypeV1(
     at::ScalarType type,
     bool is_reduction_op = false) {
   if (is_reduction_op) {
@@ -164,24 +163,30 @@ XcclDataType getXcclDataType(
         !isFloat8Type(type),
         "Float8 dtypes are not currently supported for XCCL reductions");
   }
-  bool useCCLV2 = isCCLV2EnabledCached();
-  if (useCCLV2) {
-    auto it = xcclDatatypesV2.find(type);
-    TORCH_CHECK_WITH(
-        TypeError,
-        it != xcclDatatypesV2.end(),
-        "Input tensor data type is not supported for XCCL process group: ",
-        type);
-    return it->second;
-  } else {
-    auto it = xcclDatatypesV1.find(type);
-    TORCH_CHECK_WITH(
-        TypeError,
-        it != xcclDatatypesV1.end(),
-        "Input tensor data type is not supported for XCCL process group: ",
-        type);
-    return it->second;
+  auto it = xcclDatatypesV1.find(type);
+  TORCH_CHECK_WITH(
+      TypeError,
+      it != xcclDatatypesV1.end(),
+      "Input tensor data type is not supported for XCCL process group: ",
+      type);
+  return it->second;
+}
+
+onecclDataType_t getXcclDataTypeV2(
+    at::ScalarType type,
+    bool is_reduction_op = false) {
+  if (is_reduction_op) {
+    TORCH_CHECK(
+        !isFloat8Type(type),
+        "Float8 dtypes are not currently supported for XCCL reductions");
   }
+  auto it = xcclDatatypesV2.find(type);
+  TORCH_CHECK_WITH(
+      TypeError,
+      it != xcclDatatypesV2.end(),
+      "Input tensor data type is not supported for XCCL process group: ",
+      type);
+  return it->second;
 }
 
 XcclRedOp getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
@@ -374,7 +379,6 @@ void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     XcclRedOp& xcclReduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
@@ -382,7 +386,6 @@ void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     XcclRedOp& xcclReduceOp,
     const int root,
     ccl::stream& xcclStream,
@@ -392,14 +395,12 @@ void onecclBroadcast(
     at::Tensor& output,
     xcclComm_t& comm,
     const int root,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     XcclRedOp& xcclReduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
@@ -407,21 +408,18 @@ void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclSend(
     at::Tensor& input,
     xcclComm_t& comm,
     const int dstRank,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclRecv(
     at::Tensor& output,
     xcclComm_t& comm,
     const int srcRank,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclGather(
@@ -429,7 +427,6 @@ void onecclGather(
     std::vector<at::Tensor>& outputs,
     xcclComm_t& comm,
     const int root,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclScatter(
@@ -437,7 +434,6 @@ void onecclScatter(
     at::Tensor& outputs,
     xcclComm_t& comm,
     const int root,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);
 void onecclAllToAll(
@@ -448,7 +444,7 @@ void onecclAllToAll(
     const size_t* recvcounts,
     const size_t* recvdispls,
     size_t size,
-    XcclDataType& xcclDataType,
+    at::ScalarType dataType,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue);

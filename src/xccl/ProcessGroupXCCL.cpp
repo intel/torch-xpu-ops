@@ -844,8 +844,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue,
           int dst) {
-        auto xcclDataType = getXcclDataType(input.scalar_type());
-        xccl::onecclSend(input, comm, dst, xcclDataType, xcclStream, SyclQueue);
+        xccl::onecclSend(input, comm, dst, xcclStream, SyclQueue);
         return;
       },
       dstRank,
@@ -890,9 +889,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue,
           int src) {
-        auto xcclDataType = getXcclDataType(output.scalar_type());
-        xccl::onecclRecv(
-            output, comm, src, xcclDataType, xcclStream, SyclQueue);
+        xccl::onecclRecv(output, comm, src, xcclStream, SyclQueue);
         return;
       },
       srcRank,
@@ -976,15 +973,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const auto root = opts.rootRank;
-        auto xcclDataType = getXcclDataType(inputTensor.scalar_type());
         xccl::onecclGather(
-            inputTensor,
-            outputs,
-            comm,
-            root,
-            xcclDataType,
-            xcclStream,
-            SyclQueue);
+            inputTensor, outputs, comm, root, xcclStream, SyclQueue);
         return;
       },
       OpType::GATHER,
@@ -1075,15 +1065,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
                 input.storage().data_ptr(), stream);
           }
         }
-        auto xcclDataType = getXcclDataType(outputTensor.scalar_type());
         xccl::onecclScatter(
-            inputs,
-            outputTensor,
-            comm,
-            root,
-            xcclDataType,
-            xcclStream,
-            SyclQueue);
+            inputs, outputTensor, comm, root, xcclStream, SyclQueue);
       },
       OpType::SCATTER,
       opts.asyncOp,
@@ -1104,16 +1087,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclAllReduce(
-            input,
-            output,
-            comm,
-            xcclDataType,
-            xcclReduceOp,
-            xcclStream,
-            SyclQueue);
+            input, output, comm, xcclReduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1202,16 +1178,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclAllReduce(
-            input,
-            output,
-            comm,
-            xcclDataType,
-            xcclReduceOp,
-            xcclStream,
-            SyclQueue);
+            input, output, comm, xcclReduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1270,9 +1239,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type());
-        xccl::onecclBroadcast(
-            input, output, comm, root, xcclDataType, xcclStream, SyclQueue);
+        xccl::onecclBroadcast(input, output, comm, root, xcclStream, SyclQueue);
         return;
       },
       OpType::BROADCAST,
@@ -1301,9 +1268,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type());
-        xccl::onecclBroadcast(
-            input, output, comm, root, xcclDataType, xcclStream, SyclQueue);
+        xccl::onecclBroadcast(input, output, comm, root, xcclStream, SyclQueue);
         return;
       },
       OpType::BROADCAST,
@@ -1356,17 +1321,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
-        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
-            input,
-            output,
-            comm,
-            xcclDataType,
-            xcclReduceOp,
-            root,
-            xcclStream,
-            SyclQueue);
+            input, output, comm, xcclReduceOp, root, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
@@ -1401,17 +1358,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
-        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
-            input,
-            output,
-            comm,
-            xcclDataType,
-            xcclReduceOp,
-            root,
-            xcclStream,
-            SyclQueue);
+            input, output, comm, xcclReduceOp, root, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
           auto divisor = getSize();
@@ -1473,9 +1422,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream,
             sycl::queue& SyclQueue) {
-          auto xcclDataType = getXcclDataType(input.scalar_type());
-          xccl::onecclAllGather(
-              input, output, comm, xcclDataType, xcclStream, SyclQueue);
+          xccl::onecclAllGather(input, output, comm, xcclStream, SyclQueue);
           return;
         },
         [](at::xpu::XPUStream&,
@@ -1553,9 +1500,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type());
-        xccl::onecclAllGather(
-            input, output, comm, xcclDataType, xcclStream, SyclQueue);
+        xccl::onecclAllGather(input, output, comm, xcclStream, SyclQueue);
         return;
       },
       OpType::_ALLGATHER_BASE,
@@ -1597,9 +1542,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type());
-        xccl::onecclAllGather(
-            input, output, comm, xcclDataType, xcclStream, SyclQueue);
+        xccl::onecclAllGather(input, output, comm, xcclStream, SyclQueue);
         return;
       },
       OpType::COALESCED,
@@ -1650,16 +1593,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream,
             sycl::queue& SyclQueue) {
-          auto xcclDataType = getXcclDataType(input.scalar_type(), true);
           auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
           xccl::onecclReduceScatter(
-              input,
-              output,
-              comm,
-              xcclDataType,
-              xcclReduceOp,
-              xcclStream,
-              SyclQueue);
+              input, output, comm, xcclReduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
@@ -1746,16 +1682,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduceScatter(
-            input,
-            output,
-            comm,
-            xcclDataType,
-            xcclReduceOp,
-            xcclStream,
-            SyclQueue);
+            input, output, comm, xcclReduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1806,16 +1735,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
           sycl::queue& SyclQueue) {
-        auto xcclDataType = getXcclDataType(input.scalar_type(), true);
         auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduceScatter(
-            input,
-            output,
-            comm,
-            xcclDataType,
-            xcclReduceOp,
-            xcclStream,
-            SyclQueue);
+            input, output, comm, xcclReduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1980,7 +1902,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
             outputSplitSizes, output, &recv_lengths, &recv_offsets);
         c10::xpu::XPUCachingAllocator::recordStream(
             output.storage().data_ptr(), stream);
-        auto xcclDataType = getXcclDataType(input.scalar_type());
         xccl::onecclAllToAll(
             input.data_ptr(),
             send_lengths.data(),
@@ -1989,7 +1910,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
             recv_lengths.data(),
             recv_offsets.data(),
             input.element_size(),
-            xcclDataType,
+            input.scalar_type(),
             comm,
             xcclStream,
             SyclQueue);
@@ -2050,12 +1971,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
           at::Tensor& input = inputTensors[r];
           at::Tensor& output = outputTensors[r];
           if (input.numel() != 0) {
-            auto dtype = getXcclDataType(input.scalar_type());
-            xccl::onecclSend(input, comm, r, dtype, xcclStream, SyclQueue);
+            xccl::onecclSend(input, comm, r, xcclStream, SyclQueue);
           }
           if (output.numel() != 0) {
-            auto dtype = getXcclDataType(output.scalar_type());
-            xccl::onecclRecv(output, comm, r, dtype, xcclStream, SyclQueue);
+            xccl::onecclRecv(output, comm, r, xcclStream, SyclQueue);
           }
         }
         xccl::oneccl_v2_group_end();

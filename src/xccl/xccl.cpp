@@ -23,25 +23,26 @@ void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     XcclRedOp& xcclReduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     onecclAllReduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         std::get<onecclRedOp_t>(xcclReduceOp),
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     ccl::allreduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         std::get<ccl::reduction>(xcclReduceOp),
         std::get<ccl::communicator>(comm),
         xcclStream);
@@ -53,27 +54,28 @@ void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     XcclRedOp& xcclReduceOp,
     const int root,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     onecclReduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         std::get<onecclRedOp_t>(xcclReduceOp),
         root,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     ccl::reduce(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         std::get<ccl::reduction>(xcclReduceOp),
         root,
         std::get<ccl::communicator>(comm),
@@ -87,24 +89,25 @@ void onecclBroadcast(
     at::Tensor& output,
     xcclComm_t& comm,
     const int root,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
     onecclBroadcast(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         root,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::broadcast(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         root,
         std::get<ccl::communicator>(comm),
         xcclStream);
@@ -116,25 +119,26 @@ void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     XcclRedOp& xcclReduceOp,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     onecclReduceScatter(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)output.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         std::get<onecclRedOp_t>(xcclReduceOp),
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     ccl::reduce_scatter(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)output.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         std::get<ccl::reduction>(xcclReduceOp),
         std::get<ccl::communicator>(comm),
         xcclStream);
@@ -146,23 +150,24 @@ void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
     onecclAllGather(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::allgather(
         input.data_ptr(),
         output.data_ptr(),
         (size_t)input.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         std::get<ccl::communicator>(comm),
         xcclStream);
   }
@@ -173,22 +178,23 @@ void onecclSend(
     at::Tensor& input,
     xcclComm_t& comm,
     const int dstRank,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
     onecclSend(
         input.data_ptr(),
         (size_t)input.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         dstRank,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::send(
         input.data_ptr(),
         (size_t)input.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         dstRank,
         std::get<ccl::communicator>(comm),
         xcclStream);
@@ -200,22 +206,23 @@ void onecclRecv(
     at::Tensor& output,
     xcclComm_t& comm,
     const int srcRank,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(output.scalar_type(), false);
     onecclRecv(
         output.data_ptr(),
         (size_t)output.numel(),
-        std::get<onecclDataType_t>(xcclDataType),
+        xcclDataType,
         srcRank,
         std::get<onecclComm_t>(comm),
         &SyclQueue);
   } else {
+    auto xcclDataType = getXcclDataTypeV1(output.scalar_type(), false);
     ccl::recv(
         output.data_ptr(),
         (size_t)output.numel(),
-        std::get<ccl::datatype>(xcclDataType),
+        xcclDataType,
         srcRank,
         std::get<ccl::communicator>(comm),
         xcclStream);
@@ -228,12 +235,12 @@ void onecclGather(
     std::vector<at::Tensor>& outputs,
     xcclComm_t& comm,
     const int root,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   size_t count = inputs.numel();
 
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(inputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
     onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
     onecclCommUserRank(std::get<onecclComm_t>(comm), &cur_rank);
@@ -245,7 +252,7 @@ void onecclGather(
           onecclRecv(
               recvbuff,
               count,
-              std::get<onecclDataType_t>(xcclDataType),
+              xcclDataType,
               r,
               std::get<onecclComm_t>(comm),
               &SyclQueue);
@@ -258,13 +265,14 @@ void onecclGather(
       onecclSend(
           inputs.data_ptr(),
           count,
-          std::get<onecclDataType_t>(xcclDataType),
+          xcclDataType,
           root,
           std::get<onecclComm_t>(comm),
           &SyclQueue);
     }
     onecclGroupEnd();
   } else {
+    auto xcclDataType = getXcclDataTypeV1(inputs.scalar_type(), false);
     int numranks = std::get<ccl::communicator>(comm).size();
     int cur_rank = std::get<ccl::communicator>(comm).rank();
     ccl::group_start();
@@ -275,7 +283,7 @@ void onecclGather(
           ccl::recv(
               recvbuff,
               count,
-              std::get<ccl::datatype>(xcclDataType),
+              xcclDataType,
               r,
               std::get<ccl::communicator>(comm),
               xcclStream);
@@ -288,7 +296,7 @@ void onecclGather(
       ccl::send(
           inputs.data_ptr(),
           count,
-          std::get<ccl::datatype>(xcclDataType),
+          xcclDataType,
           root,
           std::get<ccl::communicator>(comm),
           xcclStream);
@@ -303,10 +311,10 @@ void onecclScatter(
     at::Tensor& outputs,
     xcclComm_t& comm,
     const int root,
-    XcclDataType& xcclDataType,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(outputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
     onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
     onecclCommUserRank(std::get<onecclComm_t>(comm), &cur_rank);
@@ -318,7 +326,7 @@ void onecclScatter(
           onecclSend(
               inputs[r].data_ptr(),
               send_count,
-              std::get<onecclDataType_t>(xcclDataType),
+              xcclDataType,
               r,
               std::get<onecclComm_t>(comm),
               &SyclQueue);
@@ -332,13 +340,14 @@ void onecclScatter(
       onecclRecv(
           outputs.data_ptr(),
           recv_count,
-          std::get<onecclDataType_t>(xcclDataType),
+          xcclDataType,
           root,
           std::get<onecclComm_t>(comm),
           &SyclQueue);
     }
     onecclGroupEnd();
   } else {
+    auto xcclDataType = getXcclDataTypeV1(outputs.scalar_type(), false);
     int numranks = std::get<ccl::communicator>(comm).size();
     int cur_rank = std::get<ccl::communicator>(comm).rank();
     ccl::group_start();
@@ -349,7 +358,7 @@ void onecclScatter(
           ccl::send(
               inputs[r].data_ptr(),
               send_count,
-              std::get<ccl::datatype>(xcclDataType),
+              xcclDataType,
               r,
               std::get<ccl::communicator>(comm),
               xcclStream);
@@ -363,7 +372,7 @@ void onecclScatter(
       ccl::recv(
           outputs.data_ptr(),
           recv_count,
-          std::get<ccl::datatype>(xcclDataType),
+          xcclDataType,
           root,
           std::get<ccl::communicator>(comm),
           xcclStream);
@@ -381,12 +390,13 @@ void onecclAllToAll(
     const size_t* recvcounts,
     const size_t* recvdispls,
     size_t size,
-    XcclDataType& xcclDataType,
+    at::ScalarType dataType,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
   xccl::oneccl_v2_group_start();
   if (isCCLV2EnabledCached()) {
+    auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
     onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
     for (const auto r : c10::irange(numranks)) {
@@ -394,7 +404,7 @@ void onecclAllToAll(
         onecclSend(
             ((char*)sendbuff) + senddispls[r] * size,
             sendcounts[r],
-            std::get<onecclDataType_t>(xcclDataType),
+            xcclDataType,
             r,
             std::get<onecclComm_t>(comm),
             &SyclQueue);
@@ -403,20 +413,21 @@ void onecclAllToAll(
         onecclRecv(
             ((char*)recvbuff) + recvdispls[r] * size,
             recvcounts[r],
-            std::get<onecclDataType_t>(xcclDataType),
+            xcclDataType,
             r,
             std::get<onecclComm_t>(comm),
             &SyclQueue);
       }
     }
   } else {
+    auto xcclDataType = getXcclDataTypeV1(dataType, false);
     int numranks = std::get<ccl::communicator>(comm).size();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         ccl::send(
             ((char*)sendbuff) + senddispls[r] * size,
             sendcounts[r],
-            std::get<ccl::datatype>(xcclDataType),
+            xcclDataType,
             r,
             std::get<ccl::communicator>(comm),
             xcclStream);
@@ -425,7 +436,7 @@ void onecclAllToAll(
         ccl::recv(
             ((char*)recvbuff) + recvdispls[r] * size,
             recvcounts[r],
-            std::get<ccl::datatype>(xcclDataType),
+            xcclDataType,
             r,
             std::get<ccl::communicator>(comm),
             xcclStream);

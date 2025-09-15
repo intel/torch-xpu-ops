@@ -444,7 +444,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;
   int traceBufferSize_;
   bool enableNanCheck_;
-  
+
   friend class HeartbeatMonitorXCCL;
 };
 
