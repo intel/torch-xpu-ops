@@ -322,7 +322,9 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
-ProcessGroupXCCL::Options::Options() : Backend::Options(XCCL_BACKEND_NAME) {}
+ProcessGroupXCCL::Options::Options(bool is_high_priority_stream)
+    : Backend::Options(XCCL_BACKEND_NAME),
+      is_high_priority_stream(is_high_priority_stream) {}
 
 static std::atomic<size_t> process_group_id = 0;
 
@@ -348,15 +350,6 @@ std::string ProcessGroupXCCL::createLogPrefix() const {
 
 const std::string& ProcessGroupXCCL::logPrefix() const {
   return logPrefix_;
-}
-
-const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
-  if (options_->global_ranks_in_group.empty() && local_id_ == 0) {
-    static std::vector<uint64_t> globalRanks(size_);
-    std::iota(globalRanks.begin(), globalRanks.end(), 0);
-    return globalRanks;
-  }
-  return options_->global_ranks_in_group;
 }
 
 ProcessGroupXCCL::ProcessGroupXCCL(
@@ -608,10 +601,6 @@ void ProcessGroupXCCL::groupEnd() {
   ccl::group_end();
   --xcclActiveGroupCounter_;
 }
-
-ProcessGroupXCCL::Options::Options(bool is_high_priority_stream)
-    : Backend::Options(XCCL_BACKEND_NAME),
-      is_high_priority_stream(is_high_priority_stream) {}
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
 void ProcessGroupXCCL::startCoalescing() {

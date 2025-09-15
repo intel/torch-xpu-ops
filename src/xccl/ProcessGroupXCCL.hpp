@@ -133,7 +133,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   };
 
   ProcessGroupXCCL(
-      const c10::intrusive_ptr<Store>& store,
+      c10::intrusive_ptr<Store> store,
       int rank,
       int size,
       c10::intrusive_ptr<Options> options = Options::create());
