@@ -1,8 +1,11 @@
+import time
+
 import torch
 from torch.profiler import profile, ProfilerActivity
 
 device = "xpu"
 backward = False
+num_iter = 20
 
 shape_list = [(8193, 8193)]
 k = 4096
@@ -33,9 +36,22 @@ for shape in shape_list:
                 activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
                 record_shapes=True,
             ) as prof:
-                for i in range(20):
+                for i in range(num_iter):
                     if dim is None:
                         torch.topk(input, k)
                     else:
                         torch.topk(input, k, dim, largest, sorted)
             print(prof.key_averages().table(sort_by="xpu_time_total"))
+
+            # E2E time
+            torch.xpu.synchronize()
+            t1 = time.time()
+            for i in range(num_iter):
+                if dim is None:
+                    torch.topk(input, k)
+                else:
+                    torch.topk(input, k, dim, largest, sorted)
+            torch.xpu.synchronize()
+            t2 = time.time()
+            e2e_time = (t2 - t1) / num_iter
+            print("E2E total time:", f"{float(e2e_time):.20f}")

@@ -6,20 +6,14 @@
 #include <torch/library.h>
 
 #include <ATen/native/Resize.h>
-#include <xpu/ATen/ops/copy.h>
-#include <xpu/ATen/ops/resize_native.h>
-#include <xpu/ATen/ops/set_native.h>
+#include <ATen/ops/copy.h>
+#include <ATen/ops/resize_native.h>
+#include <ATen/ops/set_native.h>
 
 #include <ATen/native/xpu/sycl/ResizeKernel.h>
 
 namespace at {
 
-namespace native {
-const at::Tensor& resize_(
-    const at::Tensor& self,
-    at::IntArrayRef size,
-    ::std::optional<at::MemoryFormat> memory_format = ::std::nullopt);
-}
 namespace native::xpu {
 
 const Tensor& resize_xpu_(

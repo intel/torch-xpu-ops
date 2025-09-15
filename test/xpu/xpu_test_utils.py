@@ -325,6 +325,10 @@ _ops_without_cuda_support = [
     "histogramdd",
 ]
 
+_ops_dtype_different_cuda_support = {
+    "histc": {"forward": {torch.bfloat16, torch.float16}},
+}
+
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
 # but xpu can pass these case, and assert 'unexpected success'
 # the list will pass these case.
@@ -916,6 +920,12 @@ class XPUPatchForImport:
                     backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
+            if opinfo.name in _ops_dtype_different_cuda_support:
+                if "forward" in _ops_dtype_different_cuda_support[opinfo.name]:
+                    opinfo.dtypesIfXPU.update(
+                        _ops_dtype_different_cuda_support[opinfo.name]["forward"]
+                    )
+
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
                 fp64_dtypes = [
                     torch.float64,
@@ -1160,8 +1170,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
-            + test_case
+            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
         )
         test_command += skip_options
     elif exe_list is not None:
@@ -1171,13 +1180,11 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
-            + test_case
+            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest --timeout 600 -v --junit-xml=./op_ut_with_skip_{test_case}.xml "
-            + test_case
+            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
         )
     return os.system(test_command)
