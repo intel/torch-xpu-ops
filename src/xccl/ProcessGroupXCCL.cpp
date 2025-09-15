@@ -283,6 +283,11 @@ bool ProcessGroupXCCL::WorkXCCL::isCompleted() {
 
 void ProcessGroupXCCL::WorkXCCL::synchronize() {
   synchronizeStream();
+  if (c10d::allow_inflight_collective_as_graph_input()) {
+    c10d::unregister_work(
+        c10::intrusive_ptr<
+            ProcessGroupXCCL::WorkXCCL>::unsafe_reclaim_from_nonowning(this));
+  }
 }
 
 void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
