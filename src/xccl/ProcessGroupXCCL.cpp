@@ -369,7 +369,6 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       options_(std::move(options)),
       xcclCommCounter_(0),
       local_id_(process_group_id++) {
-  this->setGroupUid(options_->group_name);
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);

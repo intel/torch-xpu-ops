@@ -434,7 +434,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
-  const c10::intrusive_ptr<Options> options_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
   std::set<int> usedDeviceIdxs_;
