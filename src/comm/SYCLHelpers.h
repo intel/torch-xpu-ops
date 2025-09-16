@@ -139,8 +139,14 @@ sycl_kernel_submit(
   q.submit(cgf);
 }
 
+#ifdef __SYCL_DEVICE_ONLY__
+  #define CONSTANT __attribute__((opencl_constant))
+#else
+  #define CONSTANT
+#endif
+
 #define SYCL_KERNEL_STRING(var, str) \
-  static const __attribute__((opencl_constant)) char var[] = str;
+  static const CONSTANT char var[] = str;
 #define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
 
 #define SYCL_PRINT(fmt_str, ...)                \
