@@ -207,11 +207,6 @@ with XPUPatchForImport(False):
             torch.testing.assert_close(dense, dense2)
 
             # verify backward
-            # dense.retain_grad()
-            # ref_output_values = jagged_values.clone().detach().requires_grad_(True)
-            # ref_values = dense.clone().detach().requires_grad_(True)
-            # jagged_values.backward(ref_output_values)
-            # torch.testing.assert_close(dense.grad, ref_values)
 
         @given(
             num_jagged_dim=st.integers(1, 5),
@@ -327,7 +322,6 @@ with XPUPatchForImport(False):
                 device,
                 mark_dynamic=True,
             )
-            # values_2d = values_2d.clone().detach().requires_grad_(True)
 
             def jagged_to_dense(
                 values: torch.Tensor,
@@ -463,20 +457,6 @@ with XPUPatchForImport(False):
 
             torch.testing.assert_close(output, output_ref)
             torch.testing.assert_close(output_f, output_ref)
-
-            # gradcheck(
-            #     torch.ops.fbgemm.jagged_to_padded_dense,
-            #     (
-            #         x_values.float().requires_grad_(True),
-            #         x_offsets,
-            #         max_lengths,
-            #         padding_value,
-            #     ),
-            #     eps=1e-2,
-            #     atol=1e-3,
-            #     rtol=1e-3,
-            # )
-
 
 instantiate_device_type_tests(CumSumTest, globals(), only_for="xpu", allow_xpu=True)
 
