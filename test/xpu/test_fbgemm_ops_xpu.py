@@ -19,7 +19,7 @@ try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
-    
+
 
 def generate_jagged_tensor(
     num_jagged_dim: int,
@@ -164,11 +164,11 @@ with XPUPatchForImport(False):
             device: torch.device,
             precompute_total_L: bool,
         ) -> None:
-            
+
             # import debugpy
             # debugpy.listen(("0.0.0.0", 5678))
             # debugpy.wait_for_client()
-            
+
             # Generate multi-dim jagged tensor
             values_2d, offsets, max_lengths = generate_jagged_tensor(
                 num_jagged_dim, outer_dense_size, inner_dense_size, dtype, device
@@ -359,7 +359,7 @@ with XPUPatchForImport(False):
                 jagged_values, jagged_offsets = torch.ops.fbgemm.dense_to_jagged(dense, offsets)
                 jagged_values_f = torch.ops.fbgemm.dense_to_jagged_forward(dense, offsets)
                 torch.testing.assert_close(jagged_values, jagged_values_f)
-                return jagged_values, jagged_offsets 
+                return jagged_values, jagged_offsets
 
             jagged_values, jagged_offsets = dense_to_jagged_noL(dense, offsets)
             jagged_values, jagged_offsets = dense_to_jagged_withL(dense, offsets, total_L)
@@ -371,8 +371,8 @@ with XPUPatchForImport(False):
             )
 
             # verify forward
-            assert dense.size() == dense2.size()            
-            
+            assert dense.size() == dense2.size()
+
 
     class JaggedToPaddedDenseTest(TestCase):
         @given(
@@ -441,7 +441,7 @@ with XPUPatchForImport(False):
                 max_lengths,
                 padding_value=padding_value,
             )
-            
+
             output_f = torch.ops.fbgemm.jagged_to_padded_dense_forward(
                 x_values,
                 x_offsets,
