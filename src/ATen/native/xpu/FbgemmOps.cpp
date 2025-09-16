@@ -188,10 +188,6 @@ class JaggedToPaddedDenseOp
       const std::vector<Tensor>& offsets,
       const c10::SymIntArrayRef max_lengths,
       const double padding_value) {
-    // uncomment when implement backward
-    // ctx->save_for_backward(offsets);
-    // ctx->saved_data["total_L"] = values.sym_size(0);
-
     static auto op =
         c10::Dispatcher::singleton()
             .findSchemaOrThrow("fbgemm::jagged_to_padded_dense_forward", "")
