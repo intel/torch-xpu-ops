@@ -444,20 +444,6 @@ with XPUPatchForImport(False):
             torch.testing.assert_close(output, output_ref)
             torch.testing.assert_close(output_f, output_ref)
 
-            # gradcheck(
-            #     torch.ops.fbgemm.jagged_to_padded_dense,
-            #     (
-            #         x_values.float().requires_grad_(True),
-            #         x_offsets,
-            #         max_lengths,
-            #         padding_value,
-            #     ),
-            #     eps=1e-2,
-            #     atol=1e-3,
-            #     rtol=1e-3,
-            # )
-
-
 instantiate_device_type_tests(CumSumTest, globals(), only_for="xpu", allow_xpu=True)
 
 instantiate_device_type_tests(DenseToJaggedTest, globals(), only_for="xpu", allow_xpu=True)
