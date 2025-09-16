@@ -45,42 +45,26 @@ jobs:
   get_runner:
     runs-on: ${{ inputs.runner }}
     outputs:
-      test_host: ${{ steps.runner-info.outputs.test_host }}
-      test_user: ${{ steps.runner-info.outputs.test_user }}
-      test_group: ${{ steps.runner-info.outputs.test_group }}
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
     steps:
-      - name: Get runner info
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
         id: runner-info
-        run: |
-          # get test runner
-          echo "test_host=${RUNNER_NAME}" |tee -a ${GITHUB_OUTPUT}
-          echo "test_user=$(id -u)" |tee -a ${GITHUB_OUTPUT}
-          echo "test_group=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
-          # show host info
-          cat /etc/os-release
-          uname -a
-          source /opt/intel/oneapi/setvars.sh
-          sycl-ls
-          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-      - name: Cleanup workspace
-        if: ${{ always() }}
-        run: |
-          # clean docker cache
-          docker stop $(docker ps -aq) || true
-          docker system prune -af || true
-          # clean files
-          ls -al
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+        uses: ./.github/actions/get-runner
 
   biisect-search:
     needs: get_runner
-    runs-on: ${{ needs.get_runner.outputs.test_host }}
+    runs-on: ${{ needs.get_runner.outputs.runner_id }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
-              -u ${{ needs.get_runner.outputs.test_user }}:${{ needs.get_runner.outputs.test_group }}
+              -u ${{ needs.get_runner.outputs.user_id }} --group-add ${{ needs.get_runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         SEARCH_COMMITS: ${{ inputs.search_commits }}
@@ -95,33 +79,19 @@ jobs:
        HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
        HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
-      - name: Check runner
-        run: |
-          ls -al
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          sudo rm -rf /tmp/xpu-tool
-      - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
         with:
-          python-version: ${{ inputs.python }}
-      - name: Check runner
-        run: |
-          hostname && whoami && id
-          clinfo --list
-          gcc -v && g++ -v
-          which python && which pip
-          python -V
-          pip install -U pip wheel setuptools
-          pip list
-          uname -a
-          dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev'
-          pip install cmake ninja pandas psutil scipy requests pybind11
-          mkdir gs-logs gs-search
-          echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
+          path: gs-scripts
+      - name: Prepare test env
+        uses: ./gs-scripts/.github/actions/linux-testenv
+        with:
+          pytorch: nightly_wheel
+          python: ${{ inputs.python }}
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
-          rm -rf ~/intel ~/.intel /tmp/intel
+          rm -rf ~/intel ~/.intel ${HOME}/intel
           if [ "${{ inputs.oneapi }}" == "2025.1" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/3435dc45-055e-4f7a-86b1-779931772404/intel-deep-learning-essentials-2025.1.3.7_offline.sh"
           elif [ "${{ inputs.oneapi }}" == "2025.2" ];then
@@ -130,42 +100,42 @@ jobs:
             ONEAPI_URL="${{ inputs.oneapi }}"
           fi
           wget -q -O oneapi.sh "${ONEAPI_URL}"
-          bash oneapi.sh -a -s --eula accept --action install --install-dir /tmp/intel/oneapi
-          echo "XPU_ONEAPI_PATH=/tmp/intel/oneapi" >> ${GITHUB_ENV}
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-        with:
-          path: gs-scripts
-      - name: Prepare source code
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
+
+      - name: Summary file
         run: |
-          git clone https://github.com/pytorch/pytorch gs-pytorch
-          cd gs-pytorch
+          mkdir -p gs-logs
+          echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
+      - name: Get latest versions
+        run: |
+          cd pytorch
           LATEST_PT_COMMIT="$(git rev-parse HEAD)"
-          cd ..
-          git clone https://github.com/intel/torch-xpu-ops gs-torch-xpu-ops
-          cd gs-torch-xpu-ops
+          cd third_party/torch-xpu-ops
           LATEST_XPU_COMMIT="$(git rev-parse HEAD)"
-          cd ..
           echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> ${GITHUB_ENV}
           echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> ${GITHUB_ENV}
       - name: Prepare test env
         run: |
-          pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
           if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
-            pip install transformers==4.44.2
+            pip install transformers
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
-            pip install --no-deps git+https://github.com/huggingface/pytorch-image-models@v1.0.14
-            pip install $(curl -sSL https://raw.githubusercontent.com/huggingface/pytorch-image-models/v1.0.14/requirements.txt | grep -vE torch)
+            pip install timm
           elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
             model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
             git clone https://github.com/pytorch/benchmark gs-benchmark
             cd gs-benchmark
+            pip install -r requirements.txt
             echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
             python install.py ${model_name}
-          else
-            pip install -r gs-pytorch/.ci/docker/requirements-ci.txt
+            cd ..
           fi
-          pip uninstall -y torch && pip uninstall -y torch
+          pip uninstall -y torchvision torchaudio
+          git clone https://github.com/pytorch/vision gs-vision
+          cd gs-vision
+          python setup.py install
+          cd ..
+          pip uninstall -y torch
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
@@ -186,7 +156,7 @@ jobs:
                   > ${{ github.workspace }}/gs-logs/search-${new_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           if [ "${old_status}" != "${new_status}" ];then
-            cd gs-pytorch
+            cd pytorch
             git reset --hard
             rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
             git bisect start ${new_commit} ${old_commit}
@@ -219,7 +189,7 @@ jobs:
                   > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${new_commit}.log && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
           if [ "${old_status}" != "${new_status}" ];then
-            cd gs-pytorch
+            cd pytorch
             git reset --hard
             rsync -avz --delete ${{ github.workspace }}/gs-scripts/ gs-scripts/
             git bisect start ${new_commit} ${old_commit}
