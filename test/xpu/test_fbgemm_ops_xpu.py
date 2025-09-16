@@ -163,11 +163,6 @@ with XPUPatchForImport(False):
             device: torch.device,
             precompute_total_L: bool,
         ) -> None:
-
-            # import debugpy
-            # debugpy.listen(("0.0.0.0", 5678))
-            # debugpy.wait_for_client()
-
             # Generate multi-dim jagged tensor
             values_2d, offsets, max_lengths = generate_jagged_tensor(
                 num_jagged_dim, outer_dense_size, inner_dense_size, dtype, device
@@ -457,6 +452,7 @@ with XPUPatchForImport(False):
 
             torch.testing.assert_close(output, output_ref)
             torch.testing.assert_close(output_f, output_ref)
+
 
 instantiate_device_type_tests(CumSumTest, globals(), only_for="xpu", allow_xpu=True)
 
