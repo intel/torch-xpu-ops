@@ -93,11 +93,10 @@ namespace c10d {
 struct XCCLStream {
   at::xpu::XPUStream xpuStream;
   ccl::stream cclStream;
-  sycl::queue syclQueue;
+  void* syclQueue;
 };
 
 using xcclComm_t = std::variant<ccl::communicator, onecclComm_t>;
-using XcclRedOp = std::variant<ccl::reduction, onecclRedOp_t>;
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::MIN, onecclRedOp_t::onecclMin},
@@ -400,7 +399,7 @@ void onecclAllReduce(
     xcclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
@@ -408,53 +407,53 @@ void onecclReduce(
     const c10d::ReduceOp& reduceOp,
     const int root,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclBroadcast(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclSend(
     at::Tensor& input,
     xcclComm_t& comm,
     const int dstRank,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclRecv(
     at::Tensor& output,
     xcclComm_t& comm,
     const int srcRank,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclGather(
     const at::Tensor& inputs,
     std::vector<at::Tensor>& outputs,
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclScatter(
     const std::vector<at::Tensor>& inputs,
     at::Tensor& outputs,
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 void onecclAllToAll(
     void* sendbuff,
     const size_t* sendcounts,
@@ -466,7 +465,7 @@ void onecclAllToAll(
     at::ScalarType dataType,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
-    sycl::queue& SyclQueue);
+    void* SyclQueue);
 
 } // namespace xccl
 } // namespace c10d

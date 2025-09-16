@@ -463,7 +463,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
   xcclStreamsMap_.emplace(
       deviceKey,
-      XCCLStream{at::xpu::XPUStream(stream), std::move(xccl_stream), q});
+      XCCLStream{at::xpu::XPUStream(stream), std::move(xccl_stream), &q});
   xcclEventsMap_.emplace(deviceKey, at::xpu::XPUEvent());
 
   LOG(INFO) << logPrefix()
@@ -578,12 +578,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   auto stream = asyncOp ? xcclStreamsMap_.at(key).xpuStream
                         : at::xpu::getCurrentXPUStream(device.index());
   std::unique_ptr<ccl::stream> cclstream;
-  std::unique_ptr<sycl::queue> syclQueue;
+  void* syclQueue;
   if (asyncOp) {
     cclstream =
         std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).cclStream);
-    syclQueue =
-        std::make_unique<sycl::queue>(xcclStreamsMap_.at(key).syclQueue);
+    syclQueue = xcclStreamsMap_.at(key).syclQueue;
     syncStream(device, xcclEventsMap_[key], stream);
   } else {
     auto StreamKey = key + "_" +
@@ -591,16 +590,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     auto it = xcclStreamsMap_.find(StreamKey);
     if (it != xcclStreamsMap_.end()) {
       cclstream = std::make_unique<ccl::stream>(it->second.cclStream);
-      syclQueue = std::make_unique<sycl::queue>(it->second.syclQueue);
+      syclQueue = it->second.syclQueue;
     } else {
       LOG(INFO) << "Current stream id changed, create new ccl stream";
       cclstream =
           std::make_unique<ccl::stream>(ccl::create_stream(stream.queue()));
-      syclQueue = std::make_unique<sycl::queue>(stream.queue());
+      syclQueue = &stream.queue();
       std::lock_guard<std::mutex> lock(mutex_);
       xcclStreamsMap_.emplace(
           StreamKey,
-          XCCLStream{at::xpu::XPUStream(stream), *cclstream, *syclQueue});
+          XCCLStream{at::xpu::XPUStream(stream), *cclstream, syclQueue});
     }
   }
 
@@ -647,7 +646,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   pre(stream, work);
 
   for (const auto i : c10::irange(inputs.size())) {
-    fn(inputs[i], outputs[i], *comm, stream, *cclstream, *syclQueue);
+    fn(inputs[i], outputs[i], *comm, stream, *cclstream, syclQueue);
   }
 
   post(stream, work);
@@ -842,7 +841,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue,
+          void* SyclQueue,
           int dst) {
         xccl::onecclSend(input, comm, dst, xcclStream, SyclQueue);
         return;
@@ -887,7 +886,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue,
+          void* SyclQueue,
           int src) {
         xccl::onecclRecv(output, comm, src, xcclStream, SyclQueue);
         return;
@@ -971,7 +970,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         const auto root = opts.rootRank;
         xccl::onecclGather(
             inputTensor, outputs, comm, root, xcclStream, SyclQueue);
@@ -1058,7 +1057,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         if (getRank() == root) {
           for (auto input : inputs) {
             c10::xpu::XPUCachingAllocator::recordStream(
@@ -1086,7 +1085,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclAllReduce(
             input, output, comm, opts.reduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1176,7 +1175,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclAllReduce(
             input, output, comm, opts.reduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1236,7 +1235,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclBroadcast(input, output, comm, root, xcclStream, SyclQueue);
         return;
       },
@@ -1265,7 +1264,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_broadcast_oop(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclBroadcast(input, output, comm, root, xcclStream, SyclQueue);
         return;
       },
@@ -1317,7 +1316,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
         xccl::onecclReduce(
             input, output, comm, opts.reduceOp, root, xcclStream, SyclQueue);
@@ -1353,7 +1352,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         const int root = opts.rootRank + opts.rootTensor;
         xccl::onecclReduce(
             input, output, comm, opts.reduceOp, root, xcclStream, SyclQueue);
@@ -1417,7 +1416,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream,
-            sycl::queue& SyclQueue) {
+            void* SyclQueue) {
           xccl::onecclAllGather(input, output, comm, xcclStream, SyclQueue);
           return;
         },
@@ -1495,7 +1494,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclAllGather(input, output, comm, xcclStream, SyclQueue);
         return;
       },
@@ -1537,7 +1536,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclAllGather(input, output, comm, xcclStream, SyclQueue);
         return;
       },
@@ -1588,7 +1587,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream,
-            sycl::queue& SyclQueue) {
+            void* SyclQueue) {
           xccl::onecclReduceScatter(
               input, output, comm, opts.reduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1676,7 +1675,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclReduceScatter(
             input, output, comm, opts.reduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1728,7 +1727,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::onecclReduceScatter(
             input, output, comm, opts.reduceOp, xcclStream, SyclQueue);
 #if !defined(XCCL_HAS_AVG)
@@ -1884,7 +1883,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         std::vector<size_t> send_lengths(size_);
         std::vector<size_t> recv_lengths(size_);
         std::vector<size_t> send_offsets(size_);
@@ -1957,7 +1956,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream,
-          sycl::queue& SyclQueue) {
+          void* SyclQueue) {
         xccl::oneccl_group_start();
         for (const int r :
              c10::irange(static_cast<int>(outputTensors.size()))) {
