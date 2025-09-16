@@ -25,8 +25,7 @@ template <
     int r_args_depth = 1,
     int res_arg_index = 0>
 struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  template <typename TLA, typename TLW>
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  template <typename TLA, typename TLW> void operator()(
       const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
@@ -481,8 +480,7 @@ std::vector<Tensor> foreach_norm_kernel(
 
 template <typename T, int SIMD>
 struct LpMaxFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  template <typename TLA, typename TLW>
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  template <typename TLA, typename TLW> void operator()(
       int64_t chunk_size,
       TLA tlAddressMeta,
       TLW tlWGMeta,
