@@ -29,6 +29,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # dataset
+        dataset_dir="${RUNNER_TEMP}/_datasets/imagenet"
         if [ ! -d ${dataset_dir} ];then
           rm -rf ${dataset_dir} && mkdir -p ${dataset_dir} && cd ${dataset_dir}
           wget -O valprep.sh https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh
@@ -36,6 +37,7 @@ runs:
           tar -xf ILSVRC2012_img_val.tar
           bash valprep.sh
         fi
+        echo "dataset_dir=${dataset_dir}" >> ${GITHUB_ENV}
     - name: PT2E Test (${{ inputs.dt }}  ${{ inputs.scenario }})
       shell: bash -xe {0}
       run: |
