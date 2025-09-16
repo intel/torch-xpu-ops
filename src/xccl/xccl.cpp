@@ -3,7 +3,7 @@
 namespace c10d {
 namespace xccl {
 
-void oneccl_v2_group_start() {
+void oneccl_group_start() {
   if (isCCLV2EnabledCached()) {
     onecclGroupStart();
   } else {
@@ -11,7 +11,7 @@ void oneccl_v2_group_start() {
   }
 }
 
-void oneccl_v2_group_end() {
+void oneccl_group_end() {
   if (isCCLV2EnabledCached()) {
     onecclGroupEnd();
   } else {
@@ -400,7 +400,7 @@ void onecclAllToAll(
     xcclComm_t& comm,
     ccl::stream& xcclStream,
     sycl::queue& SyclQueue) {
-  xccl::oneccl_v2_group_start();
+  xccl::oneccl_group_start();
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
@@ -449,7 +449,7 @@ void onecclAllToAll(
       }
     }
   }
-  xccl::oneccl_v2_group_end();
+  xccl::oneccl_group_end();
   return;
 }
 

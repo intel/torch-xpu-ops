@@ -190,6 +190,7 @@ onecclDataType_t getXcclDataTypeV2(
   return it->second;
 }
 
+// V1 specific function to avoid variant overhead
 ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
@@ -217,6 +218,7 @@ ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
   }
 }
 
+// V2 specific function to avoid variant overhead
 onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
@@ -390,8 +392,8 @@ std::shared_ptr<xcclComm_t> createXCCLCommHelper(
 
 namespace xccl {
 
-void oneccl_v2_group_start();
-void oneccl_v2_group_end();
+void oneccl_group_start();
+void oneccl_group_end();
 void onecclAllReduce(
     at::Tensor& input,
     at::Tensor& output,
