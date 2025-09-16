@@ -99,7 +99,7 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ github.event_name }}" == "pull_request" ];then
+        if [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
           cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
         else
@@ -139,7 +139,7 @@ runs:
           fi
           # for dlrm
           pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           # for soft_actor_critic, temp fix
           pip install git+https://github.com/nocoding03/gym@fix-np
           cd ../pytorch
@@ -152,10 +152,13 @@ runs:
           TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
           sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
-          python install.py --continue_on_fail
+          # python install.py --continue_on_fail
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          pip install dominate
+          python install.py Super_SloMo
           # for dlrm
           pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install --no-deps
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
@@ -169,6 +172,11 @@ runs:
           pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu
         else
           pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        fi
+        if [ "${{ inputs.suite }}" != "None" ];then
+          # To install numpy 1.x for benchmarks as CUDA
+          # yolov requires numpy>=1.23
+          pip install -U numpy==1.26.4
         fi
     - name: Torch Config
       shell: bash -xe {0}

@@ -4,6 +4,7 @@
 #include <ATen/native/AdaptivePooling.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/xpu/sycl/LaunchUtils.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <comm/MemoryFormat.h>
 #include <comm/xpu_aten.h>
 #include <vector>
@@ -627,6 +628,220 @@ struct AdaptiveAvgPool2dKernelFunctor {
   PackedTensorAccessor64<scalar_t, 4> output_;
 };
 
+template <typename scalar_t, typename opmath_t, typename vec_t, int vec_size>
+struct AdaptiveAvgPool2dKernelFunctor_cl {
+  void operator()(sycl::nd_item<1> item) const {
+    int64_t index = item.get_global_linear_id();
+    if (index < numel_) {
+      int _ow, _oh, _oc, _ob;
+      int oc_vec_ = oc_ / vec_size;
+
+      _oc = index % oc_vec_;
+      _ow = index / oc_vec_ % ow_;
+      _oh = index / oc_vec_ / ow_ % oh_;
+      _ob = index / oc_vec_ / ow_ / oh_;
+
+      int64_t _ih0 = native::start_index(_oh, oh_, ih_);
+      int64_t _ih1 = native::end_index(_oh, oh_, ih_);
+      int64_t _iw0 = native::start_index(_ow, ow_, iw_);
+      int64_t _iw1 = native::end_index(_ow, ow_, iw_);
+      int64_t kh = _ih1 - _ih0;
+      int64_t kw = _iw1 - _iw0;
+      int64_t _ib = _ob;
+      int64_t _ic = _oc;
+
+      opmath_t sum[vec_size] = {static_cast<opmath_t>(0)};
+      for (int _ih = _ih0; _ih < _ih1; _ih++) {
+        for (int _iw = _iw0; _iw < _iw1; _iw++) {
+          auto read = input_
+              [_ic + _iw * oc_vec_ + _ih * oc_vec_ * iw_ +
+               _ib * ih_ * iw_ * oc_vec_];
+#pragma unroll
+          for (int v = 0; v < vec_size; v++) {
+            sum[v] += opmath_t(read[v]);
+          }
+        }
+      }
+#pragma unroll
+      for (int v = 0; v < vec_size; v++) {
+        sum[v] /= kh * kw;
+      }
+      vec_t output_value;
+#pragma unroll
+      for (int v = 0; v < vec_size; v++) {
+        output_value[v] = static_cast<scalar_t>(sum[v]);
+      }
+      output_[index] = output_value;
+    }
+  }
+  AdaptiveAvgPool2dKernelFunctor_cl(
+      vec_t* output,
+      const vec_t* input,
+      int ih,
+      int iw,
+      int ob,
+      int oc,
+      int oh,
+      int ow,
+      int64_t numel)
+      : output_(output),
+        input_(input),
+        ih_(ih),
+        iw_(iw),
+        ob_(ob),
+        oc_(oc),
+        oh_(oh),
+        ow_(ow),
+        numel_(numel) {}
+
+ private:
+  int ih_;
+  int iw_;
+  int ob_;
+  int oc_;
+  int oh_;
+  int ow_;
+  int64_t numel_;
+  const vec_t* input_;
+  vec_t* output_;
+};
+
+#define LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(                                  \
+    scalar_t,                                                             \
+    opmath_t,                                                             \
+    vec_size,                                                             \
+    num_wg,                                                               \
+    wg_size,                                                              \
+    queue,                                                                \
+    output,                                                               \
+    input,                                                                \
+    ih,                                                                   \
+    iw,                                                                   \
+    ob,                                                                   \
+    oc,                                                                   \
+    oh,                                                                   \
+    ow,                                                                   \
+    numel)                                                                \
+  {                                                                       \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;             \
+    vec_t* output_vec =                                                   \
+        reinterpret_cast<vec_t*>(output.mutable_data_ptr<scalar_t>());    \
+    const vec_t* input_vec =                                              \
+        reinterpret_cast<const vec_t*>(input.const_data_ptr<scalar_t>()); \
+    auto kfn = AdaptiveAvgPool2dKernelFunctor_cl<                         \
+        scalar_t,                                                         \
+        opmath_t,                                                         \
+        vec_t,                                                            \
+        vec_size>(output_vec, input_vec, ih, iw, ob, oc, oh, ow, numel);  \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);             \
+  }
+
+template <typename scalar_t, typename opmath_t>
+void launch_adaptive_avg_pool2d_kernel_cl(const Tensor& input, Tensor& output) {
+  int ih = input.size(2);
+  int iw = input.size(3);
+  int ob = output.size(0);
+  int oc = output.size(1);
+  int oh = output.size(2);
+  int ow = output.size(3);
+
+  int64_t numel = ob * oc * oh * ow;
+  int vec_size = 1;
+  for (vec_size = std::min(
+           8,
+           memory::can_vectorize_up_to<scalar_t>(
+               (char*)output.mutable_data_ptr<scalar_t>()));
+       vec_size > 1;
+       vec_size /= 2) {
+    if (oc % vec_size != 0)
+      continue;
+    if (2 * numel / vec_size > syclMaxWorkItemsPerTile()) {
+      numel /= vec_size;
+      break;
+    }
+  }
+
+  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t num_wg = (numel + wg_size - 1) / wg_size;
+  switch (vec_size) {
+    case 8:
+      LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(
+          scalar_t,
+          opmath_t,
+          8,
+          num_wg,
+          wg_size,
+          at::xpu::getCurrentSYCLQueue(),
+          output,
+          input,
+          ih,
+          iw,
+          ob,
+          oc,
+          oh,
+          ow,
+          numel);
+      return;
+    case 4:
+      LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(
+          scalar_t,
+          opmath_t,
+          4,
+          num_wg,
+          wg_size,
+          at::xpu::getCurrentSYCLQueue(),
+          output,
+          input,
+          ih,
+          iw,
+          ob,
+          oc,
+          oh,
+          ow,
+          numel);
+      return;
+    case 2:
+      LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(
+          scalar_t,
+          opmath_t,
+          2,
+          num_wg,
+          wg_size,
+          at::xpu::getCurrentSYCLQueue(),
+          output,
+          input,
+          ih,
+          iw,
+          ob,
+          oc,
+          oh,
+          ow,
+          numel);
+      return;
+    case 1:
+      LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(
+          scalar_t,
+          opmath_t,
+          1,
+          num_wg,
+          wg_size,
+          at::xpu::getCurrentSYCLQueue(),
+          output,
+          input,
+          ih,
+          iw,
+          ob,
+          oc,
+          oh,
+          ow,
+          numel);
+      return;
+    default:
+      TORCH_INTERNAL_ASSERT(false, "Unexpected vectorization size");
+  }
+}
+#undef LAUNCH_AVGPOOL_CHANNEL_LAST_VEC
+
 template <typename scalar_t, typename opmath_t, bool is_channels_last>
 void launch_adaptive_avg_pool2d_kernel(
     PackedTensorAccessor64<const scalar_t, 4> input,
@@ -724,8 +939,13 @@ void adaptive_avg_pool2d_kernel(
         auto iacc = input_.packed_accessor64<const scalar_t, 4>();
         auto oacc = output.packed_accessor64<scalar_t, 4>();
         if (is_smf_channels_last(output)) {
-          launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, true>(
-              iacc, oacc);
+          if (input_.is_contiguous(at::MemoryFormat::ChannelsLast)) {
+            launch_adaptive_avg_pool2d_kernel_cl<scalar_t, opmath_t>(
+                input_, output);
+          } else {
+            launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, true>(
+                iacc, oacc);
+          }
         } else {
           launch_adaptive_avg_pool2d_kernel<scalar_t, opmath_t, false>(
               iacc, oacc);
