@@ -145,7 +145,6 @@ class DenseToJaggedOp : public torch::autograd::Function<DenseToJaggedOp> {
       const std::vector<Tensor>& offsets,
       const std::optional<at::SymInt>& total_L) {
     // uncomment when implement backward
-    // ctx->save_for_backward(offsets);
 
     // dims of dense tensor: <batch, [maxlen0, maxlen1, ...], embedding_dim>
     // #if TORCH_VERSION_MAJOR > 2 || \
