@@ -147,16 +147,6 @@ class DenseToJaggedOp : public torch::autograd::Function<DenseToJaggedOp> {
     // uncomment when implement backward
 
     // dims of dense tensor: <batch, [maxlen0, maxlen1, ...], embedding_dim>
-    // #if TORCH_VERSION_MAJOR > 2 || \
-    //     (TORCH_VERSION_MAJOR == 2 && TORCH_VERSION_MINOR >= 1)
-    //     // toSymIntVector support is from a recent PR
-    //     // https://github.com/pytorch/pytorch/pull/101056,
-    //     // so protect it under a version guard for compatibility
-    //     ctx->saved_data["dense_shape"] = dense.sym_sizes();
-    // #else
-    //     ctx->saved_data["dense_shape"] = dense.sizes();
-    // #endif
-
     static auto op =
         c10::Dispatcher::singleton()
             .findSchemaOrThrow("fbgemm::dense_to_jagged_forward", "")
