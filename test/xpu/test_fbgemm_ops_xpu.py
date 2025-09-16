@@ -204,11 +204,6 @@ with XPUPatchForImport(False):
             torch.testing.assert_close(dense, dense2)
 
             # verify backward
-            # dense.retain_grad()
-            # ref_output_values = jagged_values.clone().detach().requires_grad_(True)
-            # ref_values = dense.clone().detach().requires_grad_(True)
-            # jagged_values.backward(ref_output_values)
-            # torch.testing.assert_close(dense.grad, ref_values)
 
         @given(
             num_jagged_dim=st.integers(1, 5),
