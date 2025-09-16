@@ -1,19 +1,17 @@
 # Owner(s): ["module: intel"]
-from typing import Tuple, Type, List
 import itertools
+from typing import Tuple, Type, List
 
+import hypothesis.strategies as st
+import numpy as np
+import numpy.typing as npt
 import torch
+from hypothesis import assume, given, settings, Verbosity
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
 )
-from torch.testing._internal.common_utils import TestCase, run_tests, parametrize as parametrize_test
-
-import numpy as np
-import numpy.typing as npt
-
-from hypothesis import assume, given, settings, Verbosity
-import hypothesis.strategies as st
+from torch.testing._internal.common_utils import TestCase, run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
