@@ -319,7 +319,6 @@ with XPUPatchForImport(False):
                 device,
                 mark_dynamic=True,
             )
-            # values_2d = values_2d.clone().detach().requires_grad_(True)
 
             def jagged_to_dense(
                 values: torch.Tensor,
