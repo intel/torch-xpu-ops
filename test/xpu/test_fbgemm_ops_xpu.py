@@ -1,17 +1,14 @@
 # Owner(s): ["module: intel"]
 import itertools
-from typing import Tuple, Type, List
+from typing import List, Tuple, Type
 
 import hypothesis.strategies as st
 import numpy as np
 import numpy.typing as npt
 import torch
 from hypothesis import assume, given, settings, Verbosity
-from torch.testing._internal.common_device_type import (
-    dtypes,
-    instantiate_device_type_tests,
-)
-from torch.testing._internal.common_utils import TestCase, run_tests
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -69,6 +66,7 @@ def generate_jagged_tensor(
             torch._dynamo.mark_dynamic(x_values, i)
 
     return x_values, x_offsets, max_lengths
+
 
 def to_padded_dense(
     values: torch.Tensor,
@@ -141,7 +139,11 @@ with XPUPatchForImport(False):
                 return
 
             # pyre-ignore-errors[16]
-            x = torch.randint(low=0, high=100, size=(n,)).type(pt_index_dtype).to(device)
+            x = (
+                torch.randint(low=0, high=100, size=(n,))
+                .type(pt_index_dtype)
+                .to(device)
+            )
             zc = torch.ops.fbgemm.asynchronous_complete_cumsum(x)
 
             torch.testing.assert_close(
@@ -150,7 +152,6 @@ with XPUPatchForImport(False):
                 ),
                 zc.cpu(),
             )
-
 
     class DenseToJaggedTest(TestCase):
         def _test_dense_to_jagged(
@@ -174,7 +175,9 @@ with XPUPatchForImport(False):
             # values_2d = values_2d.clone().detach().requires_grad_(True)
 
             # jagged -> dense
-            dense = torch.ops.fbgemm.jagged_to_padded_dense(values_2d, offsets, max_lengths)
+            dense = torch.ops.fbgemm.jagged_to_padded_dense(
+                values_2d, offsets, max_lengths
+            )
 
             # dense -> jagged (op which is being tested)
             if precompute_total_L:
@@ -331,7 +334,9 @@ with XPUPatchForImport(False):
                 offsets: List[torch.LongTensor],
                 max_lengths: List[int],
             ) -> torch.Tensor:
-                return torch.ops.fbgemm.jagged_to_padded_dense(values, offsets, max_lengths)
+                return torch.ops.fbgemm.jagged_to_padded_dense(
+                    values, offsets, max_lengths
+                )
 
             # jagged -> dense
             dense = jagged_to_dense(values_2d, offsets, max_lengths.tolist())
@@ -346,21 +351,31 @@ with XPUPatchForImport(False):
             def dense_to_jagged_withL(
                 dense: torch.Tensor, offsets: List[torch.LongTensor], total_L: List[int]
             ) -> Tuple[torch.Tensor, torch.Tensor]:
-                jagged_values, jagged_offsets = torch.ops.fbgemm.dense_to_jagged(dense, offsets, total_L)
-                jagged_values_f = torch.ops.fbgemm.dense_to_jagged_forward(dense, offsets, total_L)
+                jagged_values, jagged_offsets = torch.ops.fbgemm.dense_to_jagged(
+                    dense, offsets, total_L
+                )
+                jagged_values_f = torch.ops.fbgemm.dense_to_jagged_forward(
+                    dense, offsets, total_L
+                )
                 torch.testing.assert_close(jagged_values, jagged_values_f)
                 return jagged_values, jagged_offsets
 
             def dense_to_jagged_noL(
                 dense: torch.Tensor, offsets: List[torch.LongTensor]
             ) -> Tuple[torch.Tensor, torch.Tensor]:
-                jagged_values, jagged_offsets = torch.ops.fbgemm.dense_to_jagged(dense, offsets)
-                jagged_values_f = torch.ops.fbgemm.dense_to_jagged_forward(dense, offsets)
+                jagged_values, jagged_offsets = torch.ops.fbgemm.dense_to_jagged(
+                    dense, offsets
+                )
+                jagged_values_f = torch.ops.fbgemm.dense_to_jagged_forward(
+                    dense, offsets
+                )
                 torch.testing.assert_close(jagged_values, jagged_values_f)
                 return jagged_values, jagged_offsets
 
             jagged_values, jagged_offsets = dense_to_jagged_noL(dense, offsets)
-            jagged_values, jagged_offsets = dense_to_jagged_withL(dense, offsets, total_L)
+            jagged_values, jagged_offsets = dense_to_jagged_withL(
+                dense, offsets, total_L
+            )
 
             jagged_values.to(device)
             # jagged -> dense
@@ -370,7 +385,6 @@ with XPUPatchForImport(False):
 
             # verify forward
             assert dense.size() == dense2.size()
-
 
     class JaggedToPaddedDenseTest(TestCase):
         @given(
@@ -466,9 +480,13 @@ with XPUPatchForImport(False):
 
 instantiate_device_type_tests(CumSumTest, globals(), only_for="xpu", allow_xpu=True)
 
-instantiate_device_type_tests(DenseToJaggedTest, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    DenseToJaggedTest, globals(), only_for="xpu", allow_xpu=True
+)
 
-instantiate_device_type_tests(JaggedToPaddedDenseTest, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    JaggedToPaddedDenseTest, globals(), only_for="xpu", allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
