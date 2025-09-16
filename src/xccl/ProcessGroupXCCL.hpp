@@ -129,10 +129,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   };
 
   ProcessGroupXCCL(
-    const c10::intrusive_ptr<Store>& store,
-    int rank,
-    int size,
-    c10::intrusive_ptr<Options> options = Options::create());
+      const c10::intrusive_ptr<Store>& store,
+      int rank,
+      int size,
+      c10::intrusive_ptr<Options> options = Options::create());
 
   C10_DEPRECATED ProcessGroupXCCL(
       const c10::intrusive_ptr<Store>& store,
@@ -415,7 +415,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::vector<uint64_t>& groupRanks() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-  void setCompletedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void setCompletedPgStatus(
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:

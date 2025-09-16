@@ -187,7 +187,8 @@ struct MaxPool2dChannelLastVec {
         StartW += dilationW_;
       for (int h = StartH; h < EndH; h += dilationH_) {
         for (int w = StartW; w < EndW; w += dilationW_) {
-          load_offset = batch * inputSizeH_*inputSizeW_*numPlane_ / vec_size + plane +
+          load_offset =
+              batch * inputSizeH_ * inputSizeW_ * numPlane_ / vec_size + plane +
               h * inputSizeW_ * numPlane_ / vec_size + w * numPlane_ / vec_size;
           vec_t val_vec = input_vec_[load_offset];
 #pragma unroll
@@ -511,7 +512,7 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
         dilationH,                                                  \
         dilationW,                                                  \
         stride);                                                    \
-    sycl_kernel_submit(num_wg * wg_size, wg_size, queue, kfn);      \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);       \
   }
 
 template <typename scalar_t, bool is_channels_last>
@@ -544,7 +545,7 @@ void launch_max_pool2d_kernel(
   if constexpr (is_channels_last) {
     for (vec_size =
              std::min(8, memory::can_vectorize_up_to<scalar_t>((char*)input));
-         vec_size >= 1;
+         vec_size > 1;
          vec_size /= 2) {
       if (numPlane % vec_size != 0) {
         continue;

@@ -186,7 +186,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
@@ -435,7 +435,7 @@ WelfordDataLN compute_stats(
 template <typename T, typename T_ACC>
 struct VectorizedLayerNormKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
     const T* block_row = X_ + i1 * N_;
@@ -599,8 +599,8 @@ void _layer_norm_kernel(
       beta.defined() ? can_vectorize(beta_data, alignment) : true;
 
   if ((std::is_same_v<T, float> || std::is_same_v<T, at::Half> ||
-       std::is_same_v<T, at::BFloat16>) &&
-      N <= static_cast<int64_t>(1ULL << std::numeric_limits<float>::digits) &&
+       std::is_same_v<T, at::BFloat16>)&&N <=
+          static_cast<int64_t>(1ULL << std::numeric_limits<float>::digits) &&
       N % num_vec_elems == 0 && can_vec_X && can_vec_Y && can_vec_gamma &&
       can_vec_beta) {
     launch_vectorized_layer_norm_kernel(
@@ -1077,7 +1077,8 @@ void _layer_norm_backward_kernel(
     int num_tile_n = (N + tile_size_n - 1) / tile_size_n;
     bool adjust_m = true;
     // for M = 64*1024, N = 1, we choose tile size (256, 16) on pvc
-    // TODO: Consider tuning the tile size selection logic (tile_size_m, tile_size_n) and occupancy calculation
+    // TODO: Consider tuning the tile size selection logic (tile_size_m,
+    // tile_size_n) and occupancy calculation
     for (auto i = 0; i < 3; i++) {
       // occupancy <= 50%
       if (num_tile_m * num_tile_n * local_size_x * SIMD /
@@ -1097,8 +1098,9 @@ void _layer_norm_backward_kernel(
       }
     }
     // tile size can be (1024,32), (512,32), (512,16), (256, 16)
-    // Modifying these parameters (num_subgroup, workgroup_size, tile_size, elements_per_thread)
-    // will alter the kernel configuration, potentially affecting performance and behavior.
+    // Modifying these parameters (num_subgroup, workgroup_size, tile_size,
+    // elements_per_thread) will alter the kernel configuration, potentially
+    // affecting performance and behavior.
     const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
     const scalar_t* X_data = X.const_data_ptr<scalar_t>();
     weight_t* dg_data =
@@ -1120,8 +1122,8 @@ void _layer_norm_backward_kernel(
       dbeta_blocks_ptr = dbeta_blocks.data_ptr<weight_t>();
     }
 
-    size_t num_workgroup =
-        std::min(num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
+    size_t num_workgroup = std::min(
+        num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
     if (dgamma.defined() && dbeta.defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
