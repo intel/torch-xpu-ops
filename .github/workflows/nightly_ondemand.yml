@@ -37,13 +37,13 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     strategy:
       matrix:
-        pytorch: [2.9.0.dev20250830+xpu, 2.9.0.dev20250906+xpu]
+        pytorch: [test_wheel, release_wheel]
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: mengfeili/intel-pvc-driver-lts2:33578.38
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+              -u ${{ needs.runner.outputs.user_id }} --group-add ${{ needs.runner.outputs.render_id }}
       env:
         xpu_num: ${{ needs.runner.outputs.xpu_num }}
         cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
@@ -54,10 +54,9 @@ jobs:
       - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
         uses: ./.github/actions/linux-testenv
         with:
-          pytorch: nightly_wheel
-          pytorch_version: '==${{ matrix.pytorch }}'
+          pytorch: ${{ matrix.pytorch }}
           python: '3.10'
-          suite: timm_models
+          suite: huggingface
       - name: Test
         run: |
           ./run.sh performance 0 cases.txt
