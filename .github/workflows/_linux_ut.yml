@@ -67,6 +67,7 @@ jobs:
             echo 'matrix={"shard":[1,2,3,4],"num_shards":[4]}' >> $GITHUB_OUTPUT
           else
             echo 'matrix={"shard":[1],"num_shards":[1]}' >> $GITHUB_OUTPUT
+          fi
 
   test-in-container:
     needs: [runner, define-matrix]
