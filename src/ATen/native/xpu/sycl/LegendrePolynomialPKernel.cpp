@@ -34,7 +34,7 @@ struct LegendrePolynomialPFunctor {
     scalar_t q = x;
     scalar_t r;
 
-    for (int64_t k = 1; k < n; k++) {
+    for (int64_t k = 1; (k < n) && !std::isnan(q); k++) {
       r = ((k + k + 1) * x * q - k * p) / (k + 1);
       p = q;
       q = r;
