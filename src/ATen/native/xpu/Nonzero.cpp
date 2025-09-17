@@ -1,15 +1,17 @@
 #include <ATen/core/Tensor.h>
-#include <ATen/xpu/EmptyTensor.h>
-
 #include <ATen/native/xpu/sycl/NonzeroKernel.h>
+#include <ATen/ops/full.h>
+#include <ATen/ops/cat.h>
+#include <ATen/xpu/EmptyTensor.h>
 #include <comm/TensorInfo.h>
 
 namespace at {
 namespace native {
-Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
+
+void nonzero_common_checks(const Tensor& self, Tensor& out, const std::string& op_name) {
   TORCH_CHECK(
       self.numel() < std::numeric_limits<int>::max(),
-      "nonzero is not supported for tensors with more than INT_MAX elements, \
+      op_name, " is not supported for tensors with more than INT_MAX elements, \
       See https://github.com/pytorch/pytorch/issues/51871");
   TORCH_CHECK(
       out.dtype() == at::kLong,
@@ -25,10 +27,13 @@ Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
       self.device());
   TORCH_CHECK(
       self.dim() <= XPU_MAX_TENSORINFO_DIMS,
-      "nonzero is not supported for tensor with more than ",
+      op_name, " is not supported for tensor with more than ",
       XPU_MAX_TENSORINFO_DIMS,
       " dimensions");
+}
 
+  Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
+  nonzero_common_checks(self, out, "nonzero");
   if (self.numel() == 0) {
     out = at::detail::empty_xpu({0, self.dim()}, out.options());
     return out;
@@ -42,5 +47,36 @@ Tensor nonzero_xpu(const Tensor& self) {
   nonzero_out_xpu(self, out);
   return out;
 }
+
+Tensor& nonzero_static_out_xpu(
+    const Tensor& self,
+    int64_t size,
+    int64_t fill_value,
+    Tensor& out) {
+  nonzero_common_checks(self, out, "nonzero_static");
+  if (self.numel() == 0) {
+    out = at::full({size, self.dim()}, fill_value, out.options());
+    return out;
+  }
+  xpu::nonzero_kernel(self, out);
+  auto nonzero_size = out.size(0);
+  if(nonzero_size > size) {
+    out = out.narrow(0, 0, size);
+  } else if(nonzero_size < size) {
+    auto padding = at::full({size - nonzero_size, out.size(1)}, fill_value, out.options());
+    out = at::cat({out, padding}, 0);
+  }
+  return out;
+}
+
+Tensor nonzero_static_xpu(
+    const Tensor& self,
+    int64_t size,
+    int64_t fill_value) {
+  Tensor out = at::detail::empty_xpu({size, self.dim()}, self.options().dtype(kLong));
+  nonzero_static_out_xpu(self, size, fill_value, out);
+  return out;
+}
+
 } // namespace native
 } // namespace at
