@@ -1,8 +1,8 @@
 #include <ATen/core/Tensor.h>
-#include <ATen/native/xpu/sycl/NonzeroKernel.h>
-#include <ATen/ops/full.h>
 #include <ATen/ops/cat.h>
+#include <ATen/ops/full.h>
 #include <ATen/xpu/EmptyTensor.h>
+#include <ATen/native/xpu/sycl/NonzeroKernel.h>
 #include <comm/TensorInfo.h>
 
 namespace at {
@@ -26,7 +26,7 @@ void nonzero_common_checks(const Tensor& self, Tensor& out, const std::string& o
       " dimensions");
 }
 
-  Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
+Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
   TORCH_CHECK(
       out.dtype() == at::kLong,
       "Expected object of scalar type ",
@@ -74,7 +74,7 @@ Tensor& nonzero_static_out_xpu(
   } else if (nonzero_size < size) {
     auto padding = at::full({size - nonzero_size, self.dim()}, fill_value, out.options());
     out.copy_(at::cat({nonzero_out, padding}, 0));
-  } else  {
+  } else {
     out.copy_(nonzero_out);
   }
   return out;
