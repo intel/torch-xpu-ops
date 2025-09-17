@@ -97,17 +97,17 @@ void checkSingleTensor(
 ) {
   if (!tensor.is_xpu() || tensor.is_sparse()) {
     C10_THROW_ERROR(ValueError, "Tensors must be XPU and dense");
+  }
 
-    // Skip the following requirements for P2P operations
-    if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
-      if (p2p) {
-        TORCH_WARN_ONCE(
-            "Detected non-contiguous tensor in P2P operations. It is user "
-            "responsibility to guarantee that source and destination tensors have "
-            "the same contiguity format.");
-      } else {
-        C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
-      }
+  // Skip the following requirements for P2P operations
+  if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
+    if (p2p) {
+      TORCH_WARN_ONCE(
+          "Detected non-contiguous tensor in P2P operations. It is user "
+          "responsibility to guarantee that source and destination tensors have "
+          "the same contiguity format.");
+    } else {
+      C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
     }
   }
 }
