@@ -26,7 +26,7 @@ struct HermitePolynomialHeFunctor {
     scalar_t q = x;
     scalar_t r;
 
-    for (int64_t k = 1; k < n; k++) {
+    for (int64_t k = 1; (k < n) && !std::isnan(q); k++) {
       r = x * q - k * p;
       p = q;
       q = r;
