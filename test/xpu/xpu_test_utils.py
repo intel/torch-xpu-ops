@@ -852,7 +852,6 @@ class XPUPatchForImport:
         self.foreach_other_op_db = common_methods_invocations.foreach_other_op_db
         self.python_ref_db = common_methods_invocations.python_ref_db
         self.ops_and_refs = common_methods_invocations.ops_and_refs
-        self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
@@ -1004,11 +1003,6 @@ class XPUPatchForImport:
             common_utils.TestCase = common_utils.NoTest
         common_device_type.instantiate_device_type_tests = DO_NOTHING
         common_utils.instantiate_parametrized_tests = DO_NOTHING
-        common_device_type.largeTensorTest = (
-            lambda size, device=None: self.largeTensorTest(
-                size, device if device and device != "cuda" else "xpu"
-            )
-        )
         for db in [
             common_methods_invocations.foreach_unary_op_db,
             common_methods_invocations.foreach_binary_op_db,
@@ -1113,7 +1107,6 @@ class XPUPatchForImport:
         common_utils.TestCase = self.test_case_cls
         common_methods_invocations.python_ref_db = self.python_ref_db
         common_methods_invocations.ops_and_refs = self.ops_and_refs
-        common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
