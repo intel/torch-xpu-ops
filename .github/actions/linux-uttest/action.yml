@@ -108,36 +108,55 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        keep_going_flag=""
+        [[ "${{ inputs.keep_going }}" == "true" ]] && keep_going_flag="--keep-going"
         mkdir -p ut_log/xpu_inductor
+        SHARD_ID=${SHARD_ID:-1}
+        NUM_SHARDS=${NUM_SHARDS:-1}
+        echo "Running torch_xpu tests - Shard $SHARD_ID of $NUM_SHARDS"
         cd pytorch
-        files=(
-            "test_codecache.py"
-            "test_kernel_benchmark.py"
-            "test_max_autotune.py"
-            "test_mkldnn_pattern_matcher.py"
-            "test_triton_kernels.py"
-            "test_torchinductor.py"
-            "test_torchinductor_opinfo.py"
-            "test_compile_subprocess.py"
-            "test_compiled_optimizers.py"
-            "test_compiled_autograd.py"
-            "test_aot_inductor.py"
-        )
-        printf "%s\n" "${files[@]}" > test_files.txt
-        cat test_files.txt
-        while IFS= read -r line; do
-          (
-            echo "=== Starting test: ${line} ==="
-            start=$(date +%s)
-            pytest -sv test/inductor/${line} --junit-xml=${{ github.workspace }}/ut_log/inductor_${line}.xml 2>${{ github.workspace }}/ut_log/xpu_inductor/xpu_inductor_${line}_test_error.log | \
-              tee ${{ github.workspace }}/ut_log/xpu_inductor/xpu_inductor_${line}_test.log
-            end=$(date +%s)
-            echo -e "${line} duration: $((end - start))s"
-            echo "=== Finished test: ${line} ==="
-          ) &
-        done < test_files.txt
-
-        wait
+        echo "=== Starting test ==="
+        start=$(date +%s)
+        PYTEST_ADDOPTS="-v --timeout 600 --timeout_method=thread" NUM_PROCS=16 python test/run_test.py $keep_going_flag --xpu \
+            --include inductor/test_torchinductor inductor/test_torchinductor_opinfo \
+                      inductor/test_codecache.py inductor/test_kernel_benchmark.py inductor/test_max_autotune.py \
+                      inductor/test_mkldnn_pattern_matcher.py inductor/test_triton_kernels.py inductor/test_aot_inductor.py \
+                      inductor/test_compile_subprocess.py inductor/test_compiled_optimizers.py inductor/test_compiled_autograd.py \
+                      --shard $SHARD_ID $NUM_SHARDS \
+                      --verbose 2>${{ github.workspace }}/ut_log/xpu_inductor/torch_xpu_test_${SHARD_ID}_error.log | \
+            tee ${{ github.workspace }}/ut_log/xpu_inductor/torch_xpu_test_${SHARD_ID}.log
+        end=$(date +%s)
+        echo -e "duration: $((end - start))s"
+        echo "=== Finished test ==="
+        function read_dir(){
+          for file in `ls $1`
+          do
+            if [ -d $1"/"$file ]
+            then
+              cp $1"/"$file"/"*.xml ${{ github.workspace }}/ut_log/
+            else
+              echo "[Warning] $file has no xml"
+            fi
+          done
+        }
+        read_dir "test/test-reports/python-pytest"
+        function rename_inductor_files() {
+          local target_dir="${1:-.}"
+          if [ ! -d "$target_dir" ]; then
+              echo "Error: Directory '$target_dir' does not exist" >&2
+              return 1
+          fi
+          find "$target_dir" -name 'inductor.*' -exec bash -c '
+              for file; do
+                  newfile=$(echo "$file" | sed "s/inductor\./inductor_/")
+                  if [ "$file" != "$newfile" ]; then
+                      echo "Renaming: $file -> $newfile"
+                      mv -v "$file" "$newfile"
+                  fi
+              done
+          ' bash {} +
+        }
+        rename_inductor_files "${{ github.workspace }}/ut_log/"
     - name: test_xpu
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'test_xpu' }}

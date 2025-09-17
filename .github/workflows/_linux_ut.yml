@@ -59,6 +59,12 @@ jobs:
     needs: runner
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    strategy:
+      matrix:
+        shard: ${{ inputs.ut == 'torch_xpu' && [1, 2, 3, 4] || [1] }}
+        include:
+          - shard: 1
+            num_shards: ${{ inputs.ut == 'xpu_inductor' && 4 || 1 }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
@@ -82,6 +88,9 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
+        env:
+          SHARD_ID: ${{ matrix.shard }}
+          NUM_SHARDS: ${{ matrix.num_shards }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
