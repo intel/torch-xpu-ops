@@ -36,6 +36,18 @@ if [ ${build_status} -ne 0 ];then
 fi
 pip list |grep torch
 
+# Install torchvision, torchaudio and triton
+cd ${WORKSPACE}/pytorch
+TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
+TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
+TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+git clone https://github.com/pytorch/vision gs-vision
+git clone https://github.com/pytorch/audio gs-audio
+cd gs-vision && git checkout ${TORCHVISION_COMMIT_ID} && python setup.py install && cd ..
+cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install && cd ..
+cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@{TRITON_COMMIT_ID} || \
+                pip install git+https://github.com/intel/intel-xpu-backend-for-triton@{TRITON_COMMIT_ID}#subdirectory=python
+
 # Test
 test_result=1
 if [ "${SEARCH_CHECK}" == "accuracy" ];then

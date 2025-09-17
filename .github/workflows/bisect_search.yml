@@ -128,14 +128,14 @@ jobs:
             pip install -r requirements.txt
             echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
             python install.py ${model_name}
+            # for dlrm
+            pip install pyre-extensions
+            curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+            # for soft_actor_critic, temp fix
+            pip install git+https://github.com/nocoding03/gym@fix-np
             cd ..
           fi
-          pip uninstall -y torchvision torchaudio
-          git clone https://github.com/pytorch/vision gs-vision
-          cd gs-vision
-          python setup.py install
-          cd ..
-          pip uninstall -y torch
+          pip uninstall -y torch torchvision torchaudio triton pytorch-triton-xpu
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |
