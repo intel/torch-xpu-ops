@@ -1,10 +1,9 @@
+import argparse
 import time
 
 import torch
 from torch.profiler import profile, ProfilerActivity
 
-device = "xpu"
-num_iter = 20
 shape_list = [
     ((1, 147, 1359556), (1200, 1200)),
     ((1, 147, 36100), (224, 224)),
@@ -13,56 +12,104 @@ shape_list = [
 ]
 kernel_size = (7, 7)
 dilation = (6, 6)
-
 backward = True
-for shape in shape_list:
-    for dtype in [torch.bfloat16, torch.float16, torch.float32]:
-        input = torch.randn(shape[0], dtype=dtype, device=device, requires_grad=True)
-        if backward:
-            input.requires_grad_(True)
-        output_size = shape[1]
 
-        # warm up
-        output = torch.nn.functional.fold(
-            input, output_size, kernel_size, dilation, 1, 1
-        )
-        if backward:
-            torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
 
-        # go
-        print(
-            "shape:",
-            shape[0],
-            "; datatype:",
-            dtype,
-            "; output_size:",
-            shape[1],
-            "; backward:",
-            backward,
-        )
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
-            for i in range(num_iter):
-                output = torch.nn.functional.fold(
-                    input, output_size, kernel_size, dilation, 1, 1
-                )
-                if backward:
-                    torch.autograd.grad(
-                        output, input, grad_outputs=torch.ones_like(output)
-                    )
-        print(prof.key_averages().table(sort_by="xpu_time_total"))
+def Col2im(input, output_size, kernel_size, dilation, backward, device):
+    output = torch.nn.functional.fold(input, output_size, kernel_size, dilation, 1, 1)
+    if backward:
+        torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
 
-        # E2E time
-        torch.xpu.synchronize()
-        t1 = time.time()
+
+def run_profile(input, output_size, kernel_size, dilation, backward, device, num_iter):
+    with profile(
+        activities=[
+            ProfilerActivity.CPU,
+            ProfilerActivity.XPU if device == "xpu" else ProfilerActivity.CUDA,
+        ],
+        record_shapes=True,
+    ) as prof:
         for i in range(num_iter):
-            output = torch.nn.functional.fold(
-                input, output_size, kernel_size, dilation, 1, 1
+            Col2im(input, output_size, kernel_size, dilation, backward, device)
+    print(prof.key_averages().table(sort_by=f"{device}_time_total"))
+
+
+def run_e2e(input, output_size, kernel_size, dilation, backward, device, num_iter):
+    if device in ["xpu", "cuda"]:
+        torch.xpu.synchronize() if device == "xpu" else torch.cuda.synchronize()
+    t1 = time.time()
+    for i in range(num_iter):
+        Col2im(input, output_size, kernel_size, dilation, backward, device)
+    if device in ["xpu", "cuda"]:
+        torch.xpu.synchronize() if device == "xpu" else torch.cuda.synchronize()
+    t2 = time.time()
+    e2e_time = (t2 - t1) / num_iter
+    print("E2E total time:", f"{float(e2e_time):.20f}")
+
+
+def benchmark(args):
+    for shape in shape_list:
+        for dtype in [torch.bfloat16, torch.float16, torch.float32]:
+            input = torch.randn(
+                shape[0], dtype=dtype, device=args.device, requires_grad=True
             )
             if backward:
-                torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
-        torch.xpu.synchronize()
-        t2 = time.time()
-        e2e_time = (t2 - t1) / num_iter
-        print("E2E total time:", f"{float(e2e_time):.20f}")
+                input.requires_grad_(True)
+            output_size = shape[1]
+            # warm up
+            Col2im(input, output_size, kernel_size, dilation, backward, args.device)
+
+            # go
+            print(
+                "shape:",
+                shape[0],
+                "; datatype:",
+                dtype,
+                "; output_size:",
+                shape[1],
+                "; backward:",
+                backward,
+            )
+            if not args.e2e_only:
+                run_profile(
+                    input,
+                    output_size,
+                    kernel_size,
+                    dilation,
+                    backward,
+                    args.device,
+                    args.num_iter,
+                )
+
+            if not args.profile_only:
+                run_e2e(
+                    input,
+                    output_size,
+                    kernel_size,
+                    dilation,
+                    backward,
+                    args.device,
+                    args.num_iter,
+                )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="OP Benchmark")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="xpu",
+        help='Device to run on (e.g., "cpu", "cuda", "xpu")',
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--profile-only", action="store_true", help="Only Run profile timing"
+    )
+    group.add_argument("--e2e-only", action="store_true", help="Only Run E2E timing")
+    parser.add_argument("--num-iter", type=int, default=20, help="Number of iterations")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    benchmark(args)
