@@ -63,13 +63,19 @@ Tensor& nonzero_static_out_xpu(
     out = at::full({size, self.dim()}, fill_value, out.options());
     return out;
   }
-  xpu::nonzero_kernel(self, out);
-  auto nonzero_size = out.size(0);
-  if(nonzero_size > size) {
-    out = out.narrow(0, 0, size);
-  } else if(nonzero_size < size) {
-    auto padding = at::full({size - nonzero_size, out.size(1)}, fill_value, out.options());
-    out = at::cat({out, padding}, 0);
+
+  Tensor nonzero_out = at::detail::empty_xpu({0}, self.options().dtype(kLong));
+  xpu::nonzero_kernel(self, nonzero_out);
+  auto nonzero_size = nonzero_out.size(0);
+  out.resize_({size, self.dim()});
+
+  if (nonzero_size > size) {
+    out.copy_(nonzero_out.narrow(0, 0, size));
+  } else if (nonzero_size < size) {
+    auto padding = at::full({size - nonzero_size, self.dim()}, fill_value, out.options());
+    out.copy_(at::cat({nonzero_out, padding}, 0));
+  } else  {
+    out.copy_(nonzero_out);
   }
   return out;
 }
