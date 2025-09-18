@@ -59,7 +59,8 @@ jobs:
           suite: huggingface
       - name: Test
         run: |
-          ./run.sh performance 0 cases.txt
+          pip install -U transformers==4.44.2
+          ./run.sh accuracy 0 acc.txt
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
