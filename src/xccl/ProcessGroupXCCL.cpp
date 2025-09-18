@@ -437,17 +437,6 @@ void ProcessGroupXCCL::setEnqueuedPgStatus(
   pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
 }
 
-void ProcessGroupXCCL::setCompletedPgStatus(
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-  pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
-  pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
-  pgStatus_->lastCompletedNumelIn = work->numelIn_;
-  pgStatus_->lastCompletedNumelOut = work->numelOut_;
-  // To avoid complexity, we're not computing duration.
-  FlightRecorderXCCL::get()->retire_id(
-      work->trace_id_, /*compute_duration*/ false);
-}
-
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
 uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
@@ -777,8 +766,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
-  work->future_->addCallback(
-      [this, work](at::ivalue::Future&) { this->setCompletedPgStatus(work); });
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -889,9 +876,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
-    work->future_->addCallback([this, work](at::ivalue::Future&) {
-      this->setCompletedPgStatus(work);
-    });
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
     setEnqueuedPgStatus(work);
