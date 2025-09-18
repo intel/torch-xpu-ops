@@ -36,7 +36,25 @@ env:
   UT_SKIP_ISSUE: 1624
 
 jobs:
+  define-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      num_shards: ${{ steps.set-matrix.outputs.num_shards }}
+    steps:
+      - name: Set Matrix
+        id: set-matrix
+        run: |
+          if [[ "${{ inputs.ut }}" == "xpu_inductor" ]]; then
+            echo 'matrix={"shard":[1,2,3,4],"num_shards":[4]}' >> $GITHUB_OUTPUT
+            echo "num_shards=4" >> $GITHUB_OUTPUT
+          else
+            echo 'matrix={"shard":[1],"num_shards":[1]}' >> $GITHUB_OUTPUT
+            echo "num_shards=1" >> $GITHUB_OUTPUT
+          fi
+
   runner:
+    needs: define-matrix
     runs-on: ${{ inputs.runner }}
     name: get-runner
     outputs:
@@ -54,26 +72,15 @@ jobs:
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
-  
-  define-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - name: Set Matrix
-        id: set-matrix
-        run: |
-          if [[ "${{ inputs.ut }}" == "xpu_inductor" ]]; then
-            echo 'matrix={"shard":[1,2,3,4],"num_shards":[4]}' >> $GITHUB_OUTPUT
-          else
-            echo 'matrix={"shard":[1],"num_shards":[1]}' >> $GITHUB_OUTPUT
-          fi
+        with:
+          num_runners: ${{ needs.define-matrix.outputs.num_shards }}
 
   test-in-container:
     needs: [runner, define-matrix]
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     strategy:
+      fail-fast: false
       matrix: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
@@ -105,14 +112,14 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}${{ inputs.ut == 'torch_xpu' && format('-shard{0}', matrix.shard) || '' }}
+          name: ${{ inputs.ut == 'xpu_inductor' && format('Inductor-XPU-UT-Data-{0}-{1}-shard{2}-of-{3}', github.event.pull_request.number || github.sha, inputs.ut, matrix.shard, matrix.num_shards) || format('Inductor-XPU-UT-Data-{0}-{1}', github.event.pull_request.number || github.sha, inputs.ut) }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}${{ inputs.ut == 'torch_xpu' && format('-shard{0}', matrix.shard) || '' }}
+          name: ${{ inputs.ut == 'xpu_inductor' && format('XPU-UT-Failure-List-{0}-{1}-shard{2}-of-{3}', github.event.pull_request.number || github.sha, inputs.ut, matrix.shard, matrix.num_shards) || format('XPU-UT-Failure-List-{0}-{1}', github.event.pull_request.number || github.sha, inputs.ut) }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
@@ -162,8 +169,9 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}${{ inputs.ut == 'torch_xpu' && format('-shard{0}', matrix.shard) || '' }}
+          pattern: ${{ inputs.ut == 'xpu_inductor' && format('Inductor-XPU-UT-Data-{0}-{1}-shard*-of-*', github.event.pull_request.number || github.sha, inputs.ut) || format('Inductor-XPU-UT-Data-{0}-{1}', github.event.pull_request.number || github.sha, inputs.ut) }}
           path: ${{ github.workspace }}/ut_log
+          merge-multiple: true
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
