@@ -31,6 +31,8 @@ runs:
       run: |
         REPO="${{ github.repository }}"
         TOKEN="${{ github.token }}"
+        sudo apt-get update
+        sudo apt-get install -y jq
         RUNNER_LABELS=$(curl -s -H "Authorization: token $TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$REPO/actions/runners" | \
