@@ -74,12 +74,6 @@ skip_dict = {
         "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
-        # XPU hang. CUDA hang as well.
-        # https://github.com/pytorch/pytorch/issues/79528
-        "test_compare_cpu_special_hermite_polynomial_he_xpu_float32",
-        "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_laguerre_polynomial_l_xpu_float32",
-        "test_compare_cpu_special_legendre_polynomial_p_xpu_float32",
         # core dump
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # XFAIL of CUDA and XPU, unexpected success in fallback
