@@ -28,7 +28,7 @@ do
 	dtype=`		echo $line |awk '{print $1}' |sed -E 's/.*(face|bench|models)_/--/;s/_(tra|inf).*//;s/amp_fp16/amp --amp-dtype float16/;s/amp_bf16/amp --amp-dtype bfloat16/'`
 
 	# test
-	numactl -C 0-11 -l python benchmarks/dynamo/${suite}.py ${scenario} ${dtype} -d xpu -n10 ${test_mode}  --only ${model} --cold-start-latency --backend=inductor --output=${output_file}
+	numactl -C 0-11 -l python benchmarks/dynamo/${suite}.py ${scenario} ${dtype} -d xpu -n10 ${test_mode}  --only ${model} --cold-start-latency --backend=inductor --output=${output_file} --batch-size 16
 
 	# result
 	sed -i "s/^xpu,/${category},xpu,/;s/^dev,/category,dev,/" ${output_file}
