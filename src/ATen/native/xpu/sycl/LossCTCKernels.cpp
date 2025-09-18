@@ -115,7 +115,7 @@ struct CTCLossLogAlphaKernelFunctor {
         have_three = false;
       }
       for (int64_t t = 1; t < max_input_length_; t++) {
-        item.barrier(sycl_local_fence);
+        item.barrier(sycl_global_fence);
         if (valid && (t < input_length) && (s < 2 * target_length + 1)) {
           // only for valid t, s. This is equation (6) and (7), la1, la2, la3
           // are the three summands, lamax is the maximum for the logsumexp
