@@ -2,7 +2,7 @@
 #include <ATen/xpu/EmptyTensor.h>
 
 #include <ATen/native/xpu/sycl/NonzeroKernel.h>
-#include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <comm/TensorInfo.h>
 
 namespace at {
 namespace native {
@@ -10,7 +10,7 @@ Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
   TORCH_CHECK(
       self.numel() < std::numeric_limits<int>::max(),
       "nonzero is not supported for tensors with more than INT_MAX elements, \
-  See https://github.com/pytorch/pytorch/issues/51871");
+      See https://github.com/pytorch/pytorch/issues/51871");
   TORCH_CHECK(
       out.dtype() == at::kLong,
       "Expected object of scalar type ",
@@ -24,11 +24,15 @@ Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
       " and self on ",
       self.device());
   TORCH_CHECK(
-      self.dim() <= MAX_DIMS,
+      self.dim() <= XPU_MAX_TENSORINFO_DIMS,
       "nonzero is not supported for tensor with more than ",
-      MAX_DIMS,
+      XPU_MAX_TENSORINFO_DIMS,
       " dimensions");
 
+  if (self.numel() == 0) {
+    out = at::detail::empty_xpu({0, self.dim()}, out.options());
+    return out;
+  }
   xpu::nonzero_kernel(self, out);
   return out;
 }
