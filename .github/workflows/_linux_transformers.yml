@@ -178,6 +178,7 @@ jobs:
         # tests and how they run them in their own CI.
         # See: https://github.com/huggingface/transformers/blob/v4.56.2/CONTRIBUTING.md?plain=1#L312
         PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist loadfile ${{ needs.prepare.outputs.pytest_extra_args }}
+        VIRTUAL_ENV: ${{ github.workspace }}/.venv
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -234,6 +235,10 @@ jobs:
           repository: huggingface/transformers
           ref: ${{ env.transformers }}
           path: transformers
+      - name: Install uv and python-${{ env.python }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.python }}
       - name: Prepare test vars
         run: |
           echo "HF_HOME=$HOME/.hf_home_of_transformers_test" >> $GITHUB_ENV
@@ -249,23 +254,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y $PACKAGES
           git lfs install
-      - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.python }}
+          rm -rf $VIRTUAL_ENV
+          uv venv $VIRTUAL_ENV
+          # Add path to virtual environment bin folder to make
+          # python and other executables visible
+          echo "$VIRTUAL_ENV/bin/" >> $GITHUB_PATH
       - name: Check python
         run: |
           which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
       - name: Prepare pytorch and deps
         run: |
-          pip install $TORCH_INDEX \
+          uv pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
             torchaudio==${{ needs.prepare.outputs.torchaudio }} \
             pytorch-triton-xpu==${{needs.prepare.outputs.triton }}
-          pip install \
+          uv pip install \
             junitparser \
             pytest \
             pytest-timeout \
@@ -275,11 +279,11 @@ jobs:
         run: |
           pwd
           cd transformers
-          pip install \
+          uv pip install \
             accelerate==${{ env.accelerate }} \
             datasets==${{ env.datasets }}
-          pip install -e .
-          pip install -e ".[dev-torch,testing,video]"
+          uv pip install -e .
+          uv pip install -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
@@ -287,7 +291,7 @@ jobs:
         run: |
           LOGS_DIR="${{ github.workspace }}/transformers/logs"
           echo "pip installed packages:"
-          pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
+          uv pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee "$LOGS_DIR/lspci_0380-$TEST_CASE.txt"
           echo "GPU render nodes:"
@@ -298,9 +302,9 @@ jobs:
         run: |
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run tests on ${{ needs.prepare.outputs.hostname }}
         run: |
