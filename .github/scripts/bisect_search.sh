@@ -98,6 +98,7 @@ elif [ "${SEARCH_CHECK}" == "ut_xpu" ];then
         test_result=0
     fi
 else
+    cd ${WORKSPACE}/pytorch
     test_status="$(eval "${SEARCH_CASE}" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
