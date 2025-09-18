@@ -60,7 +60,7 @@ jobs:
       - name: Test
         run: |
           pip install -U transformers==4.44.2
-          ./run.sh performance 0 1.txt
+          ./run.sh accuracy 0 1.txt
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
