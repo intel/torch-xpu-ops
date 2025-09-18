@@ -441,7 +441,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
   m.impl("aten::_baddbmm_mkl.out", baddbmm_complex_out_xpu);
 }
 
-// Conjugated tensors are handled inside kernel and for some cases there is no need to resolve conjugation which increases performance.
+// Conjugated tensors are handled inside kernel and for some cases there is no need to resolve conjugation which improves performance.
 TORCH_LIBRARY_IMPL(aten, Conjugate, m) {
   m.impl("aten::_mm_mkl.out", torch::CppFunction::makeFallthrough());
   m.impl("aten::_bmm_mkl.out", torch::CppFunction::makeFallthrough());
