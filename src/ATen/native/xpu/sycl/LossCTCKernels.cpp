@@ -502,7 +502,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
       // now go backward in t. Note that we need to skip the last timestep that
       // we did above.
       for (int64_t t = max_input_length_ - 2; t >= 0; t--) {
-        item.barrier(sycl_local_fence);
+        item.barrier(sycl_global_fence);
         if (valid && (t < input_length - 1) && (s < 2 * target_length + 1)) {
           scalar_t lb1 = log_beta_data_
               [lb_batch_offset + lb_input_stride_ * (t + 1) +
