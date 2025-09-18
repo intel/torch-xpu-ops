@@ -67,7 +67,12 @@ void memcpyAsync(
   Device dst_device = iter.device(0);
   Device src_device = iter.device(1);
   if (dst_device == src_device) {
-    copy_kernel(iter);
+    //    copy_kernel(iter);
+    auto dst = (char*)iter.data_ptr(0);
+    auto src = (char*)iter.data_ptr(1);
+    size_t size = iter.numel() * iter.element_size(0);
+    auto q = copy_stream.queue();
+    q.copy(src, dst, size);
   } else {
     TORCH_INTERNAL_ASSERT(p2p_enabled == true);
     auto dst = (char*)iter.data_ptr(0);
