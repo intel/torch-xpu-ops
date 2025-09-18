@@ -56,7 +56,7 @@ jobs:
         with:
           pytorch: ${{ matrix.pytorch }}
           python: '3.10'
-          suite: torchbench
+          suite: huggingface
       - name: Test
         run: |
           pip install -U transformers==4.44.2
