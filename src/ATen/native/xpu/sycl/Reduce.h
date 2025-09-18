@@ -1124,6 +1124,13 @@ int get_output_vec_size(at::TensorIterator& iter) {
   return std::min(vec_size, vt1);
 }
 
+template <
+    typename scalar_t,
+    typename out_scalar_t,
+    int vt0,
+    int vt1,
+    typename ops_t,
+    typename ident_t>
 struct ReduceKernelEmptyFunctor {
   char operator()() const {
     return 0;
@@ -1374,7 +1381,8 @@ inline void gpu_reduce_kernel(
         config.semaphore_size(), at::TensorOptions().dtype(kChar).device(kXPU));
     at::detail::Array<char*, 1> data;
     data[0] = (char*)semaphores.data_ptr();
-    ReduceKernelEmptyFunctor fn;
+    ReduceKernelEmptyFunctor<scalar_t, out_scalar_t, vt0, vt1, ops_t, ident_t>
+        fn;
     int vec_size = at::native::memory::can_vectorize_up_to<decltype(fn)>(data);
     auto ic = TrivialOffsetCalculator<traits::arity>();
     launch_vectorized_kernel(config.semaphore_size(), fn, data, ic, vec_size);

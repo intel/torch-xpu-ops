@@ -220,6 +220,10 @@ struct ValueSelectionIntersectionKernel {
 
 template <typename index_t, typename hash_coeffs_t>
 struct SparseBinaryOpIntersectionAFunctor {
+  // For std::is_trivially_copyable
+  SparseBinaryOpIntersectionAFunctor& operator=(
+      const SparseBinaryOpIntersectionAFunctor&) = delete;
+
   int64_t operator()(index_t nnz_idx) const {
     int64_t hash = 0;
     if (!ptr_indices_) {
@@ -256,6 +260,10 @@ struct SparseBinaryOpIntersectionAFunctor {
 
 template <typename index_t, typename hash_coeffs_t, typename hash_t = int64_t>
 struct SparseBinaryOpIntersectionBFunctor {
+  // For std::is_trivially_copyable
+  SparseBinaryOpIntersectionBFunctor& operator=(
+      const SparseBinaryOpIntersectionBFunctor&) = delete;
+
   index_t operator()(index_t nnz_idx) const {
     int64_t hash = 0;
     if (hash_ptr_) {
