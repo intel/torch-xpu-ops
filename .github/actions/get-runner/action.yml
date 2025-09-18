@@ -25,15 +25,30 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Get available runner labels
+      shell: bash
+      id: get_labels
+      run: |
+        REPO="${{ github.repository }}"
+        TOKEN="${{ secrets.GITHUB_TOKEN }}"
+        RUNNER_LABELS=$(curl -s -H "Authorization: token $TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$REPO/actions/runners" | \
+            jq -r '.runners[].labels[].name' | sort -u)
+        FILTERED_LABELS=$(echo "$RUNNER_LABELS" | grep -E ".*-[0-9]+.*" || true)
+        if [ -z "$FILTERED_LABELS" ]; then
+          FILTERED_LABELS="$RUNNER_LABELS"
+        fi
+        echo "filtered_labels=$(echo "$FILTERED_LABELS" | tr '\n' ',')" >> $GITHUB_OUTPUT
     - name: Get runner
       shell: bash -xe {0}
       id: runner
       run: |
         # get test runner
         NUM_RUNNERS=${{ inputs.num_runners }}
-        BASE_RUNNER_NAME=$(echo ${RUNNER_NAME} | sed 's/\-[0-9]*$//')
+        FILTERED_LABELS="${{ steps.get_labels.outputs.filtered_labels }}"
 
-        AVAILABLE_RUNNERS=$(echo ${RUNNER_NAME} | awk -F, '{for(i=1;i<=NF;i++) print $i}' | grep -E "^${BASE_RUNNER_NAME}(-[0-9]+)?$" | sort -V)
+        AVAILABLE_RUNNERS=$(echo "$FILTERED_LABELS" | tr ',' '\n' | grep -v "^$" | sort -V)
         if [ "$NUM_RUNNERS" -gt 1 ]; then
           SELECTED_RUNNERS=$(echo "$AVAILABLE_RUNNERS" | head -n $NUM_RUNNERS | tr '\n' ',')
           SELECTED_RUNNERS=${SELECTED_RUNNERS%,}
