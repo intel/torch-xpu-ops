@@ -127,6 +127,7 @@ jobs:
             cd gs-benchmark
             pip install -r requirements.txt
             echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+            pip install -U numpy==1.26.4
             python install.py ${model_name}
             # for dlrm
             pip install pyre-extensions
