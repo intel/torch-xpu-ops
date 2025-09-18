@@ -25,30 +25,15 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Get available runner labels
-      shell: bash
-      id: get_labels
-      run: |
-        RUNNER_LABELS=$(curl -s -H "Authorization: token ${{ github.token }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runners" | \
-            grep -o '"name": *"[^"]*"' | \
-            sed 's/"name": *"\([^"]*\)"/\1/' | \
-            sort -u)
-        FILTERED_LABELS=$(echo "$RUNNER_LABELS" | grep -E ".*-[0-9]+.*" || true)
-        if [ -z "$FILTERED_LABELS" ]; then
-          FILTERED_LABELS="$RUNNER_LABELS"
-        fi
-        echo "filtered_labels=$(echo "$FILTERED_LABELS" | tr '\n' ',')" >> $GITHUB_OUTPUT
     - name: Get runner
       shell: bash -xe {0}
       id: runner
       run: |
         # get test runner
         NUM_RUNNERS=${{ inputs.num_runners }}
-        FILTERED_LABELS="${{ steps.get_labels.outputs.filtered_labels }}"
+        BASE_RUNNER_NAME=$(echo ${RUNNER_NAME} | sed 's/\-[0-9]*$//')
 
-        AVAILABLE_RUNNERS=$(echo "$FILTERED_LABELS" | tr ',' '\n' | grep -v "^$" | sort -V)
+        AVAILABLE_RUNNERS=$(echo ${RUNNER_NAME} | awk -F, '{for(i=1;i<=NF;i++) print $i}' | grep -E "^${BASE_RUNNER_NAME}(-[0-9]+)?$" | sort -V)
         if [ "$NUM_RUNNERS" -gt 1 ]; then
           SELECTED_RUNNERS=$(echo "$AVAILABLE_RUNNERS" | head -n $NUM_RUNNERS | tr '\n' ',')
           SELECTED_RUNNERS=${SELECTED_RUNNERS%,}
@@ -115,9 +100,6 @@ runs:
         echo "xpu_num=${xpu_num}" |tee -a ${GITHUB_OUTPUT}
         echo "cpus_per_xpu=${cpus_per_xpu}" |tee -a ${GITHUB_OUTPUT}
         echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
-
-        echo "Available runners: $AVAILABLE_RUNNERS"
-        echo "Selected runners: $SELECTED_RUNNERS"
     - name: Cleanup host
       shell: bash -xe {0}
       run: |
