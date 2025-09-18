@@ -12,21 +12,19 @@ struct HermitePolynomialHFunctor {
     int64_t n = static_cast<int64_t>(n_);
     if (n < 0) {
       return scalar_t(0.0);
-    }
-
-    if (n == 0) {
+    } else if (n == 0) {
       return scalar_t(1.0);
-    }
-
-    if (n == 1) {
+    } else if (n == 1) {
       return x + x;
+    } else if (n > getHermitianLimit<scalar_t>()) {
+      return std::numeric_limits<scalar_t>::quiet_NaN();
     }
 
     scalar_t p = scalar_t(1.0);
     scalar_t q = x + x;
     scalar_t r = scalar_t(0.0);
 
-    for (int64_t k = 2; (k < n + n) && !std::isnan(q); k += 2) {
+    for (int64_t k = 2; k < n + n; k += 2) {
       r = (x + x) * q - k * p;
       p = q;
       q = r;
