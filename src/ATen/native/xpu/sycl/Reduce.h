@@ -36,7 +36,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
-  vec_t* shared_ = reinterpret_cast<vec_t*>(shared_);
+  vec_t* shared_ = reinterpret_cast<vec_t*>(shared);
   int l_x = item.get_local_linear_id();
   // int dim_x = wg_size;
   auto sg = item.get_sub_group();
@@ -105,7 +105,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
-  vec_t* shared_ = reinterpret_cast<vec_t*>(shared_);
+  vec_t* shared_ = reinterpret_cast<vec_t*>(shared);
   int l_x = item.get_local_id(1), l_y = item.get_local_id(0);
   int g_x = item.get_local_range(1);
   int dim_x = g_x;
@@ -147,7 +147,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_y_reduce(
     at::detail::Array<arg_t, out_vec_sz> value,
     CombineFunc combine) {
   using vec_t = at::detail::Array<arg_t, out_vec_sz>;
-  vec_t* shared_ = reinterpret_cast<vec_t*>(shared_);
+  vec_t* shared_ = reinterpret_cast<vec_t*>(shared);
   int l_x = item.get_local_id(1), l_y = item.get_local_id(0);
   int g_x = item.get_local_range(1);
   int dim_y = item.get_local_range(0);
