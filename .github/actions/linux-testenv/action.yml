@@ -115,6 +115,8 @@ runs:
         pip install pandas psutil scipy pyyaml
         cd pytorch
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          # for new LLM models
+          pip install accelerate
           pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
           TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
