@@ -97,17 +97,17 @@ void checkSingleTensor(
 ) {
   if (!tensor.is_xpu() || tensor.is_sparse()) {
     C10_THROW_ERROR(ValueError, "Tensors must be XPU and dense");
+  }
 
-    // Skip the following requirements for P2P operations
-    if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
-      if (p2p) {
-        TORCH_WARN_ONCE(
-            "Detected non-contiguous tensor in P2P operations. It is user "
-            "responsibility to guarantee that source and destination tensors have "
-            "the same contiguity format.");
-      } else {
-        C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
-      }
+  // Skip the following requirements for P2P operations
+  if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
+    if (p2p) {
+      TORCH_WARN_ONCE(
+          "Detected non-contiguous tensor in P2P operations. It is user "
+          "responsibility to guarantee that source and destination tensors have "
+          "the same contiguity format.");
+    } else {
+      C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
     }
   }
 }
@@ -322,7 +322,9 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   return true;
 }
 
-ProcessGroupXCCL::Options::Options() : Backend::Options(XCCL_BACKEND_NAME) {}
+ProcessGroupXCCL::Options::Options(bool is_high_priority_stream)
+    : Backend::Options(XCCL_BACKEND_NAME),
+      is_high_priority_stream(is_high_priority_stream) {}
 
 static std::atomic<size_t> process_group_id = 0;
 
@@ -356,7 +358,7 @@ const int& ProcessGroupXCCL::globalRank() const {
 }
 
 ProcessGroupXCCL::ProcessGroupXCCL(
-    const c10::intrusive_ptr<Store>& store,
+    c10::intrusive_ptr<Store> store,
     int rank,
     int size,
     c10::intrusive_ptr<Options> options)
@@ -382,7 +384,10 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
-            << "size: " << size << ", global rank: " << globalRank();
+            << "size: " << size << ", global rank: " << globalRank()
+            << ", USE_HIGH_PRIORITY_STREAM: "
+            << options_->is_high_priority_stream
+            << ", PG Name: " << options_->group_name;
 
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
             << "XCCL version: " << XcclVersion
@@ -539,9 +544,9 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     rank = p2pRank;
   }
 
-  c10::impl::VirtualGuardImpl impl(device.type());
-  c10::Stream stream =
-      impl.getStreamFromGlobalPool(device, /*isHighPriority=*/false);
+  bool force_high = getCvarBool(TORCH_XCCL_HIGH_PRIORITY, false);
+  c10::Stream stream = at::xpu::getStreamFromPool(
+      options_->is_high_priority_stream || force_high);
   sycl::queue& q = c10::xpu::XPUStream(stream).queue();
 
   auto ctx = ccl::create_context(q.get_context());

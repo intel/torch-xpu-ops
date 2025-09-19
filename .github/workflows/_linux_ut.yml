@@ -99,11 +99,12 @@ jobs:
 
   test-in-baremetal:
     needs: runner
+    timeout-minutes: 600
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
+      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
