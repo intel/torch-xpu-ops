@@ -10,7 +10,7 @@ if [ "$1" == "lts2" ];then
 	apt update
 
 	# Install common
-	apt install gpg-agent wget curl sudo gcc g++ gcc-11 g++-11 cmake git unzip zip libgl1 zlib1g-dev gh expect numactl tmux htop -y
+	apt install gpg-agent wget curl sudo gcc g++ gcc-11 g++-11 cmake git unzip zip libgl1 zlib1g-dev gh expect numactl tmux htop -y libglib2.0-dev
 	update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11 && \
 		update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11 && \
 		update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-11 11 && \

@@ -6,7 +6,7 @@ on:
       node_name:
         type: string
         default: ''
-        description: 'PVC-7362,PVC-7363,PVC-7364,PVC-7900,PVC-03004,PVC-03006'
+        description: 'PVC-7362,PVC-7363,PVC-7364,PVC-7365,PVC-7900,PVC-03004,PVC-03006'
       setup_xpu:
         type: string
         default: ''
