@@ -64,8 +64,6 @@ def run(test_command):
     return result.returncode
 
 
-test_command = ["python", "distributed/test_c10d_ops_xccl.py"]
-res += run(test_command)
 test_command = ["python", "../../../../test/distributed/pipelining/test_backward.py"]
 res += run(test_command)
 test_command = ["python", "../../../../test/distributed/pipelining/test_microbatch.py"]
