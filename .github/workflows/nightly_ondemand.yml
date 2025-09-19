@@ -95,7 +95,7 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","xpu_profiling","xpu_inductor","xpu_distributed"]'
+            ut='["basic","op_ut","xpu_profiling","xpu_inductor","torch_xpu","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             triton=''
             python='3.10'
