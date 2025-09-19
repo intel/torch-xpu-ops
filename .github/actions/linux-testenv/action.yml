@@ -61,7 +61,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install torch==2.9.0.dev20250811 torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
         fi
