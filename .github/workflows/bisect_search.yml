@@ -83,11 +83,16 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: gs-scripts
-      - name: Prepare test env
-        uses: ./gs-scripts/.github/actions/linux-testenv
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
         with:
-          pytorch: nightly_wheel
-          python: ${{ inputs.python }}
+          python-version: ${{ inputs.python }}
+      - name: Check python
+        shell: bash -xe {0}
+        run: |
+          which python && python -V
+          which pip && pip list
+          pip install -U pip wheel setuptools
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
@@ -104,41 +109,22 @@ jobs:
           wget -q -O oneapi.sh "${ONEAPI_URL}"
           bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
           echo "XPU_ONEAPI_PATH=${HOME}/intel/oneapi" >> ${GITHUB_ENV}
-
       - name: Summary file
         run: |
           mkdir -p gs-logs
           echo "Status,Acc,Perf,PyTorch,Torch-xpu-ops" > gs-logs/summary.csv
       - name: Get latest versions
         run: |
+          rm -rf pytorch
+          git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch
           LATEST_PT_COMMIT="$(git rev-parse HEAD)"
+          rm -rf third_party/torch-xpu-ops
+          git clone https://github.com/intel/torch-xpu-ops third_party/torch-xpu-ops
           cd third_party/torch-xpu-ops
           LATEST_XPU_COMMIT="$(git rev-parse HEAD)"
           echo "LATEST_PT_COMMIT=${LATEST_PT_COMMIT}" >> ${GITHUB_ENV}
           echo "LATEST_XPU_COMMIT=${LATEST_XPU_COMMIT}" >> ${GITHUB_ENV}
-      - name: Prepare test env
-        run: |
-          if [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/huggingface.py"* ]];then
-            pip install transformers
-          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/timm_models.py"* ]];then
-            pip install timm
-          elif [[ "${{ inputs.search_case }}" == *"benchmarks/dynamo/torchbench.py"* ]];then
-            model_name="$(echo ${{ inputs.search_case }} |sed 's+.*\--only *++;s/ .*//')"
-            git clone https://github.com/pytorch/benchmark gs-benchmark
-            cd gs-benchmark
-            pip install -r requirements.txt
-            echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
-            pip install -U numpy==1.26.4
-            python install.py ${model_name}
-            # for dlrm
-            pip install pyre-extensions
-            curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-            # for soft_actor_critic, temp fix
-            pip install git+https://github.com/nocoding03/gym@fix-np
-            cd ..
-          fi
-          pip uninstall -y torch torchvision torchaudio triton pytorch-triton-xpu
       - name: Bisect search pytorch
         if: ${{ contains(inputs.search_commits, 'pytorch') }}
         run: |

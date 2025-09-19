@@ -49,6 +49,28 @@ cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install &
 cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
                 pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
 
+# deps
+if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
+    pip install transformers
+elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
+    pip install timm
+elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
+    model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
+    git clone https://github.com/pytorch/benchmark gs-benchmark
+    cd gs-benchmark
+    pip install -r requirements.txt
+    pip install -U numpy==1.26.4
+    python install.py ${model_name}
+    # for dlrm
+    pip install pyre-extensions
+    curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+    # for soft_actor_critic, temp fix
+    pip install git+https://github.com/nocoding03/gym@fix-np
+    cd ..
+else
+    pip install -r ./.ci/docker/requirements-ci.txt
+fi
+
 # Test
 test_result=1
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
