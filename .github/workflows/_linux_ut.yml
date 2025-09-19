@@ -23,6 +23,11 @@ on:
         required: true
         type: string
         description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,torch_xpu,op_regression_dev1`
+      keep_going:
+        required: false
+        type: string
+        default: 'false'
+        description: Define the Inductor UT test mechanism
 
 permissions: read-all
 
@@ -105,6 +110,7 @@ jobs:
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
+          keep_going: ${{ inputs.keep_going }}
         env:
           SHARD_ID: ${{ matrix.shard }}
           NUM_SHARDS: ${{ matrix.num_shards }}

@@ -5,6 +5,11 @@ inputs:
     required: true
     type: string
     description: Which ut to launch
+  keep_going:
+    required: false
+    type: string
+    default: 'false'
+    description: Define the Inductor UT test mechanism
 
 runs:
   using: composite
@@ -103,7 +108,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
     - name: xpu_inductor
-      shell: timeout 18000 bash -xe {0}
+      shell: timeout 36000 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_inductor' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
