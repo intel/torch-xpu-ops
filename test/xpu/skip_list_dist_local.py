@@ -170,6 +170,6 @@ skip_dict = {
 skip_dict_python = {
     "../../../../test/distributed/test_c10d_functional_native.py": None,
     # "../../../../test/distributed/pipelining/test_schedule_multiproc.py": None,  # Hang error.
-    "../../../../test/distributed/pipelining/test_stage.py": None,
+    # "../../../../test/distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
 }
