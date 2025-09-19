@@ -200,7 +200,8 @@ if [[ "${ut_suite}" == 'op_regression' || "${ut_suite}" == 'op_regression_dev1' 
 fi
 
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
-    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $3}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
+    sed -i '/^[^.]\+/d' ./"${ut_suite}"_xpu_distributed_test_failed.log
     grep "PASSED" xpu_distributed_test.log | awk '{print $1}' > ./"${ut_suite}"_xpu_distributed_test_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} xpu distributed"
