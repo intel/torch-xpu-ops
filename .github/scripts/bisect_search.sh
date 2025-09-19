@@ -60,7 +60,9 @@ elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
     cd gs-benchmark
     pip install -r requirements.txt
     pip install -U numpy==1.26.4
+    export PYTHONPATH=${PWD}:${PYTHONPATH}
     python install.py ${model_name}
+    pip uninstall -y pynvml
     # for dlrm
     pip install pyre-extensions
     curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
