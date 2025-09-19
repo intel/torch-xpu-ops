@@ -108,11 +108,19 @@ jobs:
         HF_HUB_DOWNLOAD_TIMEOUT: 120
         PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        # Usage of `--dist loadfile` is a must as HF tests has complex setups including
-        # setUpClass and @first_run clauses. So 'loadfile' stratagy allows to minimize
-        # race conditions scope.
-        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist loadfile ${{ needs.prepare.outputs.pytest_extra_args }}
+        # NOTE: IMPORTANT! Read before updating!
+        # HF Accelerate test we run here takes around ~5 minutes to complete. It does not
+        # give us big savings if we will parallelize it with pytest-xdist. However, if the
+        # need will come in the future, then we must use `--dist loadfile` distribution
+        # strategy as Accelerate uses test orderning clauses and shares some resources
+        # across tests. Other strategies will lead to random test failures.
+        #
+        # Note also that we do observe test failures due to incompatibility with pytest-xdist
+        # (serialization of some objects fail). As there is no much sense to parallelize
+        # Accelerate tests in general, we chose not to do so.
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist no #${{ needs.prepare.outputs.pytest_extra_args }}
         VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        ZE_AFFINITY_MASK: 0
     env:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
