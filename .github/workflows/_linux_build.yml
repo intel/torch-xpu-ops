@@ -94,6 +94,7 @@ jobs:
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
+          export CXXFLAGS="${CXXFLAGS} -Werror=unused-variable"
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
