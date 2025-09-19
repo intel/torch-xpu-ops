@@ -4,17 +4,17 @@ export GIT_PAGER=cat
 
 # Init params
 WORKSPACE=$(realpath ${WORKSPACE:-"/tmp"})
-PYTORCH_VERSION=${PYTORCH_VERSION:-"main"}
-TORCH_XPU_OPS_VERSION=${TORCH_XPU_OPS_VERSION:-"main"}
+PYTORCH_COMMIT=${PYTORCH_COMMIT:-"main"}
+TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT:-"main"}
 for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
 
-if [ "${PYTORCH_VERSION}" == "search" ];then
-    PYTORCH_VERSION="$(git rev-parse HEAD)"
+if [ "${PYTORCH_COMMIT}" == "search" ];then
+    PYTORCH_COMMIT="$(git rev-parse HEAD)"
 fi
-if [ "${TORCH_XPU_OPS_VERSION}" == "search" ];then
-    TORCH_XPU_OPS_VERSION="$(git rev-parse HEAD)"
+if [ "${TORCH_XPU_OPS_COMMIT}" == "search" ];then
+    TORCH_XPU_OPS_COMMIT="$(git rev-parse HEAD)"
 fi
 
 # Clean WORKSPACE
@@ -26,11 +26,11 @@ pip uninstall -y torch
 source $(dirname $(realpath $0))/env.sh 2> /dev/null
 build_status="$($(dirname $(realpath $0))/build.sh \
     --WORKSPACE="${WORKSPACE}" \
-    --PYTORCH_VERSION="${PYTORCH_VERSION}" \
-    --TORCH_XPU_OPS_VERSION="${TORCH_XPU_OPS_VERSION}" \
-    > ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+    --PYTORCH_COMMIT="${PYTORCH_COMMIT}" \
+    --TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_COMMIT}" \
+    > ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
 if [ ${build_status} -ne 0 ];then
-    tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
+    tail -n 100 ${GITHUB_WORKSPACE}/gs-logs/build-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log
     echo "Build got failed"
     exit 1
 fi
@@ -54,7 +54,7 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
     rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
-        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         acc_result=$(tail -n 1 ${WORKSPACE}/tmp.csv |awk -F, '{print $4}')
         if [[ "${acc_result}" == "pass"* ]];then
@@ -65,7 +65,7 @@ elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
     rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
-        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         perf_result=$(tail -n 1 ${WORKSPACE}/tmp.csv |awk -F, '{print $5}')
         test_result=$(echo "${perf_result},${SEARCH_GOOD_VALUE:-"0.00001"},${SEARCH_CRITERIA}" |awk -F, '{
@@ -79,35 +79,35 @@ elif [ "${SEARCH_CHECK}" == "performance" ];then
 elif [ "${SEARCH_CHECK}" == "op_regressions" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions
     test_status="$(eval "${SEARCH_CASE}" \
-        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
     fi
 elif [ "${SEARCH_CHECK}" == "op_extended" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu/extended
     test_status="$(eval "${SEARCH_CASE}" \
-        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
     fi
 elif [ "${SEARCH_CHECK}" == "ut_xpu" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu
     test_status="$(eval "${SEARCH_CASE}" \
-        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
     fi
 else
     cd ${WORKSPACE}/pytorch
     test_status="$(eval "${SEARCH_CASE}" \
-        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
+        > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
     fi
 fi
 
 # Test result
-cat ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log
-echo "${test_result},${acc_result},${perf_result},${PYTORCH_VERSION},${TORCH_XPU_OPS_VERSION}" |\
+cat ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log
+echo "${test_result},${acc_result},${perf_result},${PYTORCH_COMMIT},${TORCH_XPU_OPS_COMMIT}" |\
     tee -a ${GITHUB_WORKSPACE}/gs-logs/summary.csv |tee -a ${WORKSPACE}/result.csv
 exit ${test_result}
