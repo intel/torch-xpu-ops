@@ -38,6 +38,7 @@ pip list |grep torch
 
 # Install torchvision, torchaudio and triton
 cd ${WORKSPACE}/pytorch
+rm -rf torch
 TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
 TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
 TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
