@@ -2,8 +2,8 @@
 #include <ATen/native/xpu/sycl/MultiMarginLossKernels.h>
 
 #include <ATen/ops/empty.h>
-#include <xpu/ATen/ops/multi_margin_loss_backward_native.h>
-#include <xpu/ATen/ops/multi_margin_loss_native.h>
+#include <ATen/ops/multi_margin_loss_backward_native.h>
+#include <ATen/ops/multi_margin_loss_native.h>
 
 namespace at::native {
 

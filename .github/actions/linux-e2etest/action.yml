@@ -1,0 +1,116 @@
+name: Linux E2E Test
+
+inputs:
+  suite:
+    required: true
+    type: string
+    default: 'huggingface'
+    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
+  dt:
+    required: true
+    type: string
+    default: 'float32'
+    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
+  mode:
+    required: true
+    type: string
+    default: 'inference'
+    description: inference,training. Delimiter is comma
+  scenario:
+    required: true
+    type: string
+    default: 'accuracy'
+    description: accuracy,performance. Delimiter is comma
+
+runs:
+  using: composite
+  steps:
+    - name: Check Python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
+    - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      shell: bash -x {0}
+      run: |
+        cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
+        cd ./pytorch
+        # check param
+        function contains() {
+            contains_status="echo 'Start $2 ...'"
+            {
+              [[ $1 =~ (^|,)$2($|,) ]]
+            } || {
+              echo "[Warning] $2 is not suppotted type! Skipped!"
+              contains_status="continue"
+            }
+        }
+        export OMP_NUM_THREADS=${cpus_per_xpu}
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
+          if [ "${suite}" == "pt2e" ];then
+            continue
+          fi
+          contains "huggingface,timm_models,torchbench" $suite
+          $contains_status
+          for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          do
+            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
+            $contains_status
+            for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
+            do
+              contains "inference,training" $mode
+              $contains_status
+              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
+              do
+                contains "accuracy,performance" $scenario
+                $contains_status
+                if [ "${MODEL_ONLY_NAME}" == "" ];then
+                  for var in $(seq 0 $[ ${xpu_num} - 1 ])
+                  do
+                    cpu_list="$(echo "${cpus_per_xpu} ${var}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+                    if [ "${ZE_AFFINITY_MASK}" != "" ];then
+                      xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
+                      xpu_id=${xpu_list[$[ ${var} + 1 ]]}
+                    else
+                      xpu_id=${var}
+                    fi
+                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${var} &
+                  done
+                else
+                  for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
+                  do
+                    numactl --localalloc bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
+                  done
+                fi
+                wait
+                # summarize pass rate
+                LOG_DIR="inductor_log/${suite}/${dt}"
+                LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
+                rm -f ${LOG_DIR}/${LOG_NAME}
+                find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
+              done
+            done
+          done
+        done
+
+    - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
+      shell: bash -xe {0}
+      run: |
+        cd ./pytorch
+        rm -f inductor_log/summary_accuracy.csv
+        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
+        do
+          sed -i "s/$/,$(basename $var)/" $var
+          cat $var >> inductor_log/summary_accuracy.csv
+        done
+        cp ${{ github.workspace }}/.github/scripts/inductor_summary.py ./
+        csv_file="$(find inductor_log/ -name "inductor_*_xpu_*.csv" |tail -n 1)"
+        if [ -f "${csv_file}" ];then
+          pip install styleFrame scipy pandas
+          dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
+          mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
+          suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
+          scenario=$(echo ${{ inputs.scenario }} |sed 's/,/ /g')
+          python inductor_summary.py -p ${dt} -s ${suite} -m ${mode} -sc ${scenario}
+        fi
