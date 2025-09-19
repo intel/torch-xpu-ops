@@ -64,9 +64,6 @@ jobs:
     needs: runner
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.define-matrix.outputs.matrix) }}
     container:
       image: mengfeili/intel-pvc-driver:1146-1136
       volumes:
