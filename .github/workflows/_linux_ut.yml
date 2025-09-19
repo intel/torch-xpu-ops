@@ -41,25 +41,7 @@ env:
   UT_SKIP_ISSUE: 1624
 
 jobs:
-  define-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      num_shards: ${{ steps.set-matrix.outputs.num_shards }}
-    steps:
-      - name: Set Matrix
-        id: set-matrix
-        run: |
-          if [[ "${{ inputs.ut }}" == "xpu_inductor" ]]; then
-            echo 'matrix={"shard":[1,2,3,4],"num_shards":[4]}' >> $GITHUB_OUTPUT
-            echo "num_shards=4" >> $GITHUB_OUTPUT
-          else
-            echo 'matrix={"shard":[1],"num_shards":[1]}' >> $GITHUB_OUTPUT
-            echo "num_shards=1" >> $GITHUB_OUTPUT
-          fi
-
   runner:
-    needs: define-matrix
     runs-on: ${{ inputs.runner }}
     name: get-runner
     outputs:
@@ -77,11 +59,9 @@ jobs:
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
-        with:
-          num_runners: ${{ needs.define-matrix.outputs.num_shards }}
 
   test-in-container:
-    needs: [runner, define-matrix]
+    needs: runner
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     strategy:
@@ -96,7 +76,9 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        PYTEST_XDIST_CHUNK_SIZE: 10
+        PYTEST_XDIST_SCHEDULER: worksteal
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -111,9 +93,6 @@ jobs:
         with:
           ut_name: ${{ inputs.ut }}
           keep_going: ${{ inputs.keep_going }}
-        env:
-          SHARD_ID: ${{ matrix.shard }}
-          NUM_SHARDS: ${{ matrix.num_shards }}
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
