@@ -756,6 +756,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
+  auto id = work->trace_id_;
+  work->future_->addCallback(
+      [id](at::ivalue::Future&) {
+        FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+      },
+      /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -866,6 +872,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
+    auto id = work->trace_id_;
+    work->future_->addCallback(
+        [id](at::ivalue::Future&) {
+          FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+        },
+        /*use_future*/ false);
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
     setEnqueuedPgStatus(work);
