@@ -1,4 +1,5 @@
 #include <ATen/ATen.h>
+#include <ATen/native/xpu/Blas.h>
 #include <comm/Runtime.h>
 #include <oneapi/mkl/blas.hpp>
 #include <torch/library.h>
@@ -7,7 +8,7 @@ namespace at::native {
 
 #if defined(USE_ONEMKL_XPU)
 
-std::pair<Tensor, bool> process_result_matrix(
+static std::pair<Tensor, bool> process_result_matrix(
     const Tensor& result,
     IntArrayRef result_sizes) {
   const auto result_strides = result.strides();
@@ -40,7 +41,7 @@ std::pair<Tensor, bool> process_result_matrix(
   return {c, false};
 }
 
-std::pair<Tensor, bool> process_matrix(
+static std::pair<Tensor, bool> process_matrix(
     const Tensor& m,
     bool transpose_c,
     int64_t first_dim,
@@ -419,34 +420,40 @@ Tensor& baddbmm_complex_out_xpu(
   return out;
 }
 
-#endif // USE_ONEMKL_XPU
+#else
 
-TORCH_LIBRARY_FRAGMENT(aten, m) {
-  m.def(
-      "aten::_mm_mkl.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)");
-  m.def(
-      "aten::_bmm_mkl.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)");
-  m.def(
-      "aten::_addmm_mkl.out(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)");
-  m.def(
-      "aten::_baddbmm_mkl.out(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)");
+Tensor& mm_complex_out_xpu(
+    const at::Tensor& self,
+    const at::Tensor& mat2,
+    at::Tensor& out) {
+  TORCH_CHECK(false, "Complex datatype matmul is not supported in oneDNN");
 }
 
-#if defined(USE_ONEMKL_XPU)
-
-TORCH_LIBRARY_IMPL(aten, XPU, m) {
-  m.impl("aten::_mm_mkl.out", mm_complex_out_xpu);
-  m.impl("aten::_bmm_mkl.out", bmm_complex_out_xpu);
-  m.impl("aten::_addmm_mkl.out", addmm_complex_out_xpu);
-  m.impl("aten::_baddbmm_mkl.out", baddbmm_complex_out_xpu);
+Tensor& bmm_complex_out_xpu(
+    const Tensor& self,
+    const Tensor& mat2,
+    Tensor& out) {
+  TORCH_CHECK(false, "Complex datatype matmul is not supported in oneDNN");
 }
 
-// Conjugated tensors are handled inside kernel and for some cases there is no need to resolve conjugation which improves performance.
-TORCH_LIBRARY_IMPL(aten, Conjugate, m) {
-  m.impl("aten::_mm_mkl.out", torch::CppFunction::makeFallthrough());
-  m.impl("aten::_bmm_mkl.out", torch::CppFunction::makeFallthrough());
-  m.impl("aten::_addmm_mkl.out", torch::CppFunction::makeFallthrough());
-  m.impl("aten::_baddbmm_mkl.out", torch::CppFunction::makeFallthrough());
+Tensor& addmm_complex_out_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& out) {
+  TORCH_CHECK(false, "Complex datatype matmul is not supported in oneDNN");
+}
+
+Tensor& baddbmm_complex_out_xpu(
+    const Tensor& self,
+    const Tensor& batch1,
+    const Tensor& batch2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& out) {
+  TORCH_CHECK(false, "Complex datatype matmul is not supported in oneDNN");
 }
 
 #endif // USE_ONEMKL_XPU
