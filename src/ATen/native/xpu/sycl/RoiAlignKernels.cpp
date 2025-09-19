@@ -440,7 +440,6 @@ Tensor roi_align_kernel(
 
   at::Tensor output = at::zeros(
       {num_rois, channels, pooled_height, pooled_width}, input.options());
-  auto output_size = num_rois * pooled_height * pooled_width * channels;
 
   if (output.numel() == 0) {
     return output;

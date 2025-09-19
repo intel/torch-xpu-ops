@@ -1103,9 +1103,6 @@ void _layer_norm_backward_kernel(
     // affecting performance and behavior.
     const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
     const scalar_t* X_data = X.const_data_ptr<scalar_t>();
-    weight_t* dg_data =
-        dgamma.defined() ? dgamma.data_ptr<weight_t>() : nullptr;
-    weight_t* db_data = dbeta.defined() ? dbeta.data_ptr<weight_t>() : nullptr;
     Tensor dgamma_blocks;
     Tensor dbeta_blocks;
     weight_t* dgamma_blocks_ptr = nullptr;
