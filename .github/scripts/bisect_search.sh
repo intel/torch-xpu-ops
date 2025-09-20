@@ -6,6 +6,7 @@ export GIT_PAGER=cat
 WORKSPACE=$(realpath ${WORKSPACE:-"/tmp"})
 PYTORCH_COMMIT=${PYTORCH_COMMIT:-"main"}
 TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT:-"main"}
+PREPARE_ENV=${PREPARE_ENV:-"no"}
 for var; do
     eval "export $(echo ${var@Q} |sed "s/^'-*//g;s/=/='/")"
 done
@@ -36,41 +37,43 @@ if [ ${build_status} -ne 0 ];then
 fi
 pip list |grep torch
 
-# Install torchvision, torchaudio and triton
-cd ${WORKSPACE}/pytorch
-rm -rf torch
-TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
-TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
-TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
-git clone https://github.com/pytorch/vision gs-vision
-git clone https://github.com/pytorch/audio gs-audio
-cd gs-vision && git checkout ${TORCHVISION_COMMIT_ID} && python setup.py install && cd ..
-cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install && cd ..
-cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
-                pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
+if [ "${PREPARE_ENV}" == "yes" ];then
+    # Install torchvision, torchaudio and triton
+    cd ${WORKSPACE}/pytorch
+    rm -rf torch
+    TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
+    TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
+    TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+    git clone https://github.com/pytorch/vision gs-vision
+    git clone https://github.com/pytorch/audio gs-audio
+    cd gs-vision && git checkout ${TORCHVISION_COMMIT_ID} && python setup.py install && cd ..
+    cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install && cd ..
+    cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
+                    pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
 
-# deps
-if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
-    pip install transformers
-elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
-    pip install timm
-elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
-    model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
-    git clone https://github.com/pytorch/benchmark gs-benchmark
-    cd gs-benchmark
-    pip install -r requirements.txt
-    pip install -U numpy==1.26.4
-    export PYTHONPATH=${PWD}:${PYTHONPATH}
-    python install.py ${model_name}
-    pip uninstall -y pynvml
-    # for dlrm
-    pip install pyre-extensions
-    curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-    # for soft_actor_critic, temp fix
-    pip install git+https://github.com/nocoding03/gym@fix-np
-    cd ..
-else
-    pip install -r ./.ci/docker/requirements-ci.txt
+    # deps
+    if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
+        pip install transformers
+    elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
+        pip install timm
+    elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
+        model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
+        git clone https://github.com/pytorch/benchmark gs-benchmark
+        cd gs-benchmark
+        pip install -r requirements.txt
+        pip install -U numpy==1.26.4
+        export PYTHONPATH=${PWD}:${PYTHONPATH}
+        python install.py ${model_name}
+        pip uninstall -y pynvml
+        # for dlrm
+        pip install pyre-extensions
+        curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+        # for soft_actor_critic, temp fix
+        pip install git+https://github.com/nocoding03/gym@fix-np
+        cd ..
+    else
+        pip install -r ./.ci/docker/requirements-ci.txt
+    fi
 fi
 
 # Test

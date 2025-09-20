@@ -135,15 +135,16 @@ jobs:
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_COMMIT="${old_commit}" \
                   --TORCH_XPU_OPS_COMMIT="${LATEST_XPU_COMMIT}" \
+                  --PREPARE_ENV=yes \
                   > ${{ github.workspace }}/gs-logs/search-${old_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
-          old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
+          old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv || true)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_COMMIT="${new_commit}" \
                   --TORCH_XPU_OPS_COMMIT="${LATEST_XPU_COMMIT}" \
                   > ${{ github.workspace }}/gs-logs/search-${new_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
-          new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
+          new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv || true)"
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
             git reset --hard
@@ -168,15 +169,16 @@ jobs:
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_COMMIT="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_COMMIT="${old_commit}" \
+                  --PREPARE_ENV=yes \
                   > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${old_commit}.log && echo $? || echo $?)"
-          old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
+          old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv || true)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_COMMIT="${LATEST_PT_COMMIT}" \
                   --TORCH_XPU_OPS_COMMIT="${new_commit}" \
                   > ${{ github.workspace }}/gs-logs/search-${LATEST_PT_COMMIT}-${new_commit}.log && echo $? || echo $?)"
-          new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv)"
+          new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv || true)"
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
             git reset --hard
