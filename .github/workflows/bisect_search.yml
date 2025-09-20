@@ -90,6 +90,8 @@ jobs:
       - name: Check python
         shell: bash -xe {0}
         run: |
+          sudo apt update
+          sudo apt install -y rsync
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
