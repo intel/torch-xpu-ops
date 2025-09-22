@@ -390,10 +390,10 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug
             << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_;
 
-  getglobalRankStart_AndStride(
+  getGlobalRankStartAndStride(
       options_->global_ranks_in_group,
-      this->globalRankStart__,
-      this->globalRankStride__);
+      this->globalRankStart_,
+      this->globalRankStride_);
 
   // Heartbeat monitor thread dumps debug info on write to pipe
   heartbeatMonitor_ = std::make_unique<HeartbeatMonitorXCCL>(this);
