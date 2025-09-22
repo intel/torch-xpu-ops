@@ -61,7 +61,6 @@ if [ "${PREPARE_ENV}" == "yes" ];then
         git clone https://github.com/pytorch/benchmark gs-benchmark
         cd gs-benchmark
         pip install -r requirements.txt
-        pip install -U numpy==1.26.4
         export PYTHONPATH=${PWD}:${PYTHONPATH}
         python install.py ${model_name}
         pip uninstall -y pynvml
@@ -77,6 +76,7 @@ if [ "${PREPARE_ENV}" == "yes" ];then
 fi
 
 # Test
+pip install -U numpy==1.26.4
 test_result=1
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
