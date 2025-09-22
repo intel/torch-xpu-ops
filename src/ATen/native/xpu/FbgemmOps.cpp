@@ -223,6 +223,62 @@ Tensor jagged_to_padded_dense(
       values, offsets, max_lengths, padding_value)[0];
 }
 
+class JaggedDenseAddJaggedOutputOp
+    : public torch::autograd::Function<JaggedDenseAddJaggedOutputOp> {
+ public:
+  static torch::autograd::variable_list forward(
+      torch::autograd::AutogradContext* ctx,
+      const Tensor& x_values,
+      const std::vector<Tensor>& offsets,
+      const Tensor& dense) {
+    TORCH_CHECK(x_values.is_xpu(), "value must be a xpu tensor");
+    for (auto& offset : offsets) {
+      TORCH_CHECK(offset.is_xpu(), "offset must be a xpu tensor");
+    }
+    TORCH_CHECK(dense.is_xpu(), "dense must be a xpu tensor");
+
+    const int num_jagged_dim = dense.dim() - 2;
+    TORCH_CHECK(
+        offsets.size() == static_cast<size_t>(num_jagged_dim),
+        "x_offsets.size(), ",
+        offsets.size(),
+        " != num_jagged_dim, ",
+        num_jagged_dim);
+
+    auto output = at::empty_like(x_values);
+    if (dense.numel() == 0 || x_values.numel() == 0) {
+      return {output};
+    }
+
+    XPU_DEVICE_GUARD(dense);
+    jagged_dense_elementwise_add_jagged_output_fwd_xpu_kn(
+        x_values, offsets, dense, output);
+
+    return {output};
+  }
+
+  static torch::autograd::variable_list backward(
+      torch::autograd::AutogradContext* ctx,
+      torch::autograd::variable_list grad_outputs) {
+    // TODO: backward kernel
+    return {
+        torch::autograd::Variable(),
+        torch::autograd::Variable(), // offsets
+        torch::autograd::Variable()};
+  }
+};
+
+std::tuple<Tensor, std::vector<Tensor>>
+jagged_dense_elementwise_add_jagged_output_xpu(
+    const Tensor& x_values,
+    const std::vector<Tensor>& x_offsets,
+    const Tensor& y) {
+  auto sum_values =
+      JaggedDenseAddJaggedOutputOp::apply(x_values, x_offsets, y)[0];
+
+  return {sum_values, x_offsets};
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
@@ -239,6 +295,8 @@ TORCH_LIBRARY(fbgemm, m) {
       "jagged_to_padded_dense(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor");
   m.def(
       "jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor");
+  m.def(
+      "jagged_dense_elementwise_add_jagged_output(Tensor values, Tensor[] offsets, Tensor y) -> (Tensor, Tensor[])");
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
@@ -266,5 +324,11 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "jagged_to_padded_dense_forward",
       &at::native::xpu::jagged_to_padded_dense_forward_xpu);
+}
+
+TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
+  m.impl(
+      "jagged_dense_elementwise_add_jagged_output",
+      &at::native::xpu::jagged_dense_elementwise_add_jagged_output_xpu);
 }
 } // namespace
