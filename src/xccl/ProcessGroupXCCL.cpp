@@ -2247,8 +2247,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       outputTensors, // outputTensors
       rank_, // rank
       "all_to_all", // collective name
-      total_numel, // inNelems
-      total_numel, // outNelems
+      input_total_numel, // inNelems
+      output_total_numel, // outNelems
       inputTensors.front().scalar_type(), // dType
       inSplitSizes, // inSplitSizes
       outSplitSizes, // outSplitSizes
