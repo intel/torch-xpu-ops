@@ -24,6 +24,9 @@
 #include <xccl/ProcessGroupXCCLMonitor.hpp>
 namespace c10d {
 
+static std::vector<std::string> TORCH_XCCL_HIGH_PRIORITY = {
+    "TORCH_XCCL_HIGH_PRIORITY"};
+
 static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
     "TORCH_XCCL_BLOCKING_WAIT",
     "XCCL_BLOCKING_WAIT"};
@@ -118,15 +121,19 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   };
 
   struct Options : public Backend::Options {
-    explicit Options();
+    explicit Options(bool is_high_priority_stream = false);
 
-    static c10::intrusive_ptr<Options> create() {
-      return c10::make_intrusive<Options>();
+    static c10::intrusive_ptr<Options> create(
+        bool is_high_priority_stream = false) {
+      return c10::make_intrusive<Options>(is_high_priority_stream);
     }
+    bool is_high_priority_stream;
+    std::vector<uint64_t> global_ranks_in_group;
+    std::string group_name;
   };
 
   ProcessGroupXCCL(
-      const c10::intrusive_ptr<Store>& store,
+      c10::intrusive_ptr<Store> store,
       int rank,
       int size,
       c10::intrusive_ptr<Options> options = Options::create());
@@ -135,10 +142,15 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const c10::intrusive_ptr<Store>& store,
       int rank,
       int size,
-      const std::string& groupName)
-      : ProcessGroupXCCL(store, rank, size) {}
+      const std::string& groupName,
+      c10::intrusive_ptr<Options> options = Options::create())
+      : ProcessGroupXCCL(store, rank, size, std::move(options)) {}
 
   ~ProcessGroupXCCL() override;
+
+  c10::intrusive_ptr<Options> getOptions() {
+    return options_;
+  }
 
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);
@@ -413,8 +425,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::vector<uint64_t>& groupRanks() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-  void setCompletedPgStatus(
-      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:

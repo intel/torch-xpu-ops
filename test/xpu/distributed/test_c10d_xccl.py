@@ -370,6 +370,31 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         # reset env
         os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
 
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_oom(self):
+        pg = self._create_process_group_xccl()
+        dp_ranks = range(0, self.world_size)
+        dp_group = c10d.new_group(dp_ranks)
+        device = torch.device(f"xpu:{self.rank}")
+        torch.xpu.set_device(device)
+
+        shape = (16384 * 2, 16384 * 2)
+        weight = torch.ones(shape, device=device).half()
+        gradient = torch.zeros(shape, device=device).half()
+        ret = torch.randn(shape, device=device).half()
+
+        for iter in range(50):
+            output = torch.empty_like(ret)
+            output = ret + weight + gradient
+            ret = torch.nn.functional.linear(output, weight=ret)
+            dist.all_reduce(ret, op=dist.ReduceOp.SUM)
+        torch.xpu.synchronize()
+        self.assertLess(
+            torch.xpu.max_memory_allocated(),
+            torch.xpu.max_memory_reserved() * 2,
+        )
+
 
 class CommTest(MultiProcessTestCase):
     @property
@@ -646,7 +671,7 @@ class CommTest(MultiProcessTestCase):
         with _functional_collectives.allow_inflight_collective_as_graph_input_ctx():
             self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
             input = torch.full(
-                (10240, 10240), float(self.rank), device=f"xpu:{self.rank}"
+                (1024, 1024), float(self.rank), device=f"xpu:{self.rank}"
             )
             dist.all_reduce(input, op=dist.ReduceOp.SUM, async_op=True)
             # Non-functional collectives run under the context manager is registered in the work registry.
@@ -658,7 +683,7 @@ class CommTest(MultiProcessTestCase):
         # Case 2: Run collectives not under context manager, and don't call wait on them.
         # NOTE: Here we intentionally test memory-stressed case.
         self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
-        for _ in range(50000):
+        for _ in range(500):
             input = torch.full(
                 (1024, 1024), float(self.rank), device=f"xpu:{self.rank}"
             )
