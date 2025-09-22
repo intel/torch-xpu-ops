@@ -166,7 +166,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   c10::intrusive_ptr<Work> endCoalescing(OpType optype);
 
-  std::shared_ptr<xcclComm_t> getXCCLComm(
+  std::shared_ptr<xcclComm_t> getXCCLComm(const std::string& deviceKey);
+
+  std::shared_ptr<xcclComm_t> initXCCLComm(
       const std::string& deviceKey,
       at::Device& device,
       OpType opType,
