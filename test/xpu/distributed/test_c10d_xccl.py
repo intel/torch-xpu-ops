@@ -2,6 +2,8 @@
 
 import math
 import os
+import random
+import signal
 import sys
 import time
 from datetime import timedelta
@@ -10,6 +12,7 @@ from unittest import mock
 
 import torch
 import torch.distributed as c10d
+import torch.distributed._functional_collectives as _functional_collectives
 
 if not c10d.is_available() or not c10d.is_xccl_available():
     print("c10d XCCL not available, skipping tests", file=sys.stderr)
@@ -19,6 +22,9 @@ import torch.distributed as dist
 import torch.testing._internal.common_utils as common
 from torch.testing._internal.common_distributed import MultiProcessTestCase
 from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    IS_SANDCASTLE,
+    parametrize,
     retry_on_connect_failures,
     run_tests,
     skip_but_pass_in_sandcastle_if,
@@ -210,6 +216,15 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
 
     def setUp(self):
         super().setUp()
+        TEST_NAN_ASSERT_RETURN = 0 if IS_SANDCASTLE else -signal.SIGABRT
+        self.special_return_code_checks = {
+            self.test_nan_assert_float16.__wrapped__: TEST_NAN_ASSERT_RETURN,
+            self.test_nan_assert_float32.__wrapped__: TEST_NAN_ASSERT_RETURN,
+            self.test_nan_assert_float64.__wrapped__: TEST_NAN_ASSERT_RETURN,
+            self.test_nan_assert_bfloat16.__wrapped__: TEST_NAN_ASSERT_RETURN,
+            self.test_nan_assert_float8_e4m3fn.__wrapped__: TEST_NAN_ASSERT_RETURN,
+            self.test_nan_assert_float8_e5m2.__wrapped__: TEST_NAN_ASSERT_RETURN,
+        }
         self._spawn_processes()
 
     def tearDown(self):
@@ -287,6 +302,93 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         self.assertEqual(pg_1.group_desc, "test_purpose")
         pg_2 = c10d.new_group([0, 1])
         self.assertEqual(pg_2.group_desc, "undefined")
+
+    @requires_xccl()
+    @parametrize(
+        "type",
+        [
+            torch.float16,
+            torch.float32,
+            torch.float64,
+            torch.bfloat16,
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        ],
+    )
+    def test_nan_assert(self, type):
+        # Expecting a device-side error when NaN is detected
+        os.environ["TORCH_XCCL_NAN_CHECK"] = "1"
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        # Cover different buffer sizes
+        if type == torch.float64:
+            size = (1024,)  # 1K elements
+        elif type == torch.float32:
+            size = (1024, 1024)  # 1M elements
+        elif type == torch.float16:
+            size = (1024, 1024, 1024)  # 1G elements
+        else:
+            size = (1,)  # 1 element
+
+        # Note: currently we cannot fill values into a FP8 tensor, thus we
+        # create the NaN tensor in float32 type and cast it to FP8
+        if type == torch.float8_e4m3fn or type == torch.float8_e5m2:
+            init_type = torch.float32
+        else:
+            init_type = type
+
+        nan_tensor = torch.zeros(*size, dtype=init_type, device=device)
+        # randomly pick an nan element
+        index = tuple([random.randrange(size[i]) for i in range(len(size))])
+        nan_tensor[index] = float("nan")
+        if init_type != type:
+            # Now cast to the targeted dtype
+            nan_tensor = nan_tensor.to(type)
+
+        output = torch.empty(self.world_size, *size, dtype=type, device=device)
+
+        # # confirm enable/disable flag works
+        # backend._set_enable_nan_check(False)
+        # # Note: using all-gather here bc some NCCL/SM version does not support
+        # # FP8 reduction
+        # # temporarily skip due to https://github.com/pytorch/pytorch/issues/153479
+        # # pg._allgather_base(output, nan_tensor)
+
+        # backend._set_enable_nan_check(True)
+        try:
+            pg._allgather_base(output, nan_tensor)
+        except Exception:
+            sys.exit(signal.SIGABRT)
+
+        dist.destroy_process_group()
+
+        # reset env
+        os.environ["TORCH_XCCL_NAN_CHECK"] = "0"
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_oom(self):
+        pg = self._create_process_group_xccl()
+        dp_ranks = range(0, self.world_size)
+        dp_group = c10d.new_group(dp_ranks)
+        device = torch.device(f"xpu:{self.rank}")
+        torch.xpu.set_device(device)
+
+        shape = (16384 * 2, 16384 * 2)
+        weight = torch.ones(shape, device=device).half()
+        gradient = torch.zeros(shape, device=device).half()
+        ret = torch.randn(shape, device=device).half()
+
+        for iter in range(50):
+            output = torch.empty_like(ret)
+            output = ret + weight + gradient
+            ret = torch.nn.functional.linear(output, weight=ret)
+            dist.all_reduce(ret, op=dist.ReduceOp.SUM)
+        torch.xpu.synchronize()
+        self.assertLess(
+            torch.xpu.max_memory_allocated(),
+            torch.xpu.max_memory_reserved() * 2,
+        )
 
 
 class CommTest(MultiProcessTestCase):
@@ -549,6 +651,89 @@ class CommTest(MultiProcessTestCase):
                     output_tensor[start:end].view(torch.float32),
                     tensor.view(torch.float32),
                 )
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_unwaited(self) -> None:
+        # Verify that the process can terminate gracefully
+        # even with unwaited tensors
+        store = c10d.FileStore(self.file_name, self.world_size)
+        c10d.init_process_group(
+            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
+        )
+
+        # Case 1: Run collectives under context manager, and don't call wait on them.
+        with _functional_collectives.allow_inflight_collective_as_graph_input_ctx():
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+            input = torch.full(
+                (1024, 1024), float(self.rank), device=f"xpu:{self.rank}"
+            )
+            dist.all_reduce(input, op=dist.ReduceOp.SUM, async_op=True)
+            # Non-functional collectives run under the context manager is registered in the work registry.
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 1)
+            # Running another collective on the same tensor should still work
+            dist.all_reduce(input, op=dist.ReduceOp.SUM, async_op=True)
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
+
+        # Case 2: Run collectives not under context manager, and don't call wait on them.
+        # NOTE: Here we intentionally test memory-stressed case.
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
+        for _ in range(500):
+            input = torch.full(
+                (1024, 1024), float(self.rank), device=f"xpu:{self.rank}"
+            )
+            dist.all_reduce(input, op=dist.ReduceOp.SUM, async_op=True)
+        # Work registry size is unchanged, since non-functional collectives not run under
+        # the context manager is not registered in the work registry.
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
+
+    @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_wait_tensor(self) -> None:
+        # Verify that c10d_functional.wait_tensor() can be invoked on
+        # output tensor of non-functional collective
+        store = c10d.FileStore(self.file_name, self.world_size)
+        c10d.init_process_group(
+            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
+        )
+
+        # Case 1: under context manager (i.e. work is registered in registry)
+        with _functional_collectives.allow_inflight_collective_as_graph_input_ctx():
+            input1 = torch.full((10, 10), float(self.rank), device=f"xpu:{self.rank}")
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+            dist.all_reduce(input1, op=dist.ReduceOp.SUM, async_op=True)
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 1)
+            torch.ops.c10d_functional.wait_tensor(input1)
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+
+            input2 = torch.full((10, 10), float(self.rank), device=f"xpu:{self.rank}")
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+            work = dist.all_reduce(input2, op=dist.ReduceOp.SUM, async_op=True)
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 1)
+            work.wait()
+            self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+            self.assertEqual(input1, input2)
+
+        # Case 2: not under context manager (i.e. work is not registered in registry)
+        input1 = torch.full((10, 10), float(self.rank), device=f"xpu:{self.rank}")
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+        dist.all_reduce(input1, op=dist.ReduceOp.SUM, async_op=True)
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+        # this does not take effect, since the underlying wait_tensor() logic would not
+        # be able to find the corresponding work object (because it's not registered in registry)
+        torch.ops.c10d_functional.wait_tensor(input1)
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+
+        input2 = torch.full((10, 10), float(self.rank), device=f"xpu:{self.rank}")
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+        work = dist.all_reduce(input2, op=dist.ReduceOp.SUM, async_op=True)
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+        work.wait()
+        self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
+        self.assertEqual(input1, input2)
+
+
+instantiate_parametrized_tests(ProcessGroupXCCLTest)
 
 
 class SetDeviceMethod(Enum):

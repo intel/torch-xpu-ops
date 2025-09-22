@@ -51,7 +51,7 @@ void multilabel_margin_loss_shape_check(
 template <typename scalar_t, typename accscalar_t>
 struct MultilabelMarginLossForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
+  [[sycl::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
   operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
     const scalar_t* input_k = input_ + k * dim_;
@@ -148,7 +148,7 @@ struct MultilabelMarginLossForwardKernelFunctor
 template <typename scalar_t, typename accscalar_t>
 struct MultilabelMarginLossBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
+  [[sycl::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
   operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
     const scalar_t* input_k = input_ + k * dim_;

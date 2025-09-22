@@ -6,6 +6,7 @@ import pathlib
 # Reference last updated is https://github.com/intel/torch-xpu-ops/pull/1223
 
 parser = argparse.ArgumentParser(description="Accuracy Check", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument("--driver", type=str, default="rolling", help="rolling or lts")
 parser.add_argument("--category", type=str, default="inductor", help="inductor")
 parser.add_argument("--suite", type=str, required=True, help="huggingface, timm_models or torchbench")
 parser.add_argument("--mode", type=str, required=True, help="inference or training")
@@ -23,7 +24,7 @@ test_data = pd.read_csv(args.csv_file, comment='#')
 test_names = [row["name"] for index, row in test_data.iterrows()]
 
 current_path = pathlib.Path(__file__).parent.resolve()
-refer_file = str(current_path) + "/" + args.category + "_" + args.suite + "_" + args.mode + ".csv"
+refer_file = str(current_path) + "/" + args.driver + "/" + args.category + "_" + args.suite + "_" + args.mode + ".csv"
 refer_data = pd.read_csv(refer_file, comment='#')
 # refer_data = refer_data.reset_index()  # make sure indexes pair with number of rows
 # refer_data = refer_data.sort_values(by=["name"], ascending=True)

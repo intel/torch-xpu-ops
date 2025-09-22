@@ -5,8 +5,8 @@
 #include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
-#include <xpu/ATen/ops/nll_loss_backward_native.h>
-#include <xpu/ATen/ops/nll_loss_forward_native.h>
+#include <ATen/ops/nll_loss_backward_native.h>
+#include <ATen/ops/nll_loss_forward_native.h>
 
 namespace at {
 namespace native {
