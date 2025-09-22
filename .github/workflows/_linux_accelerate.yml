@@ -45,6 +45,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
+  EXCLUDE_NEWER: '2025-09-22'
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
 defaults:
@@ -159,7 +160,7 @@ jobs:
           uv pip install $TORCH_INDEX torch torchvision torchaudio
           # Do NOT install HF transformers or accelerate before torch as we need
           # very specific version of the torch and HF would bring its own.
-          uv pip install \
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} \
             junitparser \
             pytest \
             pytest-timeout \
@@ -168,8 +169,8 @@ jobs:
       - name: Prepare Accelerate
         run: |
           cd $WORK_DIR
-          uv pip install -e .
-          uv pip install -e ".[testing]"
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} -e .
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} -e ".[testing]"
           rm -rf tests_log && mkdir -p tests_log
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
