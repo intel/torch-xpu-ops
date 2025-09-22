@@ -5,21 +5,12 @@
 #include <ATen/native/Pool.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
 #include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/SYCLHelpers.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
-
-#define SYCL_KERNEL_LOOP_TYPE(i, n, index_type)                         \
-  int64_t _i_n_d_e_x =                                                  \
-      ((int64_t)item.get_group(0)) * item.get_local_range(0) +          \
-      item.get_local_id(0);                                             \
-  for (index_type i = _i_n_d_e_x; _i_n_d_e_x < (n);                     \
-       _i_n_d_e_x += item.get_local_range(0) * item.get_group_range(0), \
-                  i = _i_n_d_e_x)
-
-#define SYCL_KERNEL_LOOP(i, n) SYCL_KERNEL_LOOP_TYPE(i, n, int)
 
 namespace at::native {
 namespace xpu {
@@ -35,9 +26,7 @@ inline int max(int a, int b) {
 template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool2dKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    // index_t index = item.get_global_linear_id();
-
-    SYCL_KERNEL_LOOP(index, total_elements_) {
+    XPU_KERNEL_LOOP(item, index, total_elements_) {
       const int pw = index % pooled_width_;
       const int ph = (index / pooled_width_) % pooled_height_;
       const int c = (index / pooled_width_ / pooled_height_) % channels_;
@@ -139,9 +128,7 @@ struct AvgPool2dKernelFunctor {
 template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool2dChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    index_t index = item.get_global_linear_id();
-
-    SYCL_KERNEL_LOOP(index, total_elements_) {
+    XPU_KERNEL_LOOP(item, index, total_elements_) {
       const int c = index % channels_;
       const int pw = (index / channels_) % pooled_width_;
       const int ph = (index / channels_ / pooled_width_) % pooled_height_;
@@ -338,8 +325,7 @@ void launch_avg_pool2d_kernel(
 template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool2dChannelsLastBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    index_t index = item.get_global_linear_id();
-    SYCL_KERNEL_LOOP_TYPE(index, total_elements_, index_t) {
+    XPU_KERNEL_LOOP_TYPE(item, index, total_elements_, index_t) {
       const int c = index % channels_;
       const int w = (index / channels_) % width_ + pad_w_;
       const int h = (index / channels_ / width_) % height_ + pad_h_;
@@ -442,8 +428,7 @@ struct AvgPool2dChannelsLastBackwardKernelFunctor {
 template <typename scalar_t, typename accscalar_t, typename index_t>
 struct AvgPool2dBackwarKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    index_t index = item.get_global_linear_id();
-    SYCL_KERNEL_LOOP_TYPE(index, total_elements_, index_t) {
+    XPU_KERNEL_LOOP_TYPE(item, index, total_elements_, index_t) {
       // find out the local index
       // find out the local offset
       const int w = index % width_ + pad_w_;
@@ -655,7 +640,6 @@ void avg_pool2d_kernel(
     bool count_include_pad,
     std::optional<int64_t> divisor_override,
     const Tensor& output) {
-
   const int64_t nInputPlane = input_.size(-3);
   const int64_t inputHeight = input_.size(-2);
   const int64_t inputWidth = input_.size(-1);
