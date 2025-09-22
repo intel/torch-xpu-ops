@@ -199,8 +199,6 @@ skip_dict = {
         "test_neg_view_linalg_eigh_xpu_float64",
         "test_neg_view_linalg_eigvalsh_xpu_float64",
         "test_neg_view_linalg_householder_product_xpu_float64",
-        "test_neg_view_linalg_inv_ex_xpu_float64",
-        "test_neg_view_linalg_inv_xpu_float64",
         "test_neg_view_linalg_ldl_factor_ex_xpu_float64",
         "test_neg_view_linalg_ldl_factor_xpu_float64",
         "test_neg_view_linalg_ldl_solve_xpu_float64",
@@ -638,10 +636,6 @@ skip_dict = {
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
         # RuntimeError: reflection_pad2d_backward_xpu does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'.
         "test_ReflectionPad2d_large_deterministic_xpu",
-        # Case updated in pytorch commit 97272e4
-        "test_hardswish_grad_corner_xpu_bfloat16",
-        "test_hardswish_grad_corner_xpu_float16",
-        "test_hardswish_grad_corner_xpu_float32",
         # x_cuda = x.clone().detach().to("cuda").requires_grad_(): Torch not compiled with CUDA enabled
         "test_layer_norm_backwards_eps",
     ),
@@ -994,6 +988,27 @@ skip_dict = {
         "test_scaled_gemm_offline_tunableop_xpu_float8_e5m2fnuz",
         # case need to port for xpu
         "test_gemm_bias_offline_tunableop_xpu_bfloat16",
+        # Exception is temporarily unavailable due to regression in oneMKL
+        "test_inv_errors_and_warnings_xpu_complex128",
+        "test_inv_errors_and_warnings_xpu_complex64",
+        "test_inv_errors_and_warnings_xpu_float32",
+        "test_inv_errors_and_warnings_xpu_float64",
+        "test_inverse_errors_large_xpu_complex128",
+        "test_inverse_errors_large_xpu_complex64",
+        "test_inverse_errors_large_xpu_float32",
+        "test_inverse_errors_large_xpu_float64",
+        "test_inverse_errors_xpu_complex128",
+        "test_inverse_errors_xpu_complex64",
+        "test_inverse_errors_xpu_float32",
+        "test_inverse_errors_xpu_float64",
+        "test_inv_ex_singular_xpu_complex128",
+        "test_inv_ex_singular_xpu_complex64",
+        "test_inv_ex_singular_xpu_float32",
+        "test_inv_ex_singular_xpu_float64",
+        "test_tensorinv_singular_input_xpu_complex128",
+        "test_tensorinv_singular_input_xpu_complex64",
+        "test_tensorinv_singular_input_xpu_float32",
+        "test_tensorinv_singular_input_xpu_float64",
     ),
     "test_ops_fwd_gradients_xpu.py": (
         # All of the followings are oneDNN issues
@@ -1035,7 +1050,6 @@ skip_dict = {
         "test_fn_fwgrad_bwgrad_linalg_solve_triangular_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_svd_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_svdvals_xpu_float64",
-        "test_fn_fwgrad_bwgrad_linalg_tensorinv_xpu_float64",
         "test_fn_fwgrad_bwgrad_linalg_tensorsolve_xpu_float64",
         "test_fn_fwgrad_bwgrad_logdet_xpu_float64",
         "test_fn_fwgrad_bwgrad_lu_xpu_float64",
