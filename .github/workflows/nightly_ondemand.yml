@@ -28,14 +28,13 @@ jobs:
           echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
 
   setup-xpu:
-    if: ${{ inputs.setup_xpu == 'yes' }}
+    if: ${{ inputs.setup_xpu == 'yes' && (! cancelled()) }}
     needs: get-params
     runs-on: ${{ matrix.node_name }}
     strategy:
       fail-fast: false
       matrix:
         node_name: ${{ fromJSON(needs.get-params.outputs.node_name) }}
-
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -45,16 +44,16 @@ jobs:
 
   check-nodes:
     runs-on: ${{ matrix.node_name }}
-    if: ${{ ! endsWith(needs.get-params.result, 'ed') }}
+    if: ${{ ! (endsWith(needs.get-params.result, 'ed') && cancelled()) }}
     needs: [get-params, setup-xpu]
     strategy:
       fail-fast: false
       matrix:
         node_name: ${{ fromJSON(needs.get-params.outputs.node_name) }}
-
     steps:
       - name: Check env
         run: |
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           . /opt/conda/etc/profile.d/conda.sh
           conda create python=3.10 -y -n mengfeil
           conda activate mengfeil
