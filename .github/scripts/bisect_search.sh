@@ -23,7 +23,7 @@ mkdir -p ${WORKSPACE}
 rm -rf "${WORKSPACE:?}/"* || sudo rm -rf "${WORKSPACE:?}/"*
 
 # Build pytorch
-pip uninstall -y torch
+pip uninstall -y torch torchvision torchaudio pytorch-triton-xpu triton
 source $(dirname $(realpath $0))/env.sh 2> /dev/null
 build_status="$($(dirname $(realpath $0))/build.sh \
     --WORKSPACE="${WORKSPACE}" \
@@ -37,25 +37,25 @@ if [ ${build_status} -ne 0 ];then
 fi
 pip list |grep torch
 
-if [ "${PREPARE_ENV}" == "yes" ];then
-    # Install torchvision, torchaudio and triton
-    cd ${WORKSPACE}/pytorch
-    rm -rf torch
-    TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
-    TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
-    TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
-    git clone https://github.com/pytorch/vision gs-vision
-    git clone https://github.com/pytorch/audio gs-audio
-    cd gs-vision && git checkout ${TORCHVISION_COMMIT_ID} && python setup.py install && cd ..
-    cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install && cd ..
-    cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
-                    pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
+# Install torchvision, torchaudio and triton
+cd ${WORKSPACE}/pytorch
+rm -rf torch
+TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
+TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
+TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
+git clone https://github.com/pytorch/vision gs-vision
+git clone https://github.com/pytorch/audio gs-audio
+cd gs-vision && git checkout ${TORCHVISION_COMMIT_ID} && python setup.py install && cd ..
+cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install && cd ..
+cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
+                pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
 
+if [ "${PREPARE_ENV}" == "yes" ];then
     # deps
     if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
-        pip install transformers
+        pip install transformers==4.55.2
     elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
-        pip install timm
+        pip install timm==1.0.19
     elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
         model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
         git clone https://github.com/pytorch/benchmark gs-benchmark
