@@ -5,6 +5,7 @@
 #include <ATen/native/xpu/sycl/SortingRadixSort.h>
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
+#include "_CopyKernel.h"
 
 namespace at {
 namespace native {
@@ -406,21 +407,12 @@ void segmented_radix_sort_pairs_kernel(
   // Among basic types, the bit size of bool is not an even multiple of 4. AB
   // buffer switching is required.
   if constexpr (std::is_same<key_t, bool>::value) {
-    auto input_calc = TrivialOffsetCalculator<2>();
-    at::detail::Array<char*, 2> data;
     if (keys_out) {
-      auto q = at::xpu::getCurrentSYCLQueue();
-      q.memcpy(
-          (void*)keys_out,
-          (void*)keys_temp,
-          sizeof(key_t) * num_segments * num_elements);
+      _copy_kernel<key_t>(keys_out, keys_temp, num_segments * num_elements);
     }
     if (values_out) {
-      auto q = at::xpu::getCurrentSYCLQueue();
-      q.memcpy(
-          (void*)values_out,
-          (void*)values_temp,
-          sizeof(value_t) * num_segments * num_elements);
+      _copy_kernel<value_t>(
+          values_out, values_temp, num_segments * num_elements);
     }
   }
 }
