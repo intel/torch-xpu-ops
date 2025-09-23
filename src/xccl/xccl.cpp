@@ -35,7 +35,7 @@ void onecclAllReduce(
         (size_t)input.numel(),
         xcclDataType,
         xcclReduceOp,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
@@ -46,7 +46,7 @@ void onecclAllReduce(
         (size_t)input.numel(),
         xcclDataType,
         xcclReduceOp,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -70,7 +70,7 @@ void onecclReduce(
         xcclDataType,
         xcclReduceOp,
         root,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
@@ -82,7 +82,7 @@ void onecclReduce(
         xcclDataType,
         xcclReduceOp,
         root,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -103,7 +103,7 @@ void onecclBroadcast(
         (size_t)input.numel(),
         xcclDataType,
         root,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
@@ -113,7 +113,7 @@ void onecclBroadcast(
         (size_t)input.numel(),
         xcclDataType,
         root,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -135,7 +135,7 @@ void onecclReduceScatter(
         (size_t)output.numel(),
         xcclDataType,
         xcclReduceOp,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
@@ -146,7 +146,7 @@ void onecclReduceScatter(
         (size_t)output.numel(),
         xcclDataType,
         xcclReduceOp,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -165,7 +165,7 @@ void onecclAllGather(
         output.data_ptr(),
         (size_t)input.numel(),
         xcclDataType,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
@@ -174,7 +174,7 @@ void onecclAllGather(
         output.data_ptr(),
         (size_t)input.numel(),
         xcclDataType,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -193,7 +193,7 @@ void onecclSend(
         (size_t)input.numel(),
         xcclDataType,
         dstRank,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
@@ -202,7 +202,7 @@ void onecclSend(
         (size_t)input.numel(),
         xcclDataType,
         dstRank,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -221,7 +221,7 @@ void onecclRecv(
         (size_t)output.numel(),
         xcclDataType,
         srcRank,
-        std::get<onecclComm_t>(comm),
+        comm.onecclComm,
         SyclQueue);
   } else {
     auto xcclDataType = getXcclDataTypeV1(output.scalar_type(), false);
@@ -230,7 +230,7 @@ void onecclRecv(
         (size_t)output.numel(),
         xcclDataType,
         srcRank,
-        std::get<ccl::communicator>(comm),
+        *comm.cclComm,
         xcclStream);
   }
   return;
@@ -248,20 +248,15 @@ void onecclGather(
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(inputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
-    onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
-    onecclCommUserRank(std::get<onecclComm_t>(comm), &cur_rank);
+    onecclCommCount(comm.onecclComm, &numranks);
+    onecclCommUserRank(comm.onecclComm, &cur_rank);
     onecclGroupStart();
     if (cur_rank == root) {
       for (const auto r : c10::irange(numranks)) {
         if (r != root) {
           auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
           onecclRecv(
-              recvbuff,
-              count,
-              xcclDataType,
-              r,
-              std::get<onecclComm_t>(comm),
-              SyclQueue);
+              recvbuff, count, xcclDataType, r, comm.onecclComm, SyclQueue);
         } else {
           // on its own rank, simply copy from the input
           outputs[r].copy_(inputs);
@@ -273,26 +268,21 @@ void onecclGather(
           count,
           xcclDataType,
           root,
-          std::get<onecclComm_t>(comm),
+          comm.onecclComm,
           SyclQueue);
     }
     onecclGroupEnd();
   } else {
     auto xcclDataType = getXcclDataTypeV1(inputs.scalar_type(), false);
-    int numranks = std::get<ccl::communicator>(comm).size();
-    int cur_rank = std::get<ccl::communicator>(comm).rank();
+    int numranks = comm.cclComm->size();
+    int cur_rank = comm.cclComm->rank();
     ccl::group_start();
     if (cur_rank == root) {
       for (const auto r : c10::irange(numranks)) {
         if (r != root) {
           auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
           ccl::recv(
-              recvbuff,
-              count,
-              xcclDataType,
-              r,
-              std::get<ccl::communicator>(comm),
-              xcclStream);
+              recvbuff, count, xcclDataType, r, *comm.cclComm, xcclStream);
         } else {
           // on its own rank, simply copy from the input
           outputs[r].copy_(inputs);
@@ -304,7 +294,7 @@ void onecclGather(
           count,
           xcclDataType,
           root,
-          std::get<ccl::communicator>(comm),
+          *comm.cclComm,
           xcclStream);
     }
     ccl::group_end();
@@ -322,8 +312,8 @@ void onecclScatter(
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(outputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
-    onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
-    onecclCommUserRank(std::get<onecclComm_t>(comm), &cur_rank);
+    onecclCommCount(comm.onecclComm, &numranks);
+    onecclCommUserRank(comm.onecclComm, &cur_rank);
     onecclGroupStart();
     if (cur_rank == root) {
       for (const auto r : c10::irange(numranks)) {
@@ -334,7 +324,7 @@ void onecclScatter(
               send_count,
               xcclDataType,
               r,
-              std::get<onecclComm_t>(comm),
+              comm.onecclComm,
               SyclQueue);
         } else {
           // on its own rank, simply copy from the input
@@ -348,14 +338,14 @@ void onecclScatter(
           recv_count,
           xcclDataType,
           root,
-          std::get<onecclComm_t>(comm),
+          comm.onecclComm,
           SyclQueue);
     }
     onecclGroupEnd();
   } else {
     auto xcclDataType = getXcclDataTypeV1(outputs.scalar_type(), false);
-    int numranks = std::get<ccl::communicator>(comm).size();
-    int cur_rank = std::get<ccl::communicator>(comm).rank();
+    int numranks = comm.cclComm->size();
+    int cur_rank = comm.cclComm->rank();
     ccl::group_start();
     if (cur_rank == root) {
       for (const auto r : c10::irange(numranks)) {
@@ -366,7 +356,7 @@ void onecclScatter(
               send_count,
               xcclDataType,
               r,
-              std::get<ccl::communicator>(comm),
+              *comm.cclComm,
               xcclStream);
         } else {
           // on its own rank, simply copy from the input
@@ -380,7 +370,7 @@ void onecclScatter(
           recv_count,
           xcclDataType,
           root,
-          std::get<ccl::communicator>(comm),
+          *comm.cclComm,
           xcclStream);
     }
     ccl::group_end();
@@ -404,7 +394,7 @@ void onecclAllToAll(
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
-    onecclCommCount(std::get<onecclComm_t>(comm), &numranks);
+    onecclCommCount(comm.onecclComm, &numranks);
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         onecclSend(
@@ -412,7 +402,7 @@ void onecclAllToAll(
             sendcounts[r],
             xcclDataType,
             r,
-            std::get<onecclComm_t>(comm),
+            comm.onecclComm,
             SyclQueue);
       }
       if (recvcounts[r] != 0) {
@@ -421,13 +411,13 @@ void onecclAllToAll(
             recvcounts[r],
             xcclDataType,
             r,
-            std::get<onecclComm_t>(comm),
+            comm.onecclComm,
             SyclQueue);
       }
     }
   } else {
     auto xcclDataType = getXcclDataTypeV1(dataType, false);
-    int numranks = std::get<ccl::communicator>(comm).size();
+    int numranks = comm.cclComm->size();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         ccl::send(
@@ -435,7 +425,7 @@ void onecclAllToAll(
             sendcounts[r],
             xcclDataType,
             r,
-            std::get<ccl::communicator>(comm),
+            *comm.cclComm,
             xcclStream);
       }
       if (recvcounts[r] != 0) {
@@ -444,7 +434,7 @@ void onecclAllToAll(
             recvcounts[r],
             xcclDataType,
             r,
-            std::get<ccl::communicator>(comm),
+            *comm.cclComm,
             xcclStream);
       }
     }

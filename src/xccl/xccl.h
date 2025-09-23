@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <variant>
@@ -96,7 +97,15 @@ struct XCCLStream {
   void* syclQueue;
 };
 
-using xcclComm_t = std::variant<ccl::communicator, onecclComm_t>;
+struct xcclComm_t {
+  std::optional<ccl::communicator> cclComm;
+  onecclComm_t onecclComm;
+
+  xcclComm_t() : onecclComm(nullptr) {}
+  xcclComm_t(ccl::communicator comm)
+      : cclComm(std::move(comm)), onecclComm(nullptr) {}
+  xcclComm_t(onecclComm_t comm) : onecclComm(comm) {}
+};
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::MIN, onecclRedOp_t::onecclMin},
@@ -189,7 +198,6 @@ onecclDataType_t getXcclDataTypeV2(
   return it->second;
 }
 
-// V1 specific function to avoid variant overhead
 ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
@@ -217,7 +225,6 @@ ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
   }
 }
 
-// V2 specific function to avoid variant overhead
 onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
