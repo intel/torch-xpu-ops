@@ -29,11 +29,6 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
-env:
-  GH_TOKEN: ${{ github.token }}
-  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-  UT_SKIP_ISSUE: 1624
 
 jobs:
   runner:
@@ -69,6 +64,9 @@ jobs:
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -103,6 +101,8 @@ jobs:
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
+      GH_TOKEN: ${{ github.token }}
+      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1
     steps:
@@ -138,6 +138,9 @@ jobs:
     if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UT_SKIP_ISSUE: 1624
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
