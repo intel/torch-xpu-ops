@@ -59,167 +59,147 @@ struct WelfordOpsXPU
         item(item) {}
 };
 
+template <typename T>
+struct WGRow {
+  T* row;
+  inline T& operator[](size_t x) const {
+    return row[x];
+  }
+};
+
+template <typename T>
+struct WG2D {
+  T* base;
+  size_t stride;
+
+  WG2D(T* ptr, size_t s) : base(ptr), stride(s) {}
+
+  inline WGRow<T> operator[](size_t y) const {
+    return WGRow<T>{base + y * stride};
+  }
+
+  inline T& operator()(size_t y, size_t x) const {
+    return base[y * stride + x];
+  }
+};
+
 template <typename T, int SIMD>
-struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void gn_rowwise_moments_kernel(
+    int64_t N_,
+    T eps_,
+    const T* X_,
+    T* mean_,
+    T* rstd_) {
   using T_ACC = acc_type_device<T, kXPU>;
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  WelfordType* shared_ =
+      reinterpret_cast<WelfordType*>(syclexp::get_work_group_scratch_memory());
 
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
-    const int64_t i = item.get_group(0);
-    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    WelfordType val(0, 0, 0, 0);
-    for (int64_t j = item.get_local_id(0); j < N_;
-         j += item.get_local_range(0)) {
-      const int64_t index = i * N_ + j;
-      val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
-    }
-
-    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-        item, val, welford_op, shared_);
-
-    if (item.get_local_id(0) == 0) {
-      T_ACC m1;
-      T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
-      mean_[i] = m1;
-      rstd_[i] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
-    }
+  const int64_t i = item.get_group(0);
+  WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
+  WelfordType val(0, 0, 0, 0);
+  for (int64_t j = item.get_local_id(0); j < N_; j += item.get_local_range(0)) {
+    const int64_t index = i * N_ + j;
+    val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+  val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
+      item, val, welford_op, shared_);
+
+  if (item.get_local_id(0) == 0) {
+    T_ACC m1;
+    T_ACC m2;
+    std::tie(m2, m1) = welford_op.project(val);
+    mean_[i] = m1;
+    rstd_[i] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
   }
-
-  GNRowwiseMomentsFunctor(int64_t N, T eps, const T* X, T* mean, T* rstd)
-      : N_(N), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
-
- private:
-  int64_t N_;
-  T eps_;
-  const T* X_;
-  T* mean_;
-  T* rstd_;
-  sycl_local_acc_t<WelfordType> shared_;
-};
+}
 
 template <typename T, int SIMD, int VEC_SIZE>
-struct GNRowwiseMomentsVectorizedFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void gn_rowwise_moments_vectorized_kernel(
+    int64_t N_,
+    T eps_,
+    const T* X_,
+    T* mean_,
+    T* rstd_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
   using T_ACC = acc_type_device<T, kXPU>;
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
-    WelfordType val[VEC_SIZE];
-    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    auto group_start = item.get_group(0) * VEC_SIZE;
+  WelfordType* shared_ =
+      reinterpret_cast<WelfordType*>(syclexp::get_work_group_scratch_memory());
+
+  WelfordType val[VEC_SIZE];
+  WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
+  auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
-    for (int v = 0; v < VEC_SIZE; ++v) {
-      const int64_t i = group_start + v;
-      for (int64_t j = item.get_local_id(0) * VEC_SIZE; j < N_;
-           j += item.get_local_range(0) * VEC_SIZE) {
-        const int64_t vec_index = i * N_ + j;
-        vec_t vec_in =
-            *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+  for (int v = 0; v < VEC_SIZE; ++v) {
+    const int64_t i = group_start + v;
+    for (int64_t j = item.get_local_id(0) * VEC_SIZE; j < N_;
+         j += item.get_local_range(0) * VEC_SIZE) {
+      const int64_t vec_index = i * N_ + j;
+      vec_t vec_in = *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
 #pragma unroll
-        for (int iv = 0; iv < VEC_SIZE; ++iv) {
-          val[v] = welford_op.reduce(
-              val[v], static_cast<T_ACC>(vec_in[iv]), vec_index + iv);
-        }
+      for (int iv = 0; iv < VEC_SIZE; ++iv) {
+        val[v] = welford_op.reduce(
+            val[v], static_cast<T_ACC>(vec_in[iv]), vec_index + iv);
       }
-    }
-
-#pragma unroll
-    for (int v = 0; v < VEC_SIZE; ++v) {
-      val[v] = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-          item, val[v], welford_op, shared_);
-    }
-
-    if (item.get_local_id(0) == 0) {
-      vec_t mean_vec;
-      vec_t rstd_vec;
-#pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        T_ACC m1;
-        T_ACC m2;
-        std::tie(m2, m1) = welford_op.project(val[v]);
-        mean_vec[v] = m1;
-        rstd_vec[v] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
-      }
-      *(reinterpret_cast<vec_t*>(mean_ + group_start)) = mean_vec;
-      *(reinterpret_cast<vec_t*>(rstd_ + group_start)) = rstd_vec;
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+#pragma unroll
+  for (int v = 0; v < VEC_SIZE; ++v) {
+    val[v] = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
+        item, val[v], welford_op, shared_);
   }
 
-  GNRowwiseMomentsVectorizedFunctor(
-      int64_t N,
-      T eps,
-      const T* X,
-      T* mean,
-      T* rstd)
-      : N_(N), eps_(eps), X_(X), mean_(mean), rstd_(rstd) {}
-
- private:
-  int64_t N_;
-  T eps_;
-  const T* X_;
-  T* mean_;
-  T* rstd_;
-  sycl_local_acc_t<WelfordType> shared_;
-};
+  if (item.get_local_id(0) == 0) {
+    vec_t mean_vec;
+    vec_t rstd_vec;
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      T_ACC m1;
+      T_ACC m2;
+      std::tie(m2, m1) = welford_op.project(val[v]);
+      mean_vec[v] = m1;
+      rstd_vec[v] = c10::xpu::compat::rsqrt(m2 + static_cast<T_ACC>(eps_));
+    }
+    *(reinterpret_cast<vec_t*>(mean_ + group_start)) = mean_vec;
+    *(reinterpret_cast<vec_t*>(rstd_ + group_start)) = rstd_vec;
+  }
+}
 
 template <typename T, typename T_ACC>
-struct ComputeFusedParamsFunctor {
-  void operator()(sycl::item<1> item) const {
-    auto index = item.get_id(0);
-    const int64_t ng = index / (C_ / group_);
-    const int64_t c = index % C_;
-    const T_ACC scale = (gamma_ == nullptr)
-        ? static_cast<T_ACC>(rstd_[ng])
-        : static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(gamma_[c]);
-    a_[index] = scale;
-    b_[index] = -scale * static_cast<T_ACC>(mean_[ng]) +
-        ((beta_ == nullptr) ? T_ACC(0) : static_cast<T_ACC>(beta_[c]));
-  }
-  ComputeFusedParamsFunctor(
-      int64_t C,
-      int64_t group,
-      const T* mean,
-      const T* rstd,
-      const T* gamma,
-      const T* beta,
-      T_ACC* a,
-      T_ACC* b)
-      : C_(C),
-        group_(group),
-        mean_(mean),
-        rstd_(rstd),
-        gamma_(gamma),
-        beta_(beta),
-        a_(a),
-        b_(b) {}
-
- private:
-  int64_t C_;
-  int64_t group_;
-  const T* mean_;
-  const T* rstd_;
-  const T* gamma_;
-  const T* beta_;
-  T_ACC* a_;
-  T_ACC* b_;
-};
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void compute_fused_params_kernel(
+    int64_t C_,
+    int64_t group_,
+    const T* mean_,
+    const T* rstd_,
+    const T* gamma_,
+    const T* beta_,
+    T_ACC* a_,
+    T_ACC* b_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto index = item.get_global_id(0);
+  const int64_t ng = index / (C_ / group_);
+  const int64_t c = index % C_;
+  const T_ACC scale = (gamma_ == nullptr)
+      ? static_cast<T_ACC>(rstd_[ng])
+      : static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(gamma_[c]);
+  a_[index] = scale;
+  b_[index] = -scale * static_cast<T_ACC>(mean_[ng]) +
+      ((beta_ == nullptr) ? T_ACC(0) : static_cast<T_ACC>(beta_[c]));
+}
 
 template <typename T, typename T_ACC>
 struct GroupNorm1dGammaBetaFunctor {
@@ -363,15 +343,20 @@ void group_norm_kernel_impl(
       can_use_vectorization(mean_data, VEC_SIZE) &&
       can_use_vectorization(rstd_data, VEC_SIZE) && prob_size % VEC_SIZE == 0 &&
       stride % VEC_SIZE == 0) {
-    using KernelS16T = GNRowwiseMomentsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
-    using KernelS32T = GNRowwiseMomentsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
     auto max_size = std::min(
-        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+        syclMaxWorkGroupSize<
+            gn_rowwise_moments_vectorized_kernel<T, SIMD16, VEC_SIZE>>(),
+        syclMaxWorkGroupSize<
+            gn_rowwise_moments_vectorized_kernel<T, SIMD32, VEC_SIZE>>());
     auto wg_size =
         get_adaptive_workgroup_size(prob_size / VEC_SIZE, simd, max_size);
     auto global_range = sycl::range<1>((stride / VEC_SIZE) * wg_size);
     auto local_range = sycl::range<1>(wg_size);
-    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+    group_norm_kernel_simd_choice_and_launch<
+        &gn_rowwise_moments_vectorized_kernel<T, SIMD16, VEC_SIZE>,
+        &gn_rowwise_moments_vectorized_kernel<T, SIMD32, VEC_SIZE>,
+        ::sycl::range<1>>(
+        "gn_rowwise_moments_vectorized_kernel",
         simd,
         global_range,
         local_range,
@@ -382,14 +367,17 @@ void group_norm_kernel_impl(
         mean_data,
         rstd_data);
   } else {
-    using KernelS16T = GNRowwiseMomentsFunctor<T, SIMD16>;
-    using KernelS32T = GNRowwiseMomentsFunctor<T, SIMD32>;
     auto max_size = std::min(
-        syclMaxWorkGroupSize<KernelS16T>(), syclMaxWorkGroupSize<KernelS32T>());
+        syclMaxWorkGroupSize<gn_rowwise_moments_kernel<T, SIMD16>>(),
+        syclMaxWorkGroupSize<gn_rowwise_moments_kernel<T, SIMD32>>());
     auto wg_size = get_adaptive_workgroup_size(prob_size, simd, max_size);
     auto global_range = sycl::range<1>(stride * wg_size);
     auto local_range = sycl::range<1>(wg_size);
-    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+    group_norm_kernel_simd_choice_and_launch<
+        &gn_rowwise_moments_kernel<T, SIMD16>,
+        &gn_rowwise_moments_kernel<T, SIMD32>,
+        ::sycl::range<1>>(
+        "gn_rowwise_moments_kernel",
         simd,
         global_range,
         local_range,
@@ -424,9 +412,19 @@ void group_norm_kernel_impl(
     T_ACC* a_data = a.mutable_data_ptr<T_ACC>();
     T_ACC* b_data = b.mutable_data_ptr<T_ACC>();
 
-    auto caller = ComputeFusedParamsFunctor<T, T_ACC>(
-        C, G, mean_data, rstd_data, gamma_data, beta_data, a_data, b_data);
-    sycl_kernel_submit(sycl::range<1>(N * C), queue, caller);
+    sycl_kernel_submit<compute_fused_params_kernel<T, T_ACC>, 1>(
+        sycl::range<1>(N * C),
+        sycl::range<1>(1),
+        getCurrentSYCLQueue(),
+        0,
+        C,
+        G,
+        mean_data,
+        rstd_data,
+        gamma_data,
+        beta_data,
+        a_data,
+        b_data);
 
     TensorIterator iter = TensorIteratorConfig()
                               .check_all_same_dtype(std::is_same_v<T, T_ACC>)
@@ -474,79 +472,48 @@ void group_norm_kernel(
 }
 
 template <typename T, typename T_ACC, int SIMD>
-struct Compute1dBackwardFusedParamsFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
-    const int64_t G = group_;
-    const int64_t D = C_ / G;
-    const int64_t n = item.get_group(1);
-    const int64_t g = item.get_group(0);
-    const int64_t ng = n * G + g;
-    T_ACC sum1 = 0;
-    T_ACC sum2 = 0;
-    for (int64_t i = item.get_local_id(1); i < D;
-         i += item.get_local_range(1)) {
-      const int64_t index = ng * D + i;
-      const int64_t c = g * D + i;
-      const T_ACC gamma_v =
-          gamma_ == nullptr ? T_ACC(1) : static_cast<T_ACC>(gamma_[c]);
-      sum1 += dY_[index] * X_[index] * gamma_v;
-      sum2 += dY_[index] * gamma_v;
-    }
-    sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
-    sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
-    if (item.get_local_id(1) == 0) {
-      const T_ACC s = T_ACC(1) / static_cast<T_ACC>(D);
-      const T_ACC x = (sum2 * static_cast<T_ACC>(mean_[ng]) - sum1) *
-          static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(rstd_[ng]) *
-          static_cast<T_ACC>(rstd_[ng]) * s;
-      c2_[ng] = x;
-      c3_[ng] = -x * static_cast<T_ACC>(mean_[ng]) -
-          sum2 * static_cast<T_ACC>(rstd_[ng]) * s;
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void compute1d_backward_fused_params_kernel(
+    int64_t C_,
+    int64_t group_,
+    const T* dY_,
+    const T* X_,
+    const T* mean_,
+    const T* rstd_,
+    const T* gamma_,
+    T_ACC* c2_,
+    T_ACC* c3_) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  T_ACC* ds_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  T_ACC* db_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+
+  const int64_t G = group_;
+  const int64_t D = C_ / G;
+  const int64_t n = item.get_group(1);
+  const int64_t g = item.get_group(0);
+  const int64_t ng = n * G + g;
+  T_ACC sum1 = 0;
+  T_ACC sum2 = 0;
+  for (int64_t i = item.get_local_id(1); i < D; i += item.get_local_range(1)) {
+    const int64_t index = ng * D + i;
+    const int64_t c = g * D + i;
+    const T_ACC gamma_v =
+        gamma_ == nullptr ? T_ACC(1) : static_cast<T_ACC>(gamma_[c]);
+    sum1 += dY_[index] * X_[index] * gamma_v;
+    sum2 += dY_[index] * gamma_v;
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
-    db_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+  sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
+  sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
+  if (item.get_local_id(1) == 0) {
+    const T_ACC s = T_ACC(1) / static_cast<T_ACC>(D);
+    const T_ACC x = (sum2 * static_cast<T_ACC>(mean_[ng]) - sum1) *
+        static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(rstd_[ng]) *
+        static_cast<T_ACC>(rstd_[ng]) * s;
+    c2_[ng] = x;
+    c3_[ng] = -x * static_cast<T_ACC>(mean_[ng]) -
+        sum2 * static_cast<T_ACC>(rstd_[ng]) * s;
   }
-
-  Compute1dBackwardFusedParamsFunctor(
-      int64_t C,
-      int64_t group,
-      const T* dY,
-      const T* X,
-      const T* mean,
-      const T* rstd,
-      const T* gamma,
-      T_ACC* c2,
-      T_ACC* c3)
-      : C_(C),
-        group_(group),
-        dY_(dY),
-        X_(X),
-        mean_(mean),
-        rstd_(rstd),
-        gamma_(gamma),
-        c2_(c2),
-        c3_(c3) {}
-
- private:
-  int64_t C_;
-  int64_t group_;
-  const T* dY_;
-  const T* X_;
-  const T* mean_;
-  const T* rstd_;
-  const T* gamma_;
-  T_ACC* c2_;
-  T_ACC* c3_;
-  sycl_local_acc_t<T_ACC> ds_shared_;
-  sycl_local_acc_t<T_ACC> db_shared_;
-};
+}
 
 template <typename T, typename T_ACC>
 struct GroupNorm1dBackwardGammaFunctor {
@@ -565,26 +532,118 @@ struct GroupNorm1dBackwardFunctor {
 };
 
 template <typename T>
-struct GammaBeta1dBackwardSmallKernel {
-  void operator()(sycl::nd_item<1> item) const {
-    using T_ACC = acc_type_device<T, kXPU>;
-    const int64_t c = item.get_local_linear_id();
-    if (c < C_) {
-      const int64_t G = group_;
-      const int64_t D = C_ / G;
-      T_ACC sum1 = 0;
-      T_ACC sum2 = 0;
-      for (int64_t n = 0; n < N_; ++n) {
-        const int64_t nc = n * C_ + c;
-        const int64_t ng = n * G + c / D;
-        const T_ACC dy_acc = static_cast<T_ACC>(dY_[nc]);
-        const T_ACC x_acc = static_cast<T_ACC>(X_[nc]);
-        sum1 += (dgamma_ == nullptr)
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void gamma_beta_1d_backward_small_kernel(
+    int64_t N_,
+    int64_t C_,
+    int64_t group_,
+    const T* dY_,
+    const T* X_,
+    const T* mean_,
+    const T* rstd_,
+    T* dgamma_,
+    T* dbeta_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  using T_ACC = acc_type_device<T, kXPU>;
+  const int64_t c = item.get_local_linear_id();
+  if (c < C_) {
+    const int64_t G = group_;
+    const int64_t D = C_ / G;
+    T_ACC sum1 = 0;
+    T_ACC sum2 = 0;
+    for (int64_t n = 0; n < N_; ++n) {
+      const int64_t nc = n * C_ + c;
+      const int64_t ng = n * G + c / D;
+      const T_ACC dy_acc = static_cast<T_ACC>(dY_[nc]);
+      const T_ACC x_acc = static_cast<T_ACC>(X_[nc]);
+      sum1 += (dgamma_ == nullptr)
+          ? T_ACC(0)
+          : ((dy_acc * x_acc - dy_acc * static_cast<T_ACC>(mean_[ng])) *
+             static_cast<T_ACC>(rstd_[ng]));
+      sum2 += (dbeta_ == nullptr) ? T_ACC(0) : dy_acc;
+    }
+    if (dgamma_ != nullptr) {
+      dgamma_[c] = sum1;
+    }
+    if (dbeta_ != nullptr) {
+      dbeta_[c] = sum2;
+    }
+  }
+}
+
+template <typename T, int SIMD, int kReduceTileSize>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void gamma_beta_1d_backward_large_kernel(
+    int64_t N_,
+    int64_t C_,
+    int64_t group_,
+    const T* dY_,
+    const T* X_,
+    const T* mean_,
+    const T* rstd_,
+    T* dgamma_,
+    T* dbeta_) {
+  using T_ACC = acc_type_device<T, kXPU>;
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  T_ACC* g_base_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  WG2D<T_ACC> g_shared_(g_base_, kReduceTileSize + 1);
+  T_ACC* b_base_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  WG2D<T_ACC> b_shared_(g_base_, kReduceTileSize + 1);
+
+  const int64_t c =
+      item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
+  T_ACC dg_sum1 = 0;
+  T_ACC dg_sum2 = 0;
+  T_ACC db_sum1 = 0;
+  T_ACC db_sum2 = 0;
+  if (c < C_) {
+    const int64_t G = group_;
+    const int64_t D = C_ / G;
+    // Accumulate each (subgroup_size) cols into a (subgroup_size^2) tile.
+    for (int64_t n = item.get_local_id(0); n < N_;
+         n += item.get_local_range(0) * 2) {
+      const int64_t n1 = n;
+      const int64_t n2 = n + item.get_local_range(0);
+      const int64_t nc1 = n1 * C_ + c;
+      const int64_t nc2 = n2 * C_ + c;
+      const int64_t ng1 = n1 * G + c / D;
+      const int64_t ng2 = n2 * G + c / D;
+      const T_ACC dy1_acc = static_cast<T_ACC>(dY_[nc1]);
+      const T_ACC x1_acc = static_cast<T_ACC>(X_[nc1]);
+      dg_sum1 += dgamma_ == nullptr
+          ? T_ACC(0)
+          : ((dy1_acc * x1_acc - dy1_acc * static_cast<T_ACC>(mean_[ng1])) *
+             static_cast<T_ACC>(rstd_[ng1]));
+      db_sum1 += dbeta_ == nullptr ? T_ACC(0) : dy1_acc;
+      if (n2 < N_) {
+        const T_ACC dy2_acc = static_cast<T_ACC>(dY_[nc2]);
+        const T_ACC x2_acc = static_cast<T_ACC>(X_[nc2]);
+        dg_sum2 += dgamma_ == nullptr
             ? T_ACC(0)
-            : ((dy_acc * x_acc - dy_acc * static_cast<T_ACC>(mean_[ng])) *
-               static_cast<T_ACC>(rstd_[ng]));
-        sum2 += (dbeta_ == nullptr) ? T_ACC(0) : dy_acc;
+            : ((dy2_acc * x2_acc - dy2_acc * static_cast<T_ACC>(mean_[ng2])) *
+               static_cast<T_ACC>(rstd_[ng2]));
+        db_sum2 += dbeta_ == nullptr ? T_ACC(0) : dy2_acc;
       }
+    }
+  }
+
+  // Write accumulated tile to shared memory.
+  int tid_y = item.get_local_id(0);
+  int tid_x = item.get_local_id(1);
+  g_shared_[tid_y][tid_x] = dg_sum1;
+  g_shared_[tid_y + item.get_local_range(0)][tid_x] = dg_sum2;
+  b_shared_[tid_y][tid_x] = db_sum1;
+  b_shared_[tid_y + item.get_local_range(0)][tid_x] = db_sum2;
+  item.barrier(sycl_local_fence);
+
+  // Do subgroup reduce for the 1st 16 cols in the tile.
+  T_ACC sum1 = g_shared_[tid_x][tid_y];
+  T_ACC sum2 = b_shared_[tid_x][tid_y];
+  sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+  sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
+  if (tid_x == 0) {
+    const int64_t c = item.get_group(1) * item.get_local_range(1) + tid_y;
+    if (c < C_) {
       if (dgamma_ != nullptr) {
         dgamma_[c] = sum1;
       }
@@ -594,166 +653,24 @@ struct GammaBeta1dBackwardSmallKernel {
     }
   }
 
-  GammaBeta1dBackwardSmallKernel(
-      int64_t N,
-      int64_t C,
-      int64_t group,
-      const T* dY,
-      const T* X,
-      const T* mean,
-      const T* rstd,
-      T* dgamma,
-      T* dbeta)
-      : N_(N),
-        C_(C),
-        group_(group),
-        dY_(dY),
-        X_(X),
-        mean_(mean),
-        rstd_(rstd),
-        dgamma_(dgamma),
-        dbeta_(dbeta) {}
-
- private:
-  int64_t N_;
-  int64_t C_;
-  int64_t group_;
-  const T* dY_;
-  const T* X_;
-  const T* mean_;
-  const T* rstd_;
-  T* dgamma_;
-  T* dbeta_;
-};
-
-template <typename T, int SIMD, int kReduceTileSize>
-struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
-
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
-    const int64_t c =
-        item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
-    T_ACC dg_sum1 = 0;
-    T_ACC dg_sum2 = 0;
-    T_ACC db_sum1 = 0;
-    T_ACC db_sum2 = 0;
+  // Do subgroup reduce for the 2nd 16 cols in the tile.
+  sum1 = g_shared_[tid_x][tid_y + item.get_local_range(0)];
+  sum2 = b_shared_[tid_x][tid_y + item.get_local_range(0)];
+  sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+  sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
+  if (tid_x == 0) {
+    const int64_t c = item.get_group(1) * item.get_local_range(1) + tid_y +
+        item.get_local_range(0);
     if (c < C_) {
-      const int64_t G = group_;
-      const int64_t D = C_ / G;
-      // Accumulate each (subgroup_size) cols into a (subgroup_size^2) tile.
-      for (int64_t n = item.get_local_id(0); n < N_;
-           n += item.get_local_range(0) * 2) {
-        const int64_t n1 = n;
-        const int64_t n2 = n + item.get_local_range(0);
-        const int64_t nc1 = n1 * C_ + c;
-        const int64_t nc2 = n2 * C_ + c;
-        const int64_t ng1 = n1 * G + c / D;
-        const int64_t ng2 = n2 * G + c / D;
-        const T_ACC dy1_acc = static_cast<T_ACC>(dY_[nc1]);
-        const T_ACC x1_acc = static_cast<T_ACC>(X_[nc1]);
-        dg_sum1 += dgamma_ == nullptr
-            ? T_ACC(0)
-            : ((dy1_acc * x1_acc - dy1_acc * static_cast<T_ACC>(mean_[ng1])) *
-               static_cast<T_ACC>(rstd_[ng1]));
-        db_sum1 += dbeta_ == nullptr ? T_ACC(0) : dy1_acc;
-        if (n2 < N_) {
-          const T_ACC dy2_acc = static_cast<T_ACC>(dY_[nc2]);
-          const T_ACC x2_acc = static_cast<T_ACC>(X_[nc2]);
-          dg_sum2 += dgamma_ == nullptr
-              ? T_ACC(0)
-              : ((dy2_acc * x2_acc - dy2_acc * static_cast<T_ACC>(mean_[ng2])) *
-                 static_cast<T_ACC>(rstd_[ng2]));
-          db_sum2 += dbeta_ == nullptr ? T_ACC(0) : dy2_acc;
-        }
+      if (dgamma_ != nullptr) {
+        dgamma_[c] = sum1;
       }
-    }
-
-    // Write accumulated tile to shared memory.
-    int tid_y = item.get_local_id(0);
-    int tid_x = item.get_local_id(1);
-    g_shared_[tid_y][tid_x] = dg_sum1;
-    g_shared_[tid_y + item.get_local_range(0)][tid_x] = dg_sum2;
-    b_shared_[tid_y][tid_x] = db_sum1;
-    b_shared_[tid_y + item.get_local_range(0)][tid_x] = db_sum2;
-    item.barrier(sycl_local_fence);
-
-    // Do subgroup reduce for the 1st 16 cols in the tile.
-    T_ACC sum1 = g_shared_[tid_x][tid_y];
-    T_ACC sum2 = b_shared_[tid_x][tid_y];
-    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
-    if (tid_x == 0) {
-      const int64_t c = item.get_group(1) * item.get_local_range(1) + tid_y;
-      if (c < C_) {
-        if (dgamma_ != nullptr) {
-          dgamma_[c] = sum1;
-        }
-        if (dbeta_ != nullptr) {
-          dbeta_[c] = sum2;
-        }
-      }
-    }
-
-    // Do subgroup reduce for the 2nd 16 cols in the tile.
-    sum1 = g_shared_[tid_x][tid_y + item.get_local_range(0)];
-    sum2 = b_shared_[tid_x][tid_y + item.get_local_range(0)];
-    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
-    if (tid_x == 0) {
-      const int64_t c = item.get_group(1) * item.get_local_range(1) + tid_y +
-          item.get_local_range(0);
-      if (c < C_) {
-        if (dgamma_ != nullptr) {
-          dgamma_[c] = sum1;
-        }
-        if (dbeta_ != nullptr) {
-          dbeta_[c] = sum2;
-        }
+      if (dbeta_ != nullptr) {
+        dbeta_[c] = sum2;
       }
     }
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    g_shared_ = sycl_local_acc_t<T_ACC, 2>(
-        sycl::range<2>(kReduceTileSize, kReduceTileSize + 1), cgh);
-    b_shared_ = sycl_local_acc_t<T_ACC, 2>(
-        sycl::range<2>(kReduceTileSize, kReduceTileSize + 1), cgh);
-  }
-
-  GammaBeta1dBackwardLargeKernel(
-      int64_t N,
-      int64_t C,
-      int64_t group,
-      const T* dY,
-      const T* X,
-      const T* mean,
-      const T* rstd,
-      T* dgamma,
-      T* dbeta)
-      : N_(N),
-        C_(C),
-        group_(group),
-        dY_(dY),
-        X_(X),
-        mean_(mean),
-        rstd_(rstd),
-        dgamma_(dgamma),
-        dbeta_(dbeta) {}
-
- private:
-  int64_t N_;
-  int64_t C_;
-  int64_t group_;
-  const T* dY_;
-  const T* X_;
-  const T* mean_;
-  const T* rstd_;
-  T* dgamma_;
-  T* dbeta_;
-  sycl_local_acc_t<T_ACC, 2> g_shared_;
-  sycl_local_acc_t<T_ACC, 2> b_shared_;
-};
+}
 
 template <typename T>
 void group_norm_1d_backward(
@@ -769,6 +686,7 @@ void group_norm_1d_backward(
     Tensor& dgamma,
     Tensor& dbeta) {
   using T_ACC = acc_type_device<T, kXPU>;
+
   const int64_t G = group;
   const int64_t D = C / G;
   const T* dY_data = dY.const_data_ptr<T>();
@@ -796,8 +714,10 @@ void group_norm_1d_backward(
     auto global_range = sycl::range<2>(G, N * wg_size);
     auto local_range = sycl::range<2>(1, wg_size);
     group_norm_kernel_simd_choice_and_launch<
-        Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD16>,
-        Compute1dBackwardFusedParamsFunctor<T, T_ACC, SIMD32>>(
+        &compute1d_backward_fused_params_kernel<T, T_ACC, SIMD16>,
+        &compute1d_backward_fused_params_kernel<T, T_ACC, SIMD32>,
+        ::sycl::range<2>>(
+        "compute1d_backward_fused_params_kernel",
         simd,
         global_range,
         local_range,
@@ -845,7 +765,11 @@ void group_norm_1d_backward(
     if (N <= 128) {
       const int64_t wg_size = get_group_reduce_group_size(simd);
       const int64_t B = (C + wg_size - 1) / wg_size;
-      auto caller = GammaBeta1dBackwardSmallKernel<T>(
+      sycl_kernel_submit<gamma_beta_1d_backward_small_kernel<T>, 1>(
+          sycl::range<1>(B * wg_size),
+          sycl::range<1>(wg_size),
+          queue,
+          0,
           N,
           C,
           G,
@@ -855,8 +779,6 @@ void group_norm_1d_backward(
           rstd_data,
           dgamma_data,
           dbeta_data);
-      sycl_kernel_submit(
-          sycl::range<1>(B * wg_size), sycl::range<1>(wg_size), queue, caller);
     } else {
       // The algorithm for colwise reduction here is to accumulate each
       // (sub_group_size) cols to a (sub_group_size^2) tile and write the tile
@@ -867,8 +789,10 @@ void group_norm_1d_backward(
           sycl::range<2>(kReduceTileSize / 2, B * kReduceTileSize);
       auto local_range = sycl::range<2>(kReduceTileSize / 2, kReduceTileSize);
       group_norm_kernel_simd_choice_and_launch<
-          GammaBeta1dBackwardLargeKernel<T, SIMD16, SIMD16>,
-          GammaBeta1dBackwardLargeKernel<T, SIMD32, SIMD32>>(
+          &gamma_beta_1d_backward_large_kernel<T, SIMD16, SIMD16>,
+          &gamma_beta_1d_backward_large_kernel<T, SIMD32, SIMD32>,
+          ::sycl::range<2>>(
+          "gamma_beta_1d_backward_large_kernel",
           simd,
           global_range,
           local_range,
@@ -886,138 +810,100 @@ void group_norm_1d_backward(
   }
 }
 
-template <typename T, int SIMD>
-struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
+template <typename T, int SIMD, typename T_ACC>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void compute_internal_gradients_kernel(
+    int64_t HxW_,
+    const T* dY_,
+    const T* X_,
+    T_ACC* ds_,
+    T_ACC* db_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  T_ACC* ds_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  T_ACC* db_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
 
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
-    const int64_t nc = item.get_group(0);
-    T_ACC sum1 = 0;
-    T_ACC sum2 = 0;
-    for (int64_t hw = item.get_local_id(0); hw < HxW_;
-         hw += item.get_local_range(0)) {
-      const int64_t index = nc * HxW_ + hw;
-      sum1 += static_cast<T_ACC>(dY_[index]) * static_cast<T_ACC>(X_[index]);
-      sum2 += static_cast<T_ACC>(dY_[index]);
-    }
-    sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
-    sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
-    if (item.get_local_id(0) == 0) {
-      ds_[nc] = sum1;
-      db_[nc] = sum2;
-    }
+  const int64_t nc = item.get_group(0);
+  T_ACC sum1 = 0;
+  T_ACC sum2 = 0;
+  for (int64_t hw = item.get_local_id(0); hw < HxW_;
+       hw += item.get_local_range(0)) {
+    const int64_t index = nc * HxW_ + hw;
+    sum1 += static_cast<T_ACC>(dY_[index]) * static_cast<T_ACC>(X_[index]);
+    sum2 += static_cast<T_ACC>(dY_[index]);
   }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
-    db_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+  sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
+  sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
+  if (item.get_local_id(0) == 0) {
+    ds_[nc] = sum1;
+    db_[nc] = sum2;
   }
+}
 
-  ComputeInternalGradientsFunctor(
-      int64_t HxW,
-      const T* dY,
-      const T* X,
-      T_ACC* ds,
-      T_ACC* db)
-      : HxW_(HxW), dY_(dY), X_(X), ds_(ds), db_(db) {}
+template <typename T, int SIMD, int VEC_SIZE, typename T_ACC>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void compute_internal_gradients_vectorized_kernel(
+    int64_t HxW_,
+    const T* dY_,
+    const T* X_,
+    T_ACC* ds_,
+    T_ACC* db_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 
- private:
-  int64_t HxW_;
-  const T* dY_;
-  const T* X_;
-  T_ACC* ds_;
-  T_ACC* db_;
-  sycl_local_acc_t<T_ACC> ds_shared_;
-  sycl_local_acc_t<T_ACC> db_shared_;
-};
-
-template <typename T, int SIMD, int VEC_SIZE>
-struct ComputeInternalGradientsVectorizedFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<T_ACC, VEC_SIZE>;
 
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
-    acc_vec_t sum1_vec;
-    acc_vec_t sum2_vec;
+  T_ACC* ds_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  T_ACC* db_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+
+  acc_vec_t sum1_vec;
+  acc_vec_t sum2_vec;
 
 #pragma unroll
-    for (int v = 0; v < VEC_SIZE; ++v) {
-      sum1_vec[v] = 0;
-      sum2_vec[v] = 0;
-    }
+  for (int v = 0; v < VEC_SIZE; ++v) {
+    sum1_vec[v] = 0;
+    sum2_vec[v] = 0;
+  }
 
-    auto group_start = item.get_group(0) * VEC_SIZE;
-
-#pragma unroll
-    for (int v = 0; v < VEC_SIZE; ++v) {
-      const int64_t nc = group_start + v;
-      for (int64_t hw = item.get_local_id(0) * VEC_SIZE; hw < HxW_;
-           hw += item.get_local_range(0) * VEC_SIZE) {
-        const int64_t vec_index = nc * HxW_ + hw;
-        vec_t vec_dY_ =
-            *reinterpret_cast<vec_t*>(const_cast<T*>(dY_) + vec_index);
-        vec_t vec_X_ =
-            *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+  auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
-        for (int iv = 0; iv < VEC_SIZE; ++iv) {
-          sum1_vec[v] += static_cast<T_ACC>(vec_dY_[iv] * vec_X_[iv]);
-          sum2_vec[v] += static_cast<T_ACC>(vec_dY_[iv]);
-        }
+  for (int v = 0; v < VEC_SIZE; ++v) {
+    const int64_t nc = group_start + v;
+    for (int64_t hw = item.get_local_id(0) * VEC_SIZE; hw < HxW_;
+         hw += item.get_local_range(0) * VEC_SIZE) {
+      const int64_t vec_index = nc * HxW_ + hw;
+      vec_t vec_dY_ =
+          *reinterpret_cast<vec_t*>(const_cast<T*>(dY_) + vec_index);
+      vec_t vec_X_ = *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+
+#pragma unroll
+      for (int iv = 0; iv < VEC_SIZE; ++iv) {
+        sum1_vec[v] += static_cast<T_ACC>(vec_dY_[iv] * vec_X_[iv]);
+        sum2_vec[v] += static_cast<T_ACC>(vec_dY_[iv]);
       }
-    }
-
-#pragma unroll
-    for (int v = 0; v < VEC_SIZE; ++v) {
-      sum1_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
-          item, sum1_vec[v], ds_shared_);
-      sum2_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
-          item, sum2_vec[v], db_shared_);
-    }
-
-    if (item.get_local_id(0) == 0) {
-      acc_vec_t ds_vec;
-      acc_vec_t db_vec;
-#pragma unroll
-      for (int v = 0; v < VEC_SIZE; ++v) {
-        ds_vec[v] = sum1_vec[v];
-        db_vec[v] = sum2_vec[v];
-      }
-      *(reinterpret_cast<acc_vec_t*>(ds_ + group_start)) = ds_vec;
-      *(reinterpret_cast<acc_vec_t*>(db_ + group_start)) = db_vec;
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
-    db_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
+#pragma unroll
+  for (int v = 0; v < VEC_SIZE; ++v) {
+    sum1_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
+        item, sum1_vec[v], ds_shared_);
+    sum2_vec[v] = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(
+        item, sum2_vec[v], db_shared_);
   }
 
-  ComputeInternalGradientsVectorizedFunctor(
-      int64_t HxW,
-      const T* dY,
-      const T* X,
-      T_ACC* ds,
-      T_ACC* db)
-      : HxW_(HxW), dY_(dY), X_(X), ds_(ds), db_(db) {}
-
- private:
-  int64_t HxW_;
-  const T* dY_;
-  const T* X_;
-  T_ACC* ds_;
-  T_ACC* db_;
-  sycl_local_acc_t<T_ACC> ds_shared_;
-  sycl_local_acc_t<T_ACC> db_shared_;
-};
+  if (item.get_local_id(0) == 0) {
+    acc_vec_t ds_vec;
+    acc_vec_t db_vec;
+#pragma unroll
+    for (int v = 0; v < VEC_SIZE; ++v) {
+      ds_vec[v] = sum1_vec[v];
+      db_vec[v] = sum2_vec[v];
+    }
+    *(reinterpret_cast<acc_vec_t*>(ds_ + group_start)) = ds_vec;
+    *(reinterpret_cast<acc_vec_t*>(db_ + group_start)) = db_vec;
+  }
+}
 
 template <typename T, typename T_ACC>
 struct GroupNormBackwardC1Functor {
@@ -1033,272 +919,185 @@ struct GroupNormBackwardDXFunctor {
   }
 };
 
-template <typename T, int SIMD>
-struct ComputeBackwardFusedParamsFunctor
-    : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
+template <typename T, int SIMD, typename T_ACC>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void compute_backward_fused_params_kernel(
+    int64_t C_,
+    int64_t HxW_,
+    int64_t group_,
+    const T* mean_,
+    const T* rstd_,
+    const T* gamma_,
+    const T_ACC* ds_,
+    const T_ACC* db_,
+    T_ACC* c2_,
+    T_ACC* c3_) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
 
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
+  T_ACC* ds_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  T_ACC* db_shared_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+
+  const int64_t G = group_;
+  const int64_t D = C_ / G;
+  const int64_t n = item.get_group(1);
+  const int64_t g = item.get_group(0);
+  const int64_t ng = n * G + g;
+  T_ACC sum1 = 0;
+  T_ACC sum2 = 0;
+  for (int64_t i = item.get_local_id(1); i < D; i += item.get_local_range(1)) {
+    const int64_t index = ng * D + i;
+    const int64_t c = g * D + i;
+    const T_ACC gamma_v =
+        gamma_ == nullptr ? T_ACC(1) : static_cast<T_ACC>(gamma_[c]);
+    sum1 += ds_[index] * gamma_v;
+    sum2 += db_[index] * gamma_v;
+  }
+  sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
+  sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
+  if (item.get_local_id(1) == 0) {
+    const T_ACC s = T_ACC(1) / static_cast<T_ACC>(D * HxW_);
+    const T_ACC x = (sum2 * static_cast<T_ACC>(mean_[ng]) - sum1) *
+        static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(rstd_[ng]) *
+        static_cast<T_ACC>(rstd_[ng]) * s;
+    c2_[ng] = x;
+    c3_[ng] = -x * static_cast<T_ACC>(mean_[ng]) -
+        sum2 * static_cast<T_ACC>(rstd_[ng]) * s;
+  }
+}
+
+template <typename T, typename T_ACC>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void gamma_beta_backward_plain_kernel(
+    int64_t N_,
+    int64_t C_,
+    int64_t group_,
+    const T* mean_,
+    const T* rstd_,
+    const T_ACC* ds_,
+    const T_ACC* db_,
+    T* dgamma_,
+    T* dbeta_) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  auto c = item.get_global_id(0);
+  auto G = group_;
+  auto D = C_ / G;
+  T_ACC sum1 = 0;
+  T_ACC sum2 = 0;
+  for (int64_t n = 0; n < N_; ++n) {
+    auto nc = n * C_ + c;
+    auto ng = n * G + c / D;
+    sum1 += (dgamma_ == nullptr)
+        ? T_ACC(0)
+        : ((ds_[nc] - db_[nc] * static_cast<T_ACC>(mean_[ng])) *
+           static_cast<T_ACC>(rstd_[ng]));
+    sum2 += (dbeta_ == nullptr) ? T_ACC(0) : db_[nc];
+  }
+  if (dgamma_ != nullptr) {
+    dgamma_[c] = sum1;
+  }
+  if (dbeta_ != nullptr) {
+    dbeta_[c] = sum2;
+  }
+}
+
+template <typename T, int SIMD, int kReduceTileSize, typename T_ACC>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void gamma_beta_backward_kernel(
+    int64_t N_,
+    int64_t C_,
+    int64_t group_,
+    const T* mean_,
+    const T* rstd_,
+    const T_ACC* ds_,
+    const T_ACC* db_,
+    T* dgamma_,
+    T* dbeta_) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  T_ACC* g_base_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  WG2D<T_ACC> g_shared_(g_base_, kReduceTileSize + 1);
+  T_ACC* b_base_ = (T_ACC*)syclexp::get_work_group_scratch_memory();
+  WG2D<T_ACC> b_shared_(g_base_, kReduceTileSize + 1);
+
+  auto group_x = item.get_group(1);
+  auto group_size_x = item.get_local_range(1);
+  auto group_size_y = item.get_local_range(0);
+  auto tid_x = item.get_local_id(1);
+  auto tid_y = item.get_local_id(0);
+
+  const int64_t c = group_x * group_size_x + tid_x;
+  T_ACC dg_sum1 = 0;
+  T_ACC dg_sum2 = 0;
+  T_ACC db_sum1 = 0;
+  T_ACC db_sum2 = 0;
+  if (c < C_) {
     const int64_t G = group_;
     const int64_t D = C_ / G;
-    const int64_t n = item.get_group(1);
-    const int64_t g = item.get_group(0);
-    const int64_t ng = n * G + g;
-    T_ACC sum1 = 0;
-    T_ACC sum2 = 0;
-    for (int64_t i = item.get_local_id(1); i < D;
-         i += item.get_local_range(1)) {
-      const int64_t index = ng * D + i;
-      const int64_t c = g * D + i;
-      const T_ACC gamma_v =
-          gamma_ == nullptr ? T_ACC(1) : static_cast<T_ACC>(gamma_[c]);
-      sum1 += ds_[index] * gamma_v;
-      sum2 += db_[index] * gamma_v;
-    }
-    sum1 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1, ds_shared_);
-    sum2 = GroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2, db_shared_);
-    if (item.get_local_id(1) == 0) {
-      const T_ACC s = T_ACC(1) / static_cast<T_ACC>(D * HxW_);
-      const T_ACC x = (sum2 * static_cast<T_ACC>(mean_[ng]) - sum1) *
-          static_cast<T_ACC>(rstd_[ng]) * static_cast<T_ACC>(rstd_[ng]) *
-          static_cast<T_ACC>(rstd_[ng]) * s;
-      c2_[ng] = x;
-      c3_[ng] = -x * static_cast<T_ACC>(mean_[ng]) -
-          sum2 * static_cast<T_ACC>(rstd_[ng]) * s;
-    }
-  }
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    ds_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
-    db_shared_ =
-        sycl_local_acc_t<T_ACC>(get_group_reduce_group_size(SIMD), cgh);
-  }
-
-  ComputeBackwardFusedParamsFunctor(
-      int64_t C,
-      int64_t HxW,
-      int64_t group,
-      const T* mean,
-      const T* rstd,
-      const T* gamma,
-      const T_ACC* ds,
-      const T_ACC* db,
-      T_ACC* c2,
-      T_ACC* c3)
-      : C_(C),
-        HxW_(HxW),
-        group_(group),
-        mean_(mean),
-        rstd_(rstd),
-        gamma_(gamma),
-        ds_(ds),
-        db_(db),
-        c2_(c2),
-        c3_(c3) {}
-
- private:
-  int64_t C_;
-  int64_t HxW_;
-  int64_t group_;
-  const T* mean_;
-  const T* rstd_;
-  const T* gamma_;
-  const T_ACC* ds_;
-  const T_ACC* db_;
-  T_ACC* c2_;
-  T_ACC* c3_;
-  sycl_local_acc_t<T_ACC> ds_shared_;
-  sycl_local_acc_t<T_ACC> db_shared_;
-};
-
-template <typename T>
-struct GammaBetaBackwardPlainFunctor {
-  using T_ACC = acc_type_device<T, kXPU>;
-
-  void operator()(sycl::item<1> item) const {
-    auto c = item.get_id(0);
-    auto G = group_;
-    auto D = C_ / G;
-    T_ACC sum1 = 0;
-    T_ACC sum2 = 0;
-    for (int64_t n = 0; n < N_; ++n) {
-      auto nc = n * C_ + c;
-      auto ng = n * G + c / D;
-      sum1 += (dgamma_ == nullptr)
+    // Accumulate each 32 cols into a 32 * 32 tile.
+    // Since the group size is (32, 16), accumulate twice for 1st and 2nd 16
+    // rows of a 32 contiguous elements.
+    for (int64_t n = tid_y; n < N_; n += group_size_y * 2) {
+      const int64_t n1 = n;
+      const int64_t n2 = n + group_size_y;
+      const int64_t nc1 = n1 * C_ + c;
+      const int64_t nc2 = n2 * C_ + c;
+      const int64_t ng1 = n1 * G + c / D;
+      const int64_t ng2 = n2 * G + c / D;
+      dg_sum1 += dgamma_ == nullptr
           ? T_ACC(0)
-          : ((ds_[nc] - db_[nc] * static_cast<T_ACC>(mean_[ng])) *
-             static_cast<T_ACC>(rstd_[ng]));
-      sum2 += (dbeta_ == nullptr) ? T_ACC(0) : db_[nc];
-    }
-    if (dgamma_ != nullptr) {
-      dgamma_[c] = sum1;
-    }
-    if (dbeta_ != nullptr) {
-      dbeta_[c] = sum2;
-    }
-  }
-
-  GammaBetaBackwardPlainFunctor(
-      int64_t N,
-      int64_t C,
-      int64_t group,
-      const T* mean,
-      const T* rstd,
-      const T_ACC* ds,
-      const T_ACC* db,
-      T* dgamma,
-      T* dbeta)
-      : N_(N),
-        C_(C),
-        group_(group),
-        mean_(mean),
-        rstd_(rstd),
-        ds_(ds),
-        db_(db),
-        dgamma_(dgamma),
-        dbeta_(dbeta) {}
-
- private:
-  int64_t N_;
-  int64_t C_;
-  int64_t group_;
-  const T* mean_;
-  const T* rstd_;
-  const T_ACC* ds_;
-  const T_ACC* db_;
-  T* dgamma_;
-  T* dbeta_;
-};
-
-template <typename T, int SIMD, int kReduceTileSize>
-struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using T_ACC = acc_type_device<T, kXPU>;
-
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
-    auto group_x = item.get_group(1);
-    auto group_size_x = item.get_local_range(1);
-    auto group_size_y = item.get_local_range(0);
-    auto tid_x = item.get_local_id(1);
-    auto tid_y = item.get_local_id(0);
-
-    const int64_t c = group_x * group_size_x + tid_x;
-    T_ACC dg_sum1 = 0;
-    T_ACC dg_sum2 = 0;
-    T_ACC db_sum1 = 0;
-    T_ACC db_sum2 = 0;
-    if (c < C_) {
-      const int64_t G = group_;
-      const int64_t D = C_ / G;
-      // Accumulate each 32 cols into a 32 * 32 tile.
-      // Since the group size is (32, 16), accumulate twice for 1st and 2nd 16
-      // rows of a 32 contiguous elements.
-      for (int64_t n = tid_y; n < N_; n += group_size_y * 2) {
-        const int64_t n1 = n;
-        const int64_t n2 = n + group_size_y;
-        const int64_t nc1 = n1 * C_ + c;
-        const int64_t nc2 = n2 * C_ + c;
-        const int64_t ng1 = n1 * G + c / D;
-        const int64_t ng2 = n2 * G + c / D;
-        dg_sum1 += dgamma_ == nullptr
+          : ((ds_[nc1] - db_[nc1] * static_cast<T_ACC>(mean_[ng1])) *
+             static_cast<T_ACC>(rstd_[ng1]));
+      db_sum1 += dbeta_ == nullptr ? T_ACC(0) : db_[nc1];
+      if (n2 < N_) {
+        dg_sum2 += dgamma_ == nullptr
             ? T_ACC(0)
-            : ((ds_[nc1] - db_[nc1] * static_cast<T_ACC>(mean_[ng1])) *
-               static_cast<T_ACC>(rstd_[ng1]));
-        db_sum1 += dbeta_ == nullptr ? T_ACC(0) : db_[nc1];
-        if (n2 < N_) {
-          dg_sum2 += dgamma_ == nullptr
-              ? T_ACC(0)
-              : ((ds_[nc2] - db_[nc2] * static_cast<T_ACC>(mean_[ng2])) *
-                 static_cast<T_ACC>(rstd_[ng2]));
-          db_sum2 += dbeta_ == nullptr ? T_ACC(0) : db_[nc2];
-        }
-      }
-    }
-
-    // Write accumulated tile to shared memory.
-    g_shared_[tid_y][tid_x] = dg_sum1;
-    g_shared_[tid_y + group_size_y][tid_x] = dg_sum2;
-    b_shared_[tid_y][tid_x] = db_sum1;
-    b_shared_[tid_y + group_size_y][tid_x] = db_sum2;
-    item.barrier(sycl_local_fence);
-
-    // Do subgroup reduce for the 1st 16 cols in the tile.
-    T_ACC sum1 = g_shared_[tid_x][tid_y];
-    T_ACC sum2 = b_shared_[tid_x][tid_y];
-    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
-    if (tid_x == 0) {
-      const int64_t c = group_x * group_size_x + tid_y;
-      if (c < C_) {
-        if (dgamma_ != nullptr) {
-          dgamma_[c] = sum1;
-        }
-        if (dbeta_ != nullptr) {
-          dbeta_[c] = sum2;
-        }
-      }
-    }
-
-    // Do subgroup reduce for the 2st 16 cols in the tile.
-    sum1 = g_shared_[tid_x][tid_y + group_size_y];
-    sum2 = b_shared_[tid_x][tid_y + group_size_y];
-    sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
-    sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
-    if (tid_x == 0) {
-      const int64_t c = group_x * group_size_x + tid_y + group_size_y;
-      if (c < C_) {
-        if (dgamma_ != nullptr) {
-          dgamma_[c] = sum1;
-        }
-        if (dbeta_ != nullptr) {
-          dbeta_[c] = sum2;
-        }
+            : ((ds_[nc2] - db_[nc2] * static_cast<T_ACC>(mean_[ng2])) *
+               static_cast<T_ACC>(rstd_[ng2]));
+        db_sum2 += dbeta_ == nullptr ? T_ACC(0) : db_[nc2];
       }
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    g_shared_ = sycl_local_acc_t<T_ACC, 2>(
-        sycl::range<2>(kReduceTileSize, kReduceTileSize + 1), cgh);
-    b_shared_ = sycl_local_acc_t<T_ACC, 2>(
-        sycl::range<2>(kReduceTileSize, kReduceTileSize + 1), cgh);
+  // Write accumulated tile to shared memory.
+  g_shared_[tid_y][tid_x] = dg_sum1;
+  g_shared_[tid_y + group_size_y][tid_x] = dg_sum2;
+  b_shared_[tid_y][tid_x] = db_sum1;
+  b_shared_[tid_y + group_size_y][tid_x] = db_sum2;
+  item.barrier(sycl_local_fence);
+
+  // Do subgroup reduce for the 1st 16 cols in the tile.
+  T_ACC sum1 = g_shared_[tid_x][tid_y];
+  T_ACC sum2 = b_shared_[tid_x][tid_y];
+  sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+  sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
+  if (tid_x == 0) {
+    const int64_t c = group_x * group_size_x + tid_y;
+    if (c < C_) {
+      if (dgamma_ != nullptr) {
+        dgamma_[c] = sum1;
+      }
+      if (dbeta_ != nullptr) {
+        dbeta_[c] = sum2;
+      }
+    }
   }
 
-  GammaBetaBackwardFunctor(
-      int64_t N,
-      int64_t C,
-      int64_t group,
-      const T* mean,
-      const T* rstd,
-      const T_ACC* ds,
-      const T_ACC* db,
-      T* dgamma,
-      T* dbeta)
-      : N_(N),
-        C_(C),
-        group_(group),
-        mean_(mean),
-        rstd_(rstd),
-        ds_(ds),
-        db_(db),
-        dgamma_(dgamma),
-        dbeta_(dbeta) {}
-
- private:
-  int64_t N_;
-  int64_t C_;
-  int64_t group_;
-  const T* mean_;
-  const T* rstd_;
-  const T_ACC* ds_;
-  const T_ACC* db_;
-  T* dgamma_;
-  T* dbeta_;
-  sycl_local_acc_t<T_ACC, 2> g_shared_;
-  sycl_local_acc_t<T_ACC, 2> b_shared_;
-};
+  // Do subgroup reduce for the 2st 16 cols in the tile.
+  sum1 = g_shared_[tid_x][tid_y + group_size_y];
+  sum2 = b_shared_[tid_x][tid_y + group_size_y];
+  sum1 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum1);
+  sum2 = SubgroupReduceSumWithoutBroadcast<T_ACC, SIMD>(item, sum2);
+  if (tid_x == 0) {
+    const int64_t c = group_x * group_size_x + tid_y + group_size_y;
+    if (c < C_) {
+      if (dgamma_ != nullptr) {
+        dgamma_[c] = sum1;
+      }
+      if (dbeta_ != nullptr) {
+        dbeta_[c] = sum2;
+      }
+    }
+  }
+}
 
 template <typename T>
 void group_norm_backward_kernel_impl(
@@ -1367,14 +1166,22 @@ void group_norm_backward_kernel_impl(
       can_use_vectorization(ds_data, VEC_SIZE) &&
       can_use_vectorization(db_data, VEC_SIZE) && HxW % VEC_SIZE == 0 &&
       (N * C) % VEC_SIZE == 0) {
-    using KernelS16T =
-        ComputeInternalGradientsVectorizedFunctor<T, SIMD16, VEC_SIZE>;
-    using KernelS32T =
-        ComputeInternalGradientsVectorizedFunctor<T, SIMD32, VEC_SIZE>;
     wg_size = (HxW / VEC_SIZE) < get_group_reduce_group_size(simd)
         ? simd
         : get_group_reduce_group_size(simd);
-    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+    group_norm_kernel_simd_choice_and_launch<
+        &compute_internal_gradients_vectorized_kernel<
+            T,
+            SIMD16,
+            VEC_SIZE,
+            T_ACC>,
+        &compute_internal_gradients_vectorized_kernel<
+            T,
+            SIMD32,
+            VEC_SIZE,
+            T_ACC>,
+        ::sycl::range<1>>(
+        "compute_internal_gradients_vectorized_kernel",
         simd,
         sycl::range<1>((N * C / VEC_SIZE) * wg_size),
         sycl::range<1>(wg_size),
@@ -1385,12 +1192,14 @@ void group_norm_backward_kernel_impl(
         ds_data,
         db_data);
   } else {
-    using KernelS16T = ComputeInternalGradientsFunctor<T, SIMD16>;
-    using KernelS32T = ComputeInternalGradientsFunctor<T, SIMD32>;
     wg_size = HxW < get_group_reduce_group_size(simd)
         ? simd
         : get_group_reduce_group_size(simd);
-    group_norm_kernel_simd_choice_and_launch<KernelS16T, KernelS32T>(
+    group_norm_kernel_simd_choice_and_launch<
+        &compute_internal_gradients_kernel<T, SIMD16, T_ACC>,
+        &compute_internal_gradients_kernel<T, SIMD32, T_ACC>,
+        ::sycl::range<1>>(
+        "compute_internal_gradients_kernel",
         simd,
         sycl::range<1>(N * C * wg_size),
         sycl::range<1>(wg_size),
@@ -1423,8 +1232,10 @@ void group_norm_backward_kernel_impl(
         ? simd
         : get_group_reduce_group_size(simd);
     group_norm_kernel_simd_choice_and_launch<
-        ComputeBackwardFusedParamsFunctor<T, SIMD16>,
-        ComputeBackwardFusedParamsFunctor<T, SIMD32>>(
+        &compute_backward_fused_params_kernel<T, SIMD16, T_ACC>,
+        &compute_backward_fused_params_kernel<T, SIMD32, T_ACC>,
+        ::sycl::range<2>>(
+        "compute_backward_fused_params_kernel",
         simd,
         sycl::range<2>(G, N * wg_size),
         sycl::range<2>(1, wg_size),
@@ -1472,7 +1283,11 @@ void group_norm_backward_kernel_impl(
     T* dbeta_data = dbeta.defined() ? dbeta.mutable_data_ptr<T>() : nullptr;
     if (N <= 128) {
       // For small batch size, do colwise reduce directly.
-      auto caller = GammaBetaBackwardPlainFunctor<T>(
+      sycl_kernel_submit<gamma_beta_backward_plain_kernel<T, T_ACC>, 1>(
+          sycl::range<1>(C),
+          sycl::range<1>(1),
+          getCurrentSYCLQueue(),
+          0,
           N,
           C,
           G,
@@ -1482,7 +1297,6 @@ void group_norm_backward_kernel_impl(
           db_data,
           dgamma_data,
           dbeta_data);
-      sycl_kernel_submit(sycl::range<1>(C), queue, caller);
     } else {
       // The algorithm for colwise reduction here is to accumulate each
       // (subgroup_size) cols to a (subgroup_size^2) tile and write the tile
@@ -1493,8 +1307,10 @@ void group_norm_backward_kernel_impl(
           sycl::range<2>(kReduceTileSize / 2, B * kReduceTileSize);
       auto local_range = sycl::range<2>(kReduceTileSize / 2, kReduceTileSize);
       group_norm_kernel_simd_choice_and_launch<
-          GammaBetaBackwardFunctor<T, SIMD16, SIMD16>,
-          GammaBetaBackwardFunctor<T, SIMD32, SIMD32>>(
+          &gamma_beta_backward_kernel<T, SIMD16, SIMD16, T_ACC>,
+          &gamma_beta_backward_kernel<T, SIMD32, SIMD32, T_ACC>,
+          ::sycl::range<2>>(
+          "gamma_beta_backward_kernel",
           simd,
           global_range,
           local_range,
