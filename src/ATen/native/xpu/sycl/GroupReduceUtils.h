@@ -8,6 +8,8 @@
 #include <comm/SYCLContext.h>
 #include <comm/XPUMathCompat.h>
 #include <comm/xpu_aten.h>
+#include <string>
+#include <unordered_map>
 
 namespace at {
 namespace native {
@@ -180,6 +182,68 @@ static inline void group_norm_kernel_simd_choice_and_launch(
     default: {
       auto fn = fn_simd_32(args...);
       sycl_kernel_submit(global_range, local_range, q, fn);
+    } break;
+  }
+}
+
+// For SYCL free function
+inline int get_group_size(const char* fn_name, int simd) {
+  static const std::unordered_map<std::string, int (*)(int)> table = {
+      // rowwise moments (vectorized)
+      {"gn_rowwise_moments_vectorized_kernel", [](int simd) { return simd; }},
+      // rowwise moments (non-vectorized)
+      {"gn_rowwise_moments_kernel", [](int simd) { return simd; }},
+      // backward fused params
+      {"compute1d_backward_fused_params_kernel",
+       [](int simd) { return get_group_reduce_group_size(simd); }},
+      // internal gradients (vectorized)
+      {"compute_internal_gradients_vectorized_kernel",
+       [](int simd) { return get_group_reduce_group_size(simd); }},
+      // internal gradients
+      {"compute_internal_gradients_kernel",
+       [](int simd) { return get_group_reduce_group_size(simd); }},
+      // backward fused params (non-vectorized)
+      {"compute_backward_fused_params_kernel",
+       [](int simd) { return get_group_reduce_group_size(simd); }},
+      // gamma beta (large kernel)
+      {"gamma_beta_1d_backward_large_kernel",
+       [](int simd) { return simd * (simd + 1); }},
+      // gamma beta (normal)
+      {"gamma_beta_backward_kernel",
+       [](int simd) { return simd * (simd + 1); }},
+  };
+
+  auto it = table.find(fn_name);
+  if (it != table.end()) {
+    return it->second(simd);
+  }
+  return -1;
+}
+
+template <
+    auto* fn_simd_16,
+    auto* fn_simd_32,
+    typename range_t,
+    typename... args_t>
+static inline void group_norm_kernel_simd_choice_and_launch(
+    char* fn_name,
+    int simd,
+    range_t global_range,
+    range_t local_range,
+    ::sycl::queue q,
+    args_t... args) {
+  switch (simd) {
+    case 16: {
+      const int group_size = get_group_size(fn_name, SIMD16);
+      assert(group_size == -1 && "Unknown kernel!");
+      sycl_kernel_submit<fn_simd_16, range_t::dimensions>(
+          global_range, local_range, q, group_size, args...);
+    } break;
+    default: {
+      const int group_size = get_group_size(fn_name, SIMD32);
+      assert(group_size == -1 && "Unknown kernel!");
+      sycl_kernel_submit<fn_simd_32, range_t::dimensions>(
+          global_range, local_range, q, group_size, args...);
     } break;
   }
 }
