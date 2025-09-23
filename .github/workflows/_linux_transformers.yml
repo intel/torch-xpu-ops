@@ -214,17 +214,36 @@ jobs:
           # Excluding tests due to:
           # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
           # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
+          #
+          # NOTE: IMPORTANT! Read before updating.
+          # Be careful reducing number of shards. We saw "Fatal Python error" on 4
+          # shards which was causing CI test hang and exit by timeout after 6h. Issue
+          # was happening on the `--shard-id 1` on this test:
+          #   tests/models/qwen2_5_vl/test_modeling_qwen2_5_vl.py::Qwen2_5_VLModelTest::test_constrained_beam_search_generate_dict_output
+          # Test passes if executed standalone. Likely we step into some resource limit or a leak.
           - test_case: 'tests_models_0'
-            cmd: 'tests/models --num-shards 4 --shard-id 0 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 0 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           - test_case: 'tests_models_1'
-            cmd: 'tests/models --num-shards 4 --shard-id 1 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 1 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           - test_case: 'tests_models_2'
-            cmd: 'tests/models --num-shards 4 --shard-id 2 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 2 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           - test_case: 'tests_models_3'
-            cmd: 'tests/models --num-shards 4 --shard-id 3 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 3 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_4'
+            cmd: 'tests/models --num-shards 8 --shard-id 4 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_5'
+            cmd: 'tests/models --num-shards 8 --shard-id 5 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_6'
+            cmd: 'tests/models --num-shards 8 --shard-id 6 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_7'
+            cmd: 'tests/models --num-shards 8 --shard-id 7 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           # Excluding tests due to:
           # * Some ray tests hang, reason unknown
