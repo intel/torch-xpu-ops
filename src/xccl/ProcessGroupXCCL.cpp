@@ -97,17 +97,17 @@ void checkSingleTensor(
 ) {
   if (!tensor.is_xpu() || tensor.is_sparse()) {
     C10_THROW_ERROR(ValueError, "Tensors must be XPU and dense");
+  }
 
-    // Skip the following requirements for P2P operations
-    if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
-      if (p2p) {
-        TORCH_WARN_ONCE(
-            "Detected non-contiguous tensor in P2P operations. It is user "
-            "responsibility to guarantee that source and destination tensors have "
-            "the same contiguity format.");
-      } else {
-        C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
-      }
+  // Skip the following requirements for P2P operations
+  if (!tensor.is_contiguous(tensor.suggest_memory_format())) {
+    if (p2p) {
+      TORCH_WARN_ONCE(
+          "Detected non-contiguous tensor in P2P operations. It is user "
+          "responsibility to guarantee that source and destination tensors have "
+          "the same contiguity format.");
+    } else {
+      C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
     }
   }
 }
@@ -435,17 +435,6 @@ void ProcessGroupXCCL::setEnqueuedPgStatus(
   pgStatus_->lastEnqueuedWorkName = opTypeToString(work->opType_);
   pgStatus_->lastEnqueuedNumelIn = work->numelIn_;
   pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
-}
-
-void ProcessGroupXCCL::setCompletedPgStatus(
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work) {
-  pgStatus_->lastCompletedSeq = static_cast<int64_t>(work->getSequencenumber());
-  pgStatus_->lastCompletedWorkName = opTypeToString(work->opType_);
-  pgStatus_->lastCompletedNumelIn = work->numelIn_;
-  pgStatus_->lastCompletedNumelOut = work->numelOut_;
-  // To avoid complexity, we're not computing duration.
-  FlightRecorderXCCL::get()->retire_id(
-      work->trace_id_, /*compute_duration*/ false);
 }
 
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
@@ -777,8 +766,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
+  auto id = work->trace_id_;
   work->future_->addCallback(
-      [this, work](at::ivalue::Future&) { this->setCompletedPgStatus(work); });
+      [id](at::ivalue::Future&) {
+        FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+      },
+      /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -889,9 +882,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_ = c10::make_intrusive<at::ivalue::Future>(
         c10::ListType::create(c10::TensorType::get()), devices);
     work->future_->markCompleted(at::IValue(*work->outputs_));
-    work->future_->addCallback([this, work](at::ivalue::Future&) {
-      this->setCompletedPgStatus(work);
-    });
+    auto id = work->trace_id_;
+    work->future_->addCallback(
+        [id](at::ivalue::Future&) {
+          FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+        },
+        /*use_future*/ false);
 
     work->numelIn_ = work->numelOut_ = tensor.numel();
     setEnqueuedPgStatus(work);
