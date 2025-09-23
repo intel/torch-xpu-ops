@@ -77,7 +77,7 @@ jobs:
     needs: runner
     timeout-minutes: 3600
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/driver-lts2:1146
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g

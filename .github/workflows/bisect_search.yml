@@ -60,7 +60,7 @@ jobs:
     needs: get_runner
     runs-on: ${{ needs.get_runner.outputs.runner_id }}
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/driver-lts2:1146
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g

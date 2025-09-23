@@ -91,7 +91,7 @@ jobs:
     runs-on: ${{ needs.prepare.outputs.runner_id }}
     needs: prepare
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/driver-lts2:1146
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.prepare.outputs.render_id }}
