@@ -4,6 +4,8 @@
 
 #include <sycl/sycl.hpp>
 
+#include <comm/SYCLContext.h>
+
 namespace syclext = sycl::ext::oneapi;
 namespace syclexp = sycl::ext::oneapi::experimental;
 
@@ -17,6 +19,29 @@ struct RestrictPtrTraits {
 namespace native {
 namespace xpu {
 
+uint32_t xpu_calc_xblock_count_base(int num_items, int threads_per_block) {
+  // The number of threads can be as high as 2048 on some newer architectures,
+  // but this is not portable.
+  TORCH_CHECK(
+      threads_per_block <= syclDeviceMaxWorkGroupSize(),
+      "Number of threads must be <=1024!");
+  constexpr uint64_t max_blocks = 2147483647;
+  const auto u_num_items = static_cast<uint64_t>(num_items);
+  const auto u_threads = static_cast<uint64_t>(threads_per_block);
+  // Overflow safe variant of (a + b - 1) / b
+  const uint64_t blocks =
+      u_num_items / u_threads + (u_num_items % u_threads != 0);
+  return static_cast<uint32_t>(std::min(blocks, max_blocks));
+}
+
+// See: xpu_calc_xblock_count_base
+uint32_t xpu_calc_xblock_count(int num_items, int threads_per_block) {
+  TORCH_CHECK(
+      num_items >= 0,
+      "When calculating block counts, the number of items must be positive!");
+  return xpu_calc_xblock_count_base(num_items, threads_per_block);
+}
+
 constexpr size_t kStackArrayMaxDims = 5;
 
 template <typename T, typename V>
@@ -28,6 +53,125 @@ template <typename T, typename V>
 inline auto round_down(T a, V b) {
   return a / b * b;
 }
+
+inline bool torch_tensor_undefined(const at::Tensor& ten) {
+  return ten.defined();
+}
+
+inline bool torch_tensor_undefined(const std::optional<at::Tensor>& ten) {
+  return !ten.has_value() || torch_tensor_undefined(ten.value());
+}
+
+inline bool torch_tensor_on_xpu_check(const at::Tensor& ten) {
+  return ten.is_xpu();
+}
+
+inline bool torch_tensor_on_xpu_check(const std::optional<at::Tensor>& ten) {
+  return !ten.has_value() || torch_tensor_on_xpu_check(ten.value());
+}
+
+inline std::optional<int64_t> get_device_index_from_tensor(
+    const at::Tensor& ten) {
+  return {ten.device().index()};
+}
+
+inline std::optional<int64_t> get_device_index_from_tensor(
+    const std::optional<at::Tensor>& ten) {
+  if (ten) {
+    return {ten->device().index()};
+  } else {
+    return {};
+  }
+}
+
+inline std::string torch_tensor_device_name(const at::Tensor& ten) {
+  return c10::DeviceTypeName(ten.device().type());
+}
+
+inline std::string torch_tensor_device_name(
+    const std::optional<at::Tensor>& ten) {
+  if (ten.has_value()) {
+    return torch_tensor_device_name(ten.value());
+  } else {
+    return "N/A";
+  }
+}
+
+template <typename... Tensors>
+std::string tensor_on_same_xpu_if_not_optional_check(
+    const std::string& var_names_str,
+    const Tensors&... tensors) {
+  std::optional<int64_t> xpu_index;
+  bool on_same_xpu = true;
+
+  // Collect the XPU index of the first non-empty optional tensor and make sure
+  // that all tensors are on this same index.
+  (
+      [&](const auto& tensor) {
+        if (!torch_tensor_undefined(tensor)) {
+          return;
+        }
+        if (!torch_tensor_on_xpu_check(tensor)) {
+          on_same_xpu = false;
+          return;
+        }
+        const auto my_xpu_index = get_device_index_from_tensor(tensor);
+        if (my_xpu_index) {
+          if (!xpu_index) {
+            xpu_index = my_xpu_index;
+          } else if (*xpu_index != my_xpu_index) {
+            on_same_xpu = false;
+          }
+        }
+      }(tensors),
+      ...);
+
+  if (on_same_xpu) {
+    return "";
+  }
+
+  std::vector<std::string> var_names;
+  {
+    std::string temp;
+    for (const auto& x : var_names_str) {
+      if (x == ',') {
+        var_names.push_back(temp);
+        temp = "";
+      } else {
+        temp.push_back(x);
+      }
+    }
+    var_names.push_back(temp);
+  }
+
+  // Not all the tensors on a GPU or on the same GPU, generate a message.
+  std::string msg = "Not all tensors were on the same GPU: ";
+  size_t current_idx = 0;
+  (
+      [&](const auto& tensor) {
+        if (current_idx > 0) {
+          msg.append(", ");
+        }
+        msg.append(
+            var_names.at(current_idx++) + "(" +
+            torch_tensor_device_name(tensor));
+        const auto xpu_device_index = get_device_index_from_tensor(tensor);
+        if (xpu_device_index) {
+          msg.append(":" + std::to_string(*xpu_device_index));
+        }
+        msg.append(")");
+      }(tensors),
+      ...);
+
+  return msg;
+}
+
+#define TENSORS_ON_SAME_XPU_IF_NOT_OPTIONAL(...)                             \
+  do {                                                                       \
+    const auto tensors_on_same_xpu =                                         \
+        tensor_on_same_xpu_if_not_optional_check(#__VA_ARGS__, __VA_ARGS__); \
+    TORCH_CHECK(tensors_on_same_xpu.empty(), tensors_on_same_xpu);           \
+  } while (false)
 
 struct VecType128 {
   typedef sycl::float4 TType; // Transaction Type
@@ -42,10 +186,6 @@ struct VecType128 {
       mask = sycl::float4(0.0f, 0.0f, 0.0f, 0.0f);
     }
   } data;
-
-  // VecType128() {
-  // data.mask = sycl::float4(0.0f, 0.0f, 0.0f, 0.0f);
-  // }
 };
 
 struct VecType64 {
@@ -61,10 +201,6 @@ struct VecType64 {
       mask = sycl::vec<float, 2>(0.0f, 0.0f);
     }
   } data;
-
-  // VecType64() {
-  // data.mask = sycl::vec<float, 2>(0.0f, 0.0f);
-  // }
 };
 
 struct VecType32 {
@@ -77,10 +213,6 @@ struct VecType32 {
       mask = 0.0f;
     }
   } data;
-
-  // VecType32() {
-  //   data.mask = 0.0f;
-  // }
 };
 
 template <typename F>
@@ -154,6 +286,25 @@ void jagged_dense_elementwise_add_jagged_output_fwd_xpu_kn(
     const Tensor& dense,
     const Tensor& output_values);
 
+void reorder_batched_ad_lengths_xpu_kernel(
+    const Tensor& cat_ad_lengths,
+    const Tensor& batch_offsets,
+    Tensor& reordered_cat_ad_lengths,
+    const int32_t T,
+    const bool broadcast_lengths,
+    const int32_t grid_size);
+
+void reorder_batched_ad_indices_xpu_kernel(
+    const at::Tensor& cat_ad_offsets,
+    const at::Tensor& cat_ad_indices,
+    const at::Tensor& reordered_cat_ad_offsets,
+    const at::Tensor& batch_offsets,
+    at::Tensor& reordered_cat_ad_indices,
+    const int64_t num_ads_in_batch,
+    const int64_t B,
+    const int64_t T,
+    const bool broadcast_indices = false);
+
 // For SYCL free function
 template <auto* kptr, int RANGE_DIM, typename... Kargs>
 inline void sycl_kernel_submit(
@@ -181,3 +332,4 @@ inline void sycl_kernel_submit(
 } // namespace xpu
 } // namespace native
 } // namespace at
+

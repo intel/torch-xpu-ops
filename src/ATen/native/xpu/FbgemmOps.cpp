@@ -279,6 +279,85 @@ jagged_dense_elementwise_add_jagged_output_xpu(
   return {sum_values, x_offsets};
 }
 
+Tensor reorder_batched_ad_lengths_xpu(
+    const Tensor& cat_ad_lengths,
+    const Tensor& batch_offsets,
+    const int64_t num_ads_in_batch,
+    const bool broadcast_lengths,
+    const int64_t max_batch_size = 0) {
+  TORCH_CHECK_LE(max_batch_size, 0);
+  TENSORS_ON_SAME_XPU_IF_NOT_OPTIONAL(cat_ad_lengths, batch_offsets);
+
+  XPU_DEVICE_GUARD(cat_ad_lengths);
+
+  const int64_t B = batch_offsets.numel() - 1;
+  const int64_t T = broadcast_lengths
+      ? cat_ad_lengths.numel() / B
+      : cat_ad_lengths.numel() / num_ads_in_batch;
+
+  Tensor reordered_cat_ad_lengths = broadcast_lengths
+      ? at::empty({T * num_ads_in_batch}, cat_ad_lengths.options())
+      : at::empty_like(cat_ad_lengths);
+
+  const int64_t grid_size = (B * T + 32 - 1) / 32;
+  TORCH_CHECK(
+      grid_size >= 0,
+      "grid_size must be positive, got ",
+      grid_size,
+      " where B =",
+      B,
+      " and T =",
+      T);
+
+  reorder_batched_ad_lengths_xpu_kernel(
+      cat_ad_lengths,
+      batch_offsets,
+      reordered_cat_ad_lengths,
+      T,
+      broadcast_lengths,
+      grid_size);
+
+  return reordered_cat_ad_lengths;
+}
+
+Tensor reorder_batched_ad_indices_xpu(
+    const at::Tensor& cat_ad_offsets,
+    const at::Tensor& cat_ad_indices,
+    const at::Tensor& reordered_cat_ad_offsets,
+    const at::Tensor& batch_offsets,
+    const int64_t num_ads_in_batch,
+    const bool broadcast_indices = false,
+    const int64_t num_indices_after_broadcast = -1) {
+  TENSORS_ON_SAME_XPU_IF_NOT_OPTIONAL(
+      cat_ad_offsets, cat_ad_indices, reordered_cat_ad_offsets, batch_offsets);
+
+  XPU_DEVICE_GUARD(cat_ad_offsets);
+
+  const int64_t B = batch_offsets.numel() - 1;
+  const int64_t T = (reordered_cat_ad_offsets.numel() - 1) / num_ads_in_batch;
+  Tensor reordered_cat_ad_indices;
+  if (broadcast_indices) {
+    TORCH_CHECK_GE(num_indices_after_broadcast, 0);
+    reordered_cat_ad_indices =
+        at::empty({num_indices_after_broadcast}, cat_ad_indices.options());
+  } else {
+    reordered_cat_ad_indices = at::empty_like(cat_ad_indices);
+  }
+
+  reorder_batched_ad_indices_xpu_kernel(
+      cat_ad_offsets,
+      cat_ad_indices,
+      reordered_cat_ad_offsets,
+      batch_offsets,
+      reordered_cat_ad_indices,
+      num_ads_in_batch,
+      B,
+      T,
+      broadcast_indices);
+
+  return reordered_cat_ad_indices;
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
@@ -297,6 +376,10 @@ TORCH_LIBRARY(fbgemm, m) {
       "jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor");
   m.def(
       "jagged_dense_elementwise_add_jagged_output(Tensor values, Tensor[] offsets, Tensor y) -> (Tensor, Tensor[])");
+  m.def(
+      "reorder_batched_ad_lengths(Tensor cat_ad_lengths, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_lengths, int max_batch_size=0) -> Tensor");
+  m.def(
+      "reorder_batched_ad_indices(Tensor cat_ad_offsets, Tensor cat_ad_indices, Tensor reordered_cat_ad_offsets, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_indices, int num_indices_after_broadcast) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
@@ -331,4 +414,17 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
       "jagged_dense_elementwise_add_jagged_output",
       &at::native::xpu::jagged_dense_elementwise_add_jagged_output_xpu);
 }
+
+TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
+  m.impl(
+      "reorder_batched_ad_lengths",
+      &at::native::xpu::reorder_batched_ad_lengths_xpu);
+}
+
+TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
+  m.impl(
+      "reorder_batched_ad_indices",
+      &at::native::xpu::reorder_batched_ad_indices_xpu);
+}
 } // namespace
+

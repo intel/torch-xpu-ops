@@ -452,7 +452,8 @@ with XPUPatchForImport(False):
 
             torch.testing.assert_close(output, output_ref)
             torch.testing.assert_close(output_f, output_ref)
-
+            
+    
     class ElementwiseBinaryTest(TestCase):
         def _test_jagged_elementwise_binary(
             self,
@@ -473,7 +474,7 @@ with XPUPatchForImport(False):
             ).reshape((outer_dense_size,) + tuple(max_lengths) + (inner_dense_size,))
 
             x_padded = to_padded_dense(x_values, x_offsets, max_lengths)
-
+            
             assert operation == "add_jagged_output"
             # create a jagged tensor and then densify
             y = to_padded_dense(
@@ -591,31 +592,21 @@ with XPUPatchForImport(False):
             x_padded = to_padded_dense(x_values, x_offsets, max_lengths)
 
             def jagged_dense_elementwise_add(
-                x_values: torch.Tensor,
-                x_offsets: List[torch.LongTensor],
-                y: torch.Tensor,
+                x_values: torch.Tensor, x_offsets: List[torch.LongTensor], y: torch.Tensor
             ) -> torch.Tensor:
-                return torch.ops.fbgemm.jagged_dense_elementwise_add(
-                    x_values, x_offsets, y
-                )
+                return torch.ops.fbgemm.jagged_dense_elementwise_add(x_values, x_offsets, y)
 
             def jagged_dense_elementwise_add_jagged_output(
-                x_values: torch.Tensor,
-                x_offsets: List[torch.LongTensor],
-                y: torch.Tensor,
+                x_values: torch.Tensor, x_offsets: List[torch.LongTensor], y: torch.Tensor
             ) -> Tuple[torch.Tensor, List[torch.LongTensor]]:
                 return torch.ops.fbgemm.jagged_dense_elementwise_add_jagged_output(
                     x_values, x_offsets, y
                 )
 
             def jagged_dense_elementwise_mul(
-                x_values: torch.Tensor,
-                x_offsets: List[torch.LongTensor],
-                y: torch.Tensor,
+                x_values: torch.Tensor, x_offsets: List[torch.LongTensor], y: torch.Tensor
             ) -> Tuple[torch.Tensor, List[torch.LongTensor]]:
-                return torch.ops.fbgemm.jagged_dense_elementwise_mul(
-                    x_values, x_offsets, y
-                )
+                return torch.ops.fbgemm.jagged_dense_elementwise_mul(x_values, x_offsets, y)
 
             assert operation == "add_jagged_output"
             # create a jagged tensor and then densify
@@ -641,6 +632,143 @@ with XPUPatchForImport(False):
             assert output.size() == output_ref.size()
 
 
+    class ReorderBatchedTest(TestCase):
+        @given(
+            B=st.integers(min_value=1, max_value=20),
+            T=st.integers(min_value=1, max_value=20),
+            L=st.integers(min_value=2, max_value=20),
+            A=st.integers(min_value=1, max_value=20),
+            Dtype=st.sampled_from([torch.int32, torch.float, torch.int64]),
+            broadcast_lengths=st.booleans(),
+        )
+        @settings(verbosity=Verbosity.verbose, max_examples=20, deadline=None)
+        def test_reorder_batched_ad_lengths(
+            self,
+            B: int,
+            T: int,
+            L: int,
+            A: int,
+            Dtype: torch.dtype,
+            broadcast_lengths: bool,
+        ) -> None:
+            if broadcast_lengths:
+                cat_ad_lengths = (
+                    torch.cat([torch.tensor([L for _ in range(T)]) for _ in range(B)], 0)
+                    .xpu()
+                    .to(Dtype)
+                )
+                cat_ad_lengths_broadcasted = cat_ad_lengths.tile([A])
+            else:
+                cat_ad_lengths = (
+                    torch.cat(
+                        [torch.tensor([L for _ in range(T * A)]) for _ in range(B)], 0
+                    )
+                    .xpu()
+                    .to(Dtype)
+                )
+                cat_ad_lengths_broadcasted = cat_ad_lengths
+            batch_offsets = torch.tensor([A * b for b in range(B + 1)]).int().xpu()
+            num_ads_in_batch = B * A
+            reordered_batched_ad_lengths = torch.ops.fbgemm.reorder_batched_ad_lengths(
+                cat_ad_lengths, batch_offsets, num_ads_in_batch, broadcast_lengths
+            )
+            torch.testing.assert_close(
+                cat_ad_lengths_broadcasted, reordered_batched_ad_lengths
+            )
+            
+        @given(
+            B=st.integers(min_value=1, max_value=20),
+            T=st.integers(min_value=1, max_value=20),
+            L=st.integers(min_value=2, max_value=20),
+            A=st.integers(min_value=1, max_value=20),
+            Dtype=st.sampled_from([torch.int32, torch.float, torch.int64, torch.bfloat16]),
+            Itype=st.sampled_from([torch.int32, torch.int64]),
+            broadcast_indices=st.booleans(),
+        )
+        @settings(verbosity=Verbosity.verbose, max_examples=20, deadline=None)
+        def test_reorder_batched_ad_indices(
+            self,
+            B: int,
+            T: int,
+            L: int,
+            A: int,
+            Dtype: torch.dtype,
+            Itype: torch.dtype,
+            broadcast_indices: bool,
+        ) -> None:
+            if broadcast_indices:
+                cat_ad_indices = (
+                    torch.randint(
+                        low=0,
+                        high=100,
+                        size=(B * T * L,),
+                    )
+                    .int()
+                    .xpu()
+                    .to(Dtype)
+                )
+                cat_ad_lengths = (
+                    torch.cat(
+                        [torch.tensor([L for _ in range(T)]) for _ in range(B)],
+                        0,
+                    )
+                    .int()
+                    .xpu()
+                )
+                cat_ad_lengths_broadcasted = cat_ad_lengths.tile([A])
+            else:
+                cat_ad_indices = (
+                    torch.randint(
+                        low=0,
+                        high=100,
+                        size=(B * T * A * L,),
+                    )
+                    .int()
+                    .xpu()
+                    .to(Dtype)
+                )
+                cat_ad_lengths = (
+                    torch.cat(
+                        [torch.tensor([L for _ in range(T * A)]) for _ in range(B)],
+                        0,
+                    )
+                    .int()
+                    .xpu()
+                )
+                cat_ad_lengths_broadcasted = cat_ad_lengths
+            batch_offsets = torch.tensor([A * b for b in range(B + 1)]).int().xpu()
+            num_ads_in_batch = B * A
+            reordered_cat_ad_lengths = torch.ops.fbgemm.reorder_batched_ad_lengths(
+                cat_ad_lengths, batch_offsets, num_ads_in_batch, broadcast_indices
+            )
+            torch.testing.assert_close(cat_ad_lengths_broadcasted, reordered_cat_ad_lengths)
+
+            cat_ad_offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(
+                cat_ad_lengths
+            ).to(Itype)
+            reordered_cat_ad_offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(
+                reordered_cat_ad_lengths
+            ).to(Itype)
+            reordered_cat_ad_indices = torch.ops.fbgemm.reorder_batched_ad_indices(
+                cat_ad_offsets,
+                cat_ad_indices,
+                reordered_cat_ad_offsets,
+                batch_offsets,
+                num_ads_in_batch,
+                broadcast_indices,
+                B * T * A * L,
+            )
+
+            torch.testing.assert_close(
+                reordered_cat_ad_indices.view(T, B, A, L).permute(1, 0, 2, 3),
+                (
+                    cat_ad_indices.view(B, T, 1, L).tile([1, 1, A, 1])
+                    if broadcast_indices
+                    else cat_ad_indices.view(B, T, A, L)
+                ),
+            )
+
+
 instantiate_device_type_tests(CumSumTest, globals(), only_for="xpu", allow_xpu=True)
 
 instantiate_device_type_tests(
@@ -655,5 +783,10 @@ instantiate_device_type_tests(
     ElementwiseBinaryTest, globals(), only_for="xpu", allow_xpu=True
 )
 
+instantiate_device_type_tests(
+    ReorderBatchedTest, globals(), only_for="xpu", allow_xpu=True
+)
+
 if __name__ == "__main__":
     run_tests()
+
