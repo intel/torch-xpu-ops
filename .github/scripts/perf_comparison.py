@@ -1,6 +1,6 @@
 # To compare the performance diff
 # Usage:
-#   python perf_comparison.py --xpu /path/to/xpu/performance/result/dir --refer /path/to/reference/dir
+#   python perf_comparison.py --target /path/to/xpu/performance/result/dir --baseline /path/to/reference/dir
 
 import re
 import os
@@ -11,9 +11,10 @@ import pandas as pd
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--xpu", default=None, help="XPU performance result csv files dir")
-parser.add_argument("--refer", default=None, help="XPU refrerence result csv files dir")
+parser.add_argument("--target", default=None, help="XPU performance result csv files dir")
+parser.add_argument("--baseline", default=None, help="XPU refrerence result csv files dir")
 parser.add_argument("--pr", action="store_true", help="Only show results xpu has")
+parser.add_argument("--criteria", default=0.90, type=float, help="Criteria for comparison")
 args = parser.parse_args()
 
 
@@ -45,7 +46,7 @@ output_data = []
 with open(ci_config_file) as f:
     config = json.load(f)
 
-xpu_files = find_files("*_xpu_performance.csv", args.xpu)
+xpu_files = find_files("*_xpu_performance.csv", args.target)
 for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
     xpu_names = xpu_data["name"].tolist()
@@ -54,7 +55,7 @@ for xpu_file in xpu_files:
             xpu_names = config.get("timm_models")
         elif 'torchbench' in xpu_file and config.get("torchbench"):
             xpu_names = config.get("torchbench")
-    refer_file = re.sub(args.xpu, args.refer + "/", xpu_file, flags=re.IGNORECASE)
+    refer_file = re.sub(args.target, args.baseline + "/", xpu_file, flags=re.IGNORECASE)
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
         refer_names = [row["name"] for index, row in refer_data.iterrows()]
@@ -84,11 +85,11 @@ for xpu_file in xpu_files:
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
 if not args.pr:
-    refer_files = find_files("*_xpu_performance.csv", args.refer)
+    refer_files = find_files("*_xpu_performance.csv", args.baseline)
     for refer_file in refer_files:
         refer_data = pd.read_csv(refer_file)
         refer_names = refer_data["name"].tolist()
-        xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
+        xpu_file = re.sub(args.baseline, args.target + "/", refer_file, flags=re.IGNORECASE)
         if not os.path.isfile(xpu_file):
             names = set(refer_names)
             names = sorted(names)
@@ -118,7 +119,7 @@ output = output_data.to_html(index=False)
 print("\n", output)
 
 # get comparison result
-criteria = 0.95
-comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < criteria) | (output_data['Target vs. Baseline [Eager]'] < criteria)]
+comparison = output_data.loc[((output_data['Target vs. Baseline [Inductor]'] < args.criteria) | (output_data['Target vs. Baseline [Eager]'] < args.criteria)) & (output_data['Baseline inductor'] > 0)]
 output = comparison.to_html(index=False)
-print("\n", output)
+with open('performance_regression.html', 'w', encoding='utf-8') as f:
+    f.write(output)

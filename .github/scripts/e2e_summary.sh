@@ -149,9 +149,9 @@ if [ "${performance}" -gt 0 ];then
     echo "### Performance"
     unzip ${reference_dir}/*.zip -d ${reference_dir} > /dev/null 2>&1
     if [ "${IS_PR}" == "1" ];then
-        python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir} --pr
+        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
     else
-        python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir}
+        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir}
     fi
     cp ${reference_dir}/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
     python "$(dirname "$0")/calculate_best_perf.py" \
