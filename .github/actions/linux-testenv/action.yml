@@ -33,6 +33,8 @@ runs:
         if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
           rm -rf ${AGENT_TOOLSDIRECTORY}
         fi
+        sudo apt update
+        sudo apt install -y jq numactl
     - name: Setup python-${{ inputs.python }}
       uses: actions/setup-python@v5
       with:
