@@ -2071,15 +2071,6 @@
     XPU: nonzero_xpu
   tags: [dynamic_output_shape, core]
 
-- func: nonzero_static.out(Tensor self, *, SymInt size, int fill_value=-1, Tensor(a!) out) -> Tensor(a!)
-  dispatch:
-    XPU: nonzero_static_out_xpu
-
-- func: nonzero_static(Tensor self, *, SymInt size, int fill_value=-1) -> Tensor
-  variants: method, function
-  dispatch:
-    XPU: nonzero_static_xpu
-
 - func: maximum(Tensor self, Tensor other) -> Tensor
   structured_delegate: maximum.out
   device_check: NoCheck   # TensorIterator
