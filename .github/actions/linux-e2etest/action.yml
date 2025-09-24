@@ -37,16 +37,18 @@ runs:
         cd ./pytorch
         rm -rf inductor_log
         # check param
-        function contains() {
-          contains_status="echo 'Start $2 ...'"
-          {
-            [[ $1 =~ (^|,)$2($|,) ]]
-          } || {
-            echo "[Warning] $2 is not suppotted type! Skipped!"
-            contains_status="continue"
-          }
+        contains() {
+          local pattern="$1"
+          local value="$2"
+          if [[ "$pattern" =~ (^|,)"$value"($|,) ]]; then
+            echo "Start $value ..."
+            return 0  # match
+          else
+            echo "[Warning] $value is not supported type! Skipped!"
+            return 1  # not match
+          fi
         }
-        function run_with_shard() {
+        run_with_shard() {
           for i in $(seq 0 $[ ${xpu_num} - 1 ])
           do
             cpu_list="$(echo "${cpus_per_xpu} ${i}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
@@ -59,7 +61,7 @@ runs:
             numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${i} &
           done
         }
-        function run_one_by_one() {
+        run_one_by_one() {
           for i in $(seq 1 ${#models_list[@]})
           do
             xpu_index=$(echo |awk -v i=$i -v x=${xpu_num} '{printf("%d", (i - 1) % x);}')
@@ -78,25 +80,29 @@ runs:
           if [ "${suite}" == "pt2e" ];then
             continue
           fi
-          if [ "${MODEL_ONLY_NAME}" == "" ];then
-            models_list=($(cat ${{ github.workspace }}/.github/ci_expected_accuracy/models_list.json |jq -r ".${suite}[]"))
+          if [ -z "${MODEL_ONLY_NAME:-}" ]; then
+            mapfile -t models_list < <(jq -r ".${suite}[]" ${{ github.workspace }}/.github/ci_expected_accuracy/models_list.json)
           else
-            models_list=(${MODEL_ONLY_NAME})
+            IFS=',' read -ra models_list <<< "${MODEL_ONLY_NAME}"
           fi
-          contains "huggingface,timm_models,torchbench" $suite
-          $contains_status
+          if ! contains "huggingface,timm_models,torchbench" "$suite"; then
+            continue
+          fi
           for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
           do
-            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
-            $contains_status
+            if ! contains "float32,bfloat16,float16,amp_bf16,amp_fp16" "$dt"; then
+              continue
+            fi
             for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
             do
-              contains "inference,training" $mode
-              $contains_status
+              if ! contains "inference,training" "$mode"; then
+                continue
+              fi
               for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
               do
-                contains "accuracy,performance" $scenario
-                $contains_status
+                if ! contains "accuracy,performance" "$scenario"; then
+                  continue
+                fi
                 if [ "${{ github.event_name }}" == "pull_request" ] && [ "${#models_list[@]}" -gt 0 ];then
                   run_one_by_one
                 else
