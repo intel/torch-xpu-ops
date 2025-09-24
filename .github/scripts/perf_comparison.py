@@ -121,3 +121,5 @@ print("\n", output)
 # get comparison result
 criteria = 0.95
 comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < criteria) | (output_data['Target vs. Baseline [Eager]'] < criteria)]
+output = comparison.to_html(index=False)
+print("\n", output)
