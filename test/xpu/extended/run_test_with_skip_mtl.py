@@ -21,4 +21,6 @@ os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
 test_command = ["-k", skip_options, "test_ops_xpu.py", "-v"]
 test_command.extend(["--junit-xml", "./op_extended.xml"])
 res = pytest.main(test_command)
+if res:
+    print("test_ops_xpu.py" + " have failures in extended UT")
 sys.exit(res)
