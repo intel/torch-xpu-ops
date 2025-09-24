@@ -8,7 +8,6 @@ import json
 import fnmatch
 import argparse
 import pandas as pd
-from itertools import chain
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -43,7 +42,7 @@ output_header = ["Category", "Model",
                  "Baseline eager", "Baseline inductor", "Inductor vs. Eager [Baseline]",
                  "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]
 output_data = []
-with open(ci_config_file, 'r') as f:
+with open(ci_config_file) as f:
     config = json.load(f)
 
 xpu_files = find_files("*_xpu_performance.csv", args.xpu)
