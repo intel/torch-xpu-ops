@@ -30,7 +30,7 @@ struct LaguerrePolynomialLFunctor {
     scalar_t q = scalar_t(1.0) - x;
     scalar_t r;
 
-    for (int64_t k = 1; (k < n) && !std::isnan(q); k++) {
+    for (int64_t k = 1; k < n; k++) {
       r = (((k + k) + (scalar_t(1.0) - x)) * q - k * p) / (k + 1);
       p = q;
       q = r;

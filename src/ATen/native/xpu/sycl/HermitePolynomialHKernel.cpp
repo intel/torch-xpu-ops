@@ -9,15 +9,17 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct HermitePolynomialHFunctor {
   scalar_t operator()(scalar_t x, scalar_t n_) const {
-    auto n = static_cast<int64_t>(n_);
+    int64_t n = static_cast<int64_t>(n_);
     if (n < 0) {
       return scalar_t(0.0);
-    } else if (n == 0) {
+    }
+
+    if (n == 0) {
       return scalar_t(1.0);
-    } else if (n == 1) {
+    }
+
+    if (n == 1) {
       return x + x;
-    } else if (n > getHermitianLimit<scalar_t>()) {
-      return std::numeric_limits<scalar_t>::quiet_NaN();
     }
 
     scalar_t p = scalar_t(1.0);
