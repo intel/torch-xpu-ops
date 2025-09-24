@@ -1226,8 +1226,10 @@ class TestTensorCreation(TestCase):
         vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2, max)
         refs = None
         if self.device_type == "cuda" or self.device_type == "xpu":
-            if torch.version.hip:
+            if torch.version.hip or torch.version.xpu:
                 # HIP min float -> int64 conversion is divergent
+                # XPU min float -> int8 conversion is divergent
+                # XPU min float -> int16 conversion is divergentt
                 vals = (-2, -1.5, -0.5, 0, 0.5, 1.5, 2)
             else:
                 vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2)
@@ -3686,9 +3688,11 @@ class TestTensorCreation(TestCase):
 
     @dtypes(*all_types_and(torch.bfloat16))
     @dtypesIfCUDA(
-        *integral_types_and(torch.half, torch.bfloat16, torch.float32, torch.float64)
-        if TEST_WITH_ROCM
-        else all_types_and(torch.half, torch.bfloat16)
+        *(
+            integral_types_and(torch.half, torch.bfloat16, torch.float32, torch.float64)
+            if TEST_WITH_ROCM
+            else all_types_and(torch.half, torch.bfloat16)
+        )
     )
     def test_logspace(self, device, dtype):
         _from = random.random()
