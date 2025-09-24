@@ -999,18 +999,6 @@ skip_dict = {
         # Unexpected success: CUDA only test case, launch grid_y == 2**16 (larger than CUDA maximum y-dimension limit 65535) and expect fail.
         # SYCL don't have this limitation and hence can pass.
         "test_upsamplingNearest2d_launch_fail_xpu",
-        # Could not run 'aten::_thnn_fused_lstm_cell' with arguments from the 'CPU' backend.
-        "test_RNN_cudnn_weight_norm",
-        "test_partial_flat_weights",
-        "test_variable_sequence_xpu_float16",
-        "test_variable_sequence_xpu_float32",
-        # CPU fallback could not cover
-        # NotImplementedError: Could not run 'aten::_thnn_fused_gru_cell' with arguments from the 'CPU' backend. This could be because the operator doesn't exist for this backend, or was omitted during the selective/custom build pro...
-        "test_cudnn_weight_tying",
-        "test_RNN_input_size_zero",
-        "test_rnn_fused_xpu_float32",
-        "test_rnn_retain_variables_xpu_float16",
-        "test_rnn_retain_variables_xpu_float32",
         # AssertionError: False is not true
         "test_ctc_loss_cudnn_xpu",  # want "xpu" in function name
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
@@ -1727,9 +1715,6 @@ skip_dict = {
         "test_forward_mode_AD_nn_functional_conv_transpose2d_xpu_float64",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_complex128",
         "test_forward_mode_AD_nn_functional_conv_transpose3d_xpu_float64",
-        # issue: https://github.com/intel/torch-xpu-ops/issues/809
-        "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_complex128",
-        "test_fn_fwgrad_bwgrad_nn_functional_conv3d_xpu_float64",
     ),
     #    "test_matmul_cuda_xpu.py": (
     #        # AssertionError: "Bias is not supported when out_dtype is set to Float32" does not match "Could not run 'aten::_scaled_mm' with arguments from the 'CPU' backend.
@@ -2081,9 +2066,6 @@ skip_dict = {
         "test_fn_gradgrad_index_reduce_prod_xpu_float64",
         "test_inplace_gradgrad_index_reduce_mean_xpu_float64",
         "test_inplace_gradgrad_index_reduce_prod_xpu_float64",
-        # issue: https://github.com/intel/torch-xpu-ops/issues/809
-        "test_fn_gradgrad_nn_functional_conv3d_xpu_complex128",
-        "test_fn_gradgrad_nn_functional_conv3d_xpu_float64",
     ),
     "test_torch_xpu.py": (
         # 'torch.xpu' has no attribute ...
@@ -2248,8 +2230,6 @@ skip_dict = {
         # accuracy issue, TODO
         "test_Conv2d_naive_groups_xpu_float16",
         "test_Conv2d_groups_nobias",
-        # issue: https://github.com/intel/torch-xpu-ops/issues/809
-        "test_thnn_conv_strided_padded_dilated",
     ),
     "test_dynamic_shapes_xpu.py": None,
     "nn/test_load_state_dict_xpu.py": None,
