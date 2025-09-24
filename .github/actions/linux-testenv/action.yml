@@ -76,11 +76,7 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
-        if [ "${{ github.event_name }}" == "pull_request" ];then
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-        else
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-        fi
+        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops

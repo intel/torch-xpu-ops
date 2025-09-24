@@ -1,0 +1,40 @@
+{
+    "huggingface": [],
+    "timm_models": [
+        "adv_inception_v3",
+        "convit_base",
+        "convmixer_768_32",
+        "cspdarknet53",
+        "dm_nfnet_f0",
+        "fbnetv3_b",
+        "gluon_inception_v3",
+        "hrnet_w18",
+        "inception_v3",
+        "levit_128",
+        "mnasnet_100",
+        "pnasnet5large",
+        "repvgg_a2",
+        "res2next50",
+        "spnasnet_100",
+        "vit_base_patch16_224"
+    ],
+    "torchbench": [
+        "basic_gnn_gcn",
+        "BERT_pytorch",
+        "dcgan",
+        "densenet121",
+        "fastNLP_Bert",
+        "llama",
+        "mnasnet1_0",
+        "mobilenet_v3_large",
+        "nanogpt",
+        "resnet50",
+        "shufflenet_v2_x1_0",
+        "stable_diffusion_text_encoder",
+        "timm_efficientnet",
+        "timm_vision_transformer",
+        "vision_maskrcnn",
+        "yolov3",
+        "timm_regnet"
+    ]
+}

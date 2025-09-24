@@ -4,9 +4,11 @@
 
 import re
 import os
+import json
 import fnmatch
 import argparse
 import pandas as pd
+from itertools import chain
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -15,6 +17,8 @@ parser.add_argument("--refer", default=None, help="XPU refrerence result csv fil
 parser.add_argument("--pr", action="store_true", help="Only show results xpu has")
 args = parser.parse_args()
 
+
+ci_config_file = ".github/ci_expected_accuracy/models_list.json"
 
 def multiple_replace(text):
     REGEX_REPLACEMENTS = [
@@ -39,16 +43,23 @@ output_header = ["Category", "Model",
                  "Baseline eager", "Baseline inductor", "Inductor vs. Eager [Baseline]",
                  "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]
 output_data = []
+with open(ci_config_file, 'r') as f:
+    config = json.load(f)
+
 xpu_files = find_files("*_xpu_performance.csv", args.xpu)
 for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
-    xpu_names = [row["name"] for index, row in xpu_data.iterrows()]
+    xpu_names = xpu_data["name"].tolist()
+    if args.pr:
+        if 'timm_models' in xpu_file and config.get("timm_models"):
+            xpu_names = config.get("timm_models")
+        elif 'torchbench' in xpu_file and config.get("torchbench"):
+            xpu_names = config.get("torchbench")
     refer_file = re.sub(args.xpu, args.refer + "/", xpu_file, flags=re.IGNORECASE)
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
         refer_names = [row["name"] for index, row in refer_data.iterrows()]
-        names = xpu_names if args.pr else xpu_names + refer_names
-        names = set(names)
+        names = set(xpu_names)
         names = sorted(names)
         for name in names:
             # xpu info
@@ -77,7 +88,7 @@ if not args.pr:
     refer_files = find_files("*_xpu_performance.csv", args.refer)
     for refer_file in refer_files:
         refer_data = pd.read_csv(refer_file)
-        refer_names = [row["name"] for index, row in refer_data.iterrows()]
+        refer_names = refer_data["name"].tolist()
         xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
         if not os.path.isfile(xpu_file):
             names = set(refer_names)
