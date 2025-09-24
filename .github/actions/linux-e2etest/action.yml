@@ -97,7 +97,7 @@ runs:
               do
                 contains "accuracy,performance" $scenario
                 $contains_status
-                if [ "${{ github.event_name }}" == "pull_request" ];then
+                if [ "${{ github.event_name }}" == "pull_request" ] && [ "${models_list[@]}" != "" ];then
                   run_one_by_one
                 else
                   run_with_shard
