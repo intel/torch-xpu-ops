@@ -1229,7 +1229,7 @@ class TestTensorCreation(TestCase):
             if torch.version.hip or torch.version.xpu:
                 # HIP min float -> int64 conversion is divergent
                 # XPU min float -> int8 conversion is divergent
-                # XPU min float -> int16 conversion is divergentt
+                # XPU min float -> int16 conversion is divergent
                 vals = (-2, -1.5, -0.5, 0, 0.5, 1.5, 2)
             else:
                 vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2)
