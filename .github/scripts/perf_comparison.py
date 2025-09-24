@@ -17,7 +17,7 @@ parser.add_argument("--pr", action="store_true", help="Only show results xpu has
 args = parser.parse_args()
 
 
-ci_config_file = ".github/ci_expected_accuracy/models_list.json"
+ci_config_file = os.environ.get('GITHUB_WORKSPACE') + "/.github/ci_expected_accuracy/models_list.json"
 
 def multiple_replace(text):
     REGEX_REPLACEMENTS = [

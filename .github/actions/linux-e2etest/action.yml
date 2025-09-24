@@ -79,7 +79,7 @@ runs:
             continue
           fi
           if [ "${MODEL_ONLY_NAME}" == "" ];then
-            models_list=($(cat .github/ci_expected_accuracy/models_list.json |jq -r ".${suite}[]"))
+            models_list=($(cat ${{ github.workspace }}/.github/ci_expected_accuracy/models_list.json |jq -r ".${suite}[]"))
           else
             models_list=(${MODEL_ONLY_NAME})
           fi
