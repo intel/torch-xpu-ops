@@ -45,3 +45,7 @@ TrOCRForCausalLM,pass,pass,pass,pass,pass
 XGLMForCausalLM,pass,pass,pass,pass,pass
 XLNetLMHeadModel,pass,pass,pass,pass,pass
 YituTechConvBert,pass,pass,pass,pass,pass
+Qwen/Qwen3-0.6B,pass,pass,pass,pass,pass
+google/gemma-2-2b,pass,pass,pass,pass,pass
+meta-llama/Llama-3.2-1B,pass,pass,pass,pass,pass
+openai/whisper-tiny,pass,pass,pass,pass,pass
