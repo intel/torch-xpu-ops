@@ -74,6 +74,8 @@ jobs:
     runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
     needs: conditions-filter
     if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_accelerate')) }}
+    env:
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}

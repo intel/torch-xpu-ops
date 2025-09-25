@@ -56,6 +56,7 @@ concurrency:
   cancel-in-progress: true
 env:
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   HF_HUB_ETAG_TIMEOUT: 120
   HF_HUB_DOWNLOAD_TIMEOUT: 120
   python: ${{ inputs.python != '' && inputs.python || '3.10' }}

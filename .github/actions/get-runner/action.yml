@@ -91,8 +91,6 @@ runs:
         fi
     - name: Login Docker Hub
       shell: bash
-      env:
-        DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
       run: |
         sudo apt update
         sudo apt-get install golang-docker-credential-helpers -y
