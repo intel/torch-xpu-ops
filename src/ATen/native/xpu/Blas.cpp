@@ -13,7 +13,8 @@ Tensor& mm_complex_out_xpu(
     Tensor& out) {
   c10::DeviceGuard guard(self.device());
   TORCH_CHECK(
-      self.is_complex(), "_mm_mkl expects self to be a complex datatype.");
+      self.is_complex(),
+      "mm_complex_out_xpu expects self to be a complex datatype.");
 
   if (out.numel() == 0) {
     return out;
@@ -34,7 +35,8 @@ Tensor& bmm_complex_out_xpu(
     Tensor& out) {
   c10::DeviceGuard guard(self.device());
   TORCH_CHECK(
-      self.is_complex(), "_bmm_mkl expects self to be a complex datatype.");
+      self.is_complex(),
+      "bmm_complex_out_xpu expects self to be a complex datatype.");
 
   if (out.numel() == 0) {
     return out;
@@ -58,11 +60,13 @@ Tensor& addmm_complex_out_xpu(
     Tensor& out) {
   c10::DeviceGuard guard(self.device());
   TORCH_CHECK(
-      self.is_complex(), "_addmm_mkl expects self to be a complex datatype.");
+      self.is_complex(),
+      "addmm_complex_out_xpu expects self to be a complex datatype.");
 
   if (out.numel() == 0) {
     return out;
-  } else if (mat1.numel() == 0) {
+  }
+  if (mat1.numel() == 0) {
     if (beta.toComplexDouble() == 0.0) {
       out.zero_();
     } else {
@@ -93,11 +97,13 @@ Tensor& baddbmm_complex_out_xpu(
     Tensor& out) {
   c10::DeviceGuard guard(self.device());
   TORCH_CHECK(
-      self.is_complex(), "_baddbmm_mkl expects self to be a complex datatype.");
+      self.is_complex(),
+      "baddbmm_complex_out_xpu expects self to be a complex datatype.");
 
   if (out.numel() == 0) {
     return out;
-  } else if (batch1.numel() == 0) {
+  }
+  if (batch1.numel() == 0) {
     if (beta.toComplexDouble() == 0.0) {
       out.zero_();
     } else {
