@@ -27,13 +27,9 @@ inline bool is_row_major(
     const int64_t dim_second,
     const bool contiguous_batch,
     const bool check_dim_first = true) {
-  return is_column_major(
-      stride_second,
-      stride_first,
-      dim_second,
-      dim_first,
-      contiguous_batch,
-      check_dim_first);
+  return contiguous_batch && stride_second == 1 &&
+      ((dim_first == 1 && check_dim_first) ||
+       stride_first >= std::max(int64_t{1}, dim_second));
 }
 
 std::pair<Tensor, bool> process_result_matrix(
