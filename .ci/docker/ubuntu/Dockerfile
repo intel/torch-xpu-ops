@@ -10,7 +10,9 @@ ENV http_proxy http://proxy-dmz.intel.com:912
 ENV https_proxy http://proxy-dmz.intel.com:912
 
 # install Intel GPU driver LTS2, refer to https://dgpu-docs.intel.com/driver/installation-lts2.html
-ENV XPU_DRIVER_TYPE LTS2
+ARG XPU_DRIVER_TYPE
+ENV XPU_DRIVER_TYPE ${XPU_DRIVER_TYPE}
+
 COPY ./common/install_xpu.sh install_xpu.sh
 RUN bash ./install_xpu.sh && rm -f install_xpu.sh
 
