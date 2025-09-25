@@ -16,8 +16,6 @@ outputs:
   pytest_extra_args:
     value: ${{ steps.runner.outputs.pytest_extra_args }}
 
-permissions: read-all
-
 runs:
   using: composite
   steps:
@@ -59,10 +57,17 @@ runs:
           if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
         }' |wc -l)"
         cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${xpu_num}" '{printf c/x}')"
-        pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v cx="${cpus_per_xpu}" '{
+        pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
           if (x > 0) {
+            split(z, xpu_list, ",");
             for (i=0;i<x;i++) {
-              printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"", i, cx, i*cx, (i+1)*cx-1);
+              if (z != "") {
+                  ze = xpu_list[i+1];
+              } else {
+                  ze = i;
+              }
+              printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
+                      ze, cx, i*cx, (i+1)*cx-1);
             }
           }else {
             printf(" -n 1 ");
@@ -82,8 +87,5 @@ runs:
         cd ${RUNNER_WORKSPACE}/..
         if [ "${PWD}" != "/" ];then
           ls -al
-          sudo chmod 777 -R torch-xpu-ops _temp _actions _tool || true
-          # mount HOME dir to use caches to save time
-          rm -rf _temp && mkdir _temp
-          ln -sf ${HOME} _temp/_github_home
+          sudo chmod 777 -R . || true
         fi

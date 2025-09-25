@@ -659,7 +659,7 @@ void launch_max_pool2d_kernel(
   if constexpr (is_channels_last) {
     for (vec_size =
              std::min(8, memory::can_vectorize_up_to<scalar_t>((char*)input));
-         vec_size >= 1;
+         vec_size > 1;
          vec_size /= 2) {
       if (numPlane % vec_size != 0) {
         continue;
