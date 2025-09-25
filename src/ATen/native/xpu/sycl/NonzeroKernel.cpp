@@ -10,45 +10,27 @@
 
 namespace at::native::xpu {
 
-struct FlattenIdxtoRealIdxKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto global_id = item_id.get_global_linear_id();
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void nonzero_kernel_impl(
+    int64_t N,
+    const int64_t num_dim,
+    const int64_t num_nonzeros,
+    int64_t* tensor_begin, // out: shape [num_nonzeros * num_dim]
+    int64_t* idx_flat_begin, // in:  shape [num_nonzeros]
+    int64_t* divisor,
+    int64_t* sizes) {
+  sycl::nd_item<1> item_id = syclext::this_work_item::get_nd_item<1>();
+  auto global_id = item_id.get_global_linear_id();
 
-    if (global_id < N_) {
-      auto dim = global_id / num_nonzeros_;
-      auto index = global_id % num_nonzeros_;
-      tensor_begin_[global_id] =
-          idx_flat_begin_[index] / divisor_[dim] % sizes_[dim];
-    }
-  }
-  FlattenIdxtoRealIdxKernelFunctor(
-      int64_t N,
-      const int64_t num_dim,
-      const int64_t num_nonzeros,
-      int64_t* tensor_begin,
-      int64_t* idx_flat_begin,
-      int64_t* divisor,
-      int64_t* sizes)
-      : N_(N),
-        num_dim_(num_dim),
-        num_nonzeros_(num_nonzeros),
-        tensor_begin_(tensor_begin),
-        idx_flat_begin_(idx_flat_begin) {
-    for (auto dim = num_dim - 1; dim >= 0; dim--) {
-      sizes_[dim] = sizes[dim];
-      divisor_[dim] = divisor[dim];
-    }
-  }
+  if (global_id < N) {
+    auto dim = global_id / num_nonzeros;
+    auto index = global_id % num_nonzeros;
 
- private:
-  int64_t N_;
-  const int64_t num_dim_;
-  const int64_t num_nonzeros_;
-  int64_t* tensor_begin_;
-  int64_t* idx_flat_begin_;
-  int64_t divisor_[XPU_MAX_TENSORINFO_DIMS];
-  int64_t sizes_[XPU_MAX_TENSORINFO_DIMS];
-};
+    // Restore multi-d indices from flat index using precomputed divisor/sizes
+    tensor_begin[global_id] =
+        (idx_flat_begin[index] / divisor[dim]) % sizes[dim];
+  }
+}
 
 template <typename scalar_t>
 struct CopyIfFunc {
@@ -107,8 +89,9 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
         tensor.sizes()[0] == num_nonzeros && tensor.sizes()[1] == self_.dim() &&
         !tensor.t().is_contiguous();
     at::Tensor tensor_ = need_to_copy
-        ? Tensor(at::detail::empty_xpu(
-              {self_.dim(), num_nonzeros}, tensor.options()))
+        ? Tensor(
+              at::detail::empty_xpu(
+                  {self_.dim(), num_nonzeros}, tensor.options()))
         : tensor.resize_({self_.dim(), num_nonzeros});
 
     if (num_nonzeros > 0 && num_dim > 0) {
@@ -125,20 +108,13 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
       }
 
       const int64_t N = num_nonzeros * num_dim;
-      // restore flatten idx to indices
-      FlattenIdxtoRealIdxKernelFunctor kfn(
-          N,
-          num_dim,
-          num_nonzeros,
-          tensor_begin,
-          idx_flat_begin,
-          divisor,
-          sizes);
 
-      const auto wg_sz = std::min(syclMaxWorkGroupSize(kfn), N);
-      const auto num_wg = (N + wg_sz - 1) / wg_sz;
+      auto wg_sz = std::min(syclMaxWorkGroupSize<nonzero_kernel_impl>(), N);
+      auto num_wg = (N + wg_sz - 1) / wg_sz;
 
-      sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), kfn);
+      sycl_kernel_submit<nonzero_kernel_impl>(
+          wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, num_dim,
+          num_nonzeros, tensor_begin, idx_flat_begin, divisor, sizes);
     }
     if (need_to_copy) {
       tensor.copy_(tensor_.t());
