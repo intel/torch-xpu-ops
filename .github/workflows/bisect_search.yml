@@ -45,7 +45,7 @@ jobs:
   get_runner:
     runs-on: ${{ inputs.runner }}
     env:
-      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
