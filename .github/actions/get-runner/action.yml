@@ -95,5 +95,5 @@ runs:
         DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
       run: |
         sudo apt update
-        sudo apt-get install docker-credential-secretservice -y
+        sudo apt-get install golang-docker-credential-helpers -y
         echo ${DOCKER_HUB_TOKEN} |docker login --username intelgpu --password-stdin
