@@ -3688,11 +3688,9 @@ class TestTensorCreation(TestCase):
 
     @dtypes(*all_types_and(torch.bfloat16))
     @dtypesIfCUDA(
-        *(
-            integral_types_and(torch.half, torch.bfloat16, torch.float32, torch.float64)
-            if TEST_WITH_ROCM
-            else all_types_and(torch.half, torch.bfloat16)
-        )
+        *integral_types_and(torch.half, torch.bfloat16, torch.float32, torch.float64)
+        if TEST_WITH_ROCM
+        else all_types_and(torch.half, torch.bfloat16)
     )
     def test_logspace(self, device, dtype):
         _from = random.random()
