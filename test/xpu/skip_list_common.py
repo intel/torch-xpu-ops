@@ -74,12 +74,6 @@ skip_dict = {
         "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
-        # XPU hang. CUDA hang as well.
-        # https://github.com/pytorch/pytorch/issues/79528
-        "test_compare_cpu_special_hermite_polynomial_he_xpu_float32",
-        "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_laguerre_polynomial_l_xpu_float32",
-        "test_compare_cpu_special_legendre_polynomial_p_xpu_float32",
         # core dump
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # XFAIL of CUDA and XPU, unexpected success in fallback
@@ -1003,10 +997,6 @@ skip_dict = {
         "test_ctc_loss_cudnn_tensor",  # want "xpu" in function name
         # RuntimeError: reflection_pad2d_backward_xpu does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True)'.
         "test_ReflectionPad2d_large_deterministic_xpu",
-        # Case updated in pytorch commit 97272e4
-        "test_hardswish_grad_corner_xpu_bfloat16",
-        "test_hardswish_grad_corner_xpu_float16",
-        "test_hardswish_grad_corner_xpu_float32",
         # x_cuda = x.clone().detach().to("cuda").requires_grad_(): Torch not compiled with CUDA enabled
         "test_layer_norm_backwards_eps",
     ),
