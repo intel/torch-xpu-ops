@@ -89,3 +89,11 @@ runs:
           ls -al
           sudo chmod 777 -R . || true
         fi
+    - name: Login Docker Hub
+      shell: bash
+      env:
+        DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+      run: |
+        sudo apt update
+        sudo apt-get install docker-credential-secretservice -y
+        echo ${DOCKER_HUB_TOKEN} |docker login --username intelgpu --password-stdin
