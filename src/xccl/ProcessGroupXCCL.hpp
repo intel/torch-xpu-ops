@@ -182,6 +182,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const std::vector<at::Tensor>& inputs = {},
       const std::vector<at::Tensor>& outputs = {});
 
+ protected:
+  int globalRankStart_;
+  int globalRankStride_;
+
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
       at::Tensor& input,

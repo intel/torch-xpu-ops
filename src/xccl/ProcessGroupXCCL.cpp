@@ -390,6 +390,11 @@ ProcessGroupXCCL::ProcessGroupXCCL(
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug
             << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_;
 
+  getGlobalRankStartAndStride(
+      options_->global_ranks_in_group,
+      this->globalRankStart_,
+      this->globalRankStride_);
+
   // Heartbeat monitor thread dumps debug info on write to pipe
   heartbeatMonitor_ = std::make_unique<HeartbeatMonitorXCCL>(this);
   heartbeatMonitor_->start();
@@ -551,8 +556,8 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
       at::kByte, // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       size_); // worldSize
 
   for (const auto i : c10::irange(xcclActiveGroupCounter_)) {
@@ -940,8 +945,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
       tensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       "N/A", // async_op
       "N/A"); // reductionOp
@@ -991,8 +996,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::recv(
       tensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       "N/A", // async_op
       "N/A"); // reductionOp
@@ -1078,8 +1083,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::gather(
       inputTensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSize
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
@@ -1194,8 +1199,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::scatter(
       outputTensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSize
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
@@ -1326,8 +1331,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce(
       tensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       size_, // worldSize
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
@@ -1354,8 +1359,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
       tensors[0].scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
@@ -1418,8 +1423,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::broadcast(
       tensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
@@ -1515,8 +1520,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
       tensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
@@ -1626,8 +1631,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather(
       inputTensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSize
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
@@ -1715,8 +1720,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_allgather_base(
       output_tensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSize
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
@@ -1763,8 +1768,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allgather_into_tensor_coalesced(
       inputs[0].scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
@@ -1816,8 +1821,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
       outputTensor.scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
@@ -1915,8 +1920,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
       outputTensor.scalar_type(), // dtype
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
@@ -1974,8 +1979,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
       inputs[0].scalar_type(), // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       reduceOpToString(opts.reduceOp)); // reductionOp
@@ -2045,8 +2050,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::barrier(const BarrierOptions& opts) {
       at::kByte, // dType
       std::vector<int64_t>(), // inSplitSizes
       std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize()); // worldSize
   // Device to use for barrier
   c10::DeviceIndex barDevIdx = -1;
@@ -2106,8 +2111,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         inputTensor.scalar_type(), // dType
         std::vector<int64_t>(), // inSplitSizes
         std::vector<int64_t>(), // outSplitSizes
-        -1, // globalRankStart
-        -1, // globalRankStride
+        globalRankStart_, // globalRankStart_
+        globalRankStride_, // globalRankStride_
         this->getSize(), // worldSize
         opts.asyncOp, // async_op
         "N/A"); // reductionOp
@@ -2158,8 +2163,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         inputTensor.scalar_type(), // dType
         inputSplitSizes, // inSplitSizes
         outputSplitSizes, // outSplitSizes
-        -1, // globalRankStart
-        -1, // globalRankStride
+        globalRankStart_, // globalRankStart_
+        globalRankStride_, // globalRankStride_
         this->getSize(), // worldSize
         opts.asyncOp, // async_op
         "N/A"); // reductionOp
@@ -2212,7 +2217,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
     std::vector<at::Tensor>& inputTensors,
     const AllToAllOptions& opts) {
   auto device = outputTensors[0].device();
-  int64_t total_numel = 0;
+  int64_t input_total_numel = 0;
+  int64_t output_total_numel = 0;
+  std::vector<int64_t> inSplitSizes;
+  std::vector<int64_t> outSplitSizes;
+
   for (const auto r : c10::irange(outputTensors.size())) {
     checkSingleTensor(outputTensors[r], true);
     checkSingleTensor(inputTensors[r], true);
@@ -2220,7 +2229,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
         device == outputTensors[r].device() &&
             device == inputTensors[r].device(),
         "Tensors must be on the same device")
-    total_numel += inputTensors[r].numel();
+    input_total_numel += inputTensors[r].numel();
+    output_total_numel += outputTensors[r].numel();
+    inSplitSizes.push_back(inputTensors[r].numel());
+    outSplitSizes.push_back(outputTensors[r].numel());
   }
 
   RECORD_PARAM_COMMS_DATA_WITH_LOG(
@@ -2231,13 +2243,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
       outputTensors, // outputTensors
       rank_, // rank
       "all_to_all", // collective name
-      total_numel, // inNelems
-      total_numel, // outNelems
+      input_total_numel, // inNelems
+      output_total_numel, // outNelems
       inputTensors.front().scalar_type(), // dType
-      std::vector<int64_t>(), // inSplitSizes
-      std::vector<int64_t>(), // outSplitSizes
-      -1, // globalRankStart
-      -1, // globalRankStride
+      inSplitSizes, // inSplitSizes
+      outSplitSizes, // outSplitSizes
+      globalRankStart_, // globalRankStart_
+      globalRankStride_, // globalRankStride_
       this->getSize(), // worldSize
       opts.asyncOp, // async_op
       "N/A"); // reductionOp
