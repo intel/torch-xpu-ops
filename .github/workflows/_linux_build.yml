@@ -31,6 +31,8 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
