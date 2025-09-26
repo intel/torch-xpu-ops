@@ -1,5 +1,4 @@
 #include <ATen/Dispatch.h>
-#include <ATen/native/xpu/sycl/DistributionTemplates.h>
 #include <ATen/native/xpu/sycl/Philox4x32.h>
 #include <ATen/native/xpu/sycl/SortingKernels.h>
 #include <ATen/xpu/XPUGeneratorImpl.h>
@@ -39,7 +38,7 @@ struct HandleDuplicateKeysKernelFunctor {
     // do random permutation inside each island.
     auto data = data_;
     data += tid;
-    auto seeds = philox_unpack(philox_args_);
+    auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), tid, std::get<1>(seeds), &state);
 
@@ -57,7 +56,7 @@ struct HandleDuplicateKeysKernelFunctor {
       scalar_t* data,
       T mask,
       int n,
-      PhiloxState philox_args)
+      PhiloxXpuState philox_args)
       : keys_(keys),
         data_(data),
         mask_(mask),
@@ -69,7 +68,7 @@ struct HandleDuplicateKeysKernelFunctor {
   scalar_t* data_;
   const T mask_;
   const int n_;
-  const PhiloxState philox_args_;
+  const PhiloxXpuState philox_args_;
 };
 
 // See note [Algorithm of randperm]
@@ -85,14 +84,12 @@ void randperm_handle_duplicate_keys(
 
   int64_t counter_offset = n;
 
-  std::pair<uint64_t, uint64_t> rng_engine_inputs_;
+  PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs_ = gen->philox_engine_inputs(counter_offset);
+    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
   }
-  PhiloxState rng_engine_inputs(
-      std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_));
 
   T mask = static_cast<T>((1UL << bits) - 1);
   HandleDuplicateKeysKernelFunctor kfn(keys, data, mask, n, rng_engine_inputs);
