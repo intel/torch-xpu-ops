@@ -33,6 +33,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
 
 jobs:
