@@ -97,11 +97,14 @@ echo > accuracy.summary.html
 echo > accuracy.details.html
 accuracy=$(find "${results_dir}" -name "*_xpu_accuracy.csv" |wc -l)
 if [ "${accuracy}" -gt 0 ];then
-    printf "#### accuracy \n\n" >> accuracy.summary.html
-    printf "| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ | " >> accuracy.summary.html
-    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | " >> accuracy.summary.html
-    printf "\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |\n" >> accuracy.summary.html
-    printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" >> accuracy.summary.html
+    cat > accuracy.summary.html << EOF
+
+#### accuracy
+
+| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ |\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ |\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+EOF
+
     check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
@@ -176,26 +179,36 @@ fi
 
 # Show result
 summary_file="e2e-test-result.html"
-## note
-printf "#### Note:
+cat > ${summary_file} << EOF
+
+#### Note:
 \$\${\\color{red}Red}\$\$: the failed cases which need look into
 \$\${\\color{green}Green}\$\$: the new passed cases which need update reference
 \$\${\\color{blue}Blue}\$\$: the expected failed or new enabled cases
 \$\${\\color{orange}Orange}\$\$: the warning cases
-Empty/-1 means the cases NOT run\n\n" > ${summary_file}
-## highlight
-echo -e "\n\n### Highlight regressions\n\n" >> ${summary_file}
-cat accuracy.regression.html >> ${summary_file}
-echo -e "\n\n" >> ${summary_file}
-cat performance.regression.html >> ${summary_file}
-## summary
-echo -e "\n\n### Summary\n\n" >> ${summary_file}
-cat accuracy.summary.html >> ${summary_file}
-echo -e "\n\n" >> ${summary_file}
-cat performance.summary.html >> ${summary_file}
-## details
-echo -e "\n\n<details><summary>View detailed result</summary>\n\n" >>  ${summary_file}
-cat accuracy.details.html >> ${summary_file}
-echo -e "\n\n" >> ${summary_file}
-cat performance.details.html >> ${summary_file}
-echo -e "\n\n</details>" >>  ${summary_file}
+Empty means the cases NOT run
+
+
+### Highlight regressions
+
+$(cat accuracy.regression.html)
+
+$(cat performance.regression.html)
+
+
+### Summary
+
+$(cat accuracy.summary.html)
+
+$(cat performance.summary.html)
+
+### Details
+
+<details><summary>View detailed result</summary>
+
+$(cat accuracy.details.html)
+
+$(cat performance.details.html)
+
+</details>
+EOF

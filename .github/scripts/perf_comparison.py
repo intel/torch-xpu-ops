@@ -41,9 +41,11 @@ def color_result(criteria, input):
     if input == -1:
         return input
     elif input < criteria:
-        return "$${\color{red}" + f"{input}" + "}$$"
+        output = "$${\color{red}" + f"{input}" + "}$$"
+        return output
     elif input > 1 - criteria + 1:
-        return "$${\color{green}" + f"{input}" + "}$$"
+        output = "$${\color{green}" + f"{input}" + "}$$"
+        return output
     else:
         return input
 
