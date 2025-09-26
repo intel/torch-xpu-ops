@@ -211,6 +211,9 @@ struct KernelLauncher {
 
 template <typename index_t, typename hash_coeffs_t>
 struct FlattenIndicesFunctor {
+  // For std::is_trivially_copyable
+  FlattenIndicesFunctor& operator=(const FlattenIndicesFunctor&) = delete;
+
   int64_t operator()(int64_t nnz_idx) const {
     const auto* ptr_indices_dim = ptr_indices_ + nnz_idx * indices_nnz_stride_;
     auto hash = static_cast<int64_t>(0);
