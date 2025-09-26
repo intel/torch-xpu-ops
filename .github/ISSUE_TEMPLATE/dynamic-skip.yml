@@ -1,0 +1,60 @@
+name: 🐛 Dynamic skip
+description: Create a report to help us skip the known issue
+
+body:
+- type: markdown
+  attributes:
+    value: >
+      #### Before submitting a bug, please make sure the issue hasn't been already addressed by searching through [the existing and past issues](https://github.com/pytorch/pytorch/issues?q=is%3Aissue+sort%3Acreated-desc+).
+- type: textarea
+  attributes:
+    label: 🐛 Describe the bug with skip template
+    description: |
+      Please provide a clear and concise description of what the bug is.
+      The template for dynamic skip as below:
+      Template(Check in the github action summary):
+      ```python
+      Cases:
+      [Category],[Class name],[Test name]
+      ```
+
+      example:
+      ```python
+      Cases:
+      op_ut,third_party.torch-xpu-ops.test.xpu.test_transformers_xpu.TestTransformersXPU,test_scaled
+      ```
+
+      If the code is too long (hopefully, it isn't), feel free to put it in a public gist and link it in the issue: https://gist.github.com.
+
+      Please also paste or describe the results you observe instead of the expected results. If you observe an error, please paste the error message including the **full** traceback of the exception. It may be relevant to wrap error messages in ```` ```triple quotes blocks``` ````.
+    placeholder: |
+      A clear and concise description of what the bug is and also align the dynamic template.
+      ```
+      # Skippped cases with dynamic template
+      ```
+
+      ```python
+      # Sample code to reproduce the problem
+      ```
+
+      ```
+      The error message you got, with the full traceback.
+      ```
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Versions
+    description: |
+      Please run the following and paste the output below.
+      ```sh
+      wget https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
+      # For security purposes, please check the contents of collect_env.py before running it.
+      python collect_env.py
+      ```
+  validations:
+    required: true
+- type: markdown
+  attributes:
+    value: >
+      Thanks for contributing 🎉!
