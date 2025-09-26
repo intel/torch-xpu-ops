@@ -1,5 +1,7 @@
 name: 🐛 Dynamic skip
-description: Create a report to help us skip the known issue
+description: Create an issue to skip PR unrelated failures dynamically
+title: "[Bug Skip]: "
+labels: ["skipped"]
 
 body:
 - type: markdown
