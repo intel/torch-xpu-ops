@@ -12,15 +12,15 @@ body:
     description: |
       Please provide a clear and concise description of what the bug is.
       The template for dynamic skip as below:
-      Template(Check in the github action summary):
+      
       ```python
+      # Template(Check in the github action summary)
       Cases:
       [Category],[Class name],[Test name]
       ```
 
-
-      example:
       ```python
+      # example
       Cases:
       op_ut,third_party.torch-xpu-ops.test.xpu.test_transformers_xpu.TestTransformersXPU,test_scaled
       ```
