@@ -296,8 +296,7 @@ void launch_avg_pool2d_kernel(
   const scalar_t* bottom_data = input.const_data_ptr<scalar_t>();
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  const uint32_t group_size =
-      std::min(static_cast<int>(syclMaxWorkItemsPerSubSlice()), 1024);
+  const uint32_t group_size = static_cast<int>(syclMaxWorkItemsPerSubSlice());
   const uint32_t global_range =
       ceil_div<uint32_t>(total_elements, group_size) * group_size;
 
