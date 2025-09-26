@@ -54,12 +54,12 @@ if [[ $SHAPE == "dynamic" ]]; then
 fi
 
 partition_flags=""
-if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]]; then
+if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]] && [ $NUM_SHARDS -gt 1 ]; then
   partition_flags="--total-partitions $NUM_SHARDS --partition-id $SHARD_ID "
 fi
 
-ulimit -n 1048576
+# ulimit -n 1048576
 ZE_AFFINITY_MASK=${CARD} \
     eval python benchmarks/dynamo/"${SUITE}".py --"${SCENARIO}" --"${Real_DT}" -d "${DEVICE}" -n10 "${DT_extra}" "${Mode_extra}" \
     "${Shape_extra}" "${partition_flags}" "${Model_only_extra}" --backend=inductor --cold-start-latency --timeout=10800 \
-         --output="${LOG_DIR}"/"${LOG_NAME}".csv 2>&1 | tee "${LOG_DIR}"/"${LOG_NAME}"_card"${CARD}".log
+         --output="${LOG_DIR}"/"${LOG_NAME}".csv 2>&1 | tee -a "${LOG_DIR}"/"${LOG_NAME}"_card"${CARD}".log
