@@ -123,6 +123,8 @@ jobs:
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
           python setup.py clean
+          call %GITHUB_WORKSPACE%\.github\scripts\windows_requirement.bat
+          echo %PYTORCH_EXTRA_INSTALL_REQUIREMENTS%
           set MAX_JOBS=32
           set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
           python setup.py bdist_wheel > build_torch_wheel_log.log
