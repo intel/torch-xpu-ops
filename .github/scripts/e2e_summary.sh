@@ -5,7 +5,8 @@ reference_dir="$2"
 rm -rf /tmp/tmp-*.txt
 
 function get_acc_details() {
-    echo -e "\n<table><thead>
+    accuracy_regression=0
+    echo -e "#### accuracy\n\n<table><thead>
         <tr>
             <th rowspan=2> Suite </th><th rowspan=2> Model </th>
             <th colspan=5> Training </th><th colspan=5> Inference </th>
@@ -13,7 +14,7 @@ function get_acc_details() {
             <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
             <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
         </tr>
-    </thead><tbody>" |tee accuracy.details.result.html > accuracy.details.regression.html
+    </thead><tbody>" |tee accuracy.details.html > accuracy.regression.html
     suite_list=$(
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
@@ -71,28 +72,36 @@ function get_acc_details() {
                 </tr>" |sed '/__color__/{s/__color__/\\color/g;s/_/\\_/g}'
             )"
             if [[ "${accuracy_row}" =~ "red" ]];then
-                echo "${accuracy_row}" |tee -a accuracy.details.result.html >> accuracy.details.regression.html
+                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
+                accuracy_regression=1
             elif [[ "${accuracy_row}" =~ "green" ]];then
-                echo "${accuracy_row}" |tee -a accuracy.details.result.html >> accuracy.details.regression.html
+                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
+                accuracy_regression=1
             elif [[ "${accuracy_row}" =~ "orange" ]];then
-                echo "${accuracy_row}" |tee -a accuracy.details.result.html >> accuracy.details.regression.html
+                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
+                accuracy_regression=1
             else
-                echo "${accuracy_row}" >> accuracy.details.result.html
+                echo "${accuracy_row}" >> accuracy.details.html
             fi
         done
     done
-    echo -e "</tbody></table>\n" |tee -a accuracy.details.result.html >> accuracy.details.regression.html
+    echo -e "</tbody></table>\n" |tee -a accuracy.details.html >> accuracy.regression.html
+    if [ "${accuracy_regression}" -ne 1 ];then
+        echo > accuracy.regression.html
+    fi
 }
 
 # Accuracy summary
-rm -rf accuracy.*.html
+echo > accuracy.regression.html
+echo > accuracy.summary.html
+echo > accuracy.details.html
 accuracy=$(find "${results_dir}" -name "*_xpu_accuracy.csv" |wc -l)
 if [ "${accuracy}" -gt 0 ];then
-    echo "### Accuracy summary" > accuracy.summary.result.html
-    printf "| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ | " >> accuracy.summary.result.html
-    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | " >> accuracy.summary.result.html
-    printf "\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |\n" >> accuracy.summary.result.html
-    printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |" >> accuracy.summary.result.html
+    printf "#### accuracy \n\n" >> accuracy.summary.html
+    printf "| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ | " >> accuracy.summary.html
+    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | " >> accuracy.summary.html
+    printf "\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |\n" >> accuracy.summary.html
+    printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" >> accuracy.summary.html
     check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
@@ -139,21 +148,21 @@ if [ "${accuracy}" -gt 0 ];then
             printf(" %d | %d | %s | %d | %d | %d | %d | %d | %d\n",
                 total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
         }')"
-        echo "| ${category} | ${test_result} |" >> accuracy.summary.result.html
+        echo "| ${category} | ${test_result} |" >> accuracy.summary.html
     done
     get_acc_details
 fi
 
 # Performance summary
-rm -rf performance.*.html
+echo > performance.regression.html
+echo > performance.summary.html
+echo > performance.details.html
 performance=$(find "${results_dir}" -name "*_xpu_performance.csv" |wc -l)
 if [ "${performance}" -gt 0 ];then
-    echo "### Performance"
-    unzip ${reference_dir}/*.zip -d ${reference_dir}
     if [ "${IS_PR}" == "1" ];then
         python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
     else
-        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir}
+        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
     fi
     cp ${reference_dir}/best.csv ${results_dir}/best.csv || true
     python "$(dirname "$0")/calculate_best_perf.py" \
@@ -166,13 +175,27 @@ if [ "${performance}" -gt 0 ];then
 fi
 
 # Show result
+summary_file="e2e-test-result.html"
 ## note
 printf "#### Note:
 \$\${\\color{red}Red}\$\$: the failed cases which need look into
 \$\${\\color{green}Green}\$\$: the new passed cases which need update reference
 \$\${\\color{blue}Blue}\$\$: the expected failed or new enabled cases
 \$\${\\color{orange}Orange}\$\$: the warning cases
-Empty/-1 means the cases NOT run\n\n" >> ${GITHUB_STEP_SUMMARY}
+Empty/-1 means the cases NOT run\n\n" > ${summary_file}
 ## highlight
-echo "### Highlight regressions"
-cat accuracy.details.regression.html >> ${GITHUB_STEP_SUMMARY}
+echo -e "\n\n### Highlight regressions\n\n" >> ${summary_file}
+cat accuracy.regression.html >> ${summary_file}
+echo -e "\n\n" >> ${summary_file}
+cat performance.regression.html >> ${summary_file}
+## summary
+echo -e "\n\n### Summary\n\n" >> ${summary_file}
+cat accuracy.summary.html >> ${summary_file}
+echo -e "\n\n" >> ${summary_file}
+cat performance.summary.html >> ${summary_file}
+## details
+echo -e "\n\n<details><summary>View detailed result</summary>\n\n" >>  ${summary_file}
+cat accuracy.details.html >> ${summary_file}
+echo -e "\n\n" >> ${summary_file}
+cat performance.details.html >> ${summary_file}
+echo -e "\n\n</details>" >>  ${summary_file}

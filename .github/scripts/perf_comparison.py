@@ -85,10 +85,10 @@ for xpu_file in xpu_files:
             # xpu vs. refer
             xpu_vs_refer_eager = refer_eager_latency / xpu_eager_latency  if xpu_value is not None and refer_value is not None and xpu_eager_latency > 0 else 0 # higher is better
             xpu_vs_refer_inductor = float(refer_value["abs_latency"]) / xpu_value["abs_latency"] if xpu_value is not None and refer_value is not None and xpu_value["abs_latency"] > 0 else 0 # higher is better
-            eager_comparison = str(color_result(args, xpu_vs_refer_eager))
-            inductor_comparison = str(color_result(args, xpu_vs_refer_inductor))
+            eager_comparison = str(color_result(args.criteria, xpu_vs_refer_eager))
+            inductor_comparison = str(color_result(args.criteria, xpu_vs_refer_inductor))
             # output data
-            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, refer_eager_latency, refer_inductor_latency, refer_indcutor_vs_eager, eager_comparison, inductor_comparison])
+            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, refer_eager_latency, refer_inductor_latency, refer_indcutor_vs_eager, xpu_vs_refer_eager, xpu_vs_refer_inductor])
     else:
         names = set(xpu_names)
         names = sorted(names)
@@ -128,16 +128,17 @@ comparison = output_data.loc[
     & (output_data['Baseline inductor'] > 0)
     & (output_data['Target inductor'] >= 0)
 ]
-output = comparison.to_html(index=False)
-with open('performance.details.regression.html', 'w', encoding='utf-8') as f:
-    f.write(output)
+if not comparison.empty:
+    output = comparison.to_html(index=False)
+    with open('performance.regression.html', 'w', encoding='utf-8') as f:
+        f.write("\n\n#### performance\n\n" + output)
 
 # get output
 output_sum = pd.DataFrame.from_dict([geomean_list]).T
 output = output_sum.to_html(header=False)
-with open('performance.summary.result.html', 'w', encoding='utf-8') as f:
-    f.write(output)
+with open('performance.summary.html', 'w', encoding='utf-8') as f:
+    f.write("\n\n#### performance\n\n" + output)
 output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
 output = output_data.to_html(index=False)
-with open('performance.details.result.html', 'w', encoding='utf-8') as f:
-    f.write(output)
+with open('performance.details.html', 'w', encoding='utf-8') as f:
+    f.write("\n\n#### performance\n\n" + output)
