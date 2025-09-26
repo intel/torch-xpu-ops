@@ -1,6 +1,13 @@
 name: Linux Image for Tests
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.ci/docker/common/install_xpu.sh'
+      - '.ci/docker/ubuntu/Dockerfile'
+      - '.github/workflows/_linux_test_image.yml'
   workflow_call:
     inputs:
       runner:
