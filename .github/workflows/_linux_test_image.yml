@@ -45,7 +45,8 @@ env:
 
 jobs:
   build-image:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
+    if: ${{ github.event.pull_request.draft == false }}
     steps:
       - name: Cleanup
         run: |
@@ -61,12 +62,12 @@ jobs:
       - name: Build image
         run: |
           cd .ci/docker
-          docker build . -t ${{ inputs.tag }} \
-            --build-arg UBUNTU_VERSION=${{ inputs.ubuntu }} \
-            --build-arg XPU_DRIVER_TYPE=${{ inputs.driver }} \
+          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }} \
+            --build-arg UBUNTU_VERSION=${{ inputs.ubuntu != '' && inputs.ubuntu || '22.04' }} \
+            --build-arg XPU_DRIVER_TYPE=${{ inputs.driver != '' && inputs.driver || 'lts2' }} \
             -f ubuntu/Dockerfile
           docker images
       - name: Push image
         if: ${{ inputs.push_to_hub }}
         run: |
-          docker push ${{ inputs.tag }}
+          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }}
