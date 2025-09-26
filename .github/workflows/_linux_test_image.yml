@@ -12,7 +12,7 @@ on:
     inputs:
       runner:
         type: string
-        default: 'pvc_rolling'
+        default: 'ubuntu-24.04'
         description: Runner label
       driver:
         required: true
@@ -45,12 +45,11 @@ env:
 
 jobs:
   build-image:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'ubuntu-24.04' }}
     if: ${{ github.event.pull_request.draft == false }}
     steps:
       - name: Cleanup
         run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           if systemctl is-active --quiet docker; then
             echo "Docker daemon is running...";
           else
