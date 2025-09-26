@@ -111,7 +111,7 @@ jobs:
             else
               test_type="build-ondemand"
             fi
-            ut="$(echo ${{ inputs.ut }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            ut="$(echo ${{ inputs.ut }} |sed -E 's/,/","/g;s/^/["/;s/$/"]/;s/(microbench,|,microbench)//g;s/(,windows|windows,)//g')"
             suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
