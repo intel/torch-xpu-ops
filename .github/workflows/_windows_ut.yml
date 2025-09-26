@@ -122,7 +122,6 @@ jobs:
           ) else (
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
-          https://github.com/PawelSwider2000/torch-xpu-ops@pswider/complex-matmul-with-tests
           python setup.py clean
           set MAX_JOBS=32
           set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
