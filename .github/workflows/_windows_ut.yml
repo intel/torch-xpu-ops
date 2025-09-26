@@ -77,8 +77,8 @@ jobs:
           if exist "pytorch" (
             rmdir /s /q pytorch
           )
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ inputs.pytorch }} 
+          git clone https://github.com/PawelSwider2000/pytorch pytorch
+          cd pytorch && git checkout pswider/complex-matmul
           pip install pyyaml requests pytest-timeout
           call conda install -y libuv
           call conda install -y rust
@@ -122,9 +122,13 @@ jobs:
           ) else (
               set CMAKE_PREFIX_PATH="%CONDA_PREFIX%\Library"
           )
+          https://github.com/PawelSwider2000/torch-xpu-ops@pswider/complex-matmul-with-tests
           python setup.py clean
           set MAX_JOBS=32
           set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
+          @powershell -Command "(Get-Content .\\caffe2\\CMakeLists.txt) -replace 'https://github.com/intel/torch-xpu-ops.git', 'https://github.com/PawelSwider2000/torch-xpu-ops' | Out-File -encoding ASCII .\\caffe2\\CMakeLists.txt"
+          echo pswider/complex-matmul-with-tests > third_party/xpu.txt
+          git diff
           python setup.py bdist_wheel > build_torch_wheel_log.log
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
