@@ -49,9 +49,10 @@ static inline scalar_t safe_downgrade_to_int_range(scalar_t x) {
   // -100.0 does not have special meaning. This is just to make sure
   // it's not within_bounds_2d or within_bounds_3d, and does not cause
   // undefined behavior.
+  // We avoid using double here because some platforms may not support it.
   if (static_cast<int64_t>(x) > INT_MAX - 1 || x < INT_MIN ||
-      !std::isfinite(static_cast<double>(x)))
-    return static_cast<scalar_t>(-100.0);
+      !std::isfinite(x))
+    return static_cast<scalar_t>(-100.0f);
   return x;
 }
 
