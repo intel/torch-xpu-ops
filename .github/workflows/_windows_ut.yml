@@ -77,34 +77,34 @@ jobs:
           if exist "pytorch" (
             rmdir /s /q pytorch
           )
-          echo {{ inputs.pytorch }} | findstr /C:"https://" >nul
+          echo ${{ inputs.pytorch }} | findstr /C:"https://" >nul
           if !errorlevel! equ 0 (
-              set "PYTORCH_REPO={{ inputs.pytorch }}"
+              set "PYTORCH_REPO=${{ inputs.pytorch }}"
               set "PYTORCH_REPO=!PYTORCH_REPO:@= !"
               for %%i in (!PYTORCH_REPO!) do set PYTORCH_REPO=%%i
-              set "PYTORCH_COMMIT={{ inputs.pytorch }}"
+              set "PYTORCH_COMMIT=${{ inputs.pytorch }}"
               call set "PYTORCH_COMMIT=%%PYTORCH_COMMIT:*@=%%"
           ) else (
               set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
-              set PYTORCH_COMMIT={{ inputs.pytorch }}
+              set PYTORCH_COMMIT=${{ inputs.pytorch }}
           )
 
-          echo {{ inputs.torch_xpu_ops }} | findstr /C:"https://" >nul
+          echo ${{ inputs.torch_xpu_ops }} | findstr /C:"https://" >nul
           if !errorlevel! equ 0 (
-              set "TORCH_XPU_OPS_REPO={{ inputs.torch_xpu_ops }}"
+              set "TORCH_XPU_OPS_REPO=${{ inputs.torch_xpu_ops }}"
               set "TORCH_XPU_OPS_REPO=!TORCH_XPU_OPS_REPO:@= !"
               for %%i in (!TORCH_XPU_OPS_REPO!) do set TORCH_XPU_OPS_REPO=%%i
-              set "TORCH_XPU_OPS_COMMIT={{ inputs.torch_xpu_ops }}"
+              set "TORCH_XPU_OPS_COMMIT=${{ inputs.torch_xpu_ops }}"
               call set "TORCH_XPU_OPS_COMMIT=%%TORCH_XPU_OPS_COMMIT:*@=%%"
           ) else (
               set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
-              set TORCH_XPU_OPS_COMMIT={{ inputs.torch_xpu_ops }}
+              set TORCH_XPU_OPS_COMMIT=${{ inputs.torch_xpu_ops }}
           )
 
-          echo PYTORCH_REPO: !PYTORCH_REPO!
-          echo PYTORCH_COMMIT: !PYTORCH_COMMIT!
-          echo TORCH_XPU_OPS_REPO: !TORCH_XPU_OPS_REPO!
-          echo TORCH_XPU_OPS_COMMIT: !TORCH_XPU_OPS_COMMIT!
+          echo PYTORCH_REPO: %PYTORCH_REPO%
+          echo PYTORCH_COMMIT: %PYTORCH_COMMIT%
+          echo TORCH_XPU_OPS_REPO: %TORCH_XPU_OPS_REPO%
+          echo TORCH_XPU_OPS_COMMIT: %TORCH_XPU_OPS_COMMIT%
           git clone %PYTORCH_REPO% pytorch
           cd pytorch && git checkout %PYTORCH_COMMIT%
           pip install pyyaml requests pytest-timeout
