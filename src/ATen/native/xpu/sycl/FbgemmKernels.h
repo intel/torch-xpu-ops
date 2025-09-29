@@ -19,6 +19,34 @@ struct RestrictPtrTraits {
 namespace native {
 namespace xpu {
 
+#define FBGEMM_DISPATCH_FLOAT_AND_BFLOAT16_CASE(...)   \
+  AT_DISPATCH_CASE(at::ScalarType::Float, __VA_ARGS__) \
+  AT_DISPATCH_CASE(at::ScalarType::BFloat16, __VA_ARGS__)
+
+#define FBGEMM_DISPATCH_FLOATING_TYPES_CASE(...)       \
+  AT_DISPATCH_CASE(at::ScalarType::Float, __VA_ARGS__) \
+  AT_DISPATCH_CASE(at::ScalarType::Half, __VA_ARGS__)  \
+  AT_DISPATCH_CASE(at::ScalarType::BFloat16, __VA_ARGS__)
+
+#define FBGEMM_DISPATCH_INTEGRAL_TYPES_CASE(...)     \
+  AT_DISPATCH_CASE(at::ScalarType::Int, __VA_ARGS__) \
+  AT_DISPATCH_CASE(at::ScalarType::Long, __VA_ARGS__)
+
+#define FBGEMM_DISPATCH_ALL_TYPES(TYPE, NAME, ...)     \
+  AT_DISPATCH_SWITCH(                                  \
+      TYPE,                                            \
+      NAME,                                            \
+      FBGEMM_DISPATCH_FLOATING_TYPES_CASE(__VA_ARGS__) \
+          FBGEMM_DISPATCH_INTEGRAL_TYPES_CASE(__VA_ARGS__))
+
+#define FBGEMM_DISPATCH_ALL_TYPES_AND_DOUBLE(TYPE, NAME, ...) \
+  AT_DISPATCH_SWITCH(                                         \
+      TYPE,                                                   \
+      NAME,                                                   \
+      FBGEMM_DISPATCH_FLOATING_TYPES_CASE(__VA_ARGS__)        \
+          FBGEMM_DISPATCH_INTEGRAL_TYPES_CASE(__VA_ARGS__)    \
+              AT_DISPATCH_CASE(at::ScalarType::Double, __VA_ARGS__))
+
 uint32_t xpu_calc_xblock_count_base(int num_items, int threads_per_block) {
   // The number of threads can be as high as 2048 on some newer architectures,
   // but this is not portable.
@@ -305,31 +333,26 @@ void reorder_batched_ad_indices_xpu_kernel(
     const int64_t T,
     const bool broadcast_indices = false);
 
-// For SYCL free function
-template <auto* kptr, int RANGE_DIM, typename... Kargs>
-inline void sycl_kernel_submit(
-    ::sycl::range<RANGE_DIM> global_range,
-    ::sycl::range<RANGE_DIM> local_range,
-    ::sycl::queue q,
-    uint32_t slm_sz,
-    Kargs... args) {
-  sycl::context ctxt = q.get_context();
-  auto exe_bndl =
-      syclexp::get_kernel_bundle<kptr, sycl::bundle_state::executable>(ctxt);
-  sycl::kernel ker = exe_bndl.template ext_oneapi_get_kernel<kptr>();
-  if (slm_sz == 0) {
-    syclexp::launch_config cfg{
-        ::sycl::nd_range<RANGE_DIM>(global_range, local_range)};
-    syclexp::nd_launch(q, cfg, ker, args...);
-  } else {
-    syclexp::launch_config cfg{
-        ::sycl::nd_range<RANGE_DIM>(global_range, local_range),
-        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)}};
-    syclexp::nd_launch(q, cfg, ker, args...);
-  }
-}
+void permute_2D_lengths_kernel_xpu(
+    int32_t T,
+    int32_t B,
+    const at::Tensor& lengths_contig,
+    const at::Tensor& permute_contig,
+    at::Tensor& permuted_lengths);
+
+void permute_2D_data_kernel_xpu(
+    int32_t permuted_indices_size,
+    int32_t T,
+    int32_t B,
+    const Tensor& indices_contig,
+    const std::optional<const Tensor>& weights,
+    const int32_t weights_columns,
+    const Tensor& permute_contig,
+    const Tensor& input_offsets,
+    const Tensor& output_offsets,
+    Tensor& permuted_indices,
+    const std::optional<Tensor>& permuted_weights);
 
 } // namespace xpu
 } // namespace native
 } // namespace at
-

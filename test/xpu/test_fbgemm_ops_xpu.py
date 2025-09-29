@@ -1,6 +1,8 @@
 # Owner(s): ["module: intel"]
 import itertools
-from typing import List, Tuple, Type
+import random
+from itertools import accumulate
+from typing import List, Optional, Tuple, Type
 
 import hypothesis.strategies as st
 import numpy as np
@@ -107,6 +109,40 @@ def to_padded_dense(
                 else values[cur_offset]
             )
     return dense.squeeze(-1) if values.ndim == 1 else dense
+
+
+def permute_indices_ref_(
+    lengths: torch.Tensor,
+    indices: torch.Tensor,
+    weights: Optional[torch.Tensor],
+    permute: torch.LongTensor,
+) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    T = lengths.size(0)
+    B = lengths.size(1)
+    if T == 0 or B == 0:
+        return lengths, indices, weights
+
+    permuted_lengths = torch.index_select(lengths.view(T, -1), 0, permute)
+    original_segment_lengths = lengths.view(T, -1).sum(dim=1, dtype=torch.int32)
+    original_segment_start = [0] + list(accumulate(original_segment_lengths.view(-1)))
+
+    permuted_indices = []
+    permuted_weights = []
+    for i in range(permute.size(0)):
+        start = original_segment_start[permute[i]]
+        end = start + original_segment_lengths[permute[i]]
+        permuted_indices.append(indices[start:end])
+        if weights is not None:
+            permuted_weights.append(weights[start:end])
+
+    permuted_indices = torch.cat(permuted_indices, dim=0).flatten()
+
+    if weights is None:
+        permuted_weights = None
+    else:
+        permuted_weights = torch.cat(permuted_weights, dim=0).flatten()
+
+    return permuted_lengths, permuted_indices, permuted_weights
 
 
 with XPUPatchForImport(False):
@@ -452,8 +488,7 @@ with XPUPatchForImport(False):
 
             torch.testing.assert_close(output, output_ref)
             torch.testing.assert_close(output_f, output_ref)
-            
-    
+
     class ElementwiseBinaryTest(TestCase):
         def _test_jagged_elementwise_binary(
             self,
@@ -474,7 +509,7 @@ with XPUPatchForImport(False):
             ).reshape((outer_dense_size,) + tuple(max_lengths) + (inner_dense_size,))
 
             x_padded = to_padded_dense(x_values, x_offsets, max_lengths)
-            
+
             assert operation == "add_jagged_output"
             # create a jagged tensor and then densify
             y = to_padded_dense(
@@ -592,21 +627,31 @@ with XPUPatchForImport(False):
             x_padded = to_padded_dense(x_values, x_offsets, max_lengths)
 
             def jagged_dense_elementwise_add(
-                x_values: torch.Tensor, x_offsets: List[torch.LongTensor], y: torch.Tensor
+                x_values: torch.Tensor,
+                x_offsets: List[torch.LongTensor],
+                y: torch.Tensor,
             ) -> torch.Tensor:
-                return torch.ops.fbgemm.jagged_dense_elementwise_add(x_values, x_offsets, y)
+                return torch.ops.fbgemm.jagged_dense_elementwise_add(
+                    x_values, x_offsets, y
+                )
 
             def jagged_dense_elementwise_add_jagged_output(
-                x_values: torch.Tensor, x_offsets: List[torch.LongTensor], y: torch.Tensor
+                x_values: torch.Tensor,
+                x_offsets: List[torch.LongTensor],
+                y: torch.Tensor,
             ) -> Tuple[torch.Tensor, List[torch.LongTensor]]:
                 return torch.ops.fbgemm.jagged_dense_elementwise_add_jagged_output(
                     x_values, x_offsets, y
                 )
 
             def jagged_dense_elementwise_mul(
-                x_values: torch.Tensor, x_offsets: List[torch.LongTensor], y: torch.Tensor
+                x_values: torch.Tensor,
+                x_offsets: List[torch.LongTensor],
+                y: torch.Tensor,
             ) -> Tuple[torch.Tensor, List[torch.LongTensor]]:
-                return torch.ops.fbgemm.jagged_dense_elementwise_mul(x_values, x_offsets, y)
+                return torch.ops.fbgemm.jagged_dense_elementwise_mul(
+                    x_values, x_offsets, y
+                )
 
             assert operation == "add_jagged_output"
             # create a jagged tensor and then densify
@@ -631,7 +676,6 @@ with XPUPatchForImport(False):
 
             assert output.size() == output_ref.size()
 
-
     class ReorderBatchedTest(TestCase):
         @given(
             B=st.integers(min_value=1, max_value=20),
@@ -653,7 +697,9 @@ with XPUPatchForImport(False):
         ) -> None:
             if broadcast_lengths:
                 cat_ad_lengths = (
-                    torch.cat([torch.tensor([L for _ in range(T)]) for _ in range(B)], 0)
+                    torch.cat(
+                        [torch.tensor([L for _ in range(T)]) for _ in range(B)], 0
+                    )
                     .xpu()
                     .to(Dtype)
                 )
@@ -675,13 +721,15 @@ with XPUPatchForImport(False):
             torch.testing.assert_close(
                 cat_ad_lengths_broadcasted, reordered_batched_ad_lengths
             )
-            
+
         @given(
             B=st.integers(min_value=1, max_value=20),
             T=st.integers(min_value=1, max_value=20),
             L=st.integers(min_value=2, max_value=20),
             A=st.integers(min_value=1, max_value=20),
-            Dtype=st.sampled_from([torch.int32, torch.float, torch.int64, torch.bfloat16]),
+            Dtype=st.sampled_from(
+                [torch.int32, torch.float, torch.int64, torch.bfloat16]
+            ),
             Itype=st.sampled_from([torch.int32, torch.int64]),
             broadcast_indices=st.booleans(),
         )
@@ -741,7 +789,9 @@ with XPUPatchForImport(False):
             reordered_cat_ad_lengths = torch.ops.fbgemm.reorder_batched_ad_lengths(
                 cat_ad_lengths, batch_offsets, num_ads_in_batch, broadcast_indices
             )
-            torch.testing.assert_close(cat_ad_lengths_broadcasted, reordered_cat_ad_lengths)
+            torch.testing.assert_close(
+                cat_ad_lengths_broadcasted, reordered_cat_ad_lengths
+            )
 
             cat_ad_offsets = torch.ops.fbgemm.asynchronous_complete_cumsum(
                 cat_ad_lengths
@@ -768,6 +818,283 @@ with XPUPatchForImport(False):
                 ),
             )
 
+    class Permute2DSparseFeaturesTest(TestCase):
+        @given(
+            B=st.integers(min_value=0, max_value=20),
+            T=st.integers(min_value=0, max_value=20),
+            L=st.integers(min_value=2, max_value=20),
+            long_index=st.booleans(),
+            has_weight=st.booleans(),
+            W=st.integers(min_value=4, max_value=8),
+        )
+        def test_permute_indices(
+            self,
+            B: int,
+            T: int,
+            L: int,
+            long_index: bool,
+            has_weight: bool,
+            W: int,
+        ) -> None:
+            index_dtype = torch.int64 if long_index else torch.int32
+            length_splits: Optional[List[torch.Tensor]] = None
+            lengths = torch.randint(low=1, high=L, size=(T, B)).type(index_dtype)
+
+            # pyre-fixme[6]: For 1st param expected `Union[List[int], Size,
+            #  typing.Tuple[int, ...]]` but got `Union[bool, float, int]`.
+            weights = torch.rand(lengths.sum().item()).float() if has_weight else None
+            indices = torch.randint(
+                low=1,
+                high=int(1e5),
+                # pyre-fixme[6]: Expected `Union[int, typing.Tuple[int, ...]]` for 3rd
+                #  param but got `Tuple[typing.Union[float, int]]`.
+                size=(lengths.sum().item(),),
+            ).type(index_dtype)
+
+            permute_list = list(range(T))
+            random.shuffle(permute_list)
+
+            permute = torch.IntTensor(permute_list)
+            (
+                permuted_lengths_ref,
+                permuted_indices_ref,
+                permuted_weights_ref,
+                # pyre-fixme[6]: For 4th param expected `LongTensor` but got `Tensor`.
+            ) = permute_indices_ref_(lengths, indices, weights, permute.long())
+            (
+                permuted_lengths_xpu,
+                permuted_indices_xpu,
+                permuted_weights_xpu,
+            ) = torch.ops.fbgemm.permute_2D_sparse_data(
+                permute.xpu(),
+                lengths.xpu(),
+                indices.xpu(),
+                weights.xpu() if has_weight else None,
+                None,
+            )
+            if has_weight:
+                torch.testing.assert_close(
+                    permuted_weights_xpu.cpu(), permuted_weights_ref
+                )
+            else:
+                assert permuted_weights_xpu is None and permuted_weights_ref is None
+
+                torch.testing.assert_close(
+                    permuted_indices_xpu.cpu(), permuted_indices_ref
+                )
+                torch.testing.assert_close(
+                    permuted_lengths_xpu.cpu(), permuted_lengths_ref
+                )
+                self.assertIsNone(permuted_weights_xpu)
+
+        @given(
+            B=st.integers(min_value=2, max_value=20),
+            T=st.integers(min_value=2, max_value=20),
+            L=st.integers(min_value=2, max_value=20),
+            long_index=st.booleans(),
+        )
+        def test_permute_indices_non_contiguous(
+            self,
+            B: int,
+            T: int,
+            L: int,
+            long_index: bool,
+        ) -> None:
+            index_dtype = torch.int64 if long_index else torch.int32
+            lengths = torch.randint(low=1, high=L, size=(T, B)).type(index_dtype)
+
+            indices = torch.randint(
+                low=1,
+                high=int(1e5),
+                # pyre-fixme[6]: Expected `Union[int, typing.Tuple[int, ...]]` for 3rd
+                #  param but got `Tuple[typing.Union[float, int]]`.
+                size=(lengths.sum().item(),),
+            ).type(index_dtype)
+
+            permute_list = list(range(T))
+            random.shuffle(permute_list)
+            permute = torch.IntTensor(permute_list)
+
+            def create_non_contiguous(x: torch.Tensor) -> torch.Tensor:
+                # Create a diluted tensor with 2x elements, and then take every other element
+                # with the value from the original tensor. For example, if x = [1, 2, 3, 4],
+                # then the diluted tensor is [1, 0, 2, 0, 3, 0, 4, 0].
+                diluted = x.new_zeros(x.numel() * 2).flatten()
+                diluted[::2] = x.flatten()
+                # Returns the sliced tensor, which is non-contiguous.
+                return diluted[::2].view(x.shape)
+
+            (
+                permuted_lengths_ref,
+                permuted_indices_ref,
+                permuted_weights_ref,
+                # pyre-fixme[6]: For 4th param expected `LongTensor` but got `Tensor`.
+            ) = permute_indices_ref_(lengths, indices, None, permute.long())
+
+            permute_xpu = create_non_contiguous(permute.xpu())
+            lengths_xpu = create_non_contiguous(lengths.xpu())
+            indices_xpu = create_non_contiguous(indices.xpu())
+            self.assertFalse(permute_xpu.is_contiguous())
+            self.assertFalse(lengths_xpu.is_contiguous())
+            self.assertFalse(indices_xpu.is_contiguous())
+
+            (
+                permuted_lengths_xpu,
+                permuted_indices_xpu,
+                permuted_weights_xpu,
+            ) = torch.ops.fbgemm.permute_2D_sparse_data(
+                permute_xpu,
+                lengths_xpu,
+                indices_xpu,
+                None,
+                None,
+            )
+            torch.testing.assert_close(permuted_indices_xpu.cpu(), permuted_indices_ref)
+            torch.testing.assert_close(permuted_lengths_xpu.cpu(), permuted_lengths_ref)
+            self.assertIsNone(permuted_weights_xpu)
+
+        def test_permute_indices_scripted_with_none_weights(
+            self,
+        ) -> None:
+            index_dtype = torch.int32
+            lengths = torch.randint(low=1, high=2, size=(1, 1)).type(index_dtype)
+            weights = None
+            indices = torch.randint(
+                low=1,
+                high=int(1e5),
+                # pyre-fixme[6]: Expected `Union[int, typing.Tuple[int, ...]]` for 3rd
+                #  param but got `Tuple[typing.Union[float, int]]`.
+                size=(lengths.sum().item(),),
+            ).type(index_dtype)
+            permute_list = list(range(1))
+            random.shuffle(permute_list)
+
+            permute = torch.IntTensor(permute_list)
+
+            (
+                permuted_lengths_xpu,
+                permuted_indices_xpu,
+                permuted_weights_xpu,
+            ) = torch.ops.fbgemm.permute_2D_sparse_data(
+                permute.xpu(), lengths.xpu(), indices.xpu(), None, None
+            )
+            (
+                permuted_lengths_ref,
+                permuted_indices_ref,
+                permuted_weights_ref,
+                # pyre-fixme[6]: For 4th param expected `LongTensor` but got `Tensor`.
+            ) = permute_indices_ref_(lengths, indices, weights, permute.long())
+            self.assertTrue(
+                torch.equal(permuted_indices_xpu.cpu(), permuted_indices_ref)
+            )
+            self.assertTrue(
+                torch.equal(permuted_lengths_xpu.cpu(), permuted_lengths_ref)
+            )
+            self.assertEqual(permuted_weights_xpu, None)
+            self.assertEqual(permuted_weights_ref, None)
+
+        @given(
+            B=st.integers(min_value=1, max_value=20),
+            T=st.integers(min_value=1, max_value=20),
+            L=st.integers(min_value=2, max_value=20),
+            long_index=st.booleans(),
+            has_weight=st.booleans(),
+        )
+        def test_permute_indices_with_repeats(
+            self, B: int, T: int, L: int, long_index: bool, has_weight: bool
+        ) -> None:
+            index_dtype = torch.int64 if long_index else torch.int32
+            lengths = torch.randint(low=1, high=L, size=(T, B)).type(index_dtype)
+            # pyre-fixme[6]: For 1st param expected `Union[List[int], Size,
+            #  typing.Tuple[int, ...]]` but got `Union[bool, float, int]`.
+            weights = torch.rand(lengths.sum().item()).float() if has_weight else None
+            indices = torch.randint(
+                low=1,
+                high=int(1e5),
+                # pyre-fixme[6]: Expected `Union[int, typing.Tuple[int, ...]]` for 3rd
+                #  param but got `Tuple[typing.Union[float, int]]`.
+                size=(lengths.sum().item(),),
+            ).type(index_dtype)
+            permute_list = list(range(T))
+
+            num_repeats = random.randint(0, T)
+            for _ in range(num_repeats):
+                permute_list.append(random.randint(0, T - 1))
+
+            random.shuffle(permute_list)
+            permute = torch.IntTensor(permute_list)
+
+            (
+                permuted_lengths_ref,
+                permuted_indices_ref,
+                permuted_weights_ref,
+                # pyre-fixme[6]: For 4th param expected `LongTensor` but got `Tensor`.
+            ) = permute_indices_ref_(lengths, indices, weights, permute.long())
+
+            (
+                permuted_lengths_xpu,
+                permuted_indices_xpu,
+                permuted_weights_xpu,
+            ) = torch.ops.fbgemm.permute_2D_sparse_data(
+                permute.xpu(),
+                lengths.xpu(),
+                indices.xpu(),
+                # pyre-fixme[16]: `Optional` has no attribute `cuda`.
+                weights.xpu() if has_weight else None,
+            )
+            torch.testing.assert_close(permuted_indices_xpu.cpu(), permuted_indices_ref)
+            torch.testing.assert_close(permuted_lengths_xpu.cpu(), permuted_lengths_ref)
+            if has_weight:
+                torch.testing.assert_close(
+                    permuted_weights_xpu.cpu(), permuted_weights_ref
+                )
+            else:
+                assert permuted_weights_xpu is None
+
+        def test_permute_2D_sparse_data(self) -> None:
+            lengths = torch.tensor(
+                [[0, 0, 1], [0, 1, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 1]],
+                dtype=torch.int32,
+                device="xpu",
+            )
+            indices = torch.tensor(
+                [500, 1000, 1999],
+                dtype=torch.int32,
+                device="xpu",
+            )
+            permute = torch.tensor(
+                [0, 3, 1, 4, 2, 5],
+                dtype=torch.int32,
+                device="xpu",
+            )
+            weights = torch.rand((3, 64), device="xpu")
+            (
+                lengths_actual,
+                values_actual,
+                weights_actual,
+            ) = torch.ops.fbgemm.permute_2D_sparse_data(
+                permute, lengths, indices, weights, indices.numel()
+            )
+            self.assertTrue(
+                torch.equal(
+                    lengths_actual,
+                    torch.tensor(
+                        [
+                            [0, 0, 1],
+                            [0, 0, 0],
+                            [0, 1, 0],
+                            [0, 0, 0],
+                            [0, 0, 0],
+                            [0, 0, 1],
+                        ],
+                        dtype=torch.int32,
+                        device="xpu",
+                    ),
+                )
+            )
+            self.assertTrue(torch.equal(values_actual, indices))
+            self.assertTrue(torch.equal(weights_actual, weights))
+
 
 instantiate_device_type_tests(CumSumTest, globals(), only_for="xpu", allow_xpu=True)
 
@@ -787,6 +1114,9 @@ instantiate_device_type_tests(
     ReorderBatchedTest, globals(), only_for="xpu", allow_xpu=True
 )
 
+instantiate_device_type_tests(
+    Permute2DSparseFeaturesTest, globals(), only_for="xpu", allow_xpu=True
+)
+
 if __name__ == "__main__":
     run_tests()
-

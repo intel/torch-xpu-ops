@@ -5,6 +5,7 @@
 #include <torch/library.h>
 #include <torch/torch.h>
 
+#include <ATen/native/xpu/ScanKernels.h>
 #include <ATen/native/xpu/sycl/FbgemmKernels.h>
 
 namespace at {
@@ -358,6 +359,121 @@ Tensor reorder_batched_ad_indices_xpu(
   return reordered_cat_ad_indices;
 }
 
+Tensor asynchronous_exclusive_cumsum_(const Tensor& t_in) {
+  torch_tensor_on_xpu_check(t_in);
+  XPU_DEVICE_GUARD(t_in);
+
+  if (t_in.numel() == 0) {
+    return at::empty_like(t_in);
+  }
+
+  TORCH_CHECK(t_in.is_contiguous());
+  TORCH_CHECK(t_in.dtype() == at::kInt || t_in.dtype() == at::kLong);
+  // only handles up to INT_MAX elements.
+  TORCH_CHECK(t_in.numel() < std::numeric_limits<int32_t>::max());
+  auto t_in_flatten = t_in.flatten();
+  auto t_out = at::empty_like(t_in_flatten);
+
+  cumsum_kernel(t_out, t_in_flatten, 0);
+
+  // make it exclusive
+  t_out = t_out.roll(1, 0);
+  // set all first elemnts 0
+  t_out[0] = 0;
+  return t_out.view_as(t_in);
+}
+
+std::tuple<at::Tensor, at::Tensor, std::optional<at::Tensor>>
+permute_2D_sparse_data_xpu(
+    const at::Tensor& permute,
+    const at::Tensor& lengths,
+    const at::Tensor& indices,
+    const std::optional<at::Tensor>& weights,
+    const std::optional<int64_t>& permuted_lengths_sum) {
+  TENSORS_ON_SAME_XPU_IF_NOT_OPTIONAL(permute, lengths, indices, weights);
+  TORCH_CHECK(lengths.dim() == 2);
+
+  XPU_DEVICE_GUARD(indices);
+
+  const auto permute_contig = permute.contiguous();
+  const auto lengths_contig = lengths.contiguous();
+  const auto indices_contig = indices.contiguous();
+  // the data to permute over can be less or more with or without
+  // repetitions
+  const auto T = permute.numel();
+  const auto B = lengths.size(1);
+
+  if (T == 0 || B == 0) {
+    // When T = 0 or B = 0, permutation will not be performed.  Return the
+    // input tensors.
+    return {
+        lengths.clone(),
+        indices.clone(),
+        weights.has_value() ? std::make_optional(weights->clone())
+                            : std::nullopt};
+  }
+
+  Tensor permuted_lengths = at::empty({T, B}, lengths.options());
+  Tensor permuted_indices;
+  Tensor permuted_weights;
+
+  permute_2D_lengths_kernel_xpu(
+      T, B, lengths_contig, permute_contig, permuted_lengths);
+
+  // convert lengths to offsets
+  const auto input_offsets = asynchronous_exclusive_cumsum_(lengths_contig);
+  const auto output_offsets =
+      asynchronous_complete_cumsum_xpu(permuted_lengths.flatten());
+  int64_t permuted_indices_size = 0;
+  if (permuted_lengths_sum.has_value()) {
+    permuted_indices_size = permuted_lengths_sum.value();
+  } else {
+    permuted_indices_size = output_offsets[-1].item<int64_t>();
+  }
+
+  permuted_indices = at::empty(permuted_indices_size, indices.options());
+
+  if (weights.has_value()) {
+    const Tensor weights_value = weights.value();
+    int32_t weights_columns = 1;
+    if (weights_value.dense_dim() > 1) {
+      weights_columns = weights_value.size(1);
+      permuted_weights = at::empty(
+          {permuted_indices_size, weights_columns}, weights_value.options());
+    } else {
+      permuted_weights =
+          at::empty(permuted_indices_size, weights_value.options());
+    }
+    permute_2D_data_kernel_xpu(
+        permuted_indices_size,
+        T,
+        B,
+        indices_contig,
+        std::optional<const at::Tensor>{weights_value},
+        weights_columns,
+        permute_contig,
+        input_offsets,
+        output_offsets,
+        permuted_indices,
+        std::optional<at::Tensor>{permuted_weights});
+  } else {
+    permute_2D_data_kernel_xpu(
+        permuted_indices_size,
+        T,
+        B,
+        indices_contig,
+        std::nullopt,
+        0,
+        permute_contig,
+        input_offsets,
+        output_offsets,
+        permuted_indices,
+        std::nullopt);
+  }
+
+  return {permuted_lengths, permuted_indices, permuted_weights};
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
@@ -380,6 +496,8 @@ TORCH_LIBRARY(fbgemm, m) {
       "reorder_batched_ad_lengths(Tensor cat_ad_lengths, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_lengths, int max_batch_size=0) -> Tensor");
   m.def(
       "reorder_batched_ad_indices(Tensor cat_ad_offsets, Tensor cat_ad_indices, Tensor reordered_cat_ad_offsets, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_indices, int num_indices_after_broadcast) -> Tensor");
+  m.def(
+      "permute_2D_sparse_data(Tensor permute, Tensor lengths, Tensor indices, Tensor? weights=None, int? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)");
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
@@ -426,5 +544,9 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
       "reorder_batched_ad_indices",
       &at::native::xpu::reorder_batched_ad_indices_xpu);
 }
-} // namespace
 
+TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
+  m.impl(
+      "permute_2D_sparse_data", &at::native::xpu::permute_2D_sparse_data_xpu);
+}
+} // namespace
