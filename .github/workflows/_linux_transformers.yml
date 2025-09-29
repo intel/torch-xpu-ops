@@ -145,7 +145,7 @@ jobs:
     needs: prepare
     runs-on: ${{ needs.prepare.outputs.runner_id }}
     container:
-      image: intelgpu/ubuntu-22.04-lts2:1146
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.prepare.outputs.render_id }}
