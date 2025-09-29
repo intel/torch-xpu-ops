@@ -7,12 +7,12 @@ on:
         required: false
         type: string
         default: 'main'
-        description: Pytorch branch/commit
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         required: false
         type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
+        default: 'main'
+        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       ut:
         required: true
         type: string
@@ -77,8 +77,36 @@ jobs:
           if exist "pytorch" (
             rmdir /s /q pytorch
           )
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ inputs.pytorch }} 
+          echo {{ inputs.pytorch }} | findstr /C:"https://" >nul
+          if !errorlevel! equ 0 (
+              set "PYTORCH_REPO={{ inputs.pytorch }}"
+              set "PYTORCH_REPO=!PYTORCH_REPO:@= !"
+              for %%i in (!PYTORCH_REPO!) do set PYTORCH_REPO=%%i
+              set "PYTORCH_COMMIT={{ inputs.pytorch }}"
+              call set "PYTORCH_COMMIT=%%PYTORCH_COMMIT:*@=%%"
+          ) else (
+              set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
+              set PYTORCH_COMMIT={{ inputs.pytorch }}
+          )
+
+          echo {{ inputs.torch_xpu_ops }} | findstr /C:"https://" >nul
+          if !errorlevel! equ 0 (
+              set "TORCH_XPU_OPS_REPO={{ inputs.torch_xpu_ops }}"
+              set "TORCH_XPU_OPS_REPO=!TORCH_XPU_OPS_REPO:@= !"
+              for %%i in (!TORCH_XPU_OPS_REPO!) do set TORCH_XPU_OPS_REPO=%%i
+              set "TORCH_XPU_OPS_COMMIT={{ inputs.torch_xpu_ops }}"
+              call set "TORCH_XPU_OPS_COMMIT=%%TORCH_XPU_OPS_COMMIT:*@=%%"
+          ) else (
+              set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
+              set TORCH_XPU_OPS_COMMIT={{ inputs.torch_xpu_ops }}
+          )
+
+          echo PYTORCH_REPO: !PYTORCH_REPO!
+          echo PYTORCH_COMMIT: !PYTORCH_COMMIT!
+          echo TORCH_XPU_OPS_REPO: !TORCH_XPU_OPS_REPO!
+          echo TORCH_XPU_OPS_COMMIT: !TORCH_XPU_OPS_COMMIT!
+          git clone %PYTORCH_REPO% pytorch
+          cd pytorch && git checkout %PYTORCH_COMMIT%
           pip install pyyaml requests pytest-timeout
           call conda install -y libuv
           call conda install -y rust
@@ -89,7 +117,7 @@ jobs:
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
-          if ${{ inputs.torch_xpu_ops }} == 'pinned' (
+          if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
             echo "Replace torch-xpu-ops!"
@@ -98,7 +126,13 @@ jobs:
               rmdir /s /q torch-xpu-ops
             )
             cd ..
-            Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
+            if "%GITHUB_EVENT_NAME%" == "pull_request" (
+              Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
+            ) else (
+              git clone "%TORCH_XPU_OPS_REPO%" "third_party\torch-xpu-ops"
+              cd "third_party\torch-xpu-ops"
+              git checkout "%TORCH_XPU_OPS_COMMIT%"
+            )
             powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
           )
       - name: Build Pytorch XPU
