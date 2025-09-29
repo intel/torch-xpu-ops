@@ -1059,7 +1059,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
     def test_batched_send_recv(self, op_sizes_per_coalesce, timing_enabled):
         """
         'WorkEnqueue' was skipped for isendirecv, leading to segfault on dump_entries when update_state tried to use
-        a destructed Work obj's cuda events
+        a destructed Work obj's xpu events
         """
 
         if self.rank == self.MAIN_PROCESS_RANK:
