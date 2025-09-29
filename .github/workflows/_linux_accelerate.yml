@@ -44,9 +44,6 @@ permissions: read-all
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-env:
-  EXCLUDE_NEWER: '2025-09-22'
-  TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
 defaults:
   run:
@@ -54,6 +51,8 @@ defaults:
 env:
   GH_TOKEN: ${{ github.token }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  EXCLUDE_NEWER: '2025-09-22'
+  TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
 jobs:
   conditions-filter:
