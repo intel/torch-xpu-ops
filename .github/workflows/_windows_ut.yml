@@ -161,7 +161,13 @@ jobs:
           echo %PYTORCH_EXTRA_INSTALL_REQUIREMENTS%
           set MAX_JOBS=32
           set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
-          python setup.py bdist_wheel > build_torch_wheel_log.log
+          python setup.py bdist_wheel > build_torch_wheel_log.log 2>&1
+          set EXIT_CODE=%errorlevel%
+          if %EXIT_CODE% neq 0 (
+            echo "[INFO] Build failed with exit code %EXIT_CODE%"
+            exit /b %EXIT_CODE%
+          )
+          echo "[INFO] Build Successfully"
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
             set TORCH_WHL=%%i
