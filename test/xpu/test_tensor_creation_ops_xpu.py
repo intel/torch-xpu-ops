@@ -4379,6 +4379,7 @@ class TestLikeTensorCreation(TestCase):
     def test_ones_large(self, device, dtype):
         output = torch.ones(2**31 - 1, device=device, dtype=dtype)
 
+
 # Tests for the `frombuffer` function (only work on CPU):
 #   Constructs tensors from Python objects that implement the buffer protocol,
 #   without copying data.
