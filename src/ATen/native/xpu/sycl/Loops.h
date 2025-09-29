@@ -314,8 +314,8 @@ static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseGroupRangeKernel<vec_size, func_t>(N, f);
 
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz * vec_size);
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
@@ -328,9 +328,9 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
 
   auto ker = ElementwiseGlobalRangeKernel<func_t>(N, f);
 
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz);
-  int hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, wg_sz);
+  int64_t hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
@@ -355,8 +355,8 @@ static inline void launch_unrolled_kernel(
   auto ker = UnrolledElementwiseKernel(N, f, data, ic, oc, l, s);
   using ker_t = decltype(ker);
 
-  auto wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, wg_sz * ker_t::item_work_size);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
@@ -393,13 +393,13 @@ static inline void launch_vectorized_kernel(
 
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
+    TORCH_CHECK(max_scalar_bytes * vec_size <= 16);                          \
     if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
       auto ker =                                                             \
           VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
               N, f, data, input_calc);                                       \
-      int num_wg = ceil_div<int>(N, wg_sz * vec_size);                       \
-      sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
+      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
+      sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker); \
     }                                                                        \
   }
 
@@ -426,7 +426,7 @@ static inline void launch_vectorized_kernel(
           N, f, data, input_calc, output_calc, loader, storer);
       using ker_t = decltype(ker);
 
-      int num_wg = ceil_div<int>(N, wg_sz * ker_t::item_work_size);
+      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * ker_t::item_work_size);
       sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
       break;
     }
@@ -457,8 +457,8 @@ static inline void launch_unrolled_kernel_for_multi_outputs(
       out_calc_t>(N, f, data, ic, oc);
   using ker_t = decltype(ker);
 
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, ker_t::item_work_size * wg_sz);
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, ker_t::item_work_size * wg_sz);
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
