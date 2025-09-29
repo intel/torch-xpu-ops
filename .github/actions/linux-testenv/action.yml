@@ -77,7 +77,7 @@ runs:
         # apply extra PRs for stock pytorch
         pip install requests
         if [ "${{ github.event_name }}" == "pull_request" ];then
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/27
         else
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         fi
