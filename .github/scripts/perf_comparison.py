@@ -112,8 +112,11 @@ if not args.pr:
                 refer_eager_latency = refer_value["speedup"] * refer_value["abs_latency"]
                 output_data.append([multiple_replace(refer_file), name, -1, -1, -1, refer_eager_latency, refer_value["abs_latency"], refer_value["speedup"], -1, -1])
 
-# summary
+# result
 output_data = pd.DataFrame(output_data, columns=output_header)
+output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
+
+# summary
 geomean_list = {"Category": "Geomean"}
 for column_name in ["Inductor vs. Eager [Target]", "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]:
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
@@ -123,8 +126,17 @@ for column_name in ["Inductor vs. Eager [Target]", "Target vs. Baseline [Eager]"
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
         if len(data) > 0:
             geomean_list[column_name + " | " + model_name] = geometric_mean(data)
+output_sum = pd.DataFrame.from_dict([geomean_list]).T
+output = output_sum.to_html(header=False)
+with open('performance.summary.html', 'w', encoding='utf-8') as f:
+    f.write("\n\n#### performance\n\n" + output)
 
-# get comparison result
+# details
+output = output_data.to_html(index=False)
+with open('performance.details.html', 'w', encoding='utf-8') as f:
+    f.write("\n\n#### performance\n\n" + output)
+
+# regression
 comparison = output_data.loc[
     ((output_data['Target vs. Baseline [Inductor]'] < args.criteria) | (output_data['Target vs. Baseline [Eager]'] < args.criteria))
     & (output_data['Baseline inductor'] > 0)
@@ -134,13 +146,3 @@ if not comparison.empty:
     output = comparison.to_html(index=False)
     with open('performance.regression.html', 'w', encoding='utf-8') as f:
         f.write("\n\n#### performance\n\n" + output)
-
-# get output
-output_sum = pd.DataFrame.from_dict([geomean_list]).T
-output = output_sum.to_html(header=False)
-with open('performance.summary.html', 'w', encoding='utf-8') as f:
-    f.write("\n\n#### performance\n\n" + output)
-output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
-output = output_data.to_html(index=False)
-with open('performance.details.html', 'w', encoding='utf-8') as f:
-    f.write("\n\n#### performance\n\n" + output)
