@@ -4371,6 +4371,13 @@ class TestLikeTensorCreation(TestCase):
             torch.full_like(like, 1.0, dtype=torch.complex64).dtype, torch.complex64
         )
 
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_zeros_large(self, device, dtype):
+        output = torch.zeros(2**31 - 1, device=device, dtype=dtype)
+
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_ones_large(self, device, dtype):
+        output = torch.ones(2**31 - 1, device=device, dtype=dtype)
 
 # Tests for the `frombuffer` function (only work on CPU):
 #   Constructs tensors from Python objects that implement the buffer protocol,
