@@ -504,49 +504,24 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "asynchronous_complete_cumsum",
       &at::native::xpu::asynchronous_complete_cumsum_xpu);
-}
-
-// Autograd backend register in fbgemm
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl("dense_to_jagged", &at::native::xpu::dense_to_jagged);
-}
-
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "dense_to_jagged_forward", &at::native::xpu::dense_to_jagged_forward_xpu);
-}
-
-// Autograd backend register in fbgemm
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl("jagged_to_padded_dense", &at::native::xpu::jagged_to_padded_dense);
-}
-
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "jagged_to_padded_dense_forward",
       &at::native::xpu::jagged_to_padded_dense_forward_xpu);
-}
-
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "jagged_dense_elementwise_add_jagged_output",
       &at::native::xpu::jagged_dense_elementwise_add_jagged_output_xpu);
-}
-
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "reorder_batched_ad_lengths",
       &at::native::xpu::reorder_batched_ad_lengths_xpu);
-}
-
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "reorder_batched_ad_indices",
       &at::native::xpu::reorder_batched_ad_indices_xpu);
-}
-
-TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "permute_2D_sparse_data", &at::native::xpu::permute_2D_sparse_data_xpu);
 }
+
 } // namespace

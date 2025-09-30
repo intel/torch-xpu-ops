@@ -17,6 +17,37 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
+# define fbgemm ops schemas here since we cannot register them in torch-xpu-ops.
+# otherwise, it will fail fbgemm lib due to duplicate schema registration.
+# for user, they can import fbgemm_gpu first before accessing fbgemm ops on xpu.
+lib = torch.library.Library("fbgemm", "DEF")
+
+lib.define("asynchronous_complete_cumsum(Tensor t_in) -> Tensor")
+lib.define(
+    "dense_to_jagged(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> (Tensor, Tensor[])"
+)
+lib.define(
+    "dense_to_jagged_forward(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> Tensor"
+)
+lib.define(
+    "jagged_to_padded_dense(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor"
+)
+lib.define(
+    "jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor"
+)
+lib.define(
+    "jagged_dense_elementwise_add_jagged_output(Tensor values, Tensor[] offsets, Tensor y) -> (Tensor, Tensor[])"
+)
+lib.define(
+    "reorder_batched_ad_lengths(Tensor cat_ad_lengths, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_lengths, int max_batch_size=0) -> Tensor"
+)
+lib.define(
+    "reorder_batched_ad_indices(Tensor cat_ad_offsets, Tensor cat_ad_indices, Tensor reordered_cat_ad_offsets, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_indices, int num_indices_after_broadcast) -> Tensor"
+)
+lib.define(
+    "permute_2D_sparse_data(Tensor permute, Tensor lengths, Tensor indices, Tensor? weights=None, int? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)"
+)
+
 
 def generate_jagged_tensor(
     num_jagged_dim: int,
