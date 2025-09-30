@@ -54,4 +54,4 @@ jobs:
       - name: Check env
         run: |
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          ls -al
+          clinfo --list
