@@ -11,7 +11,7 @@
 namespace at::native::xpu {
 
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void nonzero_kernel_impl(
+void flatten_idx_to_real_idx_kernel(
     int64_t N,
     const int64_t num_dim,
     const int64_t num_nonzeros,
@@ -109,10 +109,10 @@ void nonzero_template(const Tensor& self_, Tensor& tensor) {
 
       const int64_t N = num_nonzeros * num_dim;
 
-      auto wg_sz = std::min(syclMaxWorkGroupSize<nonzero_kernel_impl>(), N);
+      auto wg_sz = std::min(syclMaxWorkGroupSize<flatten_idx_to_real_idx_kernel>(), N);
       auto num_wg = (N + wg_sz - 1) / wg_sz;
 
-      sycl_kernel_submit<nonzero_kernel_impl>(
+      sycl_kernel_submit<flatten_idx_to_real_idx_kernel>(
           wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, num_dim,
           num_nonzeros, tensor_begin, idx_flat_begin, divisor, sizes);
     }
