@@ -54,9 +54,4 @@ jobs:
       - name: Check env
         run: |
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
-          . /opt/conda/etc/profile.d/conda.sh
-          conda create python=3.10 -y -n mengfeil
-          conda activate mengfeil
-          pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/xpu
-          wget https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
-          python collect_env.py
+          ls -al
