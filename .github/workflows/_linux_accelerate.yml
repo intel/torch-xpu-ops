@@ -51,6 +51,8 @@ defaults:
 env:
   GH_TOKEN: ${{ github.token }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  EXCLUDE_NEWER: '2025-09-22'
+  TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
 
 jobs:
   conditions-filter:
@@ -106,7 +108,19 @@ jobs:
         HF_HUB_DOWNLOAD_TIMEOUT: 120
         PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
+        # NOTE: IMPORTANT! Read before updating!
+        # HF Accelerate test we run here takes around ~5 minutes to complete. It does not
+        # give us big savings if we will parallelize it with pytest-xdist. However, if the
+        # need will come in the future, then we must use `--dist loadfile` distribution
+        # strategy as Accelerate uses test orderning clauses and shares some resources
+        # across tests. Other strategies will lead to random test failures.
+        #
+        # Note also that we do observe test failures due to incompatibility with pytest-xdist
+        # (serialization of some objects fail). As there is no much sense to parallelize
+        # Accelerate tests in general, we chose not to do so.
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist no #${{ needs.prepare.outputs.pytest_extra_args }}
+        VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        ZE_AFFINITY_MASK: 0
     env:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
@@ -122,32 +136,47 @@ jobs:
           repository: huggingface/accelerate
           ref: ${{ env.accelerate }}
           path: accelerate
-      - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+      - name: Install uv and python-${{ env.python }}
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ env.python }}
+      - name: Prepare environment
+        run: |
+          sudo apt-get update
+          # pciutils is needed to report available GPUs (we use lspci)
+          # python3-dev is needed for torch inductor and extension compilations
+          sudo apt-get install -y --no-install-recommends pciutils python3-dev
+          rm -rf $VIRTUAL_ENV
+          uv venv $VIRTUAL_ENV
+          # Add path to virtual environment bin folder to make
+          # python and other executables visible
+          echo "$VIRTUAL_ENV/bin/" >> $GITHUB_PATH
       - name: Check python
         run: |
           which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
       - name: Install pytorch and deps
         run: |
-          pip install junitparser
-          pip install transformers==${{ env.transformers }}
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          uv pip install $TORCH_INDEX torch torchvision torchaudio
+          # Do NOT install HF transformers or accelerate before torch as we need
+          # very specific version of the torch and HF would bring its own.
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} \
+            junitparser \
+            pytest \
+            pytest-timeout \
+            pytest-xdist \
+            transformers==${{ env.transformers }}
       - name: Prepare Accelerate
         run: |
           cd $WORK_DIR
-          pip install -e .
-          pip install -e ".[testing]"
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} -e .
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} -e ".[testing]"
           rm -rf tests_log && mkdir -p tests_log
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
         run: |
           echo "pip installed packages:"
-          pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
+          uv pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee ${{ github.workspace }}/$WORK_DIR/tests_log/lspci_0380.txt
           echo "GPU render nodes:"
@@ -156,13 +185,11 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist
           # These checks are to exit earlier if for any reason torch
           # packages were reinstalled back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
           printenv
       - name: Run tests on ${{ needs.prepare.outputs.hostname }}
