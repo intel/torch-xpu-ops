@@ -480,26 +480,6 @@ permute_2D_sparse_data_xpu(
 
 namespace {
 
-TORCH_LIBRARY(fbgemm, m) {
-  m.def("asynchronous_complete_cumsum(Tensor t_in) -> Tensor");
-  m.def(
-      "dense_to_jagged(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> (Tensor, Tensor[])");
-  m.def(
-      "dense_to_jagged_forward(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> Tensor");
-  m.def(
-      "jagged_to_padded_dense(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor");
-  m.def(
-      "jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max, float padding_value=0.0) -> Tensor");
-  m.def(
-      "jagged_dense_elementwise_add_jagged_output(Tensor values, Tensor[] offsets, Tensor y) -> (Tensor, Tensor[])");
-  m.def(
-      "reorder_batched_ad_lengths(Tensor cat_ad_lengths, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_lengths, int max_batch_size=0) -> Tensor");
-  m.def(
-      "reorder_batched_ad_indices(Tensor cat_ad_offsets, Tensor cat_ad_indices, Tensor reordered_cat_ad_offsets, Tensor batch_offsets, int num_ads_in_batch, bool broadcast_indices, int num_indices_after_broadcast) -> Tensor");
-  m.def(
-      "permute_2D_sparse_data(Tensor permute, Tensor lengths, Tensor indices, Tensor? weights=None, int? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)");
-}
-
 TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl(
       "asynchronous_complete_cumsum",
