@@ -153,6 +153,7 @@ jobs:
               git clone "%TORCH_XPU_OPS_REPO%" "third_party\torch-xpu-ops"
               cd "third_party\torch-xpu-ops"
               git checkout "%TORCH_XPU_OPS_COMMIT%"
+              cd ../..
             )
             powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
           )
