@@ -77,28 +77,40 @@ jobs:
           if exist "pytorch" (
             rmdir /s /q pytorch
           )
-          echo ${{ inputs.pytorch }} | findstr /C:"https://" >nul
-          if !errorlevel! equ 0 (
-              set "PYTORCH_REPO=${{ inputs.pytorch }}"
-              set "PYTORCH_REPO=!PYTORCH_REPO:@= !"
-              for %%i in (!PYTORCH_REPO!) do set PYTORCH_REPO=%%i
-              set "PYTORCH_COMMIT=${{ inputs.pytorch }}"
-              call set "PYTORCH_COMMIT=%%PYTORCH_COMMIT:*@=%%"
+          echo {{ inputs.pytorch }} | findstr /C:"https://" >nul
+          if %errorlevel% equ 0 (
+              set "INPUT_PYTORCH={{ inputs.pytorch }}"
+              echo %INPUT_PYTORCH% | findstr "@" >nul
+              if %errorlevel% equ 0 (
+                  for /f "tokens=1,2 delims=@" %%a in ("%INPUT_PYTORCH%") do (
+                      set "PYTORCH_REPO=%%a"
+                      set "PYTORCH_COMMIT=%%b"
+                  )
+              ) else (
+                  set "PYTORCH_REPO=%INPUT_PYTORCH%"
+                  set "PYTORCH_COMMIT=main"
+              )
           ) else (
-              set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
-              set PYTORCH_COMMIT=${{ inputs.pytorch }}
+              set "PYTORCH_REPO=https://github.com/pytorch/pytorch.git"
+              set "PYTORCH_COMMIT={{ inputs.pytorch }}"
           )
 
-          echo ${{ inputs.torch_xpu_ops }} | findstr /C:"https://" >nul
-          if !errorlevel! equ 0 (
-              set "TORCH_XPU_OPS_REPO=${{ inputs.torch_xpu_ops }}"
-              set "TORCH_XPU_OPS_REPO=!TORCH_XPU_OPS_REPO:@= !"
-              for %%i in (!TORCH_XPU_OPS_REPO!) do set TORCH_XPU_OPS_REPO=%%i
-              set "TORCH_XPU_OPS_COMMIT=${{ inputs.torch_xpu_ops }}"
-              call set "TORCH_XPU_OPS_COMMIT=%%TORCH_XPU_OPS_COMMIT:*@=%%"
+          echo {{ inputs.torch_xpu_ops }} | findstr /C:"https://" >nul
+          if %errorlevel% equ 0 (
+              set "INPUT_TORCH_XPU_OPS={{ inputs.torch_xpu_ops }}"
+              echo %INPUT_TORCH_XPU_OPS% | findstr "@" >nul
+              if %errorlevel% equ 0 (
+                  for /f "tokens=1,2 delims=@" %%a in ("%INPUT_TORCH_XPU_OPS%") do (
+                      set "TORCH_XPU_OPS_REPO=%%a"
+                      set "TORCH_XPU_OPS_COMMIT=%%b"
+                  )
+              ) else (
+                  set "TORCH_XPU_OPS_REPO=%INPUT_TORCH_XPU_OPS%"
+                  set "TORCH_XPU_OPS_COMMIT=main"
+              )
           ) else (
-              set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
-              set TORCH_XPU_OPS_COMMIT=${{ inputs.torch_xpu_ops }}
+              set "TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git"
+              set "TORCH_XPU_OPS_COMMIT={{ inputs.torch_xpu_ops }}"
           )
 
           echo PYTORCH_REPO: %PYTORCH_REPO%
@@ -158,7 +170,6 @@ jobs:
           )
           python setup.py clean
           call %GITHUB_WORKSPACE%\.github\scripts\windows_requirement.bat
-          echo %PYTORCH_EXTRA_INSTALL_REQUIREMENTS%
           set MAX_JOBS=32
           set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
           python setup.py bdist_wheel > build_torch_wheel_log.log 2>&1
