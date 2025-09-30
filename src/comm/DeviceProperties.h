@@ -3,17 +3,15 @@
 #include <ATen/xpu/XPUContext.h>
 
 #include <comm/Runtime.h>
-#include <iostream>
 
 namespace xpu {
 namespace sycl {
 
 template <class KernelClass>
 static int64_t syclMaxWorkGroupSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
-  auto q = c10::xpu::getCurrentXPUStream(dev_id).queue();
-  auto ctx = q.get_context();
-  auto dev = q.get_device();
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
+  auto& ctx = c10::xpu::get_device_context();
+  auto& dev = c10::xpu::get_raw_device(dev_id);
 
   auto kid = ::sycl::get_kernel_id<KernelClass>();
   // The kernel won't be built for devices except for the first device.
@@ -30,73 +28,69 @@ static int64_t syclMaxWorkGroupSize(
 
 template <class KernelClass>
 static int64_t syclMaxWorkGroupSize(
-    KernelClass /*kfn*/,
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    const KernelClass& /*kfn*/,
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   return syclMaxWorkGroupSize<KernelClass>(dev_id);
 }
 
 static inline int64_t syclDeviceMaxWorkGroupSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->max_work_group_size;
 }
 
 static inline int64_t syclMaxSubGroupSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  auto subgroup_sizes = dev_prop->sub_group_sizes;
-  uint64_t max_val = 0;
-  for (auto i : subgroup_sizes) {
-    if (i > max_val)
-      max_val = i;
-  }
-  return max_val;
+  const auto& subgroup_sizes = dev_prop->sub_group_sizes;
+  TORCH_CHECK(
+      !subgroup_sizes.empty(),
+      "The device subgroup sizes is empty, please check the device status.");
+  return *std::max_element(subgroup_sizes.begin(), subgroup_sizes.end());
 }
 
 static inline int64_t syclMinSubGroupSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  auto subgroup_sizes = dev_prop->sub_group_sizes;
-  uint64_t min_val = dev_prop->max_work_group_size;
-  for (auto i : subgroup_sizes) {
-    if (i < min_val)
-      min_val = i;
-  }
-  return min_val;
+  const auto& subgroup_sizes = dev_prop->sub_group_sizes;
+  TORCH_CHECK(
+      !subgroup_sizes.empty(),
+      "The device subgroup sizes is empty, please check the device status.");
+  return *std::min_element(subgroup_sizes.begin(), subgroup_sizes.end());
 }
 
 static inline int64_t syclMaxComputeUnitSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->max_compute_units;
 }
 
 static inline int64_t syclGpuEuCount(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->gpu_eu_count;
 }
 
 static inline int64_t syclGpuEuSimdWidth(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->gpu_eu_simd_width;
 }
 
 static inline int64_t syclGpuHWThreadsPerEU(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->gpu_hw_threads_per_eu;
 }
 
 static inline int64_t syclGpuEUCountPerSubslice(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->gpu_eu_count_per_subslice;
 }
 
 static inline int64_t syclMaxWorkItemsPerTile(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   int64_t eu_cnt = dev_prop->gpu_eu_count;
   int64_t simd_width = syclMaxSubGroupSize(dev_id);
@@ -105,7 +99,7 @@ static inline int64_t syclMaxWorkItemsPerTile(
 }
 
 static inline int64_t syclMaxWorkItemsPerSubSlice(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   int64_t simd_width = syclMaxSubGroupSize(dev_id);
   int64_t eu_count = dev_prop->gpu_eu_count_per_subslice;
@@ -113,7 +107,7 @@ static inline int64_t syclMaxWorkItemsPerSubSlice(
 }
 
 static inline int64_t syclMaxWorkItemsPerEU(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   int64_t simd_width = syclMaxSubGroupSize(dev_id);
   int64_t hw_threads = dev_prop->gpu_hw_threads_per_eu;
@@ -121,94 +115,76 @@ static inline int64_t syclMaxWorkItemsPerEU(
 }
 
 static inline int64_t syclMaxNumSubGroups(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->max_num_sub_groups;
 }
 
 static inline int64_t syclMaxDSSNum(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   int64_t dss_num =
       syclMaxComputeUnitSize(dev_id) / syclGpuEUCountPerSubslice(dev_id);
   return dss_num;
 }
 
 static inline size_t syclGlobalMemSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->global_mem_size;
 }
 
 static inline int64_t syclLocalMemSize(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->local_mem_size;
 }
 
 template <typename T>
 uint32_t syclPrefVectorWidth(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   (void)dev_id; // Suppress unused variable warning
 
   // Hot fix. This is the preferred vector width for GPUs up to LNL/BMG.
-  uint32_t vec_width = 16;
+  constexpr uint32_t vec_width = 16;
 
-  if (std::is_same<T, char>::value) {
-    return vec_width / sizeof(char);
+  if constexpr (
+      std::is_same_v<T, char> || std::is_same_v<T, short> ||
+      std::is_same_v<T, int> || std::is_same_v<T, int64_t> ||
+      std::is_same_v<T, float> || std::is_same_v<T, double> ||
+      std::is_same_v<T, ::sycl::half>) {
+    return vec_width / sizeof(T);
+  } else {
+    throw std::invalid_argument(
+        "Invalid data type to fetch preferred vector width!");
   }
-  if (std::is_same<T, short>::value) {
-    return vec_width / sizeof(short);
-  }
-  if (std::is_same<T, int>::value) {
-    return vec_width / sizeof(int);
-  }
-  if (std::is_same<T, int64_t>::value) {
-    return vec_width / sizeof(int64_t);
-  }
-  if (std::is_same<T, float>::value) {
-    return vec_width / sizeof(float);
-  }
-  if (std::is_same<T, double>::value) {
-    return vec_width / sizeof(double);
-  }
-  if (std::is_same<T, ::sycl::half>::value) {
-    return vec_width / sizeof(::sycl::half);
-  }
-  throw std::invalid_argument(
-      "Invalid data type to fetch preferred vector width!");
 }
 
 template <typename T>
 uint32_t syclNativeVectorWidth(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
-  if (std::is_same<T, char>::value) {
+  if constexpr (std::is_same_v<T, char>) {
     return dev_prop->native_vector_width_char;
-  }
-  if (std::is_same<T, short>::value) {
+  } else if constexpr (std::is_same_v<T, short>) {
     return dev_prop->native_vector_width_short;
-  }
-  if (std::is_same<T, int>::value) {
+  } else if constexpr (std::is_same_v<T, int>) {
     return dev_prop->native_vector_width_int;
-  }
-  if (std::is_same<T, int64_t>::value) {
+  } else if constexpr (std::is_same_v<T, int64_t>) {
     return dev_prop->native_vector_width_long;
-  }
-  if (std::is_same<T, float>::value) {
+  } else if constexpr (std::is_same_v<T, float>) {
     return dev_prop->native_vector_width_float;
-  }
-  if (std::is_same<T, double>::value) {
+  } else if constexpr (std::is_same_v<T, double>) {
     return dev_prop->native_vector_width_double;
-  }
-  if (std::is_same<T, ::sycl::half>::value) {
+  } else if constexpr (std::is_same_v<T, ::sycl::half>) {
     return dev_prop->native_vector_width_half;
+  } else {
+    throw std::invalid_argument(
+        "Invalid data type to fetch native vector width!");
   }
-  throw std::invalid_argument(
-      "Invalid data type to fetch native vector width!");
 }
 
 static inline bool syclHasFloat64(
-    at::DeviceIndex dev_id = at::xpu::getDeviceIndexOfCurrentQueue()) {
+    at::DeviceIndex dev_id = at::xpu::current_device()) {
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   return dev_prop->has_fp64;
 }

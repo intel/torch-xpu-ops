@@ -155,7 +155,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: xpu_distributed
-      shell: timeout 3600 bash -xeu -o pipefail {0}
+      shell: timeout 36000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
@@ -166,9 +166,13 @@ runs:
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
+        export CCL_ROOT=$(dirname $(which python))/../
+        export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
+        export LD_LIBRARY_PATH="${CCL_ROOT}/lib:${LD_LIBRARY_PATH}"
         python run_distributed.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
+        find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
     # Summary
     - name: UT Test Results Summary

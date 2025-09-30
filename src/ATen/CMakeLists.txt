@@ -1,6 +1,5 @@
 # ATen XPU sources
 
-file(GLOB xpu_h "xpu/*.h")
 file(GLOB xpu_cpp "xpu/*.cpp")
 file(GLOB xpu_mkl "native/xpu/mkl/*.cpp")
 file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/sparse/xpu/*.cpp" "native/nested/*.cpp" "native/nested/xpu/*.cpp" "native/transformers/*.cpp" "native/quantized/*.cpp")
@@ -18,10 +17,28 @@ set(ATen_XPU_MKL_SRCS ${ATen_XPU_MKL_SRCS} PARENT_SCOPE)
 set(ATen_XPU_NATIVE_CPP_SRCS ${ATen_XPU_NATIVE_CPP_SRCS} PARENT_SCOPE)
 set(ATen_XPU_SYCL_SRCS ${ATen_XPU_SYCL_SRCS} PARENT_SCOPE)
 
-foreach(HEADER  ${xpu_h})
-  install(FILES ${HEADER} DESTINATION "${AT_INSTALL_INCLUDE_DIR}/ATen/xpu")
-endforeach()
+# ATen XPU headers
 
-foreach(HEADER  ${xpu_ops_generated_headers})
-  install(FILES ${HEADER} DESTINATION ${AT_INSTALL_INCLUDE_DIR}/ATen/ops)
-endforeach()
+macro(install_xpu_headers glob_pattern dest_subdir)
+  file(GLOB headers ${glob_pattern})
+  if(headers)
+    install(FILES ${headers} DESTINATION "${AT_INSTALL_INCLUDE_DIR}/${dest_subdir}")
+  endif()
+endmacro()
+
+install_xpu_headers("xpu/*.h" "ATen/xpu")
+install_xpu_headers("native/xpu/*.h" "ATen/native/xpu")
+install_xpu_headers("native/xpu/sycl/*.h" "ATen/native/xpu/sycl")
+install_xpu_headers("native/xpu/mkl/*.h" "ATen/native/xpu/mkl")
+install_xpu_headers("native/nested/xpu/*.h" "ATen/native/nested/xpu")
+install_xpu_headers("native/nested/xpu/sycl/*.h" "ATen/native/nested/xpu/sycl")
+install_xpu_headers("native/quantized/*.h" "ATen/native/quantized/xpu")
+install_xpu_headers("native/quantized/sycl/*.h" "ATen/native/quantized/xpu/sycl")
+install_xpu_headers("native/sparse/xpu/*.h" "ATen/native/sparse/xpu")
+install_xpu_headers("native/sparse/xpu/sycl/*.h" "ATen/native/sparse/xpu/sycl")
+install_xpu_headers("native/transformers/*.h" "ATen/native/transformers/xpu")
+install_xpu_headers("native/transformers/sycl/*.h" "ATen/native/transformers/xpu/sycl")
+
+if(xpu_ops_generated_headers)
+  install(FILES ${xpu_ops_generated_headers} DESTINATION ${AT_INSTALL_INCLUDE_DIR}/ATen/ops)
+endif()

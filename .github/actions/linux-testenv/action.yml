@@ -57,7 +57,7 @@ runs:
       run: |
         # install pytorch
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/xpu
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
@@ -77,7 +77,7 @@ runs:
         # apply extra PRs for stock pytorch
         pip install requests
         if [ "${{ github.event_name }}" == "pull_request" ];then
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/mengfei25/pytorch/pull/27
         else
           python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         fi
@@ -115,6 +115,8 @@ runs:
         pip install pandas psutil scipy pyyaml
         cd pytorch
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          # for new LLM models
+          pip install accelerate
           pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
           TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then

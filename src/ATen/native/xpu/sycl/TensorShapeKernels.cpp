@@ -669,8 +669,7 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     num_groups += div_up(split_chunk_size, GROUP_SIZE * BYTES_PER_THREAD);
   }
 
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t tile_size = syclMaxWorkItemsPerTile(dev_id);
+  int64_t tile_size = syclMaxWorkItemsPerTile();
   const int64_t max_groups = tile_size / GROUP_SIZE * 2.0;
 
   // Make each thread process BYTES_PER_THREAD * iter_factor bytes to regulate

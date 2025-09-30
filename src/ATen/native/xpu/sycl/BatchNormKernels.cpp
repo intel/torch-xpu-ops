@@ -185,8 +185,7 @@ int get_num_threads_by_dev_max_group_size(
 int get_prefer_simd(int numPlane, int nHw) {
   // decide SIMD: SIMD32 or SIMD16
 
-  auto dev_id = at::xpu::getDeviceIndexOfCurrentQueue();
-
+  auto dev_id = at::xpu::current_device();
   auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
   auto sub_group_size = dev_prop->sub_group_sizes;
   int simd = sub_group_size[1];

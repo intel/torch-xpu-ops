@@ -269,8 +269,7 @@ class NormConfig {
   }
 
   void get_max_vec_size() {
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int total_resource = syclMaxWorkItemsPerTile(dev_id);
+    int64_t total_resource = syclMaxWorkItemsPerTile();
 
     constexpr int float4_size = sizeof(float) * 4;
     max_vec_size = float4_size / element_size_bytes;
