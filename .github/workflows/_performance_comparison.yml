@@ -42,4 +42,4 @@ jobs:
       - name: Comparison result
         run: |
           python -m pip install pandas
-          python .github/scripts/perf_comparison.py --xpu target --refer baseline >> ${GITHUB_STEP_SUMMARY}
+          python .github/scripts/perf_comparison.py --target target --baseline baseline >> ${GITHUB_STEP_SUMMARY}
