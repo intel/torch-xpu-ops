@@ -140,13 +140,12 @@ sycl_kernel_submit(
 }
 
 #ifdef __SYCL_DEVICE_ONLY__
-  #define CONSTANT __attribute__((opencl_constant))
+  #define SYCL_KERNEL_STRING(var, str) \
+    static const __attribute__((opencl_constant)) char var[] = str
 #else
-  #define CONSTANT
+  #define SYCL_KERNEL_STRING(var, str) \
+    static const char var[] = str
 #endif
-
-#define SYCL_KERNEL_STRING(var, str) \
-  static const CONSTANT char var[] = str;
 #define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
 
 #define SYCL_PRINT(fmt_str, ...)                \
