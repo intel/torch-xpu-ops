@@ -459,7 +459,8 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     bool isP2P,
     const char* profilingTitle,
     const std::vector<at::Tensor>& inputs,
-    const std::vector<at::Tensor>& outputs) {
+    const std::vector<at::Tensor>& outputs,
+    bool record) {
   auto r = c10::make_intrusive<ProcessGroupXCCL::WorkXCCL>(
       device,
       rank,
@@ -470,20 +471,22 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
                                 : std::nullopt);
 
-  r->trace_id_ = FlightRecorderXCCL::get()->record(
-      local_id_,
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      seqCollective_,
-      seqP2P_,
-      op_id_,
-      profilingTitle ? profilingTitle : "",
-      inputs,
-      outputs,
-      nullptr,
-      r->xcclEndEvent_.get(),
-      options_->timeout,
-      pgStatus_,
-      isP2P);
+  if (record) {
+    r->trace_id_ = FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle ? profilingTitle : "",
+        inputs,
+        outputs,
+        nullptr,
+        r->xcclEndEvent_.get(),
+        options_->timeout,
+        pgStatus_,
+        isP2P);
+  }
   return r;
 }
 
@@ -664,16 +667,19 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     const char* profilingTitle,
     bool nanCheck) {
   nanCheck &= enableNanCheck_;
-  seqCollective_++;
   auto device = inputs[0].device();
   const auto key = std::to_string(device.index());
   auto comm = getXCCLComm(key, device, opType);
+
+  if (!coalescing_state_) {
+    seqCollective_++;
+  }
+  op_id_++;
 
   if (coalescing_state_ & CoalActive) {
     if ((coalescing_state_ & CoalColl) == 0) {
       seqCollective_++;
     }
-    op_id_++;
     coalescing_state_ |= CoalColl;
     if (coalescedDevice_.index() < 0) {
       coalescedDevice_ = device;
@@ -714,8 +720,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   }
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
-  work =
-      initWork(device, rank_, opType, false, profilingTitle, inputs, outputs);
+  work = initWork(
+      device,
+      rank_,
+      opType,
+      false,
+      profilingTitle,
+      inputs,
+      outputs,
+      !coalescing_state_);
   if (coalescing_state_) {
     FlightRecorderXCCL::get()->record(
         local_id_,
