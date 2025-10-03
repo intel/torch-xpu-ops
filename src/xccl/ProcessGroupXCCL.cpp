@@ -352,6 +352,11 @@ const std::string& ProcessGroupXCCL::logPrefix() const {
   return logPrefix_;
 }
 
+const int& ProcessGroupXCCL::globalRank() const {
+  static int globalRank = rank_;
+  return globalRank;
+}
+
 ProcessGroupXCCL::ProcessGroupXCCL(
     c10::intrusive_ptr<Store> store,
     int rank,
@@ -379,7 +384,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
-            << "size: " << size << ", global rank: " << rank_
+            << "size: " << size << ", global rank: " << globalRank()
             << ", USE_HIGH_PRIORITY_STREAM: "
             << options_->is_high_priority_stream
             << ", PG Name: " << options_->group_name;
@@ -410,7 +415,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
   if (traceBufferSize_ > 0) {
     // TODO: dump_xccl_trace
     auto xcclTrace = dump_xccl_trace(true, includeStackTrace, false);
-    DebugInfoWriter& writer = DebugInfoWriter::getWriter(rank_);
+    DebugInfoWriter& writer = DebugInfoWriter::getWriter(globalRank());
     LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
               << writer.getWriterTarget();
     writer.write(xcclTrace);
@@ -2021,7 +2026,7 @@ c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
     return *usedDeviceIdxs_.begin();
   }
   int devIdx =
-      static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
+      static_cast<int16_t>(globalRank() % at::detail::getXPUHooks().getNumGPUs());
   LOG(WARNING)
       << logPrefix()
       << c10::str(
