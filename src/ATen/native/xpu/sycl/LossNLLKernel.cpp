@@ -77,9 +77,7 @@ struct NllLossForwardNoReduceKernelFunctor {
 template <typename scalar_t, typename index_t>
 struct NllLossForwardReduce1DKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    SYCL_KERNEL_ASSERT(
-        item.get_local_id(2) == 0 && item.get_local_id(1) == 0 &&
-        item.get_local_id(0) == 0);
+    SYCL_KERNEL_ASSERT(item.get_local_id(0) == 0 && item.get_group(0) == 0);
 
     const index_t t = *target;
     if (t != ignore_index) {
@@ -263,6 +261,7 @@ struct NllLossBackwardNoReduceKernelFunctor {
 template <typename scalar_t, typename index_t>
 struct NllLossBackwardReduce1DKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
+    SYCL_KERNEL_ASSERT(item.get_local_id(0) == 0 && item.get_group(0) == 0);
     const index_t t = *target;
     if (t != ignore_index) {
       CHECK_INDEX_IN_CLASS(t, n_classes);
