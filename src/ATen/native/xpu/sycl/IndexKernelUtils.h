@@ -41,58 +41,36 @@ inline bool fast_gather_kernel_eligible(
 #define SIMD 32
 
 template <int Alignment, typename index_t>
-struct VectorizedGatherKernel {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
-    int64_t ind = idx_[item.get_group(1)];
-    if (allow_neg_indices_) {
-      ind = (ind < 0) ? ind + ind_dim_size_ : ind;
-    }
-    SYCL_KERNEL_ASSERT(
-        ind >= 0 && ind < ind_dim_size_ &&
-        "vectorized gather kernel index out of bounds");
-    int32_t off =
-        (item.get_local_range(1) * item.get_group(0) + item.get_local_id(1)) *
-        Alignment; // off is guaranteed to be within int32 limits
-    if (off >= slice_size_)
-      return;
-    auto vec =
-        at::native::memory::ld_vec<Alignment>(inp_ + ind * inp_stride_ + off);
-    at::native::memory::st_vec<Alignment>(
-        out_ + item.get_group(1) * (int32_t)out_stride_ + off,
-        vec); // out offset is guaranteed to be within int32 limits
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::sub_group_size<SIMD>)) void vectorized_gather_kernel(
+    char* out_,
+    char* inp_,
+    index_t* idx_,
+    int num_ind_,
+    int64_t slice_size_,
+    int64_t ind_dim_size_,
+    int64_t inp_stride_,
+    int64_t out_stride_,
+    bool allow_neg_indices_) {
+  auto item = syclext::this_work_item::get_nd_item<2>();
+  int64_t ind = idx_[item.get_group(1)];
+  if (allow_neg_indices_) {
+    ind = (ind < 0) ? ind + ind_dim_size_ : ind;
   }
-  VectorizedGatherKernel(
-      char* out,
-      char* inp,
-      index_t* idx,
-      int num_ind,
-      int64_t slice_size,
-      int64_t ind_dim_size,
-      int64_t inp_stride,
-      int64_t out_stride,
-      bool allow_neg_indices)
-      : out_(out),
-        inp_(inp),
-        idx_(idx),
-        num_ind_(num_ind),
-        slice_size_(slice_size),
-        ind_dim_size_(ind_dim_size),
-        inp_stride_(inp_stride),
-        out_stride_(out_stride),
-        allow_neg_indices_(allow_neg_indices) {}
-
- private:
-  char* out_;
-  char* inp_;
-  index_t* idx_;
-  int num_ind_;
-  int64_t slice_size_;
-  int64_t ind_dim_size_;
-  int64_t inp_stride_;
-  int64_t out_stride_;
-  bool allow_neg_indices_;
-};
+  SYCL_KERNEL_ASSERT(
+      ind >= 0 && ind < ind_dim_size_ &&
+      "vectorized gather kernel index out of bounds");
+  int32_t off =
+      (item.get_local_range(1) * item.get_group(0) + item.get_local_id(1)) *
+      Alignment; // off is guaranteed to be within int32 limits
+  if (off >= slice_size_)
+    return;
+  auto vec =
+      at::native::memory::ld_vec<Alignment>(inp_ + ind * inp_stride_ + off);
+  at::native::memory::st_vec<Alignment>(
+      out_ + item.get_group(1) * (int32_t)out_stride_ + off,
+      vec); // out offset is guaranteed to be within int32 limits
+}
 
 template <int64_t Alignment, typename index_t>
 void vectorized_gather_kernel_launch(
@@ -114,7 +92,12 @@ void vectorized_gather_kernel_launch(
       static_cast<uint32_t>(
           at::ceil_div(slice_size_in_bytes, max_num_threads * Alignment)),
       static_cast<uint32_t>(num_ind) * wg_size);
-  auto caller = VectorizedGatherKernel<Alignment, index_t>(
+
+  sycl_kernel_submit<vectorized_gather_kernel<Alignment, index_t>, 2>(
+      global_range,
+      local_range,
+      at::xpu::getCurrentSYCLQueue(),
+      0,
       out,
       inp,
       idx,
@@ -124,8 +107,6 @@ void vectorized_gather_kernel_launch(
       inp_stride_bytes,
       out_stride_bytes,
       allow_neg_indices);
-  sycl_kernel_submit(
-      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
 }
 
 // explicit template instantiation
