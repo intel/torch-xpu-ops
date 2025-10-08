@@ -29,7 +29,7 @@ def append_xpu_function_header(src, dst):
     try:
         with open(src, encoding="utf-8") as fr:
             src_text = fr.read()
-    except (IOError, OSError) as e:
+    except OSError as e:
         if VERBOSE:
             print(f"Warning: Could not read source file {src}: {e}")
         return
@@ -40,10 +40,10 @@ def append_xpu_function_header(src, dst):
         return
 
     try:
-        with open(dst, "r", encoding="utf-8") as f:
+        with open(dst, encoding="utf-8") as f:
             dst_lines = f.readlines()
             dst_text = "".join(dst_lines)
-    except (IOError, OSError) as e:
+    except OSError as e:
         if VERBOSE:
             print(f"Warning: Could not read destination file {dst}: {e}")
         return
@@ -53,19 +53,19 @@ def append_xpu_function_header(src, dst):
         return
 
     new_dst_lines = dst_lines.copy()
-    
+
     while new_dst_lines and not new_dst_lines[-1].strip():
         new_dst_lines.pop()
     new_dst_lines.extend(missing_headers)
-    
+
     new_content = "".join(new_dst_lines)
     old_content = "".join(dst_lines)
-    
+
     if new_content != old_content:
         try:
             with open(dst, "w", encoding="utf-8") as f:
                 f.writelines(new_dst_lines)
-        except (IOError, OSError) as e:
+        except OSError as e:
             if VERBOSE:
                 print(f"Error: Could not write to {dst}: {e}")
 
@@ -112,10 +112,10 @@ def generate_xpu_ops_headers_cmake(src_dir, dst_dir, xpu_ops_headers):
     should_write = True
     if os.path.exists(output_file):
         try:
-            with open(output_file, "r", encoding="utf-8") as f:
+            with open(output_file, encoding="utf-8") as f:
                 existing_content = f.read()
             should_write = existing_content != new_content
-        except (IOError, OSError):
+        except OSError:
             # If we can't read the file, write it anyway
             should_write = True
 
@@ -143,7 +143,7 @@ def append_xpu_ops_headers(src_dir, dst_dir, common_headers, xpu_ops_headers):
             try:
                 with open(src, "rb") as fsrc, open(dst, "rb") as fdst:
                     should_copy = fsrc.read() != fdst.read()
-            except (IOError, OSError):
+            except OSError:
                 should_copy = True
         if should_copy:
             shutil.copy(src, dst)
