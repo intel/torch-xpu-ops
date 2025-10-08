@@ -134,8 +134,8 @@ struct Logit0Functor {
   using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
     const T_ACC x_acc = static_cast<T_ACC>(x);
-    const T_ACC div = static_cast<T_ACC>(static_cast<scalar_t>(x_acc / (T_ACC(1) - x_acc));
     // suppress compiler optimization on data type promotion.
+    const T_ACC div = static_cast<T_ACC>(static_cast<scalar_t>(x_acc / (T_ACC(1) - x_acc)));
     volatile T_ACC res = std::log(div);
     return res;
   }
@@ -148,7 +148,8 @@ struct Logit1Functor {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     T_ACC z = x_acc < lo_ ? lo_ : (x_acc > hi_ ? hi_ : x_acc);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(z / (T_ACC(1) - z));
+    const T_ACC div = static_cast<T_ACC>(static_cast<scalar_t>(z / (T_ACC(1) - z)));
+    volatile T_ACC res = std::log(div);
     return res;
   }
   Logit1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
