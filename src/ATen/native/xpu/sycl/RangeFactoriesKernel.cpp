@@ -13,27 +13,19 @@ constexpr int nitem_per_wg = 256;
 constexpr int item_work_size = 1;
 constexpr int group_work_size = item_work_size * nitem_per_wg;
 
-template <typename index_t, typename func_t>
-struct ElementwiseKernelWithIndexFunctor {
-  using res_t = typename function_traits<func_t>::result_type;
-  void operator()(sycl::nd_item<1> item) const {
+template <typename index_t, typename func_t, typename data_t>
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void element_wise_kernel_with_index_functor(index_t N, func_t f, data_t *data) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
 #pragma unroll
-    for (int i = 0; i < item_work_size; i++) {
-      index_t idx = group_work_size * item.get_group(0) + nitem_per_wg * i +
-          item.get_local_id(0);
-      if (idx < N_) {
-        data_[idx] = f_(idx);
-      }
+  for (int i = 0; i < item_work_size; i++) {
+    index_t idx = group_work_size * item.get_group(0) + nitem_per_wg * i +
+                  item.get_local_id(0);
+    if (idx < N) {
+      data[idx] = f(idx);
     }
   }
-  ElementwiseKernelWithIndexFunctor(index_t N, func_t f, res_t* data)
-      : N_(N), f_(f), data_(data) {}
-
- private:
-  index_t N_;
-  func_t f_;
-  res_t* data_;
-};
+}
 
 template <typename func_t>
 void gpu_kernel_with_index(at::Tensor& output, func_t f) {
@@ -45,13 +37,15 @@ void gpu_kernel_with_index(at::Tensor& output, func_t f) {
   auto queue = at::xpu::getCurrentSYCLQueue();
   using scalar_t = typename function_traits<func_t>::result_type;
   if (N <= std::numeric_limits<int>::max()) {
-    auto caller = ElementwiseKernelWithIndexFunctor<int, func_t>(
-        N, f, output.mutable_data_ptr<scalar_t>());
-    sycl_kernel_submit(num_wg * nitem_per_wg, nitem_per_wg, queue, caller);
+    sycl_kernel_submit<
+        element_wise_kernel_with_index_functor<int, func_t, scalar_t>>(
+        num_wg * nitem_per_wg, nitem_per_wg, queue, 0, N, f,
+        output.mutable_data_ptr<scalar_t>());
   } else {
-    auto caller = ElementwiseKernelWithIndexFunctor<int64_t, func_t>(
-        N, f, output.mutable_data_ptr<scalar_t>());
-    sycl_kernel_submit(num_wg * nitem_per_wg, nitem_per_wg, queue, caller);
+    sycl_kernel_submit<
+        element_wise_kernel_with_index_functor<int64_t, func_t, scalar_t>>(
+        num_wg * nitem_per_wg, nitem_per_wg, queue, 0, N, f,
+        output.mutable_data_ptr<scalar_t>());
   }
 }
 
