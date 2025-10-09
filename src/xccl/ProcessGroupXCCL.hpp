@@ -182,7 +182,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       bool isP2P,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
-      const std::vector<at::Tensor>& outputs = {});
+      const std::vector<at::Tensor>& outputs = {},
+      bool record = false);
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(
@@ -425,9 +426,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::DeviceIndex guessDeviceId() const;
 
   const std::vector<uint64_t>& groupRanks() const;
+  const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-  void setCompletedPgStatus(
-      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
