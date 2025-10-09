@@ -56,3 +56,4 @@ jobs:
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           clinfo --list
           id
+          ip a
