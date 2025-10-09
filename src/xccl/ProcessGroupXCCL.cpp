@@ -496,9 +496,10 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
 std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
     const std::string& deviceKey) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (devXCCLCommMap_.find(deviceKey) != devXCCLCommMap_.end()) {
+  auto it = devXCCLCommMap_.find(deviceKey);
+  if (it != devXCCLCommMap_.end()) {
     // Reuse the cached communicator if there is one.
-    return devXCCLCommMap_[deviceKey];
+    return it->second;
   }
   return nullptr;
 }
