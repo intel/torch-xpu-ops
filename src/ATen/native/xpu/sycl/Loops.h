@@ -228,8 +228,8 @@ static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
     return;
   }
 
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz * vec_size);
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);
   sycl_kernel_submit<elementwise_group_range_kernel<vec_size, func_t>>(
       wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
 }
@@ -241,9 +241,9 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
     return;
   }
 
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz);
-  int hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, wg_sz);
+  int64_t hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
   sycl_kernel_submit<elementwise_global_range_kernel<func_t>>(
       wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), 0, N, f);
@@ -267,8 +267,8 @@ static inline void launch_unrolled_kernel(
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
 
   static constexpr int item_work_size = 4;
-  auto wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, wg_sz * item_work_size);
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, wg_sz * item_work_size);
   sycl_kernel_submit<unrolled_elementwise_kernel<
       func_t,
       array_t,
@@ -321,25 +321,25 @@ static inline void launch_vectorized_kernel(
   using traits = function_traits<func_t>;
   auto wg_sz = syclMaxWorkItemsPerSubSlice();
 
-#define VEC_KER(vec_size)                               \
-  {                                                     \
-    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);      \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {  \
-      int num_wg = ceil_div<int>(N, wg_sz * vec_size);  \
-      sycl_kernel_submit<vectorized_elementwise_kernel< \
-          vec_size,                                     \
-          func_t,                                       \
-          array_t,                                      \
-          in_calc_t>>(                                  \
-          wg_sz * num_wg,                               \
-          wg_sz,                                        \
-          getCurrentSYCLQueue(),                        \
-          0,                                            \
-          N,                                            \
-          f,                                            \
-          data,                                         \
-          input_calc);                                  \
-    }                                                   \
+#define VEC_KER(vec_size)                                      \
+  {                                                            \
+    TORCH_CHECK(max_scalar_bytes* vec_size <= 16);             \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {         \
+      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size); \
+      sycl_kernel_submit<vectorized_elementwise_kernel<        \
+          vec_size,                                            \
+          func_t,                                              \
+          array_t,                                             \
+          in_calc_t>>(                                         \
+          wg_sz * num_wg,                                      \
+          wg_sz,                                               \
+          getCurrentSYCLQueue(),                               \
+          0,                                                   \
+          N,                                                   \
+          f,                                                   \
+          data,                                                \
+          input_calc);                                         \
+    }                                                          \
   }
 
   switch (vec_size) {
@@ -367,7 +367,7 @@ static inline void launch_vectorized_kernel(
       auto storer = storer_t();
 
       static constexpr int item_work_size = 4;
-      int num_wg = ceil_div<int>(N, wg_sz * item_work_size);
+      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * item_work_size);
       sycl_kernel_submit<unrolled_elementwise_kernel<
           func_t,
           array_t,
@@ -409,8 +409,8 @@ static inline void launch_unrolled_kernel_for_multi_outputs(
   TORCH_INTERNAL_ASSERT(N > 0 && N <= std::numeric_limits<int32_t>::max());
 
   static constexpr int item_work_size = 4;
-  int wg_sz = syclMaxWorkItemsPerSubSlice();
-  int num_wg = ceil_div<int>(N, item_work_size * wg_sz);
+  int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
+  int64_t num_wg = ceil_div<int64_t>(N, item_work_size * wg_sz);
   sycl_kernel_submit<unrolled_elementwise_for_multi_outputs_kernel<
       num_outputs,
       func_t,
