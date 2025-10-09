@@ -5,7 +5,6 @@
 #include <torch/library.h>
 #include <torch/torch.h>
 
-#include <ATen/native/xpu/ScanKernels.h>
 #include <ATen/native/xpu/sycl/FbgemmKernels.h>
 
 namespace at {
@@ -359,7 +358,7 @@ Tensor reorder_batched_ad_indices_xpu(
   return reordered_cat_ad_indices;
 }
 
-Tensor asynchronous_exclusive_cumsum_(const Tensor& t_in) {
+Tensor asynchronous_exclusive_cumsum(const Tensor& t_in) {
   torch_tensor_on_xpu_check(t_in);
   XPU_DEVICE_GUARD(t_in);
 
@@ -421,7 +420,7 @@ permute_2D_sparse_data_xpu(
       T, B, lengths_contig, permute_contig, permuted_lengths);
 
   // convert lengths to offsets
-  const auto input_offsets = asynchronous_exclusive_cumsum_(lengths_contig);
+  const auto input_offsets = asynchronous_exclusive_cumsum(lengths_contig);
   const auto output_offsets =
       asynchronous_complete_cumsum_xpu(permuted_lengths.flatten());
   int64_t permuted_indices_size = 0;
@@ -505,3 +504,4 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
 }
 
 } // namespace
+

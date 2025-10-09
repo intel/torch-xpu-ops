@@ -2,6 +2,8 @@
 #include <ATen/native/xpu/sycl/FbgemmKernels.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
 
+#include <ATen/native/xpu/sycl/ScanUtils.h>
+
 #include <comm/SYCLContext.h>
 
 namespace syclext = sycl::ext::oneapi;
@@ -865,6 +867,19 @@ void jagged_dense_dense_elementwise_jagged_output_kernel_(
         f);                                                                    \
   } // namespace xpu
 
+void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      ScalarType::Half,
+      ScalarType::BFloat16,
+      self.scalar_type(),
+      "cumsum_xpu",
+      [&]() {
+        scalar_t init = 0;
+        scan<INCLUSIVE_TYPE, const scalar_t, scalar_t>(
+            result, self, dim, init, std::plus<scalar_t>());
+      });
+}
+
 template <typename scalar_t, typename F>
 void jagged_dense_elementwise_jagged_output_opt_(
     const Tensor& x_values,
@@ -1539,3 +1554,4 @@ void permute_2D_data_kernel_xpu(
 } // namespace xpu
 } // namespace native
 } // namespace at
+

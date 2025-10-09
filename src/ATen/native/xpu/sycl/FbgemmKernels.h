@@ -295,26 +295,26 @@ void fh(
   v_out = f(x, y0, y1);
 }
 
-void dense_to_jagged_forward_xpu_kernel(
+TORCH_XPU_API void dense_to_jagged_forward_xpu_kernel(
     const Tensor& x_values,
     const std::vector<Tensor>& x_offsets,
     const Tensor& y,
     const Tensor& output_values);
 
-void jagged_to_padded_dense_forward_xpu_kernel(
+TORCH_XPU_API void jagged_to_padded_dense_forward_xpu_kernel(
     const Tensor& x_values,
     const std::vector<Tensor>& x_offsets,
     const Tensor& y,
     const Tensor& output,
     const double padding_value = 0.0);
 
-void jagged_dense_elementwise_add_jagged_output_fwd_xpu_kn(
+TORCH_XPU_API void jagged_dense_elementwise_add_jagged_output_fwd_xpu_kn(
     const Tensor& x_values,
     const std::vector<Tensor>& offsets,
     const Tensor& dense,
     const Tensor& output_values);
 
-void reorder_batched_ad_lengths_xpu_kernel(
+TORCH_XPU_API void reorder_batched_ad_lengths_xpu_kernel(
     const Tensor& cat_ad_lengths,
     const Tensor& batch_offsets,
     Tensor& reordered_cat_ad_lengths,
@@ -322,7 +322,12 @@ void reorder_batched_ad_lengths_xpu_kernel(
     const bool broadcast_lengths,
     const int32_t grid_size);
 
-void reorder_batched_ad_indices_xpu_kernel(
+TORCH_XPU_API void cumsum_kernel(
+    const Tensor& result,
+    const Tensor& self,
+    int64_t dim);
+
+TORCH_XPU_API void reorder_batched_ad_indices_xpu_kernel(
     const at::Tensor& cat_ad_offsets,
     const at::Tensor& cat_ad_indices,
     const at::Tensor& reordered_cat_ad_offsets,
@@ -333,14 +338,14 @@ void reorder_batched_ad_indices_xpu_kernel(
     const int64_t T,
     const bool broadcast_indices = false);
 
-void permute_2D_lengths_kernel_xpu(
+TORCH_XPU_API void permute_2D_lengths_kernel_xpu(
     int32_t T,
     int32_t B,
     const at::Tensor& lengths_contig,
     const at::Tensor& permute_contig,
     at::Tensor& permuted_lengths);
 
-void permute_2D_data_kernel_xpu(
+TORCH_XPU_API void permute_2D_data_kernel_xpu(
     int32_t permuted_indices_size,
     int32_t T,
     int32_t B,
@@ -356,3 +361,4 @@ void permute_2D_data_kernel_xpu(
 } // namespace xpu
 } // namespace native
 } // namespace at
+
