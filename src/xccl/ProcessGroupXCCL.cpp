@@ -352,6 +352,11 @@ const std::string& ProcessGroupXCCL::logPrefix() const {
   return logPrefix_;
 }
 
+const int& ProcessGroupXCCL::globalRank() const {
+  static int globalRank = rank_;
+  return globalRank;
+}
+
 ProcessGroupXCCL::ProcessGroupXCCL(
     c10::intrusive_ptr<Store> store,
     int rank,
@@ -379,7 +384,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
-            << "size: " << size << ", global rank: " << rank_
+            << "size: " << size << ", global rank: " << globalRank()
             << ", USE_HIGH_PRIORITY_STREAM: "
             << options_->is_high_priority_stream
             << ", PG Name: " << options_->group_name;
@@ -410,7 +415,7 @@ bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
   if (traceBufferSize_ > 0) {
     // TODO: dump_xccl_trace
     auto xcclTrace = dump_xccl_trace(true, includeStackTrace, false);
-    DebugInfoWriter& writer = DebugInfoWriter::getWriter(rank_);
+    DebugInfoWriter& writer = DebugInfoWriter::getWriter(globalRank());
     LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
               << writer.getWriterTarget();
     writer.write(xcclTrace);
@@ -454,7 +459,8 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     bool isP2P,
     const char* profilingTitle,
     const std::vector<at::Tensor>& inputs,
-    const std::vector<at::Tensor>& outputs) {
+    const std::vector<at::Tensor>& outputs,
+    bool record) {
   auto r = c10::make_intrusive<ProcessGroupXCCL::WorkXCCL>(
       device,
       rank,
@@ -465,20 +471,22 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
                                 : std::nullopt);
 
-  r->trace_id_ = FlightRecorderXCCL::get()->record(
-      local_id_,
-      std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-      seqCollective_,
-      seqP2P_,
-      op_id_,
-      profilingTitle ? profilingTitle : "",
-      inputs,
-      outputs,
-      nullptr,
-      r->xcclEndEvent_.get(),
-      options_->timeout,
-      pgStatus_,
-      isP2P);
+  if (record) {
+    r->trace_id_ = FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle ? profilingTitle : "",
+        inputs,
+        outputs,
+        nullptr,
+        r->xcclEndEvent_.get(),
+        options_->timeout,
+        pgStatus_,
+        isP2P);
+  }
   return r;
 }
 
@@ -659,16 +667,19 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     const char* profilingTitle,
     bool nanCheck) {
   nanCheck &= enableNanCheck_;
-  seqCollective_++;
   auto device = inputs[0].device();
   const auto key = std::to_string(device.index());
   auto comm = getXCCLComm(key, device, opType);
+
+  if (!coalescing_state_) {
+    seqCollective_++;
+  }
+  op_id_++;
 
   if (coalescing_state_ & CoalActive) {
     if ((coalescing_state_ & CoalColl) == 0) {
       seqCollective_++;
     }
-    op_id_++;
     coalescing_state_ |= CoalColl;
     if (coalescedDevice_.index() < 0) {
       coalescedDevice_ = device;
@@ -709,8 +720,15 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   }
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
-  work =
-      initWork(device, rank_, opType, false, profilingTitle, inputs, outputs);
+  work = initWork(
+      device,
+      rank_,
+      opType,
+      false,
+      profilingTitle,
+      inputs,
+      outputs,
+      !coalescing_state_);
   if (coalescing_state_) {
     FlightRecorderXCCL::get()->record(
         local_id_,
@@ -2021,7 +2039,7 @@ c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
     return *usedDeviceIdxs_.begin();
   }
   int devIdx =
-      static_cast<int16_t>(rank_ % at::detail::getXPUHooks().getNumGPUs());
+      static_cast<int16_t>(globalRank() % at::detail::getXPUHooks().getNumGPUs());
   LOG(WARNING)
       << logPrefix()
       << c10::str(
