@@ -5,7 +5,6 @@ reference_dir="$2"
 rm -rf /tmp/tmp-*.txt
 
 function get_acc_details() {
-    accuracy_regression=0
     echo -e "#### accuracy\n\n<table><thead>
         <tr>
             <th rowspan=2> Suite </th><th rowspan=2> Model </th>
@@ -92,9 +91,8 @@ function get_acc_details() {
 }
 
 # Accuracy summary
-echo > accuracy.regression.html
-echo > accuracy.summary.html
-echo > accuracy.details.html
+rm -rf accuracy.*.html
+accuracy_regression=0
 accuracy=$(find "${results_dir}" -name "*_xpu_accuracy.csv" |wc -l)
 if [ "${accuracy}" -gt 0 ];then
     cat > accuracy.summary.html << EOF
@@ -157,9 +155,8 @@ EOF
 fi
 
 # Performance summary
-echo > performance.regression.html
-echo > performance.summary.html
-echo > performance.details.html
+rm -rf performance.*.html
+performance_regression=0
 performance=$(find "${results_dir}" -name "*_xpu_performance.csv" |wc -l)
 if [ "${performance}" -gt 0 ];then
     if [ "${IS_PR}" == "1" ];then
@@ -167,6 +164,10 @@ if [ "${performance}" -gt 0 ];then
     else
         python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
     fi
+    if [ -e performance.regression.html ];then
+        performance_regression=1
+    fi
+    # fetch best performance value
     cp ${reference_dir}/best.csv ${results_dir}/best.csv || true
     python "$(dirname "$0")/calculate_best_perf.py" \
         --new ${results_dir} \
@@ -188,13 +189,17 @@ cat > ${summary_file} << EOF
 \$\${\\color{orange}Orange}\$\$: the warning cases
 Empty means the cases NOT run
 
-
-### Highlight regressions
-
-$(cat accuracy.regression.html)
-
-$(cat performance.regression.html)
-
+$(
+    if ((accuracy_regression + performance_regression > 0));then
+        echo -e "\n### Highlight regressions\n"
+        if (( accuracy_regression > 0 ));then
+            cat accuracy.regression.html
+        fi
+        if (( performance_regression > 0 ));then
+            cat performance.regression.html
+        fi
+    fi
+)
 
 ### Summary
 
