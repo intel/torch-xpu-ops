@@ -68,7 +68,10 @@ jobs:
           exit_label=0
           e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
           if [ -f "${e2e_summary_csv}" ];then
-            bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
+            bash ./.github/scripts/e2e_summary.sh ./target ./baseline
+            if [ -e e2e-test-result.html ];then
+              cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
+            fi
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
