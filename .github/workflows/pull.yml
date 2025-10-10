@@ -119,7 +119,6 @@ jobs:
     with:
       runner: pvc_rolling
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      runner: PVC-7358
 
   linux-ut:
     needs: [linux-build]
