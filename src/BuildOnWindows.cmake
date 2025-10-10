@@ -34,6 +34,7 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
+    target_link_libraries(${sycl_lib} PUBLIC torch_xpu)
     target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
