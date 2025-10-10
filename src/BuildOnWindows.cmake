@@ -8,7 +8,7 @@ macro(setup_common_libraries)
     torch_xpu_ops
     STATIC
     ${ATen_XPU_CPP_SRCS})
-  set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
+  set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB "torch_xpu_ops_aten.dll")
   target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
 
   add_library(
@@ -25,6 +25,7 @@ macro(setup_common_libraries)
 endmacro()
 
 if(BUILD_SEPARATE_OPS)
+  message("!!!!! BUILD_SEPARATE_OPS: ${BUILD_SEPARATE_OPS} - 1")
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
@@ -44,6 +45,7 @@ if(BUILD_SEPARATE_OPS)
 # Working with the compilers which don't support device code compression, we have to split kernels
 # into multiple libraries to meet the bin size limitation.
 elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250004 OR ICX_DATE LESS 20241205)
+  message("!!!!! BUILD_SEPARATE_OPS: ${BUILD_SEPARATE_OPS} - 2")
   setup_common_libraries()
   # Split SYCL kernels into 2 libraries as categories 1) Unary+Binary 2) Others.
   set(ATen_XPU_SYCL_BINARY_SRCS)
@@ -242,6 +244,7 @@ elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250004 OR ICX_DATE
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_aten)
 else()
+  message("!!!!! BUILD_SEPARATE_OPS: ${BUILD_SEPARATE_OPS} - 3")
   # On Windows, it is not possible to combine all obj files into one library
   # because the obj files of kernels compiled on Windows are much larger than
   # those on Linux. If they are combined into one, the library size will exceed
