@@ -12,10 +12,8 @@
 
 #define XPU_KERNEL_LOOP(item, i, n) XPU_KERNEL_LOOP_TYPE(item, i, n, int)
 
-// Use 1024 threads per block, which requires cuda sm_2x or above
 constexpr int SYCL_NUM_THREADS = 1024;
 
-// CUDA: number of blocks for threads.
 inline int GET_GROUPS(
     const int64_t N,
     const int64_t max_threads_per_group = SYCL_NUM_THREADS) {
