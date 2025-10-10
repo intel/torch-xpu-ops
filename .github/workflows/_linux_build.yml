@@ -10,11 +10,11 @@ on:
         description: Runner label
       pytorch:
         type: string
-        default: 'https://github.com/daisyden/pytorch.git@distributed_2.9'
+        default: 'https://github.com/daisyden/pytorch.git@distributed_2.10'
         description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'daisyden/distributed_2.9'
+        default: 'daisyden/distributed_2.10'
         description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
