@@ -130,10 +130,10 @@ runs:
           sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            while read line
+            jq -r '.torchbench[]' ../torch-xpu-ops/.github/ci_expected_accuracy/models_list.json |while read line
             do
               python install.py $(echo $line |awk -F, '{printf $1}')
-            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+            done
           else
             python install.py --continue_on_fail
           fi
