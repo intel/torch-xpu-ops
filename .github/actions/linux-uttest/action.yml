@@ -77,7 +77,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
-        find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+        find op_ut_with_skip_nn op_ut_with_skip_quantization/core op_ut_with_all_functorch -type f -exec sh -c '
             dir_path=$(dirname "$1");
             case "$dir_path" in
                 *"op_ut_with_skip_quantization/core"*)
@@ -90,6 +90,7 @@ runs:
         ls -al op_ut_with_skip_nn op_ut_with_skip_quantization/core
         cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
         cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+        cp op_ut_with_all_functorch/*.xml ${{ github.workspace }}/ut_log
         # Cases run with a on-demand white list, since some suites are too
         # slow to go through all operators on CPU. So add cases on-demand
         # when XPU implementatoin is done.
@@ -169,13 +170,11 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: xpu_distributed
-      shell: bash -xeu -o pipefail {0}
+      shell: timeout 36000 bash -xeu -o pipefail {0}
       if: ${{ inputs.ut_name == 'xpu_distributed' }}
       run: |
         xpu-smi topology -m
         mkdir -p ut_log/xpu_distributed
-        pip install pytest pytest-timeout xmlrunner unittest-xml-reporting zstandard transformers
-        cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/ut_result_check.sh ut_log/xpu_distributed/
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
         if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
