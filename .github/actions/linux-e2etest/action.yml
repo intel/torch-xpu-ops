@@ -35,7 +35,7 @@ runs:
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
-        rm -rf inductor_log
+        rm -rf inductor_log torch
         # check param
         contains() {
           local pattern="$1"

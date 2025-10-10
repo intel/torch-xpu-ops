@@ -67,7 +67,7 @@ for xpu_file in xpu_files:
             xpu_names = config.get("timm_models")
         elif 'torchbench' in xpu_file and config.get("torchbench"):
             xpu_names = config.get("torchbench")
-    refer_file = re.sub(args.target, args.baseline + "/", xpu_file, flags=re.IGNORECASE)
+    refer_file = re.sub(args.target, args.baseline + "/", xpu_file, flags=re.IGNORECASE, count=1)
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
         refer_names = [row["name"] for index, row in refer_data.iterrows()]
@@ -103,7 +103,7 @@ if not args.pr:
     for refer_file in refer_files:
         refer_data = pd.read_csv(refer_file)
         refer_names = refer_data["name"].tolist()
-        xpu_file = re.sub(args.baseline, args.target + "/", refer_file, flags=re.IGNORECASE)
+        xpu_file = re.sub(args.baseline, args.target + "/", refer_file, flags=re.IGNORECASE, count=1)
         if not os.path.isfile(xpu_file):
             names = set(refer_names)
             names = sorted(names)
@@ -117,17 +117,18 @@ output_data = pd.DataFrame(output_data, columns=output_header)
 output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
 
 # summary
-geomean_list = {"Category": "Geomean"}
-for column_name in ["Inductor vs. Eager [Target]", "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]:
+geomean_sum = {"all": [], "huggingface": [], "timm_models": [], "torchbench": []}
+for column_name in ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]:
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
     if len(data) > 0:
-        geomean_list[column_name + " | all"] = geometric_mean(data)
+        geomean_sum["all"].append(geometric_mean(data))
     for model_name in ["huggingface", "timm_models", "torchbench"]:
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
         if len(data) > 0:
-            geomean_list[column_name + " | " + model_name] = geometric_mean(data)
-output_sum = pd.DataFrame.from_dict([geomean_list]).T
-output = output_sum.to_html(header=False)
+            geomean_sum[model_name].append(geometric_mean(data))
+geomean_sum = {k: v for k, v in geomean_sum.items() if v}
+output_sum = pd.DataFrame(geomean_sum, index=["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]).T
+output = output_sum.to_html(header=True)
 with open('performance.summary.html', 'w', encoding='utf-8') as f:
     f.write("\n\n#### performance\n\n" + output)
 
