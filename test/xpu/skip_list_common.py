@@ -24,6 +24,7 @@ skip_dict = {
         # This case is marked as skip but XPU failed. However, CUDA and XPU throw the same runtime error.
         "test_out_histc_xpu_float32",
         # Data type is not supported in oneDNN!
+        # https://github.com/intel/torch-xpu-ops/issues/1896
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
         "test_dtypes_nn_functional_conv3d_xpu",
@@ -701,6 +702,8 @@ skip_dict = {
         "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
     ),
     "test_transformers_xpu.py": (
+        # Efficient attention is not supported.
+        "test_mem_eff_attention_large_seq_len_uniform_attention_xpu",
         # AssertionError("Torch not compiled with CUDA enabled")
         "test_mem_eff_attention_fail_with_batch_size_geq_65536",
         # https://github.com/intel/torch-xpu-ops/issues/761
@@ -1410,6 +1413,7 @@ skip_dict = {
         "test_scaled_gemm_tunableop_xpu_float8_e5m2fnuz",
         # CUDA bias cases added in latest PyTorch
         # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
+        # https://github.com/intel/torch-xpu-ops/issues/2066
         "test_matmul_check_entries_tunableop_xpu_float16",
         "test_minimum_tuning_iteration_tunableop_xpu_float16",
         "test_validator_tunableop_rocm_xpu_float32",
@@ -2962,8 +2966,6 @@ skip_dict = {
         "test_meta_outplace_vdot_xpu_complex",
         # Unexpected success:
         "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
-        # New added case in 2.7
-        "test_nonzero_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/1569
         # RuntimeError: output 0: meta disagrees with real impl
         "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
