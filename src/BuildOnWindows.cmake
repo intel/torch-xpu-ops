@@ -8,8 +8,7 @@ macro(setup_common_libraries)
     torch_xpu_ops
     STATIC
     ${ATen_XPU_CPP_SRCS})
-  set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB "torch_xpu_ops_aten.dll")
-  target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
+
 
   add_library(
     torch_xpu_ops_aten
@@ -35,6 +34,7 @@ if(BUILD_SEPARATE_OPS)
       SHARED
       SYCL_SOURCES ${sycl_src})
     target_link_libraries(${sycl_lib} PUBLIC torch_xpu)
+    target_link_libraries(${sycl_lib} PUBLIC torch_xpu_ops)
     target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
