@@ -71,32 +71,24 @@ T inline group_x_scan_by_uds_for_loop_scan(
     glb_str_off_1 = glb1;
   } else {
     glb_ldr_logical_off_0 = glb0;
-    glb_ldr_off_0 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_0,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_0 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_0, cfg.input_);
 
     glb_ldr_logical_off_1 = glb1;
-    glb_ldr_off_1 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_1,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_1 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_1, cfg.input_);
 
     glb_str_logical_off_0 = glb0;
-    glb_str_off_0 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_0,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_0 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_0, cfg.output_);
 
     glb_str_logical_off_1 = glb1;
-    glb_str_off_1 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_1,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_1 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_1, cfg.output_);
   }
   // TODO: opti for bank conflict elemination
   // Read data from global memory to shared local memory
@@ -204,44 +196,32 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
     glb_idx_off_1 = glb1;
   } else {
     glb_ldr_logical_off_0 = glb0;
-    glb_ldr_off_0 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_0,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_0 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_0, cfg.input_);
 
     glb_ldr_logical_off_1 = glb1;
-    glb_ldr_off_1 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_1,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_1 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_1, cfg.input_);
 
     glb_str_logical_off_0 = glb0;
-    glb_str_off_0 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_0,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_0 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_0, cfg.output_);
 
     glb_str_logical_off_1 = glb1;
-    glb_str_off_1 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_1,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_1 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_1, cfg.output_);
 
-    glb_idx_off_0 = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-        glb0,
-        cfg.indices_,
-        IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_idx_off_0 =
+        IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+            glb0, cfg.indices_);
 
-    glb_idx_off_1 = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-        glb1,
-        cfg.indices_,
-        IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_idx_off_1 =
+        IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+            glb1, cfg.indices_);
   }
   // TODO: opti for bank conflict elemination
   // Read data from global memory to shared local memory
@@ -828,22 +808,15 @@ class SegmentScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       glb_str_off = glb_str_logical_off;
       glb_str_off_0 = glb_ldr_logical_off;
     } else {
-      glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-          glb_ldr_logical_off,
-          cfg_.iinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
-      glb_str_off = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-          glb_str_logical_off,
-          cfg_.oinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+      glb_ldr_off =
+          IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.iinfo_);
+      glb_str_off =
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_str_logical_off, cfg_.oinfo_);
       glb_str_off_0 =
-          IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-              glb_ldr_logical_off,
-              cfg_.oinfo_,
-              IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-                  NON_STRICT_CONTIGUOUS);
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.oinfo_);
     }
     T value = cfg_.init_;
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -941,33 +914,21 @@ class SegmentScanWithIndicesKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       glb_idx_off = glb_idx_logical_off;
       glb_idx_off_0 = glb_ldr_logical_off;
     } else {
-      glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-          glb_ldr_logical_off,
-          cfg_.iinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
-      glb_str_off = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-          glb_str_logical_off,
-          cfg_.oinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+      glb_ldr_off =
+          IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.iinfo_);
+      glb_str_off =
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_str_logical_off, cfg_.oinfo_);
       glb_str_off_0 =
-          IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-              glb_ldr_logical_off,
-              cfg_.oinfo_,
-              IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-                  NON_STRICT_CONTIGUOUS);
-      glb_idx_off = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-          glb_idx_logical_off,
-          cfg_.idxinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.oinfo_);
+      glb_idx_off =
+          IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+              glb_idx_logical_off, cfg_.idxinfo_);
       glb_idx_off_0 =
-          IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-              glb_ldr_logical_off,
-              cfg_.oinfo_,
-              IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-                  NON_STRICT_CONTIGUOUS);
+          IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.oinfo_);
     }
     T value = cfg_.init_;
     IndicesT idx = pi;
