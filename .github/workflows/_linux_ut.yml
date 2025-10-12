@@ -40,7 +40,7 @@ env:
 jobs:
   runner:
     runs-on: ${{ inputs.runner }}
-    name: get-runner 
+    name: get-runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
