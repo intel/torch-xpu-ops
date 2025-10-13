@@ -2,6 +2,7 @@
 import torch
 from torch.testing._internal.common_utils import TestCase
 
+
 class TestTorchMethod(TestCase):
     # Define float8 dtypes
     FLOAT8_DTYPES = (
@@ -28,8 +29,8 @@ class TestTorchMethod(TestCase):
 
         # Handle boolean input
         if dtype == torch.bool:
-             x1 = x1.bool()
-             x2 = x2.bool()
+            x1 = x1.bool()
+            x2 = x2.bool()
 
         # Determine the golden reference tensor on CPU
         if dtype in self.FLOAT8_DTYPES:
@@ -55,9 +56,9 @@ class TestTorchMethod(TestCase):
         # For comparison ops, the output is bool, which doesn't support zero_().
         # We must create a new out tensor.
         if y_xpu.dtype != torch.bool:
-             y_xpu.zero_()
+            y_xpu.zero_()
         else:
-             y_xpu = torch.empty_like(y_xpu, dtype=torch.bool)
+            y_xpu = torch.empty_like(y_xpu, dtype=torch.bool)
 
         fn(x1_xpu, x2_xpu, out=y_xpu)
         self.assertEqual(y_xpu.cpu(), y_ref)
@@ -67,7 +68,7 @@ class TestTorchMethod(TestCase):
         x2 = 2.0
 
         if dtype == torch.bool:
-             x1 = x1.bool()
+            x1 = x1.bool()
 
         # Determine the golden reference tensor on CPU
         if dtype in self.FLOAT8_DTYPES:
@@ -75,7 +76,7 @@ class TestTorchMethod(TestCase):
         else:
             x1_ref = x1.cpu()
 
-        x2_ref = x2 # Scalar remains the same
+        x2_ref = x2  # Scalar remains the same
         y_ref = fn(x1_ref, x2_ref)
 
         # XPU operation
@@ -87,9 +88,9 @@ class TestTorchMethod(TestCase):
 
         # Test the version with out= argument
         if y_xpu.dtype != torch.bool:
-             y_xpu.zero_()
+            y_xpu.zero_()
         else:
-             y_xpu = torch.empty_like(y_xpu, dtype=torch.bool)
+            y_xpu = torch.empty_like(y_xpu, dtype=torch.bool)
 
         fn(x1_xpu, x2_xpu, out=y_xpu)
         self.assertEqual(y_xpu.cpu(), y_ref)
