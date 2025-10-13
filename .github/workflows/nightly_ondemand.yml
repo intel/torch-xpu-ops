@@ -57,4 +57,5 @@ jobs:
           clinfo --list
           id
           ip a
-          sudo chown 1000:1000 ${HOME} -R
+          sudo chown $(id -u):$(id -g) ${HOME} -R
+          sudo chmod 777 /tmp -R
