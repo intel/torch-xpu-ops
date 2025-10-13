@@ -58,4 +58,4 @@ jobs:
           id
           ip a
           sudo chown $(id -u):$(id -g) ${HOME} -R
-          sudo chmod 777 /tmp -R
+          sudo find /tmp |grep -vE "^/tm(p|p/)$" |xargs sudo rm -rf
