@@ -9,7 +9,7 @@ class TestTorchMethod(TestCase):
         torch.float8_e4m3fn,
         torch.float8_e4m3fnuz,
         torch.float8_e5m2fnuz,
-        torch.float8_e8m0fnu
+        torch.float8_e8m0fnu,
     )
     
     # Define the set of all dtypes to be tested
