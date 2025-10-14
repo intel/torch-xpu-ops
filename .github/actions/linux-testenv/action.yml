@@ -161,7 +161,6 @@ runs:
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
           pip uninstall -y fbgemm_gpu_nightly-cpu
-          pip install fbgemm_gpu --index-url https://download.pytorch.org/whl/test/cpu
           cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
