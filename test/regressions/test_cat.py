@@ -48,10 +48,6 @@ class TestTorchMethod(TestCase):
 
         self.assertEqual(res_cpu, res_xpu_f32_on_cpu, rtol=rtol, atol=atol)
 
-
-    # ----------------------------------------------------------------------
-    # New Focused Test: Simple Float8 torch.cat
-    # ----------------------------------------------------------------------
     def test_cat_float8_simple(self):
         """Test torch.cat correctness across float8 dtypes using simple tensors."""
         for dtype in self.FLOAT8_DTYPES:
