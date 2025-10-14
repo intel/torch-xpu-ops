@@ -27,7 +27,7 @@ set(SYCL_host_compiler "@SYCL_HOST_COMPILER@") # path
 set(generated_file_path "@generated_file_path@") # path
 set(generated_file_internal "@generated_file@") # path
 set(SYCL_executable "@SYCL_EXECUTABLE@") # path
-set(SYCL_flags @SYCL_FLAGS@) # list
+set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
 
@@ -47,10 +47,10 @@ foreach(dir ${SYCL_include_dirs})
   endif()
 endforeach()
 
-# Clean up list of compile definitions, add -D flags, and append to SYCL_flags
+# Clean up list of compile definitions, add -D flags, and append to SYCL_compile_flags
 list(REMOVE_DUPLICATES SYCL_compile_definitions)
 foreach(def ${SYCL_compile_definitions})
-  list(APPEND SYCL_flags "-D${def}")
+  list(APPEND SYCL_compile_flags "-D${def}")
 endforeach()
 
 # Choose host flags in FindSYCL.cmake
@@ -72,7 +72,7 @@ foreach(def ${SYCL_compile_definitions})
 endforeach()
 
 # string(APPEND SYCL_host_compiler_flags "\"")
-set(SYCL_host_compiler "-fsycl-host-compiler=${SYCL_host_compiler}")
+set(SYCL_host_compiler "-fsycl-host-compiler=g++-13")
 
 # SYCL_execute_process - Executes a command with optional command echo and status message.
 #
@@ -134,7 +134,7 @@ SYCL_execute_process(
   ${SYCL_include_args}
   ${SYCL_host_compiler}
   ${SYCL_host_compiler_flags}
-  ${SYCL_flags}
+  ${SYCL_compile_flags}
   )
 
 if(SYCL_result)
