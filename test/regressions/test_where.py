@@ -83,7 +83,6 @@ class TestTorchWhereMethod(TestCase):
         # Compare: res_ref vs res_xpu_out_to_compare
         self.assertEqual(res_ref, res_xpu_out_to_compare, rtol=rtol, atol=atol)
 
-
     def test_where(self):
         """Test torch.where() correctness across all supported dtypes, including float8."""
         for dtype in self.TEST_DTYPES:
