@@ -17,6 +17,12 @@ namespace {
 #define XCCL_HAS_AVG 1
 #endif // oneCCL version >= 2021.15
 
+#if defined(CCL_MAJOR_VERSION) &&  \
+    ((CCL_MAJOR_VERSION > 2021) || \
+     (CCL_MAJOR_VERSION == 2021) && (CCL_MINOR_VERSION >= 17))
+#define ENABLE_XCCL_PREMUL_SUM_SUPPORT
+#endif // oneCCL version >= 2021.17
+
 const std::map<c10d::ReduceOp, ccl::reduction> xcclOps = {
     {ReduceOp::MIN, ccl::reduction::min},
     {ReduceOp::MAX, ccl::reduction::max},
@@ -42,6 +48,33 @@ const std::map<at::ScalarType, ccl::datatype> xcclDatatypes = {
     {at::kFloat8_e4m3fn, ccl::datatype::uint8},
     {at::kFloat8_e4m3fnuz, ccl::datatype::uint8},
     {at::kFloat8_e5m2fnuz, ccl::datatype::uint8},
+};
+
+struct xcclRedOpRAII {
+  xcclRedOpRAII() = default;
+  xcclRedOpRAII(ccl::reduction op) : op_(op) {}
+  xcclRedOpRAII(ccl::reduction op, const xcclComm_t* comm)
+      : op_(op), comm_(comm), premul_sum_(true) {}
+  xcclRedOpRAII(const xcclRedOpRAII&) = delete;
+  xcclRedOpRAII& operator=(const xcclRedOpRAII&) = delete;
+  xcclRedOpRAII(xcclRedOpRAII&& tmp) noexcept : xcclRedOpRAII() {
+    std::swap(tmp.op_, this->op_);
+    std::swap(tmp.comm_, this->comm_);
+    std::swap(tmp.premul_sum_, this->premul_sum_);
+  }
+#if defined(ENABLE_XCCL_PREMUL_SUM_SUPPORT)
+  ~xcclRedOpRAII() {
+    if (premul_sum_) {
+      ccl::reduction_destroy(op_, *comm_);
+    }
+  }
+#endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
+  operator ccl::reduction() const {
+    return op_;
+  }
+  ccl::reduction op_{};
+  const xcclComm_t* comm_ = nullptr;
+  bool premul_sum_ = false;
 };
 
 bool computeLengthsAndCheckAndGetFlat(
@@ -152,7 +185,37 @@ ccl::datatype getXcclDataType(
   return it->second;
 }
 
-ccl::reduction getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
+#ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
+template <typename T, ccl::datatype dataType>
+xcclRedOpRAII unpackPreMulSum(
+    const ReduceOp& reduceOp,
+    const xcclComm_t& comm) {
+  const auto* preMulSupplement =
+      reinterpret_cast<XCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+  ccl::reduction preMulSum{};
+  bool has_tensor = preMulSupplement->tensor_factor.defined();
+  auto residence = has_tensor
+      ? ccl::scalar_residence_type::scalar_device
+      : ccl::scalar_residence_type::scalar_host_immediate;
+  const T* ptr_factor = has_tensor
+      ? preMulSupplement->tensor_factor.const_data_ptr<T>()
+      : nullptr;
+  T scalar_factor = T(preMulSupplement->double_factor);
+  ccl::reduction_create_pre_mul_sum(
+      &preMulSum,
+      /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
+      dataType,
+      residence,
+      comm);
+  return xcclRedOpRAII(preMulSum, &comm);
+}
+#endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
+
+xcclRedOpRAII getXcclReduceOp(
+    const ReduceOp& reduceOp,
+    at::Tensor& input,
+    const ccl::datatype& dataType,
+    xcclComm_t& comm) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
@@ -171,6 +234,30 @@ ccl::reduction getXcclReduceOp(const ReduceOp& reduceOp, at::Tensor& input) {
       return ccl::reduction::sum;
     }
 #endif
+    if (reduceOp == ReduceOp::PREMUL_SUM) {
+#ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
+      switch (dataType) {
+        case ccl::datatype::float16:
+          return unpackPreMulSum<at::Half, ccl::datatype::float16>(
+              reduceOp, comm);
+        case ccl::datatype::float32:
+          return unpackPreMulSum<float, ccl::datatype::float32>(reduceOp, comm);
+        case ccl::datatype::bfloat16:
+          return unpackPreMulSum<float, ccl::datatype::bfloat16>(
+              reduceOp, comm);
+        case ccl::datatype::float64:
+          return unpackPreMulSum<double, ccl::datatype::float64>(
+              reduceOp, comm);
+        default:
+          C10_THROW_ERROR(
+              TypeError,
+              "PreMulSum Data type must be half, float, bfloat16 or double");
+          return ccl::reduction{};
+      }
+#else
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+#endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
+    }
     return xcclOps.at(reduceOp);
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
@@ -1295,7 +1382,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclReduceOp =
+            getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
         ccl::allreduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1392,7 +1480,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclReduceOp =
+            getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
         ccl::allreduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1554,7 +1643,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           ccl::stream& xcclStream) {
         const int root = opts.rootRank + opts.rootTensor;
         const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        const auto xcclReduceOp =
+            getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
         ccl::reduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1598,7 +1688,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           ccl::stream& xcclStream) {
         const int root = opts.rootRank + opts.rootTensor;
         const auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        const auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        const auto xcclReduceOp =
+            getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
         ccl::reduce(
             input.data_ptr(),
             output.data_ptr(),
@@ -1858,7 +1949,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
           auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-          auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+          auto xcclReduceOp =
+              getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
           ccl::reduce_scatter(
               input.data_ptr(),
               output.data_ptr(),
@@ -1953,7 +2045,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclReduceOp =
+            getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
         ccl::reduce_scatter(
             input.data_ptr(),
             output.data_ptr(),
@@ -2012,7 +2105,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
         auto xcclDataType = getXcclDataType(input.scalar_type(), true);
-        auto xcclReduceOp = getXcclReduceOp(opts.reduceOp, input);
+        auto xcclReduceOp =
+            getXcclReduceOp(opts.reduceOp, input, xcclDataType, comm);
         ccl::reduce_scatter(
             input.data_ptr(),
             output.data_ptr(),
