@@ -23,7 +23,7 @@ class TestTorchWhereMethod(TestCase):
 
     def _test_where_fn(self, dtype):
         """Core function to test torch.where(condition, x, y) correctness."""
-        
+
         # 1. Input Tensors (x and y)
         x = torch.tensor([[10.0, 20.0], [30.0, 40.0]], dtype=dtype)
         y = torch.tensor([[-1.0, -2.0], [-3.0, -4.0]], dtype=dtype)
@@ -31,7 +31,7 @@ class TestTorchWhereMethod(TestCase):
         condition = torch.tensor([[True, False], [False, True]], dtype=torch.bool)
 
         # --- 1. CPU Reference Calculation and Tolerance Setting ---
-        
+
         if dtype in self.FLOAT8_DTYPES:
             # FP8: Use float32 as reference type for comparison
             x_ref = x.cpu().to(torch.float32)
@@ -45,16 +45,16 @@ class TestTorchWhereMethod(TestCase):
             rtol = 1e-5
             atol = 1e-5
 
-        condition_ref = condition.cpu() 
+        condition_ref = condition.cpu()
         res_ref = torch.where(condition_ref, x_ref, y_ref)
 
         # --- 2. XPU Operation (Default) ---
         x_xpu = x.xpu()
         y_xpu = y.xpu()
         condition_xpu = condition.xpu()
-        
+
         res_xpu = torch.where(condition_xpu, x_xpu, y_xpu)
-        
+
         # Prepare XPU result for comparison (must match res_ref dtype)
         if dtype in self.FLOAT8_DTYPES:
             # FP8: Convert XPU result to float32
@@ -67,11 +67,11 @@ class TestTorchWhereMethod(TestCase):
         self.assertEqual(res_ref, res_xpu_to_compare, rtol=rtol, atol=atol)
 
         # --- 3. Test the version with out= argument ---
-        
+
         # Create output tensor on XPU
         res_xpu_out = torch.empty_like(res_xpu, dtype=dtype).xpu()
         torch.where(condition_xpu, x_xpu, y_xpu, out=res_xpu_out)
-        
+
         # Prepare XPU 'out' result for comparison
         if dtype in self.FLOAT8_DTYPES:
             # FP8: Convert XPU result to float32
@@ -88,6 +88,6 @@ class TestTorchWhereMethod(TestCase):
         """Test torch.where() correctness across all supported dtypes, including float8."""
         for dtype in self.TEST_DTYPES:
             # Use string conversion for better subTest reporting
-            dtype_name = str(dtype).split('.')[-1]
+            dtype_name = str(dtype).split(".")[-1]
             with self.subTest(dtype=dtype_name):
                 self._test_where_fn(dtype)
