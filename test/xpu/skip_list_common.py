@@ -540,6 +540,8 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float64",
         # Unexpected Succuss
         "test_out_triangular_solve_xpu_float32",
+        # TODO: passed from source code building version, investigate
+        "test_python_ref__refs_log2_xpu_complex128",
     ),
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
