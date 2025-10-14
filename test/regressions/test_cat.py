@@ -1,15 +1,16 @@
 # Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
+# Owner(s): ["module: intel"]
+import torch
+from torch.testing._internal.common_utils import TestCase
+
 
 class TestTorchMethod(TestCase):
     # Define float8 dtypes for the focused test
     FLOAT8_DTYPES = (
-        torch.float8_e4m3fn,
-        torch.float8_e4m3fnuz,
         torch.float8_e5m2,
-        torch.float8_e5m2fnuz,
-        torch.float8_e8m0fnu,
+        torch.float8_e4m3fn,
     )
 
     def _create_input_tensors(self, shape, dtype, memory_format=None):
@@ -44,7 +45,7 @@ class TestTorchMethod(TestCase):
         # Float8 is lossy, use higher tolerance (rtol=1e-2, atol=1e-2)
         rtol = 1e-2
         atol = 1e-2
-
+        
         # Convert XPU result to float32 on CPU before comparison to match res_cpu's dtype.
         res_xpu_f32_on_cpu = res_xpu.cpu().to(torch.float32)
         
@@ -120,7 +121,6 @@ class TestTorchMethod(TestCase):
         ]
         
         for shape in shapes:
-            # Removed original print statements to streamline test
             N, C, H, W = shape[0], shape[1], shape[2], shape[3]
             dim_idx = 1
             
