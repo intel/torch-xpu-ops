@@ -24,6 +24,7 @@ skip_dict = {
         # This case is marked as skip but XPU failed. However, CUDA and XPU throw the same runtime error.
         "test_out_histc_xpu_float32",
         # Data type is not supported in oneDNN!
+        # https://github.com/intel/torch-xpu-ops/issues/1896
         "test_dtypes_nn_functional_conv1d_xpu",
         "test_dtypes_nn_functional_conv2d_xpu",
         "test_dtypes_nn_functional_conv3d_xpu",
@@ -614,25 +615,6 @@ skip_dict = {
         "test_python_ref_torch_fallback__refs_div_trunc_rounding_xpu_float64",
         # TODO: passed from source code building version, investigate
         "test_python_ref__refs_log2_xpu_complex128",
-        # The following dtypes did not work in backward but are listed by the OpInfo: {torch.bfloat16}.
-        "test_dtypes_fft_fft2_xpu",
-        "test_dtypes_fft_fft_xpu",
-        "test_dtypes_fft_fftn_xpu",
-        "test_dtypes_fft_hfft2_xpu",
-        "test_dtypes_fft_hfft_xpu",
-        "test_dtypes_fft_hfftn_xpu",
-        "test_dtypes_fft_ifft2_xpu",
-        "test_dtypes_fft_ifft_xpu",
-        "test_dtypes_fft_ifftn_xpu",
-        "test_dtypes_fft_ihfft2_xpu",
-        "test_dtypes_fft_ihfft_xpu",
-        "test_dtypes_fft_ihfftn_xpu",
-        "test_dtypes_fft_irfft2_xpu",
-        "test_dtypes_fft_irfft_xpu",
-        "test_dtypes_fft_irfftn_xpu",
-        "test_dtypes_fft_rfft2_xpu",
-        "test_dtypes_fft_rfft_xpu",
-        "test_dtypes_fft_rfftn_xpu",
     ),
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
@@ -701,6 +683,8 @@ skip_dict = {
         "test_embedding_bag_out_of_bounds_idx_padding_idx_0_mode_sum_xpu_float64_int64",
     ),
     "test_transformers_xpu.py": (
+        # Efficient attention is not supported.
+        "test_mem_eff_attention_large_seq_len_uniform_attention_xpu",
         # AssertionError("Torch not compiled with CUDA enabled")
         "test_mem_eff_attention_fail_with_batch_size_geq_65536",
         # https://github.com/intel/torch-xpu-ops/issues/761
@@ -1410,6 +1394,7 @@ skip_dict = {
         "test_scaled_gemm_tunableop_xpu_float8_e5m2fnuz",
         # CUDA bias cases added in latest PyTorch
         # AttributeError: module 'torch._C' has no attribute '_cuda_tunableop_enable'
+        # https://github.com/intel/torch-xpu-ops/issues/2066
         "test_matmul_check_entries_tunableop_xpu_float16",
         "test_minimum_tuning_iteration_tunableop_xpu_float16",
         "test_validator_tunableop_rocm_xpu_float32",
@@ -2962,8 +2947,6 @@ skip_dict = {
         "test_meta_outplace_vdot_xpu_complex",
         # Unexpected success:
         "test_dispatch_symbolic_meta_outplace_all_strides_narrow_copy_xpu_float32",
-        # New added case in 2.7
-        "test_nonzero_xpu",
         # https://github.com/intel/torch-xpu-ops/issues/1569
         # RuntimeError: output 0: meta disagrees with real impl
         "test_dispatch_meta_outplace_norm_fro_xpu_bfloat16",
