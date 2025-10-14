@@ -48,27 +48,25 @@ runs:
             return 1  # not match
           fi
         }
+        # Such as numactl_args=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
+        delimiter=";"
+        IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
+        instances=${#numactl_args_list[@]}
         run_with_shard() {
-          for i in $(seq 0 $[ ${xpu_num} - 1 ])
-          do
-            cpu_list="$(echo "${cpus_per_xpu} ${i}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-            if [ "${ZE_AFFINITY_MASK}" != "" ];then
-              xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
-              xpu_id=${xpu_list[$[ ${i} + 1 ]]}
-            else
-              xpu_id=${i}
-            fi
-            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${i} &
+          for ((i=0;i<instances;i++))
+          do  
+            ZE_AFFINITY_MASK=$(echo ${numactl_args_list[$i]} |sed 's/.*ZE_AFFINITY_MASK=//;s/ .*//')
+            ${numactl_args_list[$i]} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${ZE_AFFINITY_MASK} static ${instances} ${i} &
           done
         }
         run_one_by_one() {
           for i in $(seq 1 ${#models_list[@]})
           do
-            xpu_index=$(echo |awk -v i=$i -v x=${xpu_num} '{printf("%d", (i - 1) % x);}')
-            cpu_list="$(echo "${cpus_per_xpu} ${xpu_index}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
             model_name="${models_list[$[$i-1]]}"
-            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_index} static 1 0 ${model_name} &
-            if [ $(echo |awk -v i=$i -v x=${xpu_num} '{if(i%x==0){print "1"}else{print "0"}}') -eq 1 ];then
+            xpu_index=$(echo |awk -v i=$i -v x=${instances} '{printf("%d", (i - 1) % x);}')
+            ZE_AFFINITY_MASK=$(echo ${numactl_args_list[$xpu_index]} |sed 's/.*ZE_AFFINITY_MASK=//;s/ .*//')
+            ${numactl_args_list[$xpu_index]} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${ZE_AFFINITY_MASK} static 1 0 ${model_name} &
+            if [ $(echo |awk -v i=$i -v x=${instances} '{if(i%x==0){print "1"}else{print "0"}}') -eq 1 ];then
               wait
             fi
           done

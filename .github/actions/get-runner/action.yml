@@ -9,12 +9,12 @@ outputs:
     value: ${{ steps.runner.outputs.render_id }}
   hostname:
     value: ${{ steps.runner.outputs.hostname }}
-  xpu_num:
-    value: ${{ steps.runner.outputs.xpu_num }}
-  cpus_per_xpu:
-    value: ${{ steps.runner.outputs.cpus_per_xpu }}
+  ZE_AFFINITY_MASK:
+    value: ${{ steps.cpu-gpu.outputs.ZE_AFFINITY_MASK }}
+  numactl_args:
+    value: ${{ steps.cpu-gpu.outputs.numactl_args }}
   pytest_extra_args:
-    value: ${{ steps.runner.outputs.pytest_extra_args }}
+    value: ${{ steps.cpu-gpu.outputs.pytest_extra_args }}
 
 runs:
   using: composite
@@ -60,6 +60,7 @@ runs:
             echo "       The frequency governor is ${scaling_governor}."
         fi
     - name: Distribute CPUs and GPUs evently
+      id: cpu-gpu
       shell: bash -xe {0}
       run: |
         cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
@@ -86,7 +87,7 @@ runs:
           split(z, xpu_list, ",");
           if (length(xpu_list) > 1) {
             for (i=0;i<length(xpu_list);i++) {
-              printf(" OMP_NUM_THREADS=%d numactl -l -C %d-%d ;", cx, i*cx, (i+1)*cx-1);
+              printf(" ZE_AFFINITY_MASK=%d OMP_NUM_THREADS=%d numactl -l -C %d-%d ;", xpu_list[i+1], cx, i*cx, (i+1)*cx-1);
             }
           }else {
             printf(" numactl -l ");
@@ -104,19 +105,17 @@ runs:
             printf(" -n 1 ");
           }
         }')"
-        echo "xpu_num=${online_xpu_num}" |tee -a ${GITHUB_OUTPUT}
-        echo "cpus_per_xpu=${cpus_per_xpu}" |tee -a ${GITHUB_OUTPUT}
+        echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
+        echo "numactl_args=${numactl_args}" |tee -a ${GITHUB_OUTPUT}
         echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
     - name: Cleanup host
       shell: bash -xe {0}
       run: |
         # clean docker cache
         docker system prune -af || true
-        # clean workspace
-        ls -al
-        sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+        # fix potential permission issue
+        sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R
         cd ${RUNNER_WORKSPACE}/..
         if [ "${PWD}" != "/" ];then
-          ls -al
-          sudo chmod 777 -R . || true
+          sudo chown $(id -u):$(id -g) . -R || true
         fi
