@@ -64,7 +64,7 @@ runs:
       shell: bash -xe {0}
       run: |
         cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
-        total_xpu_num="$(ls /sys/class/drm/card*/device/enable |wc -l)"
+        total_xpu_num="$(ls /sys/class/drm/card*/device/enable |wc -l |awk '{if($1 > 8){n=8}else{n=$1};print n}')"
         online_xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
           if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
         }' |wc -l)"
