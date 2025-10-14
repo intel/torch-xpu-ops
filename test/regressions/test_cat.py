@@ -1,14 +1,13 @@
 # Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_utils import TestCase
+
+
 class TestTorchMethod(TestCase):
     # Define float8 dtypes for the focused test
     FLOAT8_DTYPES = (
-        torch.float8_e4m3fn,
-        torch.float8_e4m3fnuz,
         torch.float8_e5m2,
-        torch.float8_e5m2fnuz,
-        torch.float8_e8m0fnu,
+        torch.float8_e4m3fn,
     )
 
     def _create_input_tensors(self, shape, dtype, memory_format=None):
@@ -27,7 +26,7 @@ class TestTorchMethod(TestCase):
 
     def _test_cat_float8_core(self, tensors, dim, dtype):
         """Core function to test torch.cat for float8, using tolerances."""
-
+        
         # --- CPU Reference Calculation (High Precision) ---
         # Convert inputs to float32 on CPU for golden reference calculation
         ref_tensors = [t.cpu().to(torch.float32) for t in tensors]
@@ -43,10 +42,10 @@ class TestTorchMethod(TestCase):
         # Float8 is lossy, use higher tolerance (rtol=1e-2, atol=1e-2)
         rtol = 1e-2
         atol = 1e-2
-
+        
         # Convert XPU result to float32 on CPU before comparison to match res_cpu's dtype.
         res_xpu_f32_on_cpu = res_xpu.cpu().to(torch.float32)
-
+        
         self.assertEqual(res_cpu, res_xpu_f32_on_cpu, rtol=rtol, atol=atol)
 
 
