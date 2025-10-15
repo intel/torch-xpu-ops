@@ -18,8 +18,6 @@ parser.add_argument("--criteria", default=0.90, type=float, help="Criteria for c
 args = parser.parse_args()
 
 
-ci_config_file = os.environ.get('GITHUB_WORKSPACE') + "/.github/ci_expected_accuracy/models_list.json"
-
 def multiple_replace(text):
     REGEX_REPLACEMENTS = [
         (r".*inductor_", ""),
@@ -55,18 +53,11 @@ output_header = ["Category", "Model",
                  "Baseline eager", "Baseline inductor", "Inductor vs. Eager [Baseline]",
                  "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]
 output_data = []
-with open(ci_config_file) as f:
-    config = json.load(f)
 
 xpu_files = find_files("*_xpu_performance.csv", args.target)
 for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
     xpu_names = xpu_data["name"].tolist()
-    if args.pr:
-        if 'timm_models' in xpu_file and config.get("timm_models"):
-            xpu_names = config.get("timm_models")
-        elif 'torchbench' in xpu_file and config.get("torchbench"):
-            xpu_names = config.get("torchbench")
     refer_file = re.sub(args.target, args.baseline + "/", xpu_file, flags=re.IGNORECASE, count=1)
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
