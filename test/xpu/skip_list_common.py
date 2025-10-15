@@ -729,9 +729,6 @@ skip_dict = {
     "nn/test_dropout_xpu.py": None,
     "test_dataloader_xpu.py": None,
     "test_tensor_creation_ops_xpu.py": (
-        # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
-        "test_float_to_int_conversion_finite_xpu_int8",
-        "test_float_to_int_conversion_finite_xpu_int16",
         # Dispatch issue. It is a composite operator. But it is implemented by
         # DispatchStub. XPU doesn't support DispatchStub.
         "test_kaiser_window_xpu",
