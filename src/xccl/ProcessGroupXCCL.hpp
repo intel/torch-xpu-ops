@@ -22,6 +22,7 @@
 #include <torch/csrc/distributed/c10d/TraceUtils.h>
 #include <torch/csrc/distributed/c10d/logger.hpp>
 #include <xccl/ProcessGroupXCCLMonitor.hpp>
+#include <xccl/XPUEventCache.hpp>
 namespace c10d {
 
 static std::vector<std::string> TORCH_XCCL_HIGH_PRIORITY = {
@@ -73,7 +74,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         uint64_t seq,
         bool isP2P,
         const char* profilingTitle = nullptr,
-        const std::optional<std::vector<at::Tensor>>& inputs = std::nullopt);
+        const std::optional<std::vector<at::Tensor>>& inputs = std::nullopt,
+        bool enableTiming = false,
+        bool xpuEventCacheEnabled = false);
     WorkXCCL(const WorkXCCL& w);
     ~WorkXCCL() override;
 
@@ -86,6 +89,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     void synchronize() override;
 
     void synchronizeStream();
+
+    float getDuration() const override;
 
     bool wait(std::chrono::milliseconds timeout = kNoTimeout) override;
 
@@ -308,23 +313,23 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         /*nanCheck =*/false);
   }
 
-template <typename Fn>
-c10::intrusive_ptr<Work> ProcessGroupNCCL::pointToPoint(
-    at::Tensor& tensor,
-    Fn fn,
-    int peer,
-    OpType opType,
-    const char* profilingTitle) {
-  return pointToPoint(
-      tensor,
-      fn,
-      peer,
-      opType,
-      [](at::xpu::XPUStream&,
-         c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {},
-      [](at::xpu::XPUStream&) {},
-      profilingTitle);
-}
+  template <typename Fn>
+  c10::intrusive_ptr<Work> pointToPoint(
+      at::Tensor& tensor,
+      Fn fn,
+      int peer,
+      OpType opType,
+      const char* profilingTitle) {
+    return pointToPoint(
+        tensor,
+        fn,
+        peer,
+        opType,
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {},
+        [](at::xpu::XPUStream&) {},
+        profilingTitle);
+  }
 
   template <typename Fn, typename PreProcess, typename PostProcess>
   c10::intrusive_ptr<Work> pointToPoint(

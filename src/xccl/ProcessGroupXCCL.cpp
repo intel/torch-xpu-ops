@@ -267,11 +267,9 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
         : nullptr;
     xcclEndEvent_ = XPUEventCache::get(device.index())->create(enableTiming);
   } else {
-    xcclStartEvent_ = enableTiming
-        ? std::make_shared<at::xpu::XPUEvent>(xpuEventDefault)
-        : nullptr;
-    xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>(
-        enableTiming ? xpuEventDefault : xpuEventDisableTiming);
+    xcclStartEvent_ =
+        enableTiming ? std::make_shared<at::xpu::XPUEvent>(1) : nullptr;
+    xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>(enableTiming ? 1 : 0);
   }
   stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
 }
@@ -902,7 +900,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   auto cclstream = xcclStreamsMap_.at(key).second;
   syncStream(device, xcclEventsMap_[key], stream);
 
-  c10::intrusive_ptr<ProcessGroupNCCL::WorkXCCL> work;
+  c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   if (!coalescing_state_) {
     work = initWork(device, rank_, opType, true, profilingTitle, {tensor}, {});
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
@@ -944,9 +942,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     checkForNan(tensor, stream);
   }
   if (!coalescing_state_) {
-    // Start event should only be recorded before the ncclGroupStart()
     if (work->timingEnabled_) {
-      work->ncclStartEvent_->record(stream);
+      work->xcclStartEvent_->record(stream);
     }
 
     pre(stream, work);
@@ -956,10 +953,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   c10::xpu::XPUCachingAllocator::recordStream(
       tensor.storage().data_ptr(), stream);
 
-  xcclGroupStart();
+  ccl::group_start();
   fn(tensor, *comm, stream, cclstream, p2pTargetRank);
-  xcclGroupEnd();
-  
+  ccl::group_end();
+
   if (!coalescing_state_) {
     post(stream);
 
