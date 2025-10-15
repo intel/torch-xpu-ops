@@ -383,7 +383,9 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       local_id_(process_group_id++) {
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
+  xpuEventCacheEnabled_.store(getCvarBool(TORCH_XCCL_XPU_EVENT_CACHE, true));
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
+  enableTiming_.store(getCvarBool(TORCH_XCCL_ENABLE_TIMING, false));
 
   this->setGroupUid(options_->group_name);
   // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just
@@ -405,9 +407,11 @@ ProcessGroupXCCL::ProcessGroupXCCL(
 
   LOG(INFO) << logPrefix() << "ProcessGroupXCCL environments: "
             << "XCCL version: " << XcclVersion
+            << ", TORCH_XCCL_ENABLE_TIMING: " << enableTiming_.load()
             << ", TORCH_XCCL_BLOCKING_WAIT: " << blockingWait_
             << ", TORCH_DISTRIBUTED_DEBUG: " << torch_distributed_debug
-            << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_;
+            << ", TORCH_XCCL_NAN_CHECK: " << enableNanCheck_
+            << ", TORCH_XCCL_XPU_EVENT_CACHE: " << xpuEventCacheEnabled_;
 
   getGlobalRankStartAndStride(
       options_->global_ranks_in_group,
@@ -467,6 +471,10 @@ uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
   return seqCollective_;
 }
 
+void ProcessGroupXCCL::enableCollectivesTiming() {
+  enableTiming_.store(true);
+}
+
 void ProcessGroupXCCL::setEnableNanCheck(bool enableNanCheck) {
   enableNanCheck_ = enableNanCheck;
 }
@@ -488,7 +496,9 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       isP2P,
       profilingTitle,
       profilingTitle != nullptr ? std::optional<std::vector<at::Tensor>>(inputs)
-                                : std::nullopt);
+                                : std::nullopt,
+      enableTiming_.load(),
+      xpuEventCacheEnabled_.load());
 
   if (record) {
     r->trace_id_ = FlightRecorderXCCL::get()->record(

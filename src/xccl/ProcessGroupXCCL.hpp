@@ -36,6 +36,12 @@ static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = {
     "TORCH_XCCL_COORD_CHECK_MILSEC",
     "XCCL_COORD_CHECK_MILSEC"};
 
+static std::vector<std::string> TORCH_XCCL_XPU_EVENT_CACHE = {
+    "TORCH_XCCL_XPU_EVENT_CACHE"};
+
+static std::vector<std::string> TORCH_XCCL_ENABLE_TIMING = {
+    "TORCH_XCCL_ENABLE_TIMING"};
+
 using xcclComm_t = ccl::communicator;
 
 static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
@@ -446,6 +452,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   uint64_t getSequenceNumberForGroup() override;
 
+  void enableCollectivesTiming() override;
+
   std::string createLogPrefix() const;
 
   const std::string& logPrefix() const;
@@ -467,6 +475,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
+  std::atomic<bool> xpuEventCacheEnabled_;
   std::set<int> usedDeviceIdxs_;
   int coalescing_state_ = 0;
   at::Device coalescedDevice_ = at::Device("xpu");
@@ -474,6 +483,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
   bool blockingWait_ = false;
+  std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
