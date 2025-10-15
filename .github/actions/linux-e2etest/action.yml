@@ -77,7 +77,7 @@ runs:
           fi
           # set models to run
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            models_list_args="$(awk -F, '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
+            models_list_args="$(awk -F ",| " '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
           elif [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
             models_list_args=" -k ${MODEL_ONLY_NAME} "
           else
