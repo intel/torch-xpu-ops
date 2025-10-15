@@ -35,11 +35,13 @@ runs:
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
-        # set models list
-        # huggingface all and remove CamemBert
-        # timm_models all
-        # torchbench all
-        rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+        if [ "${{ github.event_name }}" != "pull_request" ];then
+          # set models list for nightly tests
+          # huggingface all and remove CamemBert
+          # timm_models all
+          # torchbench all
+          rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+        fi
         rm -rf inductor_log torch
         # check param
         contains() {
