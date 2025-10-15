@@ -20,7 +20,11 @@ LOG_NAME=inductor_${SUITE}_${DT}_${MODE}_${DEVICE}_${SCENARIO}
 Model_only_extra=""
 if [[ -n "$MODEL_ONLY" ]]; then
     echo "Testing model ${MODEL_ONLY}"
-    Model_only_extra="--only ${MODEL_ONLY}"
+    if [[ "${MODEL_ONLY}" == *" -k "* ]];then
+        Model_only_extra=" ${MODEL_ONLY} "
+    else
+        Model_only_extra="--only ${MODEL_ONLY}"
+    fi
 fi
 
 Cur_Ver=$(pip list | grep "^torch " | awk '{print $2}' | cut -d"+" -f 1)
