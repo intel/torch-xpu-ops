@@ -60,12 +60,6 @@ skip_dict = {
         "test_compare_cpu_linalg_lu_factor_ex_xpu_float32",
         "test_compare_cpu_linalg_lu_factor_xpu_float32",
         "test_compare_cpu_linalg_lu_xpu_float32",
-        # XPU hang. CUDA hang as well.
-        # https://github.com/pytorch/pytorch/issues/79528
-        "test_compare_cpu_special_hermite_polynomial_he_xpu_float32",
-        "test_compare_cpu_special_hermite_polynomial_h_xpu_float32",
-        "test_compare_cpu_special_laguerre_polynomial_l_xpu_float32",
-        "test_compare_cpu_special_legendre_polynomial_p_xpu_float32",
         # core dump
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # XFAIL of CUDA and XPU, unexpected success in fallback
@@ -487,9 +481,6 @@ skip_dict = {
     "nn/test_lazy_modules_xpu.py": None,
     "test_linalg_xpu.py": (
         # Summary:
-        # All linear algebra related ops are not supported for XPU.
-        # _convert_weight_to_int4pack not support
-        "_int4_mm_m_",
         # AssertionError: "the 'out' tensor was specified and requires gradients"
         "test_tensordot_out_kernel_errors_with_autograd_xpu_complex64",
         # NotImplementedError: The operator 'aten::cholesky_inverse.out' is not currently implemented for the XPU device.
