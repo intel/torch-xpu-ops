@@ -1,5 +1,5 @@
 #include <ATen/AccumulateType.h>
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 
@@ -40,18 +40,36 @@ void div_trunc_kernel(TensorIteratorBase& iter) {
     // optimization for floating-point types: if the second operand is a CPU
     // scalar, compute a * reciprocal(b). Note that this may lose one bit of
     // precision compared to computing the division.
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, dtype, "div_trunc_xpu", [&]() {
+    AT_DISPATCH_V2(
+        dtype,
+        "div_trunc_xpu",
+        AT_WRAP([&]() {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto inv_b = accscalar_t(1.0) / iter.scalar_value<accscalar_t>(2);
           iter.remove_operand(2);
           gpu_kernel(iter, DivTruncScalarFunctor<scalar_t, accscalar_t>(inv_b));
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16,
+        kFloat8_e5m2,
+        kFloat8_e4m3fn,
+        kFloat8_e5m2fnuz,
+        kFloat8_e4m3fnuz);
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, dtype, "div_trunc_xpu", [&]() {
+    AT_DISPATCH_V2(
+        dtype,
+        "div_trunc_xpu",
+        AT_WRAP([&]() {
           gpu_kernel_with_scalars(iter, DivTruncFunctor<scalar_t>());
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16,
+        kFloat8_e5m2,
+        kFloat8_e4m3fn,
+        kFloat8_e5m2fnuz,
+        kFloat8_e4m3fnuz);
   }
 }
 
