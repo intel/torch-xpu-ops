@@ -9,6 +9,7 @@ BlenderbotForCausalLM,32
 BlenderbotForConditionalGeneration,16
 BlenderbotSmallForCausalLM,256
 BlenderbotSmallForConditionalGeneration,128
+CamemBert,32
 DebertaV2ForMaskedLM,8
 DebertaV2ForQuestionAnswering,8
 DistilBertForMaskedLM,256
