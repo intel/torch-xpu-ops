@@ -1,20 +1,24 @@
 # To compare the performance diff
 # Usage:
-#   python perf_comparison.py --xpu /path/to/xpu/performance/result/dir --refer /path/to/reference/dir
+#   python perf_comparison.py --target /path/to/xpu/performance/result/dir --baseline /path/to/reference/dir
 
 import re
 import os
+import json
 import fnmatch
 import argparse
 import pandas as pd
 from statistics import geometric_mean
 
 parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--xpu", default=None, help="XPU performance result csv files dir")
-parser.add_argument("--refer", default=None, help="XPU refrerence result csv files dir")
+parser.add_argument("--target", default=None, help="XPU performance result csv files dir")
+parser.add_argument("--baseline", default=None, help="XPU refrerence result csv files dir")
 parser.add_argument("--pr", action="store_true", help="Only show results xpu has")
+parser.add_argument("--criteria", default=0.90, type=float, help="Criteria for comparison")
 args = parser.parse_args()
 
+
+ci_config_file = os.environ.get('GITHUB_WORKSPACE') + "/.github/ci_expected_accuracy/models_list.json"
 
 def multiple_replace(text):
     REGEX_REPLACEMENTS = [
@@ -33,22 +37,41 @@ def find_files(pattern, path):
                 result.append(os.path.join(root, name))
     return result
 
+def color_result(criteria, input):
+    if input == -1:
+        return input
+    elif input < criteria:
+        output = r"$${\color{red}" + f"{input}" + "}$$"
+        return output
+    elif input > 1 - criteria + 1:
+        output = r"$${\color{green}" + f"{input}" + "}$$"
+        return output
+    else:
+        return input
+
 # comparison result output
 output_header = ["Category", "Model",
                  "Target eager", "Target inductor", "Inductor vs. Eager [Target]",
                  "Baseline eager", "Baseline inductor", "Inductor vs. Eager [Baseline]",
                  "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]
 output_data = []
-xpu_files = find_files("*_xpu_performance.csv", args.xpu)
+with open(ci_config_file) as f:
+    config = json.load(f)
+
+xpu_files = find_files("*_xpu_performance.csv", args.target)
 for xpu_file in xpu_files:
     xpu_data = pd.read_csv(xpu_file)
-    xpu_names = [row["name"] for index, row in xpu_data.iterrows()]
-    refer_file = re.sub(args.xpu, args.refer + "/", xpu_file, flags=re.IGNORECASE)
+    xpu_names = xpu_data["name"].tolist()
+    if args.pr:
+        if 'timm_models' in xpu_file and config.get("timm_models"):
+            xpu_names = config.get("timm_models")
+        elif 'torchbench' in xpu_file and config.get("torchbench"):
+            xpu_names = config.get("torchbench")
+    refer_file = re.sub(args.target, args.baseline + "/", xpu_file, flags=re.IGNORECASE, count=1)
     if os.path.isfile(refer_file):
         refer_data= pd.read_csv(refer_file)
         refer_names = [row["name"] for index, row in refer_data.iterrows()]
-        names = xpu_names if args.pr else xpu_names + refer_names
-        names = set(names)
+        names = set(xpu_names)
         names = sorted(names)
         for name in names:
             # xpu info
@@ -64,6 +87,8 @@ for xpu_file in xpu_files:
             # xpu vs. refer
             xpu_vs_refer_eager = refer_eager_latency / xpu_eager_latency  if xpu_value is not None and refer_value is not None and xpu_eager_latency > 0 else 0 # higher is better
             xpu_vs_refer_inductor = float(refer_value["abs_latency"]) / xpu_value["abs_latency"] if xpu_value is not None and refer_value is not None and xpu_value["abs_latency"] > 0 else 0 # higher is better
+            eager_comparison = str(color_result(args.criteria, xpu_vs_refer_eager))
+            inductor_comparison = str(color_result(args.criteria, xpu_vs_refer_inductor))
             # output data
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, refer_eager_latency, refer_inductor_latency, refer_indcutor_vs_eager, xpu_vs_refer_eager, xpu_vs_refer_inductor])
     else:
@@ -74,11 +99,11 @@ for xpu_file in xpu_files:
             xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
 if not args.pr:
-    refer_files = find_files("*_xpu_performance.csv", args.refer)
+    refer_files = find_files("*_xpu_performance.csv", args.baseline)
     for refer_file in refer_files:
         refer_data = pd.read_csv(refer_file)
-        refer_names = [row["name"] for index, row in refer_data.iterrows()]
-        xpu_file = re.sub(args.refer, args.xpu + "/", refer_file, flags=re.IGNORECASE)
+        refer_names = refer_data["name"].tolist()
+        xpu_file = re.sub(args.baseline, args.target + "/", refer_file, flags=re.IGNORECASE, count=1)
         if not os.path.isfile(xpu_file):
             names = set(refer_names)
             names = sorted(names)
@@ -87,26 +112,38 @@ if not args.pr:
                 refer_eager_latency = refer_value["speedup"] * refer_value["abs_latency"]
                 output_data.append([multiple_replace(refer_file), name, -1, -1, -1, refer_eager_latency, refer_value["abs_latency"], refer_value["speedup"], -1, -1])
 
-# summary
+# result
 output_data = pd.DataFrame(output_data, columns=output_header)
-geomean_list = {"Category": "Geomean"}
-for column_name in ["Inductor vs. Eager [Target]", "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]:
+output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
+
+# summary
+geomean_sum = {"all": [], "huggingface": [], "timm_models": [], "torchbench": []}
+for column_name in ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]:
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
     if len(data) > 0:
-        geomean_list[column_name + " | all"] = geometric_mean(data)
+        geomean_sum["all"].append(geometric_mean(data))
     for model_name in ["huggingface", "timm_models", "torchbench"]:
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
         if len(data) > 0:
-            geomean_list[column_name + " | " + model_name] = geometric_mean(data)
+            geomean_sum[model_name].append(geometric_mean(data))
+geomean_sum = {k: v for k, v in geomean_sum.items() if v}
+output_sum = pd.DataFrame(geomean_sum, index=["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]).T
+output = output_sum.to_html(header=True)
+with open('performance.summary.html', 'w', encoding='utf-8') as f:
+    f.write("\n\n#### performance\n\n" + output)
 
-# get output
-output_sum = pd.DataFrame.from_dict([geomean_list]).T
-output = output_sum.to_html(header=False)
-print(output)
-output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
+# details
 output = output_data.to_html(index=False)
-print("\n", output)
+with open('performance.details.html', 'w', encoding='utf-8') as f:
+    f.write("\n\n#### performance\n\n" + output)
 
-# get comparison result
-criteria = 0.95
-comparison = output_data.loc[(output_data['Target vs. Baseline [Inductor]'] < criteria) | (output_data['Target vs. Baseline [Eager]'] < criteria)]
+# regression
+comparison = output_data.loc[
+    ((output_data['Target vs. Baseline [Inductor]'] < args.criteria) | (output_data['Target vs. Baseline [Eager]'] < args.criteria))
+    & (output_data['Baseline inductor'] > 0)
+    & (output_data['Target inductor'] >= 0)
+]
+if not comparison.empty:
+    output = comparison.to_html(index=False)
+    with open('performance.regression.html', 'w', encoding='utf-8') as f:
+        f.write("\n\n#### performance\n\n" + output)

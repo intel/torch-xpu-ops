@@ -35,15 +35,44 @@ runs:
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
+        rm -rf inductor_log torch
         # check param
-        function contains() {
-            contains_status="echo 'Start $2 ...'"
-            {
-              [[ $1 =~ (^|,)$2($|,) ]]
-            } || {
-              echo "[Warning] $2 is not suppotted type! Skipped!"
-              contains_status="continue"
-            }
+        contains() {
+          local pattern="$1"
+          local value="$2"
+          if [[ "$pattern" =~ (^|,)"$value"($|,) ]]; then
+            echo "Start $value ..."
+            return 0  # match
+          else
+            echo "[Warning] $value is not supported type! Skipped!"
+            return 1  # not match
+          fi
+        }
+        run_with_shard() {
+          for i in $(seq 0 $[ ${xpu_num} - 1 ])
+          do
+            cpu_list="$(echo "${cpus_per_xpu} ${i}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+            if [ "${ZE_AFFINITY_MASK}" != "" ];then
+              xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
+              xpu_id=${xpu_list[$[ ${i} + 1 ]]}
+            else
+              xpu_id=${i}
+            fi
+            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${i} &
+          done
+        }
+        run_one_by_one() {
+          for i in $(seq 1 ${#models_list[@]})
+          do
+            xpu_index=$(echo |awk -v i=$i -v x=${xpu_num} '{printf("%d", (i - 1) % x);}')
+            cpu_list="$(echo "${cpus_per_xpu} ${xpu_index}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
+            model_name="${models_list[$[$i-1]]}"
+            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_index} static 1 0 ${model_name} &
+            if [ $(echo |awk -v i=$i -v x=${xpu_num} '{if(i%x==0){print "1"}else{print "0"}}') -eq 1 ];then
+              wait
+            fi
+          done
+          wait
         }
         export OMP_NUM_THREADS=${cpus_per_xpu}
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
@@ -51,37 +80,33 @@ runs:
           if [ "${suite}" == "pt2e" ];then
             continue
           fi
-          contains "huggingface,timm_models,torchbench" $suite
-          $contains_status
+          if [ -z "${MODEL_ONLY_NAME:-}" ]; then
+            mapfile -t models_list < <(jq -r ".${suite}[]" ${{ github.workspace }}/.github/ci_expected_accuracy/models_list.json)
+          else
+            IFS=',' read -ra models_list <<< "${MODEL_ONLY_NAME}"
+          fi
+          if ! contains "huggingface,timm_models,torchbench" "$suite"; then
+            continue
+          fi
           for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
           do
-            contains "float32,bfloat16,float16,amp_bf16,amp_fp16" $dt
-            $contains_status
+            if ! contains "float32,bfloat16,float16,amp_bf16,amp_fp16" "$dt"; then
+              continue
+            fi
             for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
             do
-              contains "inference,training" $mode
-              $contains_status
+              if ! contains "inference,training" "$mode"; then
+                continue
+              fi
               for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
               do
-                contains "accuracy,performance" $scenario
-                $contains_status
-                if [ "${MODEL_ONLY_NAME}" == "" ];then
-                  for var in $(seq 0 $[ ${xpu_num} - 1 ])
-                  do
-                    cpu_list="$(echo "${cpus_per_xpu} ${var}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-                    if [ "${ZE_AFFINITY_MASK}" != "" ];then
-                      xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
-                      xpu_id=${xpu_list[$[ ${var} + 1 ]]}
-                    else
-                      xpu_id=${var}
-                    fi
-                    numactl --localalloc --physcpubind=${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${var} &
-                  done
+                if ! contains "accuracy,performance" "$scenario"; then
+                  continue
+                fi
+                if [ "${{ github.event_name }}" == "pull_request" ] && [ "${#models_list[@]}" -gt 0 ];then
+                  run_one_by_one
                 else
-                  for test_model in $(echo ${MODEL_ONLY_NAME} |sed 's/,/ /g')
-                  do
-                    numactl --localalloc bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu 0 static 1 0 ${test_model}
-                  done
+                  run_with_shard
                 fi
                 wait
                 # summarize pass rate

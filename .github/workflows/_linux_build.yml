@@ -31,6 +31,8 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -94,6 +96,7 @@ jobs:
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
+          export IS_XPU_CI=1
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'

@@ -50,6 +50,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -77,7 +78,7 @@ jobs:
     needs: runner
     timeout-minutes: 3600
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g

@@ -54,7 +54,7 @@ void error_handle(
     return;
   }
 
-  for (auto& i : ids) {
+  for (size_t i = 0; i < errs.size(); ++i) {
     try {
       std::rethrow_exception(errs[i]);
     } catch (const oneapi::mkl::lapack::exception& e) {

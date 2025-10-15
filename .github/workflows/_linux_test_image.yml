@@ -1,0 +1,73 @@
+name: Linux Image for Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.ci/docker/common/install_xpu.sh'
+      - '.ci/docker/ubuntu/Dockerfile'
+      - '.github/workflows/_linux_test_image.yml'
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        default: 'ubuntu-24.04'
+        description: Runner label
+      driver:
+        required: true
+        type: string
+        default: 'lts2'
+        description: Driver version, lts, lts2 or rolling
+      ubuntu:
+        required: true
+        type: string
+        default: '22.04'
+        description: Ubuntu version, 22.04 or 24.04
+      tag:
+        required: true
+        type: string
+        default: 'intelgpu/ubuntu-22.04-lts2:2523.31'
+        description: Whether push image to docker hub or not
+      push_to_hub:
+        type: boolean
+        default: false
+        description: Whether push image to docker hub or not
+
+permissions: read-all
+
+defaults:
+  run:
+    shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+jobs:
+  build-image:
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'ubuntu-24.04' }}
+    if: ${{ github.event.pull_request.draft == false }}
+    steps:
+      - name: Cleanup
+        run: |
+          if systemctl is-active --quiet docker; then
+            echo "Docker daemon is running...";
+          else
+            echo "Starting docker deamon..." && sudo sh -c "systemctl start docker";
+          fi
+          docker system prune -af || true
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Build image
+        run: |
+          cd .ci/docker
+          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }} \
+            --build-arg UBUNTU_VERSION=${{ inputs.ubuntu != '' && inputs.ubuntu || '22.04' }} \
+            --build-arg XPU_DRIVER_TYPE=${{ inputs.driver != '' && inputs.driver || 'lts2' }} \
+            -f ubuntu/Dockerfile
+          docker images
+      - name: Push image
+        if: ${{ inputs.push_to_hub }}
+        run: |
+          echo "$DOCKER_REGISTRY_AUTH_TOKEN" | docker login -u intelgpu --password-stdin
+          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }}
