@@ -493,8 +493,6 @@ void nll_loss_forward_kernel(
                         scalar_t,
                         index_t,
                         accscalar_t>;
-                int64_t local_size =
-                    syclMaxWorkGroupSize<NllLossForwardReduce2DKernel>();
                 NllLossForwardReduce2DKernel kfn(
                     output.mutable_data_ptr<scalar_t>(),
                     total_weight.mutable_data_ptr<scalar_t>(),
@@ -507,7 +505,7 @@ void nll_loss_forward_kernel(
                     input.size(1),
                     n_classes,
                     ignore_index,
-                    local_size);
+                    nthreads);
                 sycl_kernel_submit(
                     sycl::range<1>(nthreads),
                     sycl::range<1>(nthreads),
