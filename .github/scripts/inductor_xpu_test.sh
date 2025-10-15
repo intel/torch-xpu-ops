@@ -61,5 +61,5 @@ fi
 # ulimit -n 1048576
 ZE_AFFINITY_MASK=${CARD} \
     eval python benchmarks/dynamo/"${SUITE}".py --"${SCENARIO}" --"${Real_DT}" -d "${DEVICE}" -n10 "${DT_extra}" "${Mode_extra}" \
-    "${Shape_extra}" "${partition_flags}" "${Model_only_extra}" --backend=inductor --cold-start-latency --timeout=10800 \
+    "${Shape_extra}" "${partition_flags}" "${Model_only_extra}" --backend=inductor --cold-start-latency --timeout=10800 --disable-cudagraphs \
          --output="${LOG_DIR}"/"${LOG_NAME}".csv 2>&1 | tee -a "${LOG_DIR}"/"${LOG_NAME}"_card"${CARD}".log
