@@ -103,6 +103,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
    protected:
     at::Device device_;
+    std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     bool isBarrierOp_{false};
     bool blockingWait_{false};
@@ -117,6 +118,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
     std::shared_ptr<TensorShelf> stashed_for_allocator_safety_;
     c10::intrusive_ptr<at::ivalue::Future> future_;
+    bool timingEnabled_;
     friend class ProcessGroupXCCL;
   };
 
@@ -306,13 +308,33 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         /*nanCheck =*/false);
   }
 
-  template <typename Fn>
+template <typename Fn>
+c10::intrusive_ptr<Work> ProcessGroupNCCL::pointToPoint(
+    at::Tensor& tensor,
+    Fn fn,
+    int peer,
+    OpType opType,
+    const char* profilingTitle) {
+  return pointToPoint(
+      tensor,
+      fn,
+      peer,
+      opType,
+      [](at::xpu::XPUStream&,
+         c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {},
+      [](at::xpu::XPUStream&) {},
+      profilingTitle);
+}
+
+  template <typename Fn, typename PreProcess, typename PostProcess>
   c10::intrusive_ptr<Work> pointToPoint(
       at::Tensor& tensor,
       Fn fn,
       int peer,
       OpType opType,
-      const char* profilingTitle = nullptr);
+      PreProcess pre,
+      PostProcess post,
+      const char* profilingTitle);
 
   c10::intrusive_ptr<Work> allreduce_impl(
       at::Tensor& tensor,

@@ -252,25 +252,41 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     uint64_t seq,
     bool isP2P,
     const char* profilingTitle,
-    const std::optional<std::vector<at::Tensor>>& inputs)
+    const std::optional<std::vector<at::Tensor>>& inputs,
+    bool enableTiming,
+    bool xpuEventCacheEnabled)
     : Work(rank, opType, profilingTitle, inputs),
       device_(device),
       workStartTime_(std::chrono::steady_clock::now()),
       seq_(seq),
-      isP2P_(isP2P) {
-  xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>();
+      isP2P_(isP2P),
+      timingEnabled_(enableTiming) {
+  if (xpuEventCacheEnabled) {
+    xcclStartEvent_ = enableTiming
+        ? XPUEventCache::get(device.index())->create(enableTiming)
+        : nullptr;
+    xcclEndEvent_ = XPUEventCache::get(device.index())->create(enableTiming);
+  } else {
+    xcclStartEvent_ = enableTiming
+        ? std::make_shared<at::xpu::XPUEvent>(xpuEventDefault)
+        : nullptr;
+    xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>(
+        enableTiming ? xpuEventDefault : xpuEventDisableTiming);
+  }
   stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
 }
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
     : Work(w.rank_, w.opType_),
       device_(w.device_),
+      xcclStartEvent_(w.xcclStartEvent_),
       xcclEndEvent_(w.xcclEndEvent_),
       blockingWait_(w.blockingWait_),
       workStartTime_(w.workStartTime_),
       seq_(w.seq_),
       isP2P_(w.isP2P_),
-      stashed_for_allocator_safety_(w.stashed_for_allocator_safety_) {}
+      stashed_for_allocator_safety_(w.stashed_for_allocator_safety_),
+      timingEnabled_(w.timingEnabled_) {}
 
 ProcessGroupXCCL::WorkXCCL::~WorkXCCL() = default;
 
@@ -486,13 +502,24 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
         profilingTitle ? profilingTitle : "",
         inputs,
         outputs,
-        nullptr,
+        r->xcclStartEvent_.get(),
         r->xcclEndEvent_.get(),
         options_->timeout,
         pgStatus_,
         isP2P);
   }
   return r;
+}
+
+float ProcessGroupXCCL::WorkXCCL::getDuration() const {
+  TORCH_CHECK(timingEnabled_, "getDuration only works if timing was enabled");
+  TORCH_CHECK(
+      xcclStartEvent_,
+      "getDuration only works if xcclStartEvents_ is populated, true if timing enabled");
+  TORCH_CHECK(
+      xcclEndEvent_,
+      "getDuration only works if xcclEndEvents_ is populated, which should always be true");
+  return xcclStartEvent_->elapsed_time(*xcclEndEvent_);
 }
 
 std::shared_ptr<xcclComm_t> ProcessGroupXCCL::getXCCLComm(
@@ -643,6 +670,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
 
   work->stashed_for_allocator_safety_->stash(coalescedTensors_);
 
+  if (work->timingEnabled_) {
+    work->xcclStartEvent_->record(stream);
+  }
+
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
@@ -773,6 +804,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
 
   pre(stream, work);
 
+  if (work->timingEnabled_ && !coalescing_state_) {
+    work->xcclStartEvent_->record(stream);
+  }
+
   for (const auto i : c10::irange(inputs.size())) {
     fn(inputs[i], outputs[i], *comm, stream, *cclstream);
   }
@@ -810,12 +845,14 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   return asyncOp ? work : nullptr;
 }
 
-template <typename Fn>
+template <typename Fn, typename PreProcess, typename PostProcess>
 c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     at::Tensor& tensor,
     Fn fn,
     int peer,
     OpType opType,
+    PreProcess pre,
+    PostProcess post,
     const char* profilingTitle) {
   auto device = tensor.device();
   std::string key;
@@ -865,13 +902,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   auto cclstream = xcclStreamsMap_.at(key).second;
   syncStream(device, xcclEventsMap_[key], stream);
 
-  if (enableNanCheck_ && opType == OpType::SEND) {
-    checkForNan(tensor, stream);
-  }
-
+  c10::intrusive_ptr<ProcessGroupNCCL::WorkXCCL> work;
   if (!coalescing_state_) {
-    auto work =
-        initWork(device, rank_, opType, true, profilingTitle, {tensor}, {});
+    work = initWork(device, rank_, opType, true, profilingTitle, {tensor}, {});
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
@@ -884,37 +917,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         profilingTitle,
         {tensor},
         {tensor},
-        nullptr,
+        work->xcclStartEvent_.get(),
         work->xcclEndEvent_.get(),
         options_->timeout,
         pgStatus_,
         true);
 
-    c10::OptionalDeviceGuard gpuGuard(device);
-
-    c10::xpu::XPUCachingAllocator::recordStream(
-        tensor.storage().data_ptr(), stream);
-
-    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
-
-    work->xcclEndEvent_->record(stream);
-    work->blockingWait_ = blockingWait_;
-    std::vector<c10::Stream> streams = {stream.unwrap()};
-    c10::MultiStreamGuard streamGuard(streams);
-    std::vector<at::Device> devices{device};
-    work->future_ = c10::make_intrusive<at::ivalue::Future>(
-        c10::ListType::create(c10::TensorType::get()), devices);
-    work->future_->markCompleted(at::IValue(*work->outputs_));
-    auto id = work->trace_id_;
-    work->future_->addCallback(
-        [id](at::ivalue::Future&) {
-          FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
-        },
-        /*use_future*/ false);
-
-    work->numelIn_ = work->numelOut_ = tensor.numel();
-    setEnqueuedPgStatus(work);
-    return work;
   } else {
     FlightRecorderXCCL::get()->record(
         local_id_,
@@ -930,15 +938,53 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         options_->timeout,
         pgStatus_,
         true);
-    c10::OptionalDeviceGuard gpuGuard(device);
-
-    c10::xpu::XPUCachingAllocator::recordStream(
-        tensor.storage().data_ptr(), stream);
-
-    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
-
-    return nullptr;
   }
+
+  if (enableNanCheck_ && opType == OpType::SEND) {
+    checkForNan(tensor, stream);
+  }
+  if (!coalescing_state_) {
+    // Start event should only be recorded before the ncclGroupStart()
+    if (work->timingEnabled_) {
+      work->ncclStartEvent_->record(stream);
+    }
+
+    pre(stream, work);
+  }
+  c10::OptionalDeviceGuard gpuGuard(device);
+
+  c10::xpu::XPUCachingAllocator::recordStream(
+      tensor.storage().data_ptr(), stream);
+
+  xcclGroupStart();
+  fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  xcclGroupEnd();
+  
+  if (!coalescing_state_) {
+    post(stream);
+
+    work->xcclEndEvent_->record(stream);
+    work->blockingWait_ = blockingWait_;
+    work->numelIn_ = work->numelOut_ = tensor.numel();
+    {
+      std::vector<c10::Stream> streams = {stream.unwrap()};
+      c10::MultiStreamGuard streamGuard(streams);
+      std::vector<at::Device> devices{device};
+      work->future_ = c10::make_intrusive<at::ivalue::Future>(
+          c10::ListType::create(c10::TensorType::get()), devices);
+      work->future_->markCompleted(at::IValue(*work->outputs_));
+    }
+
+    auto id = work->trace_id_;
+    work->future_->addCallback(
+        [id](at::ivalue::Future&) {
+          FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+        },
+        /*use_future*/ false);
+    setEnqueuedPgStatus(work);
+  }
+
+  return work;
 }
 
 c10::intrusive_ptr<Work> ProcessGroupXCCL::send(
@@ -2043,8 +2089,8 @@ c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
   } else if (!usedDeviceIdxs_.empty()) {
     return *usedDeviceIdxs_.begin();
   }
-  int devIdx =
-      static_cast<int16_t>(globalRank() % at::detail::getXPUHooks().getNumGPUs());
+  int devIdx = static_cast<int16_t>(
+      globalRank() % at::detail::getXPUHooks().getNumGPUs());
   LOG(WARNING)
       << logPrefix()
       << c10::str(
