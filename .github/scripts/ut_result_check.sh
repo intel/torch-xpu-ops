@@ -236,7 +236,8 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
     fi
     ((num_failed=num_failed_xpu_distributed))
-    if [[ $num_failed -gt 0 ]]; then
+    num_passed=$(wc -l < "./${ut_suite}_xpu_distributed_test_passed.log")
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -eq 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
