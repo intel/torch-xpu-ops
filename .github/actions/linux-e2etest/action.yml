@@ -31,7 +31,7 @@ runs:
         which python && python -V
         which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -x {0}
+      shell: bash -xe {0}
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
@@ -76,7 +76,7 @@ runs:
           fi
           # set models to run
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            models_list_args="$(awk -F, '{printf(" -k %s ", $1)}' benchmarks/dynamo/${suite}_models_list.txt)"
+            models_list_args="$(awk -F, '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
           elif [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
             models_list_args=" -k ${MODEL_ONLY_NAME} "
           else
