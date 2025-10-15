@@ -4,7 +4,6 @@
 
 import re
 import os
-import json
 import fnmatch
 import argparse
 import pandas as pd
