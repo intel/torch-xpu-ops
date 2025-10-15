@@ -214,3 +214,5 @@ jobs:
       src_changed: false
       has_label: true
       runner: Windows_CI
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
