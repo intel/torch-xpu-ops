@@ -1,9 +1,6 @@
 skip_dict = {
     "test_ops_xpu.py": (
         # Skip list of base line
-        # XPU implementation doesn't claimn FP8 now
-        # https://github.com/intel/torch-xpu-ops/issues/461
-        "float8",
         # To be removed from this file.
         # CUDA and XPU both XFAIL now.
         "test_out_narrow_copy_xpu_float32",
