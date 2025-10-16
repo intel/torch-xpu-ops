@@ -92,7 +92,7 @@ simple_gpt,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_t
 simple_gpt_tp_manual,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
-squeezenet1_1,pass,fail_accuracy,pass,pass,pass
+squeezenet1_1,pass,pass,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1261
 stable_diffusion_unet,eager_fail_to_run,eager_fail_to_run,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run
