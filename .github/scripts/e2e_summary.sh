@@ -159,10 +159,10 @@ rm -rf performance.*.html
 performance_regression=0
 performance=$(find "${results_dir}" -name "*_xpu_performance.csv" |wc -l)
 if [ "${performance}" -gt 0 ];then
-    if [ "${IS_PR}" == "1" ];then
+    if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
         python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
     else
-        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
+        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir}
     fi
     if [ -e performance.regression.html ];then
         performance_regression=1
