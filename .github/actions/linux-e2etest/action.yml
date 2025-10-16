@@ -31,10 +31,17 @@ runs:
         which python && python -V
         which pip && pip list
     - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -x {0}
+      shell: bash -xe {0}
       run: |
         cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
         cd ./pytorch
+        if [ "${{ github.event_name }}" != "pull_request" ];then
+          # set models list for nightly tests
+          # huggingface all and remove CamemBert
+          # timm_models all
+          # torchbench all
+          rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+        fi
         rm -rf inductor_log torch
         # check param
         contains() {
@@ -58,19 +65,7 @@ runs:
             else
               xpu_id=${i}
             fi
-            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${i} &
-          done
-        }
-        run_one_by_one() {
-          for i in $(seq 1 ${#models_list[@]})
-          do
-            xpu_index=$(echo |awk -v i=$i -v x=${xpu_num} '{printf("%d", (i - 1) % x);}')
-            cpu_list="$(echo "${cpus_per_xpu} ${xpu_index}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-            model_name="${models_list[$[$i-1]]}"
-            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_index} static 1 0 ${model_name} &
-            if [ $(echo |awk -v i=$i -v x=${xpu_num} '{if(i%x==0){print "1"}else{print "0"}}') -eq 1 ];then
-              wait
-            fi
+            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${i} "${models_list_args}" &
           done
           wait
         }
@@ -80,10 +75,13 @@ runs:
           if [ "${suite}" == "pt2e" ];then
             continue
           fi
-          if [ -z "${MODEL_ONLY_NAME:-}" ]; then
-            mapfile -t models_list < <(jq -r ".${suite}[]" ${{ github.workspace }}/.github/ci_expected_accuracy/models_list.json)
+          # set models to run
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
+          elif [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
+            models_list_args=" -k ${MODEL_ONLY_NAME} "
           else
-            IFS=',' read -ra models_list <<< "${MODEL_ONLY_NAME}"
+            models_list_args=""
           fi
           if ! contains "huggingface,timm_models,torchbench" "$suite"; then
             continue
@@ -103,12 +101,7 @@ runs:
                 if ! contains "accuracy,performance" "$scenario"; then
                   continue
                 fi
-                if [ "${{ github.event_name }}" == "pull_request" ] && [ "${#models_list[@]}" -gt 0 ];then
-                  run_one_by_one
-                else
-                  run_with_shard
-                fi
-                wait
+                run_with_shard
                 # summarize pass rate
                 LOG_DIR="inductor_log/${suite}/${dt}"
                 LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
