@@ -61,7 +61,7 @@ microbench_unbacked_tolist_sum,pass,pass,pass,pass,pass
 mnasnet1_0,pass,pass,pass,pass,pass
 mobilenet_v2,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1787
-mobilenet_v2_quantized_qat,fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+mobilenet_v2_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 mobilenet_v3_large,pass,pass,pass,pass,pass
 moco,model_fail_to_load,model_fail_to_load,eager_fail_to_run,model_fail_to_load,model_fail_to_load
 moondream,pass,pass,pass,pass,pass
@@ -81,7 +81,7 @@ resnet152,pass,pass,pass,pass,pass
 resnet18,pass,pass,pass,pass,pass
 resnet50,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1787
-resnet50_quantized_qat,fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+resnet50_quantized_qat,pass,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 resnext50_32x4d,pass,pass,pass,pass,pass
 sam,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 sam_fast,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run

@@ -68,7 +68,7 @@ jobs:
           exit_label=0
           e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
           if [ -f "${e2e_summary_csv}" ];then
-            bash ./.github/scripts/e2e_summary.sh ./target ./baseline
+            bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
             if [ -e e2e-test-result.html ];then
               cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
             fi
