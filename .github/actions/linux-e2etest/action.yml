@@ -55,6 +55,10 @@ runs:
             return 1  # not match
           fi
         }
+        # Such as numactl_args=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
+        delimiter=";"
+        IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
+        instances=${#numactl_args_list[@]}
         run_with_shard() {
           for i in $(seq 0 $[ ${xpu_num} - 1 ])
           do
@@ -69,7 +73,6 @@ runs:
           done
           wait
         }
-        export OMP_NUM_THREADS=${cpus_per_xpu}
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
           if [ "${suite}" == "pt2e" ];then
