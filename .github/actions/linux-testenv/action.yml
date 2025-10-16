@@ -33,6 +33,8 @@ runs:
         if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
           rm -rf ${AGENT_TOOLSDIRECTORY}
         fi
+        sudo apt update
+        sudo apt install -y jq numactl
     - name: Setup python-${{ inputs.python }}
       uses: actions/setup-python@v5
       with:
@@ -76,11 +78,7 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
-        if [ "${{ github.event_name }}" == "pull_request" ];then
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-        else
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-        fi
+        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
@@ -132,13 +130,13 @@ runs:
           sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            while read line
-            do
+            while read line; do
               python install.py $(echo $line |awk -F, '{printf $1}')
             done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
             python install.py --continue_on_fail
           fi
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
