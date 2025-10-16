@@ -59,3 +59,11 @@ jobs:
           ip a
           sudo chown $(id -u):$(id -g) ${HOME} -R
           sudo find /tmp |grep -vE "^/tm(p|p/)$" |xargs sudo rm -rf
+          rm -rf logs
+          mkdir logs
+          cp ~/mengfeil/*.csv logs/
+      - name: Upload files
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs
