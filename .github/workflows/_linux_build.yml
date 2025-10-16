@@ -74,8 +74,6 @@ jobs:
         run: |
           cat /etc/os-release
           hostname && id
-          # Cleanup workspace
-          find ./ |grep -v "^\./$" |xargs rm -rf
           # install gh
           dnf install -y 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
@@ -219,4 +217,3 @@ jobs:
         if: ${{ always() }}
         run: |
           chmod 777 /__w /github ./ -R
-          find ./ |grep -v "^\./$" |xargs rm -rf
