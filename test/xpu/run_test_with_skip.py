@@ -1,14 +1,21 @@
+
+import argparse
 import os
 import sys
-import argparse
 
 from skip_list_common import skip_dict
 from xpu_test_utils import launch_test
 
 
-parser = argparse.ArgumentParser(description='Run specific unit tests')
+parser = argparse.ArgumentParser(description="Run specific unit tests")
 # By default, run the cases without the skipped cases
-parser.add_argument('--test-cases', choices=['selected', 'skipped', 'all'], default='selected', help='Test cases scope')
+parser.add_argument(
+    "-k",
+    "--test-cases",
+    choices=["selected", "skipped", "all"],
+    default="selected",
+    help="Test cases scope",
+)
 args = parser.parse_args()
 
 
