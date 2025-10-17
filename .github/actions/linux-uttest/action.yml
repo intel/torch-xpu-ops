@@ -193,7 +193,7 @@ runs:
       shell: timeout 180 bash -xe {0}
       run: |
         pip install junitparser
-        python ./.github/scripts/check-ut.py ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+        python ./.github/scripts/check-ut.py -k ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs
         if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
           echo -e "Exist Failure logs"
