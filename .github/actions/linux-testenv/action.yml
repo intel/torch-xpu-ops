@@ -63,7 +63,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install torch==2.10.0.dev20251016+xpu torchvision==0.25.0.dev20251016+xpu torchaudio==2.8.0.dev20251016+xpu --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
         fi
@@ -178,10 +178,20 @@ runs:
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
         fi
+    - name: Download Pytorch wheel
+      uses: actions/download-artifact@v4
+      with:
+        name: manywheel-py3_10-xpu
+        github-token: ${{ github.token }}
+        repository: pytorch/pytorch
+        run-id: 18581696997
+        path: ${{ github.workspace }}/wheels
     - name: Torch Config
       shell: bash -xe {0}
       run: |
         printenv
+        pip unisntall -y torch && pip unisntall -y torch
+        pip install ${{ github.workspace }}/wheels/torch-*.whl
         python -c "import torch; print(torch.__config__.show())"
         python -c "import torch; print(torch.__config__.parallel_info())"
         python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
