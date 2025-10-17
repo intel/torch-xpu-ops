@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,op_skipped,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -95,7 +95,7 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","xpu_profiling","xpu_distributed"]'
+            ut='["basic","op_ut","op_skipped","xpu_profiling","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             triton=''
             python='3.10'
