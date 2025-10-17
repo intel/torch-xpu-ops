@@ -151,7 +151,6 @@ IndexType TensorInfo<T, IndexType>::outerSize(const int exclusive) {
 }
 
 // Translate a linear index for the apply to a T* offset;
-// specialized on `Dims` to reduce nvcc compilation time
 template <typename T, typename IndexType, int Dims>
 struct IndexToOffset {
   static IndexType get(
