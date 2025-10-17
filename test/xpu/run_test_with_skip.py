@@ -19,8 +19,8 @@ for key in skip_dict:
     skip_list = skip_dict[key]
     exe_list = None
     if args.run == "skipped":
-        skip_list = None
         exe_list = skip_list
+        skip_list = None
     elif args.run == "all":
         skip_list = None
     fail = launch_test(key, skip_list=skip_list, exe_list=exe_list)
