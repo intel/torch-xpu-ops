@@ -3792,7 +3792,7 @@ if __name__ == '__main__':
 @largeTensorTest("64GB", "cpu")
 def _test_warp_softmax_64bit_indexing(self, device, dtype):
     def run_test(*shape):
-        x = torch.randn(shape, device="xpu", dtype=torch.float16, requires_grad=True)
+        x = torch.randn(shape, device=device, dtype=torch.float16, requires_grad=True)
         y = F.log_softmax(x, dim=-1, dtype=dtype)
         y.backward(y)
         with torch.no_grad():
