@@ -27,7 +27,7 @@ on:
       tag:
         required: true
         type: string
-        default: 'intelgpu/ubuntu-22.04-lts2:2523.31'
+        default: 'intelgpu/ubuntu-24.04-lts2:2523.31'
         description: Whether push image to docker hub or not
       push_to_hub:
         type: boolean
@@ -61,7 +61,7 @@ jobs:
       - name: Build image
         run: |
           cd .ci/docker
-          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }} \
+          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:latest' }} \
             --build-arg UBUNTU_VERSION=${{ inputs.ubuntu != '' && inputs.ubuntu || '22.04' }} \
             --build-arg XPU_DRIVER_TYPE=${{ inputs.driver != '' && inputs.driver || 'lts2' }} \
             -f ubuntu/Dockerfile
@@ -70,4 +70,4 @@ jobs:
         if: ${{ inputs.push_to_hub }}
         run: |
           echo "$DOCKER_REGISTRY_AUTH_TOKEN" | docker login -u intelgpu --password-stdin
-          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }}
+          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:latest' }}
