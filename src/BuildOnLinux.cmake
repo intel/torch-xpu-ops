@@ -18,6 +18,10 @@ macro(setup_common_libraries)
     target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
     target_link_libraries(torch_xpu_ops PUBLIC fmt::fmt-header-only)
   endif()
+
+  if (USE_SYCLTLA)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_SYCLTLA)
+  endif()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endmacro()
 
@@ -48,9 +52,42 @@ else()
     target_link_libraries(torch_xpu_ops PUBLIC fmt::fmt-header-only)
   endif()
 
+  if (USE_SYCLTLA)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_SYCLTLA)
+  endif()
+
   install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
+
+if (USE_SYCLTLA)
+  set(REPLACE_FLAGS_FOR_SYCLTLA TRUE)
+  set_build_flags()
+  replace_cmake_build_flags()
+
+  foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycltla-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      SHARED
+      SYCL_SOURCES ${sycl_src})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+
+    # Decouple with PyTorch cmake definition.
+    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
+    # Set Compile options for sycltla kernels
+    target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
+    target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+  endforeach()
+
+  set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
+  set_build_flags()
+  restore_cmake_build_flags()
+endif()
+
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
 foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
