@@ -245,14 +245,15 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     fi
 fi
 
-if [[ "${ut_suite}" == 'op_skipped' ]]; then
-  grep "PASSED" op_skipped_with_skip_test.log | awk '{print $1}' > ./op_skipped_with_skip_test_passed.log
-  num_passed=$(wc -l < "./op_skipped_with_skip_test_passed.log")
+if [[ "${ut_suite}" == 'skipped_ut' ]]; then
+  grep "PASSED" skipped_ut_with_skip_test.log > ./skipped_ut_with_skip_test_passed.log
+  num_passed=$(wc -l < "./skipped_ut_with_skip_test_passed.log")
   if [ ${num_passed} -gt 0 ];then
     echo -e "========================================================================="
     echo -e "Checking New passed cases in Skip list for ${ut_suite}"
     echo -e "========================================================================="
-    cat ./op_skipped_with_skip_test_passed.log
-    echo -e "[${num_passed}] UT ${ut_suite} test Pass"
+    cat ./skipped_ut_with_skip_test_passed.log
+    echo -e "[Warning] Has ${num_passed} new pass in ${ut_suite}"
+    exit 1
   fi
 fi

@@ -8,7 +8,6 @@ from xpu_test_utils import launch_test
 parser = argparse.ArgumentParser(description="Run specific unit tests")
 # By default, run the cases without the skipped cases
 parser.add_argument(
-    "-k",
     "--test-cases",
     choices=["selected", "skipped", "all"],
     default="selected",
