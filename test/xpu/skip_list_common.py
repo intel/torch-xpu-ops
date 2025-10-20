@@ -649,12 +649,7 @@ skip_dict = {
         # x_cuda = x.clone().detach().to("cuda").requires_grad_(): Torch not compiled with CUDA enabled
         "test_layer_norm_backwards_eps",
     ),
-    "test_indexing_xpu.py": (
-        # XPU implementation doesn't claimn FP8 now
-        # https://github.com/intel/torch-xpu-ops/issues/461
-        # https://github.com/intel/torch-xpu-ops/issues/1975
-        "float8",
-    ),
+    "test_indexing_xpu.py": None,
     "nn/test_pooling_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
     "test_dataloader_xpu.py": None,

@@ -697,14 +697,10 @@ void index_put_deterministic_kernel(
         expandedValue.numel());
 
     if (sliceSize > SIMD) {
-      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-          at::ScalarType::ComplexHalf,
-          at::ScalarType::BFloat16,
-          at::ScalarType::Half,
-          at::ScalarType::Bool,
+      AT_DISPATCH_V2(
           expandedValue.scalar_type(),
           "index_put_deterministic_kernel",
-          [&] {
+          AT_WRAP([&] {
             launch_index_put_deterministic_kernel<scalar_t, scalar_t>(
                 sorted_indices.mutable_data_ptr<int64_t>(),
                 orig_indices.mutable_data_ptr<int64_t>(),
@@ -715,17 +711,19 @@ void index_put_deterministic_kernel(
                 strideBefore,
                 nElemBefore,
                 accumulate);
-          });
+          }),
+          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+          AT_EXPAND(AT_FLOAT8_TYPES),
+          kComplexHalf,
+          kHalf,
+          kBool,
+          kBFloat16);
     } else {
       // Align acc type with CUDA
-      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-          at::ScalarType::ComplexHalf,
-          at::ScalarType::BFloat16,
-          at::ScalarType::Half,
-          at::ScalarType::Bool,
+      AT_DISPATCH_V2(
           expandedValue.scalar_type(),
           "index_put_deterministic_kernel",
-          [&] {
+          AT_WRAP([&] {
             using accscalar_t = at::opmath_type<scalar_t>;
             launch_index_put_deterministic_kernel<scalar_t, accscalar_t>(
                 sorted_indices.mutable_data_ptr<int64_t>(),
@@ -737,7 +735,13 @@ void index_put_deterministic_kernel(
                 strideBefore,
                 nElemBefore,
                 accumulate);
-          });
+          }),
+          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+          AT_EXPAND(AT_FLOAT8_TYPES),
+          kComplexHalf,
+          kHalf,
+          kBool,
+          kBFloat16);
     }
 
     if (permuted)
