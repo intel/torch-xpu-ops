@@ -18,7 +18,7 @@
 #  torch_xpu_ops
 #  -- Static archive library target
 
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 set(PROJECT_NAME "torch-xpu-ops")
 set(PROJECT_VERSION "2.3.0")
