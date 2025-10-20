@@ -43,14 +43,10 @@ void index_kernel(
     TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      at::ScalarType::ComplexHalf,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       iter.dtype(),
       "index_xpu",
-      [&] {
+      AT_WRAP([&] {
         using dtype = OpaqueType<sizeof(scalar_t)>;
         IndexFunctor<dtype> f;
         _index_kernel(
@@ -61,7 +57,13 @@ void index_kernel(
             IntArrayRef{},
             f,
             true);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      kComplexHalf,
+      kHalf,
+      kBool,
+      kBFloat16);
 }
 
 template <typename ValType>
@@ -588,14 +590,10 @@ void index_put_kernel(
               false);
         });
   } else {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
+    AT_DISPATCH_V2(
         iter.dtype(),
         "index_put_xpu",
-        [&] {
+        AT_WRAP([&] {
           using dtype = OpaqueType<sizeof(scalar_t)>;
           IndexPutFunctor<dtype> f;
           _index_kernel(
@@ -606,7 +604,13 @@ void index_put_kernel(
               IntArrayRef{},
               f,
               false);
-        });
+        }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        AT_EXPAND(AT_FLOAT8_TYPES),
+        kComplexHalf,
+        kHalf,
+        kBool,
+        kBFloat16);
   }
 }
 
