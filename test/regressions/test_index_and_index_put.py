@@ -111,4 +111,3 @@ class TestTorchMethod(TestCase):
             b_cpu = torch.flip(a_cpu, [0]).to(torch.float32)
             b_xpu = torch.flip(a_xpu, [0]).cpu().to(torch.float32)
             self.assertEqual(b_cpu, b_xpu)
-
