@@ -165,7 +165,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
-              IndexToOffset<const scalar_t, IndexType>::get(li, a_);
+              IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a_);
           src[ii] = a_.data[aOffset];
         }
       }
@@ -174,7 +174,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `b`
           const IndexType bOffset =
-              IndexToOffset<scalar_t, IndexType>::get(li, b_);
+              IndexToOffset<scalar_t, IndexType, BDims>::get(li, b_);
           b_.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
           c_.data[bOffset] = (mask_t)(&rand.x)[ii];
         }
