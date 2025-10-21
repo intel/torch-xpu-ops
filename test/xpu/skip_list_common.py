@@ -662,9 +662,6 @@ skip_dict = {
         # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
         "test_float_to_int_conversion_finite_xpu_int8",
         "test_float_to_int_conversion_finite_xpu_int16",
-        # Dispatch issue. It is a composite operator. But it is implemented by
-        # DispatchStub. XPU doesn't support DispatchStub.
-        "test_kaiser_window_xpu",
     ),
     "test_autocast_xpu.py": None,
     "test_autograd_xpu.py": (
@@ -1452,6 +1449,8 @@ skip_dict = {
         # randomly fails
         "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
         "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
+        "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128",
+        "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
@@ -1463,7 +1462,6 @@ skip_dict = {
         "test_cudnn_convolution_add_relu_xpu_float32",
         # accuracy issue, TODO
         "test_Conv2d_naive_groups_xpu_float16",
-        "test_Conv2d_groups_nobias",
         # issue: https://github.com/intel/torch-xpu-ops/issues/809
         "test_thnn_conv_strided_padded_dilated",
     ),
