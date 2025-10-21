@@ -221,7 +221,6 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -245,7 +244,6 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           set PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           python run_test_with_skip_mtl.py
@@ -260,7 +258,6 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_win_with_skip_mtl.py
 
