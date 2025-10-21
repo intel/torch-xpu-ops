@@ -250,7 +250,8 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
     test_parity__foreach_div_fastpath_inplace_xpu_complex128|
     test_parity__foreach_div_fastpath_outplace_xpu_complex128|
     test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128|
-    test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128
+    test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128|
+    test_python_ref__refs_log2_xpu_complex128
   "
   grep "PASSED" skipped_ut_with_skip_test.log |grep -vE "${random_cases// /}" > ./skipped_ut_with_skip_test_passed.log
   num_passed=$(wc -l < "./skipped_ut_with_skip_test_passed.log")
