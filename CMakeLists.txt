@@ -20,8 +20,6 @@
 
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
-set(PROJECT_NAME "torch-xpu-ops")
-set(PROJECT_VERSION "2.3.0")
 # Avoid SYCL compiler error
 if(NOT WIN32)
   string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
@@ -30,14 +28,12 @@ if(NOT WIN32)
   endif()
 endif()
 
-cmake_policy(SET CMP0048 NEW)
-project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
+project(torch-xpu-ops VERSION 2.10.0 LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
-
 set(TORCH_XPU_OPS_ROOT ${PROJECT_SOURCE_DIR})
-list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 
+list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
