@@ -366,7 +366,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       store_(store),
       xcclCommCounter_(0),
       local_id_(process_group_id++),
-      options_(options) {
+      options_(std::move(options)) {
   this->setGroupUid(options_->group_name);
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
