@@ -199,7 +199,8 @@ fi
 
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     grep -E "^FAILED" xpu_distributed_test.log | awk '{print $3}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
-    sed -i '/^[^.]\+/d' ./"${ut_suite}"_xpu_distributed_test_failed.log
+    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' >> ./"${ut_suite}"_xpu_distributed_test_failed.log
+    sed -i '/^[^.d]\+/d' ./"${ut_suite}"_xpu_distributed_test_failed.log
     grep "PASSED" xpu_distributed_test.log | awk '{print $1}' > ./"${ut_suite}"_xpu_distributed_test_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} xpu distributed"
@@ -235,7 +236,8 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
     fi
     ((num_failed=num_failed_xpu_distributed))
-    if [[ $num_failed -gt 0 ]]; then
+    num_passed=$(wc -l < "./${ut_suite}_xpu_distributed_test_passed.log")
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -eq 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else

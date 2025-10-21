@@ -3729,6 +3729,19 @@ def upsamplingBiMode2d(self, device, antialias, align_corners, mode, memory_form
 TestNNDeviceType.test_upsamplingBiMode2d = upsamplingBiMode2d
 
 
+@dtypes(torch.half, torch.bfloat16)
+def _test_cudnn_rnn(self, dtype):
+    rnn = nn.RNN(10, 20, num_layers=2, device="xpu", dtype=dtype)
+    input = torch.randn(5, 4, 10, device="xpu", dtype=dtype)
+    hx = torch.randn(2, 4, 20, device="xpu", dtype=dtype)
+    output = rnn(input, hx)
+    output_ref = rnn.cpu()(input.cpu(), hx.cpu())
+    self.assertEqual(tuple([i.xpu() for i in output_ref]), output, atol=5e-3, rtol=1e-3)
+
+
+TestNNDeviceType.test_cudnn_rnn = _test_cudnn_rnn
+
+
 @dtypes(torch.float16, torch.float32)
 def _test_cross_entropy_loss_2d_out_of_bounds_class_index(self, device, dtype):
     from torch.testing._internal.common_utils import TestCase

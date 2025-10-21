@@ -39,7 +39,7 @@ void HeartbeatMonitorXCCL::runLoop() {
   // We only need to dump once per PG, so we use local_id_ == 0 for the first PG
   if (pg_->local_id_ == 0) {
     // DumpPipe is one per-trainer process
-    dumpPipe.emplace(pg_->getRank());
+    dumpPipe.emplace(pg_->globalRank());
     while (true) {
       std::unique_lock<std::mutex> lock(monitorMutex_);
       if (monitorWakeUpCV_.wait_for(
