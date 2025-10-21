@@ -107,7 +107,7 @@ macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
 
   if(SYCL_DEPEND_REGENERATE)
     set(SYCL_DEPEND ${dependency_file})
-    file(WRITE ${dependency_file} "#FindCUDA.cmake generated file.  Do not edit.\n")
+    file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
   endif()
 endmacro()
 
