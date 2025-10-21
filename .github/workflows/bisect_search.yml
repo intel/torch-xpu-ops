@@ -76,7 +76,7 @@ jobs:
         shell: bash -xe {0}
         run: |
           sudo apt update
-          sudo apt install -y rsync
+          sudo apt install -y python3-dev
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
