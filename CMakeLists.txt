@@ -62,11 +62,11 @@ if(USE_XCCL)
 endif()
 
 set(USE_SYCLTLA ON)
-if (WIN32)
+if(WIN32)
   set(USE_SYCLTLA OFF)
 endif()
 
-if (USE_SYCLTLA)
+if(USE_SYCLTLA)
   include(${TORCH_XPU_OPS_ROOT}/cmake/SYCLTLA.cmake)
 endif()
 
