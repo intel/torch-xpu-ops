@@ -38,7 +38,7 @@ if(BUILD_SEPARATE_OPS)
   endforeach()
 # Working with the compilers which don't support device code compression, we have to split kernels
 # into multiple libraries to meet the bin size limitation.
-elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250004 OR ICX_DATE LESS 20241205)
+elseif(BUILD_SPLIT_KERNEL_LIB)
   setup_common_libraries()
   # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
   set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
