@@ -22,7 +22,7 @@ function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
   file(REMOVE_RECURSE ${TEMP_DIR})
 endfunction()
 
-macro(set_build_flags) 
+macro(set_build_flags)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(SYCL_HOST_FLAGS)
     set(SYCL_KERNEL_OPTIONS)
