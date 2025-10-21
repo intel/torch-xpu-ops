@@ -188,8 +188,13 @@ sycl_kernel_submit_small_grf(
   q.submit(cgf);
 }
 
-#define SYCL_KERNEL_STRING(var, str) \
-  static const __attribute__((opencl_constant)) char var[] = str;
+#ifdef __SYCL_DEVICE_ONLY__
+  #define SYCL_KERNEL_STRING(var, str) \
+    static const __attribute__((opencl_constant)) char var[] = str
+#else
+  #define SYCL_KERNEL_STRING(var, str) \
+    static const char var[] = str
+#endif
 #define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
 
 #define SYCL_PRINT(fmt_str, ...)                \
