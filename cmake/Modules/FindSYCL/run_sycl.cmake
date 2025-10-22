@@ -72,7 +72,7 @@ foreach(def ${SYCL_compile_definitions})
 endforeach()
 
 # string(APPEND SYCL_host_compiler_flags "\"")
-set(SYCL_host_compiler "-fsycl-host-compiler=g++-13")
+set(SYCL_host_compiler "-fsycl-host-compiler=${SYCL_host_compiler}")
 
 # SYCL_execute_process - Executes a command with optional command echo and status message.
 #

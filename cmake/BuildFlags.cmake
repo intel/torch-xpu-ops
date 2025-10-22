@@ -70,7 +70,6 @@ macro(set_build_flags)
     if(USE_PER_OPERATOR_HEADERS)
       list(APPEND SYCL_HOST_FLAGS -DAT_PER_OPERATOR_HEADERS)
     endif()
-    list(APPEND SYCL_HOST_FLAGS -D__INTEL_LLVM_COMPILER_VERSION=${__INTEL_LLVM_COMPILER})
     # -- Kernel flags (SYCL_KERNEL_OPTIONS)
     # The fast-math will be enabled by default in SYCL compiler.
     # Refer to [https://clang.llvm.org/docs/UsersManual.html#cmdoption-fno-fast-math]
