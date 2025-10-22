@@ -68,7 +68,10 @@ jobs:
           exit_label=0
           e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
           if [ -f "${e2e_summary_csv}" ];then
-            bash ./.github/scripts/e2e_summary.sh ./target ./baseline >> ${GITHUB_STEP_SUMMARY}
+            bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
+            if [ -e e2e-test-result.html ];then
+              cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
+            fi
             exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
             if [ ${exit_label} -ne 0 ];then
               grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
@@ -77,10 +80,10 @@ jobs:
           fi
           pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
           if [ -f "${pt2e_summary_csv}" ];then
-            cat ${pt2e_summary_csv}
             failed_num=$(grep -c ',failed' ${pt2e_summary_csv} || true)
             if [ ${failed_num} -ne 0 ];then
               echo "[Warning] PT2E has failures!"
+              grep 'failed' ${pt2e_summary_csv}
             fi
           fi
           exit ${exit_label}
@@ -88,7 +91,7 @@ jobs:
         if: ${{ endsWith(inputs.test_type, 'ly') }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
-          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt)"
+          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
           if [ ${has_or_not} -ne 0 ];then
             sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
           else

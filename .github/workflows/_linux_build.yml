@@ -31,6 +31,8 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -94,6 +96,7 @@ jobs:
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
+          export IS_XPU_CI=1
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
@@ -200,7 +203,6 @@ jobs:
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
-          chmod 777 /__w /github ./ -R
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
@@ -213,3 +215,8 @@ jobs:
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/build_*.log
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chmod 777 /__w /github ./ -R
+          find ./ |grep -v "^\./$" |xargs rm -rf

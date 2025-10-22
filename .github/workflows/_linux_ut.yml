@@ -33,6 +33,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
 
 jobs:
@@ -60,7 +61,7 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
@@ -99,11 +100,12 @@ jobs:
 
   test-in-baremetal:
     needs: runner
+    timeout-minutes: 600
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread -n 1
+      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
