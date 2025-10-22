@@ -59,8 +59,9 @@ if(USE_XCCL)
 endif()
 
 set(USE_SYCLTLA ON)
-if(WIN32)
+if(WIN32 OR NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 13.0)
   set(USE_SYCLTLA OFF)
+  message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
 endif()
 
 if(USE_SYCLTLA)
