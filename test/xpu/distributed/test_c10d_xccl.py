@@ -249,6 +249,21 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         return init_multigpu_helper(self.world_size, "xccl")
 
     @requires_xccl()
+    @skip_if_lt_x_gpu(2)
+    def test_send_recv_non_dense_tensor(self):
+        pg = self._create_process_group_xccl()
+        device = self.rank_to_GPU[self.rank][0]
+        full = torch.empty((64, 64), device=device).fill_(self.rank)
+        # Take a slice in col dimension, making it non-dense
+        block = full[:, 16:32]
+        if self.rank == 0:
+            with self.assertRaises(ValueError):
+                dist.send(block, dst=1)
+        elif self.rank == 1:
+            with self.assertRaises(ValueError):
+                dist.recv(block, src=0)
+
+    @requires_xccl()
     @skip_but_pass_in_sandcastle_if(
         torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
     )
