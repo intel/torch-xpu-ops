@@ -24,7 +24,7 @@ from torch._dispatch.python import enable_python_dispatcher
 from torch._export.utils import _is_cia_op
 from torch._ops import DispatchKey
 from torch.testing import make_tensor
-from torch.testing._internal.common_cuda import SM70OrLater, tf32_off
+from torch.testing._internal.common_cuda import tf32_off
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyCPU,
@@ -49,6 +49,7 @@ from torch.testing._internal.common_utils import (
     TestCase,
     unMarkDynamoStrictTest,
 )
+from torch.testing._internal.inductor_utils import HAS_GPU_AND_TRITON
 from torch.utils import _pytree as pytree
 from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
@@ -1257,7 +1258,7 @@ class DecompOneOffTests(TestCase):
         for o_ref, o in zip(out_ref, out):
             self.assertEqual(o_ref.dtype, o.dtype)
 
-    @unittest.skipIf(not SM70OrLater, "triton")
+    @unittest.skipIf(not HAS_GPU_AND_TRITON, "requires triton")
     def test_rms_norm_decomp_accelerator(self, device):
         @torch.compile
         def rms_norm_sinh(a, b, c):
