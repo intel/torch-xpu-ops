@@ -23,7 +23,6 @@ import weakref
 from functools import partial
 from itertools import chain, combinations, permutations, product
 from multiprocessing.reduction import ForkingPickler
-from typing import Tuple
 
 import numpy as np
 import torch
@@ -120,10 +119,8 @@ torch.testing._internal.common_utils.NATIVE_DEVICES = (
     torch._C._get_privateuse1_backend_name(),
 )
 
-from typing import List
 
-
-def my_get_all_device_types_xpu() -> List[str]:
+def my_get_all_device_types_xpu() -> list[str]:
     devices = [
         "cpu",
     ]
@@ -487,7 +484,7 @@ class TestTorchDeviceType(TestCase):
 
     def _check_storage_meta(self, s, s_check):
         self.assertTrue(
-            isinstance(s, (torch.UntypedStorage, torch.TypedStorage))
+            isinstance(s, torch.UntypedStorage | torch.TypedStorage)
             and isinstance(s_check, type(s)),
             (
                 "s and s_check must both be one of UntypedStorage or "
@@ -4138,7 +4135,7 @@ else:
 
     def _prepare_data_for_index_copy_and_add_deterministic(
         self, dim: int, device: torch.device
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         assert dim >= 0 and dim < 3
         a = [5, 4, 3]
         a[dim] = 2000
@@ -4207,7 +4204,7 @@ else:
                 input_list = input.tolist()
                 indices_list = indices.tolist()
                 values_list = values.tolist()
-                for i, v in zip(indices_list, values_list):
+                for i, v in zip(indices_list, values_list, strict=False):
                     input_list[i] = v
 
                 self.assertEqual(output, input_list)
@@ -7051,7 +7048,9 @@ else:
             else:
                 self.assertTrue(scaler.get_scale() == 1.0)
 
-            for c, s in zip(mod_control.parameters(), mod_scaling.parameters()):
+            for c, s in zip(
+                mod_control.parameters(), mod_scaling.parameters(), strict=False
+            ):
                 self.assertEqual(c.grad, s.grad, atol=atol, rtol=1e-05)
 
                 c_state, s_state = opt_control.state[c], opt_scaling.state[s]
@@ -7399,6 +7398,7 @@ else:
             for c, s in zip(
                 chain(mod_control0.parameters(), mod_control1.parameters()),
                 chain(mod_scaling0.parameters(), mod_scaling1.parameters()),
+                strict=False,
             ):
                 self.assertEqual(c, s, rtol=1e-5, atol=1e-7)
 
@@ -7761,7 +7761,7 @@ class TestDevicePrecision(TestCase):
             f.seek(0)
             x_copy = torch.load(f)
 
-        for original, cp in zip(x, x_copy):
+        for original, cp in zip(x, x_copy, strict=False):
             self.assertEqual(cp, original)
             self.assertIs(type(cp), type(original))
             self.assertEqual(cp.device, original.device)
@@ -11260,12 +11260,12 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             views = x.split_with_sizes(split_sizes, dim=dim)
             expects = [v.clone() for v in views]
             out = [torch.zeros_like(v) for v in views]
-            for expect, t in zip(expects, out):
+            for expect, t in zip(expects, out, strict=False):
                 if expect.numel() != 0:
                     self.assertFalse(expect.eq(t).all().item())
 
             torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
-            for expect, t in zip(expects, out):
+            for expect, t in zip(expects, out, strict=False):
                 self.assertTrue(expect.eq(t).all().item())
 
             if not torch.cuda.is_available():
@@ -11273,7 +11273,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
 
             # Test with cuda graph
             out = [torch.zeros_like(v) for v in views]
-            for expect, t in zip(expects, out):
+            for expect, t in zip(expects, out, strict=False):
                 if expect.numel() != 0:
                     self.assertFalse(expect.eq(t).all().item())
 
@@ -11282,7 +11282,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                 torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
 
             g.replay()
-            for expect, t in zip(expects, out):
+            for expect, t in zip(expects, out, strict=False):
                 self.assertTrue(expect.eq(t).all().item())
 
     def test_type(self):

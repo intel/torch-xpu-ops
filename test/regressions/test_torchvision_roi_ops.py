@@ -358,8 +358,8 @@ def bilinear_interpolate(data, y, x, snap_border=False):
     wx_l = 1 - wx_h
 
     val = 0
-    for wx, xp in zip((wx_l, wx_h), (x_low, x_high)):
-        for wy, yp in zip((wy_l, wy_h), (y_low, y_high)):
+    for wx, xp in zip((wx_l, wx_h), (x_low, x_high), strict=False):
+        for wy, yp in zip((wy_l, wy_h), (y_low, y_high), strict=False):
             if 0 <= yp < height and 0 <= xp < width:
                 val += wx * wy * data[yp, xp]
     return val

@@ -50,7 +50,7 @@ with XPUPatchForImport(False):
 
             def repeated_index_fill(t, dim, idxs, vals):
                 res = t
-                for idx, val in zip(idxs, vals):
+                for idx, val in zip(idxs, vals, strict=False):
                     res = res.index_fill(dim, idx, val)
                 return res
 
@@ -70,11 +70,11 @@ with XPUPatchForImport(False):
                     )
                     vals = (inf, neg_inf, nan)
                     subsets = chain.from_iterable(
-                        combinations(list(zip(idxs, vals)), r)
+                        combinations(list(zip(idxs, vals, strict=False)), r)
                         for r in range(1, n_fill_vals + 1)
                     )
                     for subset in subsets:
-                        idxs_subset, vals_subset = zip(*subset)
+                        idxs_subset, vals_subset = zip(*subset, strict=False)
                         yield (
                             repeated_index_fill(x, dim, idxs_subset, vals_subset),
                             dim,

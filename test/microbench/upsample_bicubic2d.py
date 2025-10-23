@@ -80,6 +80,6 @@ shape_list = [
     [128, 128, 5, 5],
 ]
 scale_factor = [[3, 3], [3, 3], [7, 7], [7, 7]]
-for sp, sf in zip(shape_list, scale_factor):
+for sp, sf in zip(shape_list, scale_factor, strict=False):
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
         simple_test(sp, sf, backward, dtype)

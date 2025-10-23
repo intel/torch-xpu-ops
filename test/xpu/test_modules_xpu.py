@@ -64,7 +64,8 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
             new_input_args = input_and_params[: len(input_args)]
             kwarg_args = input_and_params[-len(kwarg_tensors) :]
             new_kwargs = {
-                name: obj for (name, _), obj in zip(kwarg_tensors, kwarg_args)
+                name: obj
+                for (name, _), obj in zip(kwarg_tensors, kwarg_args, strict=False)
             }
 
             with freeze_rng_state():
@@ -89,7 +90,7 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
         for _, obj in kwarg_tensors:
             obj.requires_grad = False
 
-        for p, old in zip(params, old_params_requires_grad):
+        for p, old in zip(params, old_params_requires_grad, strict=False):
             p.requires_grad = old
             grad_input = input_args + params + tuple(obj for (_, obj) in kwarg_tensors)
             flat_input, flat_spec = torch.utils._pytree.tree_flatten(grad_input)
@@ -98,7 +99,7 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
             )
             p.requires_grad = False
 
-        for (_, obj), old in zip(kwarg_tensors, old_kwargs_requires_grad):
+        for (_, obj), old in zip(kwarg_tensors, old_kwargs_requires_grad, strict=False):
             obj.requires_grad = old
             grad_input = input_args + params + tuple(obj for (_, obj) in kwarg_tensors)
             flat_input, flat_spec = torch.utils._pytree.tree_flatten(grad_input)
@@ -198,29 +199,49 @@ def _test_to(self, device, dtype, module_info, training, swap, set_grad):
 
             if swap:
                 # id same, ._cdata differs --> swapped cdata of THPVariable
-                self.assertTrue(all(a == b for a, b in zip(p_ids_before, p_ids_after)))
                 self.assertTrue(
-                    all(a != b for a, b in zip(p_cdatas_before, p_cdatas_after))
+                    all(a == b for a, b in zip(p_ids_before, p_ids_after, strict=False))
+                )
+                self.assertTrue(
+                    all(
+                        a != b
+                        for a, b in zip(p_cdatas_before, p_cdatas_after, strict=False)
+                    )
                 )
                 if set_grad:
                     self.assertTrue(
                         all(
                             a == b if g_no_swap else a != b
-                            for a, b in zip(g_cdatas_before, g_cdatas_after)
+                            for a, b in zip(
+                                g_cdatas_before, g_cdatas_after, strict=False
+                            )
                         )
                     )
             else:
                 # id and _cdata remain the same --> .data setting
                 self.assertTrue(
-                    all(a == b for a, b in zip(p_cdatas_before, p_cdatas_after))
+                    all(
+                        a == b
+                        for a, b in zip(p_cdatas_before, p_cdatas_after, strict=False)
+                    )
                 )
-                self.assertTrue(all(a == b for a, b in zip(p_ids_before, p_ids_after)))
+                self.assertTrue(
+                    all(a == b for a, b in zip(p_ids_before, p_ids_after, strict=False))
+                )
                 if set_grad:
                     self.assertTrue(
-                        all(a == b for a, b in zip(g_cdatas_before, g_cdatas_after))
+                        all(
+                            a == b
+                            for a, b in zip(
+                                g_cdatas_before, g_cdatas_after, strict=False
+                            )
+                        )
                     )
                     self.assertTrue(
-                        all(a == b for a, b in zip(g_ids_before, g_ids_after))
+                        all(
+                            a == b
+                            for a, b in zip(g_ids_before, g_ids_after, strict=False)
+                        )
                     )
 
 
@@ -234,7 +255,7 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
         module_info, device="cpu", dtype=dtype, requires_grad=False, training=training
     )
     for module_input_device, module_input_cpu in zip(
-        module_inputs_device, module_inputs_cpu
+        module_inputs_device, module_inputs_cpu, strict=False
     ):
         if module_input_device.forward_input is None:
             continue
@@ -270,7 +291,7 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
             if torch.cuda.device_count() >= 2:
                 # === test cross-GPU transfer works
                 def _to_device1(objs):
-                    if isinstance(objs, (tuple, list)):
+                    if isinstance(objs, tuple | list):
                         return type(objs)(_to_device1(item) for item in objs)
                     elif isinstance(objs, dict):
                         return {name: _to_device1(item) for name, item in objs.items()}
