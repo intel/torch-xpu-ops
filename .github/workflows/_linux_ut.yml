@@ -22,7 +22,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,torch_xpu,op_regression_dev1`
+        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
 
 permissions: read-all
 

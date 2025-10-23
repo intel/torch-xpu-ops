@@ -190,7 +190,7 @@ jobs:
           pip install junitparser
           echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
           for %%i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
-            python .\.github\scripts\check-ut.py "%%i" >> "%GITHUB_STEP_SUMMARY%"
+            python .\.github\scripts\check-ut.py -n windows -i "%%i" >> "%GITHUB_STEP_SUMMARY%"
           )
           @echo off
 
