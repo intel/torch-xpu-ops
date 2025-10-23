@@ -25,6 +25,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
+      aot:
+        type: string
+        default: 'ptl'
+        description: AOT target
 
 permissions: read-all
 
@@ -101,6 +105,7 @@ jobs:
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
           fi
+          export TORCH_XPU_ARCH_LIST='${{ inputs.aot }}'
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
             PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"

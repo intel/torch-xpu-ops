@@ -46,10 +46,10 @@ on:
         type: string
         default: ''
         description: Test scenario. 'accuracy,performance'. Delimiter is comma
-      model:
+      aot:
         type: string
-        default: ''
-        description: Model. Will only run this one mode if set
+        default: 'ptl'
+        description: AOT Target
 
 permissions: read-all
 
@@ -139,6 +139,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
+      aot: ${{ inputs.aot }}
 
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
@@ -176,7 +177,7 @@ jobs:
       dt: ${{ github.event_name == 'schedule' && '' || inputs.dt }}
       mode: ${{ github.event_name == 'schedule' && '' || inputs.mode }}
       scenario: ${{ github.event_name == 'schedule' && '' || inputs.scenario }}
-      model: ${{ github.event_name == 'schedule' && '' || inputs.model }}
+      model: ${{ github.event_name == 'schedule' && '' || '' }}
   Linux-Nightly-Ondemand-E2E-Tests-Summary:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
