@@ -18,10 +18,8 @@
 #  torch_xpu_ops
 #  -- Static archive library target
 
-cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
-set(PROJECT_NAME "torch-xpu-ops")
-set(PROJECT_VERSION "2.3.0")
 # Avoid SYCL compiler error
 if(NOT WIN32)
   string(APPEND CMAKE_CXX_FLAGS " -Wno-error")
@@ -30,8 +28,7 @@ if(NOT WIN32)
   endif()
 endif()
 
-cmake_policy(SET CMP0048 NEW)
-project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
+project(torch-xpu-ops VERSION 2.10.0 LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
