@@ -1,5 +1,11 @@
 name: Get Runner Infos
 
+inputs:
+  ut_name:
+    required: false
+    type: string
+    description: Which ut to launch
+
 outputs:
   runner_id:
     value: ${{ steps.runner.outputs.runner_id }}
@@ -57,22 +63,26 @@ runs:
           if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
         }' |wc -l)"
         cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${xpu_num}" '{printf c/x}')"
-        pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
-          if (x > 0) {
-            split(z, xpu_list, ",");
-            for (i=0;i<x;i++) {
-              if (z != "") {
-                  ze = xpu_list[i+1];
-              } else {
-                  ze = i;
+        if [ "${{ inputs.ut_name }}" == "xpu_distributed" ];then
+          pytest_extra_args="$(python ${{ github.workspace }}/.github/scripts/check-topology.py)"
+        else
+          pytest_extra_args="$(echo |awk -v x="${xpu_num}" -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
+            if (x > 0) {
+              split(z, xpu_list, ",");
+              for (i=0;i<x;i++) {
+                if (z != "") {
+                    ze = xpu_list[i+1];
+                } else {
+                    ze = i;
+                }
+                printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
+                        ze, cx, i*cx, (i+1)*cx-1);
               }
-              printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
-                      ze, cx, i*cx, (i+1)*cx-1);
+            }else {
+              printf(" -n 1 ");
             }
-          }else {
-            printf(" -n 1 ");
-          }
-        }')"
+          }')"
+        fi
         echo "xpu_num=${xpu_num}" |tee -a ${GITHUB_OUTPUT}
         echo "cpus_per_xpu=${cpus_per_xpu}" |tee -a ${GITHUB_OUTPUT}
         echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
