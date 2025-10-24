@@ -18,16 +18,9 @@ TORCH_IMPL_FUNC(nll_loss_forward_out_xpu)
  int64_t ignore_index,
  const Tensor& output,
  const Tensor& total_weight) {
+  const Tensor& weight = weight_opt.getTensorRef();
   xpu::nll_loss_forward_kernel(
-      self,
-      target,
-      ((weight_opt.has_value() && (*weight_opt).defined())
-           ? at::OptionalTensorRef(*weight_opt)
-           : at::OptionalTensorRef()),
-      reduction,
-      ignore_index,
-      output,
-      total_weight);
+      output, total_weight, self, target, weight, reduction, ignore_index);
 }
 
 TORCH_IMPL_FUNC(nll_loss_backward_out_xpu)
@@ -39,18 +32,17 @@ TORCH_IMPL_FUNC(nll_loss_backward_out_xpu)
  int64_t ignore_index,
  const Tensor& total_weight,
  const Tensor& grad_input) {
+  const Tensor& weight = weight_opt.getTensorRef();
   grad_input.zero_();
   xpu::nll_loss_backward_kernel(
+      grad_input,
       grad_output,
       self,
       target,
-      ((weight_opt.has_value() && (*weight_opt).defined())
-           ? at::OptionalTensorRef(*weight_opt)
-           : at::OptionalTensorRef()),
-      reduction,
-      ignore_index,
       total_weight,
-      grad_input);
+      weight,
+      reduction,
+      ignore_index);
 }
 
 } // namespace native
