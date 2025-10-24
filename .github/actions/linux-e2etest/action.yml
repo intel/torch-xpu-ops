@@ -75,7 +75,7 @@ runs:
             eval ${numactl_args_list[$i]} bash -x inductor_xpu_test.sh \
                     ${suite} ${dt} ${mode} ${scenario} \
                     xpu ${xpu_id} static ${instances} ${i} \
-                    "${models_list_args}" \
+                    \\\"${models_list_args}\\\" \
                     &
           done
           wait
