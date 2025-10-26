@@ -16,7 +16,7 @@ if(NOT __SYCLTLA_INCLUDED)
   FetchContent_Declare(
       repo-sycl-tla
       GIT_REPOSITORY https://github.com/intel/sycl-tla.git
-      GIT_TAG        main
+      GIT_TAG        v0.5
       GIT_SHALLOW    OFF
   )
   FetchContent_GetProperties(repo-sycl-tla)
@@ -24,7 +24,7 @@ if(NOT __SYCLTLA_INCLUDED)
     FetchContent_Populate(repo-sycl-tla)
   endif()
   set(SYCLTLA_INCLUDE_DIRS ${repo-sycl-tla_SOURCE_DIR}/include
-                                ${repo-sycl-tla_SOURCE_DIR}/tools/util/include
-                                ${repo-sycl-tla_SOURCE_DIR}/examples/common)
+                           ${repo-sycl-tla_SOURCE_DIR}/applications
+                           ${repo-sycl-tla_SOURCE_DIR}/tools/util/include)
   set(SYCLTLA_COMPILE_DEFINITIONS CUTLASS_ENABLE_SYCL SYCL_INTEL_TARGET)
 endif()
