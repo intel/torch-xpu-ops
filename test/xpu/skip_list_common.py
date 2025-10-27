@@ -650,7 +650,7 @@ skip_dict = {
         "test_fn_grad_cdist_xpu_float64",
         "test_fn_grad_matmul_xpu_float64",
         "test_fn_grad_mv_xpu_float64",
-        "test_fn_grad_nn_functional_multi_head_attention_forward_xpu_float64"
+        "test_fn_grad_nn_functional_multi_head_attention_forward_xpu_float64",
         "test_fn_gradgrad___rmatmul___xpu_float64",
         "test_fn_gradgrad_addmv_xpu_float64",
         "test_fn_gradgrad_addr_xpu_float64",
