@@ -369,7 +369,7 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     int size,
     c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
-      store_(store),
+      store_(std::move(store)),
       xcclCommCounter_(0),
       local_id_(process_group_id++),
       options_(std::move(options)) {
