@@ -57,10 +57,7 @@ jobs:
           clinfo --list
           id
           ip a
-          sudo apt update
-          echo Y |sudo apt upgrade
-          sudo apt autoremove -y
-          sudo reboot
+
       # - name: Upload files
       #   uses: actions/upload-artifact@v4
       #   with:
