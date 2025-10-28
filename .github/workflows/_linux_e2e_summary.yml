@@ -52,7 +52,7 @@ jobs:
           mkdir baseline/
           cd baseline/
           if [[ "${{ inputs.test_type }}" != *"ly" ]];then
-            artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-weekly"
+            artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-nightly"
           else
             artifact_type="${{ inputs.test_type }}"
           fi
