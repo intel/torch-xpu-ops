@@ -193,5 +193,5 @@ runs:
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
           echo "Torch is re-installed when installing deps, please check"
-          exit
+          exit 1
         fi

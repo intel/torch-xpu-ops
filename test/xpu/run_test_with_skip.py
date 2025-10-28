@@ -1,15 +1,35 @@
+import argparse
 import os
 import sys
 
 from skip_list_common import skip_dict
 from xpu_test_utils import launch_test
 
+parser = argparse.ArgumentParser(description="Run specific unit tests")
+# By default, run the cases without the skipped cases
+parser.add_argument(
+    "--test-cases",
+    choices=["selected", "skipped", "all"],
+    default="selected",
+    help="Test cases scope",
+)
+args = parser.parse_args()
+
+
 res = 0
 fail_test = []
 
 for key in skip_dict:
     skip_list = skip_dict[key]
-    fail = launch_test(key, skip_list)
+    exe_list = None
+    if args.test_cases == "skipped":
+        exe_list = skip_list
+        skip_list = None
+        if exe_list is None:
+            continue
+    elif args.test_cases == "all":
+        skip_list = None
+    fail = launch_test(key, skip_list=skip_list, exe_list=exe_list)
     res += fail
     if fail:
         fail_test.append(key)

@@ -165,3 +165,4 @@ jobs:
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
       has_label: ${{ needs.conditions-filter.outputs.has_label }}
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}

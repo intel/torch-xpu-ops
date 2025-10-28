@@ -22,7 +22,7 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,torch_xpu,op_regression_dev1`
+        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
 
 permissions: read-all
 
@@ -47,9 +47,6 @@ jobs:
       hostname: ${{ steps.runner-info.outputs.hostname }}
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
     steps:
-      - name: Cleanup workspace
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Get runner
