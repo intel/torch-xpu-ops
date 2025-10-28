@@ -194,9 +194,11 @@ $(
         echo -e "\n### Highlight regressions\n"
         if (( accuracy_regression > 0 ));then
             cat accuracy.regression.html
+            echo "accuracy 1" >> /tmp/tmp-result.txt
         fi
         if (( performance_regression > 0 ));then
             cat performance.regression.html
+            echo "performance 1" >> /tmp/tmp-result.txt
         fi
     fi
 )
