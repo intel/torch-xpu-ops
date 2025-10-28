@@ -1177,7 +1177,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_skip.{test_case}.xml " + test_case
         )
         test_command += skip_options
     elif exe_list is not None:
@@ -1187,11 +1187,11 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_exe.{test_case}.xml " + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_all_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_all.{test_case}.xml " + test_case
         )
     return os.system(test_command)
