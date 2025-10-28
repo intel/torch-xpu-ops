@@ -76,7 +76,7 @@ jobs:
           hostname && id
           # install gh
           apt update
-          apt install -y gpg-agent wget curl sudo gcc g++ cmake git unzip zip libgl1 zlib1g-dev gh numactl libglib2.0-dev rsync jq gcc-11 g++-11 python3.10-dev python3.10-venv python3.10-pip
+          apt install -y gpg-agent wget curl sudo gcc g++ cmake git unzip zip libgl1 zlib1g-dev gh numactl libglib2.0-dev rsync jq gcc-11 g++-11 python3.10-dev python3.10-venv python3-pip
           gh --version
       - name: Setup python-${{ inputs.python }}
         run: |
