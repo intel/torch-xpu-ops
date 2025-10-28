@@ -128,8 +128,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       return c10::make_intrusive<Options>(is_high_priority_stream);
     }
     bool is_high_priority_stream;
-    std::vector<uint64_t> global_ranks_in_group;
-    std::string group_name;
   };
 
   ProcessGroupXCCL(
