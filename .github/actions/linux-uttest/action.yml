@@ -81,11 +81,11 @@ runs:
             dir_path=$(dirname "$1");
             case "$dir_path" in
                 *"op_ut_with_skip_quantization/core"*)
-                    dir_name="op_ut_with_skip_quantization_core";;
+                    dir_name="op_ut_with_skip.quantization.core";;
                 *)
-                    dir_name=$(basename "$dir_path");;
+                    dir_name="op_ut_with_skip.nn";;
             esac;
-            mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+            mv "$1" "$dir_path/${dir_name}.$(basename "$1")"
         ' _ {} \;
         ls -al op_ut_with_skip_nn op_ut_with_skip_quantization/core
         cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
