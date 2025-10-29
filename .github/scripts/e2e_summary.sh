@@ -51,8 +51,8 @@ function get_acc_details() {
                     echo "${colorful}" >> /tmp/tmp-result.txt
                     context=$(find "${results_dir}" -name "*.csv" |\
                         grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
-                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $0)}}')
-                    eval "export ${mode}_${dtype}=\${context}"
+                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $1)}}')
+                    eval "export ${mode}_${dtype}=${context}"
                 done
             done
             accuracy_row="$(echo -e "<tr>
