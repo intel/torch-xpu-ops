@@ -369,15 +369,15 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     int size,
     c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
-      store_(store),
-      options_(std::move(options)),
+      store_(std::move(store)),
       xcclCommCounter_(0),
-      local_id_(process_group_id++) {
+      local_id_(process_group_id++),
+      options_(std::move(options)) {
+  this->setGroupUid(options_->group_name);
   logPrefix_ = createLogPrefix();
   blockingWait_ = getCvarBool(TORCH_XCCL_BLOCKING_WAIT, false);
   traceBufferSize_ = getCvarInt({"TORCH_FR_BUFFER_SIZE"}, 2000);
 
-  this->setGroupUid(options_->group_name);
   // In PGNCCL, the pg ranks are recorded on comm setup in each op, but we just
   // do it here.
   const auto XcclVersion = getXcclVersion();
