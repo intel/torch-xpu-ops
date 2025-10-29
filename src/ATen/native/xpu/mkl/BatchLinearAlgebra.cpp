@@ -479,4 +479,142 @@ void triangular_solve_mkl(
       });
 }
 
+Tensor& ungqr_mkl(Tensor& result, const Tensor& tau) {
+  if (result.numel() == 0) {
+    return result;
+  }
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const int64_t m = result.size(-2);
+  const int64_t n = result.size(-1);
+  const int64_t k = tau.size(-1);
+  const int64_t lda = m;
+  const int64_t batch_size = native::batchCount(result);
+  const int64_t matrix_stride = native::matrixStride(result);
+  const int64_t tau_stride = k;
+
+  AT_DISPATCH_COMPLEX_TYPES(result.scalar_type(), "ungqr_mkl_xpu", [&] {
+    using T = get_mkl_type<scalar_t>::type;
+    auto* result_data = reinterpret_cast<T*>(result.data_ptr());
+    const auto* tau_data = reinterpret_cast<const T*>(tau.const_data_ptr());
+
+    if (k == n) {
+      const int64_t batch_tau_stride = std::min(m, n);
+      const int64_t scratchpad_size =
+          oneapi::mkl::lapack::ungqr_batch_scratchpad_size<T>(
+              queue, m, n, k, lda, matrix_stride, batch_tau_stride, batch_size);
+      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
+
+      oneapi::mkl::lapack::ungqr_batch(
+          queue,
+          m,
+          n,
+          k,
+          result_data,
+          lda,
+          matrix_stride,
+          tau_data,
+          batch_tau_stride,
+          batch_size,
+          scratchpad,
+          scratchpad_size)
+          .wait();
+    } else {
+      const int64_t scratchpad_size =
+          oneapi::mkl::lapack::ungqr_scratchpad_size<T>(queue, m, n, k, lda);
+      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
+
+      for (const auto batch_item : c10::irange(batch_size)) {
+        auto* result_batch_ptr = result_data + batch_item * matrix_stride;
+        auto* tau_batch_ptr = tau_data + batch_item * tau_stride;
+
+        oneapi::mkl::lapack::ungqr(
+            queue,
+            m,
+            n,
+            k,
+            result_batch_ptr,
+            lda,
+            tau_batch_ptr,
+            scratchpad,
+            scratchpad_size)
+            .wait();
+      }
+    }
+  });
+
+  return result;
+}
+
+Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
+  if (result.numel() == 0) {
+    return result;
+  }
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const int64_t m = result.size(-2);
+  const int64_t n = result.size(-1);
+  const int64_t k = tau.size(-1);
+  const int64_t lda = m;
+  const int64_t batch_size = native::batchCount(result);
+  const int64_t matrix_stride = native::matrixStride(result);
+  const int64_t tau_stride = k;
+
+  AT_DISPATCH_FLOATING_TYPES(result.scalar_type(), "orgqr_mkl_xpu", [&] {
+    using T = get_mkl_type<scalar_t>::type;
+    auto* result_data = reinterpret_cast<T*>(result.data_ptr());
+    const auto* tau_data = reinterpret_cast<const T*>(tau.const_data_ptr());
+
+    if (k == n) {
+      const int64_t batch_tau_stride = std::min(m, n);
+      const int64_t scratchpad_size =
+          oneapi::mkl::lapack::orgqr_batch_scratchpad_size<T>(
+              queue, m, n, k, lda, matrix_stride, batch_tau_stride, batch_size);
+      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
+
+      oneapi::mkl::lapack::orgqr_batch(
+          queue,
+          m,
+          n,
+          k,
+          result_data,
+          lda,
+          matrix_stride,
+          tau_data,
+          batch_tau_stride,
+          batch_size,
+          scratchpad,
+          scratchpad_size)
+          .wait();
+    } else {
+      const int64_t scratchpad_size =
+          oneapi::mkl::lapack::orgqr_scratchpad_size<T>(queue, m, n, k, lda);
+      Tensor scratchpad_at = at::empty({scratchpad_size}, result.options());
+      auto* scratchpad = reinterpret_cast<T*>(scratchpad_at.data_ptr());
+
+      for (const auto batch_item : c10::irange(batch_size)) {
+        auto* result_batch_ptr = result_data + batch_item * matrix_stride;
+        auto* tau_batch_ptr = tau_data + batch_item * tau_stride;
+
+        oneapi::mkl::lapack::orgqr(
+            queue,
+            m,
+            n,
+            k,
+            result_batch_ptr,
+            lda,
+            tau_batch_ptr,
+            scratchpad,
+            scratchpad_size)
+            .wait();
+      }
+    }
+  });
+
+  return result;
+}
+
 } // namespace at::native::xpu
