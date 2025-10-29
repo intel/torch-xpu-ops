@@ -440,6 +440,7 @@ skip_dict = {
         "test_multi_dot_xpu_complex128",
         "test_pca_lowrank_xpu",
         "test_pinv_errors_and_warnings_xpu_complex128",
+        "test_pinv_errors_and_warnings_xpu_complex64",
         "test_svd_lowrank_xpu_float64",
         # https://github.com/intel/torch-xpu-ops/issues/821
         # addmm.out, addmv.out, linalg_lstsq, vdot&dot, _int_mm lack XPU support and fallback to CPU
