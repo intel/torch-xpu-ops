@@ -26,7 +26,7 @@ def preprocess_row(row):
 def display_row(record):
     formatted = {}
     for key, value in record.items():
-        if isinstance(value, (list, tuple, dict)):
+        if isinstance(value, list | tuple | dict):
             formatted[key] = str(value)
         elif value == "NULL":
             formatted[key] = "NULL"

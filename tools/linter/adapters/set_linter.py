@@ -5,7 +5,8 @@ import sys
 import token
 from functools import cached_property
 from pathlib import Path
-from typing import Iterator, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING
+from collections.abc import Iterator, Sequence
 
 
 _PARENT = Path(__file__).parent.absolute()

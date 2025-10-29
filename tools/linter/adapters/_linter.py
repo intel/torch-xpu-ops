@@ -12,7 +12,8 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from tokenize import generate_tokens, TokenInfo
-from typing import Any, Iterator, Sequence
+from typing import Any
+from collections.abc import Iterator, Sequence
 from typing_extensions import Never
 
 

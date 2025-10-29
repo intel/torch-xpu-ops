@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import warnings
 from itertools import combinations, combinations_with_replacement, permutations, product
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import numpy as np
 import torch
@@ -482,7 +482,7 @@ class TestTensorCreation(TestCase):
         ]
 
         for scipy_tensors, torch_type, scipy_type in zip(
-            scipy_tensors_list, expected_torch_types, expected_scipy_types
+            scipy_tensors_list, expected_torch_types, expected_scipy_types, strict=False
         ):
             torch_tensors = [torch.tensor(t, device=device) for t in scipy_tensors]
             torch_result = torch.block_diag(*torch_tensors)
@@ -1493,7 +1493,7 @@ class TestTensorCreation(TestCase):
 
         not_ok = map(torch.Tensor, [[], [1, 2], [[1, 2], [3, 4]]])
 
-        for tensor, value in zip(ok, ok_values):
+        for tensor, value in zip(ok, ok_values, strict=False):
             self.assertEqual(int(tensor), int(value))
             self.assertEqual(float(tensor), float(value))
             self.assertEqual(complex(tensor), complex(value))
@@ -4850,11 +4850,11 @@ class TestAsArray(TestCase):
             True,
             42,
             1.0,
-            # Homogeneous Lists
+            # Homogeneous lists
             [True, True, False],
             [1, 2, 3, 42],
             [0.0, 1.0, 2.0, 3.0],
-            # Mixed Lists
+            # Mixed lists
             [True, False, 0],
             [0.0, True, False],
             [0, 1.0, 42],
@@ -4892,7 +4892,7 @@ class TestAsArray(TestCase):
     def test_default_device(self, device):
         original = torch.arange(5)
 
-        examples: List[Tuple[Any, Dict]] = [
+        examples: list[tuple[Any, dict]] = [
             (3, {}),
             (original, {}),
             (to_numpy(original), {}),
