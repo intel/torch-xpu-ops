@@ -9443,6 +9443,12 @@
 - func: linalg_solve(Tensor A, Tensor B, *, bool left=True) -> Tensor
   python_module: linalg
 
+- func: local_qr(Tensor a, str? mode_=None) -> (Tensor Q, Tensor R) 
+  python_module: linalg
+  structured: False
+  dispatch:
+    XPU: local_qr_xpu
+
 - func: linalg_inv_ex(Tensor A, *, bool check_errors=False) -> (Tensor inverse, Tensor info)
   python_module: linalg
   structured_delegate: linalg_inv_ex.inverse
