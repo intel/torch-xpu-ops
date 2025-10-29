@@ -88,8 +88,8 @@ runs:
             mv "$1" "$dir_path/${dir_name}.$(basename "$1")"
         ' _ {} \;
         ls -al op_ut_with_skip.nn op_ut_with_skip.quantization/core
-        cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
-        cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+        cp op_ut_with_skip.nn/*.xml ${{ github.workspace }}/ut_log
+        cp op_ut_with_skip.quantization/core/*.xml ${{ github.workspace }}/ut_log
         # Cases run with a on-demand white list, since some suites are too
         # slow to go through all operators on CPU. So add cases on-demand
         # when XPU implementatoin is done.
