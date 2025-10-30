@@ -145,6 +145,7 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
+      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
