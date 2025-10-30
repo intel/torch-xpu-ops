@@ -649,7 +649,6 @@ skip_dict = {
         "test_dispatch_meta_outplace_nn_functional_linear_xpu_int64",
         "test_dispatch_symbolic_meta_outplace_nn_functional_linear_xpu_int64",
         "test_meta_outplace_nn_functional_linear_xpu_int64",
-        "test_dispatch_symbolic_meta_outplace_addbmm_xpu_complex",
         # RuntimeError: Short is not supported in oneDNN!
         "test_dispatch_meta_inplace_addbmm_xpu_int16",
         "test_dispatch_meta_inplace_addmm_decomposed_xpu_int16",
