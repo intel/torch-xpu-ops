@@ -99,7 +99,7 @@ if [ "${accuracy}" -gt 0 ];then
 
 #### accuracy
 
-| Category | Total | Passed | Pass Rate | 🔴Failed | 🔵Xfailed | 🟡Timeout | 🟢New Passed | 🔵New Enabled | Not Run |
+| Category | Total | Passed | Pass Rate | Failed | Xfailed | Timeout | New Passed | New Enabled | Not Run |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 EOF
 
@@ -124,18 +124,30 @@ EOF
             if($0 ~/Real failed/){
                 failed = $4;
                 failed_models = $5;
+                if(failed > 0){
+                    failed = "🔴"$4;
+                }
             }
             if($0 ~/Expected failed/){
                 xfail = $4;
                 xfail_models = $5;
+                if(xfail > 0){
+                    failed = "🔵"$4;
+                }
             }
             if($0 ~/timeout/){
                 timeout = $4;
                 timeout_models = $5;
+                if(timeout > 0){
+                    failed = "🟡"$4;
+                }
             }
             if($0 ~/Failed to passed/){
                 new_passed = $5;
                 new_passed_models = $6;
+                if(new_passed > 0){
+                    failed = "🟢"$4;
+                }
             }
             if($0 ~/Not run/){
                 not_run = $4;
@@ -144,9 +156,12 @@ EOF
             if($0 ~/New models/){
                 new_enabled = $3;
                 new_enabled_models = $4;
+                if(new_enabled > 0){
+                    failed = "🔵"$4;
+                }
             }
         }END {
-            printf(" %d | %d | %s | %d | %d | %d | %d | %d | %d\n",
+            printf(" %s | %s | %s | %s | %s | %s | %s | %s | %s\n",
                 total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
         }')"
         echo "| ${category} | ${test_result} |" >> accuracy.summary.html
