@@ -36,15 +36,14 @@ def find_files(pattern, path):
 
 def color_result(criteria, input):
     if input == -1:
-        return input
+        output = input
     elif input < criteria:
-        output = r"$${\color{red}" + f"{input}" + "}$$"
-        return output
+        output = f"🔴{input}"
     elif input > 1 - criteria + 1:
-        output = r"$${\color{green}" + f"{input}" + "}$$"
-        return output
+        output = f"🟢{input}"
     else:
-        return input
+        output = input
+    return output
 
 # comparison result output
 output_header = ["Category", "Model",
@@ -111,11 +110,11 @@ geomean_sum = {"all": [], "huggingface": [], "timm_models": [], "torchbench": []
 for column_name in ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]:
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
     if len(data) > 0:
-        geomean_sum["all"].append(geometric_mean(data))
+        geomean_sum["all"].append(color_result(geometric_mean(data)))
     for model_name in ["huggingface", "timm_models", "torchbench"]:
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
         if len(data) > 0:
-            geomean_sum[model_name].append(geometric_mean(data))
+            geomean_sum[model_name].append(color_result(geometric_mean(data)))
 geomean_sum = {k: v for k, v in geomean_sum.items() if v}
 output_sum = pd.DataFrame(geomean_sum, index=["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]).T
 output = output_sum.to_html(header=True)
