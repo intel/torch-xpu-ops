@@ -132,21 +132,21 @@ EOF
                 xfail = $4;
                 xfail_models = $5;
                 if(xfail > 0){
-                    failed = "🔵"$4;
+                    xfail = "🔵"$4;
                 }
             }
             if($0 ~/timeout/){
                 timeout = $4;
                 timeout_models = $5;
                 if(timeout > 0){
-                    failed = "🟡"$4;
+                    timeout = "🟡"$4;
                 }
             }
             if($0 ~/Failed to passed/){
                 new_passed = $5;
                 new_passed_models = $6;
                 if(new_passed > 0){
-                    failed = "🟢"$4;
+                    new_passed = "🟢"$4;
                 }
             }
             if($0 ~/Not run/){
@@ -157,7 +157,7 @@ EOF
                 new_enabled = $3;
                 new_enabled_models = $4;
                 if(new_enabled > 0){
-                    failed = "🔵"$4;
+                    new_enabled = "🔵"$4;
                 }
             }
         }END {
