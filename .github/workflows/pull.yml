@@ -149,10 +149,12 @@ jobs:
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
     name: linux-e2e-summary
-    needs: [linux-e2e]
+    needs: [conditions-filter, linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
     permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
 
   windows:
     name: windows
