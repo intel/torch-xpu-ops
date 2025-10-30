@@ -121,16 +121,16 @@ jobs:
           old_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_COMMIT="${old_commit}" \
-                  --TORCH_XPU_OPS_COMMIT="${LATEST_XPU_COMMIT}" \
+                  --TORCH_XPU_OPS_COMMIT="pinned" \
                   --PREPARE_ENV=yes \
-                  > ${{ github.workspace }}/gs-logs/search-${old_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
+                  > ${{ github.workspace }}/gs-logs/search-${old_commit}-pinned.log 2>&1 && echo $? || echo $?)"
           old_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv || true)"
           export SEARCH_GOOD_VALUE="$(echo ${old_result} |awk -F, '{print $3}')"
           new_status="$(${{ github.workspace }}/gs-scripts/.github/scripts/bisect_search.sh \
                   --WORKSPACE="${{ github.workspace }}/gs-search" \
                   --PYTORCH_COMMIT="${new_commit}" \
-                  --TORCH_XPU_OPS_COMMIT="${LATEST_XPU_COMMIT}" \
-                  > ${{ github.workspace }}/gs-logs/search-${new_commit}-${LATEST_XPU_COMMIT}.log 2>&1 && echo $? || echo $?)"
+                  --TORCH_XPU_OPS_COMMIT="pinned" \
+                  > ${{ github.workspace }}/gs-logs/search-${new_commit}-pinned.log 2>&1 && echo $? || echo $?)"
           new_result="$(tail -n 1 ${{ github.workspace }}/gs-search/result.csv || true)"
           if [ "${old_status}" != "${new_status}" ];then
             cd pytorch
@@ -140,7 +140,7 @@ jobs:
             git bisect run ./gs-scripts/.github/scripts/bisect_search.sh \
                     --WORKSPACE="${{ github.workspace }}/gs-search" \
                     --PYTORCH_COMMIT="search" \
-                    --TORCH_XPU_OPS_COMMIT="${LATEST_XPU_COMMIT}" \
+                    --TORCH_XPU_OPS_COMMIT="pinned" \
                     2>&1 |tee ${{ github.workspace }}/gs-logs/bisect-pytorch.log
             git bisect log |tee ${{ github.workspace }}/gs-logs/result-pytorch.log
           else
