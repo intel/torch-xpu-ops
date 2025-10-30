@@ -35,23 +35,23 @@ function get_acc_details() {
                         exit_label = 0;
                     }{
                         if ($0 ~/Real failed/){
-                            color="red";
+                            color="🔴";
                             exit_label++;
                         }else if ($0 ~/Expected failed/){
-                            color="blue";
+                            color="🔵";
                         }else if ($0 ~/Warning timeout/){
-                            color="orange";
+                            color="🟡";
                         }else if ($0 ~/New models/){
-                            color="blue";
+                            color="🔵";
                         }else if ($0 ~/Failed to passed/){
-                            color="green";
+                            color="🟢";
                             exit_label++;
                         }
                     }END{print color, exit_label}')
                     echo "${colorful}" >> /tmp/tmp-result.txt
                     context=$(find "${results_dir}" -name "*.csv" |\
                         grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
-                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $1)}}')
+                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("%s%s", c, $1)}}')
                     eval "export ${mode}_${dtype}=\${context}"
                 done
             done
@@ -68,7 +68,7 @@ function get_acc_details() {
                     <td>${inference_float16}</td>
                     <td>${inference_amp_bf16}</td>
                     <td>${inference_amp_fp16}</td>
-                </tr>" |sed '/__color__/{s/__color__/\\color/g;s/_/\\_/g}'
+                </tr>"
             )"
             if [[ "${accuracy_row}" =~ "red" ]];then
                 echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
@@ -99,7 +99,7 @@ if [ "${accuracy}" -gt 0 ];then
 
 #### accuracy
 
-| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ |\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ |\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |
+| Category | Total | Passed | Pass Rate | 🔴Failed | 🔵Xfailed | 🟡Timeout | 🟢New Passed | 🔵New Enabled | Not Run |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 EOF
 
@@ -183,15 +183,15 @@ summary_file="e2e-test-result.html"
 cat > ${summary_file} << EOF
 
 #### Note:
-\$\${\\color{red}Red}\$\$: the failed cases which need look into
-\$\${\\color{green}Green}\$\$: the new passed cases which need update reference
-\$\${\\color{blue}Blue}\$\$: the expected failed or new enabled cases
-\$\${\\color{orange}Orange}\$\$: the warning cases
+🔴: the failed cases which need look into
+🟢: the new passed cases which need update reference
+🔵: the expected failed or new enabled cases
+🟡: the warning cases
 Empty means the cases NOT run
 
 $(
     if ((accuracy_regression + performance_regression > 0));then
-        echo -e "\n### Highlight regressions\n"
+        echo -e "\n### 🎯 Highlight regressions\n"
         if (( accuracy_regression > 0 ));then
             cat accuracy.regression.html
             echo "accuracy 1" >> /tmp/tmp-result.txt
@@ -203,13 +203,13 @@ $(
     fi
 )
 
-### Summary
+### 📊 Summary
 
 $(cat accuracy.summary.html)
 
 $(cat performance.summary.html)
 
-### Details
+### 📖 Details
 
 <details><summary>View detailed result</summary>
 
