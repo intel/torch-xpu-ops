@@ -35,6 +35,11 @@
 #
 #  SYCL_ADD_LIBRARY
 
+if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER})
+  set(CMAKE_SYCL_COMPILER_LAUNCHER "$ENV{CMAKE_SYCL_COMPILER_LAUNCHER}"
+    CACHE STRING "Compiler launcher for SYCL.")
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   # CMAKE_CURRENT_LIST_FILE contains the full path to the file currently being
@@ -405,7 +410,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     add_custom_command(
       OUTPUT ${output_file}
       DEPENDS ${object_files}
-      COMMAND ${SYCL_EXECUTABLE}
+      COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
       -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
