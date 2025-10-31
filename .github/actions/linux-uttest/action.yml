@@ -77,7 +77,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
-        find op_ut_with_skip_nn op_ut_with_skip_quantization/core -type f -exec sh -c '
+        find op_ut_with_skip_nn op_ut_with_skip_quantization/core op_ut_with_all_functorch -type f -exec sh -c '
             dir_path=$(dirname "$1");
             case "$dir_path" in
                 *"op_ut_with_skip_quantization/core"*)
@@ -90,6 +90,7 @@ runs:
         ls -al op_ut_with_skip_nn op_ut_with_skip_quantization/core
         cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
         cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
+        cp op_ut_with_all_functorch/*.xml ${{ github.workspace }}/ut_log
         # Cases run with a on-demand white list, since some suites are too
         # slow to go through all operators on CPU. So add cases on-demand
         # when XPU implementatoin is done.
@@ -183,7 +184,7 @@ runs:
         export CCL_ROOT=$(dirname $(which python))/../
         export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
         export LD_LIBRARY_PATH="${CCL_ROOT}/lib:${LD_LIBRARY_PATH}"
-        python run_distributed.py \
+        python run_distributed_local.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
