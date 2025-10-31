@@ -68,6 +68,7 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_api.py": None,
     "../../../../test/distributed/tensor/test_attention.py": None,
     "../../../../test/distributed/tensor/test_common_rules.py": None,
+    "../../../../test/distributed/tensor/test_dtensor.py": None,
     "../../../../test/distributed/tensor/test_dtensor_compile.py": None,
     "../../../../test/distributed/tensor/test_experimental_ops.py": None,
     "../../../../test/distributed/tensor/test_init.py": None,
