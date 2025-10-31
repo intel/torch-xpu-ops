@@ -6,9 +6,9 @@ from torch.testing._internal.common_utils import TestCase
 class TestTorchWhereMethod(TestCase):
     # Define float8 dtypes
     FLOAT8_DTYPES = (
-        torch.float8_e5m2,
         torch.float8_e4m3fn,
         torch.float8_e4m3fnuz,
+        torch.float8_e5m2,
         torch.float8_e5m2fnuz,
         torch.float8_e8m0fnu,
     )
