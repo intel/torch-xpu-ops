@@ -713,7 +713,12 @@ void index_put_deterministic_kernel(
                 accumulate);
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          AT_EXPAND(AT_FLOAT8_TYPES),
+          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
+          // cleared for float8 dtypes.
+          kFloat8_e4m3fn,
+          kFloat8_e5m2,
+          kFloat8_e4m3fnuz,
+          kFloat8_e5m2fnuz,
           kComplexHalf,
           kHalf,
           kBool,
@@ -737,7 +742,12 @@ void index_put_deterministic_kernel(
                 accumulate);
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          AT_EXPAND(AT_FLOAT8_TYPES),
+          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
+          // cleared for float8 dtypes.
+          kFloat8_e4m3fn,
+          kFloat8_e5m2,
+          kFloat8_e4m3fnuz,
+          kFloat8_e5m2fnuz,
           kComplexHalf,
           kHalf,
           kBool,

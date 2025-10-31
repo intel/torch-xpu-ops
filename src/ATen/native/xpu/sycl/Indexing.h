@@ -835,7 +835,7 @@ struct IndexPutDeterministicKernelFunctor {
       int64_t idx_orig = indices_[inner_idx];
       int64_t v_gid = idx_orig * stride_ + v_stride;
       if (accumulate_) {
-        acc = acc + (accscalar_t)c10::load(&value_[v_gid]);
+        acc += (accscalar_t)c10::load(&value_[v_gid]);
       } else {
         self_[s_gid] = c10::load(&value_[v_gid]);
         break;
