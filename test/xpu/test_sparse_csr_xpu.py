@@ -24,7 +24,10 @@ from torch.testing._internal.common_dtype import (
     all_types_and_complex, floating_and_complex_types_and)
 from torch.testing._internal.opinfo.definitions.linalg import sample_inputs_linalg_solve
 from torch.testing._internal.opinfo.definitions.sparse import validate_sample_input_sparse
-from test_sparse import CUSPARSE_SPMM_COMPLEX128_SUPPORTED, HIPSPARSE_SPMM_COMPLEX128_SUPPORTED
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+from test_sparse_csr import CUSPARSE_SPMM_COMPLEX128_SUPPORTED, HIPSPARSE_SPMM_COMPLEX128_SUPPORTED
 import operator
 
 
