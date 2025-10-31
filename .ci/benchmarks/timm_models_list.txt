@@ -59,3 +59,7 @@ visformer_small 128
 vit_base_patch16_224 128
 volo_d1_224 128
 xcit_large_24_p8_224 16
+convnextv2_nano.fcmae_ft_in22k_in1k
+deit_tiny_patch16_224.fb_in1k
+vit_base_patch14_dinov2.lvd142m
+vit_base_patch16_siglip_256
