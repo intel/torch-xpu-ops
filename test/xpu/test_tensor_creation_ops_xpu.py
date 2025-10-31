@@ -1226,8 +1226,10 @@ class TestTensorCreation(TestCase):
         vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2, max)
         refs = None
         if self.device_type == "cuda" or self.device_type == "xpu":
-            if torch.version.hip:
+            if torch.version.hip or torch.version.xpu:
                 # HIP min float -> int64 conversion is divergent
+                # XPU min float -> int8 conversion is divergent
+                # XPU min float -> int16 conversion is divergent
                 vals = (-2, -1.5, -0.5, 0, 0.5, 1.5, 2)
             else:
                 vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2)

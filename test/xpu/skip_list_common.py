@@ -658,11 +658,7 @@ skip_dict = {
     "nn/test_pooling_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
     "test_dataloader_xpu.py": None,
-    "test_tensor_creation_ops_xpu.py": (
-        # CPU only (vs Numpy). CUDA skips these cases since non-deterministic results are outputed for inf and nan.
-        "test_float_to_int_conversion_finite_xpu_int8",
-        "test_float_to_int_conversion_finite_xpu_int16",
-    ),
+    "test_tensor_creation_ops_xpu.py": None,
     "test_autocast_xpu.py": None,
     "test_autograd_xpu.py": (
         # AttributeError: module 'torch.xpu' has no attribute
