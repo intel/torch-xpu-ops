@@ -10,7 +10,7 @@ namespace at::native {
 
 TORCH_IMPL_FUNC(linalg_qr_xpu_out)
 (const Tensor& A,
- c10::string_view mode,
+ std::string_view mode,
  const Tensor& Q,
  const Tensor& R) {
   xpu::linalg_qr_kernel(A, mode, Q, R);
