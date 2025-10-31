@@ -111,10 +111,15 @@ for column_name in ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eage
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
     if len(data) > 0:
         geomean_sum["all"].append(color_result(args.criteria, geometric_mean(data)))
+    else:
+        geomean_sum["all"].append("🔴")
     for model_name in ["huggingface", "timm_models", "torchbench"]:
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
-        if len(data) > 0:
-            geomean_sum[model_name].append(color_result(args.criteria, geometric_mean(data)))
+        if os.path.exists(args.target + "/" + model_name):
+            if len(data) > 0:
+                geomean_sum[model_name].append(color_result(args.criteria, geometric_mean(data)))
+            else:
+                geomean_sum[model_name].append("🔴")
 geomean_sum = {k: v for k, v in geomean_sum.items() if v}
 output_sum = pd.DataFrame(geomean_sum, index=["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]).T
 output = output_sum.to_html(header=True)
