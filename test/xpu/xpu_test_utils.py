@@ -5,6 +5,7 @@ import copy
 import os
 import sys
 import unittest
+import logging
 
 import torch
 from torch import bfloat16, cuda
@@ -27,6 +28,7 @@ from torch.testing._internal.opinfo.core import (
     UnaryUfuncInfo,
 )
 
+_loggers = {}
 _xpu_computation_op_list = [
     "empty",
     "eye",
@@ -439,6 +441,28 @@ _xpu_tolerance_override = {
         }
     },
 }
+
+
+def create_file_logger(name, log_path=None, level=logging.DEBUG):
+    global _loggers
+    if name in _loggers:
+        return _loggers[name]
+    
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    if not log_path:
+        if 'WORKSPACE' in os.environ:
+            parent = os.environ['WORKSPACE']
+        else:
+            parent = os.path.dirname(os.path.abspath(__file__))
+        log_path = os.path.join(parent, f"{name}.log")
+    
+    log_path = os.path.normpath(log_path)    
+    file_handle = logging.FileHandler(log_path, mode='a', errors='ignore')
+    file_handle.setFormatter(logging.Formatter("%(levelname)s %(asctime)s %(message)s", "%Y%m%d-%H:%M:%S"))
+    logger.addHandler(file_handle)
+    _loggers[name] = logger
+    return logger
 
 
 def get_wrapped_fn(fn):
@@ -1168,6 +1192,7 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
+    logger = create_file_logger('launch_test')
     os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     if skip_list is not None:
@@ -1194,4 +1219,5 @@ def launch_test(test_case, skip_list=None, exe_list=None):
         test_command = (
             f"pytest --junit-xml=./op_ut_with_all_{test_case}.xml " + test_case
         )
+    logger.info(test_command)
     return os.system(test_command)
