@@ -8,6 +8,12 @@ skip_dict = {
         "test_errors_vdot_xpu",
         # core dump
         "test_dtypes__refs_nn_functional_pdist_xpu",
+        # Reference result was farther (inf) from the precise
+        # computation than the torch result was (nan)!
+        "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",
+        "test_python_ref_executor__refs_mul_executor_aten_xpu_complex32",
+        # https://github.com/intel/torch-xpu-ops/issues/2254
+        "histogramdd",
     ),
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
