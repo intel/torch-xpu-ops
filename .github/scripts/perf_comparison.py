@@ -6,6 +6,7 @@ import re
 import os
 import fnmatch
 import argparse
+import subprocess
 import pandas as pd
 from statistics import geometric_mean
 
@@ -44,6 +45,23 @@ def color_result(criteria, input):
     else:
         output = input
     return output
+
+def get_filtered_data(owner, repo, issue_number, data):
+    """Get skipped models list from issue body"""
+    try:
+        result = subprocess.run([
+            'gh', '--repo', f'{owner}/{repo}',
+            'issue', 'view', f'{issue_number}'
+        ], capture_output=True, text=True, check=True)
+        lines = result.stdout.splitlines()
+        models = next((line.replace(" ", "") for line in lines if "Skipped models:" in line), data)
+        at_index = models.find(":")
+        models_list = models[at_index+1:].split(",")
+        output = data[~data['Model'].isin(models_list) if models_list else True]
+        return output
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e}")
+        return data
 
 # comparison result output
 output_header = ["Category", "Model",
@@ -132,10 +150,11 @@ with open('performance.details.html', 'w', encoding='utf-8') as f:
     f.write("\n\n#### performance\n\n" + output)
 
 # regression
-comparison = output_data.loc[
-    ((output_data['Target vs. Baseline [Inductor]'] < args.criteria) | (output_data['Target vs. Baseline [Eager]'] < args.criteria))
-    & (output_data['Baseline inductor'] > 0)
-    & (output_data['Target inductor'] >= 0)
+filtered_data = get_filtered_data("intel", "torch-xpu-ops", "1645", output_data)
+comparison = filtered_data.loc[
+    ((filtered_data['Target vs. Baseline [Inductor]'] < args.criteria) | (filtered_data['Target vs. Baseline [Eager]'] < args.criteria))
+    & (filtered_data['Baseline inductor'] > 0)
+    & (filtered_data['Target inductor'] >= 0)
 ]
 if not comparison.empty:
     output = comparison.to_html(index=False)
