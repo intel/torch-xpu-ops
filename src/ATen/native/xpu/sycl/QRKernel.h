@@ -5,9 +5,9 @@
 namespace at::native::xpu {
 
 TORCH_XPU_API void linalg_qr_kernel(
-    const Tensor& A,
+    const at::Tensor& A,
     std::string_view mode,
-    const Tensor& Q,
-    const Tensor& R);
+    const at::Tensor& Q,
+    const at::Tensor& R);
 
 } // namespace at::native::xpu

@@ -1,22 +1,17 @@
 #include <ATen/Operators.h>
 #include <c10/xpu/XPUStream.h>
-// #include <sycl/sycl.hpp>
 #include <torch/all.h>
 #include <torch/library.h>
-//#include <mkl_lapack.h>
 #include <oneapi/mkl/lapack.hpp>
-#include <cstdint>
 
 namespace at::native::xpu {
 
 void linalg_qr_kernel(
     const at::Tensor& A,
-    std::string_view mode_,
+    std::string_view mode,
     const at::Tensor& Q,
     const at::Tensor& R) {
-  std::cout << "Hello from kernel";
-  std::cout << "Call mode is " << " " << mode_ << std::endl;
-  std::string mode = std::string(mode_);
+  std::cout << "Call mode is " << " " << mode << std::endl;
 
   TORCH_CHECK(A.device().is_xpu(), "A must be an XPU tensor");
   at::Tensor a_contig = A.contiguous();

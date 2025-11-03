@@ -7,7 +7,7 @@ def test_linalg_qr(mode):
     A = torch.tensor([[12., -51, 4], [6, 167, -68], [-4, 24, -41]])
     A_xpu = A.to('xpu')
     
-    Q, R = torch.linalg.qr(A)
+    Q, R = torch.linalg.qr(A, mode=mode)
     Q_xpu, R_xpu = torch.linalg.qr(A_xpu, mode=mode)
 
 
