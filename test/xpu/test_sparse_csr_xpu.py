@@ -79,7 +79,7 @@ from torch.testing._internal.opinfo.definitions.sparse import (
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 import operator
 
-from test_sparse_csr import (
+from test_sparse_xpu import (
     CUSPARSE_SPMM_COMPLEX128_SUPPORTED,
     HIPSPARSE_SPMM_COMPLEX128_SUPPORTED,
 )
