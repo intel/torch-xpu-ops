@@ -111,6 +111,16 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
+void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType src_dtype = iter.dtype(1);
+
+  if (src_dtype == kFloat4_e2m1fn_x2) {
+    gpu_kernel_nocast(iter, CopyScalarFunc<Float4_e2m1fn_x2>());
+  } else {
+    TORCH_CHECK(false, "Copy from ", src_dtype, " to Float4_e2m1fn_x2 has not been supported.");
+  }
+}
+
 void copy_kernel(TensorIteratorBase& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
@@ -119,6 +129,8 @@ void copy_kernel(TensorIteratorBase& iter) {
     });
   } else if (isFloat8Type(iter.dtype(0))) {
     float8_copy_kernel_xpu(iter);
+  } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
+    float4_copy_kernel_xpu(iter);
   } else {
     AT_DISPATCH_V2(
         dtype,
