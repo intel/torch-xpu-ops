@@ -431,7 +431,7 @@ CROSS_REF_EXCLUDE_SET = {
         "bernoulli",
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific exclude cases
-    # ("xpu", None, "some_xpu_specific_op"),  
+    # ("xpu", None, "some_xpu_specific_op"),
 }
 
 CROSS_REF_BACKWARD_EXCLUDE_SET = {
@@ -444,7 +444,7 @@ CROSS_REF_BACKWARD_EXCLUDE_SET = {
         "bernoulli",
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific backward exclude cases
-    # ("xpu", torch.float16, "nn.functional.some_op"),  
+    # ("xpu", torch.float16, "nn.functional.some_op"),
 }
 
 all_decomposed = set()
