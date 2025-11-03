@@ -1,8 +1,8 @@
 #include <ATen/Operators.h>
 #include <c10/xpu/XPUStream.h>
+#include <oneapi/mkl/lapack.hpp>
 #include <torch/all.h>
 #include <torch/library.h>
-#include <oneapi/mkl/lapack.hpp>
 
 namespace at::native::xpu {
 
@@ -60,54 +60,54 @@ void linalg_qr_kernel(
   float* r_buf = result_r.data_ptr<float>();
   float* q_buf = result_q.data_ptr<float>();
 
-  std::cout << "entering " << n << " " << m << " " << mode << " " << (mode ==
-  "complete") << std::endl;
+  std::cout << "entering " << n << " " << m << " " << mode << " "
+            << (mode == "complete") << std::endl;
 
   for (int batch_item = 0; batch_item < b; batch_item++) {
-      oneapi::mkl::lapack::geqrf(queue, n, m, r_buf, n, tau_buf, sbuffer, mn2);
-  
-      if (mode != "r") {
-          // copy relevant part of R matrix to Q matrix
-          int copy_columns = out_q_columns > m ? m : out_q_columns;
-          queue.memcpy(q_buf, r_buf, n * copy_columns * sizeof(float)).wait();
-    
-          oneapi::mkl::lapack::orgqr(
-                queue,
-                n,
-                out_q_columns,
-                out_q_columns,
-                q_buf,
-                n,
-                tau_buf,
-                sbuffer,
-                mn2);
-            std::cout << "done" << std::endl;
-      
-            sycl::free(sbuffer, queue);
-            std::cout << "done2" << std::endl;
-          }
-      
-          r_buf += mn;
-          q_buf += n * out_q_columns;
-      
-        } // batch
-      
-        if (mode == "r") {
-            result_q = at::empty({0, 0});
-          }
-        
-          if ((mode == "reduced" || mode == "r") && n > m) {
-              result_r =
-                  result_r
-                      .index(
-                            {"...", at::indexing::Slice(0, n), at::indexing::Slice(0, m)})
-                        .contiguous();
-              }
-            
-              // result_q.transpose(0,1);
-              // return std::make_tuple(
-                    // result_q.transpose(-2, -1), result_r.transpose(-2, -1).triu_());
+    oneapi::mkl::lapack::geqrf(queue, n, m, r_buf, n, tau_buf, sbuffer, mn2);
+
+    if (mode != "r") {
+      // copy relevant part of R matrix to Q matrix
+      int copy_columns = out_q_columns > m ? m : out_q_columns;
+      queue.memcpy(q_buf, r_buf, n * copy_columns * sizeof(float)).wait();
+
+      oneapi::mkl::lapack::orgqr(
+          queue,
+          n,
+          out_q_columns,
+          out_q_columns,
+          q_buf,
+          n,
+          tau_buf,
+          sbuffer,
+          mn2);
+      std::cout << "done" << std::endl;
+
+      sycl::free(sbuffer, queue);
+      std::cout << "done2" << std::endl;
+    }
+
+    r_buf += mn;
+    q_buf += n * out_q_columns;
+
+  } // batch
+
+  if (mode == "r") {
+    result_q = at::empty({0, 0});
+  }
+
+  if ((mode == "reduced" || mode == "r") && n > m) {
+    result_r =
+        result_r
+            .index(
+                {"...", at::indexing::Slice(0, n), at::indexing::Slice(0, m)})
+            .contiguous();
+  }
+
+  // result_q.transpose(0,1);
+  // return std::make_tuple(
+  // result_q.transpose(-2, -1), result_r.transpose(-2, -1).triu_());
 }
- 
+
 } // namespace at::native::xpu
 // }
