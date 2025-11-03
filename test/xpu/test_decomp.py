@@ -183,7 +183,6 @@ def _getDefaultRtolAndAtol(dtype0, dtype1):
     return rtol, atol
 
 
-
 def op_assert_ref(test_case, op, test_dtype, i, orig, decomp, ref, args, kwargs):
     assert orig.dtype == decomp.dtype, f"{i} Operation:  {op}"
     if orig.numel() == 0 or decomp.numel() == 0:
@@ -432,7 +431,7 @@ CROSS_REF_EXCLUDE_SET = {
         "bernoulli",
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific exclude cases
-    # ("xpu", None, "some_xpu_specific_op"),  # 根据需要添加 XPU 特定的排除项
+    # ("xpu", None, "some_xpu_specific_op"),  
 }
 
 CROSS_REF_BACKWARD_EXCLUDE_SET = {
@@ -445,7 +444,7 @@ CROSS_REF_BACKWARD_EXCLUDE_SET = {
         "bernoulli",
     ),  # bernoulli is a function of randomness, so couldn't do cross-reference.
     # XPU specific backward exclude cases
-    # ("xpu", torch.float16, "nn.functional.some_op"),  # 根据需要添加
+    # ("xpu", torch.float16, "nn.functional.some_op"),  
 }
 
 all_decomposed = set()
