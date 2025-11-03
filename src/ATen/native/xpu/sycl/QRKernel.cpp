@@ -12,13 +12,8 @@ void linalg_qr_kernel(
     const at::Tensor& Q,
     const at::Tensor& R) {
   std::cout << "Call mode is " << " " << mode << std::endl;
-
-  TORCH_CHECK(A.device().is_xpu(), "A must be an XPU tensor");
   at::Tensor a_contig = A.contiguous();
   at::Tensor result_r = at::clone(a_contig);
-  //  at::Tensor result_r = at::empty_like(a_contig);
-  at::Tensor result_c = at::empty_like(a_contig);
-  at::Tensor result = at::empty_like(a_contig);
 
   auto dimensions = A.sizes();
 
@@ -105,9 +100,8 @@ void linalg_qr_kernel(
   }
 
   // result_q.transpose(0,1);
-  // return std::make_tuple(
-  // result_q.transpose(-2, -1), result_r.transpose(-2, -1).triu_());
+  Q.set_(result_q.transpose(-2, -1).to("xpu"));
+  R.set_(result_r.transpose(-2, -1).triu_().to("xpu"));
 }
 
 } // namespace at::native::xpu
-// }
