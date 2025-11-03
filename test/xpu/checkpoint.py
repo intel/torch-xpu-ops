@@ -299,7 +299,8 @@ class CheckpointFunction(torch.autograd.Function):
             device_autocast_ctx = torch.amp.autocast(
                 device_type=ctx.device_type, **ctx.device_autocast_kwargs
             ) if torch.amp.is_autocast_available(ctx.device_type) else contextlib.nullcontext()
-            with torch.enable_grad(), device_autocast_ctx, torch.amp.autocast("cpu", **ctx.cpu_autocast_kwargs):  # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            with torch.enable_grad(), device_autocast_ctx, torch.amp.autocast("cpu", **ctx.cpu_autocast_kwargs):
                 outputs = ctx.run_function(*detached_inputs)
 
         if isinstance(outputs, torch.Tensor):
@@ -340,6 +341,8 @@ def noop_context_fn():
 #     break. And here, the following disable wrapper ensures that
 #     TorchDynamo does not trigger again on the frames created by
 #     utils.checkpoint innards.
+
+
 @torch._disable_dynamo
 def checkpoint(
     function,
@@ -986,6 +989,7 @@ Operations executed during recomputation:
 --------------------------------------------------------------------------------
 """
 
+
 class CheckpointError(RuntimeError):
     pass
 
@@ -1007,7 +1011,7 @@ def _get_debug_context_and_cb() -> Tuple[Callable[[], Any], Callable[[Checkpoint
             @contextlib.contextmanager
             def logging_mode():
                 with LoggingTensorMode(), \
-                     capture_logs(True, python_tb=True, script_tb=True, cpp_tb=cpp_tb) as logs_and_tb:
+                        capture_logs(True, python_tb=True, script_tb=True, cpp_tb=cpp_tb) as logs_and_tb:
                     # pyrefly: ignore [bad-assignment]
                     self.logs, self.tbs = logs_and_tb
                     yield logs_and_tb
@@ -1052,6 +1056,7 @@ def _get_debug_context_and_cb() -> Tuple[Callable[[], Any], Callable[[Checkpoint
 
     return context_fn, unpack_error_cb
 
+
 def _default_meta_extractor(x: torch.Tensor) -> Dict[str, Any]:
     # These properties are fast to check, easy to understand
     return {
@@ -1060,12 +1065,15 @@ def _default_meta_extractor(x: torch.Tensor) -> Dict[str, Any]:
         "device": x.device
     }
 
+
 _allowed_determinism_checks_to_fns: Dict[str, Callable[[torch.Tensor], Any]] = {
     _DEFAULT_DETERMINISM_MODE: _default_meta_extractor,
     "none": lambda _: None,
 }
 
 # See Rule 5
+
+
 class _StopRecomputationError(Exception):
     pass
 
@@ -1251,6 +1259,7 @@ class SelectiveCheckpointContext:
         >>>     context_fn=context_fn,
         >>> )
     """
+
     def __init__(self, *, is_recompute):
         self.is_recompute = is_recompute
 
@@ -1332,8 +1341,10 @@ class _CachingTorchDispatchMode(TorchDispatchMode):
             any_ret_has_alias_info = any(ret.alias_info is not None for ret in func._schema.returns)
 
         if policy in (CheckpointPolicy.MUST_SAVE, CheckpointPolicy.PREFER_SAVE) or is_compiling:
-            self.storage[func].append(tree_map(lambda x: _VersionWrapper(_maybe_detach(x, any_ret_has_alias_info)), out))
+            self.storage[func].append(tree_map(lambda x: _VersionWrapper(
+                _maybe_detach(x, any_ret_has_alias_info)), out))
         return out
+
 
 class _CachedTorchDispatchMode(TorchDispatchMode):
     # Used together with _CachedTorchDispatchMode to implement SAC.
@@ -1457,6 +1468,7 @@ def create_selective_checkpoint_contexts(policy_fn_or_list, allow_cache_entry_mu
 # NB: this helper wraps fn before calling checkpoint_impl. kwargs and
 #     saving/restoring of global state is handled here.
 
+
 def _checkpoint_without_reentrant_generator(
     fn,
     preserve_rng_state=True,
@@ -1560,7 +1572,8 @@ def _checkpoint_without_reentrant_generator(
             device_autocast_ctx = torch.amp.autocast(
                 device_type=device_type, **device_autocast_kwargs
             ) if torch.amp.is_autocast_available(device_type) else contextlib.nullcontext()
-            with device_autocast_ctx, torch.amp.autocast("cpu", **cpu_autocast_kwargs), recompute_context:  # type: ignore[attr-defined]
+            # type: ignore[attr-defined]
+            with device_autocast_ctx, torch.amp.autocast("cpu", **cpu_autocast_kwargs), recompute_context:
                 fn(*args, **kwargs)
 
     new_frame = _CheckpointFrame(

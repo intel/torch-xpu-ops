@@ -1,6 +1,8 @@
 # mypy: allow-untyped-defs
 # Owner(s): ["module: unknown"]
 
+from torch.utils.collect_env import get_pretty_env_info
+from torch.testing._internal.common_utils import run_tests, TestCase
 import os
 import random
 import shutil
@@ -58,9 +60,6 @@ HAS_CUDA = torch.cuda.is_available()
 HAS_XPU = torch.xpu.is_available()
 HAS_GPU = HAS_CUDA or HAS_XPU
 device_type = get_gpu_type()
-
-
-from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 # mypy: disable-error-code="name-defined"
@@ -149,7 +148,7 @@ class TestCheckpoint(TestCase):
                 out.sum().backward()
                 for m in modules[: (len(modules) // 2)]:
                     self.assertEqual(m.counter, 2)
-                for m in modules[(len(modules) // 2) :]:
+                for m in modules[(len(modules) // 2):]:
                     self.assertEqual(m.counter, 1)
 
     def test_checkpoint_valid(self):
@@ -635,9 +634,6 @@ class TestDataLoaderUtils(TestCase):
 
 
 test_dir = os.path.abspath(os.path.dirname(str(__file__)))
-
-
-from torch.utils.collect_env import get_pretty_env_info
 
 
 @unittest.skipIf(IS_FBCODE, "runs pip which is not available internally")
