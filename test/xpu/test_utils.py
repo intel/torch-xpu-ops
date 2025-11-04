@@ -1,8 +1,6 @@
 # mypy: allow-untyped-defs
 # Owner(s): ["module: unknown"]
 
-from torch.utils.collect_env import get_pretty_env_info
-from torch.testing._internal.common_utils import run_tests, TestCase
 import os
 import random
 import shutil
@@ -20,6 +18,12 @@ import torch.cuda
 import torch.nn as nn
 import torch.utils.cpp_extension
 import torch.utils.data
+from checkpoint import (
+    _infer_device_type,
+    checkpoint,
+    checkpoint_sequential,
+    get_device_states,
+)
 from torch._utils import try_import
 from torch._utils_internal import deprecated
 from torch.testing._internal.common_cuda import TEST_MULTIGPU
@@ -34,6 +38,8 @@ from torch.testing._internal.common_utils import (  # type: ignore[attr-defined]
     IS_SANDCASTLE,
     IS_WINDOWS,
     load_tests,
+    run_tests,
+    TestCase,
 )
 from torch.testing._internal.inductor_utils import get_gpu_type
 from torch.utils._device import set_device
@@ -43,14 +49,8 @@ from torch.utils._traceback import (
     format_traceback_short,
     report_compile_source_on_error,
 )
-from checkpoint import (
-    _infer_device_type,
-    checkpoint,
-    checkpoint_sequential,
-    get_device_states,
-)
+from torch.utils.collect_env import get_pretty_env_info
 from torch.utils.data import DataLoader
-
 
 # load_tests from torch.testing._internal.common_utils is used to automatically filter tests for
 # sharding on sandcastle. This line silences flake warnings
@@ -148,7 +148,7 @@ class TestCheckpoint(TestCase):
                 out.sum().backward()
                 for m in modules[: (len(modules) // 2)]:
                     self.assertEqual(m.counter, 2)
-                for m in modules[(len(modules) // 2):]:
+                for m in modules[(len(modules) // 2) :]:
                     self.assertEqual(m.counter, 1)
 
     def test_checkpoint_valid(self):
@@ -453,7 +453,9 @@ class TestCheckpoint(TestCase):
                 def hook(_unused):
                     self.assertEqual(len(stats), idx)
                     torch.get_device_module(device_type).synchronize()
-                    stats.append(torch.get_device_module(device_type).memory_allocated())
+                    stats.append(
+                        torch.get_device_module(device_type).memory_allocated()
+                    )
                     if idx > 0:
                         if should_free:
                             self.assertLess(stats[idx], stats[idx - 1])
@@ -878,12 +880,16 @@ class TestDeviceUtils(TestCase):
 
             torch.set_default_device(f"{device_type}:1")
             with torch.device(f"{device_type}:0"):
-                self.assertEqual(torch.get_default_device(), torch.device(f"{device_type}", 0))
+                self.assertEqual(
+                    torch.get_default_device(), torch.device(f"{device_type}", 0)
+                )
 
             torch.set_default_device("cpu")
             self.assertEqual(torch.get_default_device(), torch.device("cpu"))
             with torch.device(f"{device_type}:0"):
-                self.assertEqual(torch.get_default_device(), torch.device(f"{device_type}", 0))
+                self.assertEqual(
+                    torch.get_default_device(), torch.device(f"{device_type}", 0)
+                )
 
             self.assertEqual(torch.get_default_device(), torch.device("cpu"))
         finally:

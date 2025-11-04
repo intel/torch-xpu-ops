@@ -3,32 +3,43 @@
 
 import os
 import sys
-import torch
-from torch.utils._pytree import tree_map
 import unittest
 
-from torch.testing._internal.common_utils import run_tests, TEST_WITH_TORCHDYNAMO
-from torch.fx.operator_schemas import normalize_function
+import torch
 from torch._subclasses.schema_check_mode import SchemaCheckMode
-from torch.utils._python_dispatch import TorchDispatchMode
+from torch.fx.operator_schemas import normalize_function
+from torch.testing._internal.common_device_type import (
+    instantiate_device_type_tests,
+    OpDTypes,
+    ops,
+)
 from torch.testing._internal.common_methods_invocations import op_db
+from torch.testing._internal.common_utils import (
+    IS_WINDOWS,
+    run_tests,
+    slowTestIf,
+    TEST_WITH_TORCHDYNAMO,
+)
 from torch.testing._internal.jit_utils import JitTestCase
-from torch.testing._internal.common_device_type import ops, OpDTypes, instantiate_device_type_tests
-from torch.testing._internal.common_utils import IS_WINDOWS, slowTestIf
+from torch.utils._python_dispatch import TorchDispatchMode
+from torch.utils._pytree import tree_map
+
 pytorch_test_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(pytorch_test_dir)
-
 
 
 def secretly_aliasing(x):
     return x.view(-1)
 
+
 def secretly_mutating(x):
     x.mul_(2)
     return x * 3
 
+
 def output_is_input(x):
     return x
+
 
 custom_lib = torch.library.Library("bad_schemas", "DEF")  # noqa: TOR901
 custom_lib.define("secretly_aliasing(Tensor x) -> Tensor")
@@ -48,6 +59,7 @@ custom_lib_meta.impl("output_is_input", output_is_input)
 # This TorchDispatchTensor Subclass is used to simulate an incorrect schema
 # which is then used to test that SchemaCheckMode behaves as expected
 
+
 class IncorrectAliasTensor(torch.Tensor):
     ALIAS_ARG_OUT = {"aten::add"}
     ALIAS_OUT_OUT = {"aten::aminmax"}
@@ -55,7 +67,7 @@ class IncorrectAliasTensor(torch.Tensor):
 
     elem: torch.Tensor
 
-    __slots__ = ['elem']
+    __slots__ = ["elem"]
 
     @staticmethod
     def __new__(cls, elem, *args, **kwargs):
@@ -63,11 +75,15 @@ class IncorrectAliasTensor(torch.Tensor):
         # memory for the class in question, but it should still
         # advertise the same device as before
         r = torch.Tensor._make_wrapper_subclass(  # type: ignore[attr-defined]
-            cls, elem.size(),
-            strides=elem.stride(), storage_offset=elem.storage_offset(),
+            cls,
+            elem.size(),
+            strides=elem.stride(),
+            storage_offset=elem.storage_offset(),
             # TODO: clone storage aliasing
-            dtype=elem.dtype, layout=elem.layout,
-            device=elem.device, requires_grad=kwargs.get("requires_grad", False)
+            dtype=elem.dtype,
+            layout=elem.layout,
+            device=elem.device,
+            requires_grad=kwargs.get("requires_grad", False),
         )
         # ...the real tensor is held as an element on the tensor.
         r.elem = elem.detach() if r.requires_grad else elem
@@ -83,6 +99,7 @@ class IncorrectAliasTensor(torch.Tensor):
 
         def wrap(e):
             return cls(e) if isinstance(e, torch.Tensor) else e
+
         unwrapped_args = tree_map(unwrap, args)
         out = func(*unwrapped_args, **tree_map(unwrap, kwargs))
         if func._schema.name in IncorrectAliasTensor.ALIAS_ARG_OUT:
@@ -96,6 +113,7 @@ class IncorrectAliasTensor(torch.Tensor):
 
         return tree_map(wrap, out)
 
+
 # Tests various schema checking functionalities.
 class TestSchemaCheck(JitTestCase):
     def setUp(self):
@@ -108,7 +126,9 @@ class TestSchemaCheck(JitTestCase):
         with SchemaCheckMode() as schema_check:
             x = torch.rand((3, 3), requires_grad=True)
             x.relu().sin()
-        self.assertEqual(["aten::rand", "aten::relu", "aten::detach", "aten::sin"], schema_check.ops)
+        self.assertEqual(
+            ["aten::rand", "aten::relu", "aten::detach", "aten::sin"], schema_check.ops
+        )
 
     # Tests that SchemaCheckMode records operator order without grad
     def test_schema_check_mode_operator_order_without_grad(self):
@@ -132,16 +152,18 @@ class TestSchemaCheck(JitTestCase):
         actual = torch.rand((3, 3), requires_grad=False)
         with SchemaCheckMode() as schema_check:
             actual.sinh_()
-        self.assertEqual([('aten::sinh_', 'input')], schema_check.mutated)
-        self.assertEqual([('aten::sinh_', 'input', 'output_0')], schema_check.aliasing)
+        self.assertEqual([("aten::sinh_", "input")], schema_check.mutated)
+        self.assertEqual([("aten::sinh_", "input", "output_0")], schema_check.aliasing)
 
     # Tests that SchemaCheckMode records mutations and aliases with resize_
     def test_schema_check_mode_mutated_aliasing_resize_(self):
         actual = torch.rand((3, 3), requires_grad=False)
         with SchemaCheckMode() as schema_check:
             actual.resize_(9)
-        self.assertEqual([('aten::resize_', 'input')], schema_check.mutated)
-        self.assertEqual([('aten::resize_', 'input', 'output_0')], schema_check.aliasing)
+        self.assertEqual([("aten::resize_", "input")], schema_check.mutated)
+        self.assertEqual(
+            [("aten::resize_", "input", "output_0")], schema_check.aliasing
+        )
 
     # Tests that SchemaCheckMode records mutations and aliases with aliasing inputs
     def test_schema_check_mode_mutated_aliasing_aliasing_inputs(self):
@@ -150,18 +172,11 @@ class TestSchemaCheck(JitTestCase):
         with SchemaCheckMode() as schema_check:
             actual.add_(y)
         self.assertEqual(
-            [
-                ('aten::add_', 'input'),
-                ('aten::add_', 'other')
-            ],
-            schema_check.mutated
+            [("aten::add_", "input"), ("aten::add_", "other")], schema_check.mutated
         )
         self.assertEqual(
-            [
-                ('aten::add_', 'input', 'output_0'),
-                ('aten::add_', 'other', 'output_0')
-            ],
-            schema_check.aliasing
+            [("aten::add_", "input", "output_0"), ("aten::add_", "other", "output_0")],
+            schema_check.aliasing,
         )
 
     # Tests that SchemaCheckMode records mutations and alias with as_strided
@@ -169,39 +184,28 @@ class TestSchemaCheck(JitTestCase):
         x = torch.rand((3, 6, 4))
         with SchemaCheckMode() as schema_check:
             x.as_strided_([3, 6, 4], [9, 1, 1])
+        self.assertEqual([("aten::as_strided_", "input")], schema_check.mutated)
         self.assertEqual(
-            [
-                ('aten::as_strided_', 'input')
-            ],
-            schema_check.mutated
-        )
-        self.assertEqual(
-            [
-                ('aten::as_strided_', 'input', 'output_0')
-            ],
-            schema_check.aliasing
+            [("aten::as_strided_", "input", "output_0")], schema_check.aliasing
         )
 
     # Tests that SchemaCheckMode records mutations and aliases with multiple outputs
     def test_schema_check_mode_mutated_aliasing_multiple_outputs(self):
-        x = torch.arange(9.)
-        m_actual = torch.arange(9.)
+        x = torch.arange(9.0)
+        m_actual = torch.arange(9.0)
         e_actual = torch.zeros([9], dtype=torch.int32)
         with SchemaCheckMode() as schema_check:
             torch.frexp(x, out=(m_actual, e_actual))
         self.assertEqual(
-            [
-                ('aten::frexp', 'mantissa'),
-                ('aten::frexp', 'exponent')
-            ],
-            schema_check.mutated
+            [("aten::frexp", "mantissa"), ("aten::frexp", "exponent")],
+            schema_check.mutated,
         )
         self.assertEqual(
             [
-                ('aten::frexp', 'mantissa', 'output_0'),
-                ('aten::frexp', 'exponent', 'output_1')
+                ("aten::frexp", "mantissa", "output_0"),
+                ("aten::frexp", "exponent", "output_1"),
             ],
-            schema_check.aliasing
+            schema_check.aliasing,
         )
 
     # Tests that SchemaCheckMode records mutations and aliases with aliasing outputs
@@ -211,20 +215,16 @@ class TestSchemaCheck(JitTestCase):
         with SchemaCheckMode() as schema_check:
             torch.aminmax(x, dim=0, out=[actual, actual])
         self.assertEqual(
-            [
-                ('aten::aminmax', 'min'),
-                ('aten::aminmax', 'max')
-            ],
-            schema_check.mutated
+            [("aten::aminmax", "min"), ("aten::aminmax", "max")], schema_check.mutated
         )
         self.assertEqual(
             [
-                ('aten::aminmax', 'min', 'output_0'),
-                ('aten::aminmax', 'min', 'output_1'),
-                ('aten::aminmax', 'max', 'output_0'),
-                ('aten::aminmax', 'max', 'output_1')
+                ("aten::aminmax", "min", "output_0"),
+                ("aten::aminmax", "min", "output_1"),
+                ("aten::aminmax", "max", "output_0"),
+                ("aten::aminmax", "max", "output_1"),
             ],
-            schema_check.aliasing
+            schema_check.aliasing,
         )
 
     # Tests that SchemaCheckMode wraps torch.Tensor
@@ -293,9 +293,9 @@ class TestSchemaCheck(JitTestCase):
 
     # Tests that SchemaCheckMode wraps Torch.tensor with multiple tensor outputs
     def test_schema_check_mode_functionality_with_multiple_outputs(self):
-        x = torch.arange(9.)
+        x = torch.arange(9.0)
         m_expected, e_expected = torch.frexp(x)
-        m_actual = torch.arange(9.)
+        m_actual = torch.arange(9.0)
         e_actual = torch.zeros([9], dtype=torch.int32)
         with SchemaCheckMode():
             torch.frexp(x, out=(m_actual, e_actual))
@@ -352,7 +352,9 @@ class TestSchemaCheck(JitTestCase):
 
     # Tests that an exception is raised for a mismatching mutation
     def test_mutation_check_fail(self):
-        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined as mutable but was mutated"):
+        with self.assertRaisesRegex(
+            RuntimeError, "Argument input is not defined as mutable but was mutated"
+        ):
             x = torch.rand((3, 3))
             y = torch.rand((3, 3))
             with SchemaCheckMode():
@@ -360,7 +362,9 @@ class TestSchemaCheck(JitTestCase):
 
     # # Tests that an exception is raised for a mismatching mutation over multiple ops
     def test_mutation_check_fail_multiple_operators(self):
-        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined as mutable but was mutated"):
+        with self.assertRaisesRegex(
+            RuntimeError, "Argument input is not defined as mutable but was mutated"
+        ):
             x = torch.rand((3, 3))
             y = torch.rand((3, 3))
             with SchemaCheckMode():
@@ -368,7 +372,10 @@ class TestSchemaCheck(JitTestCase):
 
     # Tests that an exception is raised for a mismatching alias
     def test_alias_check_fail_simple(self):
-        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined to alias output but was aliasing"):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Argument input is not defined to alias output but was aliasing",
+        ):
             x = torch.rand((3, 3), requires_grad=True)
             y = torch.rand((3, 3))
             with SchemaCheckMode():
@@ -376,19 +383,29 @@ class TestSchemaCheck(JitTestCase):
 
     # Tests that an exception is raised for a mismatching alias over multiple ops
     def test_alias_check_fail_multiple_operators(self):
-        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined to alias output but was aliasing"):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Argument input is not defined to alias output but was aliasing",
+        ):
             x = torch.rand((3, 3), requires_grad=True)
             y = torch.zeros((3, 3), requires_grad=True)
             with SchemaCheckMode():
-                IncorrectAliasTensor(x).sin().relu().add(IncorrectAliasTensor(y), alpha=2)
+                IncorrectAliasTensor(x).sin().relu().add(
+                    IncorrectAliasTensor(y), alpha=2
+                )
 
     # Tests that an exception is raised for a centered mismatching alias over multiple ops
     def test_alias_check_fail_multiple_operators_centered(self):
-        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined to alias output but was aliasing"):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Argument input is not defined to alias output but was aliasing",
+        ):
             x = torch.rand((3, 3), requires_grad=True)
             y = torch.zeros((3, 3), requires_grad=True)
             with SchemaCheckMode():
-                IncorrectAliasTensor(x).sin().add(IncorrectAliasTensor(y), alpha=2).relu()
+                IncorrectAliasTensor(x).sin().add(
+                    IncorrectAliasTensor(y), alpha=2
+                ).relu()
 
     # Tests that an exception is raised for a centered mismatching alias over multiple ops
     def test_alias_check_fail_outputs_unexpectedly_aliasing(self):
@@ -405,7 +422,9 @@ class TestSchemaCheck(JitTestCase):
             return torch.ops.bad_schemas.secretly_aliasing(x)
 
         x = torch.rand((3, 3))
-        with self.assertRaisesRegex(RuntimeError, "not defined to alias output but was aliasing"):
+        with self.assertRaisesRegex(
+            RuntimeError, "not defined to alias output but was aliasing"
+        ):
             with SchemaCheckMode() as s:
                 out = f(x)
 
@@ -414,7 +433,9 @@ class TestSchemaCheck(JitTestCase):
             return torch.ops.bad_schemas.secretly_mutating(x)
 
         x = torch.rand((3, 3))
-        with self.assertRaisesRegex(RuntimeError, "not defined as mutable but was mutated"):
+        with self.assertRaisesRegex(
+            RuntimeError, "not defined as mutable but was mutated"
+        ):
             with SchemaCheckMode() as s:
                 out = f(x)
 
@@ -423,7 +444,9 @@ class TestSchemaCheck(JitTestCase):
             return torch.ops.bad_schemas.output_is_input(x)
 
         x = torch.rand((3, 3))
-        with self.assertRaisesRegex(RuntimeError, "are not allowed to directly return inputs"):
+        with self.assertRaisesRegex(
+            RuntimeError, "are not allowed to directly return inputs"
+        ):
             with SchemaCheckMode() as s:
                 out = f(x)
 
@@ -468,33 +491,44 @@ class TestSchemaCheck(JitTestCase):
 
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
                 named_arg_list = normalize_function(
-                    func,
-                    args,
-                    kwargs,
-                    normalize_to_only_use_kwargs=True
+                    func, args, kwargs, normalize_to_only_use_kwargs=True
                 ).kwargs
                 schema_info_value_test = torch._C._SchemaInfo(func._schema)
                 schema_info_values_test = torch._C._SchemaInfo(func._schema)
-                self.test_self.assertFalse(schema_info_value_test.may_alias(
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1)))
-                self.test_self.assertFalse(schema_info_values_test.may_alias(
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1)))
+                self.test_self.assertFalse(
+                    schema_info_value_test.may_alias(
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1),
+                    )
+                )
+                self.test_self.assertFalse(
+                    schema_info_values_test.may_alias(
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1),
+                    )
+                )
                 for i in named_arg_list:
                     schema_info_value_test.add_argument_value(i, named_arg_list[i])
                 schema_info_values_test.add_argument_values(named_arg_list)
-                self.test_self.assertTrue(schema_info_value_test.may_alias(
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1)))
-                self.test_self.assertTrue(schema_info_values_test.may_alias(
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
-                    torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1)))
+                self.test_self.assertTrue(
+                    schema_info_value_test.may_alias(
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1),
+                    )
+                )
+                self.test_self.assertTrue(
+                    schema_info_values_test.may_alias(
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 0),
+                        torch._C._SchemaArgument(torch._C._SchemaArgType.input, 1),
+                    )
+                )
 
                 return func(*args, **kwargs)
+
         x = torch.rand((3, 3))
         with SchemaInfoBindTestMode(self) as schemaInfoCheck:
             x.add(x)
+
 
 class TestSchemaCheckModeOpInfo(JitTestCase):
     @ops(op_db, dtypes=OpDTypes.supported)
@@ -502,13 +536,19 @@ class TestSchemaCheckModeOpInfo(JitTestCase):
     def test_schema_correctness(self, device, dtype, op):
         # Currently torch.equal isn't supported with torch.complex32
         # There's also errors with complex64 and complex128
-        if (dtype == torch.complex32):
+        if dtype == torch.complex32:
             return
         for sample in op.sample_inputs(device, dtype, requires_grad=False):
             with SchemaCheckMode():
                 op(sample.input, *sample.args, **sample.kwargs)
 
-instantiate_device_type_tests(TestSchemaCheckModeOpInfo, globals(), only_for=("cpu", "cuda", "xpu"), allow_xpu=True)
 
-if __name__ == '__main__':
+instantiate_device_type_tests(
+    TestSchemaCheckModeOpInfo,
+    globals(),
+    only_for=("cpu", "cuda", "xpu"),
+    allow_xpu=True,
+)
+
+if __name__ == "__main__":
     run_tests()
