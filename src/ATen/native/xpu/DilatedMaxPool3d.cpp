@@ -1,3 +1,4 @@
+#include <ATen/NamedTensorUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
 
@@ -26,6 +27,8 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
       ceil_mode,
       output,
       indices);
+  namedinference::propagate_names(output, input);
+  namedinference::propagate_names(indices, input);
 
   return std::tuple<Tensor, Tensor>(output, indices);
 }
