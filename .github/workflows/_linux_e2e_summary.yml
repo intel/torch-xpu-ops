@@ -91,11 +91,11 @@ jobs:
           fi
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
       - name: Add comment for performance outliers
-        uses: actions-ecosystem/action-create-comment@v1.0.2
+        uses: ./.github/actions/add-comment
         if: ${{ github.event_name == 'pull_request' && steps.summary.outputs.performance_regression == 1 }}
         with:
+          file_path: ./performance.regression.pr.html
           github_token: ${{ github.token }}
-          body_path: ./performance.regression.pr.html
       - name: Result check
         if: ${{ ! cancelled() }}
         run: |
