@@ -16,7 +16,7 @@ if(NOT __SYCLTLA_INCLUDED)
   FetchContent_Declare(
       repo-sycl-tla
       GIT_REPOSITORY https://github.com/intel/sycl-tla.git
-      GIT_TAG        v0.5
+      GIT_TAG        v0.6
       GIT_SHALLOW    OFF
   )
   FetchContent_GetProperties(repo-sycl-tla)
