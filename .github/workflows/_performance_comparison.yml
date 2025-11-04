@@ -22,9 +22,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Cleanup workspace
-        run: |
-          rm -rf ./target ./baseline
       - name: Setup python
         uses: actions/setup-python@v5
         with:

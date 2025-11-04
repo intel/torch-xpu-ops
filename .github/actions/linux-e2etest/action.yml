@@ -56,25 +56,6 @@ runs:
           fi
         }
         run_with_shard() {
-          for i in $(seq 0 $[ ${xpu_num} - 1 ])
-          do
-            cpu_list="$(echo "${cpus_per_xpu} ${i}" |awk '{printf("%d-%d", $1*$2, $1*$2+$1-1)}')"
-            if [ "${ZE_AFFINITY_MASK}" != "" ];then
-              xpu_list=($(echo ${ZE_AFFINITY_MASK} |sed 's/,/ /g'))
-              xpu_id=${xpu_list[$[ ${i} + 1 ]]}
-            else
-              xpu_id=${i}
-            fi
-            numactl -l -C ${cpu_list} bash -x inductor_xpu_test.sh ${suite} ${dt} ${mode} ${scenario} xpu ${xpu_id} static ${xpu_num} ${i} "${models_list_args}" &
-          done
-          wait
-        }
-        export OMP_NUM_THREADS=${cpus_per_xpu}
-        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
-        do
-          if [ "${suite}" == "pt2e" ];then
-            continue
-          fi
           # set models to run
           if [ "${{ github.event_name }}" == "pull_request" ];then
             models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
@@ -83,6 +64,24 @@ runs:
           else
             models_list_args=""
           fi
+          # shards to run
+          # Such as numactl_args=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
+          delimiter=";"
+          IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
+          instances=${#numactl_args_list[@]}
+          for i in $(seq 0 $[ ${instances} - 1 ])
+          do
+            xpu_id="$(echo ${numactl_args_list[$i]} |sed 's/.*ZE_AFFINITY_MASK=//;s/ .*//')"
+            eval ${numactl_args_list[$i]} bash -x inductor_xpu_test.sh \
+                    ${suite} ${dt} ${mode} ${scenario} \
+                    xpu ${xpu_id} static ${instances} ${i} \
+                    \"${models_list_args}\" \
+                    &
+          done
+          wait
+        }
+        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
+        do
           if ! contains "huggingface,timm_models,torchbench" "$suite"; then
             continue
           fi
