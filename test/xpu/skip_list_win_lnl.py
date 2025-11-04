@@ -62,26 +62,26 @@ skip_dict = {
         "test_pooling_zero_stride_xpu",
     ),
     # skip RuntimeError: Native API failed. Native API returns: 39 (UR_RESULT_ERROR_OUT_OF_DEVICE_MEMORY)
-    "test_loops.py":(
+    "test_loops.py": (
         "test_bc_vec_large_tensor",
         "test_loops_bfloat16",
         "test_loops_dynamic_cast",
         "test_loops_float",
         "test_loops_half",
     ),
-    "test_nms.py":(
+    "test_nms.py": (
         "test_batched_nms",
         "test_nms",
     ),
-    "test_rand.py":(
+    "test_rand.py": (
         "test_distribution_normal",
         "test_distribution_uniform",
     ),
-    "test_record_stream.py":(
+    "test_record_stream.py": (
         "test_record_stream",
         "test_record_stream_on_shifted_view",
     ),
-    "test_resize.py":(
+    "test_resize.py": (
         "test_resize",
         "test_tensor_set_storage",
         "test_unfold",
@@ -90,27 +90,23 @@ skip_dict = {
         "test_view_as_real",
     ),
     # skip RuntimeError: UR backend failed. UR backend returns:40 (UR_RESULT_ERROR_OUT_OF_RESOURCES)
-    "test_roi_align.py":(
+    "test_roi_align.py": (
         "test_roi_align_backward",
         "test_roi_align_forward",
     ),
-    "test_safe_softmax.py":(
-        "test_sm",
-    ),
-    "test_softmax.py":(
-        "test_softmax_half_to_float",
-    ),
-    "test_sort.py":(
+    "test_safe_softmax.py": ("test_sm",),
+    "test_softmax.py": ("test_softmax_half_to_float",),
+    "test_sort.py": (
         "test_sort_large_bool",
         "test_sort_large_slice",
     ),
-    "test_tensor_factory.py":(
+    "test_tensor_factory.py": (
         "test_empty_float",
         "test_empty_int64",
         "test_empty_strided_float",
         "test_empty_strided_int64",
     ),
-    "test_unary.py":(
+    "test_unary.py": (
         "test_abs_out",
         "test_cos_out",
         "test_log_out",
@@ -121,13 +117,9 @@ skip_dict = {
         "test_sqrt_out",
         "test_tanh_out",
     ),
-    "test_upsample_bilinear_bwd.py":(
-        "test_upsample_bilinear_bwd",
-    ),
-    "test_upsample_nearest.py":(
-        "test_upsample_nearest",
-    ),
-    "nn\test_convolution_xpu.py":(
+    "test_upsample_bilinear_bwd.py": ("test_upsample_bilinear_bwd",),
+    "test_upsample_nearest.py": ("test_upsample_nearest",),
+    "nn\test_convolution_xpu.py": (
         "test_conv_noncontig_weights_and_bias_xpu",
         "test_conv_noncontig_weights_xpu",
         "test_conv_transpose_with_output_size_and_no_batch_dim_ConvTranspose2d_xpu",
@@ -141,11 +133,11 @@ skip_dict = {
         "test_noncontig_conv_grad_xpu_float64",
         "test_conv_large_xpu",
     ),
-    "test_tensor_creation_ops_xpu.py":(
+    "test_tensor_creation_ops_xpu.py": (
         "test_ones_large_xpu_complex128",
         "test_zeros_large_xpu_complex128",
     ),
-    "test_torchvision_roi_ops.py":(
+    "test_torchvision_roi_ops.py": (
         "test_forward[torch.float16-True-xpu]",
         "test_forward[torch.float16-False-xpu]",
         "test_forward[torch.float32-True-xpu]",
