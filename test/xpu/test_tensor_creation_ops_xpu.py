@@ -482,7 +482,7 @@ class TestTensorCreation(TestCase):
         ]
 
         for scipy_tensors, torch_type, scipy_type in zip(
-            scipy_tensors_list, expected_torch_types, expected_scipy_types, strict=False
+            scipy_tensors_list, expected_torch_types, expected_scipy_types
         ):
             torch_tensors = [torch.tensor(t, device=device) for t in scipy_tensors]
             torch_result = torch.block_diag(*torch_tensors)
@@ -1495,7 +1495,7 @@ class TestTensorCreation(TestCase):
 
         not_ok = map(torch.Tensor, [[], [1, 2], [[1, 2], [3, 4]]])
 
-        for tensor, value in zip(ok, ok_values, strict=False):
+        for tensor, value in zip(ok, ok_values):
             self.assertEqual(int(tensor), int(value))
             self.assertEqual(float(tensor), float(value))
             self.assertEqual(complex(tensor), complex(value))

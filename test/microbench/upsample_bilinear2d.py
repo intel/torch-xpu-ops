@@ -81,7 +81,7 @@ shape_list = [
     [8, 32, 256, 256],
 ]
 scale_factor = [[3, 3], [3, 3], [7, 7], [7, 7], 3]
-for sp, sf in zip(shape_list, scale_factor, strict=False):
+for sp, sf in zip(shape_list, scale_factor):
     for dtype in [torch.bfloat16, torch.float16, torch.float32]:
         for mode in ["bilinear"]:
             simple_test(sp, sf, backward, dtype, mode)

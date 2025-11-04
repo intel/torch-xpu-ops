@@ -2426,7 +2426,7 @@ def _test_linear_autograd(self, device, bias, weight_layout):
 
     self.assertEqual(grads_expected[0].layout, weight_layout)
 
-    for g, ge in zip(grads, grads_expected, strict=False):
+    for g, ge in zip(grads, grads_expected):
         self.assertEqual(g, ge)
 
 

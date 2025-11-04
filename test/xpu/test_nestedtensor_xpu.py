@@ -121,7 +121,7 @@ with XPUPatchForImport(False):
         nt_copy = torch.empty_like(nt)
         nt_copy.copy_(nt)
 
-        for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy, strict=False):
+        for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy):
             self.assertEqual(nt_ub, nt_copy_ub)
 
         nt_error = torch.nested.nested_tensor([torch.tensor([0, 0])])
@@ -136,12 +136,12 @@ with XPUPatchForImport(False):
             nt_copy = torch.empty_like(nt, device=torch.device("cpu"))
             nt_copy.copy_(nt, non_blocking=True)
             torch.xpu.current_stream(torch.xpu.current_device()).synchronize()
-            for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy, strict=False):
+            for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy):
                 self.assertEqual(nt_ub, nt_copy_ub)
 
             nt_copy = torch.empty_like(nt, device=torch.device("cpu"))
             nt_copy.copy_(nt, non_blocking=False)
-            for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy, strict=False):
+            for nt_ub, nt_copy_ub in zip(nt.unbind(), nt_copy):
                 self.assertEqual(nt_ub, nt_copy_ub)
 
     @skipMeta
@@ -608,7 +608,7 @@ torch.xpu.synchronize()
 
             nt_grads = torch.autograd.grad(attn_nt.values().sum(), (q_nt, k_nt, v_nt))
             for nt_grad, d1_grad, d2_grad, grad_atol, grad_rtol in zip(
-                nt_grads, d1_grads, d2_grads, grad_atols, grad_rtols, strict=False
+                nt_grads, d1_grads, d2_grads, grad_atols, grad_rtols
             ):
                 unbound_nt_grads = nt_grad.unbind()
                 self.assertEqual(

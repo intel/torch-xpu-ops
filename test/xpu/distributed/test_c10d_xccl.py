@@ -1139,7 +1139,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             first_op = seq * (ops_per_coalesce)
             coalesced_op = first_op + ops_per_coalesce
             for p2p_op_idx, input_sizes in zip(
-                range(first_op, coalesced_op, 1), op_sizes_per_coalesce, strict=False
+                range(first_op, coalesced_op, 1), op_sizes_per_coalesce
             ):
                 # the indivudal ops inside the coalescing group the individual op metadata,
                 # but not the timing info coming from the actual coalesced kernel

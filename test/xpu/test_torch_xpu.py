@@ -4204,7 +4204,7 @@ else:
                 input_list = input.tolist()
                 indices_list = indices.tolist()
                 values_list = values.tolist()
-                for i, v in zip(indices_list, values_list, strict=False):
+                for i, v in zip(indices_list, values_list):
                     input_list[i] = v
 
                 self.assertEqual(output, input_list)
@@ -7048,9 +7048,7 @@ else:
             else:
                 self.assertTrue(scaler.get_scale() == 1.0)
 
-            for c, s in zip(
-                mod_control.parameters(), mod_scaling.parameters(), strict=False
-            ):
+            for c, s in zip(mod_control.parameters(), mod_scaling.parameters()):
                 self.assertEqual(c.grad, s.grad, atol=atol, rtol=1e-05)
 
                 c_state, s_state = opt_control.state[c], opt_scaling.state[s]
@@ -7398,7 +7396,6 @@ else:
             for c, s in zip(
                 chain(mod_control0.parameters(), mod_control1.parameters()),
                 chain(mod_scaling0.parameters(), mod_scaling1.parameters()),
-                strict=False,
             ):
                 self.assertEqual(c, s, rtol=1e-5, atol=1e-7)
 
@@ -7761,7 +7758,7 @@ class TestDevicePrecision(TestCase):
             f.seek(0)
             x_copy = torch.load(f)
 
-        for original, cp in zip(x, x_copy, strict=False):
+        for original, cp in zip(x, x_copy):
             self.assertEqual(cp, original)
             self.assertIs(type(cp), type(original))
             self.assertEqual(cp.device, original.device)
@@ -11260,12 +11257,12 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             views = x.split_with_sizes(split_sizes, dim=dim)
             expects = [v.clone() for v in views]
             out = [torch.zeros_like(v) for v in views]
-            for expect, t in zip(expects, out, strict=False):
+            for expect, t in zip(expects, out):
                 if expect.numel() != 0:
                     self.assertFalse(expect.eq(t).all().item())
 
             torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
-            for expect, t in zip(expects, out, strict=False):
+            for expect, t in zip(expects, out):
                 self.assertTrue(expect.eq(t).all().item())
 
             if not torch.cuda.is_available():
@@ -11273,7 +11270,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
 
             # Test with cuda graph
             out = [torch.zeros_like(v) for v in views]
-            for expect, t in zip(expects, out, strict=False):
+            for expect, t in zip(expects, out):
                 if expect.numel() != 0:
                     self.assertFalse(expect.eq(t).all().item())
 
@@ -11282,7 +11279,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                 torch.split_with_sizes_copy(x, split_sizes, dim=dim, out=out)
 
             g.replay()
-            for expect, t in zip(expects, out, strict=False):
+            for expect, t in zip(expects, out):
                 self.assertTrue(expect.eq(t).all().item())
 
     def test_type(self):

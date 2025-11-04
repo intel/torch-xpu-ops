@@ -190,7 +190,6 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         for op, err in zip(
             (c10d.ReduceOp.BAND, c10d.ReduceOp.BOR, c10d.ReduceOp.BXOR),
             ("ReduceOp.BAND", "ReduceOp.BOR", "ReduceOp.BXOR"),
-            strict=False,
         ):
             with self.assertRaisesRegex(ValueError, "Cannot use " + err + " with XCCL"):
                 allreduce(tensors, op)
@@ -255,7 +254,6 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             for op, err in zip(
                 (c10d.ReduceOp.BAND, c10d.ReduceOp.BOR, c10d.ReduceOp.BXOR),
                 ("ReduceOp.BAND", "ReduceOp.BOR", "ReduceOp.BXOR"),
-                strict=False,
             ):
                 with self.assertRaisesRegex(
                     ValueError, "Cannot use " + err + " with XCCL"
@@ -907,7 +905,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         expected_tensors = [t.to(device) for t in expected_tensors]
         out_tensors = [t.to(device) for t in out_tensors]
         dist.all_to_all(out_tensors, in_tensors)
-        for t1, t2 in zip(out_tensors, expected_tensors, strict=False):
+        for t1, t2 in zip(out_tensors, expected_tensors):
             self.assertEqual(t1, t2)
 
     @requires_xccl()
@@ -921,7 +919,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         dist.all_to_all_single(out, send)
         self.assertEqual(
             out.tolist(),
-            list(zip(range(self.world_size), range(self.world_size), strict=False)),
+            list(zip(range(self.world_size), range(self.world_size))),
         )
 
 

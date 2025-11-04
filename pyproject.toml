@@ -17,11 +17,11 @@ build-backend = "setuptools.build_meta:__legacy__"
 [tool.black]
 # Uncomment if pyproject.toml worked fine to ensure consistency with flake8
 # line-length = 120
-target-version = ["py310", "py311", "py312"]
+target-version = ["py38", "py39", "py310", "py311"]
 
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py38"
 line-length = 120
 
 [tool.ruff.lint]
@@ -34,6 +34,7 @@ ignore = [
     "B023",
     "B028", # No explicit `stacklevel` keyword argument found
     "B904", # Migrate from TRY200
+    "B905", # Python>=3.10 specific suppressions
     "E402",
     "C408", # C408 ignored because we like the dict keyword argument syntax
     "E501", # E501 is not flexible enough, we're using B950 instead

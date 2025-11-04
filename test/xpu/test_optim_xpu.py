@@ -235,9 +235,7 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
         fused = state_dict_cpu["param_groups"][0].get("fused", False)
         new_state_dict = optimizer_cuda.state_dict()
         for state_cpu, state_cuda in zip(
-            state_dict_cpu["state"].values(),
-            new_state_dict["state"].values(),
-            strict=False,
+            state_dict_cpu["state"].values(), new_state_dict["state"].values()
         ):
             if "step" in state_cpu and torch.is_tensor(state_cpu["step"]):
                 self.assertEqual(

@@ -494,7 +494,7 @@ def ModuleTest_test_xpu(self, test_case):
         xpu_module = self.constructor(*self.constructor_args).float().xpu()
         cpu_param = test_case._get_parameters(cpu_module)
         xpu_param = test_case._get_parameters(xpu_module)
-        for cpu_p, xpu_p in zip(cpu_param[0], xpu_param[0], strict=False):
+        for cpu_p, xpu_p in zip(cpu_param[0], xpu_param[0]):
             xpu_p.data.copy_(cpu_p)
         test_case._zero_grad_input(cpu_input_tuple)
         test_case._zero_grad_input(xpu_input_tuple)
@@ -528,7 +528,7 @@ def ModuleTest_test_xpu(self, test_case):
                 rtol=0,
                 exact_dtype=False,
             )
-            for cpu_d_p, xpu_d_p in zip(cpu_param[1], xpu_param[1], strict=False):
+            for cpu_d_p, xpu_d_p in zip(cpu_param[1], xpu_param[1]):
                 test_case.assertEqual(cpu_d_p, xpu_d_p, atol=self.precision, rtol=0)
         # Run double-backwards on CPU and xpu and compare results
 
@@ -555,7 +555,7 @@ def ModuleTest_test_xpu(self, test_case):
                 create_graph=True,
             )
 
-            for cpu_d_i, xpu_d_i in zip(cpu_gradInputs, xpu_gradInputs, strict=False):
+            for cpu_d_i, xpu_d_i in zip(cpu_gradInputs, xpu_gradInputs):
                 test_case.assertEqual(
                     cpu_d_i, xpu_d_i, atol=self.precision, rtol=0, exact_dtype=False
                 )
@@ -591,7 +591,7 @@ def ModuleTest_test_xpu(self, test_case):
                 rtol=0,
                 exact_dtype=False,
             )
-            for cpu_d_p, xpu_d_p in zip(cpu_gg, xpu_gg, strict=False):
+            for cpu_d_p, xpu_d_p in zip(cpu_gg, xpu_gg):
                 test_case.assertEqual(
                     cpu_d_p, xpu_d_p, atol=self.precision, rtol=0, exact_dtype=False
                 )
