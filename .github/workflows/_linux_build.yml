@@ -92,8 +92,8 @@ jobs:
       - name: Install oneapi
         run: |
           rm -rf /opt/intel/oneapi
-          wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/aa5447b5-3644-43c8-8ec4-72d53f6ecc19/intel-deep-learning-essentials-2025.3.0.338_offline.sh
-          sudo bash intel-deep-learning-essentials-2025.3.0.338_offline.sh -a -s --eula accept
+          wget -q https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh
+          sudo bash intel-deep-learning-essentials-2025.2.1.24_offline.sh -a -s --eula accept
           source /opt/intel/oneapi/setvars.sh
           icpx --version
       - name: Checkout torch-xpu-ops
