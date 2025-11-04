@@ -59,7 +59,7 @@ jobs:
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
-      image: 'pytorch/manylinux2_28-builder:xpu-main'
+      image: 'intelgpu/ubuntu-22.04-lts2:2523.31'
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:
@@ -72,21 +72,30 @@ jobs:
     steps:
       - name: Install gh-cli
         run: |
+          rm -rf ./*.whl ./*.log
           cat /etc/os-release
           hostname && id
           # install gh
-          dnf install -y 'dnf-command(config-manager)'
-          dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-          dnf install -y gh --repo gh-cli
-          gh --version
+          sudo apt update
+          sudo apt install -y gpg-agent wget curl cmake git unzip zip libgl1 zlib1g-dev numactl \
+            libglib2.0-dev rsync jq gcc-11 g++-11 python3-dev python3-venv gh
       - name: Setup python-${{ inputs.python }}
         run: |
           rm -rf /tmp/xpu-tool/myvenv
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.local/bin/env
+          uv venv /tmp/xpu-tool/myvenv --python 3.10 --clear
+          source /tmp/xpu-tool/myvenv/bin/activate
           which python && python -V
           which pip && pip list
-          pip install -U pip wheel setuptools
+          uv pip install -U pip wheel setuptools
+      - name: Install oneapi
+        run: |
+          rm -rf /opt/intel/oneapi
+          wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/9065c156-58ab-41b0-bbee-9b0e229ffca5/intel-deep-learning-essentials-2025.3.1.15_offline.sh
+          sudo bash intel-deep-learning-essentials-2025.3.1.15_offline.sh -a -s --eula accept
+          source /opt/intel/oneapi/setvars.sh
+          icpx --version
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -113,8 +122,6 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
@@ -129,8 +136,6 @@ jobs:
           fi
       - name: Build Torchvision and Torchaudio
         run: |
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
@@ -177,9 +182,6 @@ jobs:
               curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
-            # gcc 13
-            source /opt/rh/gcc-toolset-13/enable
-            dnf install -y zlib-devel
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
