@@ -268,7 +268,7 @@ def determine_category(ut):
         return 'op_transformers'
     elif ut == 'test_xpu':
         return 'test_xpu'
-    elif ut == 'torch_xpu':
+    elif 'torch_xpu_' in ut:
         return 'torch_xpu'
     elif 'inductor_' in ut:
         return 'xpu_inductor'
