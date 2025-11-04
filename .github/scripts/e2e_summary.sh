@@ -192,6 +192,7 @@ if [ "${performance}" -gt 0 ];then
         --gcc "${GCC_VERSION}" --python "${python}" \
         --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-"${GITHUB_SHA}"}"
 fi
+echo "performance_regression=${performance_regression}" >> ${GITHUB_OUTPUT}
 
 # Show result
 summary_file="e2e-test-result.html"
@@ -209,11 +210,9 @@ $(
         echo -e "\n### 🎯 Highlight regressions\n"
         if (( accuracy_regression > 0 ));then
             cat accuracy.regression.html
-            echo "accuracy 1" >> /tmp/tmp-result.txt
         fi
         if (( performance_regression > 0 ));then
             cat performance.regression.html
-            echo "performance 1" >> /tmp/tmp-result.txt
         fi
     fi
 )

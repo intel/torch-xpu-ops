@@ -14,7 +14,6 @@ parser = argparse.ArgumentParser(description="Analysis", formatter_class=argpars
 parser.add_argument("--target", default=None, help="XPU performance result csv files dir")
 parser.add_argument("--baseline", default=None, help="XPU refrerence result csv files dir")
 parser.add_argument("--pr", action="store_true", help="Only show results xpu has")
-parser.add_argument("--criteria", default=0.90, type=float, help="Criteria for comparison")
 args = parser.parse_args()
 
 
@@ -35,33 +34,18 @@ def find_files(pattern, path):
                 result.append(os.path.join(root, name))
     return result
 
-def color_result(criteria, input):
+def color_result(input):
     if input == -1:
         output = input
-    elif input < criteria:
+    elif input < 0.8:
         output = f"🔴{input}"
-    elif input > 1 - criteria + 1:
+    elif input < 0.9:
+        output = f"🟡{input}"
+    elif input > 1 + 0.1:
         output = f"🟢{input}"
     else:
         output = input
     return output
-
-def get_filtered_data(owner, repo, issue_number, data):
-    """Get skipped models list from issue body"""
-    try:
-        result = subprocess.run([
-            'gh', '--repo', f'{owner}/{repo}',
-            'issue', 'view', f'{issue_number}'
-        ], capture_output=True, text=True, check=True)
-        lines = result.stdout.splitlines()
-        models = next((line.replace(" ", "") for line in lines if "Skipped models:" in line), data)
-        at_index = models.find(":")
-        models_list = models[at_index+1:].split(",")
-        output = data[~data['Model'].isin(models_list) if models_list else True]
-        return output
-    except subprocess.CalledProcessError as e:
-        print(f"Error: {e}")
-        return data
 
 # comparison result output
 output_header = ["Category", "Model",
@@ -94,8 +78,8 @@ for xpu_file in xpu_files:
             # xpu vs. refer
             xpu_vs_refer_eager = refer_eager_latency / xpu_eager_latency  if xpu_value is not None and refer_value is not None and xpu_eager_latency > 0 else 0 # higher is better
             xpu_vs_refer_inductor = float(refer_value["abs_latency"]) / xpu_value["abs_latency"] if xpu_value is not None and refer_value is not None and xpu_value["abs_latency"] > 0 else 0 # higher is better
-            eager_comparison = str(color_result(args.criteria, xpu_vs_refer_eager))
-            inductor_comparison = str(color_result(args.criteria, xpu_vs_refer_inductor))
+            eager_comparison = str(color_result(xpu_vs_refer_eager))
+            inductor_comparison = str(color_result(xpu_vs_refer_inductor))
             # output data
             output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, refer_eager_latency, refer_inductor_latency, refer_indcutor_vs_eager, xpu_vs_refer_eager, xpu_vs_refer_inductor])
     else:
@@ -128,14 +112,14 @@ geomean_sum = {"all": [], "huggingface": [], "timm_models": [], "torchbench": []
 for column_name in ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]:
     data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
     if len(data) > 0:
-        geomean_sum["all"].append(color_result(args.criteria, geometric_mean(data)))
+        geomean_sum["all"].append(color_result(geometric_mean(data)))
     else:
         geomean_sum["all"].append("🔴")
     for model_name in ["huggingface", "timm_models", "torchbench"]:
         data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
         if os.path.exists(args.target + "/" + model_name):
             if len(data) > 0:
-                geomean_sum[model_name].append(color_result(args.criteria, geometric_mean(data)))
+                geomean_sum[model_name].append(color_result(geometric_mean(data)))
             else:
                 geomean_sum[model_name].append("🔴")
 geomean_sum = {k: v for k, v in geomean_sum.items() if v}
@@ -149,14 +133,41 @@ output = output_data.to_html(index=False)
 with open('performance.details.html', 'w', encoding='utf-8') as f:
     f.write("\n\n#### performance\n\n" + output)
 
+criteria_h = 0.8
+criteria_m = 0.9
 # regression
-filtered_data = get_filtered_data("intel", "torch-xpu-ops", "1645", output_data)
-comparison = filtered_data.loc[
-    ((filtered_data['Target vs. Baseline [Inductor]'] < args.criteria) | (filtered_data['Target vs. Baseline [Eager]'] < args.criteria))
-    & (filtered_data['Baseline inductor'] > 0)
-    & (filtered_data['Target inductor'] >= 0)
+cases_regression = output_data.loc[
+    ((output_data['Target vs. Baseline [Inductor]'] < criteria_m) 
+            | (output_data['Target vs. Baseline [Eager]'] < criteria_m))
+    & (output_data['Baseline inductor'] > 0)
 ]
-if not comparison.empty:
-    output = comparison.to_html(index=False)
+if not cases_regression.empty:
+    output = cases_regression.to_html(index=False)
     with open('performance.regression.html', 'w', encoding='utf-8') as f:
         f.write("\n\n#### performance\n\n" + output)
+
+# highlight in PR
+if args.pr:
+    filtered_data = output_data.loc[(output_data['Baseline inductor'] > 0)]
+    filtered_data = filtered_data[["Category", "Model", "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]]
+    cases_h = filtered_data.loc[
+        ((filtered_data['Target vs. Baseline [Inductor]'] < criteria_h) 
+                | (filtered_data['Target vs. Baseline [Eager]'] < criteria_h))
+    ]
+    cases_m = filtered_data.loc[
+        ((filtered_data['Target vs. Baseline [Inductor]'] < criteria_m) 
+                | (filtered_data['Target vs. Baseline [Eager]'] < criteria_m))
+        & ((filtered_data['Target vs. Baseline [Inductor]'] >= criteria_h) 
+                & (filtered_data['Target vs. Baseline [Eager]'] >= criteria_h))
+    ]
+    if not cases_h.empty or not cases_m.empty:
+        with open('performance.regression.pr.html', 'w', encoding='utf-8') as f:
+            f.write("\n### Performance check outliers, please check!\n")
+        if not cases_h.empty:
+            output_h = cases_h.to_html(index=False)
+            with open('performance.regression.pr.html', 'a+', encoding='utf-8') as f:
+                f.write("\n- 🔴 [0, 80%), should be regression\n" + output_h)
+        if not cases_m.empty:
+            output_m = cases_m.to_html(index=False)
+            with open('performance.regression.pr.html', 'a+', encoding='utf-8') as f:
+                f.write("\n- 🟡 [80%, 90%), may be fluctuations\n" + output_m)

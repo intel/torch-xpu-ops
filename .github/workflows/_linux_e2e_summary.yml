@@ -63,33 +63,24 @@ jobs:
             find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |while read line; do mv $line .; done
           fi
       - name: Get summary
+        id: summary
         if: ${{ ! cancelled() }}
         run: |
-          exit_label=0
+          acc_failed=0
+          e2e_result=0
           e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
           if [ -f "${e2e_summary_csv}" ];then
             bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
             if [ -e e2e-test-result.html ];then
               cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
+              e2e_result=1
             fi
-            exit_label=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
-            if [ ${exit_label} -ne 0 ];then
-              grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1 || \
-                      echo "There are performance regression !!! Please check them"
-              echo "There are ${exit_label} cases that need look into!!! Please check them"
-            fi
+            acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
           fi
-          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
-          if [ -f "${pt2e_summary_csv}" ];then
-            failed_num=$(grep -c ',failed' ${pt2e_summary_csv} || true)
-            if [ ${failed_num} -ne 0 ];then
-              echo "[Warning] PT2E has failures!"
-              grep 'failed' ${pt2e_summary_csv}
-            fi
-          fi
-          exit ${exit_label}
+          echo "acc_failed=${acc_failed}" >> ${GITHUB_ENV}
+          echo "e2e_result=${e2e_result}" >> ${GITHUB_OUTPUT}
       - name: Upload Reference Run ID
-        if: ${{ endsWith(inputs.test_type, 'ly') }}
+        if: ${{ endsWith(inputs.test_type, 'ly') && steps.summary.outputs.e2e_result == 1 }}
         run: |
           gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
           has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
@@ -99,3 +90,29 @@ jobs:
             echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
           fi
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
+      - name: Add comment for performance outliers
+        uses: actions-ecosystem/action-create-comment@v1.0.2
+        if: ${{ github.event_name == 'pull_request' && steps.summary.outputs.performance_regression == 1 }}
+        with:
+          github_token: ${{ github.token }}
+          body_path: ./performance.regression.pr.html
+      - name: Result check
+        if: ${{ ! cancelled() }}
+        run: |
+          if [ ${acc_failed} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "🔴 Accuracy regression, please check!"
+          fi
+          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            pt2e_failed=$(grep -c ',failed' ${pt2e_summary_csv} || echo 0)
+            if [ ${pt2e_failed} -ne 0 ];then
+              grep 'failed' ${pt2e_summary_csv}
+              echo "🟡 PT2E has failures, please check!"
+            fi
+          fi
+          if [ -f ./performance.regression.pr.html ];then
+            echo "🟡 Performance regression, please check!"
+          fi
+          # only gating accuracy, others throw warning
+          exit ${acc_failed}
