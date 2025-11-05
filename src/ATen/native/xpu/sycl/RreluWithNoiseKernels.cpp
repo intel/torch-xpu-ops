@@ -12,7 +12,7 @@ namespace at::native::xpu {
 template <typename scalar_t, int unroll_factor, typename transform_t>
 struct RreluWithNoiseKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    auto seeds = philox_unpack(philox_args_);
+    auto seeds = at::xpu::philox::unpack(philox_args_);
     int group_size = item.get_local_range(0);
     int num_groups = item.get_group_range(0);
     int idx = item.get_global_linear_id();
@@ -53,7 +53,7 @@ struct RreluWithNoiseKernelFunctor {
   }
   RreluWithNoiseKernelFunctor(
       int numel,
-      std::pair<uint64_t, uint64_t> rng_engine_inputs,
+      PhiloxXpuState rng_engine_inputs,
       scalar_t* output,
       const scalar_t* input,
       scalar_t* noise,
@@ -61,9 +61,7 @@ struct RreluWithNoiseKernelFunctor {
       double upper,
       transform_t random_func)
       : numel_(numel),
-        philox_args_(PhiloxState(
-            std::get<0>(rng_engine_inputs),
-            std::get<1>(rng_engine_inputs))),
+        philox_args_(rng_engine_inputs),
         output_(output),
         input_(input),
         noise_(noise),
@@ -73,7 +71,7 @@ struct RreluWithNoiseKernelFunctor {
 
  private:
   int numel_;
-  PhiloxState philox_args_;
+  PhiloxXpuState philox_args_;
   scalar_t* output_;
   const scalar_t* input_;
   scalar_t* noise_;
@@ -103,11 +101,11 @@ inline void _rrelu_with_noise_xpu_train(
 
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       generator, at::xpu::detail::getDefaultXPUGenerator());
-  std::pair<uint64_t, uint64_t> rng_engine_inputs;
+  PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_engine_inputs(counter_offset);
+    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
   }
 
   const scalar_t* input_data = input.const_data_ptr<scalar_t>();

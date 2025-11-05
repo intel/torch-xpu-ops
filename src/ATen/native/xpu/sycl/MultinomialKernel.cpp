@@ -153,7 +153,7 @@ inline int binarySearchForMultinomial(
 template <typename scalar_t, typename item_t>
 inline void sampleMultinomialWithReplacement(
     item_t& item,
-    PhiloxState philox_args,
+    PhiloxXpuState philox_args,
     int totalSamples,
     int64_t* dest,
     int64_t distributions,
@@ -171,7 +171,7 @@ inline void sampleMultinomialWithReplacement(
   // search due to divergence. It seems possible to compute multiple
   // values and limit divergence though later on.
 
-  auto seeds = philox_unpack(philox_args);
+  auto seeds = at::xpu::philox::unpack(philox_args);
 
   // global index formula for 2D grid of 1D group
   int idx = group_idx_y * group_range_x * thread_range +
@@ -217,7 +217,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
         normDist_ptr);
   }
   MultinomialWithReplacementKernelImplFunctor(
-      PhiloxState rng_engine_inputs_,
+      PhiloxXpuState rng_engine_inputs_,
       const int64_t n_sample_,
       int64_t* result_ptr_,
       int64_t numDist_,
@@ -233,7 +233,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
         normDist_ptr(normDist_ptr_) {}
 
  private:
-  PhiloxState rng_engine_inputs;
+  PhiloxXpuState rng_engine_inputs;
   const int64_t n_sample;
   int64_t* result_ptr;
   int64_t numDist;
@@ -509,16 +509,13 @@ void multinomial_kernel(
           int group_range_y = numDist;
           int group_range_x = (n_sample - 1) / group_size + 1;
 
-          std::pair<uint64_t, uint64_t> rng_engine_inputs_;
+          PhiloxXpuState rng_engine_inputs;
           {
             // See Note [Acquire lock when using random generators]
             std::lock_guard<std::mutex> lock(gen->mutex_);
             auto offset = ((numDist - 1) / group_range_y + 1) * 4;
-            rng_engine_inputs_ = gen->philox_engine_inputs(offset);
+            rng_engine_inputs = gen->philox_xpu_state(offset);
           }
-          auto rng_engine_inputs = PhiloxState(
-              std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_));
-          // Sample with replacement
 
           auto result_ptr = result.data_ptr<int64_t>();
           auto prefixSum_ptr = prefixSum.data_ptr<scalar_t>();

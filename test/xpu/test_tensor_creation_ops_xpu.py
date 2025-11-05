@@ -1226,8 +1226,10 @@ class TestTensorCreation(TestCase):
         vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2, max)
         refs = None
         if self.device_type == "cuda" or self.device_type == "xpu":
-            if torch.version.hip:
+            if torch.version.hip or torch.version.xpu:
                 # HIP min float -> int64 conversion is divergent
+                # XPU min float -> int8 conversion is divergent
+                # XPU min float -> int16 conversion is divergent
                 vals = (-2, -1.5, -0.5, 0, 0.5, 1.5, 2)
             else:
                 vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2)
@@ -4370,6 +4372,14 @@ class TestLikeTensorCreation(TestCase):
         self.assertEqual(
             torch.full_like(like, 1.0, dtype=torch.complex64).dtype, torch.complex64
         )
+
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_zeros_large(self, device, dtype):
+        output = torch.zeros(2**31 - 1, device=device, dtype=dtype)
+
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_ones_large(self, device, dtype):
+        output = torch.ones(2**31 - 1, device=device, dtype=dtype)
 
 
 # Tests for the `frombuffer` function (only work on CPU):

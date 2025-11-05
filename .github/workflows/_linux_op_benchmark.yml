@@ -26,6 +26,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   reference_issue: 1689
 
 jobs:
@@ -38,9 +39,6 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
     steps:
-      - name: Cleanup workspace
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Get runner
@@ -50,11 +48,9 @@ jobs:
   op_benchmark:
     needs: runner
     runs-on: ${{ needs.runner.outputs.runner_id }}
-    permissions: 
-      issues: write
     timeout-minutes: 900
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
@@ -93,6 +89,8 @@ jobs:
   op_benchmark_test_results_check:
     needs: op_benchmark
     runs-on: ubuntu-24.04
+    permissions:
+      issues: write
     steps:
       - name: Install gh-cli
         run: |

@@ -36,10 +36,17 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=c++17)
     list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
-    # SYCL headers warnings
-    list(APPEND SYCL_HOST_FLAGS -Wno-deprecated-declarations)
-    list(APPEND SYCL_HOST_FLAGS -Wno-deprecated)
-    list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
+    list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
+    # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
+    # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
+    # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
+    # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
+    # the issue we wrap paths to SYCL headers in `-isystem`.
+    foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
+      list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
+    endforeach()
+    # Excluding warnings which flood the compilation output
+    # TODO: fix warnings in the source code and then reenable them in compilation
     list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
   endif()
 
@@ -94,12 +101,8 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
   endif()
 
-  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -D__INTEL_LLVM_COMPILER_VERSION=${__INTEL_LLVM_COMPILER})
-
   CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
-  if(SUPPORTS_FP64_CONV_EMU)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
-  else()
+  if(NOT SUPPORTS_FP64_CONV_EMU)
     message(WARNING "The compiler does not support the '-fsycl-fp64-conv-emu' flag, \
     will disable it. On some platforms that don't support FP64, \
     running operations with the FP64 datatype will raise a Runtime error: Required aspect fp64 is not supported on the device \
@@ -124,7 +127,6 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-fp32-correctly-rounded-divide-sqrt")
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-greater-than-4GB-buffer-required")
 
-
   if(WIN32)
     set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m")
   else()
@@ -136,6 +138,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   if(AOT_TARGETS STREQUAL "none")
     set(TORCH_XPU_ARCH_LIST "" PARENT_SCOPE)
   else()
+    # Enable FP64 conversion emulation for DG2 / ATS-M targets
+    if(SUPPORTS_FP64_CONV_EMU)
+      string(FIND "${AOT_TARGETS}" "dg2" _dg2_index)
+      string(FIND "${AOT_TARGETS}" "ats-m" _atsm_index)
+      if(_dg2_index GREATER_EQUAL 0 OR _atsm_index GREATER_EQUAL 0)
+        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fsycl-fp64-conv-emu)
+      endif()
+    endif()
     set(SYCL_TARGETS_OPTION -fsycl-targets=spir64_gen,spir64)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} ${SYCL_TARGETS_OPTION})
     set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})

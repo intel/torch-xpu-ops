@@ -820,6 +820,10 @@ def is_tf32_supported() -> bool:
     return False
 
 
+def _skipXPU(obj):
+    return obj
+
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(
@@ -858,6 +862,7 @@ class XPUPatchForImport:
         self.cuda_is_bf16_supported = cuda.is_bf16_supported
         self.cuda_is_tf32_supported = cuda.is_tf32_supported
         self.cuda_get_device_capability = torch.cuda.get_device_capability
+        self.skipXPU = common_device_type.skipXPU
 
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
@@ -998,6 +1003,7 @@ class XPUPatchForImport:
             def __init__(self, *args):
                 super().__init__(*args, device_type="xpu")
 
+        common_device_type.skipXPU = _skipXPU
         common_device_type.dtypesIfCUDA = dtypesIfXPU
         common_device_type.onlyNativeDeviceTypes = common_device_type.onlyXPU
         if self.patch_test_case:
@@ -1119,6 +1125,7 @@ class XPUPatchForImport:
         cuda.is_bf16_supported = self.cuda_is_bf16_supported
         torch.cuda.is_tf32_supported = self.cuda_is_tf32_supported
         torch.cuda.get_device_capability = self.cuda_get_device_capability
+        common_device_type.skipXPU = self.skipXPU
 
 
 # Copy the test cases from generic_base_class to generic_test_class.
@@ -1180,11 +1187,11 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_exe_{test_case}.xml " + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_all_{test_case}.xml " + test_case
         )
     return os.system(test_command)
