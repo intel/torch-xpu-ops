@@ -1063,7 +1063,7 @@ void _layer_norm_backward_kernel(
       norm_config_global_size / syclMaxSubGroupSize() * 2 <= thread_slots;
   // cuda uses condition M > 64 * 1024 && N / 32 < sm_count / 2 to parallelize
   // in the M dimension
-  int subslice_count = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+  int xe_core_count = syclGpuEuCount() / syclGpuEUCountPerSubslice();
   if (use_two_stage_col_reduction && M > subslice_count * 1024 &&
       N / 32 < subslice_count) {
     const size_t local_size_x = 8;
