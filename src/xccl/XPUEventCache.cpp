@@ -23,7 +23,7 @@ std::shared_ptr<at::xpu::XPUEvent> XPUEventCache::create(bool timing) {
       event = events.front();
       events.pop_front();
     } else {
-      event = new at::xpu::XPUEvent(timing ? 1 : 0);
+      event = new at::xpu::XPUEvent(timing);
     }
   }
   return std::shared_ptr<at::xpu::XPUEvent>(event, std::move(deleter));
