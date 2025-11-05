@@ -45,14 +45,10 @@ void index_kernel(
     TensorIteratorBase& iter,
     IntArrayRef index_size,
     IntArrayRef index_stride) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-      at::ScalarType::ComplexHalf,
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       iter.dtype(),
       "index_xpu",
-      [&] {
+      AT_WRAP([&] {
         using dtype = OpaqueType<sizeof(scalar_t)>;
         IndexFunctor<dtype> f;
         _index_kernel(
@@ -63,7 +59,13 @@ void index_kernel(
             IntArrayRef{},
             f,
             true);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      kComplexHalf,
+      kHalf,
+      kBool,
+      kBFloat16);
 }
 
 template <typename scalar_t>
@@ -228,14 +230,10 @@ void index_put_kernel(
               false);
         });
   } else {
-    AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-        at::ScalarType::ComplexHalf,
-        at::ScalarType::BFloat16,
-        at::ScalarType::Half,
-        at::ScalarType::Bool,
+    AT_DISPATCH_V2(
         iter.dtype(),
         "index_put_xpu",
-        [&] {
+        AT_WRAP([&] {
           using dtype = OpaqueType<sizeof(scalar_t)>;
           IndexPutFunctor<dtype> f;
           _index_kernel(
@@ -246,7 +244,13 @@ void index_put_kernel(
               IntArrayRef{},
               f,
               false);
-        });
+        }),
+        AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+        AT_EXPAND(AT_FLOAT8_TYPES),
+        kComplexHalf,
+        kHalf,
+        kBool,
+        kBFloat16);
   }
 }
 
@@ -331,16 +335,11 @@ void index_put_deterministic_kernel(
         linearIndex.numel() * sliceSize * nElemBefore,
         " vs ",
         expandedValue.numel());
-
     if (sliceSize > SIMD) {
-      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-          at::ScalarType::ComplexHalf,
-          at::ScalarType::BFloat16,
-          at::ScalarType::Half,
-          at::ScalarType::Bool,
+      AT_DISPATCH_V2(
           expandedValue.scalar_type(),
           "index_put_deterministic_kernel",
-          [&] {
+          AT_WRAP([&] {
             launch_index_put_deterministic_kernel<scalar_t, scalar_t>(
                 sorted_indices.mutable_data_ptr<int64_t>(),
                 orig_indices.mutable_data_ptr<int64_t>(),
@@ -351,16 +350,24 @@ void index_put_deterministic_kernel(
                 strideBefore,
                 nElemBefore,
                 accumulate);
-          });
+          }),
+          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
+          // cleared for float8 dtypes.
+          kFloat8_e4m3fn,
+          kFloat8_e5m2,
+          kFloat8_e4m3fnuz,
+          kFloat8_e5m2fnuz,
+          kComplexHalf,
+          kHalf,
+          kBool,
+          kBFloat16);
     } else {
-      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
-          at::ScalarType::ComplexHalf,
-          at::ScalarType::BFloat16,
-          at::ScalarType::Half,
-          at::ScalarType::Bool,
+      // Align acc type with CUDA
+      AT_DISPATCH_V2(
           expandedValue.scalar_type(),
           "index_put_deterministic_kernel",
-          [&] {
+          AT_WRAP([&] {
             using accscalar_t = at::opmath_type<scalar_t>;
             launch_index_put_deterministic_kernel<scalar_t, accscalar_t>(
                 sorted_indices.mutable_data_ptr<int64_t>(),
@@ -372,7 +379,18 @@ void index_put_deterministic_kernel(
                 strideBefore,
                 nElemBefore,
                 accumulate);
-          });
+          }),
+          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
+          // cleared for float8 dtypes.
+          kFloat8_e4m3fn,
+          kFloat8_e5m2,
+          kFloat8_e4m3fnuz,
+          kFloat8_e5m2fnuz,
+          kComplexHalf,
+          kHalf,
+          kBool,
+          kBFloat16);
     }
 
     if (permuted)
