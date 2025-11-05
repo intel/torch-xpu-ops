@@ -1064,8 +1064,9 @@ void _layer_norm_backward_kernel(
   // cuda uses condition M > 64 * 1024 && N / 32 < sm_count / 2 to parallelize
   // in the M dimension
   int xe_core_count = syclGpuEuCount() / syclGpuEUCountPerSubslice();
-  if (use_two_stage_col_reduction && M > subslice_count * 1024 &&
-      N / 32 < subslice_count) {
+  int tile_n = N / 32;
+  if (use_two_stage_col_reduction && M > xe_core_count * 1024 &&
+      tile_n < xe_core_count * 2) {
     const size_t local_size_x = 8;
     const size_t SIMD = 32;
     // workgroup size is 256
