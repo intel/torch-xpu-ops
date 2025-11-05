@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       issues: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       REFERENCE_ISSUE_ID: 1645
