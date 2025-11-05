@@ -275,7 +275,7 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
   } else {
     xcclStartEvent_ =
         enableTiming ? std::make_shared<at::xpu::XPUEvent>(1) : nullptr;
-    xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>(enableTiming ? 1 : 0);
+    xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>(enableTiming);
   }
   stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
 }
