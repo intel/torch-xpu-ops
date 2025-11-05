@@ -88,6 +88,21 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
         gpu_kernel(iter, CopyScalarFunc<Float8_e5m2fnuz>());
         break;
     }
+  } else if (dtype == kFloat8_e8m0fnu) {
+    switch (other_dtype) {
+      case kFloat:
+        gpu_kernel_nocast(iter, CastScalarFunc<float, Float8_e8m0fnu>());
+        break;
+      case kHalf:
+        gpu_kernel_nocast(iter, CastScalarFunc<Half, Float8_e8m0fnu>());
+        break;
+      case kBFloat16:
+        gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Float8_e8m0fnu>());
+        break;
+      default:
+        gpu_kernel(iter, CopyScalarFunc<Float8_e8m0fnu>());
+        break;
+    }
   } else {
     TORCH_CHECK(
         false,
@@ -114,11 +129,8 @@ void copy_kernel(TensorIteratorBase& iter) {
         kBool,
         kBFloat16,
         kComplexHalf,
-        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
-        kFloat8_e4m3fn,
-        kFloat8_e5m2,
-        kFloat8_e4m3fnuz,
-        kFloat8_e5m2fnuz);
+        AT_EXPAND(AT_FLOAT8_TYPES),
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   }
 }
 
