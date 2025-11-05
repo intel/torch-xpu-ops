@@ -6,14 +6,13 @@
 #define CCL_ENABLE_ZE
 #define CCL_ENABLE_SYCL
 
-// #include <oneapi/ccl.hpp>
+#include <xccl/xccl.h>
 #include <exception>
 #include <future>
 #include <list>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
-#include "xccl/xccl.h"
 
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/StreamGuard.h>

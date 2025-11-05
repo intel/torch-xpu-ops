@@ -94,7 +94,6 @@ namespace c10d {
 struct XCCLStream {
   at::xpu::XPUStream xpuStream;
   ccl::stream cclStream;
-  void* syclQueue;
 };
 
 struct xcclComm_t {
