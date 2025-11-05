@@ -128,8 +128,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       return c10::make_intrusive<Options>(is_high_priority_stream);
     }
     bool is_high_priority_stream;
-    std::vector<uint64_t> global_ranks_in_group;
-    std::string group_name;
   };
 
   ProcessGroupXCCL(
@@ -166,7 +164,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   c10::intrusive_ptr<Work> endCoalescing(OpType optype);
 
-  std::shared_ptr<xcclComm_t> getXCCLComm(
+  std::shared_ptr<xcclComm_t> getXCCLComm(const std::string& deviceKey);
+
+  std::shared_ptr<xcclComm_t> initXCCLComm(
       const std::string& deviceKey,
       at::Device& device,
       OpType opType,
@@ -182,6 +182,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       const std::vector<at::Tensor>& inputs = {},
       const std::vector<at::Tensor>& outputs = {},
       bool record = false);
+
+ protected:
+  int globalRankStart_;
+  int globalRankStride_;
 
   template <typename Fn>
   c10::intrusive_ptr<Work> collective(

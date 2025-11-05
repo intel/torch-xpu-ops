@@ -199,7 +199,8 @@ fi
 
 if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
     grep -E "^FAILED" xpu_distributed_test.log | awk '{print $3}' > ./"${ut_suite}"_xpu_distributed_test_failed.log
-    sed -i '/^[^.]\+/d' ./"${ut_suite}"_xpu_distributed_test_failed.log
+    grep -E "^FAILED" xpu_distributed_test.log | awk '{print $2}' >> ./"${ut_suite}"_xpu_distributed_test_failed.log
+    sed -i '/^[^.d]\+/d' ./"${ut_suite}"_xpu_distributed_test_failed.log
     grep "PASSED" xpu_distributed_test.log | awk '{print $1}' > ./"${ut_suite}"_xpu_distributed_test_passed.log
     echo -e "========================================================================="
     echo -e "Show Failed cases in ${ut_suite} xpu distributed"
@@ -235,10 +236,32 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
       num_failed_xpu_distributed=$(wc -l < "./${ut_suite}_xpu_distributed_test_failed.log")
     fi
     ((num_failed=num_failed_xpu_distributed))
-    if [[ $num_failed -gt 0 ]]; then
+    num_passed=$(wc -l < "./${ut_suite}_xpu_distributed_test_passed.log")
+    if [[ $num_failed -gt 0 ]] || [[ $num_passed -eq 0 ]]; then
       echo -e "[ERROR] UT ${ut_suite} test Fail"
       exit 1
     else
       echo -e "[PASS] UT ${ut_suite} test Pass"
     fi
+fi
+
+if [[ "${ut_suite}" == 'skipped_ut' ]]; then
+  random_cases=(
+    "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
+    "test_parity__foreach_div_fastpath_outplace_xpu_complex128"
+    "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
+    "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
+    "test_python_ref__refs_log2_xpu_complex128"
+    "_jiterator_"
+  )
+  grep "PASSED" skipped_ut_with_skip_test.log | grep -vFf <(printf '%s\n' "${random_cases[@]}") > ./skipped_ut_with_skip_test_passed.log
+  num_passed=$(wc -l < "./skipped_ut_with_skip_test_passed.log")
+  if [ ${num_passed} -gt 0 ];then
+    echo -e "========================================================================="
+    echo -e "Checking New passed cases in Skip list for ${ut_suite}"
+    echo -e "========================================================================="
+    cat ./skipped_ut_with_skip_test_passed.log
+    echo -e "[Warning] Has ${num_passed} new pass in ${ut_suite}"
+    exit 1
+  fi
 fi
