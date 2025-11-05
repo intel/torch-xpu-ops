@@ -2113,7 +2113,7 @@ c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
     return *usedDeviceIdxs_.begin();
   }
   int devIdx = static_cast<int16_t>(
-      globalRank() % at::detail::getXPUHooks().getNumGPUs());
+      globalRank() % at::xpu::device_count());
   LOG(WARNING)
       << logPrefix()
       << c10::str(
