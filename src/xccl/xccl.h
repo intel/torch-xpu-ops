@@ -147,7 +147,7 @@ inline const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
     {at::kFloat8_e5m2fnuz, onecclDataType_t::onecclUint8},
 };
 
-const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV1 = {
+inline const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV1 = {
     {at::kByte, ccl::datatype::uint8},
     {at::kChar, ccl::datatype::int8},
     {at::kInt, ccl::datatype::int32},
