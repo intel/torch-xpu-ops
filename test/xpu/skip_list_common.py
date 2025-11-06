@@ -133,7 +133,7 @@ skip_dict = {
         "test_schema_correctness_nn_functional_conv_transpose3d_xpu_float32",
         "test_schema_correctness_nn_functional_conv_transpose3d_xpu_float64",
         "test_schema_correctness_torch_ops_aten__flash_attention_forward_xpu_float16",
-        ),
+    ),
     "test_complex_xpu.py": None,
     "test_modules_xpu.py": (
         # oneDNN issues
