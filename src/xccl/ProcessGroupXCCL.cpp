@@ -273,8 +273,9 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
         : nullptr;
     xcclEndEvent_ = XPUEventCache::get(device.index())->create(enableTiming);
   } else {
-    xcclStartEvent_ =
-        enableTiming ? std::make_shared<at::xpu::XPUEvent>(enableTiming ) : nullptr;
+    xcclStartEvent_ = enableTiming
+        ? std::make_shared<at::xpu::XPUEvent>(enableTiming)
+        : nullptr;
     xcclEndEvent_ = std::make_shared<at::xpu::XPUEvent>(enableTiming);
   }
   stashed_for_allocator_safety_ = std::make_shared<TensorShelf>();
@@ -927,7 +928,22 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   syncStream(device, xcclEventsMap_[key], stream);
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
-  if (!coalescing_state_) {
+  if (coalescing_state_) {
+    FlightRecorderXCCL::get()->record(
+        local_id_,
+        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
+        seqCollective_,
+        seqP2P_,
+        op_id_,
+        profilingTitle,
+        {tensor},
+        {tensor},
+        nullptr,
+        nullptr,
+        options_->timeout,
+        pgStatus_,
+        true);
+  } else {
     work = initWork(device, rank_, opType, true, profilingTitle, {tensor}, {});
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
@@ -943,22 +959,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         {tensor},
         work->xcclStartEvent_.get(),
         work->xcclEndEvent_.get(),
-        options_->timeout,
-        pgStatus_,
-        true);
-
-  } else {
-    FlightRecorderXCCL::get()->record(
-        local_id_,
-        std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
-        seqCollective_,
-        seqP2P_,
-        op_id_,
-        profilingTitle,
-        {tensor},
-        {tensor},
-        nullptr,
-        nullptr,
         options_->timeout,
         pgStatus_,
         true);
@@ -2112,8 +2112,7 @@ c10::DeviceIndex ProcessGroupXCCL::guessDeviceId() const {
   } else if (!usedDeviceIdxs_.empty()) {
     return *usedDeviceIdxs_.begin();
   }
-  int devIdx = static_cast<int16_t>(
-      globalRank() % at::xpu::device_count());
+  int devIdx = static_cast<int16_t>(globalRank() % at::xpu::device_count());
   LOG(WARNING)
       << logPrefix()
       << c10::str(
