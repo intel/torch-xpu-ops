@@ -82,9 +82,9 @@ check_test_cases() {
         ["op_regression_dev1"]=1
         ["op_transformers"]=237
         ["op_ut"]=120408
-        ["xpu_inductor"]=10330
-        ["test_xpu"]=69
-        ["torch_xpu"]=359
+        ["xpu_inductor"]=20880
+        ["test_xpu"]=73
+        ["torch_xpu"]=396
     )
 
     if [[ ! -f "$log_file" ]]; then
