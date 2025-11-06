@@ -100,7 +100,7 @@ struct xcclComm_t {
   std::optional<ccl::communicator> cclComm;
   onecclComm_t onecclComm{nullptr};
 
-  xcclComm_t() : onecclComm(nullptr) {}
+  xcclComm_t() = default;
   xcclComm_t(ccl::communicator comm)
       : cclComm(std::move(comm)), onecclComm(nullptr) {}
   xcclComm_t(onecclComm_t comm) : onecclComm(comm) {}
