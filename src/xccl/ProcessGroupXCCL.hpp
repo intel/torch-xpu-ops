@@ -22,6 +22,7 @@
 #include <torch/csrc/distributed/c10d/TraceUtils.h>
 #include <torch/csrc/distributed/c10d/logger.hpp>
 #include <xccl/ProcessGroupXCCLMonitor.hpp>
+#include <xccl/XPUEventCache.hpp>
 namespace c10d {
 
 static std::vector<std::string> TORCH_XCCL_HIGH_PRIORITY = {
@@ -34,6 +35,12 @@ static std::vector<std::string> TORCH_XCCL_BLOCKING_WAIT = {
 static std::vector<std::string> TORCH_XCCL_COORD_CHECK_MILSEC = {
     "TORCH_XCCL_COORD_CHECK_MILSEC",
     "XCCL_COORD_CHECK_MILSEC"};
+
+static std::vector<std::string> TORCH_XCCL_XPU_EVENT_CACHE = {
+    "TORCH_XCCL_XPU_EVENT_CACHE"};
+
+static std::vector<std::string> TORCH_XCCL_ENABLE_TIMING = {
+    "TORCH_XCCL_ENABLE_TIMING"};
 
 static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
 
@@ -71,7 +78,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
         uint64_t seq,
         bool isP2P,
         const char* profilingTitle = nullptr,
-        const std::optional<std::vector<at::Tensor>>& inputs = std::nullopt);
+        const std::optional<std::vector<at::Tensor>>& inputs = std::nullopt,
+        bool enableTiming = false,
+        bool xpuEventCacheEnabled = false);
     WorkXCCL(const WorkXCCL& w);
     ~WorkXCCL() override;
 
@@ -84,6 +93,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     void synchronize() override;
 
     void synchronizeStream();
+
+    float getDuration() const override;
 
     bool wait(std::chrono::milliseconds timeout = kNoTimeout) override;
 
@@ -101,6 +112,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
    protected:
     at::Device device_;
+    std::shared_ptr<at::xpu::XPUEvent> xcclStartEvent_;
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     bool isBarrierOp_{false};
     bool blockingWait_{false};
@@ -115,6 +127,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
     std::shared_ptr<TensorShelf> stashed_for_allocator_safety_;
     c10::intrusive_ptr<at::ivalue::Future> future_;
+    bool timingEnabled_;
     friend class ProcessGroupXCCL;
   };
 
@@ -310,7 +323,27 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       Fn fn,
       int peer,
       OpType opType,
-      const char* profilingTitle = nullptr);
+      const char* profilingTitle) {
+    return pointToPoint(
+        tensor,
+        fn,
+        peer,
+        opType,
+        [](at::xpu::XPUStream&,
+           c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work) {},
+        [](at::xpu::XPUStream&) {},
+        profilingTitle);
+  }
+
+  template <typename Fn, typename PreProcess, typename PostProcess>
+  c10::intrusive_ptr<Work> pointToPoint(
+      at::Tensor& tensor,
+      Fn fn,
+      int peer,
+      OpType opType,
+      PreProcess pre,
+      PostProcess post,
+      const char* profilingTitle);
 
   c10::intrusive_ptr<Work> allreduce_impl(
       at::Tensor& tensor,
@@ -417,6 +450,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   uint64_t getSequenceNumberForGroup() override;
 
+  void enableCollectivesTiming() override;
+
   std::string createLogPrefix() const;
 
   const std::string& logPrefix() const;
@@ -437,6 +472,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
+  std::atomic<bool> xpuEventCacheEnabled_;
   std::set<int> usedDeviceIdxs_;
   int coalescing_state_ = 0;
   at::Device coalescedDevice_ = at::Device("xpu");
@@ -444,6 +480,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool coalescedAsync_;
   TensorShelf coalescedTensors_;
   bool blockingWait_ = false;
+  std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
   uint64_t seqP2P_{0};
