@@ -7,7 +7,7 @@ import sys
 import unittest
 
 import torch
-from torch import bfloat16, cuda
+from torch import cuda
 from torch.testing._internal import (
     common_cuda,
     common_device_type,
@@ -865,7 +865,6 @@ class XPUPatchForImport:
         )
         self.foreach_reduce_op_db = common_methods_invocations.foreach_reduce_op_db
         self.foreach_other_op_db = common_methods_invocations.foreach_other_op_db
-        self.python_ref_db = common_methods_invocations.python_ref_db
         self.ops_and_refs = common_methods_invocations.ops_and_refs
         self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
@@ -921,19 +920,10 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if (
-                opinfo.name not in _xpu_computation_op_list
-                and (
-                    opinfo.torch_opinfo.name not in _xpu_computation_op_list
-                    if db == common_methods_invocations.python_ref_db
-                    else True
-                )
-            ) or opinfo.name in _ops_without_cuda_support:
+            if opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIf["xpu"] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIf["xpu"]:
-                    backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if opinfo.name in _ops_dtype_different_cuda_support:
@@ -1039,13 +1029,13 @@ class XPUPatchForImport:
             self.align_db_decorators(db)
             self.filter_fp64_sample_input(db)
         self.align_db_decorators(module_db)
-        common_methods_invocations.python_ref_db = [
+        _python_ref_db = [
             op
-            for op in self.python_ref_db
+            for op in common_methods_invocations.python_ref_db
             if op.torch_opinfo_name in _xpu_computation_op_list
         ]
         common_methods_invocations.ops_and_refs = (
-            common_methods_invocations.op_db + common_methods_invocations.python_ref_db
+            common_methods_invocations.op_db + _python_ref_db
         )
         common_methods_invocations.unary_ufuncs = [
             op
@@ -1128,7 +1118,6 @@ class XPUPatchForImport:
             self.instantiate_parametrized_tests_fn
         )
         common_utils.TestCase = self.test_case_cls
-        common_methods_invocations.python_ref_db = self.python_ref_db
         common_methods_invocations.ops_and_refs = self.ops_and_refs
         common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA

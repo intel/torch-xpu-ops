@@ -14,6 +14,10 @@ skip_dict = {
         "test_python_ref_executor__refs_mul_executor_aten_xpu_complex32",
         # https://github.com/intel/torch-xpu-ops/issues/2254
         "histogramdd",
+        "_vdot_",
+        "_dot_",
+        "_flash_attention_",
+        "_efficient_attention_",
     ),
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
