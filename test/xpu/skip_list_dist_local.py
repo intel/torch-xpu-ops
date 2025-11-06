@@ -166,7 +166,17 @@ skip_dict = {
     # "../../../../test/distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
     "../../../../test/distributed/_composable/test_contract.py": None,
-    "test/distributed/_composable/test_replicate_mixed_precision.py": None,
+    "../../../../test/distributed/_composable/test_replicate_mixed_precision.py": None,
+    "../../../../test/distributed/_composable/test_replicate_training.py": None,
+    "../../../../test/distributed/_composable/test_replicate_with_fsdp.py": None,
+    "../../../../test/distributed/_shard/sharded_optim/test_sharded_optim.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/ops/test_binary_cmp.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/ops/test_embedding.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/ops/test_embedding_bag.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/ops/test_init.py": None,
+    "../../../../test/distributed/_shard/sharded_tensor/ops/test_tensor_ops.py": None,
+    "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
+    "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
 }
 
 skip_dict_python = {
