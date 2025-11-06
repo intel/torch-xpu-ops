@@ -348,7 +348,7 @@ void broadcastUniqueXCCLID(
   }
 }
 
-std::shared_ptr<xcclComm_t> createXCCLCommHelper(
+inline std::shared_ptr<xcclComm_t> createXCCLCommHelper(
     int rank,
     int numRanks,
     int rank_,
