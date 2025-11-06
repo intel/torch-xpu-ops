@@ -166,7 +166,7 @@ inline const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV1 = {
 
 namespace {
 
-ccl::datatype getXcclDataTypeV1(
+inline ccl::datatype getXcclDataTypeV1(
     at::ScalarType type,
     bool is_reduction_op = false) {
   if (is_reduction_op) {
