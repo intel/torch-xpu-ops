@@ -201,7 +201,7 @@ inline onecclDataType_t getXcclDataTypeV2(
   return it->second;
 }
 
-ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
+inline ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
