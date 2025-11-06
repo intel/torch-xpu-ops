@@ -228,7 +228,7 @@ inline ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& in
   }
 }
 
-onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& input) {
+inline onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
