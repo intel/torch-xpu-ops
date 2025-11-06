@@ -297,35 +297,7 @@ skip_dict = {
         "test_dataparallel_saved_tensors_hooks",
     ),
     "test_reductions_xpu.py": None,
-    "test_unary_ufuncs_xpu.py": (
-        # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
-        "_jiterator_",
-        # For extreme value processing, Numpy and XPU results are inconsistent
-        # std operations get different behavior on std::complex operarands for extremal cases
-        "test_reference_numerics_large__refs_asinh_xpu_complex32",
-        "test_reference_numerics_large_asinh_xpu_complex32",
-        # AssertionError: Tensor-likes are not close!
-        # exceeded maximum allowed difference
-        # Greatest absolute difference: 6.266784475883469e-05 at index (463, 204) (up to 1e-05 allowed)
-        # Greatest relative difference: 1.9145216356264427e-05 at index (463, 204) (up to 1.3e-06 allowed)
-        # Unexpected success: CUDA uses thrust::sqrt and has accuracy issue. XPU use std::sqrt and has no issue.
-        "test_reference_numerics_large_rsqrt_xpu_complex32",
-        # Numeric difference
-        # https://github.com/intel/torch-xpu-ops/issues/544
-        # Expected 0.00497517 but got 0.00497520063072443.
-        # Absolute difference: 3.063072442997111e-08 (up to 0.0 allowed)
-        # Relative difference: 6.156719153309558e-06 (up to 1e-06 allowed)
-        # Issue: https://github.com/intel/torch-xpu-ops/issues/622
-        # Mismatched elements: 8 / 943593 (0.0%)
-        # Greatest absolute difference: inf at index (9, 860) (up to 0.001 allowed)
-        # Greatest relative difference: inf at index (9, 860) (up to 0.0012 allowed)
-        "test_reference_numerics_normal_polygamma_polygamma_n_1_xpu_float16",
-        "test_reference_numerics_normal_polygamma_polygamma_n_2_xpu_float16",
-        "test_reference_numerics_normal_polygamma_polygamma_n_3_xpu_float16",
-        "test_reference_numerics_normal_polygamma_polygamma_n_4_xpu_float16",
-        # CUDA XFAIL
-        "test_reference_numerics_large__refs_rsqrt_xpu_complex32",
-    ),
+    "test_unary_ufuncs_xpu.py": None,
     "test_masked_xpu.py": None,
     "test_view_ops_xpu.py": (
         # Need quantization support, NotImplementedError: Could not run 'aten::_empty_affine_quantized' with arguments from the 'QuantizedXPU' backend.
