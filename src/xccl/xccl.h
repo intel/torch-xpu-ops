@@ -103,7 +103,7 @@ struct xcclComm_t {
   xcclComm_t() = default;
   explicit xcclComm_t(ccl::communicator comm)
       : cclComm(std::move(comm)), onecclComm(nullptr) {}
-  xcclComm_t(onecclComm_t comm) : onecclComm(comm) {}
+  explicit xcclComm_t(onecclComm_t comm) : onecclComm(comm) {}
 };
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
