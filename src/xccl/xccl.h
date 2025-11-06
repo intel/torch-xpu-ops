@@ -292,7 +292,7 @@ ccl::shared_ptr_class<ccl::kvs> get_kvs(
   return kvs;
 }
 
-void broadcastUniqueXCCLID(
+inline void broadcastUniqueXCCLID(
     onecclUniqueId* xcclID,
     bool isSingleP2POp,
     const std::string& p2pKey,
