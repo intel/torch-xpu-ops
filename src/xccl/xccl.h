@@ -184,7 +184,7 @@ inline ccl::datatype getXcclDataTypeV1(
 }
 
 // V2 specific function to avoid variant overhead
-onecclDataType_t getXcclDataTypeV2(
+inline onecclDataType_t getXcclDataTypeV2(
     at::ScalarType type,
     bool is_reduction_op = false) {
   if (is_reduction_op) {
