@@ -92,11 +92,20 @@ jobs:
           fi
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
       - name: Add comment for performance outliers
-        uses: ./.github/actions/add-comment
         if: ${{ github.event_name == 'pull_request' && steps.summary.outputs.performance_regression == 1 }}
+        uses: actions/github-script@v7
         with:
-          file_path: ./performance.regression.pr.html
-          github_token: ${{ github.token }}
+          script: |
+            // Read the comment content from a file
+            const fs = require('fs');
+            const commentBody = fs.readFileSync('./performance.regression.pr.html', 'utf8');
+            // Create comment on an issue or PR
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
       - name: Result check
         if: ${{ ! cancelled() }}
         run: |
