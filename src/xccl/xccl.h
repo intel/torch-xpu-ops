@@ -68,30 +68,30 @@ inline bool isCCLV2EnabledCached() {
 }
 
 inline const std::string& getVersionString() {
-static std::string versionString = []() {
-
-...
-return versionString;
-  bool useCCLV2 = isCCLV2EnabledCached();
-  std::string versionString;
-  if (useCCLV2) {
-    int version = 0;
-    onecclGetVersion(&version);
-    const int majorBase = 10000;
-    const int minorBase = 100;
-    auto xcclMajor = version / majorBase;
-    auto xcclMinor = (version % majorBase) / minorBase;
-    auto xcclPatch = version % (xcclMajor * majorBase + xcclMinor * minorBase);
-    versionString = std::to_string(xcclMajor) + "." +
-        std::to_string(xcclMinor) + "." + std::to_string(xcclPatch);
-  } else {
-    auto xccl_version = ccl::get_library_version();
-    versionString = std::to_string(xccl_version.major) + "." +
-        std::to_string(xccl_version.minor) + "." +
-        std::to_string(xccl_version.update);
-  }
+  static std::string versionString = []() {
+    bool useCCLV2 = isCCLV2EnabledCached();
+    std::string versionString;
+    if (useCCLV2) {
+      int version = 0;
+      onecclGetVersion(&version);
+      const int majorBase = 10000;
+      const int minorBase = 100;
+      auto xcclMajor = version / majorBase;
+      auto xcclMinor = (version % majorBase) / minorBase;
+      auto xcclPatch =
+          version % (xcclMajor * majorBase + xcclMinor * minorBase);
+      versionString = std::to_string(xcclMajor) + "." +
+          std::to_string(xcclMinor) + "." + std::to_string(xcclPatch);
+    } else {
+      auto xccl_version = ccl::get_library_version();
+      versionString = std::to_string(xccl_version.major) + "." +
+          std::to_string(xccl_version.minor) + "." +
+          std::to_string(xccl_version.update);
+    }
+    return versionString;
+  }();
   return versionString;
-}();
+}
 
 namespace c10d {
 
@@ -201,7 +201,9 @@ inline onecclDataType_t getXcclDataTypeV2(
   return it->second;
 }
 
-inline ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& input) {
+inline ccl::reduction getXcclReduceOpV1(
+    const ReduceOp& reduceOp,
+    at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
@@ -228,7 +230,9 @@ inline ccl::reduction getXcclReduceOpV1(const ReduceOp& reduceOp, at::Tensor& in
   }
 }
 
-inline onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& input) {
+inline onecclRedOp_t getXcclReduceOpV2(
+    const ReduceOp& reduceOp,
+    at::Tensor& input) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
@@ -255,12 +259,11 @@ inline onecclRedOp_t getXcclReduceOpV2(const ReduceOp& reduceOp, at::Tensor& inp
   }
 }
 
-std::mutex kvs_mutex;
-
 ccl::shared_ptr_class<ccl::kvs> get_kvs(
     int rank,
     Store& store,
     uint64_t& xcclCommCounter_,
+    std::mutex& kvs_mutex,
     bool singleP2POp = false,
     const std::string& p2pKey = "",
     int p2pRank = 0) {
@@ -358,7 +361,8 @@ inline std::shared_ptr<xcclComm_t> createXCCLCommHelper(
     Store* store_,
     bool singleP2POp,
     int p2pRank,
-    uint64_t& xcclCommCounter_) {
+    uint64_t& xcclCommCounter_,
+    std::mutex& kvs_mutex) {
   bool useCCLV2 = isCCLV2EnabledCached();
   if (!useCCLV2) {
     auto ctx = ccl::create_context(q.get_context());
@@ -366,7 +370,13 @@ inline std::shared_ptr<xcclComm_t> createXCCLCommHelper(
     devs_rank.emplace_back(rank, ccl::create_device(q.get_device()));
 
     auto xccl_kvs = get_kvs(
-        rank_, *store_, xcclCommCounter_, singleP2POp, deviceKey, p2pRank);
+        rank_,
+        *store_,
+        xcclCommCounter_,
+        kvs_mutex,
+        singleP2POp,
+        deviceKey,
+        p2pRank);
     auto comms = ccl::create_communicators(numRanks, devs_rank, ctx, xccl_kvs);
     return std::make_shared<xcclComm_t>(std::move(comms[0]));
   } else {

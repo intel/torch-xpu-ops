@@ -458,6 +458,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool enableNanCheck_;
 
   friend class HeartbeatMonitorXCCL;
+
+ private:
+  std::mutex kvs_mutex_;
 };
 
 // Dumps the comm traces and additional information about the ProcessGroup.

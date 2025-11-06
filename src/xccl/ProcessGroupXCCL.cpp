@@ -452,7 +452,8 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
       store_.get(),
       singleP2POp,
       p2pRank,
-      xcclCommCounter_);
+      xcclCommCounter_,
+      kvs_mutex_);
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -2021,7 +2022,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall(
 }
 
 std::string getXcclVersion() {
-  return versionString;
+  return getVersionString();
 }
 
 } // namespace c10d
