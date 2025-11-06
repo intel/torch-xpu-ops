@@ -130,7 +130,7 @@ const std::map<c10d::ReduceOp, ccl::reduction> xcclOpsV1 = {
 #endif // XCCL_HAS_AVG
 };
 
-const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
+inline const std::map<at::ScalarType, onecclDataType_t> xcclDatatypesV2 = {
     {at::kByte, onecclDataType_t::onecclUint8},
     {at::kChar, onecclDataType_t::onecclChar},
     {at::kInt, onecclDataType_t::onecclInt32},
