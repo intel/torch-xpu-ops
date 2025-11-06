@@ -165,6 +165,8 @@ skip_dict = {
     "../../../../test/distributed/test_c10d_functional_native.py": None,
     # "../../../../test/distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
+    "../../../../test/distributed/_composable/test_contract.py": None,
+    "test/distributed/_composable/test_replicate_mixed_precision.py": None,
 }
 
 skip_dict_python = {
