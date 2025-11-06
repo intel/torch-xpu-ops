@@ -67,7 +67,11 @@ inline bool isCCLV2EnabledCached() {
   return cachedValue;
 }
 
+inline const std::string& getVersionString() {
 static std::string versionString = []() {
+
+...
+return versionString;
   bool useCCLV2 = isCCLV2EnabledCached();
   std::string versionString;
   if (useCCLV2) {
