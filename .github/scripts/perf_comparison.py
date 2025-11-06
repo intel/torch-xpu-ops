@@ -315,7 +315,7 @@ def main():
         ]
         if not cases_h.empty or not cases_m.empty:
             with open(PR_FILE, 'w', encoding='utf-8') as f:
-                f.write("\n### Performance check outliers, please check!\n")
+                f.write("\n### Performance outliers, please check!\n")
             write_report(
                 cases_h, PR_FILE, "- 🔴 [-1, 80%), should be regression", 'a'
             )
