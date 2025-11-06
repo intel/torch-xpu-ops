@@ -218,7 +218,6 @@ skip:
 
     xpu: []
 
-
   test:
     training:
       - *DETECTRON2_MODELS
