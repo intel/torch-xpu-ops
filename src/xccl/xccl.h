@@ -98,7 +98,7 @@ struct XCCLStream {
 
 struct xcclComm_t {
   std::optional<ccl::communicator> cclComm;
-  onecclComm_t onecclComm;
+  onecclComm_t onecclComm{nullptr};
 
   xcclComm_t() : onecclComm(nullptr) {}
   xcclComm_t(ccl::communicator comm)
