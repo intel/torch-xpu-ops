@@ -1167,6 +1167,9 @@ inline void gpu_reduce_kernel(
       std::is_convertible_v<arg_t, out_scalar_t> &&
       !(is_inp_out_type_half_or_chalf || is_inp_out_type_bfloat16);
 
+  bool can_use_32bit_indexing = iter.can_use_32bit_indexing();
+  std::unique_ptr<AccumulationBuffer> owned_buf_ptr;
+
   // The acc_buf_ptr is a shared pointer. It is create at the first entrance
   // and resued by all recursive function calls.
   if (acc_buf_ptr == nullptr) {
