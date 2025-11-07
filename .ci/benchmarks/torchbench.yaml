@@ -43,6 +43,7 @@ tolerance:
     - doctr_reco_predictor
     - drq
     - phlippe_resnet
+    - pytorch_CycleGAN_and_pix2pix
 
   higher_bf16:
     - doctr_reco_predictor
@@ -163,31 +164,6 @@ skip:
     - simple_gpt_tp_manual
     # skip hf and timm models in torchbench since
     # there are already separate benchmarks for them
-    # - hf_Albert
-    # - hf_Bart
-    # - hf_Bert
-    # - hf_BigBird
-    # - hf_DistilBert
-    # - hf_GPT2
-    # - hf_Longformer
-    # - hf_Reformer
-    # - hf_T5
-    # - timm_efficientdet
-    # - timm_efficientnet
-    # - timm_nfnet
-    # - timm_regnet
-    # - timm_resnest
-    # - timm_vision_transformer
-    # - timm_vovnet
-    # - hf_Bert_large
-    # - hf_GPT2_large
-    # - hf_Roberta_base
-    # - hf_T5_base
-    # - hf_T5_generate
-    # - hf_T5_large
-    # - hf_Whisper
-    # - hf_distil_whisper
-    # - timm_vision_transformer_large
 
   device:
     cpu:
@@ -215,6 +191,9 @@ skip:
     cpu_aarch64: []
 
     cuda: []
+
+    xpu:
+      - *DETECTRON2_MODELS
 
   test:
     training:
