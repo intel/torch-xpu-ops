@@ -1152,7 +1152,7 @@ inline void gpu_reduce_kernel(
   using traits = function_traits<decltype(&ops_t::reduce)>;
   using arg_t = typename traits::template arg<0>::type;
 
-static constexpr bool is_inp_out_type_half_or_chalf =
+  static constexpr bool is_inp_out_type_half_or_chalf =
       (std::is_same_v<at::Half, scalar_t> &&
        std::is_same_v<at::Half, out_scalar_t>) ||
       (std::is_same_v<c10::complex<Half>, scalar_t> &&
