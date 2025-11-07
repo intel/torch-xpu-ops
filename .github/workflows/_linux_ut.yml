@@ -178,6 +178,7 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
