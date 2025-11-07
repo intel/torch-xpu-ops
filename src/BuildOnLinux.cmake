@@ -21,7 +21,24 @@ macro(setup_common_libraries)
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endmacro()
 
-if(BUILD_SEPARATE_OPS)
+if(DEBUG_XPU)
+  setup_common_libraries()
+  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycl-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      STATIC
+      SYCL_SOURCES ${sycl_src})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    target_link_options(torch_xpu_ops PUBLIC
+    "-Wl,--whole-archive"
+    $<TARGET_FILE:${sycl_lib}>
+    "-Wl,--no-whole-archive"
+    )
+  endforeach()
+  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+elseif(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)

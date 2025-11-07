@@ -95,10 +95,12 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
   endif()
 
-  if(CMAKE_BUILD_TYPE MATCHES Debug)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
-  elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
-    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
+  if(DEBUG_XPU)
+    if(CMAKE_BUILD_TYPE MATCHES Debug)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
+    elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
+    endif()
   endif()
 
   CHECK_SYCL_FLAG("-fsycl-fp64-conv-emu" SUPPORTS_FP64_CONV_EMU)
