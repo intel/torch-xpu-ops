@@ -345,6 +345,17 @@ _cuda_xfail_xpu_pass = [
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),
+    ("triangular_solve", "test_out"),
+    ("_refs.div", "test_python_ref"),
+    ("_refs.pow", "test_python_ref"),
+    ("_refs.pow", "test_python_ref_torch_fallback"),
+    ("_refs.mul", "test_python_ref_executor"),
+    (
+        "_refs.div",
+        "test_python_ref_torch_fallback",
+    ),
+    ("argsort", "test_non_standard_bool_values"),
+    ("sort", "test_non_standard_bool_values"),
 ]
 
 # some case should adjust tolerance to pass.
