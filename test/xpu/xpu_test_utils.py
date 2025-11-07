@@ -354,6 +354,11 @@ _cuda_xfail_xpu_pass = [
         "_refs.div",
         "test_python_ref_torch_fallback",
     ),
+    ("_refs.true_div", "test_python_ref"),
+    (
+        "_refs.true_div",
+        "test_python_ref_torch_fallback",
+    ),
     ("argsort", "test_non_standard_bool_values"),
     ("sort", "test_non_standard_bool_values"),
 ]
