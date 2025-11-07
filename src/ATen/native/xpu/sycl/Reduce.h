@@ -1151,11 +1151,21 @@ inline void gpu_reduce_kernel(
 
   using traits = function_traits<decltype(&ops_t::reduce)>;
   using arg_t = typename traits::template arg<0>::type;
-  static constexpr bool can_accumulate_in_output =
-      std::is_convertible<arg_t, out_scalar_t>::value;
 
-  bool can_use_32bit_indexing = iter.can_use_32bit_indexing();
-  std::unique_ptr<AccumulationBuffer> owned_buf_ptr;
+static constexpr bool is_inp_out_type_half_or_chalf =
+      (std::is_same_v<at::Half, scalar_t> &&
+       std::is_same_v<at::Half, out_scalar_t>) ||
+      (std::is_same_v<c10::complex<Half>, scalar_t> &&
+       std::is_same_v<c10::complex<Half>, out_scalar_t>);
+  // at::BFloat16 has lower precision and can lead to rounding errors.
+  // So when scalar_t and out_scalar_t are at::BFloat16, we
+  // set can_accumulate_in_output to False.
+  static constexpr bool is_inp_out_type_bfloat16 =
+      (std::is_same_v<at::BFloat16, scalar_t> &&
+       std::is_same_v<at::BFloat16, out_scalar_t>);
+  static constexpr bool can_accumulate_in_output =
+      std::is_convertible_v<arg_t, out_scalar_t> &&
+      !(is_inp_out_type_half_or_chalf || is_inp_out_type_bfloat16);
 
   // The acc_buf_ptr is a shared pointer. It is create at the first entrance
   // and resued by all recursive function calls.
