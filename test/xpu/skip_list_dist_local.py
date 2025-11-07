@@ -177,6 +177,10 @@ skip_dict = {
     "../../../../test/distributed/_shard/sharded_tensor/ops/test_tensor_ops.py": None,
     "../../../../test/distributed/_shard/sharding_plan/test_sharding_plan.py": None,
     "../../../../test/distributed/_shard/sharding_spec/test_sharding_spec.py": None,
+    "../../../../test/distributed/_tools/test_fake_collectives.py": None,
+    "../../../../test/distributed/_tools/test_runtime_estimator.py": None,
+    "../../../../test/distributed/_tools/test_sac_estimator.py": None,
+    "../../../../test/distributed/_tools/test_sac_ilp.py": None,
 }
 
 skip_dict_python = {
