@@ -186,12 +186,15 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
 TORCH_LIBRARY_IMPL(aten, XPU, m) {
   std::vector<std::string> fallback_list = {
     "cholesky",
+    "cholesky.out",
     "cholesky_inverse",
+    "cholesky_inverse.out",
     "_cholesky_solve_helper",
     "dot",
     "_efficient_attention_forward",
     "_flash_attention_forward",
     "geqrf",
+    "geqrf.a",
     "hash_tensor.out",
     "linalg_cholesky_ex.L",
     "linalg_eig",
@@ -212,6 +215,7 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_linalg_svd.U",
     "lu_unpack.out",
     "ormqr",
+    "ormqr.out",
     "_scaled_mm",
     "triangular_solve.X",
     "_validate_compressed_sparse_indices",
