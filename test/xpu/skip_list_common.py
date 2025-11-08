@@ -796,7 +796,7 @@ skip_dict = {
         "test_comprehensive_ormqr_xpu_complex64",
         "test_quick_mean_xpu_complex128",
         "test_comprehensive_grid_sampler_2d_xpu_bfloat16",
-        # worker 'gw[x]' crashed 
+        # worker 'gw[x]' crashed
         "test_quick_core_backward__unsafe_masked_index_xpu_float64",
         "test_comprehensive_to_sparse_xpu_int8",
         "test_comprehensive_grid_sampler_2d_xpu_float64",
