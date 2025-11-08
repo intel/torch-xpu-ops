@@ -753,7 +753,7 @@ skip_dict = {
         "test_sparse_mm_xpu_float64",  # - NotImplementedError: Could not run 'aten::addmm' with arguments from the 'SparseXPU' backend. This could be because the operator doesn't exist for this backend, or wa...
     ),
     "test_decomp.py": (
-        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close! 
+        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
         "test_comprehensive_baddbmm_xpu_float64",
         "test_comprehensive_logspace_tensor_overload_xpu_int16",
         "test_comprehensive_logspace_tensor_overload_xpu_int32",
@@ -776,35 +776,35 @@ skip_dict = {
         "test_comprehensive_nn_functional_conv_transpose3d_xpu_float16",
         "test_comprehensive_nn_functional_conv_transpose3d_xpu_float32",
         "test_comprehensive_nn_functional_conv_transpose3d_xpu_float64",
-        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close! 
+        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
         "test_comprehensive_nn_functional_instance_norm_xpu_float64",
-        #  RuntimeError: Difference from float64 is larger with decomposition nll_loss_forward.default than original on output 0. 
+        #  RuntimeError: Difference from float64 is larger with decomposition nll_loss_forward.default than original on output 0.
         "test_comprehensive_nn_functional_nll_loss_xpu_float16",
         "test_comprehensive_nn_functional_pad_reflect_xpu_bfloat16",
         #  NotImplementedError: Could not run 'aten::_flash_attention_forward' with arguments from the 'CPU' backend.
         "test_comprehensive_torch_ops_aten__flash_attention_forward_xpu_float16",
-        #  AssertionError: Scalars are not close! ; Exception: Scalars are not close! 
+        #  AssertionError: Scalars are not close! ; Exception: Scalars are not close!
         "test_comprehensive_vdot_xpu_complex128",
         "test_comprehensive_vdot_xpu_complex64",
-        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close! 
+        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
         "test_quick_addmm_xpu_float64",
         "test_quick_baddbmm_xpu_float64",
         "test_quick_core_backward_baddbmm_xpu_float64",
         # Exception: Jacobian mismatch for output 0 with respect to input 0
         "test_quick_core_backward_mv_xpu_float64",
-        #  AssertionError: Tensor-likes are not equal! ; Exception: Tensor-likes are not equal! 
+        #  AssertionError: Tensor-likes are not equal! ; Exception: Tensor-likes are not equal!
         "test_quick_logspace_tensor_overload_xpu_int16",
         "test_quick_logspace_tensor_overload_xpu_int32",
         "test_quick_logspace_tensor_overload_xpu_int64",
         "test_quick_logspace_xpu_int16",
         "test_quick_logspace_xpu_int32",
         "test_quick_logspace_xpu_int64",
-        #  AssertionError: Scalars are not close! ; Exception: Scalars are not close! 
+        #  AssertionError: Scalars are not close! ; Exception: Scalars are not close!
         "test_quick_vdot_xpu_complex128",
         "test_quick_vdot_xpu_complex64",
-        #  AssertionError: Tensor-likes are not close! 
+        #  AssertionError: Tensor-likes are not close!
         "test_exponential_non_inf_xpu",
-        #  RuntimeError: I got this output for HasDecompTest.test_aten_core_operators: 
+        #  RuntimeError: I got this output for HasDecompTest.test_aten_core_operators:
         "test_aten_core_operators",
         "test_has_decomposition",
         #  AssertionError: Tensor-likes are not close!
