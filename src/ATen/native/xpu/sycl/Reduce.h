@@ -1152,6 +1152,9 @@ inline void gpu_reduce_kernel(
   using traits = function_traits<decltype(&ops_t::reduce)>;
   using arg_t = typename traits::template arg<0>::type;
 
+  // at::Half/at::ComplexHalf overflows easily as it's range is very small.
+  // So when scalar_t and out_scalar_t are at::Half/at::ComplexHalf, we
+  // set can_accumulate_in_output to False.
   static constexpr bool is_inp_out_type_half_or_chalf =
       (std::is_same_v<at::Half, scalar_t> &&
        std::is_same_v<at::Half, out_scalar_t>) ||
