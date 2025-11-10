@@ -160,7 +160,7 @@ skip_dict = {
     "../../../../test/distributed/optim/test_apply_optimizer_in_backward.py": None,
     "../../../../test/distributed/optim/test_named_optimizer.py": None,
     "../../../../test/distributed/optim/test_zero_redundancy_optimizer.py": None,
-    # "distributed/test_c10d_ops_xccl.py": None,
+    "distributed/test_c10d_ops_xccl.py": None,
     "distributed/test_c10d_xccl.py": None,
     "../../../../test/distributed/test_c10d_functional_native.py": None,
     # "../../../../test/distributed/pipelining/test_stage.py": None,
