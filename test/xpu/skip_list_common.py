@@ -792,9 +792,6 @@ skip_dict = {
         #  RuntimeError: I got this output for HasDecompTest.test_aten_core_operators:
         "test_aten_core_operators",
         "test_has_decomposition",
-        # worker 'gw[x]' crashed
-        "test_quick_core_backward",
-        "test_comprehensive",
         #  AssertionError: Tensor-likes are not close!
         "test_comprehensive_diff_xpu_complex128",
         "test_comprehensive_ormqr_xpu_complex128",
