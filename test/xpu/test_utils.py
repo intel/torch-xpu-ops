@@ -18,7 +18,7 @@ import torch.cuda
 import torch.nn as nn
 import torch.utils.cpp_extension
 import torch.utils.data
-from checkpoint import (
+from .checkpoint import (
     _infer_device_type,
     checkpoint,
     checkpoint_sequential,
