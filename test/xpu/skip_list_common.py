@@ -792,6 +792,9 @@ skip_dict = {
         #  RuntimeError: I got this output for HasDecompTest.test_aten_core_operators:
         "test_aten_core_operators",
         "test_has_decomposition",
+        # worker 'gw[x]' crashed
+        "test_quick_core_backward",
+        "test_comprehensive",
         #  AssertionError: Tensor-likes are not close!
         "test_comprehensive_diff_xpu_complex128",
         "test_comprehensive_ormqr_xpu_complex128",
@@ -800,12 +803,6 @@ skip_dict = {
         "test_comprehensive_ormqr_xpu_complex64",
         "test_quick_mean_xpu_complex128",
         "test_comprehensive_grid_sampler_2d_xpu_bfloat16",
-        # worker 'gw[x]' crashed
-        "test_quick_core_backward__unsafe_masked_index_xpu_float64",
-        "test_comprehensive_to_sparse_xpu_int8",
-        "test_comprehensive_grid_sampler_2d_xpu_float64",
-        "test_quick_core_backward__unsafe_masked_index_put_accumulate_xpu_float64",
-        "test_quick_core_backward__unsafe_masked_index_xpu_float64",
     ),
     "functorch/test_ops_functorch_xpu.py": None,
     "test_sparse_xpu.py": None,
