@@ -128,9 +128,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-greater-than-4GB-buffer-required")
 
   if(WIN32)
-    set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m")
+    set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m,ptl")
   else()
-    set(AOT_TARGETS "pvc,bmg,dg2,arl-h,mtl-h,lnl-m")
+    set(AOT_TARGETS "pvc,bmg,dg2,arl-h,mtl-h,lnl-m,ptl-h,ptl-u")
   endif()
   if(TORCH_XPU_ARCH_LIST)
     set(AOT_TARGETS "${TORCH_XPU_ARCH_LIST}")
