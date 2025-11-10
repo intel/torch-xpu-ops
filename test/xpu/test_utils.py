@@ -18,12 +18,6 @@ import torch.cuda
 import torch.nn as nn
 import torch.utils.cpp_extension
 import torch.utils.data
-from .checkpoint import (
-    _infer_device_type,
-    checkpoint,
-    checkpoint_sequential,
-    get_device_states,
-)
 from torch._utils import try_import
 from torch._utils_internal import deprecated
 from torch.testing._internal.common_cuda import TEST_MULTIGPU
@@ -51,6 +45,13 @@ from torch.utils._traceback import (
 )
 from torch.utils.collect_env import get_pretty_env_info
 from torch.utils.data import DataLoader
+
+from .checkpoint import (
+    _infer_device_type,
+    checkpoint,
+    checkpoint_sequential,
+    get_device_states,
+)
 
 # load_tests from torch.testing._internal.common_utils is used to automatically filter tests for
 # sharding on sandcastle. This line silences flake warnings
