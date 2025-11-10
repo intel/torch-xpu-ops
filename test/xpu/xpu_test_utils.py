@@ -1040,9 +1040,7 @@ class XPUPatchForImport:
             if op.torch_opinfo_name in _xpu_computation_op_list
         ]
         common_methods_invocations.ops_and_refs = (
-            # common_methods_invocations.op_db + _python_ref_db
-            common_methods_invocations.op_db
-            + common_methods_invocations.python_ref_db
+            common_methods_invocations.op_db + _python_ref_db
         )
         common_methods_invocations.unary_ufuncs = [
             op
@@ -1175,7 +1173,7 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
-    os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
+    # os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     if skip_list is not None:
         skip_options = ' -k "not ' + skip_list[0]
