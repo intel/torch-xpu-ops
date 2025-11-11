@@ -115,9 +115,7 @@ const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
     {ReduceOp::MAX, onecclRedOp_t::onecclMax},
     {ReduceOp::SUM, onecclRedOp_t::onecclSum},
     {ReduceOp::PRODUCT, onecclRedOp_t::onecclProd},
-#ifdef XCCL_HAS_AVG
     {ReduceOp::AVG, onecclRedOp_t::onecclAvg},
-#endif // XCCL_HAS_AVG
 };
 
 const std::map<c10d::ReduceOp, ccl::reduction> xcclOpsV1 = {
@@ -238,19 +236,11 @@ inline onecclRedOp_t getXcclReduceOpV2(
       if (reduceOp == ReduceOp::SUM) {
         return onecclRedOp_t::onecclMax;
       }
-#ifdef XCCL_HAS_AVG
       if (reduceOp == ReduceOp::AVG) {
         C10_THROW_ERROR(
             TypeError, "Cannot use ReduceOp.AVG with boolean inputs");
       }
-#endif // XCCL_HAS_AVG
     }
-#if !defined(XCCL_HAS_AVG)
-    if (reduceOp == ReduceOp::AVG) {
-      LOG(INFO) << "[Reduce] Use sum emulation for avg";
-      return onecclRedOp_t::onecclSum;
-    }
-#endif
     return xcclOpsV2.at(reduceOp);
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
@@ -380,7 +370,7 @@ inline std::shared_ptr<xcclComm_t> createXCCLCommHelper(
     auto comms = ccl::create_communicators(numRanks, devs_rank, ctx, xccl_kvs);
     return std::make_shared<xcclComm_t>(std::move(comms[0]));
   } else {
-    LOG(INFO) << "USE_CCL_V2=1";
+    LOG(INFO) << "USE_CCL_V2=1, switch to use oneCCL v2 C API ";
     onecclUniqueId xcclID;
     if (rank_ == 0 || (singleP2POp && p2pRank == 0)) {
       onecclGetUniqueId(&xcclID);
@@ -419,7 +409,7 @@ void onecclAllReduce(
     xcclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclReduce(
     at::Tensor& input,
     at::Tensor& output,
@@ -427,53 +417,53 @@ void onecclReduce(
     const c10d::ReduceOp& reduceOp,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclBroadcast(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclReduceScatter(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclAllGather(
     at::Tensor& input,
     at::Tensor& output,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclSend(
     at::Tensor& input,
     xcclComm_t& comm,
     const int dstRank,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclRecv(
     at::Tensor& output,
     xcclComm_t& comm,
     const int srcRank,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclGather(
     const at::Tensor& inputs,
     std::vector<at::Tensor>& outputs,
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclScatter(
     const std::vector<at::Tensor>& inputs,
     at::Tensor& outputs,
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 void onecclAllToAll(
     void* sendbuff,
     const size_t* sendcounts,
@@ -485,7 +475,7 @@ void onecclAllToAll(
     at::ScalarType dataType,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
-    void* SyclQueue);
+    at::xpu::XPUStream& stream);
 
 } // namespace xccl
 } // namespace c10d

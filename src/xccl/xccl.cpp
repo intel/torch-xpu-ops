@@ -25,7 +25,7 @@ void onecclAllReduce(
     xcclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
@@ -36,7 +36,7 @@ void onecclAllReduce(
         xcclDataType,
         xcclReduceOp,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
@@ -59,7 +59,7 @@ void onecclReduce(
     const c10d::ReduceOp& reduceOp,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
@@ -71,7 +71,7 @@ void onecclReduce(
         xcclReduceOp,
         root,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
@@ -94,7 +94,7 @@ void onecclBroadcast(
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
     onecclBroadcast(
@@ -104,7 +104,7 @@ void onecclBroadcast(
         xcclDataType,
         root,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::broadcast(
@@ -125,7 +125,7 @@ void onecclReduceScatter(
     xcclComm_t& comm,
     const c10d::ReduceOp& reduceOp,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
     auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
@@ -136,7 +136,7 @@ void onecclReduceScatter(
         xcclDataType,
         xcclReduceOp,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
     auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
@@ -157,7 +157,7 @@ void onecclAllGather(
     at::Tensor& output,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
     onecclAllGather(
@@ -166,7 +166,7 @@ void onecclAllGather(
         (size_t)input.numel(),
         xcclDataType,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::allgather(
@@ -185,7 +185,7 @@ void onecclSend(
     xcclComm_t& comm,
     const int dstRank,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), false);
     onecclSend(
@@ -194,7 +194,7 @@ void onecclSend(
         xcclDataType,
         dstRank,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), false);
     ccl::send(
@@ -213,7 +213,7 @@ void onecclRecv(
     xcclComm_t& comm,
     const int srcRank,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(output.scalar_type(), false);
     onecclRecv(
@@ -222,7 +222,7 @@ void onecclRecv(
         xcclDataType,
         srcRank,
         comm.onecclComm,
-        SyclQueue);
+        &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(output.scalar_type(), false);
     ccl::recv(
@@ -242,7 +242,7 @@ void onecclGather(
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   size_t count = inputs.numel();
 
   if (isCCLV2EnabledCached()) {
@@ -256,7 +256,12 @@ void onecclGather(
         if (r != root) {
           auto* recvbuff = reinterpret_cast<char*>(outputs[r].data_ptr());
           onecclRecv(
-              recvbuff, count, xcclDataType, r, comm.onecclComm, SyclQueue);
+              recvbuff,
+              count,
+              xcclDataType,
+              r,
+              comm.onecclComm,
+              &stream.queue());
         } else {
           // on its own rank, simply copy from the input
           outputs[r].copy_(inputs);
@@ -269,7 +274,7 @@ void onecclGather(
           xcclDataType,
           root,
           comm.onecclComm,
-          SyclQueue);
+          &stream.queue());
     }
     onecclGroupEnd();
   } else {
@@ -308,7 +313,7 @@ void onecclScatter(
     xcclComm_t& comm,
     const int root,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(outputs.scalar_type(), false);
     int numranks = 0, cur_rank = 0;
@@ -325,7 +330,7 @@ void onecclScatter(
               xcclDataType,
               r,
               comm.onecclComm,
-              SyclQueue);
+              &stream.queue());
         } else {
           // on its own rank, simply copy from the input
           outputs.copy_(inputs[r]);
@@ -339,7 +344,7 @@ void onecclScatter(
           xcclDataType,
           root,
           comm.onecclComm,
-          SyclQueue);
+          &stream.queue());
     }
     onecclGroupEnd();
   } else {
@@ -389,7 +394,7 @@ void onecclAllToAll(
     at::ScalarType dataType,
     xcclComm_t& comm,
     ccl::stream& xcclStream,
-    void* SyclQueue) {
+    at::xpu::XPUStream& stream) {
   xccl::oneccl_group_start();
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
@@ -403,7 +408,7 @@ void onecclAllToAll(
             xcclDataType,
             r,
             comm.onecclComm,
-            SyclQueue);
+            &stream.queue());
       }
       if (recvcounts[r] != 0) {
         onecclRecv(
@@ -412,7 +417,7 @@ void onecclAllToAll(
             xcclDataType,
             r,
             comm.onecclComm,
-            SyclQueue);
+            &stream.queue());
       }
     }
   } else {
