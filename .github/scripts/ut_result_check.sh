@@ -246,7 +246,10 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
 fi
 
 if [[ "${ut_suite}" == 'skipped_ut' ]]; then
-  random_cases=(
+  # skipped known passed
+  gh --repo intel/torch-xpu-ops issue view ${NEW_PASSED_ISSUE:-"2333"} -c > known-passed-issue.cases
+  no_check_cases=(
+    $(cat known-passed-issue.cases |grep '::.*::' |grep "PASSED" |sed 's/.*:://;s/[[:space:]].*//;s/^/"/;s/$/"/' || true)
     "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
     "test_parity__foreach_div_fastpath_outplace_xpu_complex128"
     "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
@@ -254,7 +257,7 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
     "test_python_ref__refs_log2_xpu_complex128"
     "_jiterator_"
   )
-  grep "PASSED" skipped_ut_with_skip_test.log | grep -vFf <(printf '%s\n' "${random_cases[@]}") > ./skipped_ut_with_skip_test_passed.log
+  grep "PASSED" skipped_ut_with_skip_test.log | grep -vFf <(printf '%s\n' "${no_check_cases[@]}") > ./skipped_ut_with_skip_test_passed.log
   num_passed=$(wc -l < "./skipped_ut_with_skip_test_passed.log")
   if [ ${num_passed} -gt 0 ];then
     echo -e "========================================================================="
