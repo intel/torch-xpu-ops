@@ -31,7 +31,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_CROSSREF,
 )
 
-TEST_WITH_CROSSREF = 1
+TEST_WITH_CROSSREF = 1 # noqa: F811
 
 try:
     from xpu_test_utils import XPUPatchForImport
