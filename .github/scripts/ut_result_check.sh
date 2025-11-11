@@ -249,7 +249,7 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
   # skipped known passed
   gh --repo intel/torch-xpu-ops issue view ${NEW_PASSED_ISSUE:-"2333"} -c > known-passed-issue.cases
   no_check_cases=(
-    $(cat known-passed-issue.cases |grep '::.*::' |grep "PASSED" |sed 's/.*:://;s/[[:space:]].*//;s/^/"/;s/$/"/' || true)
+    $(cat known-passed-issue.cases |grep '::.*::' |grep "PASSED" |sed 's/.*:://;s/[[:space:]].*//' || true)
     "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
     "test_parity__foreach_div_fastpath_outplace_xpu_complex128"
     "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
