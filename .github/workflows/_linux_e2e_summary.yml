@@ -12,10 +12,7 @@ on:
         default: '3.10'
         description: Python version
 
-permissions:
-  pull-requests: write
-  issues: write
-  contents: read
+permissions: read-all
 
 defaults:
   run:
@@ -24,6 +21,9 @@ defaults:
 jobs:
   summary:
     runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       REFERENCE_ISSUE_ID: 1645
