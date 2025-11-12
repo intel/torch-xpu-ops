@@ -150,7 +150,9 @@ check_skipped_ut() {
         return 0
     else
         echo "✅ No new passing tests found"
-        # Update GitHub issue with current passing tests for future reference
+    fi
+    # Update GitHub issue with current passing tests for future reference
+    if [ -s "$known_file" ] || [ -s "$new_file" ]; then
         gh --repo intel/torch-xpu-ops issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
     fi
 }
