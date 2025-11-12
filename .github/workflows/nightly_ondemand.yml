@@ -145,7 +145,9 @@ jobs:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
-    permissions: write-all
+    permissions:
+      issues: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -182,7 +184,9 @@ jobs:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
     if: ${{ ! cancelled() && ! endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
-    permissions: write-all
+    permissions:
+      issues: write
+      contents: read
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -190,7 +194,9 @@ jobs:
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
     name: linux-microbench
-    permissions: write-all
+    permissions:
+      issues: write
+      contents: read
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
     strategy:

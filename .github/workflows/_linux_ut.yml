@@ -24,7 +24,9 @@ on:
         type: string
         description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
 
-permissions: read-all
+permissions:
+  issues: write
+  contents: read
 
 defaults:
   run:
@@ -137,8 +139,6 @@ jobs:
     needs: [test-in-container, test-in-baremetal]
     if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
-    permissions:
-      issues: write
     timeout-minutes: 30
     steps:
       - name: Checkout torch-xpu-ops

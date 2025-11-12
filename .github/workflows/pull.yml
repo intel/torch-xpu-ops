@@ -152,7 +152,10 @@ jobs:
     name: linux-e2e-summary
     needs: [conditions-filter, linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions: write-all
+    permissions:
+      pull-requests: write
+      issues: write
+      contents: read
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
