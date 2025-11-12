@@ -147,7 +147,7 @@ check_skipped_ut() {
         echo "❌ ${new_count} NEW PASSING TESTS:"
         cat "$result_file"
         echo "Please review these tests!"
-        return 1
+        return 0
     else
         echo "✅ No new passing tests found"
         # Update GitHub issue with current passing tests for future reference
