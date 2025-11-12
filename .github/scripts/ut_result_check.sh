@@ -246,7 +246,6 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
 fi
 
 if [[ "${ut_suite}" == 'skipped_ut' ]]; then
-    echo "🔍 Checking for newly passed tests..."
     # Files
     test_file="skipped_ut_with_skip_test.log"
     known_file="known-passed-issue.cases"
@@ -262,13 +261,11 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
       "_jiterator_"
     )
     # Get known passing tests from GitHub
-    echo "📋 Fetching known passing tests..."
     if ! gh --repo intel/torch-xpu-ops issue view "${NEW_PASSED_ISSUE:-2333}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
       echo "⚠️  Could not fetch known tests, creating empty file"
       echo "" > "$known_file"
     fi
     # Get current passing tests
-    echo "📊 Checking current test results..."
     if [[ ! -f "$test_file" ]]; then
       echo "❌ Test log '$test_file' not found!"
       exit 1
@@ -290,7 +287,6 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
     clean_file "$known_file"
     clean_file "$new_file"
     # Find new tests that aren't in the ignore list
-    echo "🔎 Comparing results..."
     comm -13 "$known_file" "$new_file" | grep -vFf <(printf '%s\n' "${ignore_tests[@]}") > "$result_file"
     # Check results
     new_count=$(wc -l < "$result_file" 2>/dev/null || echo 0)

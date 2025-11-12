@@ -137,6 +137,8 @@ jobs:
     needs: [test-in-container, test-in-baremetal]
     if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
+    permissions:
+      issues: write
     timeout-minutes: 30
     steps:
       - name: Checkout torch-xpu-ops
