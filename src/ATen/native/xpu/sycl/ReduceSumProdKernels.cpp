@@ -55,7 +55,7 @@ template <
 struct sum_functor {
   void operator()(TensorIterator& iter) {
     gpu_reduce_kernel<scalar_t, out_t>(
-        iter, func_wrapper<scalar_t>(SumFunctor<acc_t>()));
+        iter, func_wrapper<out_t>(SumFunctor<acc_t>()));
   }
 };
 
