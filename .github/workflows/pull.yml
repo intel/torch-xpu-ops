@@ -107,9 +107,7 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
     secrets: inherit
-    permissions:
-      contents: read
-      issues: write
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -125,9 +123,7 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
     secrets: inherit
-    permissions:
-      contents: read
-      issues: write
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -158,10 +154,7 @@ jobs:
     name: linux-e2e-summary
     needs: [conditions-filter, linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
+    permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
