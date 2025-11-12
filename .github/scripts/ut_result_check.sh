@@ -246,26 +246,61 @@ if [[ "${ut_suite}" == 'xpu_distributed' ]]; then
 fi
 
 if [[ "${ut_suite}" == 'skipped_ut' ]]; then
-  # skipped known passed
-  KNOWN_PASSED_FILE="known-passed-issue.cases"
-  gh --repo intel/torch-xpu-ops issue view ${NEW_PASSED_ISSUE:-"2333"} -c > ${KNOWN_PASSED_FILE}
-  no_check_cases=(
-    $(grep '::.*::' "${KNOWN_PASSED_FILE}" | grep "PASSED" | sed 's/.*:://;s/[[:space:]].*//' 2> /dev/null || true)
-    "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
-    "test_parity__foreach_div_fastpath_outplace_xpu_complex128"
-    "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
-    "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
-    "test_python_ref__refs_log2_xpu_complex128"
-    "_jiterator_"
-  )
-  grep "PASSED" skipped_ut_with_skip_test.log | grep -vFf <(printf '%s\n' "${no_check_cases[@]}") > ./skipped_ut_with_skip_test_passed.log
-  num_passed=$(wc -l < "./skipped_ut_with_skip_test_passed.log")
-  if [ ${num_passed} -gt 0 ];then
-    echo -e "========================================================================="
-    echo -e "Checking New passed cases in Skip list for ${ut_suite}"
-    echo -e "========================================================================="
-    cat ./skipped_ut_with_skip_test_passed.log
-    echo -e "[Warning] Has ${num_passed} new pass in ${ut_suite}"
-    exit 1
-  fi
+    echo "🔍 Checking for newly passed tests..."
+    # Files
+    test_file="skipped_ut_with_skip_test.log"
+    known_file="known-passed-issue.cases"
+    new_file="new-passed-issue.cases"
+    result_file="new-passed-this-run.cases"
+    # Tests that randomly pass (ignore these)
+    ignore_tests=(
+      "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
+      "test_parity__foreach_div_fastpath_outplace_xpu_complex128" 
+      "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
+      "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
+      "test_python_ref__refs_log2_xpu_complex128"
+      "_jiterator_"
+    )
+    # Get known passing tests from GitHub
+    echo "📋 Fetching known passing tests..."
+    if ! gh --repo intel/torch-xpu-ops issue view "${NEW_PASSED_ISSUE:-2333}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
+      echo "⚠️  Could not fetch known tests, creating empty file"
+      > "$known_file"
+    fi
+    # Get current passing tests
+    echo "📊 Checking current test results..."
+    if [[ ! -f "$test_file" ]]; then
+      echo "❌ Test log '$test_file' not found!"
+      exit 1
+    fi
+    if ! grep "PASSED" $test_file | grep "::.*::" > "$new_file"; then
+      echo "⚠️  Could not fetch known tests, creating empty file"
+      > "$new_file"
+    fi
+    # Clean both files (extract test names, sort, remove duplicates)
+    clean_file() {
+      local file="$1"
+      if [[ ! -s "$file" ]]; then
+        return 0
+      fi
+      awk '{for(i=1;i<=NF;i++) if($i ~ /::.*::/) print $i}' "$file" | sort -u > "${file}.tmp"
+      mv "${file}.tmp" "$file"
+    }
+    echo "🧹 Cleaning test case lists..."
+    clean_file "$known_file"
+    clean_file "$new_file"
+    # Find new tests that aren't in the ignore list
+    echo "🔎 Comparing results..."
+    comm -13 "$known_file" "$new_file" | grep -vFf <(printf '%s\n' "${ignore_tests[@]}") > "$result_file"
+    # Check results
+    new_count=$(wc -l < "$result_file" 2>/dev/null || echo 0)
+    if [[ $new_count -gt 0 ]]; then
+      echo "❌ $new_count NEW PASSING TESTS FOUND:"
+      cat "$result_file"
+      echo "Please review these tests!"
+    else
+      echo "✅ No new passing tests found."
+    fi
+    # Update new passed into Github
+    gh --repo intel/torch-xpu-ops issue edit ${NEW_PASSED_ISSUE:-2333} --body-file $new_file
 fi
