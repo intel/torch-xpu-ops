@@ -181,6 +181,19 @@ skip_dict = {
     "../../../../test/distributed/_tools/test_runtime_estimator.py": None,
     "../../../../test/distributed/_tools/test_sac_estimator.py": None,
     "../../../../test/distributed/_tools/test_sac_ilp.py": None,
+    "../../../../test/distributed/algorithms/ddp_comm_hooks/test_ddp_hooks.py": None,
+    "../../../../test/distributed/algorithms/test_join.py": None,
+    "../../../../test/distributed/checkpoint/test_async_process_executor.py": None,
+    "../../../../test/distributed/checkpoint/test_consolidate_hf_safetensors.py": None,
+    "../../../../test/distributed/checkpoint/test_hf_safetensor_e2e.py": None,
+    "../../../../test/distributed/checkpoint/test_hf_storage.py": None,
+    "../../../../test/distributed/checkpoint/test_pg_transport.py": (
+        # hang
+        "test_pg_transport_with_sharded_tensor",
+    )
+    "../../../../test/distributed/checkpoint/test_quantized_hf_storage.py": None,
+    "../../../../test/distributed/checkpoint/test_state_dict_stager.py": None,
+    "../../../../test/distributed/flight_recorder/test_fr_analysis.py": None,
 }
 
 skip_dict_python = {
