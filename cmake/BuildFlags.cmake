@@ -36,6 +36,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
     list(APPEND SYCL_HOST_FLAGS -fPIC)
     list(APPEND SYCL_HOST_FLAGS -std=c++17)
     list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
+    list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
     # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
     # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
     # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -127,9 +128,9 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   set(SYCL_OFFLINE_COMPILER_CG_OPTIONS "${SYCL_OFFLINE_COMPILER_CG_OPTIONS} -options -cl-intel-greater-than-4GB-buffer-required")
 
   if(WIN32)
-    set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m")
+    set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m,ptl")
   else()
-    set(AOT_TARGETS "pvc,bmg,dg2,arl-h,mtl-h,lnl-m")
+    set(AOT_TARGETS "pvc,bmg,dg2,arl-h,mtl-h,lnl-m,ptl-h,ptl-u")
   endif()
   if(TORCH_XPU_ARCH_LIST)
     set(AOT_TARGETS "${TORCH_XPU_ARCH_LIST}")
