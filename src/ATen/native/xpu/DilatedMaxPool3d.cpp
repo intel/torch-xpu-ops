@@ -28,9 +28,10 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
       ceil_mode,
       output,
       indices);
+  guard.reset();
   namedinference::propagate_names(output, input);
   namedinference::propagate_names(indices, input);
-  guard.reset();
+  
 
   return std::tuple<Tensor, Tensor>(output, indices);
 }
