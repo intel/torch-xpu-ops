@@ -18,6 +18,7 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
   Tensor output = at::empty({0}, input.options());
   Tensor indices = at::empty({0}, input.options().dtype(kLong));
 
+  NoNamesGuard guard;
   at::native::xpu::max_pool3d_with_indices_kernel(
       input,
       kernel_size,
@@ -29,6 +30,7 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
       indices);
   namedinference::propagate_names(output, input);
   namedinference::propagate_names(indices, input);
+  guard.reset();
 
   return std::tuple<Tensor, Tensor>(output, indices);
 }
