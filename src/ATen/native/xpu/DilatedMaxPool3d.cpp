@@ -17,7 +17,6 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
     bool ceil_mode) {
   Tensor output = at::empty({0}, input.options());
   Tensor indices = at::empty({0}, input.options().dtype(kLong));
-
   NoNamesGuard guard;
   at::native::xpu::max_pool3d_with_indices_kernel(
       input,
