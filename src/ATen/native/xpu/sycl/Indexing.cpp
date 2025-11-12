@@ -695,42 +695,19 @@ void index_put_deterministic_kernel(
         linearIndex.numel() * sliceSize * nElemBefore,
         " vs ",
         expandedValue.numel());
-
-    if (sliceSize > SIMD) {
-      AT_DISPATCH_V2(
+    if (sliceSize == 1) {
+      AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+          at::ScalarType::ComplexHalf,
+          at::ScalarType::BFloat16,
+          at::ScalarType::Half,
+          at::ScalarType::Bool,
           expandedValue.scalar_type(),
           "index_put_deterministic_kernel",
-          AT_WRAP([&] {
-            launch_index_put_deterministic_kernel<scalar_t, scalar_t>(
-                sorted_indices.mutable_data_ptr<int64_t>(),
-                orig_indices.mutable_data_ptr<int64_t>(),
-                expandedValue.const_data_ptr<scalar_t>(),
-                src_.mutable_data_ptr<scalar_t>(),
-                num_indices,
-                sliceSize,
-                strideBefore,
-                nElemBefore,
-                accumulate);
-          }),
-          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
-          // cleared for float8 dtypes.
-          kFloat8_e4m3fn,
-          kFloat8_e5m2,
-          kFloat8_e4m3fnuz,
-          kFloat8_e5m2fnuz,
-          kComplexHalf,
-          kHalf,
-          kBool,
-          kBFloat16);
-    } else {
-      // Align acc type with CUDA
-      AT_DISPATCH_V2(
-          expandedValue.scalar_type(),
-          "index_put_deterministic_kernel",
-          AT_WRAP([&] {
+          [&] {
             using accscalar_t = at::opmath_type<scalar_t>;
-            launch_index_put_deterministic_kernel<scalar_t, accscalar_t>(
+            launch_index_put_deterministic_kernel_stride1<
+                scalar_t,
+                accscalar_t>(
                 sorted_indices.mutable_data_ptr<int64_t>(),
                 orig_indices.mutable_data_ptr<int64_t>(),
                 expandedValue.const_data_ptr<scalar_t>(),
@@ -740,20 +717,54 @@ void index_put_deterministic_kernel(
                 strideBefore,
                 nElemBefore,
                 accumulate);
-          }),
-          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
-          // cleared for float8 dtypes.
-          kFloat8_e4m3fn,
-          kFloat8_e5m2,
-          kFloat8_e4m3fnuz,
-          kFloat8_e5m2fnuz,
-          kComplexHalf,
-          kHalf,
-          kBool,
-          kBFloat16);
+          });
+    } else {
+      if (sliceSize <= SIMD) {
+        AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+            at::ScalarType::ComplexHalf,
+            at::ScalarType::BFloat16,
+            at::ScalarType::Half,
+            at::ScalarType::Bool,
+            expandedValue.scalar_type(),
+            "index_put_deterministic_kernel",
+            [&] {
+              using accscalar_t = at::opmath_type<scalar_t>;
+              launch_index_put_deterministic_kernel_small_stride<
+                  scalar_t,
+                  accscalar_t>(
+                  sorted_indices.mutable_data_ptr<int64_t>(),
+                  orig_indices.mutable_data_ptr<int64_t>(),
+                  expandedValue.const_data_ptr<scalar_t>(),
+                  src_.mutable_data_ptr<scalar_t>(),
+                  num_indices,
+                  sliceSize,
+                  strideBefore,
+                  nElemBefore,
+                  accumulate);
+            });
+      } else {
+        AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+            at::ScalarType::ComplexHalf,
+            at::ScalarType::BFloat16,
+            at::ScalarType::Half,
+            at::ScalarType::Bool,
+            expandedValue.scalar_type(),
+            "index_put_deterministic_kernel",
+            [&] {
+              using accscalar_t = at::opmath_type<scalar_t>;
+              launch_index_put_deterministic_kernel<scalar_t, accscalar_t>(
+                  sorted_indices.mutable_data_ptr<int64_t>(),
+                  orig_indices.mutable_data_ptr<int64_t>(),
+                  expandedValue.const_data_ptr<scalar_t>(),
+                  src_.mutable_data_ptr<scalar_t>(),
+                  num_indices,
+                  sliceSize,
+                  strideBefore,
+                  nElemBefore,
+                  accumulate);
+            });
+      }
     }
-
     if (permuted)
       self.copy_(src_.permute(inversePerm));
     else if (!self_contiguous) {
