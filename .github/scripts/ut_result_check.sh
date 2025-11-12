@@ -147,13 +147,13 @@ check_skipped_ut() {
         echo "❌ ${new_count} NEW PASSING TESTS:"
         cat "$result_file"
         echo "Please review these tests!"
-        return 0
     else
         echo "✅ No new passing tests found"
     fi
     # Update GitHub issue with current passing tests for future reference
     if [ -s "$known_file" ] || [ -s "$new_file" ]; then
         gh --repo intel/torch-xpu-ops issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
+        echo "Successfully updated issue ${NEW_PASSED_ISSUE:-2333}"
     fi
 }
 # Main test runner for standard test suites (op_regression, op_extended, etc.)
