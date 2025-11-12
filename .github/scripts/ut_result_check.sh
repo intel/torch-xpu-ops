@@ -255,7 +255,7 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
     # Tests that randomly pass (ignore these)
     ignore_tests=(
       "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
-      "test_parity__foreach_div_fastpath_outplace_xpu_complex128" 
+      "test_parity__foreach_div_fastpath_outplace_xpu_complex128"
       "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
       "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
       "test_python_ref__refs_log2_xpu_complex128"
@@ -265,7 +265,7 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
     echo "📋 Fetching known passing tests..."
     if ! gh --repo intel/torch-xpu-ops issue view "${NEW_PASSED_ISSUE:-2333}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
       echo "⚠️  Could not fetch known tests, creating empty file"
-      > "$known_file"
+      echo "" > "$known_file"
     fi
     # Get current passing tests
     echo "📊 Checking current test results..."
@@ -275,7 +275,7 @@ if [[ "${ut_suite}" == 'skipped_ut' ]]; then
     fi
     if ! grep "PASSED" $test_file | grep "::.*::" > "$new_file"; then
       echo "⚠️  Could not fetch known tests, creating empty file"
-      > "$new_file"
+      echo "" > "$new_file"
     fi
     # Clean both files (extract test names, sort, remove duplicates)
     clean_file() {
