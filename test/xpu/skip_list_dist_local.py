@@ -196,6 +196,22 @@ skip_dict = {
     "../../../../test/distributed/flight_recorder/test_fr_analysis.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_overlap.py": None,
     "../../../../test/distributed/launcher/test_api.py": None,
+    "../../../../test/distributed/launcher/test_run.py": None,
+    "../../../../test/distributed/nn/jit/test_instantiator.py": None,
+    "../../../../test/distributed/pipelining/test_schedule.py": None,
+    "../../../../test/distributed/tensor/debug/test_comm_mode.py": None,
+    "../../../../test/distributed/tensor/debug/test_comm_mode_features.py": None,
+    "../../../../test/distributed/tensor/debug/test_op_coverage.py": None,
+    "../../../../test/distributed/tensor/experimental/test_local_map.py": None,
+    "../../../../test/distributed/tensor/experimental/test_tp_transform.py": None,
+    "../../../../test/distributed/tensor/test_convolution_ops.py": None,
+    "../../../../test/distributed/tensor/test_matrix_ops.py": None,
+    "../../../../test/distributed/tensor/test_op_schema.py": None,
+    "../../../../test/distributed/tensor/test_op_strategy.py": None,
+    "../../../../test/distributed/tensor/test_optimizers.py": None,
+    "../../../../test/distributed/tensor/test_pointwise_ops.py": None,
+    "../../../../test/distributed/tensor/test_utils.py": None,
+    "../../../../test/distributed/tensor/test_view_ops.py": None,
 }
 
 skip_dict_python = {
