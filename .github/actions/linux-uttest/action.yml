@@ -77,20 +77,22 @@ runs:
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
         ls -al
         cp *.xml ${{ github.workspace }}/ut_log
-        find op_ut_with_skip_nn op_ut_with_skip_quantization/core op_ut_with_all_functorch -type f -exec sh -c '
+        find op_ut_with_skip.nn op_ut_with_skip.quantization/core op_ut_with_all.functorch -type f -exec sh -c '
             dir_path=$(dirname "$1");
             case "$dir_path" in
-                *"op_ut_with_skip_quantization/core"*)
-                    dir_name="op_ut_with_skip_quantization_core";;
+                *"op_ut_with_skip.quantization/core"*)
+                    dir_name="op_ut_with_skip.quantization.core";;
+                *"op_ut_with_all.functorch"*)
+                    dir_name="op_ut_with_all.functorch";;
                 *)
-                    dir_name=$(basename "$dir_path");;
+                    dir_name="op_ut_with_skip.nn";;
             esac;
-            mv "$1" "$dir_path/${dir_name}_$(basename "$1")"
+            mv "$1" "$dir_path/${dir_name}.$(basename "$1")"
         ' _ {} \;
-        ls -al op_ut_with_skip_nn op_ut_with_skip_quantization/core
-        cp op_ut_with_skip_nn/*.xml ${{ github.workspace }}/ut_log
-        cp op_ut_with_skip_quantization/core/*.xml ${{ github.workspace }}/ut_log
-        cp op_ut_with_all_functorch/*.xml ${{ github.workspace }}/ut_log
+        ls -al op_ut_with_skip.nn op_ut_with_skip.quantization/core op_ut_with_all.functorch
+        cp op_ut_with_skip.nn/*.xml ${{ github.workspace }}/ut_log
+        cp op_ut_with_skip.quantization/core/*.xml ${{ github.workspace }}/ut_log
+        cp op_ut_with_all.functorch/*.xml ${{ github.workspace }}/ut_log
         # Cases run with a on-demand white list, since some suites are too
         # slow to go through all operators on CPU. So add cases on-demand
         # when XPU implementatoin is done.
