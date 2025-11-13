@@ -40,7 +40,7 @@ install_xpu_headers("native/quantized/xpu/sycl")
 install_xpu_headers("native/sparse/xpu")
 install_xpu_headers("native/sparse/xpu/sycl")
 install_xpu_headers("native/transformers/xpu")
-install_xpu_headers("native/transformers/xpu/sycl")
+install_xpu_headers("native/transformers/xpu/flash_attn")
 
 if(xpu_ops_generated_headers)
   install(FILES ${xpu_ops_generated_headers} DESTINATION ${AT_INSTALL_INCLUDE_DIR}/ATen/ops)
