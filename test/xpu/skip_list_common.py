@@ -737,7 +737,7 @@ skip_dict = {
         # CUDA specific case
         "test_cufft_plan_cache_xpu_float64",
     ),
-    "functorch/test_ops_functorch_xpu.py": None,
+    "functorch/test_ops_xpu.py": None,
     "test_sparse_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
 }
