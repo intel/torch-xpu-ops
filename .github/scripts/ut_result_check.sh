@@ -164,9 +164,11 @@ check_skipped_ut() {
         echo "✅ No new passing tests found"
     fi
     # Update GitHub issue with current passing tests for future reference
-    if [ -s "$known_file" ] || [ -s "$new_file" ]; then
-        gh --repo $REPO issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
-        echo "Successfully updated issue ${NEW_PASSED_ISSUE:-2333}"
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
+        if [ -s "$known_file" ] || [ -s "$new_file" ]; then
+            gh --repo $REPO issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
+            echo "✅ Successfully updated issue #${NEW_PASSED_ISSUE:-2333}"
+        fi
     fi
 }
 
