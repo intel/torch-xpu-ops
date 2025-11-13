@@ -4,6 +4,7 @@
 
 # Available suites: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut
 readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
+readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
 
 # Expected test case counts for each test suite category
@@ -75,7 +76,9 @@ check_passed_known_issues() {
         echo -e "ℹ️  No known issues are now passing"
     fi
     # Mark passed items in GitHub issues with strikethrough
-    mark_passed_issue "$output_file" "$known_file"
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
+        mark_passed_issue "$output_file" "$known_file"
+    fi
     rm -f "$output_file"  # Clean up temporary file
 }
 
