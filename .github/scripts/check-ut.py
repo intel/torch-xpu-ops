@@ -6,7 +6,8 @@ from junitparser import JUnitXml, Error, Failure, Skipped
 from collections import defaultdict
 
 parser = argparse.ArgumentParser(description='Test results analyzer')
-parser.add_argument('input_files', nargs='+', help='JUnit XML files or log files')
+parser.add_argument('-n', '--ut-name', type=str, default='', help='UT name')
+parser.add_argument('-i', '--input-files', nargs='+', help='JUnit XML files or log files')
 args = parser.parse_args()
 
 failures = []
@@ -261,8 +262,10 @@ def process_log_file(log_file):
 def process_xml_file(xml_file):
     try:
         xml = JUnitXml.fromfile(xml_file)
-        ut = os.path.basename(xml_file).split('.')[0]
-        category = determine_category(ut)
+        parts = os.path.basename(xml_file).rsplit('.', 2)
+        ut = parts[0]
+        parts_category = os.path.basename(xml_file).split('.')[0]
+        category = determine_category(parts_category)
 
         for suite in xml:
             suite_summary = {
@@ -370,9 +373,9 @@ def main():
             process_xml_file(input_file)
         else:
             print(f"Skipping unknown file type: {input_file}", file=sys.stderr)
-
-    with open("ut_failure_list.csv", "w") as failure_list:
-        print_failures(failure_list=failure_list)
+    if args.ut_name != "skipped_ut":
+        with open("ut_failure_list.csv", "w") as failure_list:
+            print_failures(failure_list=failure_list)
 
     generate_failures_log()
     generate_passed_log()

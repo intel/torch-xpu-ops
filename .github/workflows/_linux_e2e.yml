@@ -61,12 +61,8 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
-      xpu_num: ${{ steps.runner-info.outputs.xpu_num }}
-      cpus_per_xpu: ${{ steps.runner-info.outputs.cpus_per_xpu }}
+      numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
     steps:
-      - name: Cleanup workspace
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Get runner
@@ -84,8 +80,7 @@ jobs:
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        xpu_num: ${{ needs.runner.outputs.xpu_num }}
-        cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
+        numactl_args: ${{ needs.runner.outputs.numactl_args }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
@@ -138,7 +133,7 @@ jobs:
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
-          dt: float16
+          dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
@@ -146,7 +141,7 @@ jobs:
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
-          dt: bfloat16
+          dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
       - name: Nightly PT2E Full Test

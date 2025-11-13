@@ -23,7 +23,6 @@ import weakref
 from functools import partial
 from itertools import chain, combinations, permutations, product
 from multiprocessing.reduction import ForkingPickler
-from typing import Tuple
 
 import numpy as np
 import torch
@@ -120,10 +119,8 @@ torch.testing._internal.common_utils.NATIVE_DEVICES = (
     torch._C._get_privateuse1_backend_name(),
 )
 
-from typing import List
 
-
-def my_get_all_device_types_xpu() -> List[str]:
+def my_get_all_device_types_xpu() -> list[str]:
     devices = [
         "cpu",
     ]
@@ -487,7 +484,7 @@ class TestTorchDeviceType(TestCase):
 
     def _check_storage_meta(self, s, s_check):
         self.assertTrue(
-            isinstance(s, (torch.UntypedStorage, torch.TypedStorage))
+            isinstance(s, torch.UntypedStorage | torch.TypedStorage)
             and isinstance(s_check, type(s)),
             (
                 "s and s_check must both be one of UntypedStorage or "
@@ -4138,7 +4135,7 @@ else:
 
     def _prepare_data_for_index_copy_and_add_deterministic(
         self, dim: int, device: torch.device
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         assert dim >= 0 and dim < 3
         a = [5, 4, 3]
         a[dim] = 2000

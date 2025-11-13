@@ -168,11 +168,11 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // Finds the start offset for our slice
     index_t valuesSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, values_);
+        IndexToOffset<scalar_t, index_t, Dim>::get(slice, values_);
     index_t indicesSliceStartIndex =
-        IndexToOffset<int64_t, index_t>::get(slice, indices_);
+        IndexToOffset<int64_t, index_t, Dim>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
@@ -286,11 +286,11 @@ struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // Finds the start offset for our slice
     index_t valuesSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, values_);
+        IndexToOffset<scalar_t, index_t, Dim>::get(slice, values_);
     index_t indicesSliceStartIndex =
-        IndexToOffset<int64_t, index_t>::get(slice, indices_);
+        IndexToOffset<int64_t, index_t, Dim>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
