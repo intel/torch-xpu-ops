@@ -191,6 +191,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const int64_t i = item_id.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
     WelfordType val(0, 0, 0, 0);
+    WelfordType identity_element(0, 0, 0, 0);
     for (int64_t j = item_id.get_local_id(0); j < N_;
          j += item_id.get_local_range(0)) {
       const int64_t index = i * N_ + j;
@@ -198,7 +199,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
 
     val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-        item_id, val, welford_op, shared_);
+        item_id, val, welford_op, identity_element, shared_);
 
     if (item_id.get_local_id(0) == 0) {
       T_ACC m1;
