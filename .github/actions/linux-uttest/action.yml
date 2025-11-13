@@ -82,6 +82,8 @@ runs:
             case "$dir_path" in
                 *"op_ut_with_skip.quantization/core"*)
                     dir_name="op_ut_with_skip.quantization.core";;
+                *"op_ut_with_all.functorch"*)
+                    dir_name="op_ut_with_all.functorch";;
                 *)
                     dir_name="op_ut_with_skip.nn";;
             esac;
