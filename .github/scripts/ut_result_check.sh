@@ -319,7 +319,7 @@ mark_passed_issue() {
         gh --repo "$REPO" issue view "${issue_id}" --json body -q .body > "issue-body-${issue_id}.txt"
         # Apply strikethrough to passed cases
         for case in $uniq_cases; do
-            sed -i "s|^${case}$|~~${case}~~|g" "issue-body-${issue_id}.txt"
+            sed -i "s|^${case}[[:space:]]*$|~~${case}~~|g" "issue-body-${issue_id}.txt"
         done
         # Update the issue
         gh --repo "$REPO" issue edit "${issue_id}" --body-file "issue-body-${issue_id}.txt"
@@ -332,7 +332,6 @@ mark_passed_issue() {
         # Clean up temporary file
         rm -f "issue-body-${issue_id}.txt"
         echo "✅ Updated issue #${issue_id}"
-        break
     done
 }
 
