@@ -9,26 +9,27 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct IgammaFunctor {
-  IgammaFunctor(bool calc_igammac) : calc_igammac_(calc_igammac) {}
-  bool calc_igammac_;
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    if (calc_igammac_) {
-      return calc_igammac<scalar_t>(a, b);
-    } else {
-      return calc_igamma<scalar_t>(a, b);
-    }
+    return calc_igamma<scalar_t>(a, b);
+  }
+};
+
+template <typename scalar_t>
+struct IgammacFunctor {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
+    return calc_igammac<scalar_t>(a, b);
   }
 };
 
 void igamma_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "igamma_xpu", [&]() {
-    gpu_kernel(iter, IgammaFunctor<scalar_t>(false));
+    gpu_kernel(iter, IgammaFunctor<scalar_t>());
   });
 }
 
 void igammac_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "igammac_xpu", [&]() {
-    gpu_kernel(iter, IgammaFunctor<scalar_t>(true));
+    gpu_kernel(iter, IgammacFunctor<scalar_t>());
   });
 }
 
