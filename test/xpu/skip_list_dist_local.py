@@ -212,6 +212,10 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_pointwise_ops.py": None,
     "../../../../test/distributed/tensor/test_utils.py": None,
     "../../../../test/distributed/tensor/test_view_ops.py": None,
+    "../../../../test/distributed/test_c10d_spawn_nccl.py": None,
+    "../../../../test/distributed/test_c10d_pypg.py": None,
+    "../../../../test/distributed/test_collective_utils.py": None,
+    "../../../../test/distributed/test_composability.py": None,
 }
 
 skip_dict_python = {
