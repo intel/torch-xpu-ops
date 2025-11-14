@@ -22,7 +22,8 @@ import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional
+from collections.abc import Callable
 
 from yaml import load
 

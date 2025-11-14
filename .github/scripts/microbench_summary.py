@@ -14,7 +14,6 @@ import os
 import argparse
 import bisect
 from pathlib import Path
-from typing import Dict, List
 
 def main():
     parser = argparse.ArgumentParser(
@@ -214,7 +213,7 @@ def get_op_pattern(base_op_name: str, get_backward: bool) -> tuple:
     else:
         return (base_op_name, f"{base_op_name} ")
 
-def process_l1_loss(content: str, case_name: str, data: List, columns: List):
+def process_l1_loss(content: str, case_name: str, data: list, columns: list):
     shape_matches = list(re.finditer(r"(shape\s*[:=].*?)(?=\n\S|$)", content))
     shape_lines = [match.group(0) for match in shape_matches]
     shape_positions = [match.start() for match in shape_matches]
@@ -281,7 +280,7 @@ def process_l1_loss(content: str, case_name: str, data: List, columns: List):
 
         data.append([record.get(col, "") for col in columns])
 
-def extract_times(content: str, pattern: str, get_backward: bool) -> List:
+def extract_times(content: str, pattern: str, get_backward: bool) -> list:
     lines = content.split('\n')
     results = []
     for line in lines:
@@ -297,8 +296,8 @@ def extract_times(content: str, pattern: str, get_backward: bool) -> List:
 
     return results
 
-def create_record(params: Dict, case_name: str, op_name: str,
-                 backward: str, time_us: float) -> Dict:
+def create_record(params: dict, case_name: str, op_name: str,
+                 backward: str, time_us: float) -> dict:
     return {
         "P": params.get("p", ""),
         **params,
@@ -316,7 +315,7 @@ def convert_to_us(value: float, unit: str) -> float:
         return value * 1_000_000
     return value
 
-def extract_params(text: str) -> Dict:
+def extract_params(text: str) -> dict:
     params = {}
     pairs = re.split(r'[;]', text.strip())
 
