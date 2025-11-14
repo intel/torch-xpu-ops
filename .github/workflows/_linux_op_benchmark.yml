@@ -83,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
 
   op_benchmark_test_results_check:
@@ -106,7 +106,7 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
       - name: Download OP Baseline
         continue-on-error: true
@@ -147,7 +147,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
         run: |
