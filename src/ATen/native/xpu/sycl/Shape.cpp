@@ -395,7 +395,8 @@ void cat_out_kernel(
         kBool,
         kBFloat16,
         AT_EXPAND(AT_FLOAT8_TYPES),
-        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+        kFloat4_e2m1fn_x2);
   } else {
     offset = 0;
     for (j = 0; j < numInputs; j++) {
