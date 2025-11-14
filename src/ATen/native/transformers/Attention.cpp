@@ -13,6 +13,8 @@
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
+#include <ATen/native/xpu/sycl/DropoutKernels.h>
+#include <ATen/ops/_fill_mem_eff_dropout_mask_native.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -302,6 +304,20 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
     qkt /= num_head;
   }
   return std::make_tuple(std::move(proj), std::move(qkt));
+}
+
+/**
+ * get the mask for dropout. only used for testing, not much
+ * attention is paid to performance
+ */
+at::Tensor& _fill_mem_eff_dropout_mask_(
+    Tensor& self,
+    double dropout_p,
+    const int64_t seed,
+    const int64_t offset) {
+  auto mask = std::get<1>(xpu::dropout_kernel(self, dropout_p, true));
+  self.copy_(mask);
+  return self;
 }
 
 } // namespace native

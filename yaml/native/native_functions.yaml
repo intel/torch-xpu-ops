@@ -7922,6 +7922,12 @@
     SparseCsrXPU: angle_sparse_csr_out
   tags: pointwise
 
+- func: _fill_mem_eff_dropout_mask_(Tensor(a!) self, float dropout_p, int seed, int offset) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fill_mem_eff_dropout_mask_
+  tags: nondeterministic_seeded
+
 - func: special_airy_ai(Tensor x) -> Tensor
   python_module: special
   structured_delegate: special_airy_ai.out
