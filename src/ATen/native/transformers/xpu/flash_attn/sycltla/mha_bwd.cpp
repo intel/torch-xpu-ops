@@ -22,7 +22,7 @@ void compute_o_dot_do(
     const int bidh) {
   // The thread index.
   constexpr int kBlockM = T::kBlockM;
-  constexpr int kBlockN = T::kBlockN;
+  // constexpr int kBlockN = T::kBlockN;
   constexpr int kHeadDim = T::kHeadDim;
   constexpr int kNSGs = T::kNSGs;
   constexpr int SubgroupSize = T::SubgroupSize;
@@ -31,7 +31,8 @@ void compute_o_dot_do(
 
   auto sg = compat::get_nd_item<1>().get_sub_group();
   auto group = compat::get_nd_item<1>().get_group();
-  auto first_thread_in_sg_idx = sg.get_group_linear_id() * trait.SubgroupSize;
+  // auto first_thread_in_sg_idx = sg.get_group_linear_id() *
+  // trait.SubgroupSize;
   auto bofst = Boffset(param);
 
   const index_t o_offset = bofst.o_offset(bidb, bidh, m_block * kBlockM);
@@ -208,7 +209,7 @@ CUTLASS_DEVICE void apply_mask_causal(
   auto sg = compat::get_nd_item<1>().get_sub_group();
   auto group = compat::get_nd_item<1>().get_group();
   int sg_local_id = sg.get_local_id();
-  int sg_group_id = sg.get_group_id();
+  // int sg_group_id = sg.get_group_id();
   Tensor rC_2d = make_tensor(rC.data(), convert_layout_2d_layout(rC.layout()));
   CUTLASS_PRAGMA_UNROLL
   for (int n = 0; n < size<1>(tensor); ++n) {
@@ -370,8 +371,8 @@ void dq_dk_dv_1colblock(
   constexpr int kBlockM = Trait::kBlockM;
   constexpr int kBlockN = Trait::kBlockN;
   constexpr bool is_causal = Trait::is_causal;
-  constexpr int kNSGs = Trait::kNSGs;
-  constexpr int SubgroupSize = Trait::SubgroupSize;
+  // constexpr int kNSGs = Trait::kNSGs;
+  // constexpr int SubgroupSize = Trait::SubgroupSize;
   auto sg = compat::get_nd_item<1>().get_sub_group();
   auto group = compat::get_nd_item<1>().get_group();
   auto first_thread_in_sg_idx = sg.get_group_linear_id() * trait.SubgroupSize;
@@ -674,7 +675,8 @@ void dq_dk_dv_1colblock(
   const int max_m_block = ceil_div(param.seq_len_q, kBlockM);
   const int tail_m = param.seq_len_q % kBlockM;
 
-  cutlass::NumericConverter<T, float> converter;
+  // cutlass::NumericConverter<T, float> converter;
+
   // clear accumulator
   clear(tdVrdV);
   clear(tdKrdK);
@@ -878,7 +880,7 @@ void convert_dq(
     int bidb,
     int bidh) {
   constexpr int kBlockM = T::kBlockM;
-  constexpr int kBlockN = T::kBlockN;
+  // constexpr int kBlockN = T::kBlockN;
   constexpr int kHeadDim = T::kHeadDim;
   using DType = typename T::DType;
   using VType = typename T::VType;
