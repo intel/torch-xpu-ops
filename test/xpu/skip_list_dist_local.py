@@ -190,7 +190,7 @@ skip_dict = {
     "../../../../test/distributed/checkpoint/test_pg_transport.py": (
         # hang
         "test_pg_transport_with_sharded_tensor",
-    )
+    ),
     "../../../../test/distributed/checkpoint/test_quantized_hf_storage.py": None,
     "../../../../test/distributed/checkpoint/test_state_dict_stager.py": None,
     "../../../../test/distributed/flight_recorder/test_fr_analysis.py": None,
