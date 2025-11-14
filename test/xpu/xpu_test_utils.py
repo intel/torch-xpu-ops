@@ -1091,7 +1091,6 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
-    os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     if skip_list is not None:
         skip_options = ' -k "not ' + skip_list[0]
