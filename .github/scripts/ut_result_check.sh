@@ -1,8 +1,12 @@
 #!/bin/bash
 # Test Suite Runner for Intel Torch-XPU-Ops
 # Usage: ./script.sh <test_suite>
+
 # Available suites: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut
-ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
+readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
+readonly inputs_pytorch="${2:-nightly_wheel}"
+readonly REPO="intel/torch-xpu-ops"
+
 # Expected test case counts for each test suite category
 # Used to detect significant test case reductions (>5%)
 declare -A EXPECTED_CASES=(
@@ -13,6 +17,7 @@ declare -A EXPECTED_CASES=(
     ["op_ut"]=120408
     ["test_xpu"]=69
 )
+
 # Tests that are known to randomly pass and should be ignored when detecting new passes
 # These are typically flaky tests that don't indicate real improvements
 IGNORE_TESTS=(
@@ -23,6 +28,7 @@ IGNORE_TESTS=(
     "test_python_ref__refs_log2_xpu_complex128"
     "_jiterator_"  # Pattern to match all jiterator tests
 )
+
 # Find new failed test cases that are not in the known issues list
 # Args: UT_results_file, known_issues_file, [output_file]
 check_new_failed() {
@@ -45,6 +51,7 @@ check_new_failed() {
         echo -e "✅ No new failed cases"
     fi
 }
+
 # Find known issues that are now passing (regression fixes)
 # Args: passed_tests_file, known_issues_file, [output_file]
 check_passed_known_issues() {
@@ -58,7 +65,7 @@ check_passed_known_issues() {
         sed -i 's/\r$//' "$passed_file"
     fi
     # Find known issues that are now passing (intersection of passed tests and known issues)
-    grep -Fxf "$passed_file" "$known_file" > "$output_file"
+    grep -Fxf "$passed_file" "$known_file" |sort |uniq > "$output_file"
     echo -e "\\n📊 New Passing Known Issues:"
     if [[ -s "$output_file" ]]; then
         local count
@@ -68,8 +75,13 @@ check_passed_known_issues() {
     else
         echo -e "ℹ️  No known issues are now passing"
     fi
+    # Mark passed items in GitHub issues with strikethrough
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
+        mark_passed_issue "$output_file" "$known_file"
+    fi
     rm -f "$output_file"  # Clean up temporary file
 }
+
 # Verify test case counts haven't dropped significantly (>5% reduction)
 # Args: category_log_file
 check_test_cases() {
@@ -106,6 +118,7 @@ check_test_cases() {
     done < "$log_file"
     echo "$all_pass"  # Return overall status
 }
+
 # Clean test case files: extract test names, sort, and remove duplicates
 clean_file() {
     local file="$1"
@@ -123,7 +136,7 @@ check_skipped_ut() {
     local new_file="new-passed-issue.cases"
     local result_file="new-passed-this-run.cases"
     # Fetch known passing tests from GitHub issue tracking known passes
-    if gh --repo intel/torch-xpu-ops issue view "${NEW_PASSED_ISSUE:-2333}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
+    if gh --repo $REPO issue view "${NEW_PASSED_ISSUE:-2333}" --json body -q .body 2>/dev/null | grep "::.*::" > "$known_file"; then
         echo "✅ Fetched known tests from GitHub"
     else
         echo "⚠️  Using empty known tests file"
@@ -151,11 +164,14 @@ check_skipped_ut() {
         echo "✅ No new passing tests found"
     fi
     # Update GitHub issue with current passing tests for future reference
-    if [ -s "$known_file" ] || [ -s "$new_file" ]; then
-        gh --repo intel/torch-xpu-ops issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
-        echo "Successfully updated issue ${NEW_PASSED_ISSUE:-2333}"
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
+        if [ -s "$known_file" ] || [ -s "$new_file" ]; then
+            gh --repo $REPO issue edit "${NEW_PASSED_ISSUE:-2333}" --body-file "$new_file"
+            echo "✅ Successfully updated issue #${NEW_PASSED_ISSUE:-2333}"
+        fi
     fi
 }
+
 # Main test runner for standard test suites (op_regression, op_extended, etc.)
 run_main_tests() {
     local suite="$1"
@@ -212,6 +228,7 @@ run_main_tests() {
         echo "✅ TEST PASSED: ${suite}"
     fi
 }
+
 # Special runner for distributed test suite (different log format)
 run_distributed_tests() {
     local suite="$1"
@@ -251,6 +268,75 @@ run_distributed_tests() {
         echo "✅ TEST PASSED: ${suite}"
     fi
 }
+
+# Mark passed items in GitHub issues with strikethrough
+mark_passed_issue() {
+    local PASSED_FILE="$1"
+    local ISSUE_FILE="$2"
+    # Cehck before start
+    [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
+    [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
+    command -v gh &>/dev/null || { echo "❌ GitHub CLI required" >&2; exit 1; }
+    echo "🔍 Loading passed items..."
+    # Load passed items into array for efficient lookup
+    declare -a passed_items
+    mapfile -t passed_items < <(grep -v '^[[:space:]]*$' "$PASSED_FILE")
+    echo "🔍 Mapping passed items to issues..."
+    declare -A issue_items
+    local issue_id=""
+    local in_cases_section=0
+    while IFS= read -r line; do
+        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        [[ -z "$line" ]] && { in_cases_section=0; continue;}
+        if [[ "$line" == "Cases:"* ]]; then
+            in_cases_section=1
+            continue
+        fi
+        # Extract issue ID if this line contains an issue
+        if [[ "$line" =~ Issue\ #([0-9]+) ]]; then
+            issue_id="${BASH_REMATCH[1]}"
+            continue
+        fi
+        if [[ $in_cases_section -eq 1 && -n "$issue_id" ]]; then
+            # Check if this case is in the passed items
+            for passed_case in "${passed_items[@]}"; do
+                if [[ "$passed_case" == "$line" ]]; then
+                    if [[ -n "${issue_items[$issue_id]:-}" ]]; then
+                        issue_items["$issue_id"]+=" $passed_case"
+                    else
+                        issue_items["$issue_id"]="$passed_case"
+                    fi
+                    break
+                fi
+            done
+        fi
+    done < "$ISSUE_FILE"
+    echo "✅ Done! Found ${#issue_items[@]} issues with passed items"
+    # Print results and update issues
+    for issue_id in "${!issue_items[@]}"; do
+        # Remove duplicate cases and clean up formatting
+        uniq_cases=$(echo "${issue_items[$issue_id]}" | tr ' ' '\n' | sort | uniq | tr '\n' ' ')
+        echo "📝 Processing issue #${issue_id} with cases: ${uniq_cases}"
+        # Get current issue body
+        gh --repo "$REPO" issue view "${issue_id}" --json body -q .body > "issue-body-${issue_id}.txt"
+        # Apply strikethrough to passed cases
+        for case in $uniq_cases; do
+            sed -i "s|^${case}[[:space:]]*$|~~${case}~~|g" "issue-body-${issue_id}.txt"
+        done
+        # Update the issue
+        gh --repo "$REPO" issue edit "${issue_id}" --body-file "issue-body-${issue_id}.txt"
+        # Add comment
+        if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+        else
+            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing"
+        fi
+        # Clean up temporary file
+        rm -f "issue-body-${issue_id}.txt"
+        echo "✅ Updated issue #${issue_id}"
+    done
+}
+
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
     op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu)
@@ -262,9 +348,12 @@ case "$ut_suite" in
     skipped_ut)
         check_skipped_ut
         ;;
+    xpu_profiling)
+        echo "💡 Not check the test suite results: ${ut_suite}" >&2
+        ;;
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
-        echo "💡 Available: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut" >&2
-        exit 1
+        printf "💡 Available: op_regression, op_regression_dev1, op_extended, op_transformers, " >&2
+        printf "op_ut, test_xpu, xpu_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac
