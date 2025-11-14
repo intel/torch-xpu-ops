@@ -801,7 +801,7 @@ skip_dict = {
         "test_quick_mean_xpu_complex128",
         "test_comprehensive_grid_sampler_2d_xpu_bfloat16",
     ),
-    "functorch/test_ops_functorch_xpu.py": None,
+    "functorch/test_ops_xpu.py": None,
     "test_sparse_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
 }
