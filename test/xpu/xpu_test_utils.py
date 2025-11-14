@@ -7,7 +7,7 @@ import sys
 import unittest
 
 import torch
-from torch import bfloat16, cuda
+from torch import cuda
 from torch.testing._internal import (
     common_cuda,
     common_device_type,
@@ -18,14 +18,7 @@ from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
-from torch.testing._internal.opinfo.core import (
-    BinaryUfuncInfo,
-    DecorateInfo,
-    ReductionOpInfo,
-    ShapeFuncInfo,
-    SpectralFuncInfo,
-    UnaryUfuncInfo,
-)
+from torch.testing._internal.opinfo.core import DecorateInfo
 
 _xpu_computation_op_list = [
     "empty",
@@ -352,6 +345,11 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     (
         "_refs.div",
+        "test_python_ref_torch_fallback",
+    ),
+    ("_refs.true_div", "test_python_ref"),
+    (
+        "_refs.true_div",
         "test_python_ref_torch_fallback",
     ),
     ("argsort", "test_non_standard_bool_values"),
@@ -858,15 +856,6 @@ class XPUPatchForImport:
         self.instantiate_parametrized_tests_fn = (
             common_utils.instantiate_parametrized_tests
         )
-        self.foreach_unary_op_db = common_methods_invocations.foreach_unary_op_db
-        self.foreach_binary_op_db = common_methods_invocations.foreach_binary_op_db
-        self.foreach_pointwise_op_db = (
-            common_methods_invocations.foreach_pointwise_op_db
-        )
-        self.foreach_reduce_op_db = common_methods_invocations.foreach_reduce_op_db
-        self.foreach_other_op_db = common_methods_invocations.foreach_other_op_db
-        self.python_ref_db = common_methods_invocations.python_ref_db
-        self.ops_and_refs = common_methods_invocations.ops_and_refs
         self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
@@ -921,19 +910,10 @@ class XPUPatchForImport:
 
     def align_supported_dtypes(self, db):
         for opinfo in db:
-            if (
-                opinfo.name not in _xpu_computation_op_list
-                and (
-                    opinfo.torch_opinfo.name not in _xpu_computation_op_list
-                    if db == common_methods_invocations.python_ref_db
-                    else True
-                )
-            ) or opinfo.name in _ops_without_cuda_support:
+            if opinfo.name in _ops_without_cuda_support:
                 opinfo.dtypesIf["xpu"] = opinfo.dtypes
             else:
                 backward_dtypes = set(opinfo.backward_dtypesIfCUDA)
-                if bfloat16 in opinfo.dtypesIf["xpu"]:
-                    backward_dtypes.add(bfloat16)
                 opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if opinfo.name in _ops_dtype_different_cuda_support:
@@ -1039,72 +1019,6 @@ class XPUPatchForImport:
             self.align_db_decorators(db)
             self.filter_fp64_sample_input(db)
         self.align_db_decorators(module_db)
-        common_methods_invocations.python_ref_db = [
-            op
-            for op in self.python_ref_db
-            if op.torch_opinfo_name in _xpu_computation_op_list
-        ]
-        common_methods_invocations.ops_and_refs = (
-            common_methods_invocations.op_db + common_methods_invocations.python_ref_db
-        )
-        common_methods_invocations.unary_ufuncs = [
-            op
-            for op in common_methods_invocations.ops_and_refs
-            if isinstance(op, UnaryUfuncInfo)
-        ]
-        common_methods_invocations.binary_ufuncs = [
-            op
-            for op in common_methods_invocations.ops_and_refs
-            if isinstance(op, BinaryUfuncInfo)
-        ]
-        common_methods_invocations.binary_ufuncs_and_refs = tuple(
-            op
-            for op in common_methods_invocations.ops_and_refs
-            if isinstance(op, BinaryUfuncInfo)
-        )
-        common_methods_invocations.spectral_funcs = [
-            op
-            for op in common_methods_invocations.ops_and_refs
-            if isinstance(op, SpectralFuncInfo)
-        ]
-        common_methods_invocations.sparse_unary_ufuncs = [
-            op
-            for op in common_methods_invocations.op_db
-            if isinstance(op, UnaryUfuncInfo) and op.supports_sparse
-        ]
-        common_methods_invocations.sparse_csr_unary_ufuncs = [
-            op
-            for op in common_methods_invocations.op_db
-            if isinstance(op, UnaryUfuncInfo) and op.supports_sparse_csr
-        ]
-        common_methods_invocations.sparse_reduction_ops = [
-            op
-            for op in common_methods_invocations.op_db
-            if isinstance(op, ReductionOpInfo) and op.supports_sparse
-        ]
-        common_methods_invocations.shape_funcs = [
-            op
-            for op in common_methods_invocations.ops_and_refs
-            if isinstance(op, ShapeFuncInfo)
-        ]
-        common_methods_invocations.reduction_ops = [
-            op
-            for op in common_methods_invocations.ops_and_refs
-            if isinstance(op, ReductionOpInfo)
-        ]
-        common_methods_invocations.reference_filtered_ops = [
-            op for op in common_methods_invocations.reduction_ops if op.ref is not None
-        ]
-        common_methods_invocations.reference_masked_ops = [
-            op
-            for op in common_methods_invocations.reference_filtered_ops
-            if op.name.startswith("masked.")
-        ]
-        common_methods_invocations.sparse_masked_reduction_ops = [
-            op
-            for op in common_methods_invocations.sparse_reduction_ops
-            if op.name.startswith("masked.")
-        ]
         common_cuda.TEST_CUDA = True
         common_cuda.TEST_CUDNN = True
         common_cuda.TEST_CUDNN_VERSION = 0
@@ -1128,8 +1042,6 @@ class XPUPatchForImport:
             self.instantiate_parametrized_tests_fn
         )
         common_utils.TestCase = self.test_case_cls
-        common_methods_invocations.python_ref_db = self.python_ref_db
-        common_methods_invocations.ops_and_refs = self.ops_and_refs
         common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA
         common_cuda.TEST_CUDNN = self.TEST_CUDNN
@@ -1179,7 +1091,6 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
-    os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     rename = test_case.replace("../../../../", "").replace("/", "_")
     if skip_list is not None:
@@ -1189,7 +1100,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{rename}.xml " + test_case
+            f"pytest -v --junit-xml=./op_ut_with_skip.{rename}.xml " + test_case
         )
         test_command += skip_options
     elif exe_list is not None:
@@ -1199,11 +1110,11 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{rename}.xml " + test_case
+            f"pytest -v --junit-xml=./op_ut_with_exe.{rename}.xml " + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest -v --junit-xml=./op_ut_with_skip_{rename}.xml " + test_case
+            f"pytest -v --junit-xml=./op_ut_with_all.{rename}.xml " + test_case
         )
     return os.system(test_command)

@@ -920,7 +920,8 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         out = torch.zeros(self.world_size, 2, dtype=send.dtype).to(device)
         dist.all_to_all_single(out, send)
         self.assertEqual(
-            out.tolist(), list(zip(range(self.world_size), range(self.world_size)))
+            out.tolist(),
+            list(zip(range(self.world_size), range(self.world_size))),
         )
 
 
