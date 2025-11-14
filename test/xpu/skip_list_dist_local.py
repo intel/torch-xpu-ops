@@ -216,6 +216,13 @@ skip_dict = {
     "../../../../test/distributed/test_c10d_pypg.py": None,
     "../../../../test/distributed/test_collective_utils.py": None,
     "../../../../test/distributed/test_composability.py": None,
+    "../../../../test/distributed/test_launcher.py": None,
+    "../../../../test/distributed/test_local_tensor.py": None,
+    "../../../../test/distributed/test_nccl.py": None,
+    "../../../../test/distributed/test_p2p_ipc.py": None,
+    "../../../../test/distributed/test_pg_wrapper.py": None,
+    "../../../../test/distributed/test_run.py": None,
+    "../../../../test/distributed/test_serialization.py": None,
 }
 
 skip_dict_python = {
