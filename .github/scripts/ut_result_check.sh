@@ -26,7 +26,8 @@ IGNORE_TESTS=(
 # Find new failed test cases that are not in the known issues list
 # Args: UT_results_file, known_issues_file, [output_file]
 check_new_failed() {
-    local ut_file="$1" known_file="$2" output_file="${3:-${ut_file%.*}_filtered.log}"
+    local ut_file="$1" known_file="$2"
+    local output_file="${3:-${ut_file%.*}_filtered.log}"
     if [[ $# -lt 2 ]]; then
         echo "❌ Need 2 files to compare" >&2
         return 1
@@ -48,7 +49,8 @@ check_new_failed() {
 # Find known issues that are now passing (regression fixes)
 # Args: passed_tests_file, known_issues_file, [output_file]
 check_passed_known_issues() {
-    local passed_file="$1" known_file="$2" output_file="${3:-${passed_file%.*}_passed_known.log}"
+    local passed_file="$1" known_file="$2"
+    local output_file="${3:-${passed_file%.*}_passed_known.log}"
     if [[ $# -lt 2 ]]; then
         echo "❌ Need 2 files to compare" >&2
         return 1
@@ -219,7 +221,8 @@ run_distributed_tests() {
     echo "Running distributed tests for: ${suite}"
     echo "========================================================================="
     # Process distributed test logs (different format than main tests)
-    grep -E "^FAILED" "${suite}_test.log" | awk '{print $3 "\n" $2}' | grep -v '^[^.d]\+$' > "${suite}_failed.log"
+    grep -E "^FAILED" "${suite}_test.log" | awk '{print $3 "\n" $2}' > "${suite}_failed.log"
+    sed -i '/^[^.d]\+/d' "${ut_suite}"_failed.log
     grep "PASSED" "${suite}_test.log" | awk '{print $1}' > "${suite}_passed.log"
     echo "📋 Failed Cases:"
     cat "${suite}_failed.log"
