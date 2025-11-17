@@ -645,29 +645,30 @@ struct MaxPool2dBackwardChannelLastVec {
     dilationW,                                                      \
     stride)                                                         \
   {                                                                 \
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;       \
-    vec_t* output_vec = reinterpret_cast<vec_t*>(output);           \
-    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input); \
-    auto kfn = MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size, index_t>(  \
-        output_vec,                                                 \
-        indices,                                                    \
-        input_vec,                                                  \
-        numBatch,                                                   \
-        numPlane,                                                   \
-        inputSizeH,                                                 \
-        inputSizeW,                                                 \
-        outputSizeH,                                                \
-        outputSizeW,                                                \
-        kH,                                                         \
-        kW,                                                         \
-        dH,                                                         \
-        dW,                                                         \
-        padH,                                                       \
-        padW,                                                       \
-        dilationH,                                                  \
-        dilationW,                                                  \
-        stride);                                                    \
-    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);       \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;          \
+    vec_t* output_vec = reinterpret_cast<vec_t*>(output);              \
+    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input);    \
+    auto kfn =                                                         \
+        MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size, index_t>(   \
+            output_vec,                                                \
+            indices,                                                   \
+            input_vec,                                                 \
+            numBatch,                                                  \
+            numPlane,                                                  \
+            inputSizeH,                                                \
+            inputSizeW,                                                \
+            outputSizeH,                                               \
+            outputSizeW,                                               \
+            kH,                                                        \
+            kW,                                                        \
+            dH,                                                        \
+            dW,                                                        \
+            padH,                                                      \
+            padW,                                                      \
+            dilationH,                                                 \
+            dilationW,                                                 \
+            stride);                                                   \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);          \
   }
 
 
@@ -852,30 +853,31 @@ void launch_max_pool2d_kernel(
     dilation_h,                                                                \
     dilation_w)                                                                \
   {                                                                            \
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;                  \
-    const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput); \
-    vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);               \
-    auto kfn = MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size, index_t>(     \
-        grad_input_vec,                                                        \
-        grad_output_vec,                                                       \
-        indices,                                                               \
-        numPlane,                                                              \
-        gradInputSizeH,                                                        \
-        gradInputSizeW,                                                        \
-        gradOutputSizeH,                                                       \
-        gradOutputSizeW,                                                       \
-        gradInputSize,                                                         \
-        out_n_stride,                                                          \
-        in_n_stride,                                                           \
-        kernel_h,                                                              \
-        kernel_w,                                                              \
-        stride_h,                                                              \
-        stride_w,                                                              \
-        pad_h,                                                                 \
-        pad_w,                                                                 \
-        dilation_h,                                                            \
-        dilation_w);                                                           \
-    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);                  \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;                    \
+    const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput);   \
+    vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);                 \
+    auto kfn =                                                                   \
+        MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size, index_t>(     \
+            grad_input_vec,                                                      \
+            grad_output_vec,                                                     \
+            indices,                                                             \
+            numPlane,                                                            \
+            gradInputSizeH,                                                      \
+            gradInputSizeW,                                                      \
+            gradOutputSizeH,                                                     \
+            gradOutputSizeW,                                                     \
+            gradInputSize,                                                       \
+            out_n_stride,                                                        \
+            in_n_stride,                                                         \
+            kernel_h,                                                            \
+            kernel_w,                                                            \
+            stride_h,                                                            \
+            stride_w,                                                            \
+            pad_h,                                                               \
+            pad_w,                                                               \
+            dilation_h,                                                          \
+            dilation_w);                                                         \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);                    \
   }
 
 template <typename scalar_t, bool is_channels_last, typename index_t = int>
