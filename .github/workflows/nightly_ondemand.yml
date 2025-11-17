@@ -145,6 +145,7 @@ jobs:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:

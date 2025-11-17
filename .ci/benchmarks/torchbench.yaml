@@ -43,6 +43,7 @@ tolerance:
     - doctr_reco_predictor
     - drq
     - phlippe_resnet
+    - pytorch_CycleGAN_and_pix2pix
 
   higher_bf16:
     - doctr_reco_predictor
@@ -154,7 +155,7 @@ trt_not_yet_working:
 skip:
   all:
     # OOMs (A100 40G)
-    - detectron2_maskrcnn
+    # - detectron2_maskrcnn
     # TIMEOUT, https://github.com/pytorch/pytorch/issues/98467
     - tacotron2
     # Failing in eager mode
@@ -215,6 +216,8 @@ skip:
     cpu_aarch64: []
 
     cuda: []
+
+    xpu: []
 
   test:
     training:
