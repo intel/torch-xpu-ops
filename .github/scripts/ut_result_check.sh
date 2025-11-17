@@ -253,7 +253,7 @@ run_distributed_tests() {
 }
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu)
+    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu|xpu_profiling)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
@@ -264,7 +264,7 @@ case "$ut_suite" in
         ;;
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
-        echo "💡 Available: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut" >&2
+        echo "💡 Available: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, xpu_profiling, skipped_ut" >&2
         exit 1
         ;;
 esac

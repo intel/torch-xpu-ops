@@ -135,22 +135,24 @@ runs:
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
       run: |
-        mkdir -p ut_log/xpu_profiling/issue_reproduce
+        # Set specific PYTEST_ADDOPTS to avoid the threading conflict between profile UT test and para '--dist worksteal'
+        export PYTEST_ADDOPTS="-v --timeout 600"
+        mkdir -p ut_log/xpu_profiling
         cd pytorch/third_party/torch-xpu-ops
         # RN50 Test
         PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
         cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling
         # All Issue Reproduce UT
         python -u test/profiling/correlation_id_mixed.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/correlation_id_mixed.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/correlation_id_mixed.log
         python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/reproducer.missing.gpu.kernel.time.log
         python -u test/profiling/time_precision_in_profile.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/time_precision_in_profile.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/time_precision_in_profile.log
         python -u test/profiling/profile_partial_runtime_ops.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/profile_partial_runtime_ops.log
         python -u test/profiling/triton_xpu_ops_time.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/triton_xpu_ops_time.log
 
         # llama case for calls number test
         pip install transformers
@@ -160,13 +162,13 @@ runs:
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
-        python -m pytest -s test_cpp_thread.py | \
+        python -m pytest -s test_cpp_thread.py --junit-xml=${{ github.workspace }}/ut_log/test_cpp_thread.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_cpp_thread.log
-        python -m pytest -s test_execution_trace.py | \
+        python -m pytest -s test_execution_trace.py --junit-xml=${{ github.workspace }}/ut_log/test_execution_trace.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
-        python -m pytest -s test_memory_profiler.py | \
+        python -m pytest -s test_memory_profiler.py --junit-xml=${{ github.workspace }}/ut_log/test_memory_profiler.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest -s -vs test_profiler_tree.py | \
+        python -m pytest -s -vs test_profiler_tree.py --junit-xml=${{ github.workspace }}/ut_log/test_profiler_tree.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: xpu_distributed

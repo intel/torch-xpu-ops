@@ -181,6 +181,15 @@ jobs:
             }' issues.log >> Known_issue.log
             bash ut_result_check.sh ${ut_name}
           done
+          if [ "${ut_list}" == "xpu_profiling" ];then
+            cp ${{ github.workspace }}/.github/scripts/profile_ut_result_check.sh ./
+            bash profile_ut_result_check.sh correlation_id_mixed.log 1
+            bash profile_ut_result_check.sh reproducer.missing.gpu.kernel.time.log 2
+            bash profile_ut_result_check.sh time_precision_in_profile.log 3
+            bash profile_ut_result_check.sh profile_partial_runtime_ops.log 4
+            bash profile_ut_result_check.sh triton_xpu_ops_time.log 5
+            bash profile_ut_result_check.sh profiling.fp32.train.pt 6
+          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
