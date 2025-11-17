@@ -22,7 +22,7 @@ run_test() {
     local test_name=$1
     local log_file=$2
     local analysis_type=$3
-    
+
     echo
     echo "Running: $test_name ($log_file)"
     echo "--------------------------------"
@@ -42,7 +42,7 @@ run_test() {
 
     ERROR_COUNTS["$test_name"]=$error_count
     LOG_FILES["$test_name"]=$log_file
-    
+
     if [ "$error_count" -eq 0 ]; then
         PASSED_TESTS+=("$test_name")
         echo "✅ $test_name: PASSED (0 errors)"

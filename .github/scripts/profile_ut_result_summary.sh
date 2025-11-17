@@ -34,9 +34,9 @@ analyze_correlation_id_mixed() {
     echo "3. runtime ops(begin with ur): XPU time avg = 0"
     echo "4. aten:: and corresponding ur ops Calls = 3"
     echo "----------------------------------------"
-    
+
     awk '
-        BEGIN { 
+        BEGIN {
             cpu_col = 6;
             xpu_col = 10;
             calls_col = 11;
@@ -44,24 +44,24 @@ analyze_correlation_id_mixed() {
             aten_ops = 0;
             ur_ops = 0;
         }
-        
+
         /^ *aten::/ {
             aten_ops++;
             # Extract numeric values from the columns
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             errors = 0;
             error_msg = "";
-            
+
             if (cpu_time < 0) {
                 errors++;
                 error_msg = error_msg " CPU time should be > 0 (actual: " cpu_time ")";
@@ -74,7 +74,7 @@ analyze_correlation_id_mixed() {
                 errors++;
                 error_msg = error_msg " Calls should be 3 (actual: " calls ")";
             }
-            
+
             if (errors > 0) {
                 total_errors++;
                 printf "❌ aten:: OP error: %s\n", $0;
@@ -83,24 +83,24 @@ analyze_correlation_id_mixed() {
                 printf "✅ aten:: OP normal: %s | CPU: %s | XPU: %s | Calls: %s\n", $1, $cpu_col, $xpu_col, $calls_col;
             }
         }
-        
+
         /^ *ur/ {
             ur_ops++;
             # Extract numeric values from the columns
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             errors = 0;
             error_msg = "";
-            
+
             if (cpu_time < 0) {
                 errors++;
                 error_msg = error_msg " CPU time should be > 0 (actual: " cpu_time ")";
@@ -113,7 +113,7 @@ analyze_correlation_id_mixed() {
                 errors++;
                 error_msg = error_msg " Calls should be 3 (actual: " calls ")";
             }
-            
+
             if (errors > 0) {
                 total_errors++;
                 printf "❌ ur OP error: %s\n", $0;
@@ -122,7 +122,7 @@ analyze_correlation_id_mixed() {
                 printf "✅ ur OP normal: %s | CPU: %s | XPU: %s | Calls: %s\n", $1, $cpu_col, $xpu_col, $calls_col;
             }
         }
-        
+
         END {
             printf "\n=== Analysis Summary ===\n";
             printf "aten:: OP count: %d\n", aten_ops;
@@ -146,33 +146,33 @@ analyze_reproducer_missing_gpu_kernel_time() {
     echo "1. XPU time avg of aten::gather and backward ops (MaxUnpool2DBackward0) should be > 0"
     echo "2. CPU time avg should be > 0"
     echo "----------------------------------------"
-    
+
     awk '
-        BEGIN { 
+        BEGIN {
             cpu_col = 6;
             xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             checked_ops = 0;
         }
-        
+
         /^ *aten::gather/ || /MaxUnpool2DBackward0/ {
             checked_ops++;
             # Extract numeric values from the columns
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             errors = 0;
             error_msg = "";
-            
+
             if (cpu_time < 0) {
                 errors++;
                 error_msg = error_msg " CPU time should be > 0 (actual: " cpu_time ")";
@@ -181,7 +181,7 @@ analyze_reproducer_missing_gpu_kernel_time() {
                 errors++;
                 error_msg = error_msg " XPU time should be > 0 (actual: " xpu_time ")";
             }
-            
+
             if (errors > 0) {
                 total_errors++;
                 printf "❌ OP error: %s\n", $0;
@@ -190,7 +190,7 @@ analyze_reproducer_missing_gpu_kernel_time() {
                 printf "✅ OP normal: %s | CPU: %s | XPU: %s | Calls: %s\n", $1, $cpu_col, $xpu_col, $calls_col;
             }
         }
-        
+
         END {
             printf "\n=== Analysis Summary ===\n";
             printf "Checked ops count: %d\n", checked_ops;
@@ -213,9 +213,9 @@ analyze_time_precision() {
     echo "1. All ops Self CPU time should be > 0"
     echo "2. Print exception lines where Self CPU <= 0"
     echo "----------------------------------------"
-    
+
     awk '
-        BEGIN { 
+        BEGIN {
             cpu_col = 3;
             xpu_col = 10;
             calls_col = 11;
@@ -225,23 +225,23 @@ analyze_time_precision() {
         {
             # Skip empty lines
             if (NF == 0) next;
-            
+
             checked_ops++;
             # Extract numeric values from the columns
             cpu_str = $cpu_col;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
-            
+
             cpu_time = cpu_str + 0;
-            
+
             if (cpu_time < 0) {
                 total_errors++;
                 printf "❌ CPU time error: %s\n", $0;
                 printf "   Self CPU: %s | XPU time avg: %s | Calls: %s\n\n", $cpu_col, $xpu_col, $calls_col;
             }
         }
-        
+
         END {
             printf "\n=== Analysis Summary ===\n";
             printf "Total ops checked: %d\n", checked_ops;
@@ -264,9 +264,9 @@ analyze_partial_runtime_ops() {
     echo "1. All runtime ops(begein with ur) should only be in [urEnqueueUSMMemcpy, urEnqueueKernelLaunch]"
     echo "2. Print all ur ops and mark invalid ones"
     echo "----------------------------------------"
-    
+
     awk '
-        BEGIN { 
+        BEGIN {
             cpu_col = 6;
             xpu_col = 10;
             calls_col = 11;
@@ -280,14 +280,14 @@ analyze_partial_runtime_ops() {
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             # Check if op is in allowed list
             if (op_name == "urEnqueueUSMMemcpy" || op_name == "urEnqueueKernelLaunch") {
                 valid_ops++;
@@ -299,7 +299,7 @@ analyze_partial_runtime_ops() {
                 printf "   Error: ur op should be urEnqueueUSMMemcpy or urEnqueueKernelLaunch\n\n";
             }
         }
-        
+
         END {
             printf "\n=== Analysis Summary ===\n";
             printf "Valid ur ops (urEnqueueUSMMemcpy/urEnqueueKernelLaunch): %d\n", valid_ops;
@@ -323,9 +323,9 @@ analyze_triton_xpu_ops() {
     echo "1. Triton kernels (begin with triton_) should have XPU time avg > 0"
     echo "2. Print all triton and ur ops"
     echo "----------------------------------------"
-    
+
     awk '
-        BEGIN { 
+        BEGIN {
             cpu_col = 6;
             xpu_col = 10;
             calls_col = 11;
@@ -340,17 +340,17 @@ analyze_triton_xpu_ops() {
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             errors = 0;
             error_msg = "";
-            
+
             if (cpu_time < 0) {
                 errors++;
                 error_msg = error_msg " CPU time should be > 0 (actual: " cpu_time ")";
@@ -359,7 +359,7 @@ analyze_triton_xpu_ops() {
                 errors++;
                 error_msg = error_msg " XPU time should be > 0 (actual: " xpu_time ")";
             }
-            
+
             if (errors > 0) {
                 total_errors++;
                 printf "❌ Triton kernel error: %s\n", $0;
@@ -391,9 +391,9 @@ analyze_profiling_fp32_train_resnet50() {
     echo "1. aten:: ops: XPU time avg should be >= 0 and not all zero"
     echo "2. ur ops: XPU time avg should all be 0"
     echo "----------------------------------------"
-    
+
     awk '
-        BEGIN { 
+        BEGIN {
             cpu_col = 6; 
             xpu_col = 10; 
             calls_col = 11;
@@ -403,7 +403,7 @@ analyze_profiling_fp32_train_resnet50() {
             aten_xpu_non_zero = 0;
             aten_xpu_zero = 0;
         }
-        
+
         /^ *aten::/ {
             aten_ops++;
             op_name = $1;
@@ -411,17 +411,17 @@ analyze_profiling_fp32_train_resnet50() {
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             errors = 0;
             error_msg = "";
-            
+
             if (cpu_time < 0) {
                 errors++;
                 error_msg = error_msg " CPU time should be >= 0 (actual: " cpu_time ")";
@@ -430,14 +430,14 @@ analyze_profiling_fp32_train_resnet50() {
                 errors++;
                 error_msg = error_msg " XPU time should be >= 0 (actual: " xpu_time ")";
             }
-            
+
             # Track XPU time status for aten ops
             if (xpu_time > 0) {
                 aten_xpu_non_zero++;
             } else if (xpu_time == 0) {
                 aten_xpu_zero++;
             }
-            
+
             if (errors > 0) {
                 total_errors++;
                 printf "❌ aten:: OP error: %s\n", $0;
@@ -448,7 +448,7 @@ analyze_profiling_fp32_train_resnet50() {
                 printf "⚠️  aten:: OP warning (XPU=0): %s | CPU: %s | XPU: %s | Calls: %s\n", $1, $cpu_col, $xpu_col, $calls_col;
             }
         }
-        
+
         /^ *ur/ {
             ur_ops++;
             op_name = $1;
@@ -456,17 +456,17 @@ analyze_profiling_fp32_train_resnet50() {
             cpu_str = $cpu_col;
             xpu_str = $xpu_col;
             calls = $calls_col + 0;
-            
+
             # Remove non-numeric characters except decimal point and minus sign
             gsub(/[^0-9.-]/, "", cpu_str);
             gsub(/[^0-9.-]/, "", xpu_str);
-            
+
             cpu_time = cpu_str + 0;
             xpu_time = xpu_str + 0;
-            
+
             errors = 0;
             error_msg = "";
-            
+
             if (cpu_time < 0) {
                 errors++;
                 error_msg = error_msg " CPU time should be >= 0 (actual: " cpu_time ")";
@@ -475,7 +475,7 @@ analyze_profiling_fp32_train_resnet50() {
                 errors++;
                 error_msg = error_msg " XPU time should be 0 (actual: " xpu_time ")";
             }
-            
+
             if (errors > 0) {
                 total_errors++;
                 printf "❌ ur OP error: %s\n", $0;
@@ -484,7 +484,7 @@ analyze_profiling_fp32_train_resnet50() {
                 printf "✅ ur OP normal: %s | CPU: %s | XPU: %s | Calls: %s\n", $1, $cpu_col, $xpu_col, $calls_col;
             }
         }
-        
+
         END {
             printf "\n=== Analysis Summary ===\n";
             printf "aten:: ops total: %d\n", aten_ops;
@@ -492,13 +492,13 @@ analyze_profiling_fp32_train_resnet50() {
             printf "  - aten:: ops with XPU = 0: %d\n", aten_xpu_zero;
             printf "ur ops total: %d\n", ur_ops;
             printf "Total errors: %d\n", total_errors;
-            
+
             # Additional check: not all aten ops have XPU time = 0
             if (aten_ops > 0 && aten_xpu_non_zero == 0) {
                 total_errors++;
                 printf "❌ Critical error: All aten:: ops have XPU time = 0 (should have at least some XPU time > 0)\n";
             }
-            
+
             if (total_errors == 0 && (aten_ops > 0 || ur_ops > 0)) {
                 printf "✅ All checks passed!\n";
                 printf "   - aten:: ops: XPU time >= 0 and not all zero\n";
