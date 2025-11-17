@@ -32,7 +32,9 @@ IGNORE_TESTS=(
 # Find new failed test cases that are not in the known issues list
 # Args: UT_results_file, known_issues_file, [output_file]
 check_new_failed() {
-    local ut_file="$1" known_file="$2" output_file="${3:-${ut_file%.*}_filtered.log}"
+    local ut_file="$1"
+    local known_file="$2"
+    local output_file="failures_${suite}_filtered.log"
     if [[ $# -lt 2 ]]; then
         echo "❌ Need 2 files to compare" >&2
         return 1
@@ -206,7 +208,7 @@ run_main_tests() {
     echo -e "\\n✅ Passing Known Issues:"
     check_passed_known_issues "passed_${suite}.log" "Known_issue.log"
     # Check for new failures not in known issues
-    echo -e "\\n❌ New Failures:"
+    echo -e "\\nChecking New Failures:"
     if [[ -f "failures_${suite}.log" ]]; then
         check_new_failed "failures_${suite}.log" "Known_issue.log"
     fi
@@ -256,8 +258,8 @@ run_distributed_tests() {
     check_new_failed "${suite}_failed.log" "Known_issue.log"
     # Calculate final statistics for distributed tests
     local failed_count=0 passed_count=0
-    if [[ -f "${suite}_failed_filtered.log" ]]; then
-        failed_count=$(wc -l < "${suite}_failed_filtered.log")
+    if [[ -f "failures_${suite}_filtered.log" ]]; then
+        failed_count=$(wc -l < "failures_${suite}_filtered.log")
     fi
     passed_count=$(wc -l < "${suite}_passed.log")
     # Final result determination for distributed tests
