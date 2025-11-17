@@ -367,7 +367,7 @@ analyze_triton_xpu_ops() {
             } else {
                 printf "✅ Triton kernel normal: %s | CPU: %s | XPU: %s | Calls: %s\n", $1, $cpu_col, $xpu_col, $calls_col;
             }
-        }        
+        }
         END {
             printf "\n=== Analysis Summary ===\n";
             printf "Triton kernels checked: %d\n", triton_ops;
@@ -394,8 +394,8 @@ analyze_profiling_fp32_train_resnet50() {
 
     awk '
         BEGIN {
-            cpu_col = 6; 
-            xpu_col = 10; 
+            cpu_col = 6;
+            xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             aten_ops = 0;
