@@ -4,6 +4,7 @@
 #include <comm/SYCLHelpers.h>
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
+#include <type_traits>
 
 namespace at::native::xpu {
 
@@ -108,7 +109,7 @@ struct AtomicIntegerImplLocal<T, 8> {
 };
 
 #define SYCL_ATOMIC_INTEGER_LOCAL(NAME, OP, DTYPE)          \
-  static inline void atomic##NAME(                          \
+  static inline void atomic##NAME##Local(                   \
       const sycl_local_ptr<DTYPE>& address, DTYPE val) {    \
     AtomicIntegerImplLocal<DTYPE, sizeof(DTYPE)>()(         \
         address, val, [](DTYPE a, DTYPE b) { return OP; }); \
@@ -287,6 +288,91 @@ struct AtomicFPImpl<double> {
     AtomicFPImpl<DTYPE>()(address, val, [](DTYPE a, DTYPE b) { return OP; }); \
   }
 
+template <typename T>
+struct AtomicFPImplLocal;
+
+template <>
+struct AtomicFPImplLocal<at::Half> {
+  template <typename func_t>
+  inline void operator()(at::Half* address, at::Half val, const func_t& func) {
+    unsigned int* address_as_ui =
+        (unsigned int*)((char*)address - ((size_t)address & 2));
+    unsigned int assumed = *address_as_ui;
+    unsigned int newval;
+    sycl_atomic_ref_rlx_wg_local_t<unsigned int> target(*address_as_ui);
+
+    do {
+      newval = assumed;
+      at::Half hsum;
+      hsum.x = (size_t)address & 2 ? (newval >> 16) : (newval & 0xffff);
+      hsum = func(hsum, val);
+      newval = (size_t)address & 2 ? (newval & 0xffff) | (hsum.x << 16)
+                                   : (newval & 0xffff0000) | hsum.x;
+    } while (!target.compare_exchange_strong(assumed, newval));
+  }
+};
+
+template <>
+struct AtomicFPImplLocal<at::BFloat16> {
+  template <typename func_t>
+  inline void operator()(
+      at::BFloat16* address,
+      at::BFloat16 val,
+      const func_t& func) {
+    unsigned int* address_as_ui =
+        (unsigned int*)((char*)address - ((size_t)address & 2));
+    unsigned int assumed = *address_as_ui;
+    unsigned int newval;
+    sycl_atomic_ref_rlx_wg_local_t<unsigned int> target(*address_as_ui);
+
+    do {
+      newval = assumed;
+      at::BFloat16 bsum;
+      bsum.x = (size_t)address & 2 ? (newval >> 16) : (newval & 0xffff);
+      bsum = func(bsum, val);
+      newval = (size_t)address & 2 ? (newval & 0xffff) | (bsum.x << 16)
+                                   : (newval & 0xffff0000) | bsum.x;
+    } while (!target.compare_exchange_strong(assumed, newval));
+  }
+};
+
+template <>
+struct AtomicFPImplLocal<float> {
+  template <typename func_t>
+  inline void operator()(float* address, float val, const func_t& func) {
+    unsigned int* address_as_ui = (unsigned int*)address;
+    unsigned int assumed = *address_as_ui;
+    unsigned int newval;
+    sycl_atomic_ref_rlx_wg_local_t<unsigned int> target(*address_as_ui);
+
+    do {
+      newval = __float_as_int(func(val, __int_as_float(assumed)));
+    } while (!target.compare_exchange_strong(assumed, newval));
+  }
+};
+
+template <>
+struct AtomicFPImplLocal<double> {
+  template <typename func_t>
+  inline void operator()(double* address, double val, const func_t& func) {
+    unsigned long long* address_as_ull = (unsigned long long*)address;
+    unsigned long long assumed = *address_as_ull;
+    unsigned long long newval;
+    sycl_atomic_ref_rlx_wg_local_t<unsigned long long> target(*address_as_ull);
+
+    do {
+      newval = __double_as_long_long(func(val, __long_long_as_double(assumed)));
+    } while (!target.compare_exchange_strong(assumed, newval));
+  }
+};
+
+#define SYCL_ATOMIC_FP_LOCAL(NAME, OP, DTYPE)               \
+  static inline void atomic##NAME##Local(                   \
+      const sycl_local_ptr<DTYPE>& address, DTYPE val) {    \
+    AtomicFPImplLocal<DTYPE>()(                             \
+        address, val, [](DTYPE a, DTYPE b) { return OP; }); \
+  }
+
 static inline void atomicAdd(const sycl_global_ptr<float>& address, float val) {
   sycl_atomic_ref_rlx_dev_global_t<float> target(*address);
   target.fetch_add(val);
@@ -337,6 +423,55 @@ static inline void atomicAdd(
   target.fetch_add(val);
 }
 
+static inline void atomicAddLocal(
+    const sycl_local_ptr<float>& address,
+    float val) {
+  sycl_atomic_ref_rlx_wg_local_t<float> target(*address);
+  target.fetch_add(val);
+}
+
+static inline void atomicAddLocal(
+    const sycl_local_ptr<double>& address,
+    double val) {
+  sycl_atomic_ref_rlx_wg_local_t<double> target(*address);
+  target.fetch_add(val);
+}
+
+static inline void atomicAddLocal(const sycl_local_ptr<int>& address, int val) {
+  sycl_atomic_ref_rlx_wg_local_t<int> target(*address);
+  target.fetch_add(val);
+}
+
+static inline void atomicAddLocal(
+    const sycl_local_ptr<int64_t>& address,
+    int64_t val) {
+  sycl_atomic_ref_rlx_wg_local_t<int64_t> target(*address);
+  target.fetch_add(val);
+}
+
+static inline void atomicAddLocal(
+    const sycl_local_ptr<uint32_t>& address,
+    uint32_t val) {
+  sycl_atomic_ref_rlx_wg_local_t<uint32_t> target(*address);
+  target.fetch_add(val);
+}
+
+static inline void atomicAddLocal(
+    const sycl_local_ptr<uint64_t>& address,
+    uint64_t val) {
+  sycl_atomic_ref_rlx_wg_local_t<uint64_t> target(*address);
+  target.fetch_add(val);
+}
+
+// Atomic add local implementation.
+SYCL_ATOMIC_INTEGER_LOCAL(Add, a || b, bool)
+SYCL_ATOMIC_INTEGER_LOCAL(Add, std::plus<uint8_t>()(a, b), uint8_t)
+SYCL_ATOMIC_INTEGER_LOCAL(Add, std::plus<int8_t>()(a, b), int8_t)
+SYCL_ATOMIC_INTEGER_LOCAL(Add, std::plus<int16_t>()(a, b), int16_t)
+
+SYCL_ATOMIC_FP_LOCAL(Add, std::plus<at::Half>()(a, b), at::Half)
+SYCL_ATOMIC_FP_LOCAL(Add, std::plus<at::BFloat16>()(a, b), at::BFloat16)
+
 // Atomic add implementation.
 SYCL_ATOMIC_INTEGER(Add, a || b, bool)
 SYCL_ATOMIC_INTEGER(Add, std::plus<uint8_t>()(a, b), uint8_t)
@@ -352,6 +487,14 @@ static inline void atomicAdd(
     c10::complex<T> val) {
   atomicAdd(&address->real_, val.real_);
   atomicAdd(&address->imag_, val.imag_);
+}
+
+template <typename T>
+static inline void atomicAddLocal(
+    const sycl_local_ptr<c10::complex<T>>& address,
+    c10::complex<T> val) {
+  atomicAddLocal(&address->real_, val.real_);
+  atomicAddLocal(&address->imag_, val.imag_);
 }
 
 // Atomic multiplication implementation.
@@ -384,10 +527,6 @@ static inline void atomicMax(
   target.fetch_add(val);
 }
 
-SYCL_ATOMIC_INTEGER_LOCAL(Max, safe_max<uint8_t>(a, b), uint8_t)
-SYCL_ATOMIC_INTEGER_LOCAL(Max, safe_max<int8_t>(a, b), int8_t)
-SYCL_ATOMIC_INTEGER_LOCAL(Max, safe_max<int16_t>(a, b), int16_t)
-
 SYCL_ATOMIC_INTEGER(Max, safe_max<uint8_t>(a, b), uint8_t)
 SYCL_ATOMIC_INTEGER(Max, safe_max<int8_t>(a, b), int8_t)
 SYCL_ATOMIC_INTEGER(Max, safe_max<int16_t>(a, b), int16_t)
@@ -414,5 +553,274 @@ SYCL_ATOMIC_FP(Min, safe_min<float>(a, b), float)
 SYCL_ATOMIC_FP(Min, safe_min<double>(a, b), double)
 SYCL_ATOMIC_FP(Min, safe_min<at::Half>(a, b), at::Half)
 SYCL_ATOMIC_FP(Min, safe_min<at::BFloat16>(a, b), at::BFloat16)
+
+// =========================================================================
+// ------------------------------AtomicCAS----------------------------------
+// =========================================================================
+
+// --- Auxiliary Type Definition ---
+// R is a template template parameter for the SYCL atomic ref type
+template <typename T, template <typename> class R>
+using AtomicRef = R<T>;
+
+// --- Generic Integer CAS Structure Definition (R is the Atomic Ref type) ---
+template <typename T, size_t n, template <typename> class R>
+struct AtomicCASInteger;
+
+// n=1 (1-byte Soft-RMW)
+template <typename T, template <typename> class R>
+struct AtomicCASInteger<T, 1, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    size_t offset = (size_t)address & 3;
+    uint32_t* address_as_ui = (uint32_t*)((char*)address - offset);
+    size_t shift = offset * 8;
+    uint32_t assumed;
+    uint32_t newval;
+    AtomicRef<uint32_t, R> target(*address_as_ui);
+
+    T extracted_old_value;
+    do {
+      assumed = *address_as_ui;
+      uint32_t byte_in_mem = (assumed >> shift) & 0xff;
+      extracted_old_value = static_cast<T>(byte_in_mem);
+
+      if (extracted_old_value == expected) {
+        uint32_t desired_byte = static_cast<uint8_t>(desired);
+        newval = (assumed & ~(0x000000ff << shift)) | (desired_byte << shift);
+      } else {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (extracted_old_value == expected) {
+      return expected;
+    } else {
+      return extracted_old_value;
+    }
+  }
+};
+
+// n=2 (2-byte Soft-RMW)
+template <typename T, template <typename> class R>
+struct AtomicCASInteger<T, 2, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    size_t offset = (size_t)address & 2;
+    uint32_t* address_as_ui = (uint32_t*)((char*)address - offset);
+    bool is_upper_half = offset;
+    uint32_t assumed;
+    uint32_t newval;
+    uint32_t current_half_word;
+
+    AtomicRef<uint32_t, R> target(*address_as_ui);
+
+    T extracted_old_value;
+    do {
+      assumed = *address_as_ui;
+      current_half_word = is_upper_half ? (assumed >> 16) : (assumed & 0xffff);
+      extracted_old_value = static_cast<T>(current_half_word);
+
+      if (extracted_old_value == expected) {
+        uint32_t desired_half_word = static_cast<uint16_t>(desired);
+        newval = is_upper_half ? (assumed & 0xffff) | (desired_half_word << 16)
+                               : (assumed & 0xffff0000) | desired_half_word;
+      } else {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (extracted_old_value == expected) {
+      return expected;
+    } else {
+      return extracted_old_value;
+    }
+  }
+};
+
+// n=4 (4-byte Native CAS)
+template <typename T, template <typename> class R>
+struct AtomicCASInteger<T, 4, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    uint32_t* address_as_ui = (uint32_t*)(address);
+    uint32_t assumed;
+    uint32_t newval;
+
+    AtomicRef<uint32_t, R> target(*address_as_ui);
+
+    uint32_t expected_ui = static_cast<uint32_t>(expected);
+    newval = static_cast<uint32_t>(desired);
+
+    do {
+      assumed = *address_as_ui;
+      if (assumed != expected_ui) {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (assumed == expected_ui) {
+      return expected;
+    } else {
+      return static_cast<T>(assumed);
+    }
+  }
+};
+
+// n=8 (8-byte Native CAS)
+template <typename T, template <typename> class R>
+struct AtomicCASInteger<T, 8, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    unsigned long long* address_as_ull = (unsigned long long*)(address);
+    unsigned long long assumed;
+    unsigned long long newval;
+
+    AtomicRef<unsigned long long, R> target(*address_as_ull);
+
+    unsigned long long expected_ull = static_cast<unsigned long long>(expected);
+    newval = static_cast<unsigned long long>(desired);
+
+    do {
+      assumed = *address_as_ull;
+      if (assumed != expected_ull) {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (assumed == expected_ull) {
+      return expected;
+    } else {
+      return static_cast<T>(assumed);
+    }
+  }
+};
+
+// --- Generic Macro Definitions for Function Signatures ---
+#define SYCL_ATOMIC_CAS_IMPL(DTYPE, STRUCT_NAME, PTR_TYPE, ATOMIC_REF) \
+  static inline DTYPE atomicCAS(                                       \
+      const PTR_TYPE<DTYPE>& address, DTYPE expected, DTYPE desired) { \
+    /* Call generic struct with specific SYCL atomic ref type */       \
+    return STRUCT_NAME<DTYPE, sizeof(DTYPE), ATOMIC_REF>()(            \
+        address, expected, desired);                                   \
+  }
+
+#define SYCL_ATOMIC_CAS_ALL(DTYPE, STRUCT_NAME) \
+  /* local CAS version */                       \
+  SYCL_ATOMIC_CAS_IMPL(                         \
+      DTYPE, STRUCT_NAME, sycl_local_ptr, sycl_atomic_ref_rlx_wg_local_t)
+
+SYCL_ATOMIC_CAS_ALL(int, AtomicCASInteger)
+SYCL_ATOMIC_CAS_ALL(int64_t, AtomicCASInteger)
+SYCL_ATOMIC_CAS_ALL(uint32_t, AtomicCASInteger)
+SYCL_ATOMIC_CAS_ALL(uint64_t, AtomicCASInteger)
+SYCL_ATOMIC_CAS_ALL(int8_t, AtomicCASInteger)
+SYCL_ATOMIC_CAS_ALL(uint8_t, AtomicCASInteger)
+
+// --- Generic Floating Point CAS Structure Definition (R is the Atomic Ref
+// type) ---
+template <typename T, size_t n, template <typename> class R>
+struct AtomicCASFP;
+
+// n=2 (at::Half/at::BFloat16 Soft-RMW)
+template <typename T, template <typename> class R>
+struct AtomicCASFP<T, 2, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    size_t offset = (size_t)address & 2;
+    unsigned int* address_as_ui = (unsigned int*)((char*)address - offset);
+    bool is_upper_half = offset;
+
+    unsigned int assumed;
+    unsigned int newval;
+
+    // 🌟 Using generic AtomicRef
+    AtomicRef<unsigned int, R> target(*address_as_ui);
+
+    unsigned int expected_half_word = expected.x;
+    unsigned int desired_half_word = desired.x;
+
+    unsigned int current_half_word;
+    T extracted_old_value;
+
+    do {
+      assumed = *address_as_ui;
+      current_half_word = is_upper_half ? (assumed >> 16) : (assumed & 0xffff);
+
+      extracted_old_value.x = (uint16_t)current_half_word;
+
+      if (extracted_old_value.x == expected_half_word) {
+        newval = is_upper_half ? (assumed & 0xffff) | (desired_half_word << 16)
+                               : (assumed & 0xffff0000) | desired_half_word;
+      } else {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (extracted_old_value.x == expected_half_word) {
+      return expected;
+    } else {
+      return extracted_old_value;
+    }
+  }
+};
+
+// n=4 (4-byte float Native CAS)
+template <typename T, template <typename> class R>
+struct AtomicCASFP<T, 4, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    unsigned int* address_as_ui = (unsigned int*)address;
+    unsigned int assumed;
+    unsigned int newval;
+
+    // 🌟 Using generic AtomicRef
+    AtomicRef<unsigned int, R> target(*address_as_ui);
+
+    unsigned int expected_ui = *((unsigned int*)&expected);
+    newval = *((unsigned int*)&desired);
+
+    do {
+      assumed = *address_as_ui;
+      if (assumed != expected_ui) {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (assumed == expected_ui) {
+      return expected;
+    } else {
+      return *((T*)&assumed);
+    }
+  }
+};
+
+// n=8 (8-byte double Native CAS)
+template <typename T, template <typename> class R>
+struct AtomicCASFP<T, 8, R> {
+  inline T operator()(T* address, T expected, T desired) {
+    unsigned long long* address_as_ull = (unsigned long long*)address;
+    unsigned long long assumed;
+    unsigned long long newval;
+
+    // 🌟 Using generic AtomicRef
+    AtomicRef<unsigned long long, R> target(*address_as_ull);
+
+    unsigned long long expected_ull = *((unsigned long long*)&expected);
+    newval = *((unsigned long long*)&desired);
+
+    do {
+      assumed = *address_as_ull;
+      if (assumed != expected_ull) {
+        break;
+      }
+    } while (!target.compare_exchange_strong(assumed, newval));
+
+    if (assumed == expected_ull) {
+      return expected;
+    } else {
+      return *((T*)&assumed);
+    }
+  }
+};
+
+SYCL_ATOMIC_CAS_ALL(float, AtomicCASFP)
+SYCL_ATOMIC_CAS_ALL(double, AtomicCASFP)
+SYCL_ATOMIC_CAS_ALL(at::Half, AtomicCASFP)
+SYCL_ATOMIC_CAS_ALL(at::BFloat16, AtomicCASFP)
 
 } // namespace at::native::xpu
