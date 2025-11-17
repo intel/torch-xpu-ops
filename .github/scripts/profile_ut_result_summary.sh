@@ -12,7 +12,7 @@ if [ $# -lt 1 ]; then
     echo "Available analysis types:"
     echo "  all - Execute all analyses"
     echo "  1 - correlation_id_mixed"
-    echo "  2 - reproducer_missing_gpu_kernel_time" 
+    echo "  2 - reproducer_missing_gpu_kernel_time"
     echo "  3 - time_precision"
     echo "  4 - partial_runtime_ops"
     echo "  5 - triton_xpu_ops"
@@ -31,14 +31,14 @@ analyze_correlation_id_mixed() {
     echo "Check criteria:"
     echo "1. CPU time avg > 0 (all ops)"
     echo "2. aten:: ops: XPU time avg > 0"
-    echo "3. runtime ops(begin with ur): XPU time avg = 0" 
+    echo "3. runtime ops(begin with ur): XPU time avg = 0"
     echo "4. aten:: and corresponding ur ops Calls = 3"
     echo "----------------------------------------"
     
     awk '
         BEGIN { 
-            cpu_col = 6; 
-            xpu_col = 10; 
+            cpu_col = 6;
+            xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             aten_ops = 0;
@@ -149,8 +149,8 @@ analyze_reproducer_missing_gpu_kernel_time() {
     
     awk '
         BEGIN { 
-            cpu_col = 6; 
-            xpu_col = 10; 
+            cpu_col = 6;
+            xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             checked_ops = 0;
@@ -216,8 +216,8 @@ analyze_time_precision() {
     
     awk '
         BEGIN { 
-            cpu_col = 3; 
-            xpu_col = 10; 
+            cpu_col = 3;
+            xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             checked_ops = 0;
@@ -267,8 +267,8 @@ analyze_partial_runtime_ops() {
     
     awk '
         BEGIN { 
-            cpu_col = 6; 
-            xpu_col = 10; 
+            cpu_col = 6;
+            xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             valid_ops = 0;
@@ -326,8 +326,8 @@ analyze_triton_xpu_ops() {
     
     awk '
         BEGIN { 
-            cpu_col = 6; 
-            xpu_col = 10; 
+            cpu_col = 6;
+            xpu_col = 10;
             calls_col = 11;
             total_errors = 0;
             triton_ops = 0;
