@@ -322,13 +322,15 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         shell: bash
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
+          latest_dir="$(ls Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-* |sort -V |tail -n 1)"
+          cd "${latest_dir}"
 
           # get skipped known issues
           count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')

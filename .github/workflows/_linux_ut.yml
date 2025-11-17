@@ -146,12 +146,14 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
+          cd ${{ github.workspace }}/ut_log/
+          latest_dir="$(ls Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-* |sort -V |tail -n 1)"
+          cd "${latest_dir}/${{ inputs.ut }}"
 
           for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
             [[ -f "$log_file" ]] && cp "$log_file" ./

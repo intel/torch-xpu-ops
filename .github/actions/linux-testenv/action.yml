@@ -65,7 +65,8 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
-          pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
+          latest_dir="$(ls Torch-XPU-Wheel-* |sort -V |tail -n 1)"
+          pip install --force-reinstall $(find ${{ github.workspace }}/${latest_dir} -name "*torch*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
