@@ -200,8 +200,8 @@ struct MaxPool2dChannelLastVec {
     for (auto outputIndex = item.get_global_linear_id();
          outputIndex < numBatch_ * stride_ / vec_size;
          outputIndex += item.get_local_range(0) * item.get_group_range(0)) {
-      int batch = outputIndex / (stride_ / vec_size);
-      int plane, outputH, outputW;
+      index_t batch = outputIndex / (stride_ / vec_size);
+      index_t plane, outputH, outputW;
       int64_t load_offset, store_offset;
       plane = outputIndex % (numPlane_ / vec_size);
       outputH =
@@ -218,16 +218,16 @@ struct MaxPool2dChannelLastVec {
       for (int i = 0; i < vec_size; i++) {
         maxIndex[i] = int64_t(-1);
       }
-      int StartH = outputH * dH_ - padH_;
-      int StartW = outputW * dW_ - padW_;
-      int EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
-      int EndW = std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
+      index_t StartH = outputH * dH_ - padH_;
+      index_t StartW = outputW * dW_ - padW_;
+      index_t EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
+      index_t EndW = std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
       while (StartH < 0)
         StartH += dilationH_;
       while (StartW < 0)
         StartW += dilationW_;
-      for (int h = StartH; h < EndH; h += dilationH_) {
-        for (int w = StartW; w < EndW; w += dilationW_) {
+      for (index_t h = StartH; h < EndH; h += dilationH_) {
+        for (index_t w = StartW; w < EndW; w += dilationW_) {
           load_offset =
               batch * inputSizeH_ * inputSizeW_ * numPlane_ / vec_size + plane +
               h * inputSizeW_ * numPlane_ / vec_size + w * numPlane_ / vec_size;
@@ -515,8 +515,8 @@ struct MaxPool2dBackwardChannelLastVec {
     for (auto inputIndex = item.get_global_linear_id();
          inputIndex < gradInputSize_ / vec_size;
          inputIndex += item.get_local_range(0) * item.get_group_range(0)) {
-      int batch = inputIndex / (in_n_stride_ / vec_size);
-      int plane;
+      index_t batch = inputIndex / (in_n_stride_ / vec_size);
+      index_t plane;
       int64_t input_hw_index;
 
       plane = inputIndex % (numPlane_ / vec_size);
@@ -524,8 +524,8 @@ struct MaxPool2dBackwardChannelLastVec {
       input_hw_index = ((inputIndex % (in_n_stride_ / vec_size)) - plane) /
           (numPlane_ / vec_size);
 
-      int inputW = input_hw_index % gradInputSizeW_;
-      int inputH = input_hw_index / gradInputSizeW_;
+      index_t inputW = input_hw_index % gradInputSizeW_;
+      index_t inputH = input_hw_index / gradInputSizeW_;
       int phstart = p_start(inputH, pad_h_, kernel_h_, dilation_h_, stride_h_);
       int phend = p_end(inputH, pad_h_, gradOutputSizeH_, stride_h_);
       int pwstart = p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
@@ -622,6 +622,7 @@ struct MaxPool2dBackwardChannelLastVec {
 #define LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(                            \
     scalar_t,                                                       \
     vec_size,                                                       \
+    index_t,                                                        \
     num_wg,                                                         \
     wg_size,                                                        \
     queue,                                                          \
@@ -647,7 +648,7 @@ struct MaxPool2dBackwardChannelLastVec {
     using vec_t = memory::aligned_vector<scalar_t, vec_size>;       \
     vec_t* output_vec = reinterpret_cast<vec_t*>(output);           \
     const vec_t* input_vec = reinterpret_cast<const vec_t*>(input); \
-    auto kfn = MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size>(  \
+    auto kfn = MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size, index_t>(  \
         output_vec,                                                 \
         indices,                                                    \
         input_vec,                                                  \
@@ -690,11 +691,11 @@ void launch_max_pool2d_kernel(
     int dilationH,
     int dilationW) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  int outputSize = numBatch * numPlane * outputSizeH * outputSizeW;
-  int stride = numPlane * outputSizeH * outputSizeW;
+  int64_t outputSize = static_cast<int64_t>(numBatch) * numPlane * outputSizeH * outputSizeW;
+  int64_t stride = static_cast<int64_t>(numPlane) * outputSizeH * outputSizeW;
   int vec_size = 1;
   int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
-  int num_sub_wg;
+  int64_t num_sub_wg;
   auto wg_size = syclDeviceMaxWorkGroupSize();
   int64_t num_wg;
   if constexpr (is_channels_last) {
@@ -717,6 +718,7 @@ void launch_max_pool2d_kernel(
         LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(
             scalar_t,
             8,
+            index_t,
             num_wg,
             wg_size,
             queue,
@@ -743,6 +745,7 @@ void launch_max_pool2d_kernel(
         LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(
             scalar_t,
             4,
+            index_t,
             num_wg,
             wg_size,
             queue,
@@ -769,6 +772,7 @@ void launch_max_pool2d_kernel(
         LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(
             scalar_t,
             2,
+            index_t,
             num_wg,
             wg_size,
             queue,
@@ -824,6 +828,7 @@ void launch_max_pool2d_kernel(
 #define LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(                              \
     scalar_t,                                                                  \
     vec_size,                                                                  \
+    index_t,                                                                   \
     num_wg,                                                                    \
     wg_size,                                                                   \
     queue,                                                                     \
@@ -850,7 +855,7 @@ void launch_max_pool2d_kernel(
     using vec_t = memory::aligned_vector<scalar_t, vec_size>;                  \
     const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput); \
     vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);               \
-    auto kfn = MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size>(     \
+    auto kfn = MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size, index_t>(     \
         grad_input_vec,                                                        \
         grad_output_vec,                                                       \
         indices,                                                               \
@@ -936,6 +941,7 @@ void launch_max_pool2d_backward_kernel(
         LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
             scalar_t,
             8,
+            index_t,
             num_wg,
             wg_size,
             queue,
@@ -963,6 +969,7 @@ void launch_max_pool2d_backward_kernel(
         LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
             scalar_t,
             4,
+            index_t,
             num_wg,
             wg_size,
             queue,
@@ -990,6 +997,7 @@ void launch_max_pool2d_backward_kernel(
         LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
             scalar_t,
             2,
+            index_t,
             num_wg,
             wg_size,
             queue,
@@ -1127,28 +1135,58 @@ void max_pool2d_with_indices_kernel(
   const int64_t outputHeight = output.size(-2);
   const int64_t outputWidth = output.size(-1);
 
+  const int64_t in_stride_n = input_.ndimension() == 4 ? input.stride(-4) : 0;
+  const int64_t in_stride_c = input.stride(-3);
+  const int64_t in_stride_h = input.stride(-2);
+  const int64_t in_stride_w = input.stride(-1);
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
         switch (memory_format) {
           case MemoryFormat::ChannelsLast: {
-            launch_max_pool2d_kernel<scalar_t, true>(
-                output.mutable_data_ptr<scalar_t>(),
-                indices.mutable_data_ptr<int64_t>(),
-                input.const_data_ptr<scalar_t>(),
-                nbatch,
-                nInputPlane,
-                inputHeight,
-                inputWidth,
-                outputHeight,
-                outputWidth,
-                kH,
-                kW,
-                dH,
-                dW,
-                padH,
-                padW,
-                dilationH,
-                dilationW);
+            bool use_int32 = can_use_int32_nhwc(
+                nbatch, nInputPlane, inputHeight, inputWidth,
+                outputHeight, outputWidth,
+                in_stride_n, in_stride_c, in_stride_h, in_stride_w);
+            if (use_int32) {
+              launch_max_pool2d_kernel<scalar_t, true, int32_t>(
+                  output.mutable_data_ptr<scalar_t>(),
+                  indices.mutable_data_ptr<int64_t>(),
+                  input.const_data_ptr<scalar_t>(),
+                  static_cast<int32_t>(nbatch),
+                  static_cast<int32_t>(nInputPlane),
+                  static_cast<int32_t>(inputHeight),
+                  static_cast<int32_t>(inputWidth),
+                  static_cast<int32_t>(outputHeight),
+                  static_cast<int32_t>(outputWidth),
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+            } else {
+              launch_max_pool2d_kernel<scalar_t, true, int64_t>(
+                  output.mutable_data_ptr<scalar_t>(),
+                  indices.mutable_data_ptr<int64_t>(),
+                  input.const_data_ptr<scalar_t>(),
+                  nbatch,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+            }
             break;
           }
           case MemoryFormat::Contiguous: {
@@ -1258,6 +1296,12 @@ void max_pool2d_with_indices_backward_kernel(
       inputHeight, kH, padH, dH, dilationH, ceil_mode);
   int64_t outputWidth = pooling_output_shape<int64_t>(
       inputWidth, kW, padW, dW, dilationW, ceil_mode);
+
+  const int64_t in_stride_n = input.ndimension() == 4 ? input.stride(-4) : 0;
+  const int64_t in_stride_c = input.stride(-3);
+  const int64_t in_stride_h = input.stride(-2);
+  const int64_t in_stride_w = input.stride(-1);
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -1265,26 +1309,52 @@ void max_pool2d_with_indices_backward_kernel(
       "max_pool2d_backward_xpu",
       [&] {
         switch (memory_format) {
-          case at::MemoryFormat::ChannelsLast:
-            launch_max_pool2d_backward_kernel<scalar_t, true>(
-                gradInput.mutable_data_ptr<scalar_t>(),
-                gradOutput.const_data_ptr<scalar_t>(),
-                indices.const_data_ptr<int64_t>(),
-                nbatch,
-                nInputPlane,
-                inputHeight,
-                inputWidth,
-                outputHeight,
-                outputWidth,
-                kH,
-                kW,
-                dH,
-                dW,
-                padH,
-                padW,
-                dilationH,
-                dilationW);
+          case at::MemoryFormat::ChannelsLast: {
+            bool use_int32 = can_use_int32_nhwc(
+                nbatch, nInputPlane, inputHeight, inputWidth,
+                outputHeight, outputWidth,
+                in_stride_n, in_stride_c, in_stride_h, in_stride_w);
+            if (use_int32) {
+              launch_max_pool2d_backward_kernel<scalar_t, true, int32_t>(
+                  gradInput.mutable_data_ptr<scalar_t>(),
+                  gradOutput.const_data_ptr<scalar_t>(),
+                  indices.const_data_ptr<int64_t>(),
+                  static_cast<int32_t>(nbatch),
+                  static_cast<int32_t>(nInputPlane),
+                  static_cast<int32_t>(inputHeight),
+                  static_cast<int32_t>(inputWidth),
+                  static_cast<int32_t>(outputHeight),
+                  static_cast<int32_t>(outputWidth),
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+            } else {
+              launch_max_pool2d_backward_kernel<scalar_t, true, int64_t>(
+                  gradInput.mutable_data_ptr<scalar_t>(),
+                  gradOutput.const_data_ptr<scalar_t>(),
+                  indices.const_data_ptr<int64_t>(),
+                  nbatch,
+                  nInputPlane,
+                  inputHeight,
+                  inputWidth,
+                  outputHeight,
+                  outputWidth,
+                  kH,
+                  kW,
+                  dH,
+                  dW,
+                  padH,
+                  padW,
+                  dilationH,
+                  dilationW);
+            }
             break;
+          }
           case at::MemoryFormat::Contiguous: {
             bool use_int32 = can_use_int32_nchw(
                 nbatch, nInputPlane, inputHeight, inputWidth, outputHeight, outputWidth);
