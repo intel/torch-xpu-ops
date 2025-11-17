@@ -48,7 +48,7 @@ static inline bool can_use_int32_nhwc(
   int64_t max_intra_batch =
       (height ? (height - 1) * in_stride_h : 0) +
       (width ? (width - 1) * in_stride_w : 0) +
-      (channels? (channels - 1) * in_stride_c : 0);
+      (channels ? (channels - 1) * in_stride_c : 0);
 
   int64_t max_input_offset = (nbatch ? (nbatch - 1) * in_stride_n : 0) + max_intra_batch;
 
@@ -691,8 +691,8 @@ void launch_max_pool2d_kernel(
     int dilationH,
     int dilationW) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  int64_t outputSize = static_cast<int64_t>(numBatch) * numPlane * outputSizeH * outputSizeW;
-  int64_t stride = static_cast<int64_t>(numPlane) * outputSizeH * outputSizeW;
+  int64_t outputSize = static_cast<int64_t>(numBatch) * static_cast<int64_t>(numPlane) * static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
+  int64_t stride = static_cast<int64_t>(numPlane) * static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
   int vec_size = 1;
   int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
   int64_t num_sub_wg;
