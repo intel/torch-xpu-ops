@@ -1093,9 +1093,12 @@ void max_pool2d_with_indices_kernel(
     return;
   }
 
-  auto smf = input_.suggest_memory_format();
+  auto memory_format = input_.suggest_memory_format();
+  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+    memory_format = MemoryFormat::ChannelsLast;
+  }
 
-  Tensor input = input_.contiguous(smf);
+  Tensor input = input_.contiguous(memory_format);
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
   const int kW = kernel_size.size() == 1
@@ -1126,7 +1129,7 @@ void max_pool2d_with_indices_kernel(
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       kHalf, kBFloat16, input.scalar_type(), "max_pool2d_xpu", [&] {
-        switch (smf) {
+        switch (memory_format) {
           case MemoryFormat::ChannelsLast: {
             launch_max_pool2d_kernel<scalar_t, true>(
                 output.mutable_data_ptr<scalar_t>(),
@@ -1218,12 +1221,15 @@ void max_pool2d_with_indices_backward_kernel(
   checkAllSameGPU(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
-  auto smf = input_.suggest_memory_format();
+  auto memory_format = input_.suggest_memory_format();
+  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+    memory_format = MemoryFormat::ChannelsLast;
+  }
   Tensor input, gradOutput, indices;
 
-  input = input_.contiguous(smf);
-  gradOutput = gradOutput_.contiguous(smf);
-  indices = indices_.contiguous(smf);
+  input = input_.contiguous(memory_format);
+  gradOutput = gradOutput_.contiguous(memory_format);
+  indices = indices_.contiguous(memory_format);
   gradInput.zero_();
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
@@ -1258,7 +1264,7 @@ void max_pool2d_with_indices_backward_kernel(
       gradOutput.scalar_type(),
       "max_pool2d_backward_xpu",
       [&] {
-        switch (smf) {
+        switch (memory_format) {
           case at::MemoryFormat::ChannelsLast:
             launch_max_pool2d_backward_kernel<scalar_t, true>(
                 gradInput.mutable_data_ptr<scalar_t>(),
