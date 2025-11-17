@@ -63,3 +63,7 @@ visformer_small,pass,pass,pass,pass,pass
 vit_base_patch16_224,pass,pass,pass,pass,pass
 volo_d1_224,pass,pass,pass,pass,pass
 xcit_large_24_p8_224,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip,pass_due_to_skip
+convnextv2_nano.fcmae_ft_in22k_in1k,pass,pass,pass,pass,pass
+deit_tiny_patch16_224.fb_in1k,pass,pass,pass,pass,pass
+vit_base_patch14_dinov2.lvd142m,pass,pass,pass,pass,pass
+vit_base_patch16_siglip_256,pass,pass,pass,pass,pass
