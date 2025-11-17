@@ -238,8 +238,8 @@ run_distributed_tests() {
     echo "Running distributed tests for: ${suite}"
     echo "========================================================================="
     # Process distributed test logs (different format than main tests)
-    grep -E "^FAILED" "${suite}_test.log" | awk '{print $3 "\n" $2}' | grep -v '^[^.d]\+$' > "${suite}_failed.log"
-    grep "PASSED" "${suite}_test.log" | awk '{print $1}' > "${suite}_passed.log"
+    grep "FAILED" "${suite}_test.log" | awk '{for(i=1;i<=NF;i++){if($i ~/::.*::/){print $i}}}' | sort -u > "${suite}_failed.log"
+    grep "PASSED" "${suite}_test.log" | awk '{for(i=1;i<=NF;i++){if($i ~/::.*::/){print $i}}}' | sort -u  > "${suite}_passed.log"
     echo "📋 Failed Cases:"
     cat "${suite}_failed.log"
     # Identify filtered tests (known issues in distributed tests)
