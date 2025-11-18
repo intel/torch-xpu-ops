@@ -272,6 +272,7 @@ jobs:
           call conda activate windows_ci
           set PYTORCH_TEST_WITH_SLOW=1
           set PYTORCH_ENABLE_XPU_FALLBACK=1
+          set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread -n 1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_with_skip_lnl.py
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
