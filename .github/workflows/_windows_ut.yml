@@ -329,7 +329,7 @@ jobs:
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
-          latest_dir="$(ls Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-* |sort -V |tail -n 1)"
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
           cd "${latest_dir}"
 
           # get skipped known issues

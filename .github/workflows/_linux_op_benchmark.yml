@@ -112,7 +112,7 @@ jobs:
         id: reference_id
         run: |
           # latest dir
-          latest_dir="$(ls Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-* |sort -V |tail -n 1)"
+          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
           mv ${{ github.workspace }}/op_benchmark_tmp/${latest_dir} ${{ github.workspace }}/op_benchmark
           # baseline
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \

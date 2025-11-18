@@ -152,7 +152,7 @@ jobs:
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
-          latest_dir="$(ls Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-* |sort -V |tail -n 1)"
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
           cd "${latest_dir}/${{ inputs.ut }}"
 
           for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
