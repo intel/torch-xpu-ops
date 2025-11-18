@@ -263,7 +263,7 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     bool xpuEventCacheEnabled)
     : WorkInterface(rank, opType, seq, profilingTitle, inputs, enableTiming),
       device_(device),
-      isP2P_(isP2P)) {
+      isP2P_(isP2P) {
   if (xpuEventCacheEnabled) {
     xcclStartEvent_ = enableTiming
         ? XPUEventCache::get(device.index())->create(enableTiming)
@@ -283,11 +283,9 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
       device_(w.device_),
       xcclStartEvent_(w.xcclStartEvent_),
       xcclEndEvent_(w.xcclEndEvent_),
-      xcclStartEvent_(w.xcclStartEvent_),
       blockingWait_(w.blockingWait_),
       isP2P_(w.isP2P_),
-      stashed_for_allocator_safety_(w.stashed_for_allocator_safety_),
-      timingEnabled_(w.timingEnabled_) {}
+      stashed_for_allocator_safety_(w.stashed_for_allocator_safety_) {}
 
 ProcessGroupXCCL::WorkXCCL::~WorkXCCL() = default;
 
@@ -479,6 +477,7 @@ uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
 
 void ProcessGroupXCCL::enableCollectivesTiming() {
   enableTiming_.store(true);
+}
 
 c10::intrusive_ptr<ProcessGroupXCCL::Options> ProcessGroupXCCL::getOptions() {
   return options_;
