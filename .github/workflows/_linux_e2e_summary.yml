@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
-          pip install pandas requests
+          pip install pandas requests pygithub
       - name: Download Target Artifact
         run: |
           mkdir target/

@@ -1,235 +1,377 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-results_dir="$1"
-reference_dir="$2"
-rm -rf /tmp/tmp-*.txt
+set -euo pipefail
 
-function get_acc_details() {
-    echo -e "#### accuracy\n\n<table><thead>
-        <tr>
-            <th rowspan=2> Suite </th><th rowspan=2> Model </th>
-            <th colspan=5> Training </th><th colspan=5> Inference </th>
-        </tr><tr>
-            <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
-            <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
-        </tr>
-    </thead><tbody>" |tee accuracy.details.html > accuracy.regression.html
-    suite_list=$(
-        find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
-        sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
-    )
-    for suite in ${suite_list}
-    do
-        model_list=$(
-            find "${results_dir}" -name "*.csv" |grep -E ".*${suite}.*_xpu_accuracy.csv" |\
-            xargs cat |grep "^xpu," |cut -d, -f2 |sort |uniq
-        )
-        for model in ${model_list}
-        do
-            for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16
-            do
-                for mode in training inference
-                do
-                    colorful=$(grep -w "${model}" "/tmp/tmp-${suite}-${mode}-${dtype}.txt" 2>&1 |awk 'BEGIN{
-                        color = "black";
-                        exit_label = 0;
-                    }{
-                        if ($0 ~/Real failed/){
-                            color="🔴";
-                            exit_label++;
-                        }else if ($0 ~/Expected failed/){
-                            color="🔵";
-                        }else if ($0 ~/Warning timeout/){
-                            color="🟡";
-                        }else if ($0 ~/New models/){
-                            color="🔵";
-                        }else if ($0 ~/Failed to passed/){
-                            color="🟢";
-                            exit_label++;
-                        }
-                    }END{print color, exit_label}')
-                    echo "${colorful}" >> /tmp/tmp-result.txt
-                    context=$(find "${results_dir}" -name "*.csv" |\
-                        grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
-                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("%s%s", c, $1)}}')
-                    eval "export ${mode}_${dtype}=\${context}"
-                done
-            done
-            accuracy_row="$(echo -e "<tr>
-                    <td>${suite}</td>
-                    <td>${model}</td>
-                    <td>${training_float32}</td>
-                    <td>${training_bfloat16}</td>
-                    <td>${training_float16}</td>
-                    <td>${training_amp_bf16}</td>
-                    <td>${training_amp_fp16}</td>
-                    <td>${inference_float32}</td>
-                    <td>${inference_bfloat16}</td>
-                    <td>${inference_float16}</td>
-                    <td>${inference_amp_bf16}</td>
-                    <td>${inference_amp_fp16}</td>
-                </tr>"
-            )"
-            if [[ "${accuracy_row}" =~ "red" ]];then
-                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
-                accuracy_regression=1
-            elif [[ "${accuracy_row}" =~ "green" ]];then
-                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
-                accuracy_regression=1
-            elif [[ "${accuracy_row}" =~ "orange" ]];then
-                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
-                accuracy_regression=1
-            else
-                echo "${accuracy_row}" >> accuracy.details.html
-            fi
-        done
-    done
-    echo -e "</tbody></table>\n" |tee -a accuracy.details.html >> accuracy.regression.html
-    if [ "${accuracy_regression}" -ne 1 ];then
-        echo > accuracy.regression.html
+# Script: test_results_processor.sh
+# Description: Process accuracy and performance test results for XPU operations
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_NAME="$(basename "$0")"
+
+# Constants
+readonly RED='🔴'
+readonly GREEN='🟢'
+readonly BLUE='🔵'
+readonly YELLOW='🟡'
+
+# Global state
+accuracy_regression=0
+performance_regression=0
+
+main() {
+    if [[ $# -ne 2 ]]; then
+        echo "Usage: $0 <results_dir> <reference_dir>" >&2
+        exit 1
     fi
+
+    local results_dir="$1"
+    local reference_dir="$2"
+
+    validate_directories "$results_dir" "$reference_dir"
+    cleanup_temp_files
+
+    echo "Processing test results..."
+    echo "Results: $results_dir, Reference: $reference_dir"
+
+    process_accuracy "$results_dir"
+    process_performance "$results_dir" "$reference_dir"
+    generate_report
+
+    echo "Processing completed"
 }
 
-# Accuracy summary
-rm -rf accuracy.*.html
-accuracy_regression=0
-accuracy=$(find "${results_dir}" -name "*_xpu_accuracy.csv" |wc -l)
-if [ "${accuracy}" -gt 0 ];then
-    cat > accuracy.summary.html << EOF
+validate_directories() {
+    for dir in "$1" "$2"; do
+        if [[ ! -d "$dir" ]]; then
+            echo "Error: Directory not found: $dir" >&2
+            exit 1
+        fi
+    done
+}
 
+cleanup_temp_files() {
+    rm -rf /tmp/tmp-*.txt /tmp/tmp-*.json
+    rm -rf accuracy.*.html performance.*.html
+}
+
+# Accuracy Processing
+process_accuracy() {
+    local results_dir="$1"
+
+    if ! find "$results_dir" -name "*_xpu_accuracy.csv" -quit; then
+        return
+    fi
+
+    echo "Processing accuracy results..."
+
+    # Get known issues
+    python "$SCRIPT_DIR/../scripts/get_issue.py" \
+        --repo_owner intel \
+        --repo_name torch-xpu-ops \
+        --labels "module: infra" E2E Accuracy skipped \
+        --output /tmp/tmp-known-issue.json
+
+    generate_accuracy_summary "$results_dir"
+    generate_accuracy_details "$results_dir"
+}
+
+generate_accuracy_summary() {
+    local results_dir="$1"
+    local check_file="$SCRIPT_DIR/../ci_expected_accuracy/check_expected.py"
+
+    cat > accuracy.summary.html << 'EOF'
 #### accuracy
 
 | Category | Total | Passed | Pass Rate | Failed | Xfailed | Timeout | New Passed | New Enabled | Not Run |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+|----------|-------|--------|-----------|--------|---------|---------|------------|-------------|---------|
 EOF
 
-    check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
-    for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
-    do
-        category="$(echo "${csv}" |sed 's/.*inductor_//;s/_xpu_accuracy.*//')"
-        suite="$(echo "${csv}" |sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')"
-        mode="$(echo "${csv}" |sed 's/_xpu_accuracy.*//;s/.*_//')"
-        dtype="$(echo "${csv}" |sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')"
-        python "${check_file}" --suite "${suite}" --mode "${mode}" --dtype "${dtype}" --csv_file "${csv}" > "/tmp/tmp-${suite}-${mode}-${dtype}.txt"
-        test_result="$(sed 's/, /,/g' "/tmp/tmp-${suite}-${mode}-${dtype}.txt" |awk '{
-            if($0 ~/Total/){
-                total = $3;
-            }
-            if($0 ~/Passed/){
-                passed = $3;
-            }
-            if($0 ~/Pass rate/){
-                pass_rate = $3;
-            }
-            if($0 ~/Real failed/){
-                failed = $4;
-                failed_models = $5;
-                if(failed > 0){
-                    failed = "🔴"$4;
-                }
-            }
-            if($0 ~/Expected failed/){
-                xfail = $4;
-                xfail_models = $5;
-                if(xfail > 0){
-                    xfail = "🔵"$4;
-                }
-            }
-            if($0 ~/timeout/){
-                timeout = $4;
-                timeout_models = $5;
-                if(timeout > 0){
-                    timeout = "🟡"$4;
-                }
-            }
-            if($0 ~/Failed to passed/){
-                new_passed = $5;
-                new_passed_models = $6;
-                if(new_passed > 0){
-                    new_passed = "🟢"$4;
-                }
-            }
-            if($0 ~/Not run/){
-                not_run = $4;
-                not_run_models = $5;
-            }
-            if($0 ~/New models/){
-                new_enabled = $3;
-                new_enabled_models = $4;
-                if(new_enabled > 0){
-                    new_enabled = "🔵"$4;
-                }
-            }
-        }END {
-            printf(" %s | %s | %s | %s | %s | %s | %s | %s | %s\n",
-                total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
-        }')"
-        echo "| ${category} | ${test_result} |" >> accuracy.summary.html
-    done
-    get_acc_details
-fi
+    while IFS= read -r csv_file; do
+        process_csv_file "$check_file" "$csv_file"
+    done < <(find "$results_dir" -name "*_xpu_accuracy.csv" | sort)
+}
 
-# Performance summary
-rm -rf performance.*.html
-performance_regression=0
-performance=$(find "${results_dir}" -name "*_xpu_performance.csv" |wc -l)
-if [ "${performance}" -gt 0 ];then
-    if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
-        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
-    else
-        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir}
+process_csv_file() {
+    local check_file="$1" csv_file="$2"
+    local category suite mode dtype
+
+    category=$(basename "$csv_file" | sed 's/inductor_//;s/_xpu_accuracy.*//')
+    suite=$(echo "$csv_file" | sed 's/.*inductor_//;s/_.*//;s/timm/timm_models/')
+    mode=$(echo "$csv_file" | sed 's/_xpu_accuracy.*//;s/.*_//')
+    dtype=$(echo "$csv_file" | sed -E 's/.*inductor_[a-z]*_//;s/models_//;s/_infer.*|_train.*//')
+
+    local tmp_file="/tmp/tmp-${suite}-${mode}-${dtype}.txt"
+
+    python "$check_file" \
+        --suite "$suite" \
+        --mode "$mode" \
+        --dtype "$dtype" \
+        --issue_file /tmp/tmp-known-issue.json \
+        --csv_file "$csv_file" > "$tmp_file"
+
+    local result
+    result=$(parse_test_results "$tmp_file")
+    echo "| $suite | $result |" >> accuracy.summary.html
+}
+
+parse_test_results() {
+    local tmp_file="$1"
+    sed 's/, /,/g' "$tmp_file" | awk '
+    BEGIN {
+        total = passed = pass_rate = failed = xfail = timeout = 0
+        new_passed = new_enabled = not_run = 0
+    }
+    /Total/ { total = $3 }
+    /Passed/ { passed = $3 }
+    /Pass rate/ { pass_rate = $3 }
+    /Real failed/ { failed = format_count($4, "🔴") }
+    /Expected failed/ { xfail = format_count($4, "🔵") }
+    /timeout/ { timeout = format_count($4, "🟡") }
+    /Failed to passed/ { new_passed = format_count($5, "🟢") }
+    /Not run/ { not_run = $4 }
+    /New models/ { new_enabled = format_count($3, "🔵") }
+
+    function format_count(count, icon) {
+        return count > 0 ? icon count : count
+    }
+
+    END {
+        printf "%s | %s | %s | %s | %s | %s | %s | %s | %s", 
+            total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run
+    }'
+}
+
+generate_accuracy_details() {
+    local results_dir="$1"
+
+    # Create table headers
+    cat > accuracy.details.html << 'EOF'
+#### accuracy
+
+<table>
+<thead>
+    <tr>
+        <th rowspan="2">Suite</th>
+        <th rowspan="2">Model</th>
+        <th colspan="5">Training</th>
+        <th colspan="5">Inference</th>
+    </tr>
+    <tr>
+        <th>float32</th><th>bfloat16</th><th>float16</th><th>amp_bf16</th><th>amp_fp16</th>
+        <th>float32</th><th>bfloat16</th><th>float16</th><th>amp_bf16</th><th>amp_fp16</th>
+    </tr>
+</thead>
+<tbody>
+EOF
+
+    cp accuracy.details.html accuracy.regression.html
+
+    # Process all test suites
+    while IFS= read -r suite; do
+        process_suite "$results_dir" "$suite"
+    done < <(find "$results_dir" -name "*_xpu_accuracy.csv" | \
+        sed 's/.*inductor_//;s/_[abf].*//' | sort | uniq)
+
+    echo "</tbody></table>" >> accuracy.details.html
+    echo "</tbody></table>" >> accuracy.regression.html
+
+    # Clear regression file if no issues
+    if [[ $accuracy_regression -eq 0 ]]; then
+        : > accuracy.regression.html
     fi
-    if [ -e performance.regression.html ];then
+}
+
+process_suite() {
+    local results_dir="$1" suite="$2"
+
+    while IFS= read -r model; do
+        process_model "$results_dir" "$suite" "$model"
+    done < <(get_models_for_suite "$results_dir" "$suite")
+}
+
+get_models_for_suite() {
+    local results_dir="$1" suite="$2"
+    find "$results_dir" -name "*${suite}*_xpu_accuracy.csv" -exec cat {} \; | \
+        grep "^xpu," | cut -d, -f2 | sort | uniq
+}
+
+process_model() {
+    local results_dir="$1" suite="$2" model="$3"
+    local -A results=()
+
+    # Collect results for all data types and modes
+    for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16; do
+        for mode in training inference; do
+            local key="${mode}_${dtype}"
+            results[$key]=$(get_model_result "$results_dir" "$suite" "$model" "$dtype" "$mode")
+        done
+    done
+
+    local row
+    row=$(generate_html_row "$suite" "$model" "${results[@]}")
+
+    if [[ "$row" =~ ${RED}|${GREEN}|${YELLOW} ]]; then
+        echo "$row" | tee -a accuracy.details.html >> accuracy.regression.html
+        accuracy_regression=1
+    else
+        echo "$row" >> accuracy.details.html
+    fi
+}
+
+get_model_result() {
+    local results_dir="$1" suite="$2" model="$3" dtype="$4" mode="$5"
+    local tmp_file="/tmp/tmp-${suite}-${mode}-${dtype}.txt"
+    local color="black"
+
+    if [[ -f "$tmp_file" ]] && grep -q -w "$model" "$tmp_file"; then
+        color=$(determine_color "$tmp_file" "$model")
+    fi
+
+    local value
+    value=$(find "$results_dir" -name "*${suite}_${dtype}_${mode}_xpu_accuracy.csv" -type f | \
+        head -1 | xargs grep -h ",${model}," 2>/dev/null | cut -d, -f4 | head -1)
+
+    if [[ "$color" != "black" ]]; then
+        echo "${color}${value}"
+    else
+        echo "${value}"
+    fi
+}
+
+determine_color() {
+    local tmp_file="$1" model="$2"
+    grep -w "$model" "$tmp_file" | awk '
+        /Real failed/ { print "🔴"; exit }
+        /Expected failed|New models/ { print "🔵"; exit }
+        /Warning timeout/ { print "🟡"; exit }
+        /Failed to passed/ { print "🟢"; exit }
+        { print "black" }
+    ' | head -1
+}
+
+generate_html_row() {
+    local suite="$1" model="$2"
+    shift 2
+    local results=("$@")
+
+    cat << EOF
+<tr>
+    <td>$suite</td>
+    <td>$model</td>
+    <td>${results[0]}</td><td>${results[1]}</td><td>${results[2]}</td><td>${results[3]}</td><td>${results[4]}</td>
+    <td>${results[5]}</td><td>${results[6]}</td><td>${results[7]}</td><td>${results[8]}</td><td>${results[9]}</td>
+</tr>
+EOF
+}
+
+# Performance Processing
+process_performance() {
+    local results_dir="$1" reference_dir="$2"
+
+    if ! find "$results_dir" -name "*_xpu_performance.csv" -quit; then
+        return
+    fi
+
+    echo "Processing performance results..."
+
+    local perf_args=("--target" "$results_dir" "--baseline" "$reference_dir")
+    if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then
+        perf_args+=("--pr")
+    fi
+
+    python "$SCRIPT_DIR/perf_comparison.py" "${perf_args[@]}"
+
+    if [[ -f "performance.regression.html" ]]; then
         performance_regression=1
     fi
-    # fetch best performance value
-    cp ${reference_dir}/best.csv ${results_dir}/best.csv || true
-    python "$(dirname "$0")/calculate_best_perf.py" \
-        --new ${results_dir} \
-        --best ${results_dir}/best.csv \
-        --device PVC1100 --os "${OS_PRETTY_NAME}" \
-        --driver "${DRIVER_VERSION}" --oneapi "${BUNDLE_VERSION}" \
-        --gcc "${GCC_VERSION}" --python "${python}" \
-        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-"${GITHUB_SHA}"}"
-fi
-echo "performance_regression=${performance_regression}" >> ${GITHUB_OUTPUT}
 
-# Show result
-summary_file="e2e-test-result.html"
-cat > ${summary_file} << EOF
+    update_best_performance "$results_dir" "$reference_dir"
+}
+
+update_best_performance() {
+    local results_dir="$1" reference_dir="$2"
+    local best_file="$results_dir/best.csv"
+    local output_file="${GITHUB_OUTPUT:-/dev/null}"
+
+    cp "$reference_dir/best.csv" "$best_file" 2>/dev/null || true
+
+    python "$SCRIPT_DIR/calculate_best_perf.py" \
+        --new "$results_dir" \
+        --best "$best_file" \
+        --device PVC1100 \
+        --os "${OS_PRETTY_NAME:-}" \
+        --driver "${DRIVER_VERSION:-}" \
+        --oneapi "${BUNDLE_VERSION:-}" \
+        --gcc "${GCC_VERSION:-}" \
+        --python "${python:-}" \
+        --pytorch "${TORCH_BRANCH_ID:-}/${TORCH_COMMIT_ID:-}" \
+        --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-${GITHUB_SHA:-}}"
+
+    echo "performance_regression=$performance_regression" >> "$output_file"
+}
+
+# Report Generation
+generate_report() {
+    local summary_file="e2e-test-result.html"
+
+    {
+        generate_header
+        generate_highlights
+        generate_summary
+        generate_details
+    } > "$summary_file"
+
+    echo "Report generated: $summary_file"
+}
+
+generate_header() {
+    cat << 'EOF'
 
 #### Note:
-🔴: the failed cases which need look into
-🟢: the new passed cases which need update reference
-🔵: the expected failed or new enabled cases
-🟡: the warning cases
-Empty means the cases NOT run
+🔴: Failed cases needing investigation
+🟢: New passed cases needing reference update  
+🔵: Expected failed or new enabled cases
+🟡: Warning cases
+Empty: Cases not run
 
-$(
-    if ((accuracy_regression + performance_regression > 0));then
-        echo -e "\n### 🎯 Highlight regressions\n"
-        if (( accuracy_regression > 0 ));then
-            cat accuracy.regression.html
-        fi
-        if (( performance_regression > 0 ));then
-            cat performance.regression.html
-        fi
+EOF
+}
+
+generate_highlights() {
+    if (( accuracy_regression + performance_regression > 0 )); then
+        echo -e "### 🎯 Highlight regressions\n"
+        [[ $accuracy_regression -gt 0 ]] && cat accuracy.regression.html
+        [[ $performance_regression -gt 0 ]] && cat performance.regression.html
+    else
+        echo -e "### ✅ No regressions detected\n"
     fi
-)
+}
 
-### 📊 Summary
+generate_summary() {
+    echo "### 📊 Summary"
+    echo
+    cat accuracy.summary.html 2>/dev/null || echo "No accuracy data"
+    echo
+    cat performance.summary.html 2>/dev/null || echo "No performance data"
+    echo
+}
 
-$(cat accuracy.summary.html)
-
-$(cat performance.summary.html)
-
+generate_details() {
+    cat << 'EOF'
 ### 📖 Details
 
-<details><summary>View detailed result</summary>
+<details>
+<summary>View detailed result</summary>
 
-$(cat accuracy.details.html)
-
-$(cat performance.details.html)
-
-</details>
 EOF
+
+    cat accuracy.details.html 2>/dev/null || echo "No accuracy details"
+    cat performance.details.html 2>/dev/null || echo "No performance details"
+
+    echo "</details>"
+}
+
+# Run main if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
