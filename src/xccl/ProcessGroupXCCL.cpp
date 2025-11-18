@@ -394,7 +394,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       xpuEventCacheEnabled_.load());
 
   if (record) {
-    r->trace_id_ = FlightRecorderXCCL::get()->record(
+    auto traceId = FlightRecorderXCCL::get()->recordWithResetEnabled(
         local_id_,
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
@@ -408,6 +408,9 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
         options_->timeout,
         pgStatus_,
         isP2P);
+
+    r->trace_id_ = traceId.id;
+    r->trace_reset_epoch_ = traceId.reset_epoch;
   }
   return r;
 }
@@ -737,9 +740,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
   auto id = work->trace_id_;
+  auto reset_epoch = work->trace_reset_epoch_;
   work->future_->addCallback(
-      [id](at::ivalue::Future&) {
-        FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+      [id, reset_epoch](at::ivalue::Future&) {
+        FlightRecorderXCCL::get()->retire_id(
+            id, reset_epoch, /*compute_duration*/ false);
       },
       /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
@@ -819,7 +824,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   if (coalescing_state_) {
-    FlightRecorderXCCL::get()->record(
+    FlightRecorderXCCL::get()->recordWithResetEnabled(
         local_id_,
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
@@ -838,7 +843,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->outputs_ = std::make_shared<std::vector<at::Tensor>>();
     work->outputs_->push_back(tensor);
 
-    work->trace_id_ = FlightRecorderXCCL::get()->record(
+    auto traceId = FlightRecorderXCCL::get()->recordWithResetEnabled(
         local_id_,
         std::make_tuple(pg_uid_, pg_desc_), // PG name tuple
         seqCollective_,
@@ -852,6 +857,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
         options_->timeout,
         pgStatus_,
         true);
+
+    work->trace_id_ = traceId.id;
+    work->trace_reset_epoch_ = traceId.reset_epoch;
   }
 
   if (enableNanCheck_ && opType == OpType::SEND) {
@@ -889,9 +897,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
 
     auto id = work->trace_id_;
+    auto reset_epoch = work->trace_reset_epoch_;
     work->future_->addCallback(
-        [id](at::ivalue::Future&) {
-          FlightRecorderXCCL::get()->retire_id(id, /*compute_duration*/ false);
+        [id, reset_epoch](at::ivalue::Future&) {
+          FlightRecorderXCCL::get()->retire_id(
+              id, reset_epoch, /*compute_duration*/ false);
         },
         /*use_future*/ false);
     setEnqueuedPgStatus(work);

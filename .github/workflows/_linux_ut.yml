@@ -35,6 +35,7 @@ env:
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
+  NEW_PASSED_ISSUE: 2333
 
 jobs:
   runner:
@@ -66,7 +67,8 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
+                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -102,7 +104,7 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1
+      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -136,6 +138,8 @@ jobs:
     if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      issues: write
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

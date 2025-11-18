@@ -119,7 +119,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     uint64_t seq_;
     bool isP2P_;
-    std::optional<uint64_t> trace_id_;
+    std::optional<size_t> trace_id_;
+    std::optional<size_t> trace_reset_epoch_;
     size_t numelIn_ = -1;
     size_t numelOut_ = -1;
 
