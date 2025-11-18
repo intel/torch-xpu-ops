@@ -105,7 +105,7 @@ class ProcessGroupInterface : public Backend {
     bool checkTimeout(std::optional<std::chrono::milliseconds> timeout = std::nullopt);
     const std::string& logPrefix() const;
     virtual bool isStarted() const = 0;
-    virtual void printTraceback() const;
+    virtual void printTraceback() const = 0;
     void setException(std::exception_ptr exception_ptr);
 
     // Public getter for operation type
@@ -139,7 +139,7 @@ class ProcessGroupInterface : public Backend {
 
     void start();
     void join();
-    virtual void runLoop();
+    void runLoop();
     void stop();
     std::string getWatchdogTimeoutErrorMsg(const std::string& extraMsg);
     std::string getWatchdogTimeoutExitMsg(const std::string& exitReason);
@@ -230,8 +230,8 @@ class ProcessGroupInterface : public Backend {
   const int& globalRank() const;
   uint64_t getUid();
   const c10::intrusive_ptr<Store> globalStore() const;
-  virtual std::string getBackendCclVersion();
-  virtual std::chrono::milliseconds getOptionsTimeout() const;
+  virtual std::string getBackendCclVersion() = 0;
+  virtual std::chrono::milliseconds getOptionsTimeout() const = 0;
 
   // Watchdog interface
   uint64_t getWatchdogHeartbeat() const;
