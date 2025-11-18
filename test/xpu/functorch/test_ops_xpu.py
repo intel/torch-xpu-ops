@@ -3037,7 +3037,9 @@ class TestOperators(TestCase):
             (grad,) = vjp_fn(cotangent_in)
             return grad
 
-        def jvp_of_vjp(primal_in, cotangent_in, primal_tangent_in, cotangent_tangent_in):
+        def jvp_of_vjp(
+            primal_in, cotangent_in, primal_tangent_in, cotangent_tangent_in
+        ):
             return jvp(
                 push_vjp,
                 (primal_in, cotangent_in),
@@ -3045,17 +3047,14 @@ class TestOperators(TestCase):
             )
 
         cpu_results = vmap(jvp_of_vjp, in_dims=(None, 0, None, None))(
-            primal_in,
-            cotangent_in,
-            primal_tangent_in,
-            cotangent_tangent_in
+            primal_in, cotangent_in, primal_tangent_in, cotangent_tangent_in
         )
 
         xpu_results = vmap(jvp_of_vjp, in_dims=(None, 0, None, None))(
             primal_in.xpu(),
             cotangent_in.xpu(),
             primal_tangent_in.xpu(),
-            cotangent_tangent_in.xpu()
+            cotangent_tangent_in.xpu(),
         )
 
         primal_cpu, tangent_cpu = cpu_results
