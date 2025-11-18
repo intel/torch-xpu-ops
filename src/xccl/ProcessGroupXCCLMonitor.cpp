@@ -307,6 +307,11 @@ ProcessGroupInterface::WorkInterface::WorkInterface(const WorkInterface& w)
   exception_ = w.exception_;
 }
 
+const std::string& ProcessGroupInterface::WorkInterface::logPrefix() const {
+  static std::string prefix = c10::str("[Rank ", rank_, "] ");
+  return prefix;
+}
+
 void ProcessGroupInterface::WorkInterface::setException(
     std::exception_ptr exception_ptr) {
   std::unique_lock<std::mutex> lock(mutex_);
