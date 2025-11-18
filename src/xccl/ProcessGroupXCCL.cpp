@@ -261,12 +261,9 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     const std::optional<std::vector<at::Tensor>>& inputs,
     bool enableTiming,
     bool xpuEventCacheEnabled)
-    : Work(rank, opType, profilingTitle, inputs),
+    : WorkInterface(rank, opType, seq, profilingTitle, inputs, enableTiming),
       device_(device),
-      workStartTime_(std::chrono::steady_clock::now()),
-      seq_(seq),
-      isP2P_(isP2P),
-      timingEnabled_(enableTiming) {
+      isP2P_(isP2P)) {
   if (xpuEventCacheEnabled) {
     xcclStartEvent_ = enableTiming
         ? XPUEventCache::get(device.index())->create(enableTiming)
@@ -282,13 +279,12 @@ ProcessGroupXCCL::WorkXCCL::WorkXCCL(
 }
 
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(const WorkXCCL& w)
-    : Work(w.rank_, w.opType_),
+    : WorkInterface(w),
       device_(w.device_),
       xcclStartEvent_(w.xcclStartEvent_),
       xcclEndEvent_(w.xcclEndEvent_),
+      xcclStartEvent_(w.xcclStartEvent_),
       blockingWait_(w.blockingWait_),
-      workStartTime_(w.workStartTime_),
-      seq_(w.seq_),
       isP2P_(w.isP2P_),
       stashed_for_allocator_safety_(w.stashed_for_allocator_safety_),
       timingEnabled_(w.timingEnabled_) {}
@@ -317,20 +313,30 @@ void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
   stashed_for_allocator_safety_->unstash();
 }
 
+bool ProcessGroupXCCL::WorkXCCL::isStarted() const {
+  // if timing is disabled we won't have allocated start events
+  if (!timingEnabled_) {
+    return false;
+  }
+  // Checking the work's corresponding CUDA event's status
+  if (!xcclStartEvent_->query()) {
+    return false;
+  }
+  return true;
+}
+
 bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
   synchronize();
 
   if (blockingWait_ || timeout != kNoTimeout) {
     while (!isCompleted()) {
-      auto currentTimepoint = std::chrono::steady_clock::now();
-      auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-          currentTimepoint - workStartTime_);
-      if (timeElapsed >= timeout) {
+      bool timedout = checkTimeout(
+        timeout == kNoTimeout ? std::nullopt : std::make_optional(timeout));
+      // todo: abort comm and exit
+      if (timedout) {
         std::string exceptionMsg = c10::str(
-            "Work ran time out after ", timeElapsed.count(), " milliseconds.");
-        LOG(ERROR) << exceptionMsg;
-        // todo: abort comm and exit
-        TORCH_CHECK(false, exceptionMsg)
+            logPrefix(), "Work ", (*this), " timed out in blocking wait.");
+        TORCH_CHECK(timedout, exceptionMsg)
       }
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kSynchronizeBusyWaitMillis));
@@ -346,8 +352,6 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
 ProcessGroupXCCL::Options::Options(bool is_high_priority_stream)
     : Backend::Options(XCCL_BACKEND_NAME),
       is_high_priority_stream(is_high_priority_stream) {}
-
-static std::atomic<size_t> process_group_id = 0;
 
 constexpr const char* MULTI_DEVICE_ERROR_MSG =
     "Expecting one tensor only but got multiple";
@@ -369,24 +373,13 @@ std::string ProcessGroupXCCL::createLogPrefix() const {
       "[PG ID ", local_id_, " PG GUID ", pg_uid_, " Rank ", rank_, "] ");
 }
 
-const std::string& ProcessGroupXCCL::logPrefix() const {
-  return logPrefix_;
-}
-
-const int& ProcessGroupXCCL::globalRank() const {
-  static int globalRank = rank_;
-  return globalRank;
-}
-
 ProcessGroupXCCL::ProcessGroupXCCL(
     c10::intrusive_ptr<Store> store,
     int rank,
     int size,
     c10::intrusive_ptr<Options> options)
-    : Backend(rank, size),
-      store_(std::move(store)),
+    : ProcessGroupInterface(rank, size, std::move(store)),
       xcclCommCounter_(0),
-      local_id_(process_group_id++),
       options_(std::move(options)) {
   this->setGroupUid(options_->group_name);
   logPrefix_ = createLogPrefix();
@@ -402,6 +395,12 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       std::make_tuple(pg_uid_, pg_desc_), groupRanks());
   FlightRecorderXCCL::get()->record_accelerator_version(XcclVersion);
   enableNanCheck_ = getCvarBool(TORCH_XCCL_NAN_CHECK, false);
+
+  if (blockingWait_) {
+    LOG(WARNING) << logPrefix()
+                 << "TORCH_PG_BLOCKING_WAIT is enabled, NO watchdog thread is created.";
+  }
+
   init();
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
@@ -425,35 +424,35 @@ ProcessGroupXCCL::ProcessGroupXCCL(
       this->globalRankStart_,
       this->globalRankStride_);
 
-  // Heartbeat monitor thread dumps debug info on write to pipe
-  heartbeatMonitor_ = std::make_unique<HeartbeatMonitorXCCL>(this);
-  heartbeatMonitor_->start();
+
+  // Initialize monitoring
+  heartbeatMonitor_ = std::make_unique<HeartbeatMonitor>(this);
+  watchdog_ = std::make_unique<WatchdogXCCL>(this);
+
+  // Start monitoring threads
+  if (!blockingWait_) {
+    watchdog_->start();
+    heartbeatMonitor_->start();
+  }
 }
 
 ProcessGroupXCCL::~ProcessGroupXCCL() {
-  heartbeatMonitor_->stop();
-  // Wait for all threads to finish before returning
-  heartbeatMonitor_->join();
+  // Shutdown monitoring threads
+  if (heartbeatMonitor_) {
+    heartbeatMonitor_->stop();
+    heartbeatMonitor_->join();
+  }
+  if (watchdog_) {
+    watchdog_->join();
+  }
 }
 
-bool ProcessGroupXCCL::dumpDebuggingInfo(bool includeStackTrace /*=true*/) {
-  STATIC_SCOPED_WAIT_COUNTER(pytorch.ProcessGroupXCCL__dumpDebuggingInfo);
-  LOG(ERROR)
-      << logPrefix()
-      << "ProcessGroupXCCL preparing to dump debug info. Include stack trace: "
-      << includeStackTrace;
-  if (traceBufferSize_ > 0) {
-    // TODO: dump_xccl_trace
-    auto xcclTrace = dump_xccl_trace(true, includeStackTrace, false);
-    DebugInfoWriter& writer = DebugInfoWriter::getWriter(globalRank());
-    LOG(INFO) << logPrefix() << "ProcessGroupXCCL dumping xccl trace to "
-              << writer.getWriterTarget();
-    writer.write(xcclTrace);
-    LOG(INFO) << logPrefix() << "Flight Recorder trace successfully dumped.";
-    return true;
-  }
-  return false;
+bool ProcessGroupXCCL::abortComms(const std::optional<std::string>& abortReason) {
+  LOG(WARNING) << logPrefix() 
+               << "ProcessGroupXCCL does not support aborting comms";
+  return true;
 }
+
 
 const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
   if (options_->global_ranks_in_group.empty() && local_id_ == 0) {
@@ -480,6 +479,13 @@ uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
 
 void ProcessGroupXCCL::enableCollectivesTiming() {
   enableTiming_.store(true);
+
+c10::intrusive_ptr<ProcessGroupXCCL::Options> ProcessGroupXCCL::getOptions() {
+  return options_;
+}
+
+std::chrono::milliseconds ProcessGroupXCCL::getOptionsTimeout() const {
+  return options_->timeout;
 }
 
 void ProcessGroupXCCL::setEnableNanCheck(bool enableNanCheck) {
@@ -526,6 +532,19 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     r->trace_id_ = traceId.id;
     r->trace_reset_epoch_ = traceId.reset_epoch;
   }
+  r->opTimeout_ = options_->timeout;
+  
+  // Add work to tracking list for monitoring
+  if (!terminateProcessGroup_.load()) {
+    std::lock_guard<std::mutex> lock(workListMutex_);
+    // Store the work pointer for monitoring (similar to NCCL)
+    workMetaList_.emplace_back(*r);
+    // Update heartbeat monitor with work list activity
+    if (heartbeatMonitor_) {
+      heartbeatMonitor_->setLastWorkListUpdateTime();
+    }
+  }
+  
   return r;
 }
 
@@ -691,6 +710,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   work->blockingWait_ = blockingWait_;
 
   work->stashed_for_allocator_safety_->stash(coalescedTensors_);
+  if (work->timingEnabled_) {
+    work->xcclStartEvent_->record(stream);
+  }
 
   if (work->timingEnabled_) {
     work->xcclStartEvent_->record(stream);
@@ -827,6 +849,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
+  if (work->timingEnabled_ && !coalescing_state_) {
+    work->xcclStartEvent_->record(stream);
+  }
   pre(stream, work);
 
   if (work->timingEnabled_ && !coalescing_state_) {
@@ -849,14 +874,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
-  auto id = work->trace_id_;
-  auto reset_epoch = work->trace_reset_epoch_;
-  work->future_->addCallback(
-      [id, reset_epoch](at::ivalue::Future&) {
-        FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ false);
-      },
-      /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -1006,14 +1023,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
       work->future_->markCompleted(at::IValue(*work->outputs_));
     }
 
-    auto id = work->trace_id_;
-    auto reset_epoch = work->trace_reset_epoch_;
-    work->future_->addCallback(
-        [id, reset_epoch](at::ivalue::Future&) {
-          FlightRecorderXCCL::get()->retire_id(
-              id, reset_epoch, /*compute_duration*/ false);
-        },
-        /*use_future*/ false);
     setEnqueuedPgStatus(work);
   }
 

@@ -69,9 +69,11 @@ class TensorShelf {
   std::mutex mutex_;
 };
 
-class TORCH_API ProcessGroupXCCL : public Backend {
+TORCH_API std::string getXcclVersion();
+
+class TORCH_API ProcessGroupXCCL : public ProcessGroupInterface {
  public:
-  class WorkXCCL : public Work {
+  class WorkXCCL : public ProcessGroupInterface::WorkInterface {
    public:
     WorkXCCL(
         at::Device& device,
@@ -111,6 +113,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::vector<at::Tensor> result() override {
       return *outputs_;
     }
+    
+    void printTraceback() const override { 
+      ProcessGroupInterface::WorkInterface::printTraceback<at::xpu::XPUEvent>(); 
+    }
+    bool isStarted() const override;
 
    protected:
     at::Device device_;
@@ -118,19 +125,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     std::shared_ptr<at::xpu::XPUEvent> xcclEndEvent_;
     bool isBarrierOp_{false};
     bool blockingWait_{false};
-    std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
-    uint64_t seq_;
     bool isP2P_;
-    std::optional<size_t> trace_id_;
-    std::optional<size_t> trace_reset_epoch_;
-    size_t numelIn_ = -1;
-    size_t numelOut_ = -1;
 
    private:
     std::shared_ptr<std::vector<at::Tensor>> outputs_;
     std::shared_ptr<TensorShelf> stashed_for_allocator_safety_;
     c10::intrusive_ptr<at::ivalue::Future> future_;
-    bool timingEnabled_;
     friend class ProcessGroupXCCL;
   };
 
@@ -159,10 +159,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       : ProcessGroupXCCL(store, rank, size, std::move(options)) {}
 
   ~ProcessGroupXCCL() override;
-
-  c10::intrusive_ptr<Options> getOptions() {
-    return options_;
-  }
+  bool abortComms(const std::optional<std::string>& abortReason = std::nullopt) override;
 
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);
@@ -172,6 +169,12 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     return true;
   }
 
+  std::string getBackendCclVersion() override {
+    return getXcclVersion();
+  }
+
+  c10::intrusive_ptr<ProcessGroupXCCL::Options> getOptions();
+  std::chrono::milliseconds getOptionsTimeout() const override;
   void startCoalescing() override;
 
   c10::intrusive_ptr<Work> endCoalescing() override;
@@ -194,7 +197,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       bool isP2P,
       const char* profilingTitle = nullptr,
       const std::vector<at::Tensor>& inputs = {},
-      const std::vector<at::Tensor>& outputs = {},
+      const std::vector<at::Tensor>& outputsF= {},
       bool record = false);
 
  protected:
@@ -457,23 +460,18 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   std::string createLogPrefix() const;
 
-  const std::string& logPrefix() const;
-
   void setEnableNanCheck(bool enableNanCheck);
 
   c10::DeviceIndex guessDeviceId() const;
 
   const std::vector<uint64_t>& groupRanks() const;
-  const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
-  bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
   std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
       xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
-  c10::intrusive_ptr<Store> store_;
   uint64_t xcclCommCounter_{0};
   std::mutex mutex_;
   std::atomic<bool> xpuEventCacheEnabled_;
@@ -487,18 +485,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::atomic<bool> enableTiming_;
   static thread_local uint64_t xcclActiveGroupCounter_;
   uint64_t seqCollective_{0};
-  uint64_t seqP2P_{0};
-  uint64_t op_id_{0};
-  size_t local_id_;
-  std::string logPrefix_;
   const c10::intrusive_ptr<Options> options_;
-  std::shared_ptr<ProcessGroupStatus> pgStatus_ =
-      std::make_shared<ProcessGroupStatus>();
-  std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;
-  int traceBufferSize_;
   bool enableNanCheck_;
-
-  friend class HeartbeatMonitorXCCL;
+  // Work tracking for monitoring
+  std::list<ProcessGroupXCCL::WorkXCCL> workMetaList_;
 
  private:
   std::mutex kvs_mutex;
@@ -536,6 +526,18 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     }
     return kvs;
   }
+
+  class WatchdogXCCL : public ProcessGroupInterface::Watchdog {
+   public:
+    explicit WatchdogXCCL(ProcessGroupInterface* pg) : Watchdog(pg) {}
+    void runLoop() override;
+    inline void incrementHeartbeat() { heartbeat_++; }
+    void processWorkList() override;
+
+   protected:
+    ProcessGroupXCCL* pg_;
+  };
+
 };
 
 // Dumps the comm traces and additional information about the ProcessGroup.
@@ -543,8 +545,6 @@ TORCH_API std::string dump_xccl_trace(
     bool includeCollectives,
     bool includeStackTraces,
     bool onlyActive);
-
-TORCH_API std::string getXcclVersion();
 } // namespace c10d
 
 namespace {
