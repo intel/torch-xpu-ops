@@ -1,0 +1,128 @@
+name: Linux E2E Summary
+
+on:
+  workflow_call:
+    inputs:
+      test_type:
+        type: string
+        default: "build-cicd"
+        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+
+permissions: read-all
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+jobs:
+  summary:
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFERENCE_ISSUE_ID: 1645
+      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Install gh-cli
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh rsync ca-certificates -y
+          pip install pandas requests
+      - name: Download Target Artifact
+        run: |
+          mkdir target/
+          cd target/
+          target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*"
+          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "${target_dir}"
+          find Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*/ -maxdepth 1 -mindepth 1 -type d |\
+                  while read line; do mv $line .; done
+      - name: Download Baseline Artifact
+        run: |
+          mkdir baseline/
+          cd baseline/
+          if [[ "${{ inputs.test_type }}" != *"ly" ]];then
+            artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-nightly"
+          else
+            artifact_type="${{ inputs.test_type }}"
+          fi
+          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
+          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+          if [ "${REFERENCE_RUN_ID}" != "" ];then
+            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+            find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |while read line; do mv $line .; done
+          fi
+      - name: Get summary
+        id: summary
+        if: ${{ ! cancelled() }}
+        run: |
+          acc_failed=0
+          e2e_result=0
+          e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
+          if [ -f "${e2e_summary_csv}" ];then
+            bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
+            if [ -e e2e-test-result.html ];then
+              cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
+              e2e_result=1
+            fi
+            acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+          fi
+          echo "acc_failed=${acc_failed}" >> ${GITHUB_ENV}
+          echo "e2e_result=${e2e_result}" >> ${GITHUB_OUTPUT}
+      - name: Upload Reference Run ID
+        if: ${{ endsWith(inputs.test_type, 'ly') && steps.summary.outputs.e2e_result == 1 }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
+          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
+          if [ ${has_or_not} -ne 0 ];then
+            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
+          else
+            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
+          fi
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
+      - name: Add comment for performance outliers
+        if: ${{ github.event_name == 'pull_request' && steps.summary.outputs.performance_regression == 1 }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Read the comment content from a file
+            const fs = require('fs');
+            const commentBody = fs.readFileSync('./performance.regression.pr.html', 'utf8');
+            // Create comment on an issue or PR
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+      - name: Result check
+        if: ${{ ! cancelled() }}
+        run: |
+          if [ ${acc_failed} -ne 0 ];then
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+            echo "🔴 Accuracy regression, please check!"
+          fi
+          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
+          if [ -f "${pt2e_summary_csv}" ];then
+            pt2e_failed=$(grep -c ',failed' ${pt2e_summary_csv} || echo 0)
+            if [ ${pt2e_failed} -ne 0 ];then
+              grep 'failed' ${pt2e_summary_csv}
+              echo "🟡 PT2E has failures, please check!"
+            fi
+          fi
+          if [ -f ./performance.regression.pr.html ];then
+            echo "🟡 Performance regression, please check!"
+          fi
+          # only gating accuracy, others throw warning
+          exit ${acc_failed}

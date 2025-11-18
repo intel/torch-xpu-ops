@@ -1,0 +1,199 @@
+name: Setup Test Environment
+
+inputs:
+  pytorch:
+    type: string
+    default: 'main'
+    description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+  torch_xpu_ops:
+    type: string
+    default: 'main'
+    description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+  python:
+    type: string
+    default: '3.10'
+    description: Python version
+  suite:
+    type: string
+    default: 'None'
+    description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+
+runs:
+  using: composite
+  steps:
+    - name: Check runner
+      shell: bash -xe {0}
+      run: |
+        hostname && id
+        cat /etc/os-release
+        gcc -v && g++ -v
+        uname -a
+        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
+        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
+        if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
+          rm -rf ${AGENT_TOOLSDIRECTORY}
+        fi
+        sudo apt update
+        sudo apt install -y jq numactl
+    - name: Setup python-${{ inputs.python }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python }}
+    - name: Check python
+      shell: bash -xe {0}
+      run: |
+        which python && python -V
+        which pip && pip list
+        pip install -U pip wheel setuptools
+    - name: Checkout torch-xpu-ops
+      uses: actions/checkout@v4
+      with:
+        path: torch-xpu-ops
+    - name: Download Pytorch wheel
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+      uses: actions/download-artifact@v4
+      with:
+        pattern: Torch-XPU-Wheel-*
+    - name: Prepare Stock Pytorch
+      shell: bash -xe {0}
+      run: |
+        # install pytorch
+        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
+          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        else
+          pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
+        fi
+        TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
+          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+        else
+          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+        fi
+        git clone ${PYTORCH_REPO} pytorch
+        cd pytorch
+        git checkout ${TORCH_COMMIT_ID}
+        # apply extra PRs for stock pytorch
+        pip install requests
+        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+        git status && git diff && git show -s
+        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
+    - name: Prepare Torch-xpu-ops
+      shell: bash -xe {0}
+      run: |
+        cd pytorch
+        rm -rf third_party/torch-xpu-ops
+        if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
+          TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
+          TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
+        else
+          TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
+          if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
+            TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
+          else
+            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+          fi
+        fi
+        if [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
+          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
+          cd third_party/torch-xpu-ops
+        else
+          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+          cd third_party/torch-xpu-ops
+          git checkout ${TORCH_XPU_OPS_COMMIT}
+        fi
+        git status && git diff && git show -s
+    - name: Install E2E Requirements
+      shell: bash -xe {0}
+      run: |
+        # common
+        pip install pandas psutil scipy pyyaml
+        cd pytorch
+        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          # for new LLM models
+          pip install accelerate
+          pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
+          TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
+        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
+          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
+          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
+        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
+          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
+          cd ../
+          rm -rf ./benchmark
+          git clone https://github.com/pytorch/benchmark benchmark
+          cd benchmark
+          git checkout ${TORCHBENCH_COMMIT_ID}
+          sed -i 's/^ *pynvml.*//' requirements.txt
+          pip install -r requirements.txt
+          if [ "${{ github.event_name }}" == "pull_request" ];then
+            while read line; do
+              python install.py $(echo $line |awk -F, '{printf $1}')
+            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+          else
+            python install.py --continue_on_fail
+          fi
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          # for dlrm
+          pip install pyre-extensions
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          pip uninstall -y fbgemm_gpu_nightly-cpu
+          # for soft_actor_critic, temp fix
+          pip install git+https://github.com/nocoding03/gym@fix-np
+          cd ../pytorch
+        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
+          cd ../
+          rm -rf ./pt2e-performance ./pt2e-accuracy
+          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
+          cd pt2e-performance
+          TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
+          sed -i 's/^ *pynvml.*//' requirements.txt
+          pip install -r requirements.txt
+          # python install.py --continue_on_fail
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
+          pip install dominate
+          python install.py Super_SloMo
+          # for dlrm
+          pip install pyre-extensions
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          pip uninstall -y fbgemm_gpu_nightly-cpu
+          cd ../pytorch
+        else
+          pip install -r ./.ci/docker/requirements-ci.txt
+          pip install -U pytest pytest-timeout pytest-xdist
+        fi
+        # install the corresponding torchao
+        pip uninstall -y torchao
+        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/xpu
+        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu
+        else
+          pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+        fi
+        if [ "${{ inputs.suite }}" != "None" ];then
+          # To install numpy 1.x for benchmarks as CUDA
+          # yolov requires numpy>=1.23
+          pip install -U numpy==1.26.4
+        fi
+    - name: Torch Config
+      shell: bash -xe {0}
+      run: |
+        printenv
+        python -c "import torch; print(torch.__config__.show())"
+        python -c "import torch; print(torch.__config__.parallel_info())"
+        python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
+        python -c "import torchvision; print(torchvision.__version__)"
+        python -c "import torchaudio; print(torchaudio.__version__)"
+        python -c "import triton; print(triton.__version__)"
+        python pytorch/torch/utils/collect_env.py
+        pip list |grep -E 'torch|intel'
+        TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
+          echo "Torch is re-installed when installing deps, please check"
+          exit 1
+        fi

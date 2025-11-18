@@ -270,7 +270,7 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
             if torch.cuda.device_count() >= 2:
                 # === test cross-GPU transfer works
                 def _to_device1(objs):
-                    if isinstance(objs, (tuple, list)):
+                    if isinstance(objs, tuple | list):
                         return type(objs)(_to_device1(item) for item in objs)
                     elif isinstance(objs, dict):
                         return {name: _to_device1(item) for name, item in objs.items()}

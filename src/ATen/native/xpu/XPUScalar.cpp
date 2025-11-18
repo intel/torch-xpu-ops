@@ -2,8 +2,8 @@
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
 #include <ATen/core/Tensor.h>
-#include <comm/SYCLContext.h>
 #include <ATen/ops/_local_scalar_dense_native.h>
+#include <comm/SYCLContext.h>
 
 namespace at::native {
 
@@ -32,6 +32,7 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
         r = Scalar(*value.const_data_ptr<scalar_t>());
       }),
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
       kComplexHalf,
       kHalf,
       kBool,

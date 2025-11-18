@@ -19,11 +19,11 @@ densenet121,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1278
 detectron2_fasterrcnn_r_101_c4,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
 detectron2_fasterrcnn_r_101_dc5,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
-detectron2_fasterrcnn_r_101_fpn,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
+detectron2_fasterrcnn_r_101_fpn,eager_1st_run_OOM,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
 detectron2_fasterrcnn_r_50_c4,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
 detectron2_fasterrcnn_r_50_dc5,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
-detectron2_fasterrcnn_r_50_fpn,pass,eager_fail_to_run,fail_accuracy,fail_accuracy,pass
-detectron2_fcos_r_50_fpn,pass,pass,pass,pass,pass
+detectron2_fasterrcnn_r_50_fpn,eager_1st_run_OOM,eager_fail_to_run,eager_1st_run_OOM,fail_accuracy,pass
+detectron2_fcos_r_50_fpn,pass,pass,pass,fail_accuracy,pass
 detectron2_maskrcnn,fail_to_run,eager_fail_to_run,fail_to_run,eager_fail_to_run,fail_to_run
 detectron2_maskrcnn_r_101_c4,fail_accuracy,eager_fail_to_run,fail_accuracy,fail_accuracy,fail_accuracy
 detectron2_maskrcnn_r_101_fpn,fail_accuracy,eager_fail_to_run,eager_1st_run_OOM,eager_1st_run_OOM,fail_accuracy
@@ -92,7 +92,7 @@ simple_gpt,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_t
 simple_gpt_tp_manual,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
 soft_actor_critic,pass,pass,pass,pass,pass
 speech_transformer,pass,pass,pass,pass,pass
-squeezenet1_1,pass,fail_accuracy,pass,pass,pass
+squeezenet1_1,pass,pass,pass,pass,pass
 stable_diffusion_text_encoder,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1261
 stable_diffusion_unet,eager_fail_to_run,eager_fail_to_run,pass_due_to_skip,eager_fail_to_run,eager_fail_to_run

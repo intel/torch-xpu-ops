@@ -11,7 +11,9 @@
 
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
+#include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
+
 #include <comm/Runtime.h>
 #include <comm/SYCLHelpers.h>
 
@@ -151,6 +153,120 @@ struct MaxPool2dKernelFunctor {
   BatchKernelConfig cfg_;
 };
 
+template <typename scalar_t, typename vec_t, int vec_size>
+struct MaxPool2dChannelLastVec {
+  void operator()(sycl::nd_item<1> item) const {
+    for (auto outputIndex = item.get_global_linear_id();
+         outputIndex < numBatch_ * stride_ / vec_size;
+         outputIndex += item.get_local_range(0) * item.get_group_range(0)) {
+      int batch = outputIndex / (stride_ / vec_size);
+      int plane, outputH, outputW;
+      int64_t load_offset, store_offset;
+      plane = outputIndex % (numPlane_ / vec_size);
+      outputH =
+          outputIndex / (numPlane_ / vec_size) / outputSizeW_ % outputSizeH_;
+      outputW = outputIndex / (numPlane_ / vec_size) % outputSizeW_;
+      store_offset = outputIndex;
+
+      vec_t maxVal_vec;
+#pragma unroll
+      for (int i = 0; i < vec_size; i++) {
+        maxVal_vec[i] = at::numeric_limits<scalar_t>::lower_bound();
+      }
+      int64_t maxIndex[vec_size];
+      for (int i = 0; i < vec_size; i++) {
+        maxIndex[i] = int64_t(-1);
+      }
+      int StartH = outputH * dH_ - padH_;
+      int StartW = outputW * dW_ - padW_;
+      int EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
+      int EndW = std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
+      while (StartH < 0)
+        StartH += dilationH_;
+      while (StartW < 0)
+        StartW += dilationW_;
+      for (int h = StartH; h < EndH; h += dilationH_) {
+        for (int w = StartW; w < EndW; w += dilationW_) {
+          load_offset =
+              batch * inputSizeH_ * inputSizeW_ * numPlane_ / vec_size + plane +
+              h * inputSizeW_ * numPlane_ / vec_size + w * numPlane_ / vec_size;
+          vec_t val_vec = input_vec_[load_offset];
+#pragma unroll
+          for (int i = 0; i < vec_size; i++) {
+            if ((static_cast<scalar_t>(val_vec[i]) > maxVal_vec[i]) ||
+                at::_isnan(val_vec[i])) {
+              maxIndex[i] = h * inputSizeW_ + w;
+              maxVal_vec[i] = static_cast<scalar_t>(val_vec[i]);
+            }
+          }
+        }
+      }
+#pragma unroll
+      for (int i = 0; i < vec_size; i++) {
+        indices_[store_offset * vec_size + i] = maxIndex[i];
+      }
+      output_vec_[store_offset] = maxVal_vec;
+    }
+  }
+  MaxPool2dChannelLastVec(
+      vec_t* output_vec,
+      int64_t* indices,
+      const vec_t* input_vec,
+      int numBatch,
+      int numPlane,
+      int inputSizeH,
+      int inputSizeW,
+      int outputSizeH,
+      int outputSizeW,
+      int kH,
+      int kW,
+      int dH,
+      int dW,
+      int padH,
+      int padW,
+      int dilationH,
+      int dilationW,
+      int stride)
+      : output_vec_(output_vec),
+        indices_(indices),
+        input_vec_(input_vec),
+        numBatch_(numBatch),
+        numPlane_(numPlane),
+        inputSizeH_(inputSizeH),
+        inputSizeW_(inputSizeW),
+        outputSizeH_(outputSizeH),
+        outputSizeW_(outputSizeW),
+        kH_(kH),
+        kW_(kW),
+        dH_(dH),
+        dW_(dW),
+        padH_(padH),
+        padW_(padW),
+        dilationH_(dilationH),
+        dilationW_(dilationW),
+        stride_(stride) {}
+
+ private:
+  vec_t* output_vec_;
+  int64_t* indices_;
+  const vec_t* input_vec_;
+  int numBatch_;
+  int numPlane_;
+  int inputSizeH_;
+  int inputSizeW_;
+  int outputSizeH_;
+  int outputSizeW_;
+  int kH_;
+  int kW_;
+  int dH_;
+  int dW_;
+  int padH_;
+  int padW_;
+  int dilationH_;
+  int dilationW_;
+  int stride_;
+};
+
 template <typename scalar_t, bool is_channels_last>
 struct MaxPool2dBackwardKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
@@ -251,13 +367,14 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
         int pwstart =
             p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
         int pwend = p_end(inputW, pad_w_, gradOutputSizeW_, stride_w_);
+        scalar_t grad = 0;
         if constexpr (is_channels_last) {
           int offset = batch * out_n_stride_ + plane;
           for (int ph = phstart; ph < phend; ++ph) {
             for (int pw = pwstart; pw < pwend; ++pw) {
               if (indices_[offset + (ph * gradOutputSizeW_ + pw) * numPlane_] ==
                   input_hw_index) {
-                gradInput_[inputIndex] += static_cast<scalar_t>(
+                grad += static_cast<scalar_t>(
                     gradOutput_
                         [offset + (ph * gradOutputSizeW_ + pw) * numPlane_]);
               }
@@ -269,12 +386,13 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
             for (int pw = pwstart; pw < pwend; ++pw) {
               if (indices_[offset + ph * gradOutputSizeW_ + pw] ==
                   input_hw_index) {
-                gradInput_[inputIndex] += static_cast<scalar_t>(
+                grad += static_cast<scalar_t>(
                     gradOutput_[offset + ph * gradOutputSizeW_ + pw]);
               }
             }
           }
         }
+        gradInput_[inputIndex] = grad;
       }
     } while (cfg_.next(item, desc));
   }
@@ -349,6 +467,168 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
   BatchKernelConfig cfg_;
 };
 
+
+template <typename scalar_t, typename vec_t, int vec_size>
+struct MaxPool2dBackwardChannelLastVec {
+  void operator()(sycl::nd_item<1> item) const {
+    for (auto inputIndex = item.get_global_linear_id();
+         inputIndex < gradInputSize_ / vec_size;
+         inputIndex += item.get_local_range(0) * item.get_group_range(0)) {
+      int batch = inputIndex / (in_n_stride_ / vec_size);
+      int plane;
+      int64_t input_hw_index;
+
+      plane = inputIndex % (numPlane_ / vec_size);
+
+      input_hw_index = ((inputIndex % (in_n_stride_ / vec_size)) - plane) /
+          (numPlane_ / vec_size);
+
+      int inputW = input_hw_index % gradInputSizeW_;
+      int inputH = input_hw_index / gradInputSizeW_;
+      int phstart = p_start(inputH, pad_h_, kernel_h_, dilation_h_, stride_h_);
+      int phend = p_end(inputH, pad_h_, gradOutputSizeH_, stride_h_);
+      int pwstart = p_start(inputW, pad_w_, kernel_w_, dilation_w_, stride_w_);
+      int pwend = p_end(inputW, pad_w_, gradOutputSizeW_, stride_w_);
+      vec_t grad_vec;
+#pragma unroll
+      for (int i = 0; i < vec_size; i++) {
+        grad_vec[i] = 0;
+      }
+
+      int offset = batch * out_n_stride_ / vec_size + plane;
+      for (int ph = phstart; ph < phend; ++ph) {
+        for (int pw = pwstart; pw < pwend; ++pw) {
+          int load_offset = offset +
+              ph * gradOutputSizeW_ * numPlane_ / vec_size +
+              pw * numPlane_ / vec_size;
+          vec_t gout_val_vec = gradOutput_[load_offset];
+#pragma unroll
+          for (int i = 0; i < vec_size; i++) {
+            if (indices_[load_offset * vec_size + i] == input_hw_index) {
+              grad_vec[i] = static_cast<scalar_t>(grad_vec[i]) +
+                  static_cast<scalar_t>(gout_val_vec[i]);
+            }
+          }
+        }
+      }
+
+      gradInput_[inputIndex] = grad_vec;
+    }
+  }
+  MaxPool2dBackwardChannelLastVec(
+      vec_t* gradInput,
+      const vec_t* gradOutput,
+      const int64_t* indices,
+      int numPlane,
+      int gradInputSizeH,
+      int gradInputSizeW,
+      int gradOutputSizeH,
+      int gradOutputSizeW,
+      int64_t gradInputSize,
+      int out_n_stride,
+      int in_n_stride,
+      int kernel_h,
+      int kernel_w,
+      int stride_h,
+      int stride_w,
+      int pad_h,
+      int pad_w,
+      int dilation_h,
+      int dilation_w)
+      : gradInput_(gradInput),
+        gradOutput_(gradOutput),
+        indices_(indices),
+        numPlane_(numPlane),
+        gradInputSizeH_(gradInputSizeH),
+        gradInputSizeW_(gradInputSizeW),
+        gradOutputSizeH_(gradOutputSizeH),
+        gradOutputSizeW_(gradOutputSizeW),
+        gradInputSize_(gradInputSize),
+        out_n_stride_(out_n_stride),
+        in_n_stride_(in_n_stride),
+        kernel_h_(kernel_h),
+        kernel_w_(kernel_w),
+        stride_h_(stride_h),
+        stride_w_(stride_w),
+        pad_h_(pad_h),
+        pad_w_(pad_w),
+        dilation_h_(dilation_h),
+        dilation_w_(dilation_w) {}
+
+ private:
+  vec_t* gradInput_;
+  const vec_t* gradOutput_;
+  const int64_t* indices_;
+  int numPlane_;
+  int gradInputSizeH_;
+  int gradInputSizeW_;
+  int gradOutputSizeH_;
+  int gradOutputSizeW_;
+  int64_t gradInputSize_;
+  int out_n_stride_;
+  int in_n_stride_;
+  int kernel_h_;
+  int kernel_w_;
+  int stride_h_;
+  int stride_w_;
+  int pad_h_;
+  int pad_w_;
+  int dilation_h_;
+  int dilation_w_;
+};
+
+
+#define LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(                            \
+    scalar_t,                                                       \
+    vec_size,                                                       \
+    num_wg,                                                         \
+    wg_size,                                                        \
+    queue,                                                          \
+    output,                                                         \
+    indices,                                                        \
+    input,                                                          \
+    numBatch,                                                       \
+    numPlane,                                                       \
+    inputSizeH,                                                     \
+    inputSizeW,                                                     \
+    outputSizeH,                                                    \
+    outputSizeW,                                                    \
+    kH,                                                             \
+    kW,                                                             \
+    dH,                                                             \
+    dW,                                                             \
+    padH,                                                           \
+    padW,                                                           \
+    dilationH,                                                      \
+    dilationW,                                                      \
+    stride)                                                         \
+  {                                                                 \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;       \
+    vec_t* output_vec = reinterpret_cast<vec_t*>(output);           \
+    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input); \
+    auto kfn = MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size>(  \
+        output_vec,                                                 \
+        indices,                                                    \
+        input_vec,                                                  \
+        numBatch,                                                   \
+        numPlane,                                                   \
+        inputSizeH,                                                 \
+        inputSizeW,                                                 \
+        outputSizeH,                                                \
+        outputSizeW,                                                \
+        kH,                                                         \
+        kW,                                                         \
+        dH,                                                         \
+        dW,                                                         \
+        padH,                                                       \
+        padW,                                                       \
+        dilationH,                                                  \
+        dilationW,                                                  \
+        stride);                                                    \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);       \
+  }
+
+
 template <typename scalar_t, bool is_channels_last>
 void launch_max_pool2d_kernel(
     scalar_t* output,
@@ -368,11 +648,114 @@ void launch_max_pool2d_kernel(
     int padW,
     int dilationH,
     int dilationW) {
-  using KernelClass = MaxPool2dKernelFunctor<scalar_t, is_channels_last>;
-
   auto& queue = at::xpu::getCurrentSYCLQueue();
   int outputSize = numBatch * numPlane * outputSizeH * outputSizeW;
   int stride = numPlane * outputSizeH * outputSizeW;
+  int vec_size = 1;
+  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int num_sub_wg;
+  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t num_wg;
+  if constexpr (is_channels_last) {
+    for (vec_size =
+             std::min(8, memory::can_vectorize_up_to<scalar_t>((char*)input));
+         vec_size > 1;
+         vec_size /= 2) {
+      if (numPlane % vec_size != 0) {
+        continue;
+      }
+      num_sub_wg = outputSize / vec_size / syclMaxSubGroupSize();
+      if (2 * num_sub_wg > thread_slots) {
+        int total_thread = outputSize / vec_size;
+        num_wg = (total_thread + wg_size - 1) / wg_size;
+        break;
+      }
+    }
+    switch (vec_size) {
+      case 8:
+        LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(
+            scalar_t,
+            8,
+            num_wg,
+            wg_size,
+            queue,
+            output,
+            indices,
+            input,
+            numBatch,
+            numPlane,
+            inputSizeH,
+            inputSizeW,
+            outputSizeH,
+            outputSizeW,
+            kH,
+            kW,
+            dH,
+            dW,
+            padH,
+            padW,
+            dilationH,
+            dilationW,
+            stride);
+        return;
+      case 4:
+        LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(
+            scalar_t,
+            4,
+            num_wg,
+            wg_size,
+            queue,
+            output,
+            indices,
+            input,
+            numBatch,
+            numPlane,
+            inputSizeH,
+            inputSizeW,
+            outputSizeH,
+            outputSizeW,
+            kH,
+            kW,
+            dH,
+            dW,
+            padH,
+            padW,
+            dilationH,
+            dilationW,
+            stride);
+        return;
+      case 2:
+        LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(
+            scalar_t,
+            2,
+            num_wg,
+            wg_size,
+            queue,
+            output,
+            indices,
+            input,
+            numBatch,
+            numPlane,
+            inputSizeH,
+            inputSizeW,
+            outputSizeH,
+            outputSizeW,
+            kH,
+            kW,
+            dH,
+            dW,
+            padH,
+            padW,
+            dilationH,
+            dilationW,
+            stride);
+        return;
+      default:
+        break;
+    };
+  }
+  using KernelClass = MaxPool2dKernelFunctor<scalar_t, is_channels_last>;
+
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
   auto kfn = KernelClass(
@@ -396,6 +779,58 @@ void launch_max_pool2d_kernel(
       cfg);
   sycl_kernel_submit(cfg.global_size(), cfg.group_size(), queue, kfn);
 }
+
+#define LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(                              \
+    scalar_t,                                                                  \
+    vec_size,                                                                  \
+    num_wg,                                                                    \
+    wg_size,                                                                   \
+    queue,                                                                     \
+    gradInput,                                                                 \
+    gradOutput,                                                                \
+    indices,                                                                   \
+    numPlane,                                                                  \
+    gradInputSizeH,                                                            \
+    gradInputSizeW,                                                            \
+    gradOutputSizeH,                                                           \
+    gradOutputSizeW,                                                           \
+    gradInputSize,                                                             \
+    out_n_stride,                                                              \
+    in_n_stride,                                                               \
+    kernel_h,                                                                  \
+    kernel_w,                                                                  \
+    stride_h,                                                                  \
+    stride_w,                                                                  \
+    pad_h,                                                                     \
+    pad_w,                                                                     \
+    dilation_h,                                                                \
+    dilation_w)                                                                \
+  {                                                                            \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;                  \
+    const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput); \
+    vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);               \
+    auto kfn = MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size>(     \
+        grad_input_vec,                                                        \
+        grad_output_vec,                                                       \
+        indices,                                                               \
+        numPlane,                                                              \
+        gradInputSizeH,                                                        \
+        gradInputSizeW,                                                        \
+        gradOutputSizeH,                                                       \
+        gradOutputSizeW,                                                       \
+        gradInputSize,                                                         \
+        out_n_stride,                                                          \
+        in_n_stride,                                                           \
+        kernel_h,                                                              \
+        kernel_w,                                                              \
+        stride_h,                                                              \
+        stride_w,                                                              \
+        pad_h,                                                                 \
+        pad_w,                                                                 \
+        dilation_h,                                                            \
+        dilation_w);                                                           \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);                  \
+  }
 
 template <typename scalar_t, bool is_channels_last>
 void launch_max_pool2d_backward_kernel(
@@ -435,6 +870,112 @@ void launch_max_pool2d_backward_kernel(
   // with CUDA in alexnet To avoid future problem, we decided to always use
   // deterministic path.
 
+  int vec_size = 1;
+  int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int num_sub_wg;
+  auto wg_size = syclDeviceMaxWorkGroupSize();
+  int64_t num_wg;
+  if constexpr (is_channels_last) {
+    for (vec_size = std::min(
+             8, memory::can_vectorize_up_to<scalar_t>((char*)gradOutput));
+         vec_size >= 1;
+         vec_size /= 2) {
+      if (numPlane % vec_size != 0) {
+        continue;
+      }
+      num_sub_wg = gradInputSize / vec_size / syclMaxSubGroupSize();
+      if (2 * num_sub_wg > thread_slots) {
+        int total_thread = gradInputSize / vec_size;
+        num_wg = (total_thread + wg_size - 1) / wg_size;
+        break;
+      }
+    }
+    switch (vec_size) {
+      case 8:
+        LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
+            scalar_t,
+            8,
+            num_wg,
+            wg_size,
+            queue,
+            gradInput,
+            gradOutput,
+            indices,
+            numPlane,
+            gradInputSizeH,
+            gradInputSizeW,
+            gradOutputSizeH,
+            gradOutputSizeW,
+            gradInputSize,
+            out_n_stride,
+            in_n_stride,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w,
+            dilation_h,
+            dilation_w);
+        return;
+      case 4:
+        LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
+            scalar_t,
+            4,
+            num_wg,
+            wg_size,
+            queue,
+            gradInput,
+            gradOutput,
+            indices,
+            numPlane,
+            gradInputSizeH,
+            gradInputSizeW,
+            gradOutputSizeH,
+            gradOutputSizeW,
+            gradInputSize,
+            out_n_stride,
+            in_n_stride,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w,
+            dilation_h,
+            dilation_w);
+        return;
+      case 2:
+        LAUNCH_MAXPOOL_BACKWARD_CHANNEL_LAST_VEC(
+            scalar_t,
+            2,
+            num_wg,
+            wg_size,
+            queue,
+            gradInput,
+            gradOutput,
+            indices,
+            numPlane,
+            gradInputSizeH,
+            gradInputSizeW,
+            gradOutputSizeH,
+            gradOutputSizeW,
+            gradInputSize,
+            out_n_stride,
+            in_n_stride,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            pad_h,
+            pad_w,
+            dilation_h,
+            dilation_w);
+        return;
+      default:
+        break;
+    };
+  }
   using KernelClass =
       MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last>;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
@@ -647,7 +1188,6 @@ void max_pool2d_with_indices_backward_kernel(
       inputHeight, kH, padH, dH, dilationH, ceil_mode);
   int64_t outputWidth = pooling_output_shape<int64_t>(
       inputWidth, kW, padW, dW, dilationW, ceil_mode);
-
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -704,6 +1244,6 @@ void max_pool2d_with_indices_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
+#undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop

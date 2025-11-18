@@ -2071,6 +2071,15 @@
     XPU: nonzero_xpu
   tags: [dynamic_output_shape, core]
 
+- func: nonzero_static.out(Tensor self, *, SymInt size, int fill_value=-1, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    XPU: nonzero_static_out_xpu
+
+- func: nonzero_static(Tensor self, *, SymInt size, int fill_value=-1) -> Tensor
+  variants: method, function
+  dispatch:
+    XPU: nonzero_static_xpu
+
 - func: maximum(Tensor self, Tensor other) -> Tensor
   structured_delegate: maximum.out
   device_check: NoCheck   # TensorIterator
@@ -9433,3 +9442,24 @@
 
 - func: linalg_solve(Tensor A, Tensor B, *, bool left=True) -> Tensor
   python_module: linalg
+
+- func: linalg_inv_ex(Tensor A, *, bool check_errors=False) -> (Tensor inverse, Tensor info)
+  python_module: linalg
+  structured_delegate: linalg_inv_ex.inverse
+
+- func: linalg_inv_ex.inverse(Tensor A, *, bool check_errors=False, Tensor(a!) inverse, Tensor(b!) info) -> (Tensor(a!) inverse, Tensor(b!) info)
+  python_module: linalg
+  structured: True
+  dispatch:
+    XPU: linalg_inv_ex_out
+
+- func: linalg_inv(Tensor A) -> Tensor
+  python_module: linalg
+
+- func: linalg_inv.out(Tensor A, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+
+- func: inverse(Tensor self) -> Tensor
+  variants: function, method
+
+- func: inverse.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)

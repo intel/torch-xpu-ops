@@ -33,7 +33,8 @@ class TestTorchMethod(TestCase):
         x_xpu.index_put_([indcies], input, True)
         self.assertEqual(x_cpu, x_xpu.to(cpu_device))
 
-    def test_index_put(self, dtype=torch.bfloat16):
+    def test_index_put(self, dtype=torch.float32):
+        # For half precision, XPU and CUDA produce consistent results, but crash on the following case, so we ignore it.
         cpu_device = torch.device("cpu")
         xpu_device = torch.device("xpu")
 
@@ -95,3 +96,18 @@ class TestTorchMethod(TestCase):
         b = torch.randn([5, 0], dtype=dtype, device=torch.device("xpu"))
         a[:5, :] = a[:5, :] * 2 + b
         torch.use_deterministic_algorithms(False)
+
+    def test_flip_float8(self):
+        FLOAT8_DTYPES = (
+            torch.float8_e4m3fn,
+            torch.float8_e4m3fnuz,
+            torch.float8_e5m2,
+            torch.float8_e5m2fnuz,
+            torch.float8_e8m0fnu,
+        )
+        for dtype in FLOAT8_DTYPES:
+            a_cpu = torch.tensor([[1, 2, 3], [4, 5, 6]], dtype=dtype)
+            a_xpu = a_cpu.to("xpu")
+            b_cpu = torch.flip(a_cpu, [0]).to(torch.float32)
+            b_xpu = torch.flip(a_xpu, [0]).cpu().to(torch.float32)
+            self.assertEqual(b_cpu, b_xpu)

@@ -231,7 +231,7 @@ inline T reduceGroupWithNThreadLocalReductions(
 
 template <typename T, unsigned int Power2Size>
 struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(32)]] void operator()(
+  [[sycl::reqd_sub_group_size(32)]] void operator()(
       sycl::nd_item<3> item) const {
     int tidx = item.get_local_id(2);
     int stidx = item.get_local_range(2) +
@@ -428,7 +428,7 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // thread to place this in the appropriate output position
     if (tidx == 0) {
       unsigned int outputOffset =
-          at::xpu::detail::IndexToOffset<T, unsigned int>::get(
+          at::xpu::detail::IndexToOffset<T, unsigned int, -1>::get(
               groupId, values_);
       values_.data[outputOffset] = mode_[0];
       indices_.data[outputOffset] = index;

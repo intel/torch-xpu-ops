@@ -1382,7 +1382,6 @@ void launch_upsample_gen2d_aa_kernel(
   const int interp_width = (int)ceilf(support_w) * 2 + 1;
 
   auto sharedMemPerBlock = syclLocalMemSize();
-  auto total_threads = syclMaxWorkItemsPerTile();
   int maxThreadsPerBlock = std::min<int>(
       syclMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
@@ -1395,13 +1394,9 @@ void launch_upsample_gen2d_aa_kernel(
   int block_y = lastPow2((unsigned int)(numer / denom));
   block_y = std::min<int>(maxThreadsPerBlock / block_x, block_y);
 
-  int grid_x = std::min<int>(
-      total_threads, (output_width + block_x - 1) / block_x * block_x);
-  int grid_y = std::min<int>(
-      total_threads / grid_x,
-      (output_height + block_y - 1) / block_y * block_y);
-  int grid_z =
-      std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
+  int grid_x = (output_width + block_x - 1) / block_x * block_x;
+  int grid_y = (output_height + block_y - 1) / block_y * block_y;
+  int grid_z = nbatch * channels;
 
   int64_t weights_per_block = interp_width * block_x + interp_height * block_y;
   weights_per_block += interp_height * block_y * block_x;
@@ -1455,7 +1450,6 @@ void launch_upsample_gen2d_aa_backward_kernel(
   auto queue = getCurrentSYCLQueue();
 
   auto sharedMemPerBlock = syclLocalMemSize();
-  auto total_threads = syclMaxWorkItemsPerTile();
   int maxThreadsPerBlock = std::min<int>(
       syclMaxWorkGroupSize<
           UpsampleGen2dAaKernelFunctor<scalar_t, accscalar_t, InterpFilter>>(),
@@ -1463,13 +1457,9 @@ void launch_upsample_gen2d_aa_backward_kernel(
   int block_x = syclMaxSubGroupSize();
   int block_y = maxThreadsPerBlock / block_x;
 
-  int grid_x = std::min<int>(
-      total_threads, (output_width + block_x - 1) / block_x * block_x);
-  int grid_y = std::min<int>(
-      total_threads / grid_x,
-      (output_height + block_y - 1) / block_y * block_y);
-  int grid_z =
-      std::min<int>(total_threads / grid_x / grid_y, nbatch * channels);
+  int grid_x = (output_width + block_x - 1) / block_x * block_x;
+  int grid_y = (output_height + block_y - 1) / block_y * block_y;
+  int grid_z = nbatch * channels;
 
   const int interp_height = (int)ceilf(support_h) * 2 + 1;
   const int interp_width = (int)ceilf(support_w) * 2 + 1;
