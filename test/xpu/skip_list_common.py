@@ -96,7 +96,6 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
     ),
-    "test_utils.py": None,
     "test_schema_check.py": None,
     "test_complex_xpu.py": None,
     "test_modules_xpu.py": (
