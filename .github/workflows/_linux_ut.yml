@@ -153,7 +153,7 @@ jobs:
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
-          cd "${latest_dir}/${{ inputs.ut }}"
+          cd "${latest_dir}"
 
           for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
             [[ -f "$log_file" ]] && cp "$log_file" ./
