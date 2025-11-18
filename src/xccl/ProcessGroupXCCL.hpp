@@ -160,6 +160,10 @@ class TORCH_API ProcessGroupXCCL : public ProcessGroupInterface {
 
   ~ProcessGroupXCCL() override;
   bool abortComms(const std::optional<std::string>& abortReason = std::nullopt) override;
+  std::string dump_backend_trace(
+      bool includeCollectives,
+      bool includeStackTraces,
+      bool onlyActive) override;
 
   const std::string getBackendName() const override {
     return std::string(XCCL_BACKEND_NAME);

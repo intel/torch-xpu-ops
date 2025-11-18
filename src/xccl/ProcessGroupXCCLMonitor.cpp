@@ -87,6 +87,10 @@ const int& ProcessGroupInterface::globalRank() const {
   return globalRank;
 }
 
+const c10::intrusive_ptr<Store>& ProcessGroupInterface::globalStore() const {
+  return globalStore_;
+}
+
 uint64_t ProcessGroupInterface::getUid() {
   return static_cast<uint64_t>(local_id_);
 }

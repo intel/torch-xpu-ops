@@ -451,6 +451,13 @@ bool ProcessGroupXCCL::abortComms(const std::optional<std::string>& abortReason)
   return true;
 }
 
+std::string ProcessGroupXCCL::dump_backend_trace(
+    bool includeCollectives,
+    bool includeStackTraces,
+    bool onlyActive) {
+  return dump_xccl_trace(
+      includeCollectives, includeStackTraces, onlyActive);
+}
 
 const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
   if (options_->global_ranks_in_group.empty() && local_id_ == 0) {

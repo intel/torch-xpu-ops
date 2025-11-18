@@ -150,13 +150,13 @@ class ProcessGroupInterface : public Backend {
 
    protected:
     ProcessGroupInterface* pg_;
+
+   private:
     bool logCppStackOnUncleanShutdown_;
     int heartbeatTimeoutInSec_;
     int waitTimeoutDumpInMilSec_;
     int coordCheckIntervalMilSec_;
     bool watchdogHeartbeatMonitorEnabled_;
-
-   private:
     std::thread heartbeatMonitorThread_;
     std::atomic<bool> terminateHeartbeatMonitorThread_{false};
     std::condition_variable monitorWakeUpCV_;
@@ -254,10 +254,10 @@ class ProcessGroupInterface : public Backend {
   void abort() override;
 
   ErrorType getError() override;
-  TORCH_API static std::string dump_backend_trace(
+  virtual std::string dump_backend_trace(
       bool includeCollectives,
       bool includeStackTraces,
-      bool onlyActive);
+      bool onlyActive) = 0;
 
 
  protected:
