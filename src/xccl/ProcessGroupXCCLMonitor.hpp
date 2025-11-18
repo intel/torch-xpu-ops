@@ -114,7 +114,7 @@ class ProcessGroupInterface : public Backend {
     friend std::ostream& operator<<(
         std::ostream& output,
         const WorkInterface& work);
-    
+
     std::chrono::time_point<std::chrono::steady_clock> workStartTime_;
     c10::intrusive_ptr<at::ivalue::Future> futureWorkResult_;
     uint64_t seq_;
@@ -224,7 +224,7 @@ class ProcessGroupInterface : public Backend {
  public:
   ProcessGroupInterface(int rank, int size, c10::intrusive_ptr<Store> store);
   virtual ~ProcessGroupInterface() = default;
-  
+
   // Basic process group information
   const std::string& logPrefix() const;
   const int& globalRank() const;
@@ -232,28 +232,28 @@ class ProcessGroupInterface : public Backend {
   const c10::intrusive_ptr<Store> globalStore() const;
   virtual std::string getBackendCclVersion();
   virtual std::chrono::milliseconds getOptionsTimeout() const;
-  
+
   // Watchdog interface
   uint64_t getWatchdogHeartbeat() const;
-  
+
   // Error handling
   void terminateProcess(const std::string& errMsg);
   bool dumpDebuggingInfo(bool includeStackTrace = true, bool onlyActive = false);
   void dumpExtraDebuggingInfo();
   void broadcastDumpSignal();
   void broadcastSignal(c10::intrusive_ptr<Store>& store, const std::string& key, int rank);
-  
+
   bool waitForFutureOrTimeout(
       std::future<bool>& fut,
       const std::chrono::milliseconds& timeOutMilSec,
       const std::string& futDescription,
       ::c10d::C10dLoggingData& debugLog,
       bool throwException = false);
-      
+
   // Backend-specific abort method
   virtual bool abortComms(const std::optional<std::string>& abortReason = std::nullopt) = 0;
   void abort() override;
-  
+
   ErrorType getError() override;
   TORCH_API static std::string dump_backend_trace(
       bool includeCollectives,
@@ -280,14 +280,14 @@ class ProcessGroupInterface : public Backend {
   std::string logPrefix_;
   int traceBufferSize_;
   std::shared_ptr<ProcessGroupStatus> pgStatus_ = std::make_shared<ProcessGroupStatus>();
-  
+
   std::mutex workListMutex_;
 
   std::unique_ptr<HeartbeatMonitor> heartbeatMonitor_;
   std::unique_ptr<Watchdog> watchdog_;
 };
 
-template <typename EventType> 
+template <typename EventType>
 std::string ProcessGroupInterface::WorkInterface::getTraceback() const {
   // First step we get the corresponding record entry from FR, based on work's
   // trace_id_

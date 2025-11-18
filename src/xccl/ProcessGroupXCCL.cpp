@@ -448,7 +448,7 @@ ProcessGroupXCCL::~ProcessGroupXCCL() {
 }
 
 bool ProcessGroupXCCL::abortComms(const std::optional<std::string>& abortReason) {
-  LOG(WARNING) << logPrefix() 
+  LOG(WARNING) << logPrefix()
                << "ProcessGroupXCCL does not support aborting comms";
   return true;
 }
@@ -533,7 +533,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     r->trace_reset_epoch_ = traceId.reset_epoch;
   }
   r->opTimeout_ = options_->timeout;
-  
+
   // Add work to tracking list for monitoring
   if (!terminateProcessGroup_.load()) {
     std::lock_guard<std::mutex> lock(workListMutex_);
@@ -544,7 +544,7 @@ c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
       heartbeatMonitor_->setLastWorkListUpdateTime();
     }
   }
-  
+
   return r;
 }
 

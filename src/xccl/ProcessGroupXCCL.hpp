@@ -113,9 +113,9 @@ class TORCH_API ProcessGroupXCCL : public ProcessGroupInterface {
     std::vector<at::Tensor> result() override {
       return *outputs_;
     }
-    
-    void printTraceback() const override { 
-      ProcessGroupInterface::WorkInterface::printTraceback<at::xpu::XPUEvent>(); 
+
+    void printTraceback() const override {
+      ProcessGroupInterface::WorkInterface::printTraceback<at::xpu::XPUEvent>();
     }
     bool isStarted() const override;
 

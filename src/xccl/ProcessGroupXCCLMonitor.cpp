@@ -118,7 +118,7 @@ bool ProcessGroupInterface::dumpDebuggingInfo(
   static std::mutex writeDebugInfoMutex;
   LOG(ERROR)
       << logPrefix()
-      << "ProcessGroup" << getBackendName() 
+      << "ProcessGroup" << getBackendName()
       << " preparing to dump debug info. Include stack trace: "
       << includeStackTrace << ", only active collectives: " << onlyActive;
   if (traceBufferSize_ > 0) {
@@ -130,7 +130,7 @@ bool ProcessGroupInterface::dumpDebuggingInfo(
     // the trace.
     std::lock_guard<std::mutex> lock(writeDebugInfoMutex);
     DebugInfoWriter& writer = DebugInfoWriter::getWriter(globalRank());
-    LOG(INFO) << logPrefix() << "ProcessGroup" << getBackendName() 
+    LOG(INFO) << logPrefix() << "ProcessGroup" << getBackendName()
               << " dumping backend trace to "
               << writer.getWriterTarget();
     writer.write(backendTrace);
@@ -264,7 +264,7 @@ void ProcessGroupInterface::abort() {
   watchdog_->notify();
   // launch abort asynchronously and wait for it to complete or timeout
   LOG(INFO) << logPrefix()
-            << "Launching ProcessGroup" << getBackendName() 
+            << "Launching ProcessGroup" << getBackendName()
             << " abort asynchronously.";
   std::future<bool> fut =
       std::async(std::launch::async, [this]() { return this->abortComms(); });
@@ -449,7 +449,7 @@ void ProcessGroupInterface::HeartbeatMonitor::runLoop() {
     // the global PG and has globally unique rank ids across trainers.
     dumpPipe.emplace(pg_->globalRank());
   }
-  
+
   while (true) {
     // This won't have any lock since this lock is only used here.
     // Please be aware that mutex `monitorMutex_` should not be used
@@ -489,7 +489,7 @@ void ProcessGroupInterface::HeartbeatMonitor::runLoop() {
       // any work added or removed for `watchdog_timeout` seconds.
       if (computeDeltaMS(lastWorkListUpdateTime_, currentTime) >=
               ProcessGroupInterface::kWatchdogThreadSleepMillis &&
-          computeDeltaMS(lastTimePollStore, currentTime) >= 
+          computeDeltaMS(lastTimePollStore, currentTime) >=
               coordCheckIntervalMilSec_) {
         lastTimePollStore = currentTime;
         auto handleError = [&](const std::string& errorMessage) {
@@ -719,7 +719,7 @@ ProcessGroupInterface::Watchdog::Watchdog(ProcessGroupInterface* pg) : pg_(pg) {
   propagatePgError_ = getCvarBool(PROPAGATE_ERROR, false);
   desyncDebug_ = getCvarBool(DESYNC_DEBUG, false) ||
       (pg_->dist_debug_level_ >= DebugLevel::Detail);
-  
+
   // print out ENV settings for the watchdog thread.
   LOG(INFO) << pg_->logPrefix() << "ProcessGroup Watchdog environments: "
             << "TORCH_PG_RETHROW_BACKEND_ERRORS: " << rethrowBackendErrors_
@@ -744,7 +744,7 @@ void ProcessGroupInterface::Watchdog::start() {
 void ProcessGroupInterface::Watchdog::join() {
   if (watchdogThread_.joinable()) {
     watchdogThread_.join();
-    LOG(INFO) << pg_->logPrefix() << "ProcessGroup" 
+    LOG(INFO) << pg_->logPrefix() << "ProcessGroup"
               << pg_->getBackendName() << " watchdog thread joined.";
   }
 }
@@ -762,7 +762,7 @@ void ProcessGroupInterface::Watchdog::run() {
   } catch (std::exception& e) {
     // This condition is triggered when any routine in watchdog gets an exception
     pg_->dumpExtraDebuggingInfo();
-    
+
     if (std::string(e.what()).find("driver shutting down") != std::string::npos) {
       VLOG(2)
           << pg_->logPrefix()
@@ -776,7 +776,7 @@ void ProcessGroupInterface::Watchdog::run() {
           e.what());
       LOG(ERROR) << exitMsg;
 
-      if (C10_LIKELY(rethrowBackendErrors_) || 
+      if (C10_LIKELY(rethrowBackendErrors_) ||
           !(std::string(e.what()).find(backendErrorString_))) {
         // TODO(whc) clean up the rethrow - why is it stored in a class var and
         // rethrown?
@@ -837,7 +837,7 @@ void ProcessGroupInterface::Watchdog::checkAndSetRemoteError() {
   // key/signal to read from the store is a string and pg specific:
   // format is: remote_error:pg_uid
   int remoteErrorRank = getSignalSrcRank(
-      pg_->store_, 
+      pg_->store_,
       std::string(kStoreErrorSignalKey) + ':' + pg_->getGroupUid());
   if (remoteErrorRank != -1) {
     std::lock_guard<std::mutex> lock(pg_->errorMutex_);
@@ -918,7 +918,7 @@ void ProcessGroupXCCL::WatchdogXCCL::processWorkList() {
   for (auto it = pg_->workMetaList_.begin(); it != pg_->workMetaList_.end(); /* no increment */) {
     // Access work by reference like ProcessGroupNCCL to avoid access issues
     auto& work = *it;
-    
+
     // Skip error checking if process group is terminating
     if (!pg_->terminateProcessGroup_.load()) {
       // Check for exceptions in the work item
@@ -930,7 +930,7 @@ void ProcessGroupXCCL::WatchdogXCCL::processWorkList() {
           pg_->error_ = ErrorType::COMM_ERROR;
         }
       }
-      
+
       // Check for timeout (will set exception in work if timed out)
       bool timedout = !work.exception() && work.checkTimeout();
       if (timedout) {
@@ -995,7 +995,7 @@ void ProcessGroupXCCL::WatchdogXCCL::processWorkList() {
         pg_->pgStatus_->lastStartedNumelOut = work.numelOut_;
       }
     }
-    
+
     // Check if work is completed and clean up
     if (work.isCompleted()) {
       // Update completion statistics (similar to NCCL)
@@ -1018,10 +1018,10 @@ void ProcessGroupXCCL::WatchdogXCCL::processWorkList() {
         data.strings["collective_name"] = opTypeToString(work.opType_);
         logger->log(data);
       }
-      
+
       // Work status logging for desync debug
       desyncDebugger_.logWorkEnd(work);
-      
+
       if (work.futureWorkResult_ && !work.futureWorkResult_->completed()) {
         work.futureWorkResult_->markCompleted(
             at::IValue(static_cast<uint8_t>(WorkResult::SUCCESS)));
@@ -1042,7 +1042,7 @@ void ProcessGroupXCCL::WatchdogXCCL::processWorkList() {
       // Move to next work item if not completed
       ++it;
     }
-    
+
     // Increment heartbeat after processing each work item
     heartbeat_++;
   }
