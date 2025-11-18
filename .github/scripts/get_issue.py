@@ -99,7 +99,7 @@ def main():
     # Time the operation
     issues_data = get_github_issues(
         repo_owner=args.repo_owner,
-        repo_name=args.repo_name, 
+        repo_name=args.repo_name,
         labels=args.labels,
         state=args.state
     )

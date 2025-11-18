@@ -118,7 +118,7 @@ def create_new_row(category, model, value_type, value, args_dict):
     }
 
 
-def update_best_performance(best_data, category, model, value_type, 
+def update_best_performance(best_data, category, model, value_type,
                           new_value, args_dict):
     """
     Update best performance data with new value if better.
@@ -149,7 +149,7 @@ def update_best_performance(best_data, category, model, value_type,
         # Add new row
         new_row = create_new_row(category, model, value_type, new_value, args_dict)
         best_data = pd.concat([
-            best_data, 
+            best_data,
             pd.DataFrame([new_row])
         ], ignore_index=True)
 
@@ -162,25 +162,25 @@ def main():
         description="Get Best Performance",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--best", required=True, 
+    parser.add_argument("--best", required=True,
                        help="Saved best performance file")
-    parser.add_argument("--new", required=True, 
+    parser.add_argument("--new", required=True,
                        help="New performance results directory")
-    parser.add_argument("--device", type=str, 
+    parser.add_argument("--device", type=str,
                        help="Device name, such as PVC1100")
-    parser.add_argument("--os", type=str, 
+    parser.add_argument("--os", type=str,
                        help="OS version, such as Ubuntu 22.04")
-    parser.add_argument("--driver", type=str, 
+    parser.add_argument("--driver", type=str,
                        help="Driver version, such as 25.05.32567")
-    parser.add_argument("--oneapi", type=str, 
+    parser.add_argument("--oneapi", type=str,
                        help="OneAPI version, such as 2025.1")
-    parser.add_argument("--gcc", type=str, 
+    parser.add_argument("--gcc", type=str,
                        help="GCC version, such as 11")
-    parser.add_argument("--python", type=str, 
+    parser.add_argument("--python", type=str,
                        help="Python version, such as 3.10")
-    parser.add_argument("--pytorch", type=str, 
+    parser.add_argument("--pytorch", type=str,
                        help="PyTorch version")
-    parser.add_argument("--torch-xpu-ops", type=str, 
+    parser.add_argument("--torch-xpu-ops", type=str,
                        help="Torch XPU Ops version")
 
     args = parser.parse_args()
@@ -223,7 +223,7 @@ def main():
 
     for new_file in new_files:
         category = multiple_replace(new_file)
-        print(f"Processing category: {category}")
+        # print(f"Processing category: {category}")
 
         try:
             new_data = pd.read_csv(new_file)
@@ -235,7 +235,7 @@ def main():
                 # Process eager performance
                 eager_perf = row["abs_latency"] * row["speedup"]
                 best_data = update_best_performance(
-                    best_data, category, model_name, "eager", 
+                    best_data, category, model_name, "eager",
                     eager_perf, system_config
                 )
 

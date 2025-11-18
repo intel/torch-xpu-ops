@@ -31,7 +31,7 @@ def get_test_result(data, suite, dtype, mode, model):
         data: JSON data containing test results
         suite: Test suite name
         dtype: Data type
-        mode: Inference or training mode  
+        mode: Inference or training mode
         model: Model name
 
     Returns:
@@ -91,7 +91,7 @@ def update_reference_dataframe(refer_data, model_name, dtype, accuracy):
         refer_data.loc[mask, dtype] = accuracy
     else:
         new_row = {'name': model_name, dtype: accuracy}
-        refer_data = pd.concat([refer_data, pd.DataFrame([new_row])], 
+        refer_data = pd.concat([refer_data, pd.DataFrame([new_row])],
                               ignore_index=True)
     return refer_data
 
@@ -155,13 +155,13 @@ def main():
         description="Accuracy Check",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--driver", type=str, default="rolling", 
+    parser.add_argument("--driver", type=str, default="rolling",
                        help="rolling or lts")
-    parser.add_argument("--category", type=str, default="inductor", 
+    parser.add_argument("--category", type=str, default="inductor",
                        help="inductor")
-    parser.add_argument("--suite", type=str, required=True, 
+    parser.add_argument("--suite", type=str, required=True,
                        help="huggingface, timm_models or torchbench")
-    parser.add_argument("--mode", type=str, required=True, 
+    parser.add_argument("--mode", type=str, required=True,
                        help="inference or training")
     parser.add_argument("--dtype", type=str, required=True,
                        help="float32, bfloat16, float16, amp_bf16 or amp_fp16")
@@ -214,7 +214,7 @@ def main():
         known_accuracy = get_test_result(test_known_data, suite, dtype, mode, model_name)
 
         # Debug print (optional)
-        print(f"{model_name}: test={test_accuracy}, ref={refer_accuracy}, known={known_accuracy}")
+        # print(f"{model_name}: test={test_accuracy}, ref={refer_accuracy}, known={known_accuracy}")
 
         # Categorize model and determine if reference needs update
         category, should_update = categorize_model(

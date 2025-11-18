@@ -2,13 +2,14 @@
 set -ex
 
 # Creat a venv for lint check
-python3 -m venv lint
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv venv lint --python 3.12 --clear
 source lint/bin/activate
-python3 -m pip install -U pip setuptools wheel
+uv pip install -U pip setuptools wheel
 
 # Use uv to speed up lintrunner init
-python3 -m pip install uv==0.1.45
-python3 -m pip install ruamel.yaml
+uv pip install ruamel.yaml
 
 CACHE_DIRECTORY="/tmp/.lintbin"
 # Try to recover the cached binaries
@@ -20,7 +21,7 @@ fi
 
 # if lintrunner is not installed, install it
 if ! command -v lintrunner &> /dev/null; then
-    python3 -m pip install lintrunner==0.12.7
+    uv pip install lintrunner
 fi
 
 # Ignoring errors in one specific run
@@ -37,8 +38,8 @@ if [[ "${CLANG}" == "1" ]]; then
         echo "Please run the checker under pytorch source code folder"
     fi
 fi
-#python3 -m tools.generate_torch_version --is_debug=false
-#python3 -m tools.pyi.gen_pyi \
+#uv tools.generate_torch_version --is_debug=false
+#uv tools.pyi.gen_pyi \
 #    --native-functions-path aten/src/ATen/native/native_functions.yaml \
 #    --tags-path aten/src/ATen/native/tags.yaml \
 #    --deprecated-functions-path "tools/autograd/deprecated.yaml"

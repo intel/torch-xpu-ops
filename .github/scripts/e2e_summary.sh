@@ -5,7 +5,8 @@ set -euo pipefail
 # Script: test_results_processor.sh
 # Description: Process accuracy and performance test results for XPU operations
 
-readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly script_path="$(dirname "${BASH_SOURCE[0]}")"
+readonly SCRIPT_DIR="$(cd "$script_path" && pwd)"
 readonly SCRIPT_NAME="$(basename "$0")"
 
 # Constants
@@ -121,22 +122,22 @@ parse_test_results() {
         total = passed = pass_rate = failed = xfail = timeout = 0
         new_passed = new_enabled = not_run = 0
     }
-    /Total/ { total = $3 }
-    /Passed/ { passed = $3 }
-    /Pass rate/ { pass_rate = $3 }
-    /Real failed/ { failed = format_count($4, "🔴") }
-    /Expected failed/ { xfail = format_count($4, "🔵") }
-    /timeout/ { timeout = format_count($4, "🟡") }
-    /Failed to passed/ { new_passed = format_count($5, "🟢") }
-    /Not run/ { not_run = $4 }
-    /New models/ { new_enabled = format_count($3, "🔵") }
+    /Total models:/ { total = $3 }
+    /Passed models:/ { passed = $3 }
+    /Pass rate:/ { pass_rate = $3 }
+    /Real failed models:/ { failed = format_count($4, "🔴") }
+    /Expected failed models:/ { xfail = format_count($4, "🔵") }
+    /Warning timeout models:/ { timeout = format_count($4, "🟡") }
+    /Failed to passed models:/ { new_passed = format_count($5, "🟢") }
+    /Not run.in models:/ { not_run = $4 }
+    /New models:/ { new_enabled = format_count($3, "🔵") }
 
     function format_count(count, icon) {
         return count > 0 ? icon count : count
     }
 
     END {
-        printf "%s | %s | %s | %s | %s | %s | %s | %s | %s", 
+        printf "%s | %s | %s | %s | %s | %s | %s | %s | %s",
             total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run
     }'
 }
@@ -241,10 +242,10 @@ get_model_result() {
 determine_color() {
     local tmp_file="$1" model="$2"
     grep -w "$model" "$tmp_file" | awk '
-        /Real failed/ { print "🔴"; exit }
-        /Expected failed|New models/ { print "🔵"; exit }
-        /Warning timeout/ { print "🟡"; exit }
-        /Failed to passed/ { print "🟢"; exit }
+        /Real failed models:/ { print "🔴"; exit }
+        /Expected failed models:|New models:/ { print "🔵"; exit }
+        /Warning timeout models:/ { print "🟡"; exit }
+        /Failed to passed models:/ { print "🟢"; exit }
         { print "black" }
     ' | head -1
 }
@@ -329,7 +330,7 @@ generate_header() {
 
 #### Note:
 🔴: Failed cases needing investigation
-🟢: New passed cases needing reference update  
+🟢: New passed cases needing reference update
 🔵: Expected failed or new enabled cases
 🟡: Warning cases
 Empty: Cases not run
