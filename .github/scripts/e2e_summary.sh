@@ -5,9 +5,10 @@ set -euo pipefail
 # Script: test_results_processor.sh
 # Description: Process accuracy and performance test results for XPU operations
 
-readonly script_path="$(dirname "${BASH_SOURCE[0]}")"
-readonly SCRIPT_DIR="$(cd "$script_path" && pwd)"
-readonly SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_NAME
 
 # Constants
 readonly RED='🔴'

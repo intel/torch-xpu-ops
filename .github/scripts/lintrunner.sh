@@ -2,8 +2,10 @@
 set -ex
 
 # Creat a venv for lint check
-curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.local/bin/env
+if ! uv --help > /dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$PATH:$HOME/.local/bin"
+fi
 uv venv lint --python 3.12 --clear
 source lint/bin/activate
 uv pip install -U pip setuptools wheel
@@ -25,7 +27,7 @@ if ! command -v lintrunner &> /dev/null; then
 fi
 
 # Ignoring errors in one specific run
-export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046 -e SC2076 -e SC2034"
+export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046 -e SC2076 -e SC2034 -e SC2190"
 
 # This has already been cached in the docker image
 lintrunner init 2> /dev/null

@@ -66,7 +66,7 @@ def parse_file_name(filename):
 def load_known_data(issue_file):
     """Load known test data from JSON file."""
     try:
-        with open(issue_file, 'r', encoding='utf-8') as file:
+        with open(issue_file, encoding='utf-8') as file:
             return json.load(file)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Error loading known data from {issue_file}: {e}")
@@ -91,8 +91,7 @@ def update_reference_dataframe(refer_data, model_name, dtype, accuracy):
         refer_data.loc[mask, dtype] = accuracy
     else:
         new_row = {'name': model_name, dtype: accuracy}
-        refer_data = pd.concat([refer_data, pd.DataFrame([new_row])],
-                              ignore_index=True)
+        refer_data = pd.concat([refer_data, pd.DataFrame([new_row])], ignore_index=True)
     return refer_data
 
 
@@ -155,22 +154,14 @@ def main():
         description="Accuracy Check",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("--driver", type=str, default="rolling",
-                       help="rolling or lts")
-    parser.add_argument("--category", type=str, default="inductor",
-                       help="inductor")
-    parser.add_argument("--suite", type=str, required=True,
-                       help="huggingface, timm_models or torchbench")
-    parser.add_argument("--mode", type=str, required=True,
-                       help="inference or training")
-    parser.add_argument("--dtype", type=str, required=True,
-                       help="float32, bfloat16, float16, amp_bf16 or amp_fp16")
-    parser.add_argument("--csv_file", type=str, required=True,
-                       help="Test results CSV file path")
-    parser.add_argument("--issue_file", type=str, required=True,
-                       help="Known test data JSON file path")
-    parser.add_argument('--update', action='store_true',
-                       help="Whether to update new pass and new failed info")
+    parser.add_argument("--driver", type=str, default="rolling", help="rolling or lts")
+    parser.add_argument("--category", type=str, default="inductor", help="inductor")
+    parser.add_argument("--suite", type=str, required=True, help="huggingface, timm_models or torchbench")
+    parser.add_argument("--mode", type=str, required=True, help="inference or training")
+    parser.add_argument("--dtype", type=str, required=True, help="float32, bfloat16, float16, amp_bf16 or amp_fp16")
+    parser.add_argument("--csv_file", type=str, required=True, help="Test results CSV file path")
+    parser.add_argument("--issue_file", type=str, required=True, help="Known test data JSON file path")
+    parser.add_argument('--update', action='store_true', help="Whether to update new pass and new failed info")
 
     args = parser.parse_args()
 
