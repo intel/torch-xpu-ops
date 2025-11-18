@@ -228,7 +228,7 @@ class ProcessGroupInterface : public Backend {
   const std::string& logPrefix() const;
   const int& globalRank() const;
   uint64_t getUid();
-  const c10::intrusive_ptr<Store> globalStore() const;
+  const c10::intrusive_ptr<Store>& globalStore() const;
   virtual std::string getBackendCclVersion() = 0;
   virtual std::chrono::milliseconds getOptionsTimeout() const = 0;
 
