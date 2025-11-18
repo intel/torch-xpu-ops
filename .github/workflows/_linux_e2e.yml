@@ -46,6 +46,11 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -56,12 +61,8 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
-      xpu_num: ${{ steps.runner-info.outputs.xpu_num }}
-      cpus_per_xpu: ${{ steps.runner-info.outputs.cpus_per_xpu }}
+      numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
     steps:
-      - name: Cleanup workspace
-        run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Get runner
@@ -73,20 +74,15 @@ jobs:
     needs: runner
     timeout-minutes: 3600
     container:
-      image: mengfeili/intel-pvc-driver:1146-1136
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        numactl_args: ${{ needs.runner.outputs.numactl_args }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
-        xpu_num: ${{ needs.runner.outputs.xpu_num }}
-        cpus_per_xpu: ${{ needs.runner.outputs.cpus_per_xpu }}
-    env:
-      GH_TOKEN: ${{ github.token }}
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -137,7 +133,7 @@ jobs:
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
-          dt: float16
+          dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
       - name: Nightly Torchbench BF16 Training Test
@@ -145,7 +141,7 @@ jobs:
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
-          dt: bfloat16
+          dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
       - name: Nightly PT2E Full Test
@@ -189,6 +185,7 @@ jobs:
 
       # On-demand launch
       - name: Get test data types
+        if: ${{ contains(inputs.test_type, 'ondemand') }}
         id: dtypes
         run: |
           e2e_dtypes="$(echo "${{ inputs.dt }}" |sed 's/,int8//;s/int8,//')"

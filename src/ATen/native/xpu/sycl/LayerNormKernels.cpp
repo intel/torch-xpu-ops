@@ -186,7 +186,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
@@ -435,7 +435,7 @@ WelfordDataLN compute_stats(
 template <typename T, typename T_ACC>
 struct VectorizedLayerNormKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
     const T* block_row = X_ + i1 * N_;
@@ -1103,9 +1103,6 @@ void _layer_norm_backward_kernel(
     // affecting performance and behavior.
     const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
     const scalar_t* X_data = X.const_data_ptr<scalar_t>();
-    weight_t* dg_data =
-        dgamma.defined() ? dgamma.data_ptr<weight_t>() : nullptr;
-    weight_t* db_data = dbeta.defined() ? dbeta.data_ptr<weight_t>() : nullptr;
     Tensor dgamma_blocks;
     Tensor dbeta_blocks;
     weight_t* dgamma_blocks_ptr = nullptr;

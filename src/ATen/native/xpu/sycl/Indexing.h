@@ -211,10 +211,8 @@ class IndexKernel {
     if constexpr (TrivialOffCal) {
       idx_off = idx_logical_off;
     } else {
-      idx_off = IndexToOffset<IdxType, int64_t>::get(
-          idx_logical_off,
-          cfg_.iinfo_,
-          IndexToOffset<IdxType, int64_t>::NON_STRICT_CONTIGUOUS);
+      idx_off = IndexToOffset<IdxType, int64_t, -1>::get(
+          idx_logical_off, cfg_.iinfo_);
     }
     glb_batch_group = id.glb_batch / cfg_.index_num_;
     glb_batch_group_loc_off = cfg_.iinfo_.data[idx_off];
@@ -322,26 +320,18 @@ class IndexKernel {
     } else {
       if (cfg_.indexing_dst_) {
         // index_copy, index_add, index_fill
-        dst_off = IndexToOffset<ValType, int64_t>::get(
-            glb_indexing_logical_off,
-            cfg_.dinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
+            glb_indexing_logical_off, cfg_.dinfo_);
         if (cfg_.sinfo_.data != nullptr) {
-          src_off = IndexToOffset<const ValType, int64_t>::get(
-              glb_fixing_logical_off,
-              cfg_.sinfo_,
-              IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+          src_off = IndexToOffset<const ValType, int64_t, -1>::get(
+              glb_fixing_logical_off, cfg_.sinfo_);
         }
       } else {
         // index_select
-        src_off = IndexToOffset<const ValType, int64_t>::get(
-            glb_indexing_logical_off,
-            cfg_.sinfo_,
-            IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
-        dst_off = IndexToOffset<ValType, int64_t>::get(
-            glb_fixing_logical_off,
-            cfg_.dinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+        src_off = IndexToOffset<const ValType, int64_t, -1>::get(
+            glb_indexing_logical_off, cfg_.sinfo_);
+        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
+            glb_fixing_logical_off, cfg_.dinfo_);
       }
     }
     cfg_.func_(

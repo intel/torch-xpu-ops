@@ -31,6 +31,8 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -72,8 +74,6 @@ jobs:
         run: |
           cat /etc/os-release
           hostname && id
-          # Cleanup workspace
-          find ./ |grep -v "^\./$" |xargs rm -rf
           # install gh
           dnf install -y 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
@@ -94,6 +94,7 @@ jobs:
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
+          export IS_XPU_CI=1
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
@@ -112,8 +113,8 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
+          # gcc 13
+          source /opt/rh/gcc-toolset-13/enable
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
@@ -128,8 +129,8 @@ jobs:
           fi
       - name: Build Torchvision and Torchaudio
         run: |
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
+          # gcc 13
+          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
@@ -177,8 +178,8 @@ jobs:
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
             # gcc 13
-            dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
             source /opt/rh/gcc-toolset-13/enable
+            dnf install -y zlib-devel
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
@@ -200,7 +201,6 @@ jobs:
           python -c "import torchaudio; print(torchaudio.__version__)"
           python pytorch/torch/utils/collect_env.py
           pip list |grep -E 'torch|intel'
-          chmod 777 /__w /github ./ -R
       - name: Upload Torch XPU Wheel
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
@@ -213,3 +213,7 @@ jobs:
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/build_*.log
+      - name: Cleanup workspace
+        if: ${{ always() }}
+        run: |
+          chmod 777 /__w /github ./ -R

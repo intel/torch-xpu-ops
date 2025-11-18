@@ -18,6 +18,10 @@ macro(setup_common_libraries)
     target_link_libraries(torch_xpu_ops PUBLIC torch::xccl)
     target_link_libraries(torch_xpu_ops PUBLIC fmt::fmt-header-only)
   endif()
+
+  if(USE_SYCLTLA)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_SYCLTLA)
+  endif()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endmacro()
 
@@ -36,87 +40,6 @@ if(BUILD_SEPARATE_OPS)
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
-# Working with the compilers which don't support device code compression, we have to split kernels
-# into multiple libraries to meet the bin size limitation.
-elseif(BUILD_SPLIT_KERNEL_LIB OR __INTEL_LLVM_COMPILER LESS 20250004 OR ICX_DATE LESS 20241205)
-  setup_common_libraries()
-  # Split SYCL kernels into 4 libraries as categories 1) Unary+Binary 2) Reduce 3) Foreach 4) Others.
-  set(ATen_XPU_SYCL_UNARY_BINARY_SRCS)
-  set(ATen_XPU_SYCL_REDUCE_SRCS)
-  set(ATen_XPU_SYCL_FOREACH_SRCS)
-  set(ATen_XPU_SYCL_OTHERS_SRCS)
-
-  foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
-    string(REGEX MATCH "Binary" IS_BINARY ${sycl_src})
-    string(REGEX MATCH "Unary" IS_UNARY ${sycl_src})
-    string(REGEX MATCH "Pow" IS_POW ${sycl_src})
-    string(REGEX MATCH "Copy" IS_COPY ${sycl_src})
-    string(REGEX MATCH "Reduce" IS_REDUCE ${sycl_src})
-    string(REGEX MATCH "Activation" IS_ACTIVATION ${sycl_src})
-    string(REGEX MATCH "Foreach" IS_FOREACH ${sycl_src})
-
-    if(NOT IS_FOREACH STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_FOREACH_SRCS ${sycl_src})
-    elseif(NOT IS_REDUCE STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_REDUCE_SRCS ${sycl_src})
-    elseif(NOT IS_UNARY STREQUAL "" OR NOT IS_BINARY STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
-    elseif(NOT IS_COPY STREQUAL "" OR NOT IS_POW STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
-    elseif(NOT IS_ACTIVATION STREQUAL "")
-      list(APPEND ATen_XPU_SYCL_UNARY_BINARY_SRCS ${sycl_src})
-    else()
-      list(APPEND ATen_XPU_SYCL_OTHERS_SRCS ${sycl_src})
-    endif()
-  endforeach()
-
-  # Unary binary kernel lib
-  set(sycl_unary_binary_lib torch_xpu_ops_sycl_unary_binary_kernels)
-  sycl_add_library(
-    ${sycl_unary_binary_lib}
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_UNARY_BINARY_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_unary_binary_lib})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_unary_binary_lib})
-
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_unary_binary_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-
-  # Reduce kernel lib
-  set(sycl_reduce_lib torch_xpu_ops_sycl_reduce_kernels)
-  sycl_add_library(
-    ${sycl_reduce_lib}
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_REDUCE_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_reduce_lib})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_reduce_lib})
-
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_reduce_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-
-  # Foreach kernel lib
-  set(sycl_foreach_lib torch_xpu_ops_sycl_foreach_kernels)
-  sycl_add_library(
-    ${sycl_foreach_lib}
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_FOREACH_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_foreach_lib})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_foreach_lib})
-
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_foreach_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-
-  # Other kernel lib
-  set(sycl_lib torch_xpu_ops_sycl_kernels)
-  sycl_add_library(
-    ${sycl_lib}
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCL_OTHERS_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
-
-  # Decouple with PyTorch cmake definition.
-  install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 else()
   sycl_add_library(
     torch_xpu_ops
@@ -129,9 +52,42 @@ else()
     target_link_libraries(torch_xpu_ops PUBLIC fmt::fmt-header-only)
   endif()
 
+  if(USE_SYCLTLA)
+    target_compile_definitions(torch_xpu_ops PRIVATE USE_SYCLTLA)
+  endif()
+
   install(TARGETS torch_xpu_ops DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
 endif()
+
+if(USE_SYCLTLA)
+  set(REPLACE_FLAGS_FOR_SYCLTLA TRUE)
+  set_build_flags()
+  replace_cmake_build_flags()
+
+  foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycltla-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      SHARED
+      SYCL_SOURCES ${sycl_src})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+
+    # Decouple with PyTorch cmake definition.
+    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+
+    # Set Compile options for sycltla kernels
+    target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
+    target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+  endforeach()
+
+  set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
+  set_build_flags()
+  restore_cmake_build_flags()
+endif()
+
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
 foreach(lib ${TORCH_XPU_OPS_LIBRARIES})

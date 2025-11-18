@@ -4,9 +4,8 @@ results_dir="$1"
 reference_dir="$2"
 rm -rf /tmp/tmp-*.txt
 
-# Accuracy
-function get_model_result() {
-    echo -e "\n<table><thead>
+function get_acc_details() {
+    echo -e "#### accuracy\n\n<table><thead>
         <tr>
             <th rowspan=2> Suite </th><th rowspan=2> Model </th>
             <th colspan=5> Training </th><th colspan=5> Inference </th>
@@ -14,7 +13,7 @@ function get_model_result() {
             <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
             <th> float32 </th><th> bfloat16 </th><th> float16 </th><th> amp_bf16 </th><th> amp_fp16 </th>
         </tr>
-    </thead><tbody>"
+    </thead><tbody>" |tee accuracy.details.html > accuracy.regression.html
     suite_list=$(
         find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |\
         sed "s/.*inductor_//;s/_[abf].*//" |sort |uniq
@@ -36,27 +35,27 @@ function get_model_result() {
                         exit_label = 0;
                     }{
                         if ($0 ~/Real failed/){
-                            color="red";
+                            color="🔴";
                             exit_label++;
                         }else if ($0 ~/Expected failed/){
-                            color="blue";
+                            color="🔵";
                         }else if ($0 ~/Warning timeout/){
-                            color="orange";
+                            color="🟡";
                         }else if ($0 ~/New models/){
-                            color="blue";
+                            color="🔵";
                         }else if ($0 ~/Failed to passed/){
-                            color="green";
+                            color="🟢";
                             exit_label++;
                         }
                     }END{print color, exit_label}')
                     echo "${colorful}" >> /tmp/tmp-result.txt
                     context=$(find "${results_dir}" -name "*.csv" |\
                         grep -E ".*${suite}_${dtype}_${mode}_xpu_accuracy.csv" |xargs grep ",${model}," |cut -d, -f4 |\
-                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("\\$\\${__color__{%s}%s}\\$\\$", c, $0)}}')
-                    eval "export ${mode}_${dtype}=${context}"
+                        awk -v c="${colorful/ *}" '{if(c=="black") {print $0}else {printf("%s%s", c, $1)}}')
+                    eval "export ${mode}_${dtype}=\${context}"
                 done
             done
-            echo -e "<tr>
+            accuracy_row="$(echo -e "<tr>
                     <td>${suite}</td>
                     <td>${model}</td>
                     <td>${training_float32}</td>
@@ -69,28 +68,41 @@ function get_model_result() {
                     <td>${inference_float16}</td>
                     <td>${inference_amp_bf16}</td>
                     <td>${inference_amp_fp16}</td>
-                </tr>" |sed '/__color__/{s/__color__/\\color/g;s/_/\\_/g}'
+                </tr>"
+            )"
+            if [[ "${accuracy_row}" =~ "red" ]];then
+                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
+                accuracy_regression=1
+            elif [[ "${accuracy_row}" =~ "green" ]];then
+                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
+                accuracy_regression=1
+            elif [[ "${accuracy_row}" =~ "orange" ]];then
+                echo "${accuracy_row}" |tee -a accuracy.details.html >> accuracy.regression.html
+                accuracy_regression=1
+            else
+                echo "${accuracy_row}" >> accuracy.details.html
+            fi
         done
     done
-    echo -e "</tbody></table>\n"
+    echo -e "</tbody></table>\n" |tee -a accuracy.details.html >> accuracy.regression.html
+    if [ "${accuracy_regression}" -ne 1 ];then
+        echo > accuracy.regression.html
+    fi
 }
 
-accuracy=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" -c)
-echo > /tmp/tmp-result.txt
+# Accuracy summary
+rm -rf accuracy.*.html
+accuracy_regression=0
+accuracy=$(find "${results_dir}" -name "*_xpu_accuracy.csv" |wc -l)
 if [ "${accuracy}" -gt 0 ];then
-    printf "#### Note:
-\$\${\\color{red}Red}\$\$: the failed cases which need look into
-\$\${\\color{green}Green}\$\$: the new passed cases which need update reference
-\$\${\\color{blue}Blue}\$\$: the expected failed or new enabled cases
-\$\${\\color{orange}Orange}\$\$: the warning cases
-Empty means the cases NOT run\n\n"
-    echo "### Accuracy"
-    printf "| Category | Total | Passed | Pass Rate | \$\${\\color{red}Failed}\$\$ | "
-    printf "\$\${\\color{blue}Xfailed}\$\$ | \$\${\\color{orange}Timeout}\$\$ | "
-    printf "\$\${\\color{green}New Passed}\$\$ | \$\${\\color{blue}New Enabled}\$\$ | Not Run |\n"
-    printf "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
-    echo > /tmp/tmp-summary.txt
-    echo > /tmp/tmp-details.txt
+    cat > accuracy.summary.html << EOF
+
+#### accuracy
+
+| Category | Total | Passed | Pass Rate | Failed | Xfailed | Timeout | New Passed | New Enabled | Not Run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+EOF
+
     check_file="$(dirname "$0")/../ci_expected_accuracy/check_expected.py"
     for csv in $(find "${results_dir}" -name "*.csv" |grep -E "_xpu_accuracy.csv" |sort)
     do
@@ -112,18 +124,30 @@ Empty means the cases NOT run\n\n"
             if($0 ~/Real failed/){
                 failed = $4;
                 failed_models = $5;
+                if(failed > 0){
+                    failed = "🔴"$4;
+                }
             }
             if($0 ~/Expected failed/){
                 xfail = $4;
                 xfail_models = $5;
+                if(xfail > 0){
+                    xfail = "🔵"$4;
+                }
             }
             if($0 ~/timeout/){
                 timeout = $4;
                 timeout_models = $5;
+                if(timeout > 0){
+                    timeout = "🟡"$4;
+                }
             }
             if($0 ~/Failed to passed/){
                 new_passed = $5;
                 new_passed_models = $6;
+                if(new_passed > 0){
+                    new_passed = "🟢"$4;
+                }
             }
             if($0 ~/Not run/){
                 not_run = $4;
@@ -132,34 +156,80 @@ Empty means the cases NOT run\n\n"
             if($0 ~/New models/){
                 new_enabled = $3;
                 new_enabled_models = $4;
+                if(new_enabled > 0){
+                    new_enabled = "🔵"$4;
+                }
             }
         }END {
-            printf(" %d | %d | %s | %d | %d | %d | %d | %d | %d\n",
+            printf(" %s | %s | %s | %s | %s | %s | %s | %s | %s\n",
                 total, passed, pass_rate, failed, xfail, timeout, new_passed, new_enabled, not_run);
         }')"
-        echo "| ${category} | ${test_result} |" >> /tmp/tmp-summary.txt
+        echo "| ${category} | ${test_result} |" >> accuracy.summary.html
     done
-    cat /tmp/tmp-summary.txt
-    get_model_result
+    get_acc_details
 fi
 
-# Performance
-performance=$(find "${results_dir}" -name "*.csv" |grep -E "_xpu_performance.csv" -c)
+# Performance summary
+rm -rf performance.*.html
+performance_regression=0
+performance=$(find "${results_dir}" -name "*_xpu_performance.csv" |wc -l)
 if [ "${performance}" -gt 0 ];then
-    echo "### Performance"
-    unzip ${reference_dir}/*.zip -d ${reference_dir} > /dev/null 2>&1
-    if [ "${IS_PR}" == "1" ];then
-        python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir} --pr
+    if [ "${GITHUB_EVENT_NAME}" == "pull_request" ];then
+        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir} --pr
     else
-        python "$(dirname "$0")/perf_comparison.py" --xpu ${results_dir} --refer ${reference_dir}
+        python "$(dirname "$0")/perf_comparison.py" --target ${results_dir} --baseline ${reference_dir}
     fi
-    cp ${reference_dir}/best.csv ${results_dir}/best.csv > /dev/null 2>&1 || true
+    if [ -e performance.regression.html ];then
+        performance_regression=1
+    fi
+    # fetch best performance value
+    cp ${reference_dir}/best.csv ${results_dir}/best.csv || true
     python "$(dirname "$0")/calculate_best_perf.py" \
         --new ${results_dir} \
         --best ${results_dir}/best.csv \
         --device PVC1100 --os "${OS_PRETTY_NAME}" \
         --driver "${DRIVER_VERSION}" --oneapi "${BUNDLE_VERSION}" \
         --gcc "${GCC_VERSION}" --python "${python}" \
-        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-"${GITHUB_SHA}"}" \
-        > /dev/null 2>&1
+        --pytorch "${TORCH_BRANCH_ID}/${TORCH_COMMIT_ID}" --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-"${GITHUB_SHA}"}"
 fi
+echo "performance_regression=${performance_regression}" >> ${GITHUB_OUTPUT}
+
+# Show result
+summary_file="e2e-test-result.html"
+cat > ${summary_file} << EOF
+
+#### Note:
+🔴: the failed cases which need look into
+🟢: the new passed cases which need update reference
+🔵: the expected failed or new enabled cases
+🟡: the warning cases
+Empty means the cases NOT run
+
+$(
+    if ((accuracy_regression + performance_regression > 0));then
+        echo -e "\n### 🎯 Highlight regressions\n"
+        if (( accuracy_regression > 0 ));then
+            cat accuracy.regression.html
+        fi
+        if (( performance_regression > 0 ));then
+            cat performance.regression.html
+        fi
+    fi
+)
+
+### 📊 Summary
+
+$(cat accuracy.summary.html)
+
+$(cat performance.summary.html)
+
+### 📖 Details
+
+<details><summary>View detailed result</summary>
+
+$(cat accuracy.details.html)
+
+$(cat performance.details.html)
+
+</details>
+EOF

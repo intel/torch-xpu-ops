@@ -66,7 +66,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using WelfordOp =
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
     const int64_t i = item.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
@@ -114,7 +114,7 @@ struct GNRowwiseMomentsVectorizedFunctor
       WelfordOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
     WelfordType val[VEC_SIZE];
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
@@ -476,7 +476,7 @@ void group_norm_kernel(
 template <typename T, typename T_ACC, int SIMD>
 struct Compute1dBackwardFusedParamsFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
     const int64_t G = group_;
     const int64_t D = C_ / G;
@@ -630,7 +630,7 @@ template <typename T, int SIMD, int kReduceTileSize>
 struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
     const int64_t c =
         item.get_group(1) * item.get_local_range(1) + item.get_local_id(1);
@@ -890,7 +890,7 @@ template <typename T, int SIMD>
 struct ComputeInternalGradientsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
     const int64_t nc = item.get_group(0);
     T_ACC sum1 = 0;
@@ -941,7 +941,7 @@ struct ComputeInternalGradientsVectorizedFunctor
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
   using acc_vec_t = memory::aligned_vector<T_ACC, VEC_SIZE>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<1> item) const {
     acc_vec_t sum1_vec;
     acc_vec_t sum2_vec;
@@ -1038,7 +1038,7 @@ struct ComputeBackwardFusedParamsFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
     const int64_t G = group_;
     const int64_t D = C_ / G;
@@ -1176,7 +1176,7 @@ template <typename T, int SIMD, int kReduceTileSize>
 struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
 
-  [[intel::reqd_sub_group_size(SIMD)]] void operator()(
+  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
       sycl::nd_item<2> item) const {
     auto group_x = item.get_group(1);
     auto group_size_x = item.get_local_range(1);

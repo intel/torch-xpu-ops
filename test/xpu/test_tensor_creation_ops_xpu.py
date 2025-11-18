@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import warnings
 from itertools import combinations, combinations_with_replacement, permutations, product
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import numpy as np
 import torch
@@ -1226,8 +1226,10 @@ class TestTensorCreation(TestCase):
         vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2, max)
         refs = None
         if self.device_type == "cuda" or self.device_type == "xpu":
-            if torch.version.hip:
+            if torch.version.hip or torch.version.xpu:
                 # HIP min float -> int64 conversion is divergent
+                # XPU min float -> int8 conversion is divergent
+                # XPU min float -> int16 conversion is divergent
                 vals = (-2, -1.5, -0.5, 0, 0.5, 1.5, 2)
             else:
                 vals = (min, -2, -1.5, -0.5, 0, 0.5, 1.5, 2)
@@ -4371,6 +4373,14 @@ class TestLikeTensorCreation(TestCase):
             torch.full_like(like, 1.0, dtype=torch.complex64).dtype, torch.complex64
         )
 
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_zeros_large(self, device, dtype):
+        output = torch.zeros(2**31 - 1, device=device, dtype=dtype)
+
+    @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    def test_ones_large(self, device, dtype):
+        output = torch.ones(2**31 - 1, device=device, dtype=dtype)
+
 
 # Tests for the `frombuffer` function (only work on CPU):
 #   Constructs tensors from Python objects that implement the buffer protocol,
@@ -4842,11 +4852,11 @@ class TestAsArray(TestCase):
             True,
             42,
             1.0,
-            # Homogeneous Lists
+            # Homogeneous lists
             [True, True, False],
             [1, 2, 3, 42],
             [0.0, 1.0, 2.0, 3.0],
-            # Mixed Lists
+            # Mixed lists
             [True, False, 0],
             [0.0, True, False],
             [0, 1.0, 42],
@@ -4884,7 +4894,7 @@ class TestAsArray(TestCase):
     def test_default_device(self, device):
         original = torch.arange(5)
 
-        examples: List[Tuple[Any, Dict]] = [
+        examples: list[tuple[Any, dict]] = [
             (3, {}),
             (original, {}),
             (to_numpy(original), {}),

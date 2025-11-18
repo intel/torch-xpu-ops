@@ -26,7 +26,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'linux.idc.xpu'
+        default: 'pvc_rolling'
         description: Runner label
       accelerate:
         required: false
@@ -45,14 +45,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
 jobs:
   conditions-filter:
     name: conditions-filter
     if: ${{ github.event.pull_request.draft == false }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
     outputs:
       disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
     steps:
@@ -66,22 +71,46 @@ jobs:
           disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
           echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
-  Torch-XPU-Accelerate-Tests:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'linux.idc.xpu' }}
+  prepare:
+    runs-on: ${{ inputs.runner != '' && inputs.runner || 'pvc_rolling' }}
     needs: conditions-filter
     if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_accelerate')) }}
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
+      pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  tests:
+    runs-on: ${{ needs.prepare.outputs.runner_id }}
+    needs: prepare
+    container:
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --group-add ${{ needs.prepare.outputs.render_id }}
+              --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.prepare.outputs.user_id }}
+              -e ZE_AFFINITY_MASK
+      env:
+        WORK_DIR: 'accelerate'
+        PYTORCH_DEBUG_XPU_FALLBACK: 1
+        HF_HUB_ETAG_TIMEOUT: 120
+        HF_HUB_DOWNLOAD_TIMEOUT: 120
+        PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
     env:
-      WORK_DIR: 'accelerate'
-      NEOReadDebugKeys: 0
-      DisableScratchPages: 0
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
-      PYTORCH_DEBUG_XPU_FALLBACK: 1
-      ZE_AFFINITY_MASK: 0
-      PARSE_JUNIT: ${{ github.workspace }}/torch-xpu-ops/.github/scripts/parse-junitxml.py
-      HF_HUB_ETAG_TIMEOUT: 120
-      HF_HUB_DOWNLOAD_TIMEOUT: 120
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -93,25 +122,22 @@ jobs:
           repository: huggingface/accelerate
           ref: ${{ env.accelerate }}
           path: accelerate
-      - name: Create unique Conda ENV name
+      - name: Setup python-${{ env.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.python }}
+      - name: Check python
         run: |
-          random=$(head /dev/urandom | tr -dc A-Za-z0-9_ | head -c ${1:-5} | xargs)
-          echo "CONDA_ENV_NAME=hf_accelerate_test_${ZE_AFFINITY_MASK}_${random}" >> $GITHUB_ENV
-      - name: Prepare Conda ENV
+          which python && python -V
+          which pip && pip list
+          pip install -U pip wheel setuptools
+      - name: Install pytorch and deps
         run: |
-          echo "Using Conda ENV name: $CONDA_ENV_NAME"
-          conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          conda create -y -n $CONDA_ENV_NAME python=${{ env.python }}
-          source activate $CONDA_ENV_NAME
-          pip install junitparser pytest-timeout
+          pip install junitparser
           pip install transformers==${{ env.transformers }}
-      - name: Prepare Stock XPU Pytorch
-        run: |
-          source activate $CONDA_ENV_NAME
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
       - name: Prepare Accelerate
         run: |
-          source activate $CONDA_ENV_NAME
           cd $WORK_DIR
           pip install -e .
           pip install -e ".[testing]"
@@ -120,7 +146,6 @@ jobs:
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
       - name: Report installed versions
         run: |
-          source activate $CONDA_ENV_NAME
           echo "pip installed packages:"
           pip list | tee ${{ github.workspace }}/$WORK_DIR/tests_log/pip_list.txt
           echo "lspci gpu devices:"
@@ -131,16 +156,17 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          source activate $CONDA_ENV_NAME
+          # Use latest pytest
+          pip install -U pytest pytest-timeout pytest-xdist
           # These checks are to exit earlier if for any reason torch
           # packages were reinstalled back to CUDA versions (not expected).
           pip show torch | grep Version | grep xpu
           pip show torchaudio | grep Version | grep xpu
           pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
-      - name: Run tests
+          printenv
+      - name: Run tests on ${{ needs.prepare.outputs.hostname }}
         run: |
-          source activate $CONDA_ENV_NAME
           cd $WORK_DIR && rm -rf reports && mkdir -p reports
           # Excluding tests due to:
           # * tests/test_examples.py::FeatureExamplesTests::test_profiler fails on
@@ -150,8 +176,7 @@ jobs:
           # * tests/test_big_modeling.py::test_dispatch_model_tied_weights_memory_with_nested_offload_cpu fails
           #   with OOM. That's a new test added by https://github.com/huggingface/accelerate/pull/3445
           pattern="not test_profiler and not test_gated and not test_dispatch_model_tied_weights_memory_with_nested_offload_cpu"
-          cmd=(python3 -m pytest --timeout 600 -rsf --junitxml=reports/accelerate.xml -k "$pattern" \
-            tests/)
+          cmd=(python -m pytest --junitxml=reports/accelerate.xml -k "$pattern" tests/)
           {
             echo "### Running"
             echo "\`\`\`"
@@ -162,28 +187,20 @@ jobs:
       - name: Print result tables
         if: ${{ ! cancelled() }}
         run: |
-          source activate $CONDA_ENV_NAME
           cd $WORK_DIR
           {
             echo "### Results"
-            python3 $PARSE_JUNIT reports/accelerate.xml --stats
+            python $PARSE_JUNIT reports/accelerate.xml --stats
             echo "### Failed"
-            python3 $PARSE_JUNIT reports/accelerate.xml --errors --failed
+            python $PARSE_JUNIT reports/accelerate.xml --errors --failed
             echo "### Skipped"
-            python3 $PARSE_JUNIT reports/accelerate.xml --skipped
+            python $PARSE_JUNIT reports/accelerate.xml --skipped
           } >> $GITHUB_STEP_SUMMARY
       - name: Print environment
         if: ${{ ! cancelled() }}
         uses: ./torch-xpu-ops/.github/actions/print-environment
         with:
-          conda: $CONDA_ENV_NAME
           pip_packages: 'accelerate transformers'
-      - name: Clean up
-        if: ${{ always() }}
-        run: |
-          if [ -n "$CONDA_ENV_NAME" ]; then
-            conda remove --all -y -n $CONDA_ENV_NAME || rm -rf $(dirname ${CONDA_EXE})/../envs/$CONDA_ENV_NAME
-          fi
       - name: Upload Test log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
