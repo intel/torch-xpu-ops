@@ -162,13 +162,13 @@ runs:
 
         # All xpu ut under test/profiler
         cd ../../test/profiler
-        python -m pytest -s test_cpp_thread.py --junit-xml=${{ github.workspace }}/ut_log/test_cpp_thread.xml | \
+        python -m pytest -s test_cpp_thread.py --junit-xml=${{ github.workspace }}/ut_log/xpu_profiling_test_cpp_thread.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_cpp_thread.log
-        python -m pytest -s test_execution_trace.py --junit-xml=${{ github.workspace }}/ut_log/test_execution_trace.xml | \
+        python -m pytest -s test_execution_trace.py --junit-xml=${{ github.workspace }}/ut_log/xpu_profiling_test_execution_trace.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
-        python -m pytest -s test_memory_profiler.py --junit-xml=${{ github.workspace }}/ut_log/test_memory_profiler.xml | \
+        python -m pytest -s test_memory_profiler.py --junit-xml=${{ github.workspace }}/ut_log/xpu_profiling_test_memory_profiler.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest -s -vs test_profiler_tree.py --junit-xml=${{ github.workspace }}/ut_log/test_profiler_tree.xml | \
+        python -m pytest -s -vs test_profiler_tree.py --junit-xml=${{ github.workspace }}/ut_log/xpu_profiling_test_profiler_tree.xml | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
 
     - name: xpu_distributed
