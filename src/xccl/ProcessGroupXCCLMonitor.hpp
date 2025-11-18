@@ -216,7 +216,6 @@ class ProcessGroupInterface : public Backend {
     bool propagatePgError_;
     bool desyncDebug_ = false;
     DesyncDebugger desyncDebugger_;
-    static const int64_t kWatchdogThreadSleepMillis;
     ErrorType error_{ErrorType::SUCCESS};
     bool rethrowBackendErrors_ = false;
   };
