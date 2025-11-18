@@ -164,6 +164,7 @@ class FMHAPrefill {
       Arguments const& args,
       void* workspace) {
     (void)workspace;
+
     return {
         args.mode,
         args.problem_shape,
@@ -438,6 +439,29 @@ class FMHAPrefill {
           prefetch(tiled_prefetch_v, pVgV(_, i, _, nblock));
         }
 
+        // Prevnt numerical errors when seq_len_kv is not fully divisible by
+        // QK_BLK_N
+        const int item_id = thread_idx % SubgroupSize;
+        if (seq_len_kv % QK_BLK_N != 0) {
+          int col_idx = item_id + nblock * QK_BLK_N;
+          int remainder = seq_len_kv % QK_BLK_N;
+          int cutoff = (seq_len_kv / QK_BLK_N) * QK_BLK_N + remainder;
+
+          CUTLASS_PRAGMA_UNROLL
+          for (int n = 0; n < FragsN; n++, col_idx += get<1>(MmaAtomShape())) {
+            CUTLASS_PRAGMA_UNROLL
+            for (int m = 0; m < FragsM; m++) {
+              int row_idx = m * Vec + seq_coord;
+              CUTLASS_PRAGMA_UNROLL
+              for (int row = 0; row < Vec; row++, row_idx++) {
+                if (col_idx >= cutoff) {
+                  tSr(row, m, n) = ElementAccumulator{-INFINITY};
+                }
+              }
+            }
+          }
+        }
+
         CollectiveSoftmaxEpilogue softmax(params.softmax);
         softmax(nblock == 0, tSr, max_reg, sum_reg, out_reg);
 
@@ -479,6 +503,8 @@ class FMHAPrefill {
         // mask the elements of each tile using the bottom right masking
         const int item_id = thread_idx % SubgroupSize;
         int col_idx = item_id + (nblock_limit - 1) * QK_BLK_N;
+        int remainder = seq_len_kv % QK_BLK_N;
+        int cutoff = (seq_len_kv / QK_BLK_N) * QK_BLK_N + remainder;
         CUTLASS_PRAGMA_UNROLL
         for (int n = 0; n < FragsN;
              n++, col_idx += get<1>(MmaAtomShape())) { // 4
@@ -487,8 +513,12 @@ class FMHAPrefill {
             int row_idx = m * Vec + seq_coord;
             CUTLASS_PRAGMA_UNROLL
             for (int row = 0; row < Vec; row++, row_idx++) { // 8
-              if (row_idx < first_non_masked_sequence ||
-                  col_idx > row_idx - first_non_masked_sequence) {
+              if (row_idx < first_non_masked_sequence || // for the sequence
+                                                         // that is fully masked
+                  col_idx > row_idx -
+                          first_non_masked_sequence || // for the bottom right
+                                                       // triangular masking
+                  col_idx >= cutoff) { // for seq_len_kv not fully divisible
                 tSr(row, m, n) = ElementAccumulator{-INFINITY};
               }
             }
