@@ -11,6 +11,15 @@
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
 #include <ATen/native/TensorConversions.h>
 
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/addmm.h>
+#endif
+
+#include <ATen/ExpandUtils.h>
+
 #include <iostream>
 
 namespace at::native {
