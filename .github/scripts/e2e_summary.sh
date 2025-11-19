@@ -215,8 +215,10 @@ process_model() {
     if [[ "$row" =~ ${RED}|${GREEN}|${YELLOW} ]]; then
         echo "$row" | tee -a accuracy.details.html >> accuracy.regression.html
         accuracy_regression=1
+        echo "acc 1" >> /tmp/tmp-acc-result.txt
     else
         echo "$row" >> accuracy.details.html
+        echo "acc 0" >> /tmp/tmp-acc-result.txt
     fi
 }
 
