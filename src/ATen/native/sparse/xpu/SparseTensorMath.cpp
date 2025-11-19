@@ -9,7 +9,7 @@
  */
 
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
-#include <ATen/native/TensorConversion.h>
+#include <ATen/native/TensorConversions.h>
 
 #include <iostream>
 
