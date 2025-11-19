@@ -75,7 +75,7 @@ runs:
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
+        # git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
