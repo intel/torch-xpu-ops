@@ -91,7 +91,7 @@ def write_report(cases: pd.DataFrame, filename: str,
     if not cases.empty:
         output = cases.to_html(index=False)
         with open(filename, write_mode, encoding='utf-8') as file:
-            file.write(f"\n\n{message}\n\n{output}")
+            file.write(f"\n\n{message}\n\n{output}\n\n")
 
 
 def calculate_latencies(value: Optional[pd.Series]) -> Tuple[float, float, float]:
@@ -298,26 +298,29 @@ def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.
         "Target vs. Baseline [Eager]",
         "Inductor vs. Eager [Target]"
     ]
+    comparison_data = output_data.loc[
+        (output_data['Target inductor'] > 0) & (output_data['Baseline inductor'] > 0)
+    ]
 
     for column_name in comparison_columns:
         # Overall geometric mean
         valid_data = [
-            row[column_name] for _, row in output_data.iterrows()
+            row[column_name] for _, row in comparison_data.iterrows()
             if row[column_name] > 0
         ]
         geomean_results["all"].append(
-            color_result(geometric_mean(valid_data)) if valid_data else "🔴"
+            color_result(geometric_mean(valid_data)) if valid_data else None
         )
 
         # Per-category geometric means
         for category in ["huggingface", "timm_models", "torchbench"]:
             category_data = [
-                row[column_name] for _, row in output_data.iterrows()
+                row[column_name] for _, row in comparison_data.iterrows()
                 if (row[column_name] > 0 and
                     re.match(category, row["Category"]))
             ]
             geomean_results[category].append(
-                color_result(geometric_mean(category_data)) if category_data else "🔴"
+                color_result(geometric_mean(category_data)) if category_data else None
             )
 
     # Filter out empty categories
@@ -341,6 +344,7 @@ def generate_regression_reports(output_data: pd.DataFrame, args: argparse.Namesp
     regression_cases = output_data.loc[
         ((output_data['Target vs. Baseline [Inductor]'] < criteria_medium) |
          (output_data['Target vs. Baseline [Eager]'] < criteria_medium)) &
+        (output_data['Target inductor'] > 0) &
         (output_data['Baseline inductor'] > 0)
     ]
 
@@ -362,7 +366,7 @@ def generate_pr_report(output_data: pd.DataFrame, criteria_high: float,
         criteria_high: High regression threshold
         criteria_medium: Medium regression threshold
     """
-    pr_data = output_data.loc[output_data['Baseline inductor'] > 0]
+    pr_data = output_data.loc[(output_data['Target inductor'] > 0) & (output_data['Baseline inductor'] > 0)]
     pr_data = pr_data[[
         "Category", "Model", "Target vs. Baseline [Eager]",
         "Target vs. Baseline [Inductor]"
@@ -428,11 +432,11 @@ def main():
     # Generate summary report
     summary_df = generate_summary(output_df, args)
     with open('performance.summary.html', 'w', encoding='utf-8') as f:
-        f.write("\n\n#### Performance Summary\n\n" + summary_df.to_html(header=True))
+        f.write("\n\n#### Performance Summary\n\n" + summary_df.to_html(header=True) + "\n\n")
 
     # Generate detailed report
     with open('performance.details.html', 'w', encoding='utf-8') as f:
-        f.write("\n\n#### Performance Details\n\n" + output_df.to_html(index=False))
+        f.write("\n\n#### Performance Details\n\n" + output_df.to_html(index=False) + "\n\n")
 
     # Generate regression reports
     generate_regression_reports(output_df, args)

@@ -81,7 +81,8 @@ generate_accuracy_summary() {
     local results_dir="$1"
     local check_file="$SCRIPT_DIR/../ci_expected_accuracy/check_expected.py"
 
-    cat > accuracy.summary.html << 'EOF'
+    cat > accuracy.summary.html << EOF
+
 #### accuracy
 
 | Category | Total | Passed | Pass Rate | Failed | Xfailed | Timeout | New Passed | New Enabled | Not Run |
@@ -91,6 +92,7 @@ EOF
     while IFS= read -r csv_file; do
         process_csv_file "$check_file" "$csv_file"
     done < <(find "$results_dir" -name "*_xpu_accuracy.csv" | sort)
+    echo -e "\n\n" >> accuracy.summary.html
 }
 
 process_csv_file() {
@@ -147,7 +149,8 @@ generate_accuracy_details() {
     local results_dir="$1"
 
     # Create table headers
-    cat > accuracy.details.html << 'EOF'
+    cat > accuracy.details.html << EOF
+
 #### accuracy
 
 <table>
@@ -174,12 +177,12 @@ EOF
     done < <(find "$results_dir" -name "*_xpu_accuracy.csv" | \
         sed 's/.*inductor_//;s/_[abf].*//' | sort | uniq)
 
-    echo "</tbody></table>" >> accuracy.details.html
-    echo "</tbody></table>" >> accuracy.regression.html
+    echo -e "</tbody></table>\n\n" >> accuracy.details.html
+    echo -e "</tbody></table>\n\n" >> accuracy.regression.html
 
     # Clear regression file if no issues
     if [[ $accuracy_regression -eq 0 ]]; then
-        : > accuracy.regression.html
+        rm -f accuracy.regression.html
     fi
 }
 
@@ -329,7 +332,7 @@ generate_report() {
 }
 
 generate_header() {
-    cat << 'EOF'
+    cat << EOF
 
 #### Note:
 🔴: Failed cases needing investigation
@@ -361,7 +364,7 @@ generate_summary() {
 }
 
 generate_details() {
-    cat << 'EOF'
+    cat << EOF
 ### 📖 Details
 
 <details>

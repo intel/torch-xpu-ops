@@ -130,12 +130,12 @@ def print_results_summary(suite, dtype, mode, categories):
     print(f"============ Summary for {suite} {dtype} {mode} accuracy ============")
     print(f"Total models: {len(categories['all_models'])}")
     print(f"Passed models: {len(categories['passed'])}")
-    print(f"Real failed models: {len(categories['real_failed'])}, {categories['real_failed']}")
-    print(f"Expected failed models: {len(categories['expected_failed'])}, {categories['expected_failed']}")
-    print(f"Warning timeout models: {len(categories['timeout'])}, {categories['timeout']}")
-    print(f"New models: {len(categories['new'])}, {categories['new']}")
-    print(f"Failed to passed models: {len(categories['new_pass'])}, {categories['new_pass']}")
-    print(f"Not run/in models: {len(categories['lost'])}, {categories['lost']}")
+    print(f"Real failed models: {len(categories['real_failed'])} , {categories['real_failed']}")
+    print(f"Expected failed models: {len(categories['expected_failed'])} , {categories['expected_failed']}")
+    print(f"Warning timeout models: {len(categories['timeout'])} , {categories['timeout']}")
+    print(f"New models: {len(categories['new'])} , {categories['new']}")
+    print(f"Failed to passed models: {len(categories['new_pass'])} , {categories['new_pass']}")
+    print(f"Not run/in models: {len(categories['lost'])} , {categories['lost']}")
 
     total_models = len(categories['all_models'])
     if total_models > 0:
