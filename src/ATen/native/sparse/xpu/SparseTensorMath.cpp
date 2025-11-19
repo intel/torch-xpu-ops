@@ -43,8 +43,8 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
 
   // change sparse to dense
   Tensor mat1_dense = at::native::sparse_to_dense(sparse_);
-  // calcaulte
-  at::native::addmm_out_xpu(t, mat1_dense, dense, beta, alpha, r_);
+  // calculate
+  at::addmm_out(r_, t, mat1_dense, dense, beta, alpha);
 
   return r_;
 }
