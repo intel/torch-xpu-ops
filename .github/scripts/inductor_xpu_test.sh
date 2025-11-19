@@ -62,6 +62,8 @@ if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]] && [ $NUM_SHARDS -gt 1 ]; then
   partition_flags="--total-partitions $NUM_SHARDS --partition-id $SHARD_ID "
 fi
 
+pip list |grep -E 'intel|torch|triton'
+
 # ulimit -n 1048576
 ZE_AFFINITY_MASK=${CARD} \
     eval python benchmarks/dynamo/"${SUITE}".py --"${SCENARIO}" --"${Real_DT}" -d "${DEVICE}" -n10 "${DT_extra}" "${Mode_extra}" \
