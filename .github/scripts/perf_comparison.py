@@ -418,14 +418,12 @@ def main():
     # Process comparison data
     output_data, output_header = process_comparison_data(args)
     output_df = pd.DataFrame(output_data, columns=output_header)
-    print(output_df)
 
     # Sort by performance ratios
     output_df = output_df.sort_values(
         ['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'],
         ascending=[True, True]
     )
-
 
     # Generate summary report
     summary_df = generate_summary(output_df, args)
