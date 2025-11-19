@@ -435,8 +435,9 @@ def main():
         f.write("\n\n#### Performance Summary\n\n" + summary_df.to_html(header=True) + "\n\n")
 
     # Generate detailed report
+    output_df_clean = output_df.replace(-1, '')
     with open('performance.details.html', 'w', encoding='utf-8') as f:
-        f.write("\n\n#### Performance Details\n\n" + output_df.to_html(index=False) + "\n\n")
+        f.write("\n\n#### Performance Details\n\n" + output_df_clean.to_html(index=False) + "\n\n")
 
     # Generate regression reports
     generate_regression_reports(output_df, args)

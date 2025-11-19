@@ -115,7 +115,7 @@ process_csv_file() {
 
     local result
     result=$(parse_test_results "$tmp_file")
-    echo "| $suite | $result |" >> accuracy.summary.html
+    echo "| $category | $result |" >> accuracy.summary.html
 }
 
 parse_test_results() {
