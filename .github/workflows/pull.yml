@@ -107,6 +107,7 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -122,6 +123,7 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:

@@ -39,15 +39,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
-          pip install pandas requests
+          pip install pandas requests pygithub
       - name: Download Target Artifact
         run: |
           mkdir target/
           cd target/
-          target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*"
-          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "${target_dir}"
-          find Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*/ -maxdepth 1 -mindepth 1 -type d |\
-                  while read line; do mv $line .; done
+          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+                  while read line; do rsync -az --delete $line/ $(basename $line)/; done
+          rm -rf Inductor-*-XPU-E2E-* || true
       - name: Download Baseline Artifact
         run: |
           mkdir baseline/
@@ -61,7 +61,9 @@ jobs:
           REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
           if [ "${REFERENCE_RUN_ID}" != "" ];then
             gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-            find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |while read line; do mv $line .; done
+            find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+                    while read line; do rsync -az --delete $line/ $(basename $line)/; done
+            rm -rf Inductor-*-XPU-E2E-* || true
           fi
       - name: Get summary
         id: summary
@@ -76,7 +78,7 @@ jobs:
               cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
               e2e_result=1
             fi
-            acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-result.txt)
+            acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-acc-result.txt)
           fi
           echo "acc_failed=${acc_failed}" >> ${GITHUB_ENV}
           echo "e2e_result=${e2e_result}" >> ${GITHUB_OUTPUT}
