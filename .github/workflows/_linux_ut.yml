@@ -159,7 +159,7 @@ jobs:
                 -name "passed_*.log" -o \
                 -name "category_*.log" -o \
                 -name "reproduce_*.log" \) \
-              -exec mv {} 1/ \; || true
+              -exec mv {} ./ \; || true
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
