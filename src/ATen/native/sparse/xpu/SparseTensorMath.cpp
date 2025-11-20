@@ -61,7 +61,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
   // no need to check dense_dim because dense_dim + sparse_dim = dim
 
   // change sparse to dense
-  Tensor mat1_dense = at::native::sparse_to_dense(sparse_);
+  Tensor mat1_dense = at::native::sparse_to_dense(sparse_，{}, {});
   // calculate
   at::addmm_out(r_, t, mat1_dense, dense, beta, alpha);
 
@@ -90,6 +90,17 @@ Tensor& addmm_out_sparse_dense_xpu(
     Tensor& result
 ) {
   std::cout << "Call addmm_out_sparse_dense_xpu" << std::endl;
+  c10::MaybeOwned<Tensor> b_self = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm_out");
+  return s_addmm_out_sparse_dense_xpu(result, *b_self, mat1, mat2, beta, alpha);
+}
+
+Tensor addmm_sparse_dense_xpu(
+    const Tensor& self,
+    const SparseTensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha
+) {
   c10::MaybeOwned<Tensor> b_self = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm_out");
   return s_addmm_sparse_dense_xpu(*b_self, mat1, mat2, beta, alpha);
 }
