@@ -451,23 +451,39 @@ flash_attention_forward_sycltla(
   layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(key));
   TORCH_CHECK(
       ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionBackwardXPU: query and key must have the same layout, got query with layout ",
+      "FlashAttentionForwardXPU: query and key must have the same layout, got query with layout ",
       to_string(layout),
       ", key with layout ",
       to_string(get_attn_tensor_layout(key)));
   layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(value));
   TORCH_CHECK(
       ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionBackwardXPU: query and value must have the same layout, got query with layout ",
+      "FlashAttentionForwardXPU: query and value must have the same layout, got query with layout ",
       to_string(layout),
       ", value with layout ",
       to_string(get_attn_tensor_layout(value)));
   if (layout == ATTN_TENSOR_LAYOUT::BXD) {
     layout = ATTN_TENSOR_LAYOUT::BSHD;
   }
+
+  at::Tensor query_ = query, key_ = key, value_ = value;
+  {
+    // Currently fwd only supports BSHD layout.
+    // However, input headdim may be padded when headdim is not multiple of 64.
+    // The pad op will make input tensor become BHSD contiguous.
+    // TODO: This code block is temporary WA. Remove it after supporting BHSD
+    // layouts.
+    if (layout != ATTN_TENSOR_LAYOUT::BSHD) {
+      query_ = attn_tensor_to_layout(query, ATTN_TENSOR_LAYOUT::BSHD);
+      key_ = attn_tensor_to_layout(key, ATTN_TENSOR_LAYOUT::BSHD);
+      value_ = attn_tensor_to_layout(value, ATTN_TENSOR_LAYOUT::BSHD);
+      layout = ATTN_TENSOR_LAYOUT::BSHD;
+    }
+  }
+
   TORCH_CHECK(
       layout == ATTN_TENSOR_LAYOUT::BSHD,
-      "FlashAttentionBackwardXPU: currently only support BSHD layout");
+      "FlashAttentionForwardXPU: currently only support BSHD layout");
 
   auto opts = query.options();
   at::Tensor out;
@@ -516,9 +532,9 @@ flash_attention_forward_sycltla(
   cute::run_mha_fwd<decltype(problem_shape)>(
       sycl_queue,
       problem_shape,
-      query.data_ptr(),
-      key.data_ptr(),
-      value.data_ptr(),
+      query_.data_ptr(),
+      key_.data_ptr(),
+      value_.data_ptr(),
       out.data_ptr(),
       logsumexp.data_ptr(),
       is_causal,

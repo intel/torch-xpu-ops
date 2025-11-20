@@ -1406,19 +1406,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
       to_string(layout),
       ", value with layout ",
       to_string(get_attn_tensor_layout(value)));
-  layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(out));
-  TORCH_CHECK(
-      ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionBackwardXPU: query and out must have the same layout, got query with layout ",
-      to_string(layout),
-      ", out with layout ",
-      to_string(get_attn_tensor_layout(out)));
   if (layout == ATTN_TENSOR_LAYOUT::BXD) {
     layout = ATTN_TENSOR_LAYOUT::BHSD;
   }
   TORCH_CHECK(logsumexp.is_contiguous(), "logsumexp must have BHS layout");
   // grad_out is created by autograd, may not have standard layout
-  auto contiguous_grad_out = attn_tensor_to_layout(grad_out, layout);
+  auto grad_out_ = attn_tensor_to_layout(grad_out, layout);
+  // TODO: This code block is temporary WA. Remove it after fwd supporting BHSD
+  // layouts
+  auto out_ = attn_tensor_to_layout(out, layout);
 
   auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
   auto device_architecture =
@@ -1493,8 +1489,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
   cute::run_mha_bwd<decltype(problem_shape), kMPad, kNPad>(
       sycl_queue,
       problem_shape,
-      contiguous_grad_out.data_ptr(),
-      out.data_ptr(),
+      grad_out_.data_ptr(),
+      out_.data_ptr(),
       query.data_ptr(),
       key.data_ptr(),
       value.data_ptr(),
