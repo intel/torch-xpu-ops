@@ -1092,7 +1092,7 @@ def copy_tests(
 
 def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-    rename = test_case.replace("../../../../", "").replace("/", "_")
+    rename = test_case.replace("../../../../", "").replace("/", ".")
     if skip_list is not None:
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
