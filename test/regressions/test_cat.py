@@ -1,18 +1,17 @@
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_device_type import (
+    dtypes,
+    instantiate_device_type_tests,
+)
+from torch.testing._internal.common_dtype import float8_types_and
+from torch.testing._internal.common_utils import run_tests, TestCase
+
+cpu_device = torch.device("cpu")
+xpu_device = torch.device("xpu")
 
 
 class TestTorchMethod(TestCase):
-    # Define float8 dtypes for the focused test
-    FLOAT8_DTYPES = (
-        torch.float8_e4m3fn,
-        torch.float8_e4m3fnuz,
-        torch.float8_e5m2,
-        torch.float8_e5m2fnuz,
-        torch.float8_e8m0fnu,
-    )
-
     def _create_input_tensors(self, shape, dtype, memory_format=None):
         # Always generate random data using a CPU-compatible dtype (float32)
         # to avoid the "not implemented" error for float8 on CPU.
@@ -51,19 +50,34 @@ class TestTorchMethod(TestCase):
 
         self.assertEqual(res_cpu, res_xpu_f32_on_cpu, rtol=rtol, atol=atol)
 
-    def test_cat_float8_simple(self):
+    @dtypes(*float8_types_and(torch.float8_e8m0fnu))
+    def test_cat_simple(self, dtype):
         """Test torch.cat correctness across float8 dtypes using simple tensors."""
-        for dtype in self.FLOAT8_DTYPES:
-            with self.subTest(dtype=dtype):
-                # Use simple 3D shape (2, 4, 3) and concatenate along dim 1
-                user_cpu1 = self._create_input_tensors([2, 4, 3], dtype=dtype)
-                user_cpu2 = self._create_input_tensors([2, 2, 3], dtype=dtype)
-                user_cpu3 = self._create_input_tensors([2, 6, 3], dtype=dtype)
 
-                tensors = (user_cpu1, user_cpu2, user_cpu3)
-                dim = 1
+        # Use simple 3D shape (2, 4, 3) and concatenate along dim 1
+        user_cpu1 = self._create_input_tensors([2, 4, 3], dtype=dtype)
+        user_cpu2 = self._create_input_tensors([2, 2, 3], dtype=dtype)
+        user_cpu3 = self._create_input_tensors([2, 6, 3], dtype=dtype)
 
-                self._test_cat_float8_core(tensors, dim, dtype)
+        tensors = (user_cpu1, user_cpu2, user_cpu3)
+        dim = 1
+
+        self._test_cat_float8_core(tensors, dim, dtype)
+
+    def _float4_dummy_tensor(self, shape, device):
+        data = torch.ones(shape, dtype=torch.uint8, device=device)
+        return data.view(torch.float4_e2m1fn_x2)
+
+    def test_cat_float4_simple(self):
+        input_cpu1 = self._float4_dummy_tensor([2, 2, 6], device=cpu_device)
+        input_cpu2 = self._float4_dummy_tensor([2, 2, 6], device=cpu_device)
+        output_cpu = torch.stack([input_cpu1, input_cpu2]).view(torch.uint8)
+
+        input_xpu1 = self._float4_dummy_tensor([2, 2, 6], device=xpu_device)
+        input_xpu2 = self._float4_dummy_tensor([2, 2, 6], device=xpu_device)
+        output_xpu = torch.stack([input_xpu1, input_xpu2]).view(torch.uint8)
+
+        self.assertEqual(output_xpu, output_cpu)
 
     def test_cat_8d(self, dtype=torch.float):
         input1 = torch.randn([256, 8, 8, 3, 3, 3, 3], dtype=dtype)
@@ -257,3 +271,12 @@ class TestTorchMethod(TestCase):
                 self.assertEqual(
                     res_xpu.is_contiguous(memory_format=torch.channels_last), False
                 )
+
+
+instantiate_device_type_tests(
+    TestTorchMethod, globals(), only_for="xpu", allow_xpu=True
+)
+
+
+if __name__ == "__main__":
+    run_tests()
