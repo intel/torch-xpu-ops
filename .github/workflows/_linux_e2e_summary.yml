@@ -44,10 +44,10 @@ jobs:
         run: |
           mkdir target/
           cd target/
-          target_dir="Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*"
-          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "${target_dir}"
-          find Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
                   while read line; do rsync -az --delete $line/ $(basename $line)/; done
+          rm -rf Inductor-*-XPU-E2E-* || true
       - name: Download Baseline Artifact
         run: |
           mkdir baseline/
@@ -63,6 +63,7 @@ jobs:
             gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
             find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
                     while read line; do rsync -az --delete $line/ $(basename $line)/; done
+            rm -rf Inductor-*-XPU-E2E-* || true
           fi
       - name: Get summary
         id: summary
