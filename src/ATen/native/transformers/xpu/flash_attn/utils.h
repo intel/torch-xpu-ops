@@ -94,7 +94,7 @@ inline at::Tensor attn_tensor_to_layout(
   return output;
 }
 
-inline bool check_flash_attention_bshd_layout(
+inline bool check_flash_attention_layout(
     sdp::sdp_params const& params,
     bool debug) {
   sycltla::ATTN_TENSOR_LAYOUT layout =
