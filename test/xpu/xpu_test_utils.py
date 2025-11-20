@@ -1092,6 +1092,7 @@ def copy_tests(
 
 def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
+    module_name = test_case.replace('.py', '').replace('/', '.').replace('\\', '.')
     if skip_list is not None:
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
@@ -1099,7 +1100,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip.{test_case}.xml --max-worker-restart=1000 "
+            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml"
             + test_case
         )
         test_command += skip_options
@@ -1110,13 +1111,13 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe.{test_case}.xml --max-worker-restart=1000 "
+            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml"
             + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{test_case}.xml --max-worker-restart=1000 "
+            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml"
             + test_case
         )
     return os.system(test_command)
