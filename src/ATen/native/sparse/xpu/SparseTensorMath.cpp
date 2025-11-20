@@ -61,7 +61,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
   // no need to check dense_dim because dense_dim + sparse_dim = dim
 
   // change sparse to dense
-  Tensor mat1_dense = at::native::sparse_to_dense(sparse_，{}, {});
+  Tensor mat1_dense = at::native::sparse_to_dense(sparse_, {}, {});
   // calculate
   at::addmm_out(r_, t, mat1_dense, dense, beta, alpha);
 
