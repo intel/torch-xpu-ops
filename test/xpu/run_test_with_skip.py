@@ -35,21 +35,26 @@ def should_skip_entire_file(skip_list):
     """Check if the skip list contains any entire file skip pattern (*.py::)"""
     if not skip_list:
         return False
-    return any(item.endswith(".py::") for item in skip_list)
+    return any(item.endswith(".py") for item in skip_list)
 
 
 # Import window skip dictionary if skip-cases is True
 if args.skip_cases:
     try:
         # Import the window skip dictionary module
-        from window_skip_dict import skip_dict as window_skip_dict
+        from windows_skip_cases import skip_dict as window_skip_dict
 
         # Merge the window skip dictionary with the default one using intelligent strategy
         merged_skip_dict = {}
 
         # First, copy all keys from default skip_dict
         for key in skip_dict:
-            merged_skip_dict[key] = skip_dict[key].copy() if skip_dict[key] else []
+            if skip_dict[key] is None:
+                merged_skip_dict[key] = []
+            elif isinstance(skip_dict[key], tuple):
+                merged_skip_dict[key] = list(skip_dict[key])
+            else:
+                merged_skip_dict[key] = skip_dict[key].copy() if skip_dict[key] else []
 
         # Then merge with window_skip_dict using intelligent strategy
         for key in window_skip_dict:
@@ -111,6 +116,10 @@ for key in merged_skip_dict:
         # When running all cases, don't skip any
         skip_list = None
     # For "selected" case, use the skip_list as is
+
+    # If skip_list is empty, set it to None
+    if skip_list is not None and len(skip_list) == 0:
+        skip_list = None
 
     print(f"Running test case: {key}")
     if skip_list:
