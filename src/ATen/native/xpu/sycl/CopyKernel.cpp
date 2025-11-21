@@ -25,6 +25,20 @@ struct CastScalarFunc {
   }
 };
 
+template <>
+struct CastScalarFunc<Half, Float8_e4m3fn> {
+  C10_HOST_DEVICE Float8_e4m3fn operator()(Half src_val) const {
+    float f_val = static_cast<float>(src_val);
+    uint16_t half_bits;
+    std::memcpy(&half_bits, &src_val, sizeof(uint16_t));
+
+    if (half_bits == 0x8000) {
+      return Float8_e4m3fn(-0.0f);
+    }
+    return Float8_e4m3fn(f_val);
+  }
+};
+
 void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   ScalarType dtype = iter.dtype(0);
   ScalarType other_dtype = iter.dtype(1);
