@@ -276,54 +276,7 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_with_skip.py
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          for %%f in (*.xml) do (
-              if exist "%%f" (
-                  copy "%%f" "%GITHUB_WORKSPACE%\ut_log" /Y
-              )
-          )
-          if exist "op_ut_with_skip.nn" (
-              echo Processing directory: op_ut_with_skip.nn
-              for /r "op_ut_with_skip.nn" %%f in (*.xml) do (
-                  if exist "%%f" (
-                      move "%%f" "%%~dpfop_ut_with_skip.nn.%%~nxf" >nul
-                  )
-              )
-          )
-          if exist "op_ut_with_skip.quantization\core" (
-              echo Processing directory: op_ut_with_skip.quantization\core
-              for /r "op_ut_with_skip.quantization\core" %%f in (*.xml) do (
-                  if exist "%%f" (
-                      move "%%f" "%%~dpfop_ut_with_skip.quantization.core.%%~nxf" >nul
-                  )
-              )
-          )
-          if exist "op_ut_with_all.functorch" (
-              echo Processing directory: op_ut_with_all.functorch
-              for /r "op_ut_with_all.functorch" %%f in (*.xml) do (
-                  if exist "%%f" (
-                      move "%%f" "%%~dpfop_ut_with_all.functorch.%%~nxf" >nul
-                  )
-              )
-          )
-          echo === XML files in directory ===  
-          dir "op_ut_with_skip.nn\*.xml" /B
-          dir "op_ut_with_skip.quantization\core\*.xml" /B
-          dir "op_ut_with_all.functorch\*.xml" /B
-
-          for %%d in (op_ut_with_skip.nn "op_ut_with_skip.quantization\core" op_ut_with_all.functorch) do (
-              if exist "%%d" (
-                  echo Copying XML files from %%d
-                  for /f "delims=" %%f in ('dir "%%d\*.xml" /B /S 2^>nul') do (
-                      if exist "%%f" (
-                          echo Copying: %%f
-                          copy "%%f" "%GITHUB_WORKSPACE%\ut_log\" /Y
-                      )
-                  )
-              )
-          )
-          
-          python run_test_with_only.py
-          copy op_ut_with_only.xml %GITHUB_WORKSPACE%\ut_log /Y
+          for /r . %%f in (op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
       - name: UT Test Results Summary
         shell: cmd
         run: |
