@@ -205,13 +205,13 @@ jobs:
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/build_*.log
       - name: Cleanup workspace
         if: ${{ always() }}
