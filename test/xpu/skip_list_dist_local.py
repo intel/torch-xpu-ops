@@ -225,6 +225,7 @@ skip_dict = {
     "../../../../test/distributed/test_pg_wrapper.py": None,
     "../../../../test/distributed/test_run.py": None,
     "../../../../test/distributed/test_serialization.py": None,
+    "../../../../test/distributed/test_distributed_spawn.py": None,
 }
 
 skip_dict_python = {
