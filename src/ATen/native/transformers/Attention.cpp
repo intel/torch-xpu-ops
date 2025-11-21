@@ -14,7 +14,10 @@
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
+#include <ATen/ops/_efficient_attention_forward.h>
+#include <ATen/ops/_efficient_attention_forward_native.h>
 #include <ATen/ops/_fill_mem_eff_dropout_mask_native.h>
+#include <ATen/ops/_scaled_dot_product_attention_math.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -318,6 +321,46 @@ at::Tensor& _fill_mem_eff_dropout_mask_(
   auto mask = std::get<1>(xpu::dropout_kernel(self, dropout_p, true));
   self.copy_(mask);
   return self;
+}
+
+/**
+ * Fall back implementation of efficient attention
+ */
+std::tuple<Tensor, Tensor, Tensor, Tensor>
+_scaled_dot_product_efficient_attention_xpu(
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
+    const std::optional<at::Tensor>& attn_bias,
+    bool compute_log_sumexp,
+    double dropout_p,
+    bool is_causal,
+    std::optional<double> scale) {
+  // Used for tracking usage statistics
+  C10_LOG_API_USAGE_ONCE("torch.sdpa.mem_efficient_attention");
+  constexpr int64_t MAX_BATCH_SIZE = (1LL << 16) - 1;
+  int64_t batch_size = query.size(0);
+
+  if (batch_size > MAX_BATCH_SIZE) {
+    TORCH_CHECK(
+        dropout_p == 0.0,
+        "Efficient attention cannot produce valid seed and offset outputs when "
+        "the batch size exceeds (",
+        MAX_BATCH_SIZE,
+        ").");
+  }
+  auto res = at::_scaled_dot_product_attention_math(
+      query,
+      key,
+      value,
+      attn_bias,
+      dropout_p,
+      is_causal,
+      std::nullopt, /*dropout_mask*/
+      scale,
+      true);
+  return std::make_tuple(
+      std::get<0>(res), std::get<1>(res), Tensor(), Tensor());
 }
 
 } // namespace native
