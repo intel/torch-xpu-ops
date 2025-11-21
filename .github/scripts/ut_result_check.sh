@@ -15,7 +15,9 @@ declare -A EXPECTED_CASES=(
     ["op_regression_dev1"]=1
     ["op_transformers"]=237
     ["op_ut"]=120408
-    ["test_xpu"]=69
+    ["xpu_inductor"]=20880
+    ["test_xpu"]=73
+    ["torch_xpu"]=396
 )
 
 # Tests that are known to randomly pass and should be ignored when detecting new passes
@@ -343,7 +345,7 @@ mark_passed_issue() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu)
+    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu|xpu_inductor|torch_xpu)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
