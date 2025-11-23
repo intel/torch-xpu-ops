@@ -1,5 +1,5 @@
 #include <ATen/AccumulateType.h>
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <c10/util/generic_math.h>
@@ -74,8 +74,10 @@ void div_floor_kernel(TensorIteratorBase& iter) {
     // optimization for floating-point types: if the second operand is a CPU
     // scalar, compute a * reciprocal(b). Note that this may lose one bit of
     // precision compared to computing the division.
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, dtype, "div_floor_xpu", [&]() {
+    AT_DISPATCH_V2(
+        dtype,
+        "div_floor_xpu",
+        AT_WRAP([&]() {
           using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
           auto b = iter.scalar_value<accscalar_t>(2);
           if (C10_UNLIKELY(b == 0)) {
@@ -86,12 +88,28 @@ void div_floor_kernel(TensorIteratorBase& iter) {
           iter.remove_operand(2);
           gpu_kernel(
               iter, DivFloorWithScalarFunctor<scalar_t, accscalar_t>(b, inv_b));
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16,
+        kFloat8_e5m2,
+        kFloat8_e4m3fn,
+        kFloat8_e5m2fnuz,
+        kFloat8_e4m3fnuz);
   } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        kHalf, kBFloat16, dtype, "div_floor_xpu", [&]() {
+    AT_DISPATCH_V2(
+        dtype,
+        "div_floor_xpu",
+        AT_WRAP([&]() {
           gpu_kernel_with_scalars(iter, DivFloorFloatFunctor<scalar_t>());
-        });
+        }),
+        AT_EXPAND(AT_FLOATING_TYPES),
+        kHalf,
+        kBFloat16,
+        kFloat8_e5m2,
+        kFloat8_e4m3fn,
+        kFloat8_e5m2fnuz,
+        kFloat8_e4m3fnuz);
   }
 }
 } // namespace at::native::xpu
