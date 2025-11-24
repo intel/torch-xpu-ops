@@ -21,13 +21,6 @@ parser.add_argument(
     default="selected",
     help="Test cases scope",
 )
-# Add skip-cases parameter to import window skip dictionary
-parser.add_argument(
-    "--skip-cases",
-    action="store_true",
-    default=False,
-    help="Use window skip dictionary for test cases",
-)
 args = parser.parse_args()
 
 
@@ -38,8 +31,10 @@ def should_skip_entire_file(skip_list):
     return any(item.endswith(".py") for item in skip_list)
 
 
-# Import window skip dictionary if skip-cases is True
-if args.skip_cases:
+platform = sys.platform
+print(f"Running test on the platform: {platform}")
+# Import window skip dictionary if Platform is Windows
+if platform.startswith("win"):
     try:
         # Import the window skip dictionary module
         from windows_skip_cases import skip_dict as window_skip_dict
