@@ -11,8 +11,9 @@ void linalg_qr_kernel(
     std::string_view mode,
     const at::Tensor& Q,
     const at::Tensor& R) {
-  TORCH_CHECK(A.device().is_xpu(), "a must be an XPU tensor");
-  TORCH_CHECK(A.dtype() == at::kFloat, "a must be float");
+
+  //TORCH_CHECK(A.device().is_xpu(), "a must be an XPU tensor");
+  //TORCH_CHECK(A.dtype() == at::kFloat, "a must be float");
 
   at::Tensor a_contig = A.contiguous();
   at::Tensor result_r = at::clone(a_contig);
@@ -42,11 +43,10 @@ void linalg_qr_kernel(
     v = std::vector<long>({0, 0});
   }
   auto q_dimensions = at::IntArrayRef(v);
-  std::cout << "Q SIZE " << q_dimensions << " " << dimensions << " "
-            << std::endl;
+
   at::Tensor result_q = at::empty(q_dimensions, options);
 
-  std::cout << "Q SIZE " << q_dimensions << " " << dimensions << std::endl;
+
 
   sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
 
@@ -79,7 +79,6 @@ void linalg_qr_kernel(
           queue,
           n,
           out_q_columns,
-          //          out_q_columns,
           tau_len,
           q_buf,
           n,
@@ -106,9 +105,6 @@ void linalg_qr_kernel(
             .contiguous();
   }
 
-  // result_q.transpose(0,1);
-  // Q.set_(result_q.transpose(-2, -1).to("xpu"));
-  // R.set_(result_r.transpose(-2, -1).triu_().to("xpu"));
   Q.set_(result_q.transpose(-2, -1));
   R.set_(result_r.transpose(-2, -1).triu_());
   queue.wait();
