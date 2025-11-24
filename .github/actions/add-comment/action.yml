@@ -1,0 +1,47 @@
+name: CI Tests with Detailed Report
+
+inputs:
+  commentBody:
+    type: string
+    default: ''
+    description: Path to summary report html file
+
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+    - name: Post readable test report
+      shell: bash -xe {0}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Read the comment content from a file
+          const fs = require('fs');
+          const commentBody = fs.readFileSync('${{ inputs.commentBody }}', 'utf8');
+          // Get existing comments
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          // Find existing bot comment
+          const existingComment = comments.find(comment =>
+            comment.user.type === 'Bot' &&
+            comment.body.includes('# 🧪 CI Test Summary Report')
+          );
+          if (existingComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existingComment.id,
+              body: commentBody
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          }
