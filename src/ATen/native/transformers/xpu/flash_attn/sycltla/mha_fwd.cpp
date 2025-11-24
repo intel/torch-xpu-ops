@@ -497,6 +497,13 @@ flash_attention_forward_sycltla(
         false, "FlashAttentionForwardXPU: only support BHSD or BSHD layout");
   }
 
+  if (seqlen_qo > seqlen_kv && is_causal) {
+    // When seqlen_qo is greater than seqlen_kv and is_causal(lower_right causal
+    // mask) is true, some output positions will skip computation for better
+    // performance.
+    out.zero_();
+  }
+
   at::Tensor logsumexp =
       at::empty({batch_size, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
 

@@ -166,6 +166,7 @@ class FlashPrefillEpilogue<
     return true;
   }
 
+  // The main operator
   CUTLASS_HOST_DEVICE
   FlashPrefillEpilogue(Params const& params_, TensorStorage const&)
       : params(params_) {}
@@ -187,16 +188,13 @@ class FlashPrefillEpilogue<
       int const& q_head_coord,
       float softmax_scale) {
     using namespace cute;
-
     static constexpr bool is_var_len =
         cutlass::fmha::collective::is_variable_length_v<
             tuple_element_t<2, ProblemShape>>;
-
     using FragOutLayout = typename FragOut::layout_type;
     constexpr int Vec = shape<0>(FragOutLayout{});
     constexpr int FragsM = shape<1>(FragOutLayout{});
     constexpr int FragsN = size(select<2, 3>(shape(FragOutLayout{})));
-
     auto g = compat::get_nd_item<1>().get_sub_group();
     auto out_reg = make_tensor(
         static_cast<decltype(out)&&>(out).data(),
@@ -231,14 +229,9 @@ class FlashPrefillEpilogue<
     // Indexing variables
     auto [batch, num_heads_q, head_size_vo] = select<0, 1, 6>(problem_shape);
     auto [seq_len_qo] = select<0>(sequence_length_shape);
-    // Represent the full output tensor
-    // Tensor mO_mnl = cute::get_xe_tensor(make_shape(seq_len_qo, head_size_vo,
-    // (is_var_len ? batch : 1) * num_heads_q));
     Tensor mO_mnl =
         cute::get_xe_tensor(make_shape(seq_len_qo, head_size_vo, 1));
-
     auto [m_coord, n_coord, k_coord, l_coord] = tile_coord;
-    // Tile the output tensor per WG
     Tensor g_wg_O = local_tile(
         mO_mnl,
         select<0, 1>(TileShapeOutput{}),
@@ -247,7 +240,6 @@ class FlashPrefillEpilogue<
         get<2>(typename TiledMmaOutput::ThrLayoutVMNK{}.shape());
     auto m_sg = get_sub_group_id() / ATOM_N;
     auto n_sg = get_sub_group_id() % ATOM_N;
-    // Tile the output tensor per SG
     Tensor gO = local_tile(
         g_wg_O,
         SubgroupTileShape{},
@@ -255,13 +247,7 @@ class FlashPrefillEpilogue<
         Step<_1, _1, X>{}); // (BLK_M,BLK_N,m,n,l)
     auto thread_xe_store_o = params.xe_store_o.get_thread_slice(ThreadIdxX());
     Tensor tOgO = thread_xe_store_o.partition_D(gO);
-
     Tensor final_out_reg = make_fragment_like<ElementOutput>(out_reg);
-    // iff ElementOutput == ElementAccumulator, then convert_type doesn't do the
-    // right conversion iff ElementOutput == fp8, there is no NumericConverter
-    // specialization available for both the above cases, we call copy() which
-    // internally performs a static_cast op on the data. for ElementOutput ==
-    // bf16 | fp16, convert_type calls relevant NumericConverter specialization.
     if constexpr (
         cute::is_any_of_v<
             ElementOutput,
@@ -280,30 +266,17 @@ class FlashPrefillEpilogue<
     int lane_id = static_cast<int>(sg.get_local_linear_id());
     int sub_group_id = get_sub_group_id();
     const int BLK_M = size(select<0>(TileShapeOutput{}));
-
-    // write along the sequence.
-    // use the entire sub_group to write lse since all
-    // work items within subgroup have the same sum() data stored
-    // in registers
     auto blk_m_coord = get<0>(tile_coord); // seq_len_blk_idx
-
     size_t lse_offset =
         k_coord * num_heads_q * seq_len_qo + // shift the batch -- batch_idx *
                                              // num_heads_q * seq_len_qo  -- OK
         q_head_coord *
             seq_len_qo + // shift the head  -- head_q * seq_len_qo -- ok
         m_coord * BLK_M; // shift to the particular tile
-
     int localtile_seq_coord = 0;
-
-    // Calculate the sequence coordinate
-    // The coordinate value should be within [0.. seq_len_qo - 1]
     localtile_seq_coord = sub_group_id * SubgroupSize +
-        lane_id; // one subgroup will handle 16 (usually) sequence
-
-    // checked
+        lane_id; // one subgroup will handle 16 sequence
     int seq_coord = m_coord * BLK_M + localtile_seq_coord;
-
     // Check that if this is within the seq_len_qo
     if (seq_coord < seq_len_qo) {
       auto cur_sum = rowsum[lane_id];
@@ -356,3 +329,5 @@ class FlashPrefillEpilogue<
 } // namespace collective
 } // namespace flash_attention
 } // namespace cutlass
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
