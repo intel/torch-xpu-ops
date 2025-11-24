@@ -33,7 +33,7 @@ jobs:
         run: |
           cd ./torch-xpu-ops
           lint_script=".github/scripts/lintrunner.sh"
-          ci_report="${{ github.workspace }}/.ci/templates/ci-report.txt"
+          ci_report="${{ github.workspace }}/torch-xpu-ops/.ci/templates/ci-report.txt"
           sed -i 's+GITHUB_REPOSITORY+${{ github.repository }}+;s+GITHUB_RUN_ID+${{ github.run_id }}+' ${ci_report}
           # Run lint check with proper error handling and reporting
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
@@ -61,7 +61,7 @@ jobs:
           export CLANG=1
           # Run lint check with proper error handling and reporting
           lint_script="third_party/torch-xpu-ops/.github/scripts/lintrunner.sh"
-          ci_report="${{ github.workspace }}/.ci/templates/ci-report.txt"
+          ci_report="${{ github.workspace }}/torch-xpu-ops/.ci/templates/ci-report.txt"
           if bash "$lint_script"; then
               sed -i 's+.*Clang Check.*+|**Clang Check**|✅|1|100%|N/A|N/A|+' "$ci_report"
               echo "Lint check: PASSED"
