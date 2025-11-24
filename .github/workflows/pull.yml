@@ -71,7 +71,7 @@ jobs:
               exit 1
           fi
       - name: Init test summary result
-        uses: ./.github/actions/add-comment
+        uses: ./torch-xpu-ops/.github/actions/add-comment
         with:
           commentBody: .ci/templates/ci-report.txt
 
