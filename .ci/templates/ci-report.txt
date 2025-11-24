@@ -8,6 +8,7 @@
 | Category        | Status   | Acc/UT Total | Acc/UT Pass Rate  | Perf Eager Ratio | Perf Inductor Ratio |
 |-----------------|----------|--------------|-------------------|------------------|---------------------|
 | **Lnit Check**  |    WIP   |
+| **Clang Check**  |    WIP   |
 | **Unit Tests**  |    WIP   |
 | **HuggingFace** |    WIP   |
 | **Timm Models** |    WIP   |

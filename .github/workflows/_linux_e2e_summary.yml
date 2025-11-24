@@ -95,7 +95,7 @@ jobs:
           gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
       - name: Add comment for performance outliers
         if: ${{ github.event_name == 'pull_request' && steps.summary.outputs.performance_regression == 1 }}
-        uses: .github/actions/add-comment
+        uses: ./.github/actions/add-comment
         with:
           commentBody: './performance.regression.pr.html'
       - name: Result check

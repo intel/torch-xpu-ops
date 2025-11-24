@@ -31,9 +31,20 @@ jobs:
           path: torch-xpu-ops
       - name: Run lint check
         run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           cd ./torch-xpu-ops
-          bash .github/scripts/lintrunner.sh
+          lint_script=".github/scripts/lintrunner.sh"
+          ci_report="${{ github.workspace }}/.ci/templates/ci-report.txt"
+          sed -i 's+GITHUB_REPOSITORY+${{ github.repository }}+;s+GITHUB_RUN_ID+${{ github.run_id }}+' ${ci_report}
+          # Run lint check with proper error handling and reporting
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+          if bash "$lint_script"; then
+              sed -i 's+.*Lnit Check.*+|**Lnit Check**|✅|1|100%|N/A|N/A|+' "$ci_report"
+              echo "Lint check: PASSED"
+          else
+              sed -i 's+.*Lnit Check.*+|**Lnit Check**|❌|1|0%|N/A|N/A|+' "$ci_report"
+              echo "Lint check: FAILED"
+              exit 1
+          fi
       - name: Run lint check with Clang
         run: |
           sudo apt update && sudo apt install -y libomp-dev
@@ -52,10 +63,10 @@ jobs:
           lint_script="third_party/torch-xpu-ops/.github/scripts/lintrunner.sh"
           ci_report="${{ github.workspace }}/.ci/templates/ci-report.txt"
           if bash "$lint_script"; then
-              sed -i 's+.*Lnit Check.*+|**Lnit Check**|✅|1|100%|N/A|N/A|+' "$ci_report"
+              sed -i 's+.*Clang Check.*+|**Clang Check**|✅|1|100%|N/A|N/A|+' "$ci_report"
               echo "Lint check: PASSED"
           else
-              sed -i 's+.*Lnit Check.*+|**Lnit Check**|❌|1|0%|N/A|N/A|+' "$ci_report"
+              sed -i 's+.*Clang Check.*+|**Clang Check**|❌|1|0%|N/A|N/A|+' "$ci_report"
               echo "Lint check: FAILED"
               exit 1
           fi
