@@ -35,10 +35,15 @@ runs:
         fi
         sudo apt update
         sudo apt install -y jq numactl
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
     - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python }}
+      shell: bash -xe {0}
+      run: |
+        uv venv myvenv-test --python 3.10 --clear
+        source myvenv-test/bin/activate
+        uv pip install -U pip wheel setuptools
+        echo "PATH=$PATH" >> ${GITHUB_ENV}
     - name: Check python
       shell: bash -xe {0}
       run: |
