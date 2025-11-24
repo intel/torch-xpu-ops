@@ -262,8 +262,10 @@ def process_log_file(log_file):
 def process_xml_file(xml_file):
     try:
         xml = JUnitXml.fromfile(xml_file)
-        ut = os.path.basename(xml_file).split('.')[0]
-        category = determine_category(ut)
+        parts = os.path.basename(xml_file).rsplit('.', 2)
+        ut = parts[0]
+        parts_category = os.path.basename(xml_file).split('.')[0]
+        category = determine_category(parts_category)
 
         for suite in xml:
             suite_summary = {

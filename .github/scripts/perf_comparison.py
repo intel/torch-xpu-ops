@@ -1,6 +1,12 @@
-# To compare the performance diff
-# Usage:
-#   python perf_comparison.py --target /path/to/xpu/performance/result/dir --baseline /path/to/reference/dir
+#!/usr/bin/env python3
+"""
+Performance comparison script.
+
+Compare performance differences between target and baseline results.
+Usage:
+    python perf_comparison.py --target /path/to/xpu/performance/result/dir
+                             --baseline /path/to/reference/dir
+"""
 
 import re
 import os
@@ -8,132 +14,437 @@ import fnmatch
 import argparse
 import pandas as pd
 from statistics import geometric_mean
-
-parser = argparse.ArgumentParser(description="Analysis", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("--target", default=None, help="XPU performance result csv files dir")
-parser.add_argument("--baseline", default=None, help="XPU refrerence result csv files dir")
-parser.add_argument("--pr", action="store_true", help="Only show results xpu has")
-parser.add_argument("--criteria", default=0.90, type=float, help="Criteria for comparison")
-args = parser.parse_args()
+from typing import List, Tuple, Any, Optional
 
 
-def multiple_replace(text):
-    REGEX_REPLACEMENTS = [
+def multiple_replace(text: str) -> str:
+    """
+    Apply multiple regex replacements to text.
+
+    Args:
+        text: Input text to process
+
+    Returns:
+        Processed text with replacements applied
+    """
+    regex_replacements = [
         (r".*inductor_", ""),
         (r"_xpu_performance.csv", ""),
     ]
-    for old, new in REGEX_REPLACEMENTS:
-        text = re.sub(old, new, text, flags=re.IGNORECASE)
+    for old_pattern, new_pattern in regex_replacements:
+        text = re.sub(old_pattern, new_pattern, text, flags=re.IGNORECASE)
     return text
 
-def find_files(pattern, path):
-    result = []
-    for root, dirs, files in os.walk(path):
-        for name in files:
-            if fnmatch.fnmatch(name, pattern):
-                result.append(os.path.join(root, name))
-    return result
 
-def color_result(criteria, input):
-    if input == -1:
-        return input
-    elif input < criteria:
-        output = r"$${\color{red}" + f"{input}" + "}$$"
-        return output
-    elif input > 1 - criteria + 1:
-        output = r"$${\color{green}" + f"{input}" + "}$$"
-        return output
+def find_files(pattern: str, search_path: str) -> List[str]:
+    """
+    Find files matching pattern in directory tree.
+
+    Args:
+        pattern: File pattern to match
+        search_path: Directory path to search
+
+    Returns:
+        List of matching file paths
+    """
+    matched_files = []
+    for root, _, files in os.walk(search_path):
+        for filename in files:
+            if fnmatch.fnmatch(filename, pattern):
+                matched_files.append(os.path.join(root, filename))
+    return matched_files
+
+
+def color_result(input_val: float) -> str:
+    """
+    Add color coding to performance results.
+
+    Args:
+        input_val: Performance ratio value
+
+    Returns:
+        Colored string representation
+    """
+    if input_val == -1:
+        return str(input_val)
+    elif input_val < 0.8:
+        return f"🔴{input_val:.3f}"
+    elif input_val < 0.9:
+        return f"🟡{input_val:.3f}"
+    elif input_val > 1.1:
+        return f"🟢{input_val:.3f}"
     else:
-        return input
+        return f"{input_val:.3f}"
 
-# comparison result output
-output_header = ["Category", "Model",
-                 "Target eager", "Target inductor", "Inductor vs. Eager [Target]",
-                 "Baseline eager", "Baseline inductor", "Inductor vs. Eager [Baseline]",
-                 "Target vs. Baseline [Eager]", "Target vs. Baseline [Inductor]"]
-output_data = []
 
-xpu_files = find_files("*_xpu_performance.csv", args.target)
-for xpu_file in xpu_files:
-    xpu_data = pd.read_csv(xpu_file)
-    xpu_names = xpu_data["name"].tolist()
-    refer_file = re.sub(args.target, args.baseline + "/", xpu_file, flags=re.IGNORECASE, count=1)
-    if os.path.isfile(refer_file):
-        refer_data= pd.read_csv(refer_file)
-        refer_names = [row["name"] for index, row in refer_data.iterrows()]
-        names = set(xpu_names)
-        names = sorted(names)
-        for name in names:
-            # xpu info
-            xpu_value = next((row for index, row in xpu_data.iterrows() if row["name"] == name), None)
-            xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"] if xpu_value is not None else -1
-            xpu_inductor_latency = xpu_value["abs_latency"] if xpu_value is not None else -1
-            xpu_indcutor_vs_eager = xpu_value["speedup"] if xpu_value is not None else -1 # higher is better
-            # refer info
-            refer_value = next((row for index, row in refer_data.iterrows() if row["name"] == name), None)
-            refer_eager_latency = float(refer_value["speedup"]) * float(refer_value["abs_latency"]) if refer_value is not None else -1
-            refer_inductor_latency = refer_value["abs_latency"] if refer_value is not None else -1
-            refer_indcutor_vs_eager = refer_value["speedup"] if refer_value is not None else -1 # higher is better
-            # xpu vs. refer
-            xpu_vs_refer_eager = refer_eager_latency / xpu_eager_latency  if xpu_value is not None and refer_value is not None and xpu_eager_latency > 0 else 0 # higher is better
-            xpu_vs_refer_inductor = float(refer_value["abs_latency"]) / xpu_value["abs_latency"] if xpu_value is not None and refer_value is not None and xpu_value["abs_latency"] > 0 else 0 # higher is better
-            eager_comparison = str(color_result(args.criteria, xpu_vs_refer_eager))
-            inductor_comparison = str(color_result(args.criteria, xpu_vs_refer_inductor))
-            # output data
-            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_inductor_latency, xpu_indcutor_vs_eager, refer_eager_latency, refer_inductor_latency, refer_indcutor_vs_eager, xpu_vs_refer_eager, xpu_vs_refer_inductor])
-    else:
-        names = set(xpu_names)
-        names = sorted(names)
-        for name in names:
-            xpu_value = next((row for index, row in xpu_data.iterrows() if row["name"] == name), "")
-            xpu_eager_latency = xpu_value["speedup"] * xpu_value["abs_latency"]
-            output_data.append([multiple_replace(xpu_file), name, xpu_eager_latency, xpu_value["abs_latency"], xpu_value["speedup"], -1, -1, -1, -1, -1])
-if not args.pr:
+def write_report(cases: pd.DataFrame, filename: str,
+                 message: str, write_mode: str) -> None:
+    """
+    Helper function to write reports to HTML files.
+
+    Args:
+        cases: DataFrame to write
+        filename: Output filename
+        message: Header message
+        write_mode: File write mode ('w' or 'a')
+    """
+    if not cases.empty:
+        output = cases.to_html(index=False)
+        with open(filename, write_mode, encoding='utf-8') as file:
+            file.write(f"\n\n{message}\n\n{output}\n\n")
+
+
+def calculate_latencies(value: Optional[pd.Series]) -> Tuple[float, float, float]:
+    """
+    Calculate eager and inductor latencies from value row.
+
+    Args:
+        value: DataFrame row with performance data
+
+    Returns:
+        Tuple of (eager_latency, inductor_latency, inductor_vs_eager)
+    """
+    if value is None:
+        return -1.0, -1.0, -1.0
+
+    eager_latency = value["speedup"] * value["abs_latency"]
+    inductor_latency = value["abs_latency"]
+    inductor_vs_eager = value["speedup"]
+
+    return eager_latency, inductor_latency, inductor_vs_eager
+
+
+def find_matching_row(dataframe: pd.DataFrame, model_name: str) -> Optional[pd.Series]:
+    """
+    Find row for specific model in dataframe.
+
+    Args:
+        dataframe: DataFrame to search
+        model_name: Model name to find
+
+    Returns:
+        Matching row or None if not found
+    """
+    matches = dataframe[dataframe["name"] == model_name]
+    return matches.iloc[0] if not matches.empty else None
+
+
+def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
+                               refer_value: Optional[pd.Series]) -> Tuple[float, float]:
+    """
+    Calculate performance comparison ratios between target and baseline.
+
+    Args:
+        xpu_value: Target performance data
+        refer_value: Baseline performance data
+
+    Returns:
+        Tuple of (eager_ratio, inductor_ratio)
+    """
+    if xpu_value is None or refer_value is None:
+        return 0.0, 0.0
+
+    # Calculate eager comparison
+    xpu_eager = xpu_value["speedup"] * xpu_value["abs_latency"]
+    refer_eager = refer_value["speedup"] * refer_value["abs_latency"]
+    eager_ratio = refer_eager / xpu_eager if xpu_eager > 0 else 0.0
+
+    # Calculate inductor comparison
+    inductor_ratio = (refer_value["abs_latency"] / xpu_value["abs_latency"]
+                     if xpu_value["abs_latency"] > 0 else 0.0)
+
+    return eager_ratio, inductor_ratio
+
+
+def process_comparison_data(args: argparse.Namespace) -> Tuple[List[List[Any]], List[str]]:
+    """
+    Process and compare performance data between target and baseline.
+
+    Args:
+        args: Command line arguments
+
+    Returns:
+        Tuple of (output_data, output_header)
+    """
+    output_header = [
+        "Category", "Model", "Target eager", "Target inductor",
+        "Inductor vs. Eager [Target]", "Baseline eager", "Baseline inductor",
+        "Inductor vs. Eager [Baseline]", "Target vs. Baseline [Eager]",
+        "Target vs. Baseline [Inductor]"
+    ]
+    output_data = []
+
+    # Process target files
+    xpu_files = find_files("*_xpu_performance.csv", args.target)
+
+    for xpu_file in xpu_files:
+        try:
+            xpu_data = pd.read_csv(xpu_file)
+            category = multiple_replace(xpu_file)
+
+            # Find corresponding baseline file
+            refer_file = xpu_file.replace(args.target, args.baseline)
+
+            if os.path.isfile(refer_file):
+                refer_data = pd.read_csv(refer_file)
+                process_matching_models(xpu_data, refer_data, category, output_data)
+            else:
+                process_target_only_models(xpu_data, category, output_data)
+
+        except Exception as e:
+            print(f"Error processing {xpu_file}: {e}")
+            continue
+
+    # Process baseline-only files if not in PR mode
+    if not args.pr:
+        process_baseline_only_models(args, output_data)
+
+    return output_data, output_header
+
+
+def process_matching_models(xpu_data: pd.DataFrame, refer_data: pd.DataFrame,
+                           category: str, output_data: List[List[Any]]) -> None:
+    """
+    Process models that exist in both target and baseline.
+    """
+    xpu_names = set(xpu_data["name"].tolist())
+    refer_names = set(refer_data["name"].tolist())
+    all_names = sorted(xpu_names | refer_names)
+
+    for model_name in all_names:
+        xpu_value = find_matching_row(xpu_data, model_name)
+        refer_value = find_matching_row(refer_data, model_name)
+
+        (xpu_eager, xpu_inductor, xpu_ratio) = calculate_latencies(xpu_value)
+        (refer_eager, refer_inductor, refer_ratio) = calculate_latencies(refer_value)
+        eager_ratio, inductor_ratio = calculate_comparison_ratios(xpu_value, refer_value)
+
+        output_data.append([
+            category, model_name,
+            xpu_eager, xpu_inductor, xpu_ratio,
+            refer_eager, refer_inductor, refer_ratio,
+            eager_ratio, inductor_ratio
+        ])
+
+
+def process_target_only_models(xpu_data: pd.DataFrame, category: str,
+                              output_data: List[List[Any]]) -> None:
+    """
+    Process models that only exist in target data.
+    """
+    for model_name in sorted(xpu_data["name"].tolist()):
+        xpu_value = find_matching_row(xpu_data, model_name)
+        if xpu_value is not None:
+            xpu_eager = xpu_value["speedup"] * xpu_value["abs_latency"]
+            output_data.append([
+                category, model_name,
+                xpu_eager, xpu_value["abs_latency"], xpu_value["speedup"],
+                -1, -1, -1, -1, -1
+            ])
+
+
+def process_baseline_only_models(args: argparse.Namespace,
+                                output_data: List[List[Any]]) -> None:
+    """
+    Process models that only exist in baseline data.
+    """
     refer_files = find_files("*_xpu_performance.csv", args.baseline)
+
     for refer_file in refer_files:
-        refer_data = pd.read_csv(refer_file)
-        refer_names = refer_data["name"].tolist()
-        xpu_file = re.sub(args.baseline, args.target + "/", refer_file, flags=re.IGNORECASE, count=1)
-        if not os.path.isfile(xpu_file):
-            names = set(refer_names)
-            names = sorted(names)
-            for name in names:
-                refer_value = next((row for index, row in refer_data.iterrows() if row["name"] == name), "")
-                refer_eager_latency = refer_value["speedup"] * refer_value["abs_latency"]
-                output_data.append([multiple_replace(refer_file), name, -1, -1, -1, refer_eager_latency, refer_value["abs_latency"], refer_value["speedup"], -1, -1])
+        try:
+            # Find corresponding target file
+            xpu_file = refer_file.replace(args.baseline, args.target)
+            if os.path.isfile(xpu_file):
+                continue
 
-# result
-output_data = pd.DataFrame(output_data, columns=output_header)
-output_data = output_data.sort_values(['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'], ascending=[True, True])
+            refer_data = pd.read_csv(refer_file)
+            category = multiple_replace(refer_file)
 
-# summary
-geomean_sum = {"all": [], "huggingface": [], "timm_models": [], "torchbench": []}
-for column_name in ["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]:
-    data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0]
-    if len(data) > 0:
-        geomean_sum["all"].append(geometric_mean(data))
-    for model_name in ["huggingface", "timm_models", "torchbench"]:
-        data = [row[column_name] for index, row in output_data.iterrows() if row[column_name] > 0 and re.match(model_name, row["Category"])]
-        if len(data) > 0:
-            geomean_sum[model_name].append(geometric_mean(data))
-geomean_sum = {k: v for k, v in geomean_sum.items() if v}
-output_sum = pd.DataFrame(geomean_sum, index=["Target vs. Baseline [Inductor]", "Target vs. Baseline [Eager]", "Inductor vs. Eager [Target]"]).T
-output = output_sum.to_html(header=True)
-with open('performance.summary.html', 'w', encoding='utf-8') as f:
-    f.write("\n\n#### performance\n\n" + output)
+            for model_name in sorted(refer_data["name"].tolist()):
+                refer_value = find_matching_row(refer_data, model_name)
+                if refer_value is not None:
+                    refer_eager = refer_value["speedup"] * refer_value["abs_latency"]
+                    output_data.append([
+                        category, model_name,
+                        -1, -1, -1,
+                        refer_eager, refer_value["abs_latency"],
+                        refer_value["speedup"], -1, -1
+                    ])
+        except Exception as e:
+            print(f"Error processing baseline file {refer_file}: {e}")
+            continue
 
-# details
-output = output_data.to_html(index=False)
-with open('performance.details.html', 'w', encoding='utf-8') as f:
-    f.write("\n\n#### performance\n\n" + output)
 
-# regression
-comparison = output_data.loc[
-    ((output_data['Target vs. Baseline [Inductor]'] < args.criteria) | (output_data['Target vs. Baseline [Eager]'] < args.criteria))
-    & (output_data['Baseline inductor'] > 0)
-    & (output_data['Target inductor'] >= 0)
-]
-if not comparison.empty:
-    output = comparison.to_html(index=False)
-    with open('performance.regression.html', 'w', encoding='utf-8') as f:
-        f.write("\n\n#### performance\n\n" + output)
+def generate_summary(output_data: pd.DataFrame, args: argparse.Namespace) -> pd.DataFrame:
+    """
+    Generate performance summary statistics.
+
+    Args:
+        output_data: Processed performance data
+        args: Command line arguments
+
+    Returns:
+        DataFrame with summary statistics
+    """
+    geomean_results = {
+        "all": [],
+        "huggingface": [],
+        "timm_models": [],
+        "torchbench": []
+    }
+
+    comparison_columns = [
+        "Target vs. Baseline [Inductor]",
+        "Target vs. Baseline [Eager]",
+        "Inductor vs. Eager [Target]"
+    ]
+    comparison_data = output_data.loc[
+        (output_data['Target inductor'] > 0) & (output_data['Baseline inductor'] > 0)
+    ]
+
+    for column_name in comparison_columns:
+        # Overall geometric mean
+        valid_data = [
+            row[column_name] for _, row in comparison_data.iterrows()
+            if row[column_name] > 0
+        ]
+        geomean_results["all"].append(
+            color_result(geometric_mean(valid_data)) if valid_data else None
+        )
+
+        # Per-category geometric means
+        for category in ["huggingface", "timm_models", "torchbench"]:
+            category_data = [
+                row[column_name] for _, row in comparison_data.iterrows()
+                if (row[column_name] > 0 and
+                    re.match(category, row["Category"]))
+            ]
+            geomean_results[category].append(
+                color_result(geometric_mean(category_data)) if category_data else None
+            )
+
+    # Filter out empty categories
+    geomean_results = {k: v for k, v in geomean_results.items() if any(v)}
+
+    return pd.DataFrame(geomean_results, index=comparison_columns).T
+
+
+def generate_regression_reports(output_data: pd.DataFrame, args: argparse.Namespace) -> None:
+    """
+    Generate regression analysis reports.
+
+    Args:
+        output_data: Processed performance data
+        args: Command line arguments
+    """
+    criteria_high = 0.8
+    criteria_medium = 0.9
+
+    # Regression cases for full report
+    regression_cases = output_data.loc[
+        ((output_data['Target vs. Baseline [Inductor]'] < criteria_medium) |
+         (output_data['Target vs. Baseline [Eager]'] < criteria_medium)) &
+        (output_data['Target inductor'] > 0) &
+        (output_data['Baseline inductor'] > 0)
+    ]
+
+    write_report(regression_cases, 'performance.regression.html',
+                 "#### Performance Regression", "w")
+
+    # PR-specific reports
+    if args.pr:
+        generate_pr_report(output_data, criteria_high, criteria_medium)
+
+
+def generate_pr_report(output_data: pd.DataFrame, criteria_high: float,
+                      criteria_medium: float) -> None:
+    """
+    Generate PR-specific performance report.
+
+    Args:
+        output_data: Processed performance data
+        criteria_high: High regression threshold
+        criteria_medium: Medium regression threshold
+    """
+    pr_data = output_data.loc[(output_data['Target inductor'] > 0) & (output_data['Baseline inductor'] > 0)]
+    pr_data = pr_data[[
+        "Category", "Model", "Target vs. Baseline [Eager]",
+        "Target vs. Baseline [Inductor]"
+    ]]
+
+    # High regression cases
+    high_regression = pr_data.loc[
+        (pr_data['Target vs. Baseline [Inductor]'] < criteria_high) |
+        (pr_data['Target vs. Baseline [Eager]'] < criteria_high)
+    ]
+
+    # Medium regression cases
+    medium_regression = pr_data.loc[
+        ((pr_data['Target vs. Baseline [Inductor]'] < criteria_medium) |
+         (pr_data['Target vs. Baseline [Eager]'] < criteria_medium)) &
+        (pr_data['Target vs. Baseline [Inductor]'] >= criteria_high) &
+        (pr_data['Target vs. Baseline [Eager]'] >= criteria_high)
+    ]
+
+    if not high_regression.empty or not medium_regression.empty:
+        with open('performance.regression.pr.html', 'w', encoding='utf-8') as f:
+            f.write("\n### Performance outliers, please check!\n")
+
+        write_report(high_regression, 'performance.regression.pr.html',
+                    "- 🔴 [-1, 80%), should be regression", 'a')
+        write_report(medium_regression, 'performance.regression.pr.html',
+                    "- 🟡 [80%, 90%), may be fluctuations", 'a')
+
+
+def main():
+    """Main function to run performance comparison."""
+    args = argparse.ArgumentParser(
+        description="Performance Analysis",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    args.add_argument(
+        "--target",
+        required=True,
+        help="XPU performance result csv files directory"
+    )
+    args.add_argument(
+        "--baseline",
+        required=True,
+        help="XPU reference result csv files directory"
+    )
+    args.add_argument(
+        "--pr",
+        action="store_true",
+        help="Only show results that XPU has"
+    )
+    args = args.parse_args()
+
+    # Process comparison data
+    output_data, output_header = process_comparison_data(args)
+    output_df = pd.DataFrame(output_data, columns=output_header)
+
+    # Sort by performance ratios
+    output_df = output_df.sort_values(
+        ['Target vs. Baseline [Inductor]', 'Target vs. Baseline [Eager]'],
+        ascending=[True, True]
+    )
+
+    # Generate summary report
+    summary_df = generate_summary(output_df, args)
+    with open('performance.summary.html', 'w', encoding='utf-8') as f:
+        f.write("\n\n#### Performance Summary\n\n" + summary_df.to_html(header=True) + "\n\n")
+
+    # Generate detailed report
+    output_df_clean = output_df.replace(-1, '')
+    with open('performance.details.html', 'w', encoding='utf-8') as f:
+        f.write("\n\n#### Performance Details\n\n" + output_df_clean.to_html(index=False) + "\n\n")
+
+    # Generate regression reports
+    generate_regression_reports(output_df, args)
+
+    print("Performance comparison completed!")
+    print(f"Processed {len(output_df)} model comparisons")
+
+
+if __name__ == "__main__":
+    main()
