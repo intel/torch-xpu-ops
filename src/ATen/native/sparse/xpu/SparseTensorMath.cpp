@@ -1,5 +1,5 @@
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
-#include <ATen/native/TensorConversions.h>
+// #include <ATen/native/TensorConversions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -52,7 +52,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
 
   // change sparse to dense
   std::cout << "Call at::native::sparse_to_dense" << std::endl;
-  Tensor mat1_dense = at::native::sparse_to_dense(sparse_, {}, {});
+  Tensor mat1_dense = sparse_._to_dense(std::nullopt, std::nullopt);
   // calculate
   at::addmm_out(r_, t, mat1_dense, dense, beta, alpha);
 
