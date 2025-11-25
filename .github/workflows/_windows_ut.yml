@@ -7,12 +7,12 @@ on:
         required: false
         type: string
         default: 'main'
-        description: Pytorch branch/commit
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         required: false
         type: string
-        default: 'false'
-        description: Keep torch-xpu-ops pin. `true` means use pined commit
+        default: 'main'
+        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       ut:
         required: true
         type: string
@@ -48,6 +48,27 @@ permissions: read-all
 
 env: 
     USE_XPU: 1
+    PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
+      intel-cmplr-lib-rt==2025.2.1 |
+      intel-cmplr-lib-ur==2025.2.1 |
+      intel-cmplr-lic-rt==2025.2.1 |
+      intel-sycl-rt==2025.2.1 |
+      oneccl-devel==2021.16.1; platform_system == 'Linux' and platform_machine == 'x86_64' |
+      oneccl==2021.16.1; platform_system == 'Linux' and platform_machine == 'x86_64' |
+      impi-rt==2021.16.1; platform_system == 'Linux' and platform_machine == 'x86_64' |
+      onemkl-sycl-blas==2025.2.0 |
+      onemkl-sycl-dft==2025.2.0 |
+      onemkl-sycl-lapack==2025.2.0 |
+      onemkl-sycl-rng==2025.2.0 |
+      onemkl-sycl-sparse==2025.2.0 |
+      dpcpp-cpp-rt==2025.2.1 |
+      intel-opencl-rt==2025.2.1 |
+      mkl==2025.2.0 |
+      intel-openmp==2025.2.1 |
+      tbb==2022.2.0 |
+      tcmlib==1.4.0 |
+      umf==0.11.0 |
+      intel-pti==0.13.1
 
 jobs:
   ut_test:
@@ -77,8 +98,57 @@ jobs:
           if exist "pytorch" (
             rmdir /s /q pytorch
           )
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && git checkout ${{ inputs.pytorch }} 
+          set pytorch=${{ inputs.pytorch }}
+          set torch_xpu_ops=${{ inputs.torch_xpu_ops }}
+          echo %pytorch% | findstr /C:"https://" >nul
+          if %errorlevel% equ 0 (
+              echo %pytorch% | findstr "@" >nul
+              if %errorlevel% equ 0 (
+                  for /f "tokens=1,2 delims=@" %%a in ("%pytorch%") do (
+                      set PYTORCH_REPO=%%a
+                      set PYTORCH_COMMIT=%%b
+                  )
+              ) else (
+                  set PYTORCH_REPO=%pytorch%
+                  set PYTORCH_COMMIT=main
+              )
+          ) else (
+              set PYTORCH_REPO=https://github.com/pytorch/pytorch.git
+              set PYTORCH_COMMIT=%pytorch%
+          )
+
+          echo %torch_xpu_ops% | findstr /C:"https://" >nul
+          if %errorlevel% equ 0 (
+              echo %torch_xpu_ops% | findstr "@" >nul
+              if %errorlevel% equ 0 (
+                  for /f "tokens=1,2 delims=@" %%a in ("%torch_xpu_ops%") do (
+                      set TORCH_XPU_OPS_REPO=%%a
+                      set TORCH_XPU_OPS_COMMIT=%%b
+                  )
+              ) else (
+                  set TORCH_XPU_OPS_REPO=%torch_xpu_ops%
+                  set TORCH_XPU_OPS_COMMIT=main
+              )
+          ) else (
+              set TORCH_XPU_OPS_REPO=https://github.com/intel/torch-xpu-ops.git
+              set TORCH_XPU_OPS_COMMIT=%torch_xpu_ops%
+          )
+
+          echo PYTORCH_REPO=%PYTORCH_REPO% > temp_vars.txt
+          echo PYTORCH_COMMIT=%PYTORCH_COMMIT% >> temp_vars.txt
+          echo TORCH_XPU_OPS_REPO=%TORCH_XPU_OPS_REPO% >> temp_vars.txt
+          echo TORCH_XPU_OPS_COMMIT=%TORCH_XPU_OPS_COMMIT% >> temp_vars.txt
+
+          echo File contents:
+          type temp_vars.txt
+          del temp_vars.txt
+
+          echo PYTORCH_REPO: %PYTORCH_REPO%
+          echo PYTORCH_COMMIT: %PYTORCH_COMMIT%
+          echo TORCH_XPU_OPS_REPO: %TORCH_XPU_OPS_REPO%
+          echo TORCH_XPU_OPS_COMMIT: %TORCH_XPU_OPS_COMMIT%
+          git clone %PYTORCH_REPO% pytorch
+          cd pytorch && git checkout %PYTORCH_COMMIT%
           pip install pyyaml requests pytest-timeout
           call conda install -y libuv
           call conda install -y rust
@@ -89,7 +159,7 @@ jobs:
           git status 
           git show -s 
           git submodule sync && git submodule update --init --recursive
-          if ${{ inputs.torch_xpu_ops }} == 'pinned' (
+          if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
             echo "Replace torch-xpu-ops!"
@@ -98,7 +168,14 @@ jobs:
               rmdir /s /q torch-xpu-ops
             )
             cd ..
-            Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
+            if "%GITHUB_EVENT_NAME%" == "pull_request" (
+              Xcopy ..\torch-xpu-ops third_party\torch-xpu-ops /E/H/Y/F/I
+            ) else (
+              git clone "%TORCH_XPU_OPS_REPO%" "third_party\torch-xpu-ops"
+              cd "third_party\torch-xpu-ops"
+              git checkout "%TORCH_XPU_OPS_COMMIT%"
+              cd ../..
+            )
             powershell -Command "(Get-Content caffe2/CMakeLists.txt) -replace 'checkout --quiet \${TORCH_XPU_OPS_COMMIT}', 'log -n 1' | Set-Content caffe2/CMakeLists.txt"
           )
       - name: Build Pytorch XPU
@@ -125,7 +202,13 @@ jobs:
           python setup.py clean
           set MAX_JOBS=32
           set TORCH_XPU_ARCH_LIST=mtl-h,bmg,lnl-m
-          python setup.py bdist_wheel > build_torch_wheel_log.log
+          python setup.py bdist_wheel > build_torch_wheel_log.log 2>&1
+          set EXIT_CODE=%errorlevel%
+          if %EXIT_CODE% neq 0 (
+            echo "[INFO] Build failed with exit code %EXIT_CODE%"
+            exit /b %EXIT_CODE%
+          )
+          echo "[INFO] Build Successfully"
           echo "[INFO] begin to install torch whls"
           for /r C:\actions-runner\_work\torch-xpu-ops\pytorch\dist %%i in (torch*.whl) do (
             set TORCH_WHL=%%i
@@ -138,7 +221,6 @@ jobs:
         run: |
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
@@ -146,13 +228,13 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\build_torch_wheel_log.log'
       - name: Upload Windows binary
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
@@ -162,7 +244,6 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           set PYTORCH_TEST_WITH_SLOW=1
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/extended/
           python run_test_with_skip_mtl.py
@@ -177,7 +258,6 @@ jobs:
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
-          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_win_with_skip_mtl.py
 
@@ -190,7 +270,7 @@ jobs:
           pip install junitparser
           echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
           for %%i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
-            python .\.github\scripts\check-ut.py "%%i" >> "%GITHUB_STEP_SUMMARY%"
+            python .\.github\scripts\check-ut.py -n windows -i "%%i" >> "%GITHUB_STEP_SUMMARY%"
           )
           @echo off
 
@@ -226,7 +306,7 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: "${{ github.workspace }}/ut_log"
           if-no-files-found: ignore
 
@@ -242,19 +322,21 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         shell: bash
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
+          cd "${latest_dir}"
 
           # get skipped known issues
-          count=$(gh api "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
+          count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
           if [ "$count" -gt 0 ]; then
             echo -e "$count issues with skipped label found"
-            gh api "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
           fi
 
@@ -277,6 +359,6 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           overwrite: true

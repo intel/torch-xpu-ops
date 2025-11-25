@@ -74,8 +74,6 @@ jobs:
         run: |
           cat /etc/os-release
           hostname && id
-          # Cleanup workspace
-          find ./ |grep -v "^\./$" |xargs rm -rf
           # install gh
           dnf install -y 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
@@ -115,8 +113,8 @@ jobs:
             TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
+          # gcc 13
+          source /opt/rh/gcc-toolset-13/enable
           source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
           ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
             --WORKSPACE="${{ github.workspace }}" \
@@ -131,8 +129,8 @@ jobs:
           fi
       - name: Build Torchvision and Torchaudio
         run: |
-          # gcc 11
-          source /opt/rh/gcc-toolset-11/enable
+          # gcc 13
+          source /opt/rh/gcc-toolset-13/enable
           cd ./pytorch
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
           TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
@@ -180,8 +178,8 @@ jobs:
                       grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
             )"
             # gcc 13
-            dnf install -y gcc-toolset-13-gcc-c++ zlib-devel
             source /opt/rh/gcc-toolset-13/enable
+            dnf install -y zlib-devel
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
@@ -207,16 +205,15 @@ jobs:
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/build_*.log
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |
           chmod 777 /__w /github ./ -R
-          find ./ |grep -v "^\./$" |xargs rm -rf
