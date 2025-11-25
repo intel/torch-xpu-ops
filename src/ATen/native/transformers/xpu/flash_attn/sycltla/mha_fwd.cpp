@@ -289,8 +289,8 @@ void run_mha_fwd_(
       PipelineStages_>(          \
       queue, problem_shape, query, key, value, out, logsumexp, scale);
 
-  constexpr int PipelineStages = 2;
   if (headdim == 64) {
+    constexpr int PipelineStages = 2;
     using TileShapeQK = Shape<_128, _64, _64>;
     using TileShapePV = Shape<_128, _32, _64>;
     using TileShapeOutPut = Shape<_128, _64, _64>;
@@ -302,6 +302,7 @@ void run_mha_fwd_(
         SubgroupLayout,
         PipelineStages);
   } else if (headdim == 96) {
+    constexpr int PipelineStages = 2;
     using TileShapeQK = Shape<_128, _64, _32>;
     using TileShapePV = Shape<_128, _32, _64>;
     using TileShapeOutPut = Shape<_128, _96, _64>;
@@ -313,6 +314,28 @@ void run_mha_fwd_(
         SubgroupLayout,
         PipelineStages);
   } else if (headdim == 128) {
+    auto device_architecture =
+        queue.get_device()
+            .get_info<
+                sycl::ext::oneapi::experimental::info::device::architecture>();
+    if (device_architecture ==
+            sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc ||
+        device_architecture ==
+            sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg) {
+      constexpr int PipelineStages = 1;
+      using TileShapeQK = Shape<_64, _32, _64>;
+      using TileShapePV = Shape<_64, _32, _32>;
+      using TileShapeOutPut = Shape<_64, _128, _32>;
+      using SubgroupLayout = Layout<Shape<_4, _1, _1>, Stride<_1, _1, _1>>;
+      run_mha_fwd_specialized(
+          TileShapeQK,
+          TileShapePV,
+          TileShapeOutPut,
+          SubgroupLayout,
+          PipelineStages);
+    }
+
+    constexpr int PipelineStages = 2;
     using TileShapeQK = Shape<_256, _32, _64>;
     using TileShapePV = Shape<_256, _32, _32>;
     using TileShapeOutPut = Shape<_256, _128, _32>;
@@ -324,6 +347,7 @@ void run_mha_fwd_(
         SubgroupLayout,
         PipelineStages);
   } else if (headdim == 192) {
+    constexpr int PipelineStages = 2;
     using TileShapeQK = Shape<_256, _64, _64>;
     using TileShapePV = Shape<_256, _32, _64>;
     using TileShapeOutPut = Shape<_256, _192, _64>;

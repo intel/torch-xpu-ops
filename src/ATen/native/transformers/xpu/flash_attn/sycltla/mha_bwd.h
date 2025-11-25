@@ -5,7 +5,6 @@
 #include <sycl/sycl.hpp>
 
 namespace cute {
-
 template <
     class T_,
     int kHeadDim_,
@@ -112,86 +111,86 @@ struct FAKernel {
   // for load Q and Kt in S=QKt
   using TiledLoadQ = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _4>>{})); // Val layout  16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
+      Layout<Shape<_16, _1>>{})); // Val layout  16x1
   using TiledLoadKt = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _4>>{})); // Val layout  16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_16, _1>>{})); // Val layout  16x1
 
   // for load dO and Vt in dP=dO*Vt
   using TiledLoaddO = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _4>>{})); // Val layout  16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
+      Layout<Shape<_16, _1>>{})); // Val layout  16x1
 
   using TiledLoadV = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _4>>{})); // Val layout  16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_16, _1>>{})); // Val layout  16x1
 
   // for load Pt and dO in dV=Pt*dO
   using TiledLoadPt = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideC>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 m-major
-      Layout<Shape<_16, _4>>{})); // // Val layout  8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 m-major
+      Layout<Shape<_16, _1>>{})); // // Val layout  8x1
   using TiledLoaddOt = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_V, StrideC>, DType>{}, // should
                                                                       // be V
                                                                       // here
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _4>>{})); // val layout 16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_16, _1>>{})); // val layout 16x1
 
   // for load dP, K and dQ in dQ=dP*K
   using TiledLoaddP = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _4>>{})); // val layout 16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
+      Layout<Shape<_16, _1>>{})); // val layout 16x1
   using TiledLoadK = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideC>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _4>>{})); // val layout 16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_16, _1>>{})); // val layout 16x1
 
   using TiledLoaddQ = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U32x8x16_LD_N, StrideR>, VType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _4>>{})); // val layout 8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_8, _1>>{})); // val layout 8x1
 
   //  for load dPt, Q in dK=dPt*Q
   using TiledLoaddPt = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_T, StrideC>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 k-major
-      Layout<Shape<_16, _4>>{})); // Val layout  16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 k-major
+      Layout<Shape<_16, _1>>{})); // Val layout  16x1
   using TiledLoadQt = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x16x16_LD_N, StrideC>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_16, _4>>{})); // Val layout  16x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_16, _1>>{})); // Val layout  16x1
 
   // for save S in S=QKt and P
   using TiledSaveS = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _4>>{})); // Val layout  8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_8, _1>>{})); // Val layout  8x1
   // for save dP in dP=dO*Vt
   using TiledSavedP = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _4>>{})); // Val layout  8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_8, _1>>{})); // Val layout  8x1
   // for save dV in dV=Pt*dO
   using TiledSavedV = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _4>>{})); // Val layout  8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_8, _1>>{})); // Val layout  8x1
   // for save dQ in dQ=dP*K
   using TiledSavedQ = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U32x8x16_ST_N, StrideR>, VType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _4>>{})); // val layout 8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_8, _1>>{})); // val layout 8x1
   // for save dK=dPt*Q
   using TiledSavedK = decltype(make_tiled_copy(
       Copy_Atom<Copy_Traits<XE_2D_U16x8x16_ST_N, StrideR>, DType>{},
-      Layout<Shape<_4, _16>>{}, // Thr layout 1x16 n-major
-      Layout<Shape<_8, _4>>{})); // Val layout  8x1
+      Layout<Shape<_1, _16>>{}, // Thr layout 1x16 n-major
+      Layout<Shape<_8, _1>>{})); // Val layout  8x1
 
   static constexpr int SubgroupSize = 16;
   static constexpr int smem_size = 0;
@@ -215,8 +214,6 @@ struct Param {
       T* dq,
       T* dk,
       T* dv,
-      T* s,
-      T* dp,
       T* pb,
       const float softmax_scale)
       : do_ptr(dO),
@@ -230,8 +227,6 @@ struct Param {
         dq_ptr(dq),
         dk_ptr(dk),
         dv_ptr(dv),
-        s_ptr(s),
-        dp_ptr(dp),
         pb_ptr(pb),
         scale_softmax(softmax_scale),
         scale_softmax_log2(softmax_scale * M_LOG2E),
@@ -251,8 +246,6 @@ struct Param {
   T* dq_ptr;
   T* dk_ptr;
   T* dv_ptr;
-  T* s_ptr;
-  T* dp_ptr;
   T* pb_ptr;
 
   // const dimension
@@ -269,6 +262,7 @@ struct Param {
   int m_block;
   int tail_m;
   int num_qh_per_kvh;
+  int num_nb_per_blk;
   int q_r_stride;
   int q_h_stride;
   int q_b_stride;
@@ -337,14 +331,6 @@ struct Boffset {
     return b_id * param.dv_b_stride + h_id * param.dv_h_stride +
         s_id * param.dv_r_stride;
   }
-  index_t ps_offset(
-      const index_t b_id,
-      const index_t h_id,
-      const index_t sq_id,
-      const index_t sk_id) {
-    return b_id * param.s_b_stride + h_id * param.s_s_stride +
-        sq_id * param.s_r_stride + sk_id;
-  }
   index_t lse_offset(
       const index_t b_id,
       const index_t h_id,
@@ -368,6 +354,7 @@ struct Boffset {
   Param<T>& param;
 };
 
+// for debug
 template <typename T>
 void setup_bhsd_stride(Param<T>& param) {
   param.q_r_stride = param.head_dim;
@@ -397,14 +384,6 @@ void setup_bhsd_stride(Param<T>& param) {
   param.o_r_stride = param.head_dim;
   param.o_h_stride = param.seq_len_q * param.head_dim;
   param.o_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  // param.do_r_stride = param.head_dim;
-  // param.do_h_stride = param.seq_len_q * param.head_dim;
-  // param.do_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-  param.s_r_stride = param.seq_len_kv_pad;
-  param.s_s_stride = param.seq_len_q_pad * param.seq_len_kv_pad;
-  param.s_b_stride =
-      param.num_head_q * param.seq_len_q_pad * param.seq_len_kv_pad;
 
   param.dq_r_stride = param.head_dim;
   param.dq_h_stride = param.seq_len_q_pad * param.head_dim;
@@ -441,17 +420,8 @@ void setup_bshd_stride(Param<T>& param) {
   param.o_h_stride = param.head_dim;
   param.o_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
 
-  // param.do_r_stride = param.head_dim;
-  // param.do_h_stride = param.seq_len_q * param.head_dim;
-  // param.do_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-  param.s_r_stride = param.seq_len_kv_pad;
-  param.s_s_stride = param.seq_len_q_pad * param.seq_len_kv_pad;
-  param.s_b_stride =
-      param.num_head_q * param.seq_len_q_pad * param.seq_len_kv_pad;
-
   param.dq_r_stride = param.num_head_q * param.head_dim;
   param.dq_h_stride = param.head_dim;
   param.dq_b_stride = param.num_head_q * param.seq_len_q_pad * param.head_dim;
 }
-
 } // namespace cute
