@@ -50,14 +50,6 @@ macro(set_build_flags)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
-      # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
-      # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
-      # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
-      # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
-      # the issue we wrap paths to SYCL headers in `-isystem`.
-      foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
-        list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
-      endforeach()
       # Excluding warnings which flood the compilation output
       # TODO: fix warnings in the source code and then reenable them in compilation
       list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
