@@ -54,7 +54,6 @@ macro(set_build_flags)
       # TODO: fix warnings in the source code and then reenable them in compilation
       list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
       list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
-      list(APPEND SYCL_HOST_FLAGS -Wno-reorder)
     endif()
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)
