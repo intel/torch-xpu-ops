@@ -205,8 +205,8 @@ process_model() {
     local -A results=()
 
     # Collect results for all data types and modes
-    for mode in training inference; do
-        for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16; do
+    for dtype in float32 bfloat16 float16 amp_bf16 amp_fp16; do
+        for mode in training inference; do
             local key="${mode}_${dtype}"
             results[$key]=$(get_model_result "$results_dir" "$suite" "$model" "$dtype" "$mode")
         done
