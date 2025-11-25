@@ -10,7 +10,7 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         # https://github.com/intel/torch-xpu-ops/issues/584
-        "_jiterator_"
+        "_jiterator_",
         # OPs not supported
         "test_errors_dot_xpu",
         "test_errors_vdot_xpu",
