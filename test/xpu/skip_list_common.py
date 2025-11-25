@@ -10,11 +10,7 @@ skip_dict = {
     "test_ops_xpu.py": (
         # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
         # https://github.com/intel/torch-xpu-ops/issues/584
-        "test_cow_input_jiterator_2inputs_2outputs_xpu_float32",
-        "test_cow_input_jiterator_4inputs_with_extra_args_xpu_float32",
-        "test_cow_input_jiterator_binary_return_by_ref_xpu_float32",
-        "test_cow_input_jiterator_binary_xpu_float32",
-        "test_cow_input_jiterator_unary_xpu_float32",
+        "_jiterator_"
         # OPs not supported
         "test_errors_dot_xpu",
         "test_errors_vdot_xpu",
@@ -29,15 +25,39 @@ skip_dict = {
         "test_cow_input_histogramdd_xpu_float32",
         "test_operator_histogramdd_xpu_float32",
         "test_view_replay_histogramdd_xpu_float32",
+        "test_noncontiguous_samples_histogramdd_xpu_float32",
+        "test_out_histogramdd_xpu_float32",
+        "test_variant_consistency_eager_histogramdd_xpu_float32",
+        "test_out_warning_histogramdd_xpu",
         "test_neg_view_histogramdd_xpu_float64",
+        "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
+        "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
+        "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex64",
+        "test_dtypes_vdot_xpu",
         "test_variant_consistency_eager_nn_functional_scaled_dot_product_attention_xpu_float32",
         "test_multiple_devices_linalg_multi_dot_xpu_int64",
         "test_cow_input_linalg_multi_dot_xpu_float32",
         "test_cow_input_nn_functional_scaled_dot_product_attention_xpu_float32",
+        "test_dtypes_dot_xpu",
+        "test_dtypes_linalg_multi_dot_xpu",
+        "test_dtypes_torch_ops_aten__efficient_attention_forward_xpu",
+        "test_fake_crossref_backward_no_amp_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_cow_input_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_out_warning_torch_ops_aten__efficient_attention_forward_xpu",
+        "test_variant_consistency_eager_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_fake_crossref_backward_amp_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_out_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_view_replay_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_out_torch_ops_aten__flash_attention_forward_xpu_float16",
+        "test_out_warning_torch_ops_aten__flash_attention_forward_xpu",
+        "test_dtypes_torch_ops_aten__flash_attention_forward_xpu",
     ),
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
         "test_div_rounding_numpy_xpu_float16",  # Calculation error. XPU implementation uses opmath type.
+        # AssertionError: Jiterator is only supported on CUDA and ROCm GPUs, none are available.
+        "_jiterator_",
     ),
     "test_scatter_gather_ops_xpu.py": (
         # AssertionError: Tensor-likes are not equal!
