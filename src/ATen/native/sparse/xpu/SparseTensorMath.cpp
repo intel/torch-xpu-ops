@@ -75,7 +75,6 @@ Tensor& addmm_out_sparse_dense_xpu(
     const Scalar& alpha,
     Tensor& result
 ) {
-  std::cout << "Call addmm_out_sparse_dense_xpu" << std::endl;
   c10::MaybeOwned<Tensor> b_self = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm_out");
   return s_addmm_out_sparse_dense_xpu(result, *b_self, mat1, mat2, beta, alpha);
 }
@@ -87,7 +86,6 @@ Tensor addmm_sparse_dense_xpu(
     const Scalar& beta,
     const Scalar& alpha
 ) {
-  std::cout << "Call addmm_sparse_dense_xpu" << std::endl;
   c10::MaybeOwned<Tensor> b_self = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm_out");
   return s_addmm_sparse_dense_xpu(*b_self, mat1, mat2, beta, alpha);
 }
@@ -99,7 +97,6 @@ Tensor& s_addmm_sparse_dense_xpu_(
     const Scalar& beta,
     const Scalar& alpha
 ) {
-  std::cout << "Call s_addmm_sparse_dense_xpu_" << std::endl;
   return s_addmm_out_sparse_dense_xpu(t, t, sparse, dense, beta, alpha);
 }
 
