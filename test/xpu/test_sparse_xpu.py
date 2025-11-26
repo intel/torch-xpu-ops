@@ -2073,14 +2073,6 @@ class TestSparse(TestSparseBase):
     @precisionOverride({torch.bfloat16: 5e-2, torch.float16: 5e-2})
     @dtypes(torch.double, torch.cdouble, torch.bfloat16, torch.float16)
     @dtypesIfMPS(torch.float32, torch.complex64, torch.bfloat16, torch.float16)
-    # @skipXPUIf(
-    #     True,
-    #     "addmm sprase xpu not supported yet, see https://github.com/intel/torch-xpu-ops/issues/2211",
-    # )
-    @skipXPUIf(
-        False,
-        "addmm sprase xpu not supported yet, see https://github.com/intel/torch-xpu-ops/issues/2211",
-    )
     def test_sparse_addmm(self, device, dtype, coalesced):
         if (dtype is torch.bfloat16 or dtype is torch.float16) and device.startswith(
             "cuda"
