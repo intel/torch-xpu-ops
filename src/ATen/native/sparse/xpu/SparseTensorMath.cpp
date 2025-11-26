@@ -20,8 +20,6 @@
 
 #include <ATen/ExpandUtils.h>
 
-#include <iostream>
-
 namespace at::native {
 
 using namespace at::sparse;
@@ -60,10 +58,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
   TORCH_CHECK(sparse_.sparse_dim() == 2, "addmm: expected first two dims to be sparse (indices has size 2 at first dim), but got ", sparse_.sparse_dim(), " sparse dims");
   // no need to check dense_dim because dense_dim + sparse_dim = dim
 
-  // change sparse to dense
-  std::cout << "Call at::native::sparse_to_dense" << std::endl;
   Tensor mat1_dense = sparse_._to_dense(std::nullopt, std::nullopt);
-  // calculate
   at::addmm_out(r_, t, mat1_dense, dense, beta, alpha);
 
   return r_;
