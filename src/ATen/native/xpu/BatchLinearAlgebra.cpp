@@ -75,7 +75,7 @@ TORCH_IMPL_FUNC(linalg_qr_xpu_out)(const Tensor& A,
   auto A_cpu = A.to(A.options().device(kCPU));
   auto Q_cpu = Q.to(Q.options().device(kCPU));
   auto R_cpu = R.to(R.options().device(kCPU));
-  at::linalg_qr_out(Q_cpu, R_cpu, A_cpu, mode);  
+  at::linalg_qr_out(Q_cpu, R_cpu, A_cpu, mode);
   Q.copy_(Q_cpu);
   R.copy_(R_cpu);
 #endif // USE_ONEMKL_XPU
