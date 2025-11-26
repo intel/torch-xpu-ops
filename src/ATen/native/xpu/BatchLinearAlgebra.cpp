@@ -2,6 +2,7 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
+#include <ATen/ops/linalg_qr_native.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -63,5 +64,22 @@ void lu_factor_kernel_xpu(
 }
 
 REGISTER_XPU_DISPATCH(lu_factor_stub, &lu_factor_kernel_xpu);
+
+TORCH_IMPL_FUNC(linalg_qr_xpu_out)(const Tensor& A,
+                               std::string_view mode,
+                               const Tensor & Q,
+                               const Tensor & R) {
+#if defined(USE_ONEMKL_XPU)
+  xpu::linalg_qr_kernel(A, mode, Q, R);
+#else
+  auto A_cpu = A.to(A.options().device(kCPU));
+  auto Q_cpu = Q.to(Q.options().device(kCPU));
+  auto R_cpu = R.to(R.options().device(kCPU));
+  at::linalg_qr_out(Q_cpu, R_cpu, A_cpu, mode);  
+  Q.copy_(Q_cpu);
+  R.copy_(R_cpu);
+#endif // USE_ONEMKL_XPU
+}
+
 
 } // namespace at::native
