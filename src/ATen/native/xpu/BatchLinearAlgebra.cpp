@@ -3,6 +3,7 @@
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
 #include <ATen/ops/linalg_qr_native.h>
+#include <ATen/ops/linalg_qr_cpu_dispatch.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -72,10 +73,10 @@ TORCH_IMPL_FUNC(linalg_qr_xpu_out)(const Tensor& A,
 #if defined(USE_ONEMKL_XPU)
   xpu::linalg_qr_kernel(A, mode, Q, R);
 #else
-  auto A_cpu = A.to(A.options().device(kCPU));
-  auto Q_cpu = Q.to(Q.options().device(kCPU));
-  auto R_cpu = R.to(R.options().device(kCPU));
-  at::linalg_qr_out(Q_cpu, R_cpu, A_cpu, mode);
+  auto A_cpu = A.to(at::kCPU);
+  auto Q_cpu = at::empty_like(Q, at::kCPU);
+  auto R_cpu = at::empty_like(R, at::kCPU);
+  at::cpu::linalg_qr_out(Q_cpu, R_cpu, A_cpu, mode);
   Q.copy_(Q_cpu);
   R.copy_(R_cpu);
 #endif // USE_ONEMKL_XPU
