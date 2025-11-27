@@ -1,47 +1,99 @@
-name: CI Tests with Detailed Report
+name: CI Test Report Publisher
+description: 'Publishes detailed test reports as GitHub comments with smart updates'
 
 inputs:
-  commentBody:
-    type: string
-    default: ''
-    description: Path to summary report html file
-
+  comment-body:
+    description: 'Path to the summary report HTML file'
+    required: true
+    default: 'test-results/report.html'
+  report-title:
+    description: 'Title for the test report comment'
+    required: false
+    default: '🧪 CI Test Summary Report'
+  max-comment-length:
+    description: 'Maximum comment length to avoid API limits'
+    required: false
+    default: '65536'
 
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v4
-    - name: Post readable test report
-      shell: bash -xe {0}
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [[ ! -f "${{ inputs.comment-body }}" ]]; then
+          echo "❌ Report file not found: ${{ inputs.comment-body }}"
+          exit 1
+        fi
+
+    - name: Post test report
+      shell: bash
+      env:
+        REPORT_FILE: "${{ inputs.comment-body }}"
+        MAX_LENGTH: "${{ inputs.max-comment-length }}"
+      run: |
+        # Read and sanitize report content
+        report_content=$(< "$REPORT_FILE")
+
+        # Truncate if exceeding GitHub comment limits
+        if [ ${#report_content} -gt $MAX_LENGTH ]; then
+          echo "⚠️ Report content too long, truncating..."
+          report_content="${report_content:0:$MAX_LENGTH}"
+          report_content+="\n\n---\n*Report truncated due to length limits*"
+        fi
+
+        # Escape content for JSON
+        escaped_content=$(jq -R -s -c '.' <<< "$report_content")
+
+        echo "escaped_content<<EOF" >> $GITHUB_ENV
+        echo "$escaped_content" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+
+    - name: Publish or update comment
       uses: actions/github-script@v7
+      env:
+        COMMENT_BODY: ${{ env.comment_body }}
       with:
         script: |
-          // Read the comment content from a file
-          const fs = require('fs');
-          const commentBody = fs.readFileSync('${{ inputs.commentBody }}', 'utf8');
-          // Get existing comments
-          const { data: comments } = await github.rest.issues.listComments({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-          });
-          // Find existing bot comment
-          const existingComment = comments.find(comment =>
-            comment.user.type === 'Bot' &&
-            comment.body.includes('# 🧪 CI Test Summary Report')
-          );
-          if (existingComment) {
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existingComment.id,
-              body: commentBody
-            });
-          } else {
-            await github.rest.issues.createComment({
+          const { COMMENT_BODY } = process.env;
+
+          // Helper function to find bot comments
+          const findBotComment = async () => {
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: commentBody
             });
+
+            return comments.find(comment =>
+              comment.user.type === 'Bot' &&
+              comment.body.includes('${{ inputs.report-title }}')
+            );
+          };
+
+          try {
+            const existingComment = await findBotComment();
+
+            if (existingComment) {
+              console.log('📝 Updating existing test report comment');
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: COMMENT_BODY
+              });
+            } else {
+              console.log('💬 Creating new test report comment');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: COMMENT_BODY
+              });
+            }
+
+            console.log('✅ Test report published successfully');
+          } catch (error) {
+            console.error('❌ Failed to publish test report:', error.message);
+            throw error;
           }
