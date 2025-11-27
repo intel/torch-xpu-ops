@@ -1092,7 +1092,7 @@ def copy_tests(
 
 def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-    if skip_list is not None:
+    if skip_list and len(skip_list) > 0:
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
@@ -1103,7 +1103,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             + test_case
         )
         test_command += skip_options
-    elif exe_list is not None:
+    elif exe_list and len(exe_list) > 0:
         exe_options = ' -k "' + exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
