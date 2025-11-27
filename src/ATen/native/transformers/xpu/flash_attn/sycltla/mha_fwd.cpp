@@ -333,19 +333,19 @@ void run_mha_fwd_(
           TileShapeOutPut,
           SubgroupLayout,
           PipelineStages);
+    } else {
+        constexpr int PipelineStages = 2;
+        using TileShapeQK = Shape<_256, _32, _64>;
+        using TileShapePV = Shape<_256, _32, _32>;
+        using TileShapeOutPut = Shape<_256, _128, _32>;
+        using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+        run_mha_fwd_specialized(
+            TileShapeQK,
+            TileShapePV,
+            TileShapeOutPut,
+            SubgroupLayout,
+            PipelineStages);
     }
-
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_256, _32, _64>;
-    using TileShapePV = Shape<_256, _32, _32>;
-    using TileShapeOutPut = Shape<_256, _128, _32>;
-    using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
-    run_mha_fwd_specialized(
-        TileShapeQK,
-        TileShapePV,
-        TileShapeOutPut,
-        SubgroupLayout,
-        PipelineStages);
   } else if (headdim == 192) {
     constexpr int PipelineStages = 2;
     using TileShapeQK = Shape<_256, _64, _64>;
