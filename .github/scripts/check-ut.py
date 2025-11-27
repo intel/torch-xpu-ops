@@ -306,7 +306,7 @@ def process_xml_file(xml_file):
                         case._file_category = category
                         passed_cases.append(case)
                         passed_by_category[category].append(case)
-            
+
             return suite_cases_count
 
         for suite in xml:
@@ -329,9 +329,9 @@ def process_xml_file(xml_file):
             category_totals[category]['Skipped'] += suite_summary['Skipped']
             category_totals[category]['Failures'] += suite_summary['Failures']
             category_totals[category]['Errors'] += suite_summary['Errors']
-            
+
             if suite.tests != actual_cases_count:
-                print(f"Warning: Suite '{ut}' has {suite.tests} tests in summary but {actual_cases_count} cases were processed", 
+                print(f"Warning: Suite '{ut}' has {suite.tests} tests in summary but {actual_cases_count} cases were processed",
                       file=sys.stderr)
     except Exception as e:
         print(f"Error processing {xml_file}: {e}", file=sys.stderr)
@@ -417,7 +417,7 @@ def main():
 
     generate_failures_log()
     generate_passed_log()
-    generate_all_cases_log() 
+    generate_all_cases_log()
     generate_category_totals_log()
     print_summary()
 
