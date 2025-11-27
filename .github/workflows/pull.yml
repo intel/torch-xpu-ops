@@ -24,6 +24,11 @@ jobs:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
