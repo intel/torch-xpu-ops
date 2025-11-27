@@ -27,20 +27,20 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-          
+
       - name: Setup Linting Environment
         run: |
           sudo apt-get update
           sudo apt-get install -y libomp-dev dos2unix
-          
+
       - name: Run Code Quality Checks
         id: lint-checks
         uses: ./.github/actions/lint-checks
 
-      - name: Initialize Test Summary
+      - name: Publish test report
         uses: ./.github/actions/add-comment
         with:
-          commentBody: .ci/templates/ci-report.txt
+          comment-body: './.ci/templates/ci-report.txt'
 
   conditions-filter:
     if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
@@ -58,7 +58,7 @@ jobs:
         id: check-files
         with:
           filters: |
-            src_changed: 
+            src_changed:
               - 'cmake/**'
               - 'tools/**'
               - 'src/**.cmake'
@@ -153,11 +153,11 @@ jobs:
 
   windows:
     name: windows
-    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
+    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }}
     needs: [conditions-filter, preci-lint-check]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
-    with: 
+    with:
       ut: op_extended,test_xpu
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
