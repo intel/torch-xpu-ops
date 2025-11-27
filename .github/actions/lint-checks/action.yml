@@ -1,0 +1,61 @@
+name: 'Run Lint Checks'
+description: 'Execute code quality and linting checks'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run Standard Lint Check
+      shell: bash
+      run: |
+        ci_report=".ci/templates/ci-report.txt"
+        
+        # Update CI report template
+        sed -i "s+GITHUB_REPOSITORY+${{ github.repository }}+g;s+GITHUB_RUN_ID+${{ github.run_id }}+g" "${ci_report}"
+        
+        # Run lint check
+        export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+        
+        if bash ".github/scripts/lintrunner.sh"; then
+            sed -i 's+.*Lnit Check.*+|**Lnit Check**|✅|1|100%|N/A|N/A|+' "${ci_report}"
+            echo "✅ Standard lint check passed"
+        else
+            sed -i 's+.*Lnit Check.*+|**Lnit Check**|❌|1|0%|N/A|N/A|+' "${ci_report}"
+            echo "❌ Standard lint check failed"
+            exit 1
+        fi
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        path: torch-xpu-ops
+    - name: Run Clang-based Lint Check
+      shell: bash
+      run: |
+        set -euo pipefail
+        
+        # Clone PyTorch and setup environment
+        rm -rf pytorch
+        git clone https://github.com/pytorch/pytorch pytorch
+        
+        cd pytorch
+        cp -r ../torch-xpu-ops third_party/
+        
+        # Configure and run clang checks
+        export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
+                build/xpu/**/*.* \
+                build/xpu/*.* \
+                third_party/torch-xpu-ops/src/*.* \
+                third_party/torch-xpu-ops/src/**/*.* \
+                third_party/torch-xpu-ops/src/**/**/*.* \
+                third_party/torch-xpu-ops/src/**/**/**/*.*"
+        export CLANG=1
+        
+        ci_report="../.ci/templates/ci-report.txt"
+        
+        if bash "third_party/torch-xpu-ops/.github/scripts/lintrunner.sh"; then
+            sed -i 's+.*Clang Check.*+|**Clang Check**|✅|1|100%|N/A|N/A|+' "${ci_report}"
+            echo "✅ Clang lint check passed"
+        else
+            sed -i 's+.*Clang Check.*+|**Clang Check**|❌|1|0%|N/A|N/A|+' "${ci_report}"
+            echo "❌ Clang lint check failed"
+            exit 1
+        fi
