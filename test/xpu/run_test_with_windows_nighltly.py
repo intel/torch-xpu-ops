@@ -46,7 +46,7 @@ def launch_test(test_case, skip_list=None, skip_files=None, exe_list=None):
     else:
         if skip_files is not None:
             for skip_file in skip_files:
-                skip_options += f' --ignore={skip_file}'
+                skip_options += f" --ignore={skip_file}"
 
         test_command = (
             f"pytest --junit-xml=./op_ut_with_windows_nightly.{test_case}.xml --max-worker-restart=1000 "
