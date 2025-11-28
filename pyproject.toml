@@ -34,6 +34,7 @@ ignore = [
     "B023",
     "B028", # No explicit `stacklevel` keyword argument found
     "B904", # Migrate from TRY200
+    "B905", # Python>=3.10 specific suppressions
     "E402",
     "C408", # C408 ignored because we like the dict keyword argument syntax
     "E501", # E501 is not flexible enough, we're using B950 instead

@@ -64,14 +64,14 @@ elif [ "${SEARCH_CHECK}" == "performance" ];then
             }
         }')
     fi
-elif [ "${SEARCH_CHECK}" == "ut_regressions" ];then
+elif [ "${SEARCH_CHECK}" == "op_regressions" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions
     test_status="$(eval "${SEARCH_CASE}" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"
     if [ ${test_status} -eq 0 ];then
         test_result=0
     fi
-elif [ "${SEARCH_CHECK}" == "ut_extended" ];then
+elif [ "${SEARCH_CHECK}" == "op_extended" ];then
     cd ${WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu/extended
     test_status="$(eval "${SEARCH_CASE}" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_VERSION}-${TORCH_XPU_OPS_VERSION}.log 2>&1 && echo $? || echo $?)"

@@ -1,3 +1,4 @@
+#include <ATen/NamedTensorUtils.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool3d.h>
 
@@ -17,6 +18,7 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
   Tensor output = at::empty({0}, input.options());
   Tensor indices = at::empty({0}, input.options().dtype(kLong));
 
+  NoNamesGuard guard;
   at::native::xpu::max_pool3d_with_indices_kernel(
       input,
       kernel_size,
@@ -26,6 +28,9 @@ std::tuple<Tensor, Tensor> max_pool3d_with_indices_xpu(
       ceil_mode,
       output,
       indices);
+  guard.reset();
+  namedinference::propagate_names(output, input);
+  namedinference::propagate_names(indices, input);
 
   return std::tuple<Tensor, Tensor>(output, indices);
 }

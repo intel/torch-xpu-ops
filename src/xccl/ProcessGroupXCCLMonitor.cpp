@@ -7,9 +7,8 @@ namespace c10d {
 HeartbeatMonitorXCCL::HeartbeatMonitorXCCL(ProcessGroupXCCL* pg) {
   pg_ = pg;
   coordCheckIntervalMilSec_ = getCvarInt(TORCH_XCCL_COORD_CHECK_MILSEC, 1000);
-  LOG(INFO)
-      << pg_->logPrefix() << "HeartbeatMonitor environments: "
-      << "TORCH_XCCL_COORD_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
+  LOG(INFO) << pg_->logPrefix() << "HeartbeatMonitor environments: "
+            << "TORCH_XCCL_COORD_CHECK_MILSEC: " << coordCheckIntervalMilSec_;
 }
 
 void HeartbeatMonitorXCCL::stop() {
@@ -40,7 +39,7 @@ void HeartbeatMonitorXCCL::runLoop() {
   // We only need to dump once per PG, so we use local_id_ == 0 for the first PG
   if (pg_->local_id_ == 0) {
     // DumpPipe is one per-trainer process
-    dumpPipe.emplace(pg_->getRank());
+    dumpPipe.emplace(pg_->globalRank());
     while (true) {
       std::unique_lock<std::mutex> lock(monitorMutex_);
       if (monitorWakeUpCV_.wait_for(
