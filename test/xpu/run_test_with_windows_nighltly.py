@@ -56,6 +56,7 @@ def launch_test(test_case, skip_list=None, skip_files=None, exe_list=None):
         test_command += skip_options
     return os.system(test_command)
 
+
 skip_files_list = [
     "test_autocast_xpu.py",
     "test_autograd_fallback_xpu.py",
