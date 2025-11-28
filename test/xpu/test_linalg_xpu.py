@@ -473,6 +473,57 @@ def __tunableop_ctx(self):
                 pass
 
 
+@parametrize("batch", [1, 3])
+@parametrize("m", [0, 1, 12])
+@parametrize("n", [0, 1, 17])
+@dtypes(torch.float32)
+def qr_mode_r(self, device, dtype, batch, m, n):
+    if batch > 1:
+        A_cpu = torch.randn(batch, m, n, dtype=dtype, device="cpu")
+    else:
+        A_cpu = torch.randn(m, n, dtype=dtype, device="cpu")
+    A_xpu = A_cpu.to(device)
+
+    R_cpu = torch.linalg.qr(A_cpu, mode="r").R
+    R_xpu = torch.linalg.qr(A_xpu, mode="r").R
+    self.assertEqual(R_xpu, R_cpu, atol=1e-5, rtol=1e-5)
+
+    # Verify that R is upper triangular
+    lower_triangle = torch.tril(R_xpu, diagonal=-1)
+    self.assertEqual(lower_triangle.sum(), 0.0, atol=0.0, rtol=0.0)
+
+
+@parametrize("batch", [1, 3])
+@parametrize("m", [0, 1, 12])
+@parametrize("n", [0, 1, 17])
+@parametrize("mode", ["reduced", "complete"])
+@dtypes(torch.float32)
+def qr_modes_reduced_complete(self, device, dtype, batch, m, n, mode):
+    if batch > 1:
+        A_cpu = torch.randn(batch, m, n, dtype=dtype, device="cpu")
+    else:
+        A_cpu = torch.randn(m, n, dtype=dtype, device="cpu")
+    A_xpu = A_cpu.to(device)
+
+    Q_cpu, R_cpu = torch.linalg.qr(A_cpu, mode=mode)
+    Q_xpu, R_xpu = torch.linalg.qr(A_xpu, mode=mode)
+
+    self.assertEqual(Q_xpu, Q_cpu, atol=1e-5, rtol=1e-5)
+    self.assertEqual(R_xpu, R_cpu, atol=1e-5, rtol=1e-5)
+
+    # Verify Q is orthogonal: Q^T @ Q should be identity
+    QTQ_xpu = torch.matmul(Q_xpu.mT, Q_xpu)
+    k = min(m, n) if mode == "reduced" else m
+    identity = torch.eye(k, dtype=dtype, device=device)
+    if batch > 1:
+        identity = identity.expand(batch, k, k)
+    self.assertEqual(QTQ_xpu, identity, atol=1e-5, rtol=1e-5)
+
+    # Verify that R is upper triangular
+    lower_triangle = torch.tril(R_xpu, diagonal=-1)
+    self.assertEqual(lower_triangle.sum(), 0.0, atol=0.0, rtol=0.0)
+
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -493,6 +544,8 @@ TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg._tunableop_ctx = __tunableop_ctx
+TestLinalg.test_qr_mode_r = qr_mode_r
+TestLinalg.test_qr_modes_reduced_complete = qr_modes_reduced_complete
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)
