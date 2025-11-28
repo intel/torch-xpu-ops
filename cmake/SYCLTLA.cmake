@@ -3,6 +3,8 @@ macro(replace_cmake_build_flags)
   set(CMAKE_CXX_FLAGS_BK "${CMAKE_CXX_FLAGS}")
   string(REPLACE "-Werror=format" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
   string(REPLACE "-Werror=format" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(REPLACE "-Werror=unused-variable" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "-Werror=unused-variable" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 endmacro()
 
 macro(restore_cmake_build_flags)

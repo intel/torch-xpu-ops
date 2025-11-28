@@ -1,9 +1,9 @@
 # ATen XPU sources
 
 file(GLOB xpu_cpp "xpu/*.cpp")
-file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/sparse/xpu/*.cpp" "native/nested/*.cpp" "native/nested/xpu/*.cpp" "native/transformers/*.cpp" "native/quantized/*.cpp" ${TORCH_ROOT}/aten/src/ATen/native/transformers/xpu/flash_attn/*.cpp)
+file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/sparse/xpu/*.cpp" "native/nested/*.cpp" "native/nested/xpu/*.cpp" "native/transformers/*.cpp" "native/quantized/*.cpp" "native/transformers/xpu/flash_attn/*.cpp")
 file(GLOB xpu_sycl "native/xpu/sycl/*.cpp" "native/sparse/xpu/sycl/*.cpp" "native/nested/xpu/sycl/*.cpp" "native/transformers/sycl/*.cpp" "native/quantized/sycl/*.cpp")
-file(GLOB xpu_sycltla "${TORCH_ROOT}/aten/src/ATen/native/transformers/xpu/flash_attn/sycltla/*.cpp")
+file(GLOB xpu_sycltla "native/transformers/xpu/flash_attn/sycltla/*.cpp")
 
 list(APPEND ATen_XPU_CPP_SRCS ${xpu_cpp})
 if(USE_ONEMKL_XPU)
@@ -40,7 +40,7 @@ install_xpu_headers("native/quantized/xpu/sycl")
 install_xpu_headers("native/sparse/xpu")
 install_xpu_headers("native/sparse/xpu/sycl")
 install_xpu_headers("native/transformers/xpu")
-install_xpu_headers("native/transformers/xpu/sycl")
+install_xpu_headers("native/transformers/xpu/flash_attn")
 
 if(xpu_ops_generated_headers)
   install(FILES ${xpu_ops_generated_headers} DESTINATION ${AT_INSTALL_INCLUDE_DIR}/ATen/ops)
