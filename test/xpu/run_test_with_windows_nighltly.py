@@ -8,6 +8,7 @@ from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
 res = 0
 IS_WINDOWS = sys.platform == "win32"
 
+
 def launch_test(test_case, skip_list=None, skip_files=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     skip_options = ""
