@@ -25,6 +25,16 @@ struct CastScalarFunc {
   }
 };
 
+template <>
+struct CastScalarFunc<Half, Float8_e4m3fn> {
+  C10_HOST_DEVICE Float8_e4m3fn operator()(Half src_val) const {
+    // TODO(Temporarily): Avoid using sycl::half to prevent the fp16->fp32->fp8
+    // fusion from incorrectly converting -0.0 to NaN. This temporary fix should
+    // be removed once the compiler error is resolved.
+    return Float8_e4m3fn(c10::detail::fp16_ieee_to_fp32_value(src_val));
+  }
+};
+
 void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   ScalarType dtype = iter.dtype(0);
   ScalarType other_dtype = iter.dtype(1);
