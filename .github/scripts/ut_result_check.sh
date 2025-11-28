@@ -11,10 +11,10 @@ readonly REPO="intel/torch-xpu-ops"
 # Used to detect significant test case reductions (>5%)
 declare -A EXPECTED_CASES=(
     ["op_extended"]=5349
-    ["op_regression"]=244
+    ["op_regression"]=268
     ["op_regression_dev1"]=1
-    ["op_transformers"]=237
-    ["op_ut"]=120408
+    ["op_transformers"]=262
+    ["op_ut"]=178548
     ["test_xpu"]=69
 )
 
