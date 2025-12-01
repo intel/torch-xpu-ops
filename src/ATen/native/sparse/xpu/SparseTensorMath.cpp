@@ -99,4 +99,33 @@ Tensor& s_addmm_sparse_dense_xpu_(
   return s_addmm_out_sparse_dense_xpu(t, t, sparse, dense, beta, alpha);
 }
 
+Tensor sparse_sparse_matmul_xpu(const Tensor& mat1_, const Tensor& mat2_) {
+  TORCH_INTERNAL_ASSERT(mat1_.is_sparse());
+  TORCH_INTERNAL_ASSERT(mat2_.is_sparse());
+  TORCH_CHECK(mat1_.dim() == 2);
+  TORCH_CHECK(mat2_.dim() == 2);
+  TORCH_CHECK(mat1_.dense_dim() == 0, "sparse_mm: scalar values expected, mat1 got ", mat1_.dense_dim(), "D values");
+  TORCH_CHECK(mat2_.dense_dim() == 0, "sparse_mm: scalar values expected, mat2 got ", mat2_.dense_dim(), "D values");
+
+  TORCH_CHECK(
+      mat1_.size(1) == mat2_.size(0), "mat1 and mat2 shapes cannot be multiplied (",
+      mat1_.size(0), "x", mat1_.size(1), " and ", mat2_.size(0), "x", mat2_.size(1), ")");
+
+  TORCH_CHECK(mat1_.scalar_type() == mat2_.scalar_type(),
+           "mat1 dtype ", mat1_.scalar_type(), " does not match mat2 dtype ", mat2_.scalar_type());
+  
+  // convert to dense
+  Tensor mat1_dense = mat1_._to_dense(std::nullopt, std::nullopt);
+  Tensor mat2_dense = mat2_._to_dense(std::nullopt, std::nullopt);
+
+  Tensor output_dense = at::matmul(mat1_dense, mat2_dense);
+  // convert back to sparse
+  Tensor output_sparse = output_dense._to_sparse(mat1.layout());
+
+  return output_sparse;
+
+  // auto output = at::native::empty_like(mat1_);
+  // output.sparse_resize_and_clear_({mat1_.size(0), mat2_.size(1)}, mat1_.sparse_dim(), 0);
+}
+
 } // namespace at::native
