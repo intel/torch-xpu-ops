@@ -9495,3 +9495,20 @@
     # Warning!  For whatever reason, the inplace sparse addmm is NON
     # broadcasting
     SparseXPU: s_addmm_sparse_dense_xpu_
+
+- func: mm(Tensor self, Tensor mat2) -> Tensor
+  structured_delegate: mm.out
+  variants: function, method
+  dispatch:
+    SparseXPU: _sparse_mm
+  tags: core
+
+- func: mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    SparseXPU: _sparse_mm_out
+
+- func: _sparse_sparse_matmul(Tensor self, Tensor other) -> Tensor
+  dispatch:
+    SparseXPU: sparse_sparse_matmul_xpu
+  autogen: _sparse_sparse_matmul.out
