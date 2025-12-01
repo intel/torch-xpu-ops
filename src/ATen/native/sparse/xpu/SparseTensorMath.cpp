@@ -5,6 +5,7 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/addmm.h>
+#include <ATen/ops/matmul.h>
 #endif
 
 #include <ATen/ExpandUtils.h>
