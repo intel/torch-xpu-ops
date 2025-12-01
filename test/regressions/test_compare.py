@@ -58,7 +58,7 @@ class TestTorchMethod(TestCase):
 
     def _test_compare_float8_core(self, fn, dtype):
         """
-        Core logic for float8 comparison. Uses rounded float32 values 
+        Core logic for float8 comparison. Uses rounded float32 values
         as the Golden Reference to account for lossy f32 -> f8 conversion.
         """
         # 1. Original high-precision inputs (f32)
