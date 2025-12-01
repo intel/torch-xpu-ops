@@ -9,7 +9,6 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestTorchMethod(TestCase):
-
     def _test_compare_fn(self, fn, dtype):
         # test tensor
         x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
