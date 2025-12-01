@@ -35,6 +35,10 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
+  build-triton:
+    secrets: inherit
+    uses: ./.github/workflows/build-triton-wheel.yml
+
   runner:
     runs-on: ${{ inputs.runner }}
     name: get-runner
