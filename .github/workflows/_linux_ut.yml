@@ -35,6 +35,7 @@ env:
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
+  NEW_PASSED_ISSUE: 2333
 
 jobs:
   runner:
@@ -66,7 +67,8 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
+                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -84,14 +86,14 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
@@ -102,7 +104,7 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1
+      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -120,14 +122,14 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           if-no-files-found: ignore
       - name: Upload XPU UT Failure list
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
@@ -136,22 +138,29 @@ jobs:
     if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      issues: write
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/${{ inputs.ut }}
-
-          for log_file in "${{ github.workspace }}/ut_log"/{failures,passed,category,reproduce}_*.log; do
-            [[ -f "$log_file" ]] && cp "$log_file" ./
-          done
+          cd ${{ github.workspace }}/ut_log/
+          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          cd "${latest_dir}/${{ inputs.ut }}"
+          find "${{ github.workspace }}/ut_log" -type f \
+              \( -name "failures_*.log" -o \
+                -name "passed_*.log" -o \
+                -name "category_*.log" -o \
+                -name "reproduce_*.log" \) \
+              -exec mv {} ./ \; || true
+          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
           # get skipped known issues
@@ -166,7 +175,6 @@ jobs:
           else
             ut_list="${{ inputs.ut }}"
           fi
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in ${ut_list}
           do
             cp Known_issue.log.tmp Known_issue.log
@@ -175,12 +183,13 @@ jobs:
               if ( print_row == 1 && $1 ~ r ) { print $0 };
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
             }' issues.log >> Known_issue.log
-            bash ut_result_check.sh ${ut_name}
+            sed -i 's/[[:space:]]*$//g' Known_issue.log
+            bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           overwrite: true

@@ -10,7 +10,7 @@
 #  SYCL_COMPILER
 #  -- SYCL compiler's executable.
 #
-#  SYCL_FLAGS
+#  SYCL_COMPILE_FLAGS
 #  -- SYCL compiler's compilation command line arguments.
 #
 #  SYCL_HOST_FLAGS
@@ -217,7 +217,6 @@ endfunction()
 
 macro(SYCL_WRAP_SRCS sycl_target generated_files)
   # Optional arguments
-  set(SYCL_flags "")
   set(generated_extension ${CMAKE_${SYCL_C_OR_CXX}_OUTPUT_EXTENSION})
 
   set(SYCL_include_dirs "${SYCL_INCLUDE_DIR}")
@@ -388,7 +387,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(SYCL_device_link_flags
         ${link_type_flag}
         ${important_host_flags}
-        ${SYCL_FLAGS}
         ${SYCL_DEVICE_LINK_FLAGS})
 
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
