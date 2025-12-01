@@ -4,7 +4,7 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
 )
-from torch.testing._internal.common_dtype import float8_types_and 
+from torch.testing._internal.common_dtype import float8_types_and
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 
@@ -55,7 +55,6 @@ class TestTorchMethod(TestCase):
 
     def test_ge(self, dtype=torch.float):
         self._test_compare_fn(torch.ge, dtype)
-
     
     def _test_compare_float8_core(self, fn, dtype):
         """
@@ -71,7 +70,7 @@ class TestTorchMethod(TestCase):
         x2_rounded = x2_f32.to(dtype).to(torch.float32)
         
         # CPU Reference Result (using rounded f32 values)
-        y_ref = fn(x1_rounded, x2_rounded) 
+        y_ref = fn(x1_rounded, x2_rounded)
 
         # --- 1. Tensor Test (Tensor vs Tensor) ---
         # Convert to target float8 dtype for XPU test
@@ -110,7 +109,6 @@ class TestTorchMethod(TestCase):
         y_out_scalar = torch.empty_like(y_xpu_scalar, dtype=torch.bool)
         fn(x1_xpu, x2_scalar, out=y_out_scalar)
         self.assertEqual(y_out_scalar.cpu(), y_ref_scalar)
-
 
     FLOAT8_DTYPES = float8_types_and(torch.float8_e8m0fnu)
 
