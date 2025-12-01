@@ -1,0 +1,77 @@
+#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+#include <ATen/core/Tensor.h>
+#include <ATen/ExpandUtils.h>
+#include <ATen/SparseCsrTensorUtils.h>
+#include <ATen/native/Resize.h>
+//#include <ATen/native/sparse/cuda/SparseBlasImpl.h>
+#include <ATen/native/sparse/SparseBlas.h>
+//#include <ATen/native/sparse/SparseCsrTensorMath.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+//#include <ATen/ops/addmm_native.h>
+//#include <ATen/ops/addmv_native.h>
+//#include <ATen/ops/copy_native.h>
+//#include <ATen/ops/empty.h>
+//#include <ATen/ops/mul.h>
+#include <ATen/ops/resize_as_sparse_native.h>
+#include <ATen/ops/scalar_tensor_native.h>
+#include <ATen/ops/sparse_sampled_addmm_native.h>
+#endif
+
+//#include <c10/util/MaybeOwned.h>
+
+namespace at::native {
+
+/*
+  Computes `result` <- α*(A @ B) * spy(C) + β*C, where spy(C) is the sparsity pattern matrix of C.
+
+  Args:
+  * `mat1` - [in] dense Tensor A of size m × k.
+  * `mat2` - [in] dense Tensor B of size k × n.
+  * `self` - [in] sparse Tensor C of size m × n.
+  * `result` - [out] sparse Tensor of size m × n.
+*/
+Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  at::native::sparse::sparse_sampled_addmm_check_inputs(
+      self, mat1, mat2, beta, alpha, result);
+
+  if (&result != &self) {
+    // We allow self to be a single matrix when mat1 and mat2 are batched
+    auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
+    result_sizes.push_back(self.size(-2));
+    result_sizes.push_back(self.size(-1));
+    at::sparse_csr::get_sparse_csr_impl(result)->resize_(self._nnz(), result_sizes);
+    result.copy_(self);
+  }
+
+  // there's a segfault when calling cuSPARSE on 0-sized matrices
+  if (mat1.numel() == 0 || mat2.numel() == 0) {
+    result.mul_(beta);
+    return result;
+  }
+
+  //sparse::impl::cuda::sampled_addmm_out_sparse_csr(mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+Tensor sparse_sampled_addmm_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha) {
+  auto result = at::empty({0, 0}, self.options());
+  //at::native::sparse_sampled_addmm_out_sparse_csr_cuda(self, mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+} // namespace at::native

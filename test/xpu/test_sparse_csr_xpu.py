@@ -3455,7 +3455,6 @@ class TestSparseCSR(TestCase):
             torch.complex128: 1e-8,
         }
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sampled_addmm(self, device, dtype):
         def run_test(c, a, b, op_a, op_b, *, alpha=None, beta=None):
             if dtype.is_complex:
