@@ -1,5 +1,4 @@
 #include <xccl/IPCExchange.hpp>
-#include <xccl/ProcessGroupXCCL.hpp>
 #include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
@@ -9,7 +8,6 @@
 #include <c10/core/DeviceGuard.h>
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
-#include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -215,54 +213,17 @@ void check_channel(int channel, int world_size) {
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   check_channel(channel, world_size_);
 
-  auto group = c10d::resolve_process_group(group_name_);
-  if (group == nullptr) {
-    TORCH_WARN(
-        "Process group '",
-        group_name_,
-        "' not found, falling back to original barrier");
-    throw std::runtime_error("Process group not found");
-  }
-  auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
-      group->getBackend(c10::DeviceType::XPU).get());
-
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
 
-  static thread_local at::Tensor barrier_tensor;
-  if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
-    barrier_tensor = at::zeros(
-        {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
-  } else {
-    barrier_tensor.zero_();
-  }
-
-  c10d::AllreduceOptions arOpts;
-  arOpts.asyncOp = false;
-  auto work =
-      xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier", arOpts);
-
-  if (work) {
-    bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-    TORCH_CHECK(
-        success,
-        "Barrier timeout after ",
-        timeout_ms,
-        " ms for group '",
-        group_name_,
-        "'");
-  }
-  // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  // c10::DeviceGuard guard(local_device);
-  // auto stream = at::xpu::getCurrentXPUStream();
-
-  // barrier_impl_xpu(
-  //     reinterpret_cast<uint32_t**>(signal_pads_dev_),
-  //     channel,
-  //     rank_,
-  //     world_size_,
-  //     timeout_ms,
-  //     stream);
+  barrier_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
 }
 
 void XPUSymmetricMemory::put_signal(
@@ -274,6 +235,13 @@ void XPUSymmetricMemory::put_signal(
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
   auto stream = at::xpu::getCurrentXPUStream();
+
+  printf(
+      "[SYMM] About to call put_signal_impl_xpu, rank=%d, dst_rank=%d, channel=%d\n",
+      rank_,
+      dst_rank,
+      channel);
+  fflush(stdout);
 
   put_signal_impl_xpu(
       reinterpret_cast<uint32_t**>(signal_pads_dev_),
@@ -295,6 +263,13 @@ void XPUSymmetricMemory::wait_signal(
   c10::DeviceGuard guard(local_device);
   auto stream = at::xpu::getCurrentXPUStream();
 
+  printf(
+      "[SYMM] About to call wait_signal_impl_xpu, rank=%d, src_rank=%d, channel=%d\n",
+      rank_,
+      src_rank,
+      channel);
+  fflush(stdout);
+
   wait_signal_impl_xpu(
       reinterpret_cast<uint32_t**>(signal_pads_dev_),
       src_rank,
@@ -311,6 +286,10 @@ int XPUSymmetricMemory::get_rank() {
 
 int XPUSymmetricMemory::get_world_size() {
   return world_size_;
+}
+
+c10::Device XPUSymmetricMemory::get_device() {
+  return c10::Device(c10::DeviceType::XPU, local_device_idx_);
 }
 
 Block::Block(
@@ -484,7 +463,7 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       buffers[r] = ar.buffers[r];
       handles[r] = ar.buffers[r]; // ar.ipc_handle[r];
       signal_pads[r] =
-          (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
+          (void*)((uintptr_t)ar.buffers[r] + block->signal_pad_offset);
     }
   }
   storeExchange.barrier(store, rank, world_size);
@@ -512,7 +491,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       block->device_idx,
       group_info.rank,
       group_info.world_size);
-  symm_mem->set_group_name(group_name_);
   block->symm_mems[group_name_] = symm_mem;
   return symm_mem;
 }

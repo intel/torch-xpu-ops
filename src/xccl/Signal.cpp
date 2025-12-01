@@ -77,8 +77,11 @@ struct putSignalKernel {
     auto thread_id = item.get_local_id(0);
 
     if (thread_id == 0) {
+      uint32_t* target_addr =
+          signal_pads[dst_rank] + world_size * channel + rank;
+
       auto put_success = try_put_signal_device<std::memory_order_release>(
-          signal_pads[dst_rank] + world_size * channel + rank, 10000000);
+          target_addr, 10000000);
       if (!put_success) {
         assert(0);
       }
@@ -139,8 +142,11 @@ struct waitSignalKernel {
     auto thread_id = item.get_local_id(0);
 
     if (thread_id == 0) {
+      uint32_t* target_addr =
+          signal_pads[rank] + world_size * channel + src_rank;
+
       auto wait_success = try_wait_signal_device<std::memory_order_acquire>(
-          signal_pads[rank] + world_size * channel + src_rank, 10000000);
+          target_addr, 10000000);
       if (!wait_success) {
         assert(0);
       }

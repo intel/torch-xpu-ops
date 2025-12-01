@@ -54,13 +54,13 @@ class XPUSymmetricMemory : public SymmetricMemory {
       int rank,
       c10::IntArrayRef sizes,
       c10::ScalarType dtype,
-      int64_t storage_offset) override;
+      int64_t storage_offset);
 
   at::Tensor get_signal_pad(
       int rank,
       c10::IntArrayRef sizes,
       std::optional<c10::ScalarType> dtype,
-      int64_t storage_offset) override;
+      int64_t storage_offset);
 
   void barrier(int channel, size_t timeout_ms) override;
   void put_signal(int dst_rank, int channel, size_t timeout_ms) override;
@@ -69,10 +69,7 @@ class XPUSymmetricMemory : public SymmetricMemory {
 
   int get_rank() override;
   int get_world_size() override;
-
-  void set_group_name(const std::string& group_name) {
-    group_name_ = group_name;
-  }
+  c10::Device get_device() override;
 
  private:
   std::vector<c10::intrusive_ptr<AllocationRef>> alloc_refs_;
@@ -86,7 +83,6 @@ class XPUSymmetricMemory : public SymmetricMemory {
   int world_size_;
   void** buffers_dev_;
   void** signal_pads_dev_;
-  std::string group_name_;
 };
 
 struct Block : public c10::intrusive_ptr_target {
