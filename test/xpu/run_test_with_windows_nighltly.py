@@ -4,58 +4,10 @@ import sys
 from skip_list_common import skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
+from xpu_test_utils import launch_test
 
 res = 0
 IS_WINDOWS = sys.platform == "win32"
-
-
-def launch_test(test_case, skip_list=None, skip_files=None, exe_list=None):
-    os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-    skip_options = ""
-    if skip_list is not None:
-        skip_options = ' -k "not ' + skip_list[0]
-        for skip_case in skip_list[1:]:
-            skip_option = " and not " + skip_case
-            skip_options += skip_option
-        skip_options += '"'
-
-        if skip_files is not None:
-            for skip_file in skip_files:
-                skip_options += f" --ignore={skip_file}"
-
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_windows_nightly.{test_case}.xml --max-worker-restart=1000 "
-            + test_case
-        )
-        test_command += skip_options
-    elif exe_list is not None:
-        exe_options = ' -k "' + exe_list[0]
-        for exe_case in exe_list[1:]:
-            exe_option = " or " + exe_case
-            exe_options += exe_option
-        exe_options += '"'
-
-        if skip_files is not None:
-            for skip_file in skip_files:
-                skip_options += f" --ignore={skip_file}"
-
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_windows_nightly.{test_case}.xml --max-worker-restart=1000 "
-            + test_case
-        )
-        test_command += exe_options
-    else:
-        if skip_files is not None:
-            for skip_file in skip_files:
-                skip_options += f" --ignore={skip_file}"
-
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_windows_nightly.{test_case}.xml --max-worker-restart=1000 "
-            + test_case
-        )
-        test_command += skip_options
-    return os.system(test_command)
-
 
 skip_files_list = [
     "test_autocast_xpu.py",
@@ -117,14 +69,13 @@ for key in skip_dict:
         continue
 
     skip_list = skip_dict[key]
-    skip_files = skip_files_list.copy()
     if IS_WINDOWS and key in skip_dict_win:
         skip_list += skip_dict_win[key]
     if IS_WINDOWS and key in skip_dict_win_lnl:
         skip_list += skip_dict_win_lnl[key]
 
     print(f"\n=== Processing test case: {key} ===")
-    res += launch_test(key, skip_list, skip_files)
+    res += launch_test(key, skip_list=skip_list)
 
 if os.name == "nt":
     sys.exit(res)

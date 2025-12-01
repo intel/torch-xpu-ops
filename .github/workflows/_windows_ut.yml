@@ -277,45 +277,6 @@ jobs:
           python run_test_with_windows_nighltly.py
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
           for /r . %%f in (op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
-      - name: UT Test Results Summary
-        shell: cmd
-        run: |
-          call conda activate windows_ci
-          pip install junitparser
-          echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
-          for %%i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
-            python .\.github\scripts\check-ut.py -n windows -i "%%i" >> "%GITHUB_STEP_SUMMARY%"
-          )
-          @echo off
-
-          REM Check the failure logs
-          if exist "%GITHUB_WORKSPACE%\failures*.log" (
-            echo Exist Failure logs
-            echo Found Failure logs as below: 
-            for %%f in ("%GITHUB_WORKSPACE%\failures*.log") do (
-              echo   - %%f
-              copy "%%f" "%GITHUB_WORKSPACE%\ut_log\"
-            )
-            echo Failure logs Copied
-          ) else (
-            echo No Failure logs
-          )
-
-          REM Copied the passed logs
-          if exist "passed*.log" (
-            copy "passed*.log" "%GITHUB_WORKSPACE%\ut_log\"
-            echo Passed logs Copied
-          ) else (
-            echo No Passed logs
-          )
-
-          REM Copied the Summary logs
-          if exist "category*.log" (
-            copy "category*.log" "%GITHUB_WORKSPACE%\ut_log\"
-            echo Category logs Copied
-          ) else (
-            echo No Category logs
-          )
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -326,6 +287,63 @@ jobs:
 
   summary:
     needs: [ut_test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          path: ${{ github.workspace }}/ut_log
+      - name: UT Test Results Summary
+        shell: bash
+        run: |
+          pip install junitparser
+          python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          # Check the failure logs
+          if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
+            echo -e "Exist Failure logs"
+            echo "Found Failure logs as below: "
+            for file in ${{ github.workspace }}/failures*.log; do
+              echo "  - $file"
+              cp "$file" ${{ github.workspace }}/ut_log
+            done
+            echo -e "Failure logs Copied"
+          else
+            echo -e "No Failure logs"
+          fi
+          # Copied the passed logs
+          if ls passed*.log 1> /dev/null 2>&1; then
+            cp passed*.log ${{ github.workspace }}/ut_log
+            echo -e "Passed logs Copied"
+          else
+            echo -e "No Passed logs"
+          fi
+          # Copied the Summary logs
+          if ls category*.log 1> /dev/null 2>&1; then
+            cp category*.log ${{ github.workspace }}/ut_log
+            echo -e "Category logs Copied"
+          else
+            echo -e "No Category logs"
+          fi
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows
+          path: ${{ github.workspace }}/ut_log
+          overwrite: true
+
+  summary_check:
+    needs: [summary]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
