@@ -11,7 +11,7 @@
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
-//#include <ATen/ops/addmm_native.h>
+#include <ATen/ops/addmm.h>
 //#include <ATen/ops/addmv_native.h>
 //#include <ATen/ops/copy_native.h>
 //#include <ATen/ops/empty.h>
@@ -45,6 +45,7 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
       self, mat1, mat2, beta, alpha, result);
 
   if (&result != &self) {
+    printf(">>> Branch 1\n");
     // We allow self to be a single matrix when mat1 and mat2 are batched
     auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
     result_sizes.push_back(self.size(-2));
@@ -59,7 +60,10 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     return result;
   }
 
-  //sparse::impl::cuda::sampled_addmm_out_sparse_csr(mat1, mat2, beta, alpha, result);
+  Tensor self_dense = self.to_dense();
+  Tensor result_dense = at::addmm(self_dense, mat1, mat2, beta, alpha);
+  result.copy_(result_dense.to_sparse_csr());
+
   return result;
 }
 
@@ -70,7 +74,7 @@ Tensor sparse_sampled_addmm_sparse_csr_xpu(
     const Scalar& beta,
     const Scalar& alpha) {
   auto result = at::empty({0, 0}, self.options());
-  //at::native::sparse_sampled_addmm_out_sparse_csr_cuda(self, mat1, mat2, beta, alpha, result);
+  at::native::sparse_sampled_addmm_out_sparse_csr_xpu(self, mat1, mat2, beta, alpha, result);
   return result;
 }
 
