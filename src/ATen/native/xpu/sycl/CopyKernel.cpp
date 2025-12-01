@@ -25,13 +25,34 @@ struct CastScalarFunc {
   }
 };
 
+// TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
+// from incorrectly converting -0.0 to NaN. This temporary fix should
+// be removed once the compiler/driver error is resolved.
 template <>
 struct CastScalarFunc<Half, Float8_e4m3fn> {
   C10_HOST_DEVICE Float8_e4m3fn operator()(Half src_val) const {
-    // TODO(Temporarily): Avoid using sycl::half to prevent the fp16->fp32->fp8
-    // fusion from incorrectly converting -0.0 to NaN. This temporary fix should
-    // be removed once the compiler error is resolved.
-    return Float8_e4m3fn(c10::detail::fp16_ieee_to_fp32_value(src_val));
+    return Float8_e4m3fn(c10::detail::fp16_ieee_to_fp32_value(src_val.x));
+  }
+};
+
+template <>
+struct CastScalarFunc<Half, Float8_e4m3fnuz> {
+  C10_HOST_DEVICE Float8_e4m3fnuz operator()(Half src_val) const {
+    return Float8_e4m3fnuz(c10::detail::fp16_ieee_to_fp32_value(src_val.x));
+  }
+};
+
+template <>
+struct CastScalarFunc<Half, Float8_e5m2> {
+  C10_HOST_DEVICE Float8_e5m2 operator()(Half src_val) const {
+    return Float8_e5m2(c10::detail::fp16_ieee_to_fp32_value(src_val.x));
+  }
+};
+
+template <>
+struct CastScalarFunc<Half, Float8_e5m2fnuz> {
+  C10_HOST_DEVICE Float8_e5m2fnuz operator()(Half src_val) const {
+    return Float8_e5m2fnuz(c10::detail::fp16_ieee_to_fp32_value(src_val.x));
   }
 };
 
