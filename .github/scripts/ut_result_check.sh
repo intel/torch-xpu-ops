@@ -310,8 +310,8 @@ EOF
         {
             echo "Regression Issues:"
             echo "-----------"
+            cat "$regression_file"
         } >> "$summary_file"
-        cat "$regression_file" >> "$summary_file"
         echo "" >> "$summary_file"
     else
         echo "✅ No regression issues found" >> "$summary_file"
@@ -323,8 +323,8 @@ EOF
         {
             echo "New Issues:"
             echo "-----------"
+            cat "$new_issue_file"
         } >> "$summary_file"
-        cat "$new_issue_file" >> "$summary_file"
     else
         echo "✅ No new issues found" >> "$summary_file"
     fi
