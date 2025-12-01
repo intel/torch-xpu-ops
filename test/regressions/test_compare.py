@@ -9,7 +9,7 @@ from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestTorchMethod(TestCase):
-    
+
     def _test_compare_fn(self, fn, dtype):
         # test tensor
         x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
@@ -19,12 +19,12 @@ class TestTorchMethod(TestCase):
         y = fn(x1, x2)
         y_xpu = fn(x1_xpu, x2_xpu)
         self.assertEqual(y_xpu.cpu(), y)
-        
+
         # Comparison ops output bool; must create new out tensor
         y_out = torch.empty_like(y_xpu, dtype=torch.bool)
         fn(x1_xpu, x2_xpu, out=y_out)
         self.assertEqual(y_out.cpu(), y)
-        
+
         # test scalar
         x1 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
         x2 = 2.0
@@ -33,7 +33,7 @@ class TestTorchMethod(TestCase):
         y = fn(x1, x2)
         y_xpu = fn(x1_xpu, x2_xpu)
         self.assertEqual(y_xpu.cpu(), y)
-        
+
         y_out = torch.empty_like(y_xpu, dtype=torch.bool)
         fn(x1_xpu, x2_xpu, out=y_out)
         self.assertEqual(y_out.cpu(), y)
@@ -55,7 +55,7 @@ class TestTorchMethod(TestCase):
 
     def test_ge(self, dtype=torch.float):
         self._test_compare_fn(torch.ge, dtype)
-    
+
     def _test_compare_float8_core(self, fn, dtype):
         """
         Core logic for float8 comparison. Uses rounded float32 values 
@@ -64,11 +64,11 @@ class TestTorchMethod(TestCase):
         # 1. Original high-precision inputs (f32)
         x1_f32 = torch.tensor([[1.0, 2.0], [3.0, 4.0]], dtype=torch.float32)
         x2_f32 = torch.tensor([[1.0, 1.0], [4.0, 4.0]], dtype=torch.float32)
-        
+
         # 2. Compute Rounded Reference Inputs: f32 -> f8 -> f32 to capture rounding
         x1_rounded = x1_f32.to(dtype).to(torch.float32)
         x2_rounded = x2_f32.to(dtype).to(torch.float32)
-        
+
         # CPU Reference Result (using rounded f32 values)
         y_ref = fn(x1_rounded, x2_rounded)
 
@@ -76,12 +76,12 @@ class TestTorchMethod(TestCase):
         # Convert to target float8 dtype for XPU test
         x1 = x1_f32.to(dtype)
         x2 = x2_f32.to(dtype)
-        
+
         # XPU operation
         x1_xpu = x1.xpu()
         x2_xpu = x2.xpu()
         y_xpu = fn(x1_xpu, x2_xpu)
-        
+
         # Compare XPU float8 result against CPU rounded reference
         self.assertEqual(y_xpu.cpu(), y_ref)
 
@@ -89,20 +89,20 @@ class TestTorchMethod(TestCase):
         y_out = torch.empty_like(y_xpu, dtype=torch.bool)
         fn(x1_xpu, x2_xpu, out=y_out)
         self.assertEqual(y_out.cpu(), y_ref)
-        
+
         # --- 2. Scalar Test (Tensor vs Scalar) ---
         x2_scalar = 2.0
-        
+
         # CPU Reference Result (using rounded f32 tensor vs f32 scalar)
         y_ref_scalar = fn(x1_rounded, x2_scalar)
 
         # Convert to target float8 dtype
         x1 = x1_f32.to(dtype)
-        
+
         # XPU operation
         x1_xpu = x1.xpu()
         y_xpu_scalar = fn(x1_xpu, x2_scalar)
-        
+
         self.assertEqual(y_xpu_scalar.cpu(), y_ref_scalar)
 
         # Test out= argument
