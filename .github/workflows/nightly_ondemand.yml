@@ -140,6 +140,10 @@ jobs:
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
+  Linux-Nightly-Ondemand-Build-Triton:
+    secrets: inherit
+    uses: ./.github/workflows/build-triton-wheel.yml
+
   Linux-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'p') }}
     name: linux-ut

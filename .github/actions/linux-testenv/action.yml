@@ -204,8 +204,8 @@ runs:
       with:
         name: pytorch-triton-wheel-3.10-xpu-manylinux_2_28_x86_64
         github-token: ${{ github.token }}
-        repository: pytorch/pytorch
-        run-id: 19624769131
+        repository: intel/torch-xpu-ops
+        run-id: ${{ github.run_id }}
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
