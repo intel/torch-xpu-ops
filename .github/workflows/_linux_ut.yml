@@ -23,6 +23,10 @@ on:
         required: true
         type: string
         description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+      test_type:
+        type: string
+        default: "build-cicd"
+        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
 
 permissions: read-all
 
@@ -142,6 +146,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       issues: write
+    env:
+      REFERENCE_ISSUE_ID: 2440
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -150,6 +156,23 @@ jobs:
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
           path: ${{ github.workspace }}/ut_log
+      - name: Download Baseline Artifact
+        run: |
+          mkdir baseline/
+          cd baseline/
+          if [[ "${{ inputs.test_type }}" != *"ly" ]];then
+            artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-nightly"
+          else
+            artifact_type="${{ inputs.test_type }}"
+          fi
+          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
+          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+          if [ "${REFERENCE_RUN_ID}" != "" ];then
+            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-UT-Data-*"
+            find Inductor-XPU-UT-Data-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+                    while read line; do rsync -az --delete $line/ $(basename $line)/; done
+            rm -rf Inductor-XPU-UT-Data-* || true
+          fi
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
@@ -163,6 +186,29 @@ jobs:
                 -name "all_cases_*.log" -o \
                 -name "reproduce_*.log" \) \
               -exec mv {} ./ \; || true
+          
+          if find "${{ github.workspace }}/baseline" -type f -name "all_cases_*.log" | grep -q .; then
+            echo -e "All cases log collect"
+            find "${{ github.workspace }}/baseline" -type f -name "all_cases_*.log" \
+            -exec sh -c 'for file; do
+                filename=$(basename "$file")
+                newname="${filename%.log}_reference.log"
+                mv "$file" "./$newname"
+              done' _ {} + 2>/dev/null || true
+          else
+            echo -e "No all cases log"
+            mkdir -p ${{ github.workspace }}/ut_log/baseline
+            find "${{ github.workspace }}/baseline/" -type f \
+              \( -name "*.xml" \) \
+              -exec mv {} ${{ github.workspace }}/ut_log/baseline \; || true
+            python ${{ github.workspace }}/.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/baseline/*.xml -o ${{ github.workspace }}/ut_log/baseline
+            find "${{ github.workspace }}/ut_log/baseline" -type f -name "all_cases_*.log" \
+            -exec sh -c 'for file; do
+                filename=$(basename "$file")
+                newname="${filename%.log}_reference.log"
+                mv "$file" "./$newname"
+              done' _ {} + 2>/dev/null || true
+          fi
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
@@ -189,6 +235,17 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
+      - name: Upload Reference Run ID
+        if: ${{ endsWith(inputs.test_type, 'ly') }}
+        run: |
+          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
+          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
+          if [ ${has_or_not} -ne 0 ];then
+            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
+          else
+            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
+          fi
+          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

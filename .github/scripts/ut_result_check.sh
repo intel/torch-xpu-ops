@@ -175,6 +175,178 @@ check_skipped_ut() {
     fi
 }
 
+categorize_failures() {
+    local failures_log="$1"
+    local all_ut_log="$2"
+    local output_dir="${3:-.}"
+    
+    # Check if required parameters are provided
+    if [[ $# -lt 2 ]]; then
+        echo "Usage: categorize_failures <failures_log> <all_ut_log> [output_dir]"
+        echo "Example: categorize_failures failures.txt all_ut.txt ./output"
+        return 1
+    fi
+    
+    # Check if files exist
+    if [[ ! -f "$failures_log" ]]; then
+        echo "Error: Failures log file not found: $failures_log"
+        return 1
+    fi
+    
+    if [[ ! -f "$all_ut_log" ]]; then
+        echo "Error: All UT log file not found: $all_ut_log"
+        return 1
+    fi
+    
+    # Create output directory
+    mkdir -p "$output_dir"
+    
+    # Output file paths
+    local regression_file="$output_dir/regression_ut.txt"
+    local new_issue_file="$output_dir/new_issue_ut.txt"
+    local summary_file="$output_dir/summary.txt"
+    
+    # Clear output files (if they exist)
+    > "$regression_file"
+    > "$new_issue_file"
+    > "$summary_file"
+    
+    # Counters
+    local regression_count=0
+    local new_issue_count=0
+    local total_failures=0
+    
+    echo "Starting UT failure analysis..."
+    echo "Failures log: $failures_log"
+    echo "All UT log: $all_ut_log"
+    echo "Output directory: $output_dir"
+    echo ""
+    
+    # Process failures log line by line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Skip empty lines
+        if [[ -z "$line" ]]; then
+            continue
+        fi
+        
+        total_failures=$((total_failures + 1))
+        
+        # Check if this line exists in all UT log
+        # Using grep -Fxq: -F fixed strings, -x whole line match, -q quiet mode
+        if grep -Fxq "$line" "$all_ut_log" 2>/dev/null; then
+            # Exists in all UT log -> Regression issue
+            regression_count=$((regression_count + 1))
+            echo "$line" >> "$regression_file"
+        else
+            # Not found in all UT log -> New issue
+            new_issue_count=$((new_issue_count + 1))
+            echo "$line" >> "$new_issue_file"
+        fi
+    done < "$failures_log"
+    
+    # Generate summary report
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+
+    echo ""
+    echo "Analysis completed!"
+    echo "================================="
+    echo "Total New failed UTs: $total_failures"
+    echo "Regression issues: $regression_count"
+    echo "New UTs issues: $new_issue_count"
+    echo "================================="
+    echo ""
+
+    # Display regression cases
+    if [[ $regression_count -gt 0 ]]; then
+        echo "REGRESSION CASES ISSUE ($regression_count):"
+        echo "---------------------------------"
+        cat "$regression_file" | while IFS= read -r line; do
+            echo "  $line"
+        done
+        echo ""
+    else
+        echo "✅ No regression cases found."
+        echo ""
+    fi
+
+    # Display new issue cases
+    if [[ $new_issue_count -gt 0 ]]; then
+        echo "NEW UT CASES ISSUE ($new_issue_count):"
+        echo "--------------------------------"
+        cat "$new_issue_file" | while IFS= read -r line; do
+            echo "  $line"
+        done
+        echo ""
+    else
+        echo "✅ No new UT cases issue found."
+        echo ""
+    fi
+
+    cat > "$summary_file" << EOF
+Failed UT Categorization Report
+================================
+Generated: $timestamp
+Failures log file: $(basename "$failures_log")
+All UT log file: $(basename "$all_ut_log")
+
+Statistics:
+-----------
+Total New failed UTs: $total_failures
+Regression issues: $regression_count
+New UTs issues: $new_issue_count
+
+Output Files:
+-------------
+Regression UT list: $(basename "$regression_file") ($regression_count items)
+New issue UT list: $(basename "$new_issue_file") ($new_issue_count items)
+
+Detailed Lists:
+---------------
+
+EOF
+    
+    # Add regression UT list to summary
+    if [[ $regression_count -gt 0 ]]; then
+        echo "Regression Issues:" >> "$summary_file"
+        echo "------------------" >> "$summary_file"
+        cat "$regression_file" >> "$summary_file"
+        echo "" >> "$summary_file"
+    else
+        echo "✅ No regression issues found" >> "$summary_file"
+        echo "" >> "$summary_file"
+    fi
+    
+    # Add new issue UT list to summary
+    if [[ $new_issue_count -gt 0 ]]; then
+        echo "New Issues:" >> "$summary_file"
+        echo "-----------" >> "$summary_file"
+        cat "$new_issue_file" >> "$summary_file"
+    else
+        echo "✅ No new issues found" >> "$summary_file"
+    fi
+    
+    # Print summary to console
+    echo ""
+    echo "Analysis completed!"
+    echo "================================="
+    echo "Total New failed UTs: $total_failures"
+    echo "Regression issues: $regression_count"
+    echo "New UTs issues: $new_issue_count"
+    echo "================================="
+    echo ""
+    echo "Output files:"
+    echo "  Regression UT list: $regression_file"
+    echo "  New issue UT list: $new_issue_file"
+    echo "  Detailed summary: $summary_file"
+    
+    # Show warning if no failures were found
+    if [[ $total_failures -eq 0 ]]; then
+        echo ""
+        echo "Note: No failed UT records found in the failures log file."
+    fi
+}
+
 # Main test runner for standard test suites (op_regression, op_extended, etc.)
 run_main_tests() {
     local suite="$1"
@@ -217,6 +389,7 @@ run_main_tests() {
     local failed_count=0 passed_count=0
     if [[ -f "failures_${suite}_filtered.log" ]]; then
         failed_count=$(wc -l < "failures_${suite}_filtered.log")
+        categorize_failures failures_${suite}_filtered.log all_cases_${suite}_reference.log categorize_failures
     fi
     if [[ -f "passed_${suite}.log" ]]; then
         passed_count=$(wc -l < "passed_${suite}.log")
