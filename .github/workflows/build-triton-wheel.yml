@@ -43,6 +43,7 @@ jobs:
           set -x
           mkdir -p "${RUNNER_TEMP}/artifacts/"
           echo "mengfeil/test-triton" > .ci/docker/ci_commit_pins/triton-xpu.txt
+          echo "3.6.0" > .ci/docker/triton_xpu_version.txt
           cp torch-xpu-ops/.github/scripts/build_triton_wheel.py  .github/scripts/build_triton_wheel.py
           container_name=$(docker run \
             --tty \
@@ -106,7 +107,7 @@ jobs:
             WITH_CLANG_LDD="--with-clang-ldd"
           fi
 
-          docker exec -t "${container_name}" bash -c "${PYTHON_EXECUTABLE} /pytorch/.github/scripts/build_triton_wheel.py --device=$BUILD_DEVICE $RELEASE $WITH_CLANG_LDD --triton-version 3.6.0"
+          docker exec -t "${container_name}" bash -c "${PYTHON_EXECUTABLE} /pytorch/.github/scripts/build_triton_wheel.py --device=$BUILD_DEVICE $RELEASE $WITH_CLANG_LDD"
 
           if [[ ("${{ matrix.device }}" == "cuda" || "${{ matrix.device }}" == "xpu") ]]; then
             docker exec -t "${container_name}"  bash -c "auditwheel repair --plat ${PLATFORM} //artifacts/*.whl"
