@@ -333,19 +333,19 @@ void run_mha_fwd_(
           TileShapeOutPut,
           SubgroupLayout,
           PipelineStages);
+    } else {
+        constexpr int PipelineStages = 2;
+        using TileShapeQK = Shape<_256, _32, _64>;
+        using TileShapePV = Shape<_256, _32, _32>;
+        using TileShapeOutPut = Shape<_256, _128, _32>;
+        using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+        run_mha_fwd_specialized(
+            TileShapeQK,
+            TileShapePV,
+            TileShapeOutPut,
+            SubgroupLayout,
+            PipelineStages);
     }
-
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_256, _32, _64>;
-    using TileShapePV = Shape<_256, _32, _32>;
-    using TileShapeOutPut = Shape<_256, _128, _32>;
-    using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
-    run_mha_fwd_specialized(
-        TileShapeQK,
-        TileShapePV,
-        TileShapeOutPut,
-        SubgroupLayout,
-        PipelineStages);
   } else if (headdim == 192) {
     constexpr int PipelineStages = 2;
     using TileShapeQK = Shape<_256, _64, _64>;
@@ -537,18 +537,17 @@ flash_attention_forward_sycltla(
           .get_info<
               sycl::ext::oneapi::experimental::info::device::architecture>();
   constexpr auto supported_architectures =
-      std::array<sycl::ext::oneapi::experimental::architecture, 4>{
+      std::array<sycl::ext::oneapi::experimental::architecture, 3>{
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g31};
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21};
   if (std::find(
           supported_architectures.begin(),
           supported_architectures.end(),
           device_architecture) == supported_architectures.end()) {
     TORCH_CHECK(
         false,
-        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21, intel_gpu_bmg_g31.");
+        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21.");
   }
 
   auto problem_shape = ProblemShapeRegular(
