@@ -410,7 +410,7 @@ def print_summary():
 
 def main():
     os.makedirs(args.output_dir, exist_ok=True)
-    
+
     for input_file in args.input_files:
         if input_file.endswith('.log'):
             process_log_file(input_file)
@@ -418,7 +418,7 @@ def main():
             process_xml_file(input_file)
         else:
             print(f"Skipping unknown file type: {input_file}", file=sys.stderr)
-    
+
     if args.ut_name != "skipped_ut":
         failure_list_path = get_output_path("ut_failure_list.csv")
         with open(failure_list_path, "w", encoding='utf-8') as failure_list:
