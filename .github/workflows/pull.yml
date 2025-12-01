@@ -93,6 +93,7 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
+      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
 
   linux-distributed:
     needs: [linux-build]

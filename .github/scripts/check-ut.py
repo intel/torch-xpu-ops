@@ -8,7 +8,10 @@ from collections import defaultdict
 parser = argparse.ArgumentParser(description='Test results analyzer')
 parser.add_argument('-n', '--ut-name', type=str, default='', help='UT name')
 parser.add_argument('-i', '--input-files', nargs='+', help='JUnit XML files or log files')
+parser.add_argument('-o', '--output-dir', type=str, default='.', help='Output directory for log files (default: current directory)')
 args = parser.parse_args()
+
+os.makedirs(args.output_dir, exist_ok=True)
 
 failures = []
 summaries = []
@@ -134,6 +137,8 @@ def print_md_row(row, print_header=False, failure_list=None):
     if failure_list is not None:
         failure_list.write(f"| {row_values} |\n")
 
+def get_output_path(filename):
+    return os.path.join(args.output_dir, filename)
 
 def print_failures(failure_list=None):
     if not failures:
@@ -164,7 +169,7 @@ def generate_failures_log():
         if not category_failures:
             continue
 
-        log_filename = f"failures_{category}.log"
+        log_filename = get_output_path(f"failures_{category}.log")
         with open(log_filename, "w", encoding='utf-8') as log_file:
             for case in category_failures:
                 class_name = get_classname(case)
@@ -179,7 +184,7 @@ def generate_all_cases_log():
         if not category_cases:
             continue
 
-        log_filename = f"all_cases_{category}.log"
+        log_filename = get_output_path(f"all_cases_{category}.log")
         with open(log_filename, "w", encoding='utf-8') as log_file:
             for case in category_cases:
                 class_name = get_classname(case)
@@ -355,7 +360,7 @@ def generate_passed_log():
         if not category_passed:
             continue
 
-        log_filename = f"passed_{category}.log"
+        log_filename = get_output_path(f"passed_{category}.log")
         with open(log_filename, "w", encoding='utf-8') as log_file:
             for case in category_passed:
                 class_name = get_classname(case)
@@ -369,7 +374,7 @@ def generate_category_totals_log():
         if totals['Test cases'] == 0:
             continue
 
-        log_filename = f"category_{category}.log"
+        log_filename = get_output_path(f"category_{category}.log")
         with open(log_filename, "w", encoding='utf-8') as log_file:
             log_file.write(f"Category: {category}\n")
             log_file.write(f"Test cases: {totals['Test cases']}\n")
@@ -415,6 +420,8 @@ def print_summary():
     print_md_row(totals)
 
 def main():
+    os.makedirs(args.output_dir, exist_ok=True)
+    
     for input_file in args.input_files:
         if input_file.endswith('.log'):
             process_log_file(input_file)
@@ -422,8 +429,10 @@ def main():
             process_xml_file(input_file)
         else:
             print(f"Skipping unknown file type: {input_file}", file=sys.stderr)
+    
     if args.ut_name != "skipped_ut":
-        with open("ut_failure_list.csv", "w") as failure_list:
+        failure_list_path = get_output_path("ut_failure_list.csv")
+        with open(failure_list_path, "w", encoding='utf-8') as failure_list:
             print_failures(failure_list=failure_list)
 
     generate_failures_log()
