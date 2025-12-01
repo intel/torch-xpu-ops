@@ -40,10 +40,9 @@ runs:
     - name: Setup python-${{ inputs.python }}
       shell: bash -xe {0}
       run: |
-        uv venv myvenv-test --python 3.10 --clear
-        source myvenv-test/bin/activate
+        uv venv /tmp/xpu-tool/myvenv --python 3.10 --clear
+        source /tmp/xpu-tool/myvenv/bin/activate
         uv pip install -U pip wheel setuptools
-        echo "PATH=$PATH" >> ${GITHUB_ENV}
     - name: Check python
       shell: bash -xe {0}
       run: |
