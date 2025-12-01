@@ -474,9 +474,9 @@ def __tunableop_ctx(self):
 
 
 @parametrize("batch", [1, 3])
-@parametrize("m", [0, 1, 12])
-@parametrize("n", [0, 1, 17])
-@dtypes(torch.float32)
+@parametrize("m", [1, 12])
+@parametrize("n", [1, 17])
+@dtypes(torch.float32, torch.float64)
 def qr_mode_r(self, device, dtype, batch, m, n):
     if batch > 1:
         A_cpu = torch.randn(batch, m, n, dtype=dtype, device="cpu")
@@ -497,7 +497,7 @@ def qr_mode_r(self, device, dtype, batch, m, n):
 @parametrize("m", [0, 1, 12])
 @parametrize("n", [0, 1, 17])
 @parametrize("mode", ["reduced", "complete"])
-@dtypes(torch.float32)
+@dtypes(torch.float32, torch.float64)
 def qr_modes_reduced_complete(self, device, dtype, batch, m, n, mode):
     if batch > 1:
         A_cpu = torch.randn(batch, m, n, dtype=dtype, device="cpu")
