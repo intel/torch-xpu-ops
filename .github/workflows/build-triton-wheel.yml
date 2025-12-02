@@ -60,14 +60,9 @@ jobs:
             RELEASE="--release"
           fi
 
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          source $HOME/.local/bin/env
-          uv venv myvenv --python 3.10 --clear
-          source myvenv/bin/activate
-          uv pip install pip numpy
-          PYTHON_EXECUTABLE="python"
+          PYTHON_EXECUTABLE="python3.10"
 
-          docker exec -t "${container_name}" apt update && apt install -y zlib1g-dev unzip zip
+          docker exec -t "${container_name}" apt update && apt install gpg-agent wget curl sudo gcc g++ cmake git unzip zip libgl1 zlib1g-dev numactl -y libglib2.0-dev rsync jq python3.10 python3.10-dev python3.10-venv python3-pip
           docker exec -t "${container_name}" "${PYTHON_EXECUTABLE}"  -m pip install -U setuptools==78.1.0 pybind11==3.0.1 auditwheel wheel
           set +e
           docker exec -t "${container_name}" command -v pip
@@ -76,7 +71,7 @@ jobs:
           if [ $has_pip -eq 0 ] ; then
               docker exec -t "${container_name}" pip install -U cmake --force-reinstall
           else
-              docker exec -t "${container_name}" "${PYTHON_EXECUTABLE}"  -m pip install -U cmake --force-reinstall
+              docker exec -t "${container_name}" "${PYTHON_EXECUTABLE}"  -m pip install -U cmake --force-reinstall ninja
           fi
 
           if [[ ("${{ matrix.device }}" == "cuda" || "${{ matrix.device }}" == "rocm" || "${{ matrix.device }}" == "aarch64" ) ]]; then
