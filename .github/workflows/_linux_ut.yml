@@ -201,6 +201,7 @@ jobs:
             find "${{ github.workspace }}/baseline/" -type f \
               \( -name "*.xml" \) \
               -exec mv {} ${{ github.workspace }}/ut_log/baseline \; || true
+            pip install junitparser
             python ${{ github.workspace }}/.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/baseline/*.xml -o ${{ github.workspace }}/ut_log/baseline
             find "${{ github.workspace }}/ut_log/baseline" -type f -name "all_cases_*.log" \
             -exec sh -c 'for file; do
