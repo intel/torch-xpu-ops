@@ -30,8 +30,9 @@ struct CastScalarFunc {
 // be removed once the compiler/driver error is resolved.
 template <typename Float8DataType>
 struct CastScalarFunc<Half, Float8DataType> {
-  C10_HOST_DEVICE Float8DataType operator()(Half src_val) const {
-    return Float8DataType(c10::detail::fp16_ieee_to_fp32_value(src_val.x));
+  Float8DataType operator()(Half src_val) const {
+    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
+    return Float8DataType(val);
   }
 };
 
