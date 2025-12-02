@@ -32,7 +32,6 @@ void compute_o_dot_do(
   auto sg = compat::get_nd_item<1>().get_sub_group();
   auto group = compat::get_nd_item<1>().get_group();
   auto first_thread_in_sg_idx = sg.get_group_linear_id() * trait.SubgroupSize;
-
   auto bofst = Boffset(param);
 
   const index_t o_offset = bofst.o_offset(bidb, bidh, m_block * kBlockM);
@@ -216,8 +215,8 @@ CUTLASS_DEVICE void apply_mask_causal(
   for (int n = 0; n < size<1>(tensor); ++n) {
     CUTLASS_PRAGMA_UNROLL
     for (int m = 0; m < size<0>(tensor); ++m) {
-      int x = n_offset + get<1>(rC_2d(m, n)) + sg_local_id + diagonal_offset;
-      int y = m_offset + get<0>(rC_2d(m, n));
+      int x = n_offset + get<1>(rC_2d(m, n)) + sg_local_id;
+      int y = m_offset + get<0>(rC_2d(m, n)) + diagonal_offset;
       if (x > y) {
         tensor(m, n) = -INFINITY;
       }
@@ -392,6 +391,321 @@ CUTLASS_DEVICE auto convert_type(Tensor<Engine, Layout> const& tensor) {
           tensor.data()));
   return make_tensor(make_rmem_ptr<To_type>(&frag), tensor.layout());
 }
+template <
+    typename T,
+    class Tensor0,
+    class Tensor1,
+    class Tensor2,
+    class ThrMMA,
+    class TiledMma,
+    class TileMNK,
+    class TileloadA,
+    class TileloadB>
+CUTLASS_DEVICE void gemm_S(
+    Tensor0& tSrS,
+    Tensor1& gQ,
+    Tensor2& gKtV,
+    ThrMMA& thr_mma_sdp,
+    TiledMma& tiled_mma_sdp,
+    TileMNK& tile_sdp,
+    TileloadA& tileloadQ,
+    TileloadB& tileloadKt) {
+  Tensor tSgQ = thr_mma_sdp.partition_A(gQ);
+  Tensor tSgKt = thr_mma_sdp.partition_B(gKtV);
+
+  Tensor tSrQ = make_tensor<T>(
+      make_fragment_layout(tileloadQ, tSgQ(_, _, _, 0, 0).shape()));
+  Tensor tSrKt = make_tensor<T>(
+      make_fragment_layout(tileloadKt, tSgKt(_, _, _, 0, 0).shape()));
+
+  ThrCopy thr_copy_q = tileloadQ.get_slice(compat::local_id::x());
+  ThrCopy thr_copy_kt = tileloadKt.get_slice(compat::local_id::x());
+
+  Tensor tQrQ = thr_copy_q.retile_D(tSrQ);
+  Tensor tKtrKt = thr_copy_kt.retile_D(tSrKt);
+
+  Tensor tQgQ = thr_copy_q.retile_S(tSgQ);
+  Tensor tKtgKt = thr_copy_kt.retile_S(tSgKt);
+
+  gemm_ker(
+      tSrS,
+      tSrQ,
+      tSrKt,
+      tQgQ,
+      tQrQ,
+      gQ,
+      tKtgKt,
+      tKtrKt,
+      gKtV,
+      tiled_mma_sdp,
+      tile_sdp,
+      tileloadQ,
+      tileloadKt);
+}
+
+template <
+    typename T,
+    class Tensor0,
+    class Tensor1,
+    class Tensor2,
+    class ThrMma,
+    class TiledMma,
+    class TileMNK,
+    class TileloadA,
+    class TileloadB>
+CUTLASS_DEVICE void gemm_dP(
+    Tensor0& tdPrdP,
+    Tensor1& gdO,
+    Tensor2& gKtV,
+    ThrMma& thr_mma_sdp,
+    TiledMma& tiled_mma_sdp,
+    TileMNK& tile_sdp,
+    TileloadA& tileloaddO,
+    TileloadB& tileloadV) {
+  Tensor tdPgdO = thr_mma_sdp.partition_A(gdO);
+  Tensor tdPgV = thr_mma_sdp.partition_B(gKtV);
+
+  Tensor tdPrdO = make_tensor<T>(
+      make_fragment_layout(tileloaddO, tdPgdO(_, _, _, 0, 0).shape()));
+  Tensor tdPrV = make_tensor<T>(
+      make_fragment_layout(tileloadV, tdPgV(_, _, _, 0, 0).shape()));
+
+  ThrCopy thr_copy_do = tileloaddO.get_slice(compat::local_id::x());
+  ThrCopy thr_copy_v = tileloadV.get_slice(compat::local_id::x());
+
+  Tensor tdOrdO = thr_copy_do.retile_D(tdPrdO);
+  Tensor tVrV = thr_copy_v.retile_D(tdPrV);
+
+  Tensor tdOgdO = thr_copy_do.retile_S(tdPgdO);
+  Tensor tVgV = thr_copy_v.retile_S(tdPgV);
+
+  gemm_ker(
+      tdPrdP,
+      tdPrdO,
+      tdPrV,
+      tdOgdO,
+      tdOrdO,
+      gdO,
+      tVgV,
+      tVrV,
+      gKtV,
+      tiled_mma_sdp,
+      tile_sdp,
+      tileloaddO,
+      tileloadV);
+}
+
+template <
+    typename T,
+    class Tensor0,
+    class Tensor1,
+    class Tensor2,
+    class ThrMma,
+    class TiledMma,
+    class TileMNK,
+    class TileloadA,
+    class TileloadB>
+CUTLASS_DEVICE void gemm_dV(
+    Tensor0& tdVrdV,
+    Tensor1& gPt,
+    Tensor2& gQtdOt,
+    ThrMma& thr_mma_dkv,
+    TiledMma& tiled_mma_dkv,
+    TileMNK& tile_dkv,
+    TileloadA& tileloadPt,
+    TileloadB& tileloaddOt) {
+  Tensor tdVgPt = thr_mma_dkv.partition_A(gPt);
+  Tensor tdVgdOt = thr_mma_dkv.partition_B(gQtdOt);
+
+  Tensor tdVrPt = make_tensor<T>(
+      make_fragment_layout(tileloadPt, tdVgPt(_, _, _, 0, 0).shape()));
+  Tensor tdVrdOt = make_tensor<T>(
+      make_fragment_layout(tileloaddOt, tdVgdOt(_, _, _, 0, 0).shape()));
+
+  ThrCopy thr_copy_pt = tileloadPt.get_slice(compat::local_id::x());
+  ThrCopy thr_copy_dot = tileloaddOt.get_slice(compat::local_id::x());
+
+  Tensor tPtrPt = thr_copy_pt.retile_D(tdVrPt);
+  Tensor tdOtrdOt = thr_copy_dot.retile_D(tdVrdOt);
+
+  Tensor tPtgPt = thr_copy_pt.retile_S(tdVgPt);
+  Tensor tdOtgdOt = thr_copy_dot.retile_S(tdVgdOt);
+
+  gemm_ker(
+      tdVrdV,
+      tdVrPt,
+      tdVrdOt,
+      tPtgPt,
+      tPtrPt,
+      gPt,
+      tdOtgdOt,
+      tdOtrdOt,
+      gQtdOt,
+      tiled_mma_dkv,
+      tile_dkv,
+      tileloadPt,
+      tileloaddOt);
+}
+
+template <
+    typename T,
+    class Tensor0,
+    class Tensor1,
+    class Tensor2,
+    class ThrMma,
+    class TiledMma,
+    class TileMNK,
+    class TileloadA,
+    class TileloadB>
+CUTLASS_DEVICE void gemm_dQ(
+    Tensor0& tdQrdQ,
+    Tensor1& gdPa,
+    Tensor2& gK,
+    ThrMma& thr_mma_dq,
+    TiledMma& tiled_mma_dq,
+    TileMNK& tile_dq,
+    TileloadA& tileloaddP,
+    TileloadB& tileloadK) {
+  Tensor tdQgdP = thr_mma_dq.partition_A(gdPa);
+  Tensor tdQgK = thr_mma_dq.partition_B(gK);
+
+  Tensor tdQrdP = make_tensor<T>(
+      make_fragment_layout(tileloaddP, tdQgdP(_, _, _, 0, 0).shape()));
+  Tensor tdQrK = make_tensor<T>(
+      make_fragment_layout(tileloadK, tdQgK(_, _, _, 0, 0).shape()));
+
+  ThrCopy thr_copy_dp = tileloaddP.get_slice(compat::local_id::x());
+  ThrCopy thr_copy_k = tileloadK.get_slice(compat::local_id::x());
+
+  Tensor tdPrdPa = thr_copy_dp.retile_D(tdQrdP);
+  Tensor tKrK = thr_copy_k.retile_D(tdQrK);
+
+  Tensor tdPgdPa = thr_copy_dp.retile_S(tdQgdP);
+  Tensor tKgK = thr_copy_k.retile_S(tdQgK);
+
+  gemm_ker(
+      tdQrdQ,
+      tdQrdP,
+      tdQrK,
+      tdPgdPa,
+      tdPrdPa,
+      gdPa,
+      tKgK,
+      tKrK,
+      gK,
+      tiled_mma_dq,
+      tile_dq,
+      tileloaddP,
+      tileloadK);
+}
+
+template <
+    typename T,
+    class Tensor0,
+    class Tensor1,
+    class Tensor2,
+    class ThrMma,
+    class TiledMma,
+    class TileMNK,
+    class TileloadA,
+    class TileloadB>
+CUTLASS_DEVICE void gemm_dK(
+    Tensor0& tdKrdK,
+    Tensor1& gdPt,
+    Tensor2& gQtdOt,
+    ThrMma& thr_mma_dkv,
+    TiledMma& tiled_mma_dkv,
+    TileMNK& tile_dkv,
+    TileloadA& tileloaddPt,
+    TileloadB& tileloadQt) {
+  Tensor tdKgdPt = thr_mma_dkv.partition_A(gdPt);
+  Tensor tdKgQt = thr_mma_dkv.partition_B(gQtdOt);
+
+  Tensor tdKrdPt = make_tensor<T>(
+      make_fragment_layout(tileloaddPt, tdKgdPt(_, _, _, 0, 0).shape()));
+  Tensor tdKrQt = make_tensor<T>(
+      make_fragment_layout(tileloadQt, tdKgQt(_, _, _, 0, 0).shape()));
+
+  ThrCopy thr_copy_dpt = tileloaddPt.get_slice(compat::local_id::x());
+  ThrCopy thr_copy_qt = tileloadQt.get_slice(compat::local_id::x());
+
+  Tensor tdPtrdPt = thr_copy_dpt.retile_D(tdKrdPt);
+  Tensor tQtrQt = thr_copy_qt.retile_D(tdKrQt);
+
+  Tensor tdPtgdPt = thr_copy_dpt.retile_S(tdKgdPt);
+  Tensor tQtgQt = thr_copy_qt.retile_S(tdKgQt);
+
+  gemm_ker(
+      tdKrdK,
+      tdKrdPt,
+      tdKrQt,
+      tdPtgdPt,
+      tdPtrdPt,
+      gdPt,
+      tQtgQt,
+      tQtrQt,
+      gQtdOt,
+      tiled_mma_dkv,
+      tile_dkv,
+      tileloaddPt,
+      tileloadQt);
+}
+
+template <
+    bool is_causal,
+    bool Is_even_N,
+    typename T,
+    typename V,
+    int kBlockM,
+    int kBlockN,
+    class Tensor0,
+    class Tensor1,
+    class Tensor2,
+    class Tensor3,
+    class Tensor4,
+    class Tensor5,
+    class TilesaveP,
+    class Param>
+CUTLASS_DEVICE auto softmax_forward(
+    Tensor0& scores,
+    Tensor1& tSrS,
+    Tensor2& taccScS,
+    Tensor3& mLSE,
+    Tensor4& mdPsum,
+    Tensor5& tPgP,
+    TilesaveP& tilesaveP,
+    Param& param,
+    int m_block,
+    int n_block,
+    bool Is_even_M,
+    int tail_m = 0) {
+  if constexpr (is_causal) {
+    Tensor taccScS_rc = logical_divide(taccScS, Shape<_1>{});
+    apply_mask_causal(
+        scores,
+        taccScS_rc,
+        m_block * kBlockM,
+        n_block * kBlockN,
+        param.seq_len_kv - param.seq_len_q);
+  }
+  Tensor taccScS_row =
+      logical_divide(taccScS, Shape<_1>{})(make_coord(0, _), _, 0);
+  Tensor lse = make_tensor<V>(Shape<Int<decltype(size(taccScS_row))::value>>{});
+
+  if (Is_even_M) {
+    load_1colvec<true>(lse, mLSE, taccScS_row);
+  } else {
+    load_1colvec<false>(lse, mLSE, taccScS_row, tail_m);
+  }
+
+  // P=softmax(S,lse)
+  scale_apply_exp2(scores, lse, param.scale_softmax_log2);
+  if (Is_even_M)
+    load_1colvec<true>(lse, mdPsum, taccScS_row);
+  else
+    load_1colvec<false>(lse, mdPsum, taccScS_row, tail_m);
+  return lse;
+}
 
 template <bool Is_even_N, bool Seq_parallel, class Trait>
 void dq_dk_dv_1colblock(
@@ -554,8 +868,6 @@ void dq_dk_dv_1colblock(
   Tensor gQ = local_tile(mQ_coord, select<0, 2>(tile_sdp), make_coord(_, _, 0));
   Tensor gKtV =
       local_tile(mKtV_coord, select<1, 2>(tile_sdp), make_coord(_, _, 0));
-  Tensor gV =
-      local_tile(mKtV_coord, select<1, 2>(tile_sdp), make_coord(_, _, 0));
   Tensor gdO =
       local_tile(mdO_coord, select<0, 2>(tile_sdp), make_coord(_, _, 0));
   Tensor gPt = local_tile(
@@ -570,10 +882,6 @@ void dq_dk_dv_1colblock(
       mQtdOt_coord,
       select<1, 2>(tile_dkv),
       make_coord(_, _, 0)); // load Q as operand B
-  Tensor gQtdOt2 = local_tile(
-      mQtdOt_coord,
-      select<1, 2>(tile_dkv),
-      make_coord(_, _, 0)); // load Q as operand B
 
   Tensor gSP = local_tile(
       mSP_coord, select<0, 1>(tile_sdp), make_coord(_, _, 0)); // dump P
@@ -584,92 +892,15 @@ void dq_dk_dv_1colblock(
   Tensor gdK = local_tile(
       mKtV_coord, select<0, 1>(tile_dkv), make_coord(_, _, 0)); // dump dK
 
-  Tensor tSgQ = thr_mma_sdp.partition_A(gQ);
-  Tensor tSgKt = thr_mma_sdp.partition_B(gKtV);
-  Tensor tdPgdO = thr_mma_sdp.partition_A(gdO);
-  Tensor tdPgV = thr_mma_sdp.partition_B(gV);
-  Tensor tdVgPt = thr_mma_dkv.partition_A(gPt);
-  Tensor tdVgdOt = thr_mma_dkv.partition_B(gQtdOt2);
-  Tensor tdQgdP = thr_mma_dq.partition_A(gdPa);
-  Tensor tdQgK = thr_mma_dq.partition_B(gK);
-  Tensor tdKgdPt = thr_mma_dkv.partition_A(gdPt);
-  Tensor tdKgQt = thr_mma_dkv.partition_B(gQtdOt);
-
   Tensor tPgP = thr_mma_sdp.partition_C(gSP); // save P to internal buffer
   Tensor tdVgdV = thr_mma_dkv.partition_C(gdV); // save to dv
   Tensor tdQgdQ = thr_mma_dq.partition_C(gdQ); // save to dq
   Tensor tdKgdK = thr_mma_dkv.partition_C(gdK); // save to dk
 
-  Tensor tSrQ = make_tensor<T>(
-      make_fragment_layout(tileloadQ, tSgQ(_, _, _, 0, 0).shape()));
-  Tensor tSrKt = make_tensor<T>(
-      make_fragment_layout(tileloadKt, tSgKt(_, _, _, 0, 0).shape()));
-  Tensor tdPrdO = make_tensor<T>(
-      make_fragment_layout(tileloaddO, tdPgdO(_, _, _, 0, 0).shape()));
-  Tensor tdPrV = make_tensor<T>(
-      make_fragment_layout(tileloadV, tdPgV(_, _, _, 0, 0).shape()));
-  Tensor tdVrPt = make_tensor<T>(
-      make_fragment_layout(tileloadPt, tdVgPt(_, _, _, 0, 0).shape()));
-  Tensor tdVrdOt = make_tensor<T>(
-      make_fragment_layout(tileloaddOt, tdVgdOt(_, _, _, 0, 0).shape()));
-  Tensor tdQrdP = make_tensor<T>(
-      make_fragment_layout(tileloaddP, tdQgdP(_, _, _, 0, 0).shape()));
-  Tensor tdQrK = make_tensor<T>(
-      make_fragment_layout(tileloadK, tdQgK(_, _, _, 0, 0).shape()));
-  Tensor tdKrdPt = make_tensor<T>(
-      make_fragment_layout(tileloaddPt, tdKgdPt(_, _, _, 0, 0).shape()));
-  Tensor tdKrQt = make_tensor<T>(
-      make_fragment_layout(tileloadQt, tdKgQt(_, _, _, 0, 0).shape()));
-
-  ThrCopy thr_copy_q = tileloadQ.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_kt = tileloadKt.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_do = tileloaddO.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_v = tileloadV.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_pt = tileloadPt.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_dot = tileloaddOt.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_dp = tileloaddP.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_k = tileloadK.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_dpt = tileloaddPt.get_slice(compat::local_id::x());
-  ThrCopy thr_copy_qt = tileloadQt.get_slice(compat::local_id::x());
-
   // Retile registers for copies
-  Tensor tQrQ = thr_copy_q.retile_D(tSrQ);
-  Tensor tKtrKt = thr_copy_kt.retile_D(tSrKt);
-  Tensor tdOrdO = thr_copy_do.retile_D(tdPrdO);
-  Tensor tVrV = thr_copy_v.retile_D(tdPrV);
-  Tensor tPtrPt = thr_copy_pt.retile_D(tdVrPt);
-  Tensor tdOtrdOt = thr_copy_dot.retile_D(tdVrdOt);
-  Tensor tdPrdPa = thr_copy_dp.retile_D(tdQrdP);
-  Tensor tKrK = thr_copy_k.retile_D(tdQrK);
-  Tensor tdPtrdPt = thr_copy_dpt.retile_D(tdKrdPt);
-  Tensor tQtrQt = thr_copy_qt.retile_D(tdKrQt);
 
   // Retile global counting tensors for copies
-  Tensor tQgQ = thr_copy_q.retile_S(tSgQ);
-  Tensor tKtgKt = thr_copy_kt.retile_S(tSgKt);
-  Tensor tdOgdO = thr_copy_do.retile_S(tdPgdO);
-  Tensor tVgV = thr_copy_v.retile_S(tdPgV);
-  Tensor tPtgPt = thr_copy_pt.retile_S(tdVgPt);
-  Tensor tdOtgdOt = thr_copy_dot.retile_S(tdVgdOt);
-  Tensor tdPgdPa = thr_copy_dp.retile_S(tdQgdP);
-  Tensor tKgK = thr_copy_k.retile_S(tdQgK);
-  Tensor tdPtgdPt = thr_copy_dpt.retile_S(tdKgdPt);
-  Tensor tQtgQt = thr_copy_qt.retile_S(tdKgQt);
 
-  Tensor tSrS = partition_fragment_C(
-      tiled_mma_sdp,
-      make_shape(
-          get<0>(tile_sdp),
-          get<1>(tile_sdp),
-          ceil_div(Int<kBlockM>{}, get<0>(tile_sdp)),
-          ceil_div(Int<kBlockN>{}, get<1>(tile_sdp))));
-  Tensor tdPrdP = partition_fragment_C(
-      tiled_mma_sdp,
-      make_shape(
-          get<0>(tile_sdp),
-          get<1>(tile_sdp),
-          ceil_div(Int<kBlockM>{}, get<0>(tile_sdp)),
-          ceil_div(Int<kBlockN>{}, get<1>(tile_sdp))));
   Tensor tdVrdV = partition_fragment_C(
       tiled_mma_dkv,
       make_shape(
@@ -677,13 +908,6 @@ void dq_dk_dv_1colblock(
           get<1>(tile_dkv),
           ceil_div(Int<kBlockN>{}, get<0>(tile_dkv)),
           ceil_div(Int<kHeadDim>{}, get<1>(tile_dkv))));
-  Tensor tdQrdQ = partition_fragment_C(
-      tiled_mma_dq,
-      make_shape(
-          get<0>(tile_dq),
-          get<1>(tile_dq),
-          ceil_div(Int<kBlockM>{}, get<0>(tile_dq)),
-          ceil_div(Int<kHeadDim>{}, get<1>(tile_dq))));
   Tensor tdKrdK = partition_fragment_C(
       tiled_mma_dkv,
       make_shape(
@@ -696,10 +920,6 @@ void dq_dk_dv_1colblock(
       Shape<Int<kBlockM>, Int<kBlockN>>{}); // same buffer as accS
   Tensor taccScS = thr_mma_sdp.partition_C(caccS);
   static_assert(decltype(size<0>(taccScS))::value == 8);
-  Tensor taccScS_rc = logical_divide(taccScS, Shape<_1>{});
-  Tensor taccScS_row =
-      logical_divide(taccScS, Shape<_1>{})(make_coord(0, _), _, 0);
-  Tensor lse = make_tensor<V>(Shape<Int<decltype(size(taccScS_row))::value>>{});
   // static_assert(size<0>(tSrS) * size<1>(tSrS) == size<0>(lse) && "row of acc
   // and lse not match"); misc
 
@@ -707,7 +927,6 @@ void dq_dk_dv_1colblock(
   const int tail_m = param.seq_len_q % kBlockM;
 
   cutlass::NumericConverter<T, float> converter;
-
   // clear accumulator
   clear(tdVrdV);
   clear(tdKrdK);
@@ -745,121 +964,108 @@ void dq_dk_dv_1colblock(
       tileloadQt = typename Trait::TiledLoadQt{mQt};
       tilesavedQ = typename Trait::TiledSavedQ{mdQaccum};
     }
-    clear(tSrS);
-    // S=QKt
-    gemm_ker(
-        tSrS,
-        tSrQ,
-        tSrKt,
-        tQgQ,
-        tQrQ,
-        gQ,
-        tKtgKt,
-        tKtrKt,
-        gKtV,
-        tiled_mma_sdp,
-        tile_sdp,
-        tileloadQ,
-        tileloadKt);
-    Tensor scores =
-        make_tensor(tSrS.data(), convert_layout_acc_layout(tSrS.layout()));
-
-    if constexpr (is_causal)
-      apply_mask_causal(
-          scores,
-          taccScS_rc,
-          m_block * kBlockM,
-          n_block * kBlockN,
-          param.seq_len_q - param.seq_len_kv);
-
-    if (Is_even_M) {
-      load_1colvec<true>(lse, mLSE, taccScS_row);
-    } else {
-      load_1colvec<false>(lse, mLSE, taccScS_row, tail_m);
+    {
+      Tensor tSrS = partition_fragment_C(
+          tiled_mma_sdp,
+          make_shape(
+              get<0>(tile_sdp),
+              get<1>(tile_sdp),
+              ceil_div(Int<kBlockM>{}, get<0>(tile_sdp)),
+              ceil_div(Int<kBlockN>{}, get<1>(tile_sdp))));
+      clear(tSrS);
+      // S=QKt
+      gemm_S<T>(
+          tSrS,
+          gQ,
+          gKtV,
+          thr_mma_sdp,
+          tiled_mma_sdp,
+          tile_sdp,
+          tileloadQ,
+          tileloadKt);
+      Tensor scores =
+          make_tensor(tSrS.data(), convert_layout_acc_layout(tSrS.layout()));
+      Tensor dP_sum =
+          softmax_forward<is_causal, Is_even_N, T, V, kBlockM, kBlockN>(
+              scores,
+              tSrS,
+              taccScS,
+              mLSE,
+              mdPsum,
+              tPgP,
+              tilesaveP,
+              param,
+              m_block,
+              n_block,
+              Is_even_M,
+              tail_m);
+      auto tSrSl = make_tensor_like<T>(tSrS);
+      convert_type(converter, tSrS, tSrSl);
+      mha_save<Is_even_N>(tilesaveP, tSrSl, tPgP); // save P to internal buffers
+      Tensor tdPrdP = partition_fragment_C(
+          tiled_mma_sdp,
+          make_shape(
+              get<0>(tile_sdp),
+              get<1>(tile_sdp),
+              ceil_div(Int<kBlockM>{}, get<0>(tile_sdp)),
+              ceil_div(Int<kBlockN>{}, get<1>(tile_sdp))));
+      clear(tdPrdP);
+      // dP=dO*Vt
+      gemm_dP<T>(
+          tdPrdP,
+          gdO,
+          gKtV,
+          thr_mma_sdp,
+          tiled_mma_sdp,
+          tile_sdp,
+          tileloaddO,
+          tileloadV);
+      Tensor dS = make_tensor(tdPrdP.data(), scores.layout());
+      // dS=P(dP-sum_row(P))*scale
+      softmax_backward(scores, dP_sum, dS, param.scale_softmax);
+      auto tdPrdPl = make_tensor_like<T>(tdPrdP);
+      convert_type(converter, tdPrdP, tdPrdPl);
+      mha_save<Is_even_N>(
+          tilesavedP, tdPrdPl, tPgP); // save dP to buffer after P used by dV
     }
 
-    Tensor dP_sum = make_fragment_like(lse);
-    if (Is_even_M)
-      load_1colvec<true>(dP_sum, mdPsum, taccScS_row);
-    else
-      load_1colvec<false>(dP_sum, mdPsum, taccScS_row, tail_m);
-
-    // P=softmax(S,lse)
-    scale_apply_exp2(scores, lse, param.scale_softmax_log2);
-    auto tSrSl = make_tensor_like<T>(tSrS);
-    convert_type(converter, tSrS, tSrSl);
-    mha_save<Is_even_N>(tilesaveP, tSrSl, tPgP); // save P to internal buffers
-    clear(tdPrdP);
-
-    // dP=dO*Vt
-    gemm_ker(
-        tdPrdP,
-        tdPrdO,
-        tdPrV,
-        tdOgdO,
-        tdOrdO,
-        gdO,
-        tVgV,
-        tVrV,
-        gKtV,
-        tiled_mma_sdp,
-        tile_sdp,
-        tileloaddO,
-        tileloadV);
-    Tensor dS = make_tensor(tdPrdP.data(), scores.layout());
-    // dS=P(dP-sum_row(P))*scale
-    softmax_backward(scores, dP_sum, dS, param.scale_softmax);
-    auto tdPrdPl = make_tensor_like<T>(tdPrdP);
-    convert_type(converter, tdPrdP, tdPrdPl);
-    mha_save<Is_even_N>(
-        tilesavedP, tdPrdPl, tPgP); // save dP to buffer after P used by dV
-
     // dV=Pt*dO
-    gemm_ker(
+    gemm_dV<T>(
         tdVrdV,
-        tdVrPt,
-        tdVrdOt,
-        tPtgPt,
-        tPtrPt,
         gPt,
-        tdOtgdOt,
-        tdOtrdOt,
         gQtdOt,
+        thr_mma_dkv,
         tiled_mma_dkv,
         tile_dkv,
         tileloadPt,
         tileloaddOt);
-
-    clear(tdQrdQ);
-
-    // dQ=dP*K
-    gemm_ker(
-        tdQrdQ,
-        tdQrdP,
-        tdQrK,
-        tdPgdPa,
-        tdPrdPa,
-        gdPa,
-        tKgK,
-        tKrK,
-        gK,
-        tiled_mma_dq,
-        tile_dq,
-        tileloaddP,
-        tileloadK);
-    mha_atomic_add(mdQaccum, tdQgdQ, tdQrdQ, local_id);
-
+    {
+      Tensor tdQrdQ = partition_fragment_C(
+          tiled_mma_dq,
+          make_shape(
+              get<0>(tile_dq),
+              get<1>(tile_dq),
+              ceil_div(Int<kBlockM>{}, get<0>(tile_dq)),
+              ceil_div(Int<kHeadDim>{}, get<1>(tile_dq))));
+      clear(tdQrdQ);
+      // dQ=dP*K
+      gemm_dQ<T>(
+          tdQrdQ,
+          gdPa,
+          gK,
+          thr_mma_dq,
+          tiled_mma_dq,
+          tile_dq,
+          tileloaddP,
+          tileloadK);
+      mha_atomic_add(mdQaccum, tdQgdQ, tdQrdQ, local_id);
+    }
     // dK=dPt*Q
-    gemm_ker(
+    gemm_dK<T>(
         tdKrdK,
-        tdKrdPt,
-        tdKrQt,
-        tdPtgdPt,
-        tdPtrdPt,
         gdPt,
-        tQtgQt,
-        tQtrQt,
         gQtdOt,
+        thr_mma_dkv,
         tiled_mma_dkv,
         tile_dkv,
         tileloaddPt,
@@ -894,15 +1100,14 @@ void mha_backward_seq(T trait, Param<typename T::DType> param) {
   const int bidhq = BlockIdxY();
   const int bidnblk = BlockIdxX();
   const int bidhkv = bidhq / param.num_qh_per_kvh;
-  const int bidns = bidnblk * param.num_nb_per_blk;
-  const int bidne = std::min(bidns + param.num_nb_per_blk, param.n_block);
-  for (int n_block = bidns; n_block < bidne; ++n_block)
+  for (int n_block = bidnblk; n_block < param.n_block; n_block += GridDimX()) {
     if (param.tail_n > 0 and n_block == param.n_block - 1)
       dq_dk_dv_1colblock<false, false>(
           trait, param, bidb, bidhq, bidhkv, param.n_block - 1, param.tail_n);
     else
       dq_dk_dv_1colblock<true, false>(
           trait, param, bidb, bidhq, bidhkv, n_block);
+  }
 }
 
 template <class T>
@@ -1086,7 +1291,9 @@ void run_mha_bwd_specialized(
   param.num_head_q = NUM_HEAD_Q;
   param.num_head_kv = NUM_HEAD_KV;
   param.num_qh_per_kvh = NUM_HEAD_Q / NUM_HEAD_KV;
-  param.num_nb_per_blk = 4; // tuneable
+  param.num_nb_per_blk = std::max(
+      N_BLOCK * NUM_HEAD_Q * BATCH / 1024,
+      1); // 1024 tuneable here, best for pvc
   param.seq_len_q = SEQ_LEN_Q;
   param.seq_len_kv = SEQ_LEN_KV;
   param.head_dim = kHeadDim;
