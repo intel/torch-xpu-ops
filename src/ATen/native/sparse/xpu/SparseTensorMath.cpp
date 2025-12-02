@@ -188,7 +188,6 @@ Tensor sparse_sparse_matmul_xpu(const Tensor& mat1_, const Tensor& mat2_) {
   Tensor mat2_dense = mat2_.to_dense();
 
   Tensor output_dense = at::matmul(mat1_dense, mat2_dense);
-
   Tensor output_sparse = output_dense._to_sparse(mat1_.layout());
 
   return output_sparse;
