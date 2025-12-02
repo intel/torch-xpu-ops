@@ -68,11 +68,22 @@ for key in skip_dict:
         print(f"\n=== Skipping test file: {key} ===")
         continue
 
-    skip_list = skip_dict[key]
+    skip_list = skip_dict.get(key)
+    if skip_list is None:
+        skip_list = []
+
     if IS_WINDOWS and key in skip_dict_win:
-        skip_list += skip_dict_win[key]
+        win_skip_list = skip_dict_win[key]
+        if isinstance(win_skip_list, tuple):
+            skip_list.extend(list(win_skip_list))
+        elif win_skip_list is not None:
+            skip_list.extend(win_skip_list)
     if IS_WINDOWS and key in skip_dict_win_lnl:
-        skip_list += skip_dict_win_lnl[key]
+        win_lnl_skip_list = skip_dict_win_lnl[key]
+        if isinstance(win_lnl_skip_list, tuple):
+            skip_list.extend(list(win_lnl_skip_list))
+        elif win_lnl_skip_list is not None:
+            skip_list.extend(win_lnl_skip_list)
 
     print(f"\n=== Processing test case: {key} ===")
     res += launch_test(key, skip_list=skip_list)
