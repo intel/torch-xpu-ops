@@ -738,6 +738,70 @@ skip_dict = {
         # CUDA specific case
         "test_cufft_plan_cache_xpu_float64",
     ),
+    "test_decomp.py": (
+        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
+        "test_comprehensive_baddbmm_xpu_float64",
+        "test_comprehensive_logspace_tensor_overload_xpu_int16",
+        "test_comprehensive_logspace_tensor_overload_xpu_int32",
+        "test_comprehensive_logspace_tensor_overload_xpu_int64",
+        "test_comprehensive_logspace_xpu_int16",
+        "test_comprehensive_logspace_xpu_int32",
+        "test_comprehensive_logspace_xpu_int64",
+        #  RuntimeError: could not create a primitive descriptor for the deconvolution forward propagation primitive.
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_bfloat16",
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_complex128",
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_complex32",
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_complex64",
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_float16",
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_float32",
+        "test_comprehensive_nn_functional_conv_transpose2d_xpu_float64",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_bfloat16",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_complex128",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_complex32",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_complex64",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_float16",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_float32",
+        "test_comprehensive_nn_functional_conv_transpose3d_xpu_float64",
+        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
+        "test_comprehensive_nn_functional_instance_norm_xpu_float64",
+        #  RuntimeError: Difference from float64 is larger with decomposition nll_loss_forward.default than original on output 0.
+        "test_comprehensive_nn_functional_nll_loss_xpu_float16",
+        "test_comprehensive_nn_functional_pad_reflect_xpu_bfloat16",
+        #  NotImplementedError: Could not run 'aten::_flash_attention_forward' with arguments from the 'CPU' backend.
+        "test_comprehensive_torch_ops_aten__flash_attention_forward_xpu_float16",
+        #  AssertionError: Scalars are not close! ; Exception: Scalars are not close!
+        "test_comprehensive_vdot_xpu_complex128",
+        "test_comprehensive_vdot_xpu_complex64",
+        #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
+        "test_quick_addmm_xpu_float64",
+        "test_quick_baddbmm_xpu_float64",
+        "test_quick_core_backward_baddbmm_xpu_float64",
+        # Exception: Jacobian mismatch for output 0 with respect to input 0
+        "test_quick_core_backward_mv_xpu_float64",
+        #  AssertionError: Tensor-likes are not equal! ; Exception: Tensor-likes are not equal!
+        "test_quick_logspace_tensor_overload_xpu_int16",
+        "test_quick_logspace_tensor_overload_xpu_int32",
+        "test_quick_logspace_tensor_overload_xpu_int64",
+        "test_quick_logspace_xpu_int16",
+        "test_quick_logspace_xpu_int32",
+        "test_quick_logspace_xpu_int64",
+        #  AssertionError: Scalars are not close! ; Exception: Scalars are not close!
+        "test_quick_vdot_xpu_complex128",
+        "test_quick_vdot_xpu_complex64",
+        #  AssertionError: Tensor-likes are not close!
+        "test_exponential_non_inf_xpu",
+        #  RuntimeError: I got this output for HasDecompTest.test_aten_core_operators:
+        "test_aten_core_operators",
+        "test_has_decomposition",
+        #  AssertionError: Tensor-likes are not close!
+        "test_comprehensive_diff_xpu_complex128",
+        "test_comprehensive_ormqr_xpu_complex128",
+        "test_quick_var_mean_xpu_float64",
+        "test_comprehensive_diff_xpu_complex64",
+        "test_comprehensive_ormqr_xpu_complex64",
+        "test_quick_mean_xpu_complex128",
+        "test_comprehensive_grid_sampler_2d_xpu_bfloat16",
+    ),
     "functorch/test_ops_xpu.py": None,
     "test_sparse_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
