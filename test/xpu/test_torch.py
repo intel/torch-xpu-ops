@@ -6552,6 +6552,11 @@ def disable_gc():
     else:
         yield
 
+if torch.accelerated_is_available():
+    DEVICE_TYPE = torch.accelerator.current_accelerator().type
+else:
+    DEVICE_TYPE = 'cpu'
+
 class TestTorch(TestCase):
     exact_dtype = True
 
@@ -6780,7 +6785,7 @@ class TestTorch(TestCase):
             ref_out = tensor.index_add(dim, index, source, alpha=2.) / 2.
             ref_out = ref_out.to(dtype=dtype)
             out = tensor.index_add(dim, index, source)
-            if device == 'cuda':
+            if device == 'cuda' or device == 'xpu':
                 self.assertEqual(out, ref_out, atol=1e-2, rtol=1e-2)
             else:
                 # scatter_add uses fp32 as accumulate type, while index_add doesn't.
@@ -6999,27 +7004,29 @@ class TestTorch(TestCase):
         self.assertRaises(RuntimeError, lambda: f_cpu.set_(d_cpu))
 
         # change device
-        if torch.cuda.is_available():
-            f_cuda = torch.randn((2, 3), dtype=torch.float32, device='cuda')
+        if torch.accelerator.is_available():
+            f_accelerator = torch.randn((2, 3), dtype=torch.float32, device=DEVICE_TYPE)
 
-            # cpu -> cuda
-            self.assertRaises(RuntimeError, lambda: f_cpu.set_(f_cuda.storage()))
+            # cpu -> accelerator
+            self.assertRaises(RuntimeError, lambda: f_cpu.set_(f_accelerator.storage()))
             self.assertRaises(RuntimeError,
-                              lambda: f_cpu.set_(f_cuda.storage(), 0, f_cuda.size(), f_cuda.stride()))
-            self.assertRaises(RuntimeError, lambda: f_cpu.set_(f_cuda))
+                              lambda: f_cpu.set_(f_accelerator.storage(), 0, f_accelerator.size(), f_accelerator.stride()))
+            self.assertRaises(RuntimeError, lambda: f_cpu.set_(f_accelerator))
 
-            # cuda -> cpu
-            self.assertRaises(RuntimeError, lambda: f_cuda.set_(f_cpu.storage()))
+            # accelerator -> cpu
+            self.assertRaises(RuntimeError, lambda: f_accelerator.set_(f_cpu.storage()))
             self.assertRaises(RuntimeError,
-                              lambda: f_cuda.set_(f_cpu.storage(), 0, f_cpu.size(), f_cpu.stride()))
-            self.assertRaises(RuntimeError, lambda: f_cuda.set_(f_cpu))
+                              lambda: f_accelerator.set_(f_cpu.storage(), 0, f_cpu.size(), f_cpu.stride()))
+            self.assertRaises(RuntimeError, lambda: f_accelerator.set_(f_cpu))
 
     # FIXME: move this test test_testing.py (along with allclose testing)
     # NOTE: test_equal will be deprecated in favor of torch.testing.assert_close
     #   once torch.testing is out of beta
     def test_equal(self):
-        for device in ["cpu", "cuda"]:
+        for device in ["cpu", "cuda", "xpu"]:
             if device == "cuda" and not torch.cuda.is_available():
+                continue
+            if device == "xpu" and not torch.xpu.is_available():
                 continue
 
             # Contiguous, 1D
@@ -7307,6 +7314,8 @@ class TestTorch(TestCase):
         devices = ['cpu']
         if torch.cuda.is_available():
             devices += ['cuda']
+        if torch.xpu.is_available():
+            devices += ['xpu']
 
         for device in devices:
             with self.subTest(device=device):
@@ -7590,10 +7599,16 @@ class TestTorch(TestCase):
             if storage_class in [torch.UntypedStorage, torch.TypedStorage]:
                 continue
 
-            device = 'cuda' if storage_class.__module__ == 'torch.cuda' else 'cpu'
+            device = (
+                "cuda"
+                if storage_class.__module__ == "torch.cuda"
+                else ("xpu" if storage_class.__module__ == "torch.xpu" else "cpu")
+            )
             dtype = storage_class.dtype
 
             if device == 'cuda' and not torch.cuda.is_available():
+                continue
+            if device == 'xpu' and not torch.xpu.is_available():
                 continue
 
             # Legacy <type>Storage constructor errors
@@ -7637,6 +7652,21 @@ class TestTorch(TestCase):
 
                     with self.assertRaisesRegex(RuntimeError, r"Device of 'wrap_storage' must be"):
                         storage_class(wrap_storage=s_other_device.untyped())
+            
+            if torch.xpu.is_available():
+                if storage_class in quantized_storages:
+                    with self.assertRaisesRegex(RuntimeError, r"Cannot create XPU storage with quantized dtype"):
+                        s.xpu()
+
+                else:
+
+                    if s.is_xpu:
+                        s_other_device = s.cpu()
+                    else:
+                        s_other_device = s.xpu()
+
+                    with self.assertRaisesRegex(RuntimeError, r"Device of 'wrap_storage' must be"):
+                        storage_class(wrap_storage=s_other_device.untyped())
 
             # TypedStorage constructor errors
             with self.assertRaisesRegex(RuntimeError, r"No positional arguments"):
@@ -7661,6 +7691,10 @@ class TestTorch(TestCase):
                 if storage_class in quantized_storages:
                     with self.assertRaisesRegex(RuntimeError, r"Cannot create CUDA storage with quantized dtype"):
                         torch.TypedStorage(dtype=dtype, device='cuda')
+            if torch.xpu.is_available():
+                if storage_class in quantized_storages:
+                    with self.assertRaisesRegex(RuntimeError, r"Cannot create XPU storage with quantized dtype"):
+                        torch.TypedStorage(dtype=dtype, device='xpu')
 
             with self.assertRaisesRegex(TypeError, r"Argument type not recognized"):
                 torch.TypedStorage(torch.tensor([]), dtype=dtype, device=device)
@@ -7675,19 +7709,40 @@ class TestTorch(TestCase):
                     s.fill_(s_other)
 
     def test_storage_error_no_attribute(self):
-        storage_classes = [
-            torch.cuda.ByteStorage,
-            torch.cuda.FloatStorage,
-        ]
-        for storage_class in storage_classes:
-            with self.assertRaisesRegex(RuntimeError, r'Not available for CUDA storage'):
-                storage_class.from_buffer()
+        if TEST_XPU:
+            storage_classes = [
+                torch.xpu.ByteStorage,
+                torch.xpu.FloatStorage,
+            ]
+            for storage_class in storage_classes:
+                with self.assertRaisesRegex(
+                    RuntimeError, r"Not available for XPU storage"
+                ):
+                    storage_class.from_buffer()
 
-            with self.assertRaisesRegex(RuntimeError, r'Not available for CUDA storage'):
-                storage_class._new_with_weak_ptr()
+                with self.assertRaisesRegex(
+                    RuntimeError, r"Not available for XPU storage"
+                ):
+                    storage_class._new_with_weak_ptr()
 
-            with self.assertRaisesRegex(RuntimeError, r'Not available for CUDA storage'):
-                storage_class._new_shared_filename(0, 0, 0)
+                with self.assertRaisesRegex(
+                    RuntimeError, r"Not available for XPU storage"
+                ):
+                    storage_class._new_shared_filename(0, 0, 0) 
+        else: 
+            storage_classes = [
+                torch.cuda.ByteStorage,
+                torch.cuda.FloatStorage,
+            ]
+            for storage_class in storage_classes:
+                with self.assertRaisesRegex(RuntimeError, r'Not available for CUDA storage'):
+                    storage_class.from_buffer()
+
+                with self.assertRaisesRegex(RuntimeError, r'Not available for CUDA storage'):
+                    storage_class._new_with_weak_ptr()
+
+                with self.assertRaisesRegex(RuntimeError, r'Not available for CUDA storage'):
+                    storage_class._new_shared_filename(0, 0, 0)
 
     def test_storage_casts(self):
         storage = torch.IntStorage([-1, 0, 1, 2, 3, 4])
@@ -7860,22 +7915,34 @@ class TestTorch(TestCase):
             lambda: t0._typed_storage(),
         ]
 
-        if torch.cuda.is_available():
-            s1 = torch.cuda.FloatStorage(10)
+        if torch.accelerator.is_available():
+            s1 = (
+                torch.cuda.FloatStorage(10)
+                if torch.cuda.is_available()
+                else torch.xpu.FloatStorage(10)
+            )
             s1_untyped = s1.untyped()
-            t1 = torch.randn(10, device='cuda')
+            t1 = (
+                torch.randn(10, device="cuda")
+                if torch.cuda.is_available()
+                else torch.randn(10, device="xpu")
+            )
 
             funcs += [
-                lambda: torch.cuda.FloatStorage(_internal=True),
+                lambda: torch.cuda.FloatStorage(_internal=True)
+                if torch.cuda.is_available()
+                else torch.xpu.FloatStorage(_internal=True),
                 lambda: torch.TypedStorage(
                     dtype=torch.float,
-                    device='cuda',
-                    _internal=True),
+                    device="cuda" if torch.cuda.is_available() else "xpu",
+                    _internal=True,
+                ),
                 lambda: torch.TypedStorage(
-                    wrap_storage=s1_untyped,
-                    dtype=s1.dtype,
-                    _internal=True),
-                lambda: torch.cuda.FloatStorage._dtype,
+                    wrap_storage=s1_untyped, dtype=s1.dtype, _internal=True
+                ),
+                lambda: torch.cuda.FloatStorage._dtype
+                if torch.cuda.is_available()
+                else torch.xpu.FloatStorage._dtype,
                 lambda: s1._resize_(20),
                 lambda: s1._size(),
                 lambda: s1._untyped_storage,
@@ -7889,6 +7956,7 @@ class TestTorch(TestCase):
                 lambda: s1._nbytes(),
                 lambda: t1._typed_storage(),
             ]
+
 
         # Check that each of the TypedStorage internal function calls do not
         # produce a deprecation warning
@@ -7907,6 +7975,7 @@ class TestTorch(TestCase):
             lambda: torch.FloatStorage.dtype,
             lambda: s0.fill_(0),
             lambda: s0.is_cuda,
+            lambda: s0.is_xpu,
             lambda: s0.untyped(),
             lambda: len(s0),
             lambda: s0[0],
@@ -7923,6 +7992,19 @@ class TestTorch(TestCase):
                 lambda: len(s1),
                 lambda: s1[0],
             ]
+        
+        if torch.xpu.is_available() and TEST_XPU:
+            s1 = torch.xpu.FloatStorage(10)
+            funcs += [
+                lambda: torch.xpu.FloatStorage(),
+                lambda: torch.xpu.FloatStorage.dtype,
+                lambda: s1.fill_(0),
+                lambda: s1.is_xpu,
+                lambda: s1.untyped(),
+                lambda: len(s1),
+                lambda: s1[0],
+            ]
+
 
         # Check that each of the TypedStorage function calls produce a warning
         # if warnings are reset between each
@@ -8033,6 +8115,8 @@ class TestTorch(TestCase):
                 continue
             if t.is_cuda and not torch.cuda.is_available():
                 continue
+            if t.is_xpu and not torch.xpu.is_available():
+                continue
             obj = t(100, 100).fill_(1)
             obj.__repr__()
             str(obj)
@@ -8045,7 +8129,13 @@ class TestTorch(TestCase):
                 continue  # Fix once fill is enabled for bfloat16
             if t.is_cuda and not torch.cuda.is_available():
                 continue
-            if t == torch.BoolStorage or t == torch.cuda.BoolStorage:
+            if t.is_xpu and not torch.xpu.is_available():
+                continue
+            if (
+                t == torch.BoolStorage 
+                or t == torch.cuda.BoolStorage 
+                or t == torch.xpu.BoolStorage
+            ):
                 obj = t(100).fill_(True)
             else:
                 obj = t(100).fill_(1)
@@ -8141,21 +8231,24 @@ tensor([ 0.0000e+00, 9.8813e-324, 9.8813e-323, 1.0000e+307, 1.0000e+308,
         self.assertEqual(summary, x[:, first_and_last][..., first_and_last])
 
         # test device
-        if torch.cuda.is_available():
-            x = torch.tensor([123], device='cuda:0')
+        if torch.accelerator.is_available():
+            x = torch.tensor([123], device=f'{DEVICE_TYPE}:0')
             self.assertEqual(x.__repr__(), str(x))
-            self.assertExpectedInline(str(x), '''tensor([123], device='cuda:0')''')
+            self.assertExpectedInline(str(x), f'''tensor([123], device='{DEVICE_TYPE}:0')''')
 
             # test changing default to cuda
-            torch.set_default_tensor_type(torch.cuda.FloatTensor)
+            if DEVICE_TYPE == 'xpu':
+                torch.set_default_tensor_type(torch.xpu.FloatTensor)
+            else:
+                torch.set_default_tensor_type(torch.cuda.FloatTensor)
             self.assertEqual(x.__repr__(), str(x))
             self.assertExpectedInline(str(x), '''tensor([123])''')
 
             # test printing a tensor on a different gpu than current one.
-            if torch.cuda.device_count() >= 2:
-                with torch.cuda.device(1):
+            if torch.accelerator.device_count() >= 2:
+                with torch.device(f'{DEVICE_TYPE}:1'):
                     self.assertEqual(x.__repr__(), str(x))
-                    self.assertExpectedInline(str(x), '''tensor([123], device='cuda:0')''')
+                    self.assertExpectedInline(str(x), f'''tensor([123], device='{DEVICE_TYPE}:0')''')
 
             # test printing cpu tensor when default device is cuda
             y = torch.tensor([123], device='cpu')
@@ -8336,7 +8429,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
     def test_pin_memory(self):
         x = torch.randn(3, 5)
         self.assertFalse(x.is_pinned())
-        if torch.cuda.is_available():
+        if torch.accelerator.is_available():
             pinned = x.pin_memory()
             self.assertTrue(pinned.is_pinned())
             self.assertEqual(pinned, x)
@@ -9261,13 +9354,14 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
             out = torch.zeros(out_shape, dtype=out_dtype, device=torch.device('cpu'))
             src = torch.ones(src_shape, dtype=src_dtype, device=torch.device('cpu'))
             if is_ok:
-                if torch.cuda.is_available():
-                    out_cuda = out.cuda()
-                    src_cuda = src.cuda()
+                if torch.accelerator.is_available():
+                    device = torch.device(DEVICE_TYPE)
+                    out_accelerator = out.to(device)
+                    src_accelerator = src.to(device)
                 res = out.copy_(src)
-                if torch.cuda.is_available():
-                    res_cuda = out_cuda.copy_(src_cuda)
-                    self.assertEqual(res, res_cuda)
+                if torch.accelerator.is_available():
+                    res_accelerator = out_accelerator.copy_(src_accelerator)
+                    self.assertEqual(res, res_accelerator)
             else:
                 self.assertRaises(RuntimeError, lambda: out.copy_(src))
 
@@ -9287,6 +9381,11 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                     devices.append(f'cuda:{torch.cuda.current_device()}')
                 elif t.device.index == torch.cuda.current_device():
                     devices.append('cuda')
+            if t.device.type == 'xpu':
+                if t.device.index == -1:
+                    devices.append(f'xpu:{torch.accelerator.current_device()}')
+                elif t.device.index == torch.accelerator.current_device():
+                    devices.append('xpu')
             for device in devices:
                 self.assertIs(t, t.to(device, non_blocking=non_blocking))
                 self.assertIs(t, t.to(device, t.dtype, non_blocking=non_blocking))
@@ -9330,6 +9429,19 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                     self.assertEqual(b.device, b.to(cuda, non_blocking=non_blocking).device)
                     self.assertEqual(a.device, b.to('cpu', non_blocking=non_blocking).device)
                     self.assertEqual(b.device, a.to(cuda, non_blocking=non_blocking).device)
+                    self.assertIs(torch.int32, b.to('cpu', dtype=torch.int32, non_blocking=non_blocking).dtype)
+                    self.assertEqual(a.device, b.to('cpu', dtype=torch.int32, non_blocking=non_blocking).device)
+                    self.assertIs(torch.int32, b.to(dtype=torch.int32).dtype)
+                    self.assertEqual(b.device, b.to(dtype=torch.int32).device)
+
+        if torch.xpu.is_available():
+            for non_blocking in [True, False]:
+                for xpu in ['xpu', 'xpu:0' if torch.accelerator.device_count() == 1 else 'xpu:1']:
+                    b = torch.tensor(5., device=xpu)
+                    test_copy_behavior(b, non_blocking)
+                    self.assertEqual(b.device, b.to(xpu, non_blocking=non_blocking).device)
+                    self.assertEqual(a.device, b.to('cpu', non_blocking=non_blocking).device)
+                    self.assertEqual(b.device, a.to(xpu, non_blocking=non_blocking).device)
                     self.assertIs(torch.int32, b.to('cpu', dtype=torch.int32, non_blocking=non_blocking).dtype)
                     self.assertEqual(a.device, b.to('cpu', dtype=torch.int32, non_blocking=non_blocking).device)
                     self.assertIs(torch.int32, b.to(dtype=torch.int32).dtype)
@@ -9424,7 +9536,15 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         self.assertEqual(x[0:-1:2].tolist(), [[0, 1, 2, 3], [8, 9, 10, 11]])
 
     def test_split_with_sizes_copy_out(self):
-        device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+        device = (
+            torch.device("cuda:0")
+            if torch.cuda.is_available()
+            else (
+                torch.device("xpu:0")
+                if torch.xpu.is_available()
+                else torch.device("cpu")
+            )
+        )
         shape = (30, 40, 50)
         x = torch.rand(*shape, device=device)
         cases = [
@@ -9529,6 +9649,13 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
                     self.assertEqual(b.device, b.to(b, non_blocking=non_blocking).device)
                     self.assertEqual(a.device, b.to(a, non_blocking=non_blocking).device)
                     self.assertEqual(b.device, a.to(b, non_blocking=non_blocking).device)
+        if torch.xpu.is_available():
+            for non_blocking in [True, False]:
+                for xpu in ['xpu', 'xpu:0' if torch.accelerator.device_count() == 1 else 'xpu:1']:
+                    b = torch.tensor(5., device=xpu)
+                    self.assertEqual(b.device, b.to(b, non_blocking=non_blocking).device)
+                    self.assertEqual(a.device, b.to(a, non_blocking=non_blocking).device)
+                    self.assertEqual(b.device, a.to(b, non_blocking=non_blocking).device)
 
     def test_device(self):
         cpu = torch.device('cpu')
@@ -9566,6 +9693,21 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         self.assertEqual('cuda', cuda90.type)
         self.assertEqual(90, cuda90.index)
 
+        xpu = torch.device("xpu")
+        self.assertEqual("xpu", str(xpu))
+        self.assertEqual("xpu", xpu.type)
+        self.assertEqual(None, xpu.index)
+
+        xpu1 = torch.device("xpu:1")
+        self.assertEqual("xpu:1", str(xpu1))
+        self.assertEqual("xpu", xpu1.type)
+        self.assertEqual(1, xpu1.index)
+
+        xpu1 = torch.device("xpu", 1)
+        self.assertEqual("xpu:1", str(xpu1))
+        self.assertEqual("xpu", xpu1.type)
+        self.assertEqual(1, xpu1.index)
+
         self.assertRaises(RuntimeError, lambda: torch.device('cpu:-1'))
         self.assertRaises(RuntimeError, lambda: torch.device('cuda:-1'))
         self.assertRaises(RuntimeError, lambda: torch.device('cuda:2 '))
@@ -9579,12 +9721,39 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         self.assertRaises(RuntimeError, lambda: torch.device('cuda:2 cuda:3'))
         self.assertRaises(RuntimeError, lambda: torch.device('cuda:2+cuda:3'))
         self.assertRaises(RuntimeError, lambda: torch.device('cuda:2cuda:3'))
+
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:-1"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2 "))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu: 2"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2 2"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2."))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2?"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:?2"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2.232"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2 xpu:3"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2+xpu:3"))
+        self.assertRaises(RuntimeError, lambda: torch.device("xpu:2xpu:3"))
+
         self.assertRaises(RuntimeError, lambda: torch.device(-1))
 
         self.assertRaises(RuntimeError, lambda: torch.device('other'))
         self.assertRaises(RuntimeError, lambda: torch.device('other:0'))
 
-        device_set = {'cpu', 'cpu:0', 'cuda', 'cuda:0', 'cuda:1', 'cuda:10', 'cuda:100'}
+        device_set = {
+            "cpu",
+            "cpu:0",
+            "cuda",
+            "cuda:0",
+            "cuda:1",
+            "cuda:10",
+            "cuda:100",
+            "xpu",
+            "xpu:0",
+            "xpu:1",
+            "xpu:10",
+            "xpu:100",
+        }
         device_hash_set = set()
         device_hash_set.update(hash(torch.device(device)) for device in device_set)
         self.assertEqual(len(device_set), len(device_hash_set))
