@@ -3469,6 +3469,8 @@ class TestSparseCSR(TestCase):
             if op_b and a.shape == b.shape:
                 b = b.mH
 
+            print(">>> ", c.shape, a.shape, b.shape)
+            print(c)
             actual = torch.sparse.sampled_addmm(c, a, b, alpha=alpha, beta=beta)
 
             out = torch.sparse_csr_tensor(

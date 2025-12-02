@@ -2,6 +2,7 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/ExpandUtils.h>
 #include <ATen/SparseCsrTensorUtils.h>
+#include <ATen/TensorOperators.h>
 #include <ATen/native/Resize.h>
 //#include <ATen/native/sparse/cuda/SparseBlasImpl.h>
 #include <ATen/native/sparse/SparseBlas.h>
@@ -11,7 +12,11 @@
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
-#include <ATen/ops/addmm.h>
+#include <ATen/ops/abs.h>
+#include <ATen/ops/mm.h>
+#include <ATen/ops/mul.h>
+#include <ATen/ops/sign.h>
+#include <ATen/ops/zeros_like.h>
 //#include <ATen/ops/addmv_native.h>
 //#include <ATen/ops/copy_native.h>
 //#include <ATen/ops/empty.h>
@@ -51,7 +56,9 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     result_sizes.push_back(self.size(-2));
     result_sizes.push_back(self.size(-1));
     at::sparse_csr::get_sparse_csr_impl(result)->resize_(self._nnz(), result_sizes);
+    printf(">>> Signal 0: %ld vs. %ld\n", result.numel(), self.numel());
     result.copy_(self);
+    printf(">>> Signal 1\n");
   }
 
   // there's a segfault when calling cuSPARSE on 0-sized matrices
@@ -60,9 +67,19 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     return result;
   }
 
-  Tensor self_dense = self.to_dense();
-  Tensor result_dense = at::addmm(self_dense, mat1, mat2, beta, alpha);
+  Tensor self_dense;
+  if (self.numel() != 0) {
+    self_dense = self.to_dense();
+  } else {
+    self_dense = at::zeros_like(self);
+  }
+  Tensor mask = at::abs(at::sign(self_dense));
+  Tensor masked_mm = at::mul(at::mm(mat1, mat2), mask);
+  // Tensor result_dense = at::addmm(self_dense, mat1, mat2, beta, alpha);
+  Tensor result_dense = at::mul(self_dense, beta) + at::mul(masked_mm, alpha);
+  printf(">>> Signal 2: %ld vs. %ld\n", result.numel(), result_dense.numel());
   result.copy_(result_dense.to_sparse_csr());
+  printf(">>> Signal 3\n");
 
   return result;
 }
