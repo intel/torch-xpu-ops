@@ -197,7 +197,7 @@ class TestBasicVitalSigns(TestCase):
 
 # FIXME: document or deprecate whatever this is
 class TestVitalSignsCuda(TestCase):
-    @onlyOn('cuda', 'xpu')
+    @onlyOn(['cuda', 'xpu'])
     def test_cuda_vitals_gpu_only(self, device):
         if TEST_XPU:
             with torch_vital_set("ON"):
