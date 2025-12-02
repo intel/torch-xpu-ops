@@ -199,17 +199,12 @@ runs:
           echo "Torch is re-installed when installing deps, please check"
           exit 1
         fi
-    - name: Download Pytorch wheel
-      uses: actions/download-artifact@v4
-      with:
-        name: pytorch-triton-wheel-3.10-xpu-manylinux_2_28_x86_64
-        github-token: ${{ github.token }}
-        repository: intel/torch-xpu-ops
-        run-id: ${{ github.run_id }}
-        path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
       run: |
         pip uninstall -y triton pytorch-triton-xpu && pip uninstall -y triton pytorch-triton-xpu
-        pip install --no-deps ${{ github.workspace }}/wheels/pytorch*.whl
+        sudo apt update
+        sudo apt install unzip zip zlib1g-dev -y
+        pip install cmake ninja pybind11
+        pip install git+https://github.com/intel/intel-xpu-backend-for-triton@release/3.6.x
         pip list |grep -E 'intel|torch|triton'
