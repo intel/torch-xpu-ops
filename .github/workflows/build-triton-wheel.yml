@@ -62,7 +62,7 @@ jobs:
 
           PYTHON_EXECUTABLE="python3.10"
 
-          docker exec -t "${container_name}" apt update && apt install gpg-agent wget curl sudo gcc g++ cmake git unzip zip libgl1 zlib1g-dev numactl -y libglib2.0-dev rsync jq python3.10 python3.10-dev python3.10-venv python3-pip
+          docker exec -t "${container_name}" apt-get update && sudo apt-get install wget curl gcc g++ cmake git unzip zip libgl1 zlib1g-dev numactl -y libglib2.0-dev rsync jq python3.10 python3.10-dev python3.10-venv python3-pip
           docker exec -t "${container_name}" "${PYTHON_EXECUTABLE}"  -m pip install -U setuptools==78.1.0 pybind11==3.0.1 auditwheel wheel
           set +e
           docker exec -t "${container_name}" command -v pip
