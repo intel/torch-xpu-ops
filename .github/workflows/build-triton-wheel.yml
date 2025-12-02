@@ -23,7 +23,7 @@ jobs:
             runs_on: "pvc_rolling"
     timeout-minutes: 40
     env:
-      DOCKER_IMAGE: ${{ matrix.device == 'rocm' && format('pytorch/manylinux2_28-builder:rocm{0}', matrix.rocm_version) || matrix.device == 'aarch64' && 'pytorch/manylinux2_28_aarch64-builder:cpu-aarch64' || matrix.docker-image }}
+      DOCKER_IMAGE: intelgpu/ubuntu-22.04-lts2:2523.31
       PY_VERS: ${{ matrix.py_vers }}
       BUILD_DEVICE: ${{ matrix.device }}
       PLATFORM: 'manylinux_2_28_x86_64'
@@ -42,7 +42,7 @@ jobs:
         run: |
           set -x
           mkdir -p "${RUNNER_TEMP}/artifacts/"
-          echo "mengfeil/test-triton" > .ci/docker/ci_commit_pins/triton-xpu.txt
+          echo "release/3.6.x" > .ci/docker/ci_commit_pins/triton-xpu.txt
           echo "3.6.0" > .ci/docker/triton_xpu_version.txt
           cp torch-xpu-ops/.github/scripts/build_triton_wheel.py  .github/scripts/build_triton_wheel.py
           container_name=$(docker run \
@@ -54,42 +54,20 @@ jobs:
             "${DOCKER_IMAGE}"      \
           )
 
-          # Determine python executable for given version
-          case $PY_VERS in
-          3.10)
-            PYTHON_EXECUTABLE=/opt/python/cp310-cp310/bin/python
-            ;;
-          3.11)
-            PYTHON_EXECUTABLE=/opt/python/cp311-cp311/bin/python
-            ;;
-          3.12)
-            PYTHON_EXECUTABLE=/opt/python/cp312-cp312/bin/python
-            ;;
-          3.13)
-            PYTHON_EXECUTABLE=/opt/python/cp313-cp313/bin/python
-            ;;
-          3.13t)
-            PYTHON_EXECUTABLE=/opt/python/cp313-cp313t/bin/python
-            ;;
-          3.14)
-            PYTHON_EXECUTABLE=/opt/python/cp314-cp314/bin/python
-            ;;
-          3.14t)
-            PYTHON_EXECUTABLE=/opt/python/cp314-cp314t/bin/python
-            ;;
-          *)
-            echo "Unsupported python version ${PY_VERS}"
-            exit 1
-            ;;
-          esac
-
           RELEASE=""
           WITH_CLANG_LDD=""
           if [[ "${IS_RELEASE_TAG}" == true ]]; then
             RELEASE="--release"
           fi
 
-          docker exec -t "${container_name}" yum install -y zlib-devel zip
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          source $HOME/.local/bin/env
+          uv venv myvenv --python 3.10 --clear
+          source myvenv/bin/activate
+          uv pip install pip numpy
+          PYTHON_EXECUTABLE="python"
+
+          docker exec -t "${container_name}" apt update && apt install -y zlib1g-dev unzip zip
           docker exec -t "${container_name}" "${PYTHON_EXECUTABLE}"  -m pip install -U setuptools==78.1.0 pybind11==3.0.1 auditwheel wheel
           set +e
           docker exec -t "${container_name}" command -v pip

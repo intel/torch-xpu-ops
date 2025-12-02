@@ -74,7 +74,7 @@ def build_triton(
             triton_pkg_name = "pytorch-triton-rocm"
         elif device == "xpu":
             triton_pkg_name = "pytorch-triton-xpu"
-            triton_repo = "https://github.com/mengfei25/intel-xpu-backend-for-triton"
+            triton_repo = "https://github.com/intel/intel-xpu-backend-for-triton"
         else:
             triton_pkg_name = "pytorch-triton"
         check_call(["git", "clone", triton_repo, "triton"], cwd=tmpdir)
