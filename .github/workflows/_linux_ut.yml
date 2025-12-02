@@ -168,10 +168,10 @@ jobs:
           gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
           REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
           if [ "${REFERENCE_RUN_ID}" != "" ];then
-            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-UT-Data-*"
-            find Inductor-XPU-UT-Data-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                    while read line; do rsync -az --delete $line/ $(basename $line)/; done
-            rm -rf Inductor-XPU-UT-Data-* || true
+            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-UT-Data-*${{ inputs.ut }}*"
+            find Inductor-XPU-UT-Data-*${{ inputs.ut }}*/ -type f -path "*/Inductor-XPU-UT-Data-*/*" -print0 | \
+              xargs -0 -I {} cp {} .
+            rm -rf Inductor-XPU-UT-Data-*${{ inputs.ut }}* || true
           fi
       - name: Check UT Results
         run: |
