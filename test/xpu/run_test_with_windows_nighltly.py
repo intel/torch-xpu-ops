@@ -4,10 +4,49 @@ import sys
 from skip_list_common import skip_dict
 from skip_list_win import skip_dict as skip_dict_win
 from skip_list_win_lnl import skip_dict as skip_dict_win_lnl
-from xpu_test_utils import launch_test
 
 res = 0
 IS_WINDOWS = sys.platform == "win32"
+
+def launch_test(test_case, skip_list=None, exe_list=None):
+    os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
+    module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
+    if skip_list is not None:
+        if skip_list:
+            skip_options = ' -k "not ' + skip_list[0]
+            for skip_case in skip_list[1:]:
+                skip_option = " and not " + skip_case
+                skip_options += skip_option
+            skip_options += '"'
+            test_command = (
+                f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
+            )
+            test_command += skip_options
+        else:
+            test_command = (
+                f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
+            )
+    elif exe_list is not None:
+        if exe_list:
+            exe_options = ' -k "' + exe_list[0]
+            for exe_case in exe_list[1:]:
+                exe_option = " or " + exe_case
+                exe_options += exe_option
+            exe_options += '"'
+            test_command = (
+                f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
+            )
+            test_command += exe_options
+        else:
+            test_command = (
+                f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
+            )
+    else:
+        test_command = (
+            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
+        )
+    return os.system(test_command)
+
 
 skip_files_list = [
     "test_autocast_xpu.py",
