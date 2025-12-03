@@ -191,7 +191,7 @@ class FMHAPrefill {
   }
 
   // Find the length of the longest non masked sequence within that subgroup
-  int calculate_longest_non_masked_length(
+  CUTLASS_DEVICE int calculate_longest_non_masked_length(
       const int& seq_len_kv,
       const int& seq_len_qo,
       const int& last_seq_coord,
@@ -222,7 +222,7 @@ class FMHAPrefill {
   }
 
   template <class Tensor>
-  void handle_corner_cases(
+  CUTLASS_DEVICE void handle_corner_cases(
       Tensor& tSr,
       const int& thread_idx,
       const int& SubgroupSize,
