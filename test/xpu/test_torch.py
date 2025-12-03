@@ -2145,7 +2145,7 @@ class TestTorchDeviceType(TestCase):
         result = original.scatter(0, null_index, null_arr)
         self.assertEqual(result, original, atol=0, rtol=0)
 
-    @onlyCUDA
+    @onlyOn(['cuda', 'xpu'])
     @skipIfTorchInductor("FIXME")
     def test_sync_warning(self, device):
 
@@ -2327,7 +2327,7 @@ class TestTorchDeviceType(TestCase):
         with self.assertRaises(RuntimeError):
             torch.empty((1,), device=device, dtype=dtype).exponential_(-0.5)
 
-    @onlyCUDA
+    @onlyOn(['cuda', 'xpu'])
     @dtypes(torch.half, torch.float)
     def test_exponential_no_zero(self, device, dtype):
         # naively, 0 in exponential can be generated with probability 2^-24
@@ -2444,7 +2444,7 @@ class TestTorchDeviceType(TestCase):
                 self.assertTrue(res.statistic < 0.1)
 
     @slowTest
-    @onlyCUDA
+    @onlyOn(['cuda', 'xpu'])
     @dtypes(torch.bfloat16, torch.float32)
     def test_cauchy_no_inf(self, device, dtype):
         # torch.float16 will have `inf` because of its smaller range.
@@ -2569,7 +2569,7 @@ class TestTorchDeviceType(TestCase):
                             expected = self._brute_cdist(x, y, p=p)
                             self.assertEqual(expected, actual)
 
-    @onlyCUDA
+    @onlyOn(['cuda', 'xpu'])
     def test_cdist_cuda_backward(self, device):
         for l1 in [1, 511, 513]:
             for l2 in [1, 511, 513]:
@@ -3441,7 +3441,7 @@ class TestTorchDeviceType(TestCase):
             out = torch.addcmul(a, b, c, value=-1)
             self.assertTrue(not (out.isnan() or out.isinf()))
 
-    @onlyCUDA
+    @onlyOn(['cuda', 'xpu'])
     def test_addcmul_cuda_errors_with_cpu_scalars(self, device):
         # Logic is dtype agnostic, so dtype isn't tested
         alpha = 0.5
@@ -3714,7 +3714,7 @@ class TestTorchDeviceType(TestCase):
             input.scatter_(0, index, src, reduce=operation)
             self.assertEqual(input, result, msg=f"result: {result} input: {input} method: {str(operation)}")
 
-    @onlyCUDA
+    @onlyOn(['cuda', 'xpu'])
     @dtypes(*complex_types())
     def test_scatter_reduce_multiply_unsupported_dtypes(self, device, dtype):
         height = 2
@@ -11121,7 +11121,7 @@ add_neg_dim_tests()
 instantiate_device_type_tests(TestViewOps, globals(), allow_xpu=True)
 instantiate_device_type_tests(TestVitalSignsCuda, globals(), allow_xpu=True)
 instantiate_device_type_tests(TestTensorDeviceOps, globals(), allow_xpu=True)
-instantiate_device_type_tests(TestTorchDeviceType, globals())
+instantiate_device_type_tests(TestTorchDeviceType, globals(), allow_xpu=True)
 instantiate_device_type_tests(TestDevicePrecision, globals(), except_for='cpu', allow_xpu=True)
 
 if __name__ == '__main__':
