@@ -21,6 +21,22 @@
 namespace at {
 namespace native {
 
+namespace {
+
+bool can_use_fast_route_for_copy(TensorList self, TensorList src) {
+  return _check_tensors_share_device_and_dtype(
+            {self, src}, /* skip_dtype_check */ true) &&
+        std::all_of(
+            src.cbegin(),
+            src.cend(),
+            [&](const auto& t) -> bool {
+              return t.dtype() == src[0].dtype();
+            }) &&
+        _check_tensors_share_sizes_and_strides({self, src});
+}
+
+} // anonymous namespace
+
 #define FOREACH_BINARY_OP_LIST(NAME, DIVISION_OP)                           \
   void foreach_tensor_##NAME##_list_kernel_xpu_(                            \
       TensorList tensors1, TensorList tensors2) {                           \
@@ -156,8 +172,7 @@ void foreach_tensor_copy_list_kernel_xpu_(
     TensorList src,
     bool non_blocking) {
   check_foreach_api_restrictions(self, src);
-  if (!can_use_fast_route(
-          self, src, /* does_op_promote_integer_inputs_to_float */ false)) {
+  if (!can_use_fast_route_for_copy(self, src)) {
     return foreach_tensor_copy_list_kernel_slow_(self, src, non_blocking);
   }
 
