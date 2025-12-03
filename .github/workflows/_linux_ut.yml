@@ -242,6 +242,11 @@ jobs:
           gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
           has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
           if [ ${has_or_not} -ne 0 ];then
+            existing_run_id=$(grep -o "Inductor-${{ inputs.test_type }}-LTS2: [0-9]*" new_body.txt | grep -o "[0-9]*" || echo "")
+            if [ "${existing_run_id}" = "${GITHUB_RUN_ID}" ]; then
+              echo "Existing Run ID (${existing_run_id}) is the same as new Run ID (${GITHUB_RUN_ID}). No update needed."
+              exit 0
+            fi
             sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
           else
             echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
