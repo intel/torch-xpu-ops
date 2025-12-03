@@ -144,6 +144,9 @@ def print_failures(failure_list=None):
     if not failures:
         return
 
+    if args.output_dir != '.':
+        return
+
     print("### Test Failures")
     print_header = True
     for case in failures:
@@ -384,6 +387,9 @@ def generate_category_totals_log():
             log_file.write(f"Errors: {totals['Errors']}\n")
 
 def print_summary():
+    if args.output_dir != '.':
+        return
+
     print("### Results Summary")
     print_header = True
 
@@ -439,7 +445,9 @@ def main():
     generate_passed_log()
     generate_all_cases_log()
     generate_category_totals_log()
-    print_summary()
+
+    if args.output_dir == '.':
+        print_summary()
 
 
 if __name__ == "__main__":
