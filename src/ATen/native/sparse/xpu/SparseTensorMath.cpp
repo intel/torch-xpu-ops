@@ -114,7 +114,7 @@ Tensor sparse_sparse_matmul_xpu(const Tensor& mat1_, const Tensor& mat2_) {
 
   TORCH_CHECK(mat1_.scalar_type() == mat2_.scalar_type(),
            "mat1 dtype ", mat1_.scalar_type(), " does not match mat2 dtype ", mat2_.scalar_type());
-  
+
   // convert to dense
   Tensor mat1_dense = mat1_._to_dense(std::nullopt, std::nullopt);
   Tensor mat2_dense = mat2_._to_dense(std::nullopt, std::nullopt);
