@@ -37,6 +37,7 @@ struct CopyFunctor {
   static_assert(
       depth == 2 && r_args_depth == 1 && res_arg_index == 1,
       "CopyFunctor only supports depth=2, r_args_depth=1, res_arg_index=1");
+
   template <typename TLA, typename TLW, typename Op>
   void operator()(
       const int64_t chunk_size,
@@ -52,9 +53,9 @@ struct CopyFunctor {
     const int64_t n =
         tlAddress[tensor_loc].numel_to_tensor - chunk_idx * chunk_size;
 
-    src_t* src_ptr = (src_t*)tlAddress[tensor_loc].addresses[0];
+    src_t* src_ptr = static_cast<src_t*>(tlAddress[tensor_loc].addresses[0]);
     src_ptr += chunk_idx * chunk_size;
-    dst_t* dst_ptr = (dst_t*)tlAddress[tensor_loc].addresses[1];
+    dst_t* dst_ptr = static_cast<dst_t*>(tlAddress[tensor_loc].addresses[1]);
     dst_ptr += chunk_idx * chunk_size;
 
     const bool all_aligned = is_aligned(src_ptr) && is_aligned(dst_ptr);

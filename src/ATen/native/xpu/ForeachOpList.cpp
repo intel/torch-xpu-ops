@@ -24,14 +24,15 @@ namespace native {
 namespace {
 
 bool can_use_fast_route_for_copy(TensorList self, TensorList src) {
-  return _check_tensors_share_device_and_dtype(
-            {self, src}, /* skip_dtype_check */ true) &&
-        std::all_of(
+  const bool is_all_src_same_dtype = std::all_of(
             src.cbegin(),
             src.cend(),
             [&](const auto& t) -> bool {
               return t.dtype() == src[0].dtype();
-            }) &&
+            });
+  return _check_tensors_share_device_and_dtype(
+            {self, src}, /* skip_dtype_check */ true) &&
+        is_all_src_same_dtype &&
         _check_tensors_share_sizes_and_strides({self, src});
 }
 
