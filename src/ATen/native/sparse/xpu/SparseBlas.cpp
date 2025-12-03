@@ -50,19 +50,18 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
       self, mat1, mat2, beta, alpha, result);
 
   if (&result != &self) {
-    printf(">>> Branch 1\n");
+    //printf(">>> Branch 1\n");
     // We allow self to be a single matrix when mat1 and mat2 are batched
     auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
     result_sizes.push_back(self.size(-2));
     result_sizes.push_back(self.size(-1));
     at::sparse_csr::get_sparse_csr_impl(result)->resize_(self._nnz(), result_sizes);
-    printf(">>> Signal 0: %ld vs. %ld\n", result.numel(), self.numel());
+    //printf(">>> Signal 0: %ld vs. %ld\n", result.numel(), self.numel());
     result.copy_(self);
-    printf(">>> Signal 1\n");
+    //printf(">>> Signal 1\n");
   }
 
-  // there's a segfault when calling cuSPARSE on 0-sized matrices
-  if (mat1.numel() == 0 || mat2.numel() == 0) {
+  if (mat1.numel() == 0 || mat2.numel() == 0 || result._nnz() == 0) {
     result.mul_(beta);
     return result;
   }
@@ -74,12 +73,12 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     self_dense = at::zeros_like(self);
   }
   Tensor mask = at::abs(at::sign(self_dense));
-  Tensor masked_mm = at::mul(at::mm(mat1, mat2), mask);
+  Tensor masked_mm = at::mm(mat1, mat2) * mask;
   // Tensor result_dense = at::addmm(self_dense, mat1, mat2, beta, alpha);
-  Tensor result_dense = at::mul(self_dense, beta) + at::mul(masked_mm, alpha);
-  printf(">>> Signal 2: %ld vs. %ld\n", result.numel(), result_dense.numel());
+  Tensor result_dense = self_dense * beta + masked_mm * alpha;
+  //printf(">>> Signal 2: %ld vs. %ld\n", result.numel(), result_dense.numel());
   result.copy_(result_dense.to_sparse_csr());
-  printf(">>> Signal 3\n");
+  //printf(">>> Signal 3\n");
 
   return result;
 }
