@@ -301,7 +301,7 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
       - name: UT Test Results Summary
         shell: bash
@@ -354,7 +354,7 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         shell: bash
