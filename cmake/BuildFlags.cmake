@@ -81,6 +81,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"
   # gcc -shared host.o kernel.o device-code.o -o libxxx.so
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
   set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
+  set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-reciprocal-math)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
     # Suppress warnings about dllexport.
