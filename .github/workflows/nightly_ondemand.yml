@@ -210,7 +210,7 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: 'op_extended,test_xpu,op_ut'
+      ut: 'op_extended,test_xpu,op_ut_windows'
       python: ${{ needs.Conditions-Filter.outputs.python }}
       src_changed: false
       has_label: true
