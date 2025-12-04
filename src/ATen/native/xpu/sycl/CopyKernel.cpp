@@ -25,6 +25,17 @@ struct CastScalarFunc {
   }
 };
 
+// TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
+// from incorrectly converting -0.0 to NaN. This temporary fix should
+// be removed once the compiler/driver error is resolved.
+template <typename Float8DataType>
+struct CastScalarFunc<Half, Float8DataType> {
+  Float8DataType operator()(Half src_val) const {
+    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
+    return Float8DataType(val);
+  }
+};
+
 void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
   ScalarType dtype = iter.dtype(0);
   ScalarType other_dtype = iter.dtype(1);
