@@ -7922,6 +7922,17 @@
     SparseCsrXPU: angle_sparse_csr_out
   tags: pointwise
 
+- func: _fill_mem_eff_dropout_mask_(Tensor(a!) self, float dropout_p, int seed, int offset) -> Tensor(a!)
+  variants: function
+  dispatch:
+    XPU: _fill_mem_eff_dropout_mask_
+  tags: nondeterministic_seeded
+
+- func: _scaled_dot_product_efficient_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_bias, bool compute_log_sumexp, float dropout_p=0.0, bool is_causal=False, *, float? scale=None) -> (Tensor output, Tensor log_sumexp, Tensor philox_seed, Tensor philox_offset)
+  dispatch:
+    XPU: _scaled_dot_product_efficient_attention_xpu
+  tags: nondeterministic_seeded
+
 - func: special_airy_ai(Tensor x) -> Tensor
   python_module: special
   structured_delegate: special_airy_ai.out
