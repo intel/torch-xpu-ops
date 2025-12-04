@@ -27,7 +27,7 @@ on:
       tag:
         required: true
         type: string
-        default: 'intelgpu/ubuntu-22.04-lts2:2523.31'
+        default: 'intelgpu/ubuntu-24.04-lts2:2523.31'
         description: Whether push image to docker hub or not
       push_to_hub:
         type: boolean
