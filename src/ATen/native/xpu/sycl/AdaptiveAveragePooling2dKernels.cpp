@@ -695,6 +695,8 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
         numel_(numel) {}
 
  private:
+  vec_t* output_;
+  const vec_t* input_;
   int ih_;
   int iw_;
   int ob_;
@@ -702,8 +704,6 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
   int oh_;
   int ow_;
   int64_t numel_;
-  const vec_t* input_;
-  vec_t* output_;
 };
 
 #define LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(                                  \
