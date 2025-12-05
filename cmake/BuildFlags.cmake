@@ -101,11 +101,9 @@ macro(set_build_flags)
       # Suppress warnings about dllexport.
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-ignored-attributes)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-nans)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-infinities)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-associative-math)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-approx-func)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-fast-math)
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fma)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
     endif()
 
