@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 ## Include to trigger clang-format
 if(BUILD_NO_CLANGFORMAT)
   return()

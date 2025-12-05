@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # ATen XPU sources
 
 file(GLOB xpu_cpp "xpu/*.cpp")

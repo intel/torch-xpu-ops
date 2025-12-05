@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/SpectralOps.h>
 #else

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/xpu/sycl/Atomics.h>

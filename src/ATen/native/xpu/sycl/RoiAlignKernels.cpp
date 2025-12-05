@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma clang diagnostic push
 #pragma GCC diagnostic push
 // Avoid SYCL compiler return-type error

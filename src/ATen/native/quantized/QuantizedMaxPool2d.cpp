@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/quantized/sycl/QuantizedMaxPool2d.h>

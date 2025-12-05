@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pow.h>
 #include <ATen/native/TensorIterator.h>

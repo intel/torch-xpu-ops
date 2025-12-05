@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifdef USE_C10D_XCCL
 
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>

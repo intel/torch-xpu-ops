@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>

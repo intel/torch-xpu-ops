@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include <ATen/NamedTensorUtils.h>
 #include <ATen/ScalarOps.h>

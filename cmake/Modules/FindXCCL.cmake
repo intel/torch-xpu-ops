@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # This will define the following variables:
 # XCCL_FOUND               : True if the system has the XCCL library.
 # XCCL_INCLUDE_DIR         : Include directories needed to use XCCL.

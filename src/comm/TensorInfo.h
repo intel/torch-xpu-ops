@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Porting from ipex
 // will upstream to pytorch when in tree
 #pragma once

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/ops/_embedding_bag_forward_only_native.h>
 #include <ATen/ops/_embedding_bag_native.h>
 

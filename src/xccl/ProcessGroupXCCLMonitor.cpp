@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #ifdef USE_C10D_XCCL
 
 #include <c10/util/thread_name.h>

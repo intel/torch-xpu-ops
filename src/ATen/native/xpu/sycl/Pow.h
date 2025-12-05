@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 #include <ATen/native/Pow.h>
 #include <c10/core/Scalar.h>

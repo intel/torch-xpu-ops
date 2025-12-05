@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/core/dispatch/Dispatcher.h>
 #include <c10/util/intrusive_ptr.h>
 #include <torch/csrc/distributed/c10d/ProcessGroup.hpp>

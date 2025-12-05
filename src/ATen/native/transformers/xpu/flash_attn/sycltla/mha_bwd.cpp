@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
 

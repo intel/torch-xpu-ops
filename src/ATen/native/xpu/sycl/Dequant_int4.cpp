@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/xpu/sycl/Dequant_int4.h>
 #include <comm/SYCLContext.h>
 

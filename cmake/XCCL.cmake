@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 if(NOT __XCCL_INCLUDED)
   set(__XCCL_INCLUDED TRUE)
 

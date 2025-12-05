@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 set(TEST_SYCL_ROOT ${TORCH_XPU_OPS_ROOT}/test/sycl)
 set(TEST_SYCL_SYCL_SRCS ${TEST_SYCL_ROOT}/simple_kernel.cpp)
 set(TEST_SYCL_CXX_SRCS ${TEST_SYCL_ROOT}/main.cpp)

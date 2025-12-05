@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/UpSampleTrilinear3dKernels.h>
 #include <comm/SYCLContext.h>

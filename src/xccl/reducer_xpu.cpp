@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <torch/csrc/distributed/c10d/reducer_timer.hpp>
 
 #include <ATen/xpu/XPUEvent.h>

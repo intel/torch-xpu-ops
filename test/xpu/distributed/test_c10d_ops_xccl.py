@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Owner(s): ["oncall: distributed"]
 # This test file contains positive tests for c10d with XCCL backend.
 # During the test, it is expected that ProcessGroup will not be aborted, destroyed or incur fatal error.
