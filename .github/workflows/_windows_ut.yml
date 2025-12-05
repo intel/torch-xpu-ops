@@ -364,6 +364,11 @@ jobs:
           cd ${{ github.workspace }}/ut_log
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
           cd "${latest_dir}"
+          find "${{ github.workspace }}/ut_log" -type f \
+              \( -name "failures_*.log" -o \
+                -name "passed_*.log" -o \
+                -name "category_*.log" \) \
+              -exec mv {} ./ \; || true
 
           # get skipped known issues
           count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
