@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/ATen.h>
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/native/nested/NestedTensorTransformerFunctions.h>

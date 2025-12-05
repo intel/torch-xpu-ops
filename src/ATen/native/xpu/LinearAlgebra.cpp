@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/ExpandUtils.h>
 #include <ATen/WrapDimUtils.h>
 #include <ATen/core/Tensor.h>

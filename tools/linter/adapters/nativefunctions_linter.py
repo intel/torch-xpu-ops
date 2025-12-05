@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 """
 Verify that it is possible to round-trip native_functions.yaml via ruamel under some
 configuration.  Keeping native_functions.yaml consistent in this way allows us to

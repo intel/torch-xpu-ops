@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/transformers/sdp_utils_cpp.h>
 #include <c10/util/Array.h>
 #include <c10/util/Exception.h>

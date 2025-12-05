@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #define TORCH_ASSERT_NO_OPERATORS
 #include <ATen/Context.h>
 #include <ATen/EmptyTensor.h>

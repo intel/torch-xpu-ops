@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/BinaryOps.h>
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/ops/_foreach_add_native.h>

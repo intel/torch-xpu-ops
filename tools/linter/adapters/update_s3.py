@@ -1,3 +1,10 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 """Uploads a new binary to s3 and updates its hash in the config file.
 
 You'll need to have appropriate credentials on the PyTorch AWS buckets, see:

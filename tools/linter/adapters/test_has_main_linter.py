@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 This lint verifies that every Python test file (file that matches test_*.py or
 *_test.py in the test folder) has a main block which raises an exception or

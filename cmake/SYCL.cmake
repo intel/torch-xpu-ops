@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # SYCL compiler and runtime setup
 if(NOT SYCLTOOLKIT_FOUND)
   # Avoid package conflict introduced in PyTorch cmake

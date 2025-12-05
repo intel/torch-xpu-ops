@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     "test_ops_xpu.py": (
         # RuntimeError: Required aspect fp64 is not supported on the device

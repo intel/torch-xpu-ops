@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests

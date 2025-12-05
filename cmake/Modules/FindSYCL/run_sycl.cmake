@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 ##########################################################################
 # This file runs the SYCL compiler commands to produce the desired output file
 # along with the dependency file needed by CMake to compute dependencies.

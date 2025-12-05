@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     "test_binary_ufuncs_xpu": (
         "test_batch_vs_slicing___rpow___xpu_complex64",

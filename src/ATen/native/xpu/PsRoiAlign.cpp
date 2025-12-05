@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Portions of this file are derived from Torchvision
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/PsRoiAlignKernels.h>
 #include <comm/xpu_aten.h>

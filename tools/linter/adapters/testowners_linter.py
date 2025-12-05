@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Test ownership was introduced in https://github.com/pytorch/pytorch/issues/66232.
 

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <c10/xpu/XPUStream.h>
 #include <xccl/XPUEventCache.hpp>
 #include <map>

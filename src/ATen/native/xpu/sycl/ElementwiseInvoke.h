@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 // Element-wise invoke. Invoking data load (`data`) and custom function (`f`)

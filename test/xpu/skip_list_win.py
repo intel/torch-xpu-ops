@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     # SYCL default context is not supported on Windows
     "test_tensor_creation_ops_xpu.py": (

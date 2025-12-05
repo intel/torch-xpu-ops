@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>

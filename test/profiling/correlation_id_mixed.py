@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 import torch
 
 input1 = torch.randn(3, 3, device="xpu")

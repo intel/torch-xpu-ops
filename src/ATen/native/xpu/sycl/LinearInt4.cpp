@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/LinearInt4.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>

@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Setup building flags for SYCL device and host codes.
 
 function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)

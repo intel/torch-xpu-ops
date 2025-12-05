@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 # Define archive static library target - torch_xpu_ops
 include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 

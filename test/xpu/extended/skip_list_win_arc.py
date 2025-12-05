@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     # SYCL Compiler on Windows removed the following operations when '-cl-poison-unsupported-fp64-kernels' is on
     # Hence, skip the following windows specific errors

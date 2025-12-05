@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 option(USE_ONEMKL_XPU "Build with ONEMKL XPU support" ON)
 
 if(DEFINED ENV{USE_ONEMKL_XPU})

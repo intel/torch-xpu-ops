@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """Checks for consistency of jobs between different GitHub workflows.
 
 Any job with a specific `sync-tag` must match all other jobs with the same `sync-tag`.

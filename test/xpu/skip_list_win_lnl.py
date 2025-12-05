@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     # tensor(0.-0.j, device='xpu:0', dtype=torch.complex32) tensor(nan+nanj, device='xpu:0', dtype=torch.complex32) (1.5707964+0j)
     "test_unary_ufuncs_xpu.pyy": (

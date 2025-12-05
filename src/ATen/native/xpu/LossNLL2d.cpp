@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/sycl/LossNLL2dKernels.h>
 

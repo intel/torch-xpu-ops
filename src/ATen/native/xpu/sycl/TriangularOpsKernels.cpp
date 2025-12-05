@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Context.h>
 #include <ATen/Dispatch.h>

@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/sparse/ParamUtils.h>
 #include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>

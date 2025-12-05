@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,

@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 skip_dict = {
     # failed on MTL windows, skip first for Preci
     "test_ops_xpu.py": (

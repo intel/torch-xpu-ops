@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2025 Intel Corporation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include <ATen/native/TensorFactories.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
 #include <ATen/native/xpu/sycl/TensorFactoriesKernels.h>

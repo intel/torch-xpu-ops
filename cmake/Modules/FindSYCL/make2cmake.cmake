@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 #######################################################################
 # This converts a file written in makefile syntax into one that can be included
 # by CMake.

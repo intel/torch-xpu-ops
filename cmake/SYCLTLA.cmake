@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 macro(replace_cmake_build_flags)
   set(CMAKE_C_FLAG_BK "${CMAKE_C_FLAGS}")
   set(CMAKE_CXX_FLAGS_BK "${CMAKE_CXX_FLAGS}")

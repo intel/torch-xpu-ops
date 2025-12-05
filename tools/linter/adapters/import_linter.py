@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Checks files to make sure there are no imports from disallowed third party
 libraries.
