@@ -2133,7 +2133,7 @@ class TestSparse(TestSparseBase):
     @unittest.skipIf(
         TEST_WITH_CROSSREF, "generator unsupported triggers assertion error"
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sparse_mm(self, device, dtype, coalesced):
         def test_shape(d1, d2, d3, nnz, transposed):
             if transposed:
@@ -2209,7 +2209,7 @@ class TestSparse(TestSparseBase):
     @coalescedonoff
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_dsmm(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
@@ -3375,7 +3375,7 @@ class TestSparse(TestSparseBase):
     @expectedFailureMPS
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_mv(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x, _, _ = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)
@@ -4771,7 +4771,7 @@ class TestSparse(TestSparseBase):
             *[torch.half], *[torch.bfloat16], torch.complex64, *[torch.complex128]
         )
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     @unittest.skipIf(TEST_WITH_CROSSREF, "not working with fake tensor")
     @precisionOverride(
         {
