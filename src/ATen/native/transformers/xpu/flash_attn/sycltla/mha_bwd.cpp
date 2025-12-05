@@ -1658,9 +1658,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
   TORCH_CHECK(logsumexp.is_contiguous(), "logsumexp must have BHS layout");
   // grad_out is created by autograd, may not have standard layout
   auto grad_out_ = attn_tensor_to_layout(grad_out, layout);
-  // TODO: This code block is temporary WA. Remove it after fwd supporting BHSD
-  // layouts
-  auto out_ = attn_tensor_to_layout(out, layout);
 
   auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
   auto device_architecture =
@@ -1731,7 +1728,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
       sycl_queue,
       problem_shape,
       grad_out_.data_ptr(),
-      out_.data_ptr(),
+      out.data_ptr(),
       query.data_ptr(),
       key.data_ptr(),
       value.data_ptr(),

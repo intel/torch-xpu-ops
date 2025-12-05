@@ -204,7 +204,8 @@ struct FlashPrefillMma<
   static constexpr Params to_underlying_arguments(
       ProblemShapeType const& problem_shape,
       Arguments const& args,
-      void* workspace) {
+      void* workspace,
+      bool const& is_bshd) {
     (void)workspace;
     auto
         [batch,
@@ -214,25 +215,48 @@ struct FlashPrefillMma<
          seq_len_kv,
          head_size_qk,
          head_size_vo] = problem_shape;
-    auto tensorQ = make_tensor(
-        make_gmem_ptr(args.ptr_Q),
-        make_layout(
-            make_shape(seq_len_qo, num_heads_q * head_size_qk, batch),
-            args.dQ));
-    auto tensorK = make_tensor(
-        make_gmem_ptr(args.ptr_K),
-        make_layout(
-            make_shape(seq_len_kv, num_heads_kv * head_size_qk, batch),
-            args.dK));
-    auto tensorV = make_tensor(
-        make_gmem_ptr(args.ptr_V),
-        make_layout(
-            make_shape(num_heads_kv * head_size_vo, seq_len_kv, batch),
-            args.dV));
-    XE_Copy_Q copyQ{XE_Copy_Q{}.with(tensorQ)};
-    XE_Copy_K copyK{XE_Copy_K{}.with(tensorK)};
-    XE_Copy_V copyV{XE_Copy_V{}.with(tensorV)};
-    return Params{copyQ, copyK, copyV};
+    if (is_bshd) {
+      auto tensorQ = make_tensor(
+          make_gmem_ptr(args.ptr_Q),
+          make_layout(
+              make_shape(seq_len_qo, num_heads_q * head_size_qk, batch),
+              args.dQ));
+      auto tensorK = make_tensor(
+          make_gmem_ptr(args.ptr_K),
+          make_layout(
+              make_shape(seq_len_kv, num_heads_kv * head_size_qk, batch),
+              args.dK));
+      auto tensorV = make_tensor(
+          make_gmem_ptr(args.ptr_V),
+          make_layout(
+              make_shape(num_heads_kv * head_size_vo, seq_len_kv, batch),
+              args.dV));
+      XE_Copy_Q copyQ{XE_Copy_Q{}.with(tensorQ)};
+      XE_Copy_K copyK{XE_Copy_K{}.with(tensorK)};
+      XE_Copy_V copyV{XE_Copy_V{}.with(tensorV)};
+      return Params{copyQ, copyK, copyV};
+    } else {
+      auto tensorQ = make_tensor(
+          make_gmem_ptr(args.ptr_Q),
+          make_layout(
+              make_shape(seq_len_qo, head_size_qk, batch * num_heads_q),
+              args.dQ));
+      auto tensorK = make_tensor(
+          make_gmem_ptr(args.ptr_K),
+          make_layout(
+              make_shape(seq_len_kv, head_size_qk, batch * num_heads_kv),
+              args.dK));
+      auto tensorV = make_tensor(
+          make_gmem_ptr(args.ptr_V),
+          make_layout(
+              make_shape(head_size_vo, seq_len_kv, batch * num_heads_kv),
+              args.dV));
+      XE_Copy_Q copyQ{XE_Copy_Q{}.with(tensorQ)};
+      XE_Copy_K copyK{XE_Copy_K{}.with(tensorK)};
+      XE_Copy_V copyV{XE_Copy_V{}.with(tensorV)};
+
+      return Params{copyQ, copyK, copyV};
+    }
   }
 
   template <class FragQccum, class TensorQ, class TensorK, class FragSrc>
@@ -330,61 +354,124 @@ struct FlashPrefillMma<
       ProblemShape const& problem_shape,
       SequenceLengthShape const& sequence_length_shape,
       int const& l_coord,
+      bool const& is_bshd,
       int const& q_head_coord = 0) {
-    auto [num_heads_q, num_heads_kv, head_size_qk, head_size_vo] =
-        select<1, 2, 5, 6>(problem_shape);
-    auto [seq_len_qo, seq_len_kv] = sequence_length_shape;
-    auto q_group_size = num_heads_q / num_heads_kv;
-    auto kv_head_coord = q_head_coord / q_group_size;
-    int offset_q = 0, offset_k = 0, offset_v = 0;
+    if (is_bshd) {
+      auto [num_heads_q, num_heads_kv, head_size_qk, head_size_vo] =
+          select<1, 2, 5, 6>(problem_shape);
+      auto [seq_len_qo, seq_len_kv] = sequence_length_shape;
+      auto q_group_size = num_heads_q / num_heads_kv;
+      auto kv_head_coord = q_head_coord / q_group_size;
+      int offset_q = 0, offset_k = 0, offset_v = 0;
 
-    if constexpr (is_var_len) {
-      auto qo_cumulative_length = get<3>(problem_shape).cumulative_length;
-      auto kv_cumulative_length = get<4>(problem_shape).cumulative_length;
-      // auto kv_cached_cumulative_length =
-      //     get<5>(problem_shape).cumulative_length;
+      if constexpr (is_var_len) {
+        auto qo_cumulative_length = get<3>(problem_shape).cumulative_length;
+        auto kv_cumulative_length = get<4>(problem_shape).cumulative_length;
+        // auto kv_cached_cumulative_length =
+        //     get<5>(problem_shape).cumulative_length;
 
-      offset_q = num_heads_q * head_size_qk * qo_cumulative_length[l_coord] +
-          q_head_coord * head_size_qk;
-      offset_k = num_heads_kv * head_size_qk * kv_cumulative_length[l_coord] +
-          kv_head_coord * head_size_qk;
-      offset_v = num_heads_kv * head_size_vo * kv_cumulative_length[l_coord] +
-          kv_head_coord * head_size_vo;
-    } else {
-      offset_q = num_heads_q * head_size_qk * seq_len_qo * l_coord +
-          q_head_coord * head_size_qk;
-      offset_k = num_heads_kv * head_size_qk * seq_len_kv * l_coord +
-          kv_head_coord * head_size_qk;
-      offset_v = num_heads_kv * head_size_vo * seq_len_kv * l_coord +
-          kv_head_coord * head_size_vo;
+        offset_q = num_heads_q * head_size_qk * qo_cumulative_length[l_coord] +
+            q_head_coord * head_size_qk;
+        offset_k = num_heads_kv * head_size_qk * kv_cumulative_length[l_coord] +
+            kv_head_coord * head_size_qk;
+        offset_v = num_heads_kv * head_size_vo * kv_cumulative_length[l_coord] +
+            kv_head_coord * head_size_vo;
+      } else {
+        offset_q = num_heads_q * head_size_qk * seq_len_qo * l_coord +
+            q_head_coord * head_size_qk;
+        offset_k = num_heads_kv * head_size_qk * seq_len_kv * l_coord +
+            kv_head_coord * head_size_qk;
+        offset_v = num_heads_kv * head_size_vo * seq_len_kv * l_coord +
+            kv_head_coord * head_size_vo;
+      }
+
+      auto q_traits =
+          static_cast<traits_load_Q const&>(params.gmem_tiled_copy_q);
+      const ElementQ* q_ptr = (const ElementQ*)q_traits.base_ptr;
+      auto k_traits =
+          static_cast<traits_load_K const&>(params.gmem_tiled_copy_k);
+      const ElementK* k_ptr = (const ElementK*)k_traits.base_ptr;
+      auto v_traits =
+          static_cast<traits_load_V const&>(params.gmem_tiled_copy_v);
+      const ElementV* v_ptr = (const ElementV*)v_traits.base_ptr;
+      auto shape_q = make_shape(
+          static_cast<int>(seq_len_qo), head_size_qk * num_heads_q, 1);
+      StrideQ stride_q = cutlass::make_cute_packed_stride(StrideQ{}, shape_q);
+      auto shape_k = make_shape(
+          static_cast<int>(seq_len_kv), num_heads_kv * head_size_qk, 1);
+      StrideK stride_k = cutlass::make_cute_packed_stride(StrideK{}, shape_k);
+      auto shape_v = make_shape(
+          head_size_vo * num_heads_kv, static_cast<int>(seq_len_kv), 1);
+      StrideV stride_v = cutlass::make_cute_packed_stride(StrideV{}, shape_v);
+
+      auto tensorQ = make_tensor(
+          make_gmem_ptr(q_ptr + offset_q), make_layout(shape_q, stride_q));
+      auto tensorK = make_tensor(
+          make_gmem_ptr(k_ptr + offset_k), make_layout(shape_k, stride_k));
+      auto tensorV = make_tensor(
+          make_gmem_ptr(v_ptr + offset_v), make_layout(shape_v, stride_v));
+      XE_Copy_Q copyQ{XE_Copy_Q{}.with(tensorQ)};
+      XE_Copy_K copyK{XE_Copy_K{}.with(tensorK)};
+      XE_Copy_V copyV{XE_Copy_V{}.with(tensorV)};
+      return Params{copyQ, copyK, copyV};
     }
+    // BHSD Layout
+    else {
+      if constexpr (!is_var_len) {
+        return params;
+      } else {
+        auto [num_heads_q, num_heads_kv, head_size_qk, head_size_vo] =
+            select<1, 2, 5, 6>(problem_shape);
+        auto [seq_len_qo, seq_len_kv] = sequence_length_shape;
 
-    auto q_traits = static_cast<traits_load_Q const&>(params.gmem_tiled_copy_q);
-    const ElementQ* q_ptr = (const ElementQ*)q_traits.base_ptr;
-    auto k_traits = static_cast<traits_load_K const&>(params.gmem_tiled_copy_k);
-    const ElementK* k_ptr = (const ElementK*)k_traits.base_ptr;
-    auto v_traits = static_cast<traits_load_V const&>(params.gmem_tiled_copy_v);
-    const ElementV* v_ptr = (const ElementV*)v_traits.base_ptr;
-    auto shape_q =
-        make_shape(static_cast<int>(seq_len_qo), head_size_qk * num_heads_q, 1);
-    StrideQ stride_q = cutlass::make_cute_packed_stride(StrideQ{}, shape_q);
-    auto shape_k = make_shape(
-        static_cast<int>(seq_len_kv), num_heads_kv * head_size_qk, 1);
-    StrideK stride_k = cutlass::make_cute_packed_stride(StrideK{}, shape_k);
-    auto shape_v = make_shape(
-        head_size_vo * num_heads_kv, static_cast<int>(seq_len_kv), 1);
-    StrideV stride_v = cutlass::make_cute_packed_stride(StrideV{}, shape_v);
+        auto qo_cumulative_length = get<3>(problem_shape).cumulative_length;
+        auto kv_cumulative_length = get<4>(problem_shape).cumulative_length;
 
-    auto tensorQ = make_tensor(
-        make_gmem_ptr(q_ptr + offset_q), make_layout(shape_q, stride_q));
-    auto tensorK = make_tensor(
-        make_gmem_ptr(k_ptr + offset_k), make_layout(shape_k, stride_k));
-    auto tensorV = make_tensor(
-        make_gmem_ptr(v_ptr + offset_v), make_layout(shape_v, stride_v));
-    XE_Copy_Q copyQ{XE_Copy_Q{}.with(tensorQ)};
-    XE_Copy_K copyK{XE_Copy_K{}.with(tensorK)};
-    XE_Copy_V copyV{XE_Copy_V{}.with(tensorV)};
-    return Params{copyQ, copyK, copyV};
+        int offset_q =
+            num_heads_q * head_size_qk * qo_cumulative_length[l_coord];
+        int offset_k =
+            num_heads_kv * head_size_qk * kv_cumulative_length[l_coord];
+        int offset_v =
+            num_heads_kv * head_size_vo * kv_cumulative_length[l_coord];
+
+        auto q_traits =
+            static_cast<traits_load_Q const&>(params.gmem_tiled_copy_q);
+        ElementQ* q_ptr = (ElementQ*)q_traits.base_ptr;
+
+        auto k_traits =
+            static_cast<traits_load_K const&>(params.gmem_tiled_copy_k);
+        ElementK* k_ptr = (ElementK*)k_traits.base_ptr;
+
+        auto v_traits =
+            static_cast<traits_load_V const&>(params.gmem_tiled_copy_v);
+        ElementV* v_ptr = (ElementV*)v_traits.base_ptr;
+
+        auto shape_q =
+            make_shape(static_cast<int>(seq_len_qo), head_size_qk, num_heads_q);
+        StrideQ stride_q = cutlass::make_cute_packed_stride(StrideQ{}, shape_q);
+
+        auto shape_k = make_shape(
+            static_cast<int>(seq_len_kv), head_size_qk, num_heads_kv);
+        StrideK stride_k = cutlass::make_cute_packed_stride(StrideK{}, shape_k);
+
+        auto shape_v = make_shape(
+            head_size_vo, static_cast<int>(seq_len_kv), num_heads_kv);
+        StrideV stride_v = cutlass::make_cute_packed_stride(StrideV{}, shape_v);
+
+        auto tensorQ = make_tensor(
+            make_gmem_ptr(q_ptr + offset_q), make_layout(shape_q, stride_q));
+        auto tensorK = make_tensor(
+            make_gmem_ptr(k_ptr + offset_k), make_layout(shape_k, stride_k));
+        auto tensorV = make_tensor(
+            make_gmem_ptr(v_ptr + offset_v), make_layout(shape_v, stride_v));
+
+        XE_Copy_Q copyQ{XE_Copy_Q{}.with(tensorQ)};
+        XE_Copy_K copyK{XE_Copy_K{}.with(tensorK)};
+        XE_Copy_V copyV{XE_Copy_V{}.with(tensorV)};
+
+        return Params{copyQ, copyK, copyV};
+      }
+    }
   }
 };
 
