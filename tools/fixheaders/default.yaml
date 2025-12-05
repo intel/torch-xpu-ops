@@ -1,0 +1,18 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Default header applied to all files unless specified otherwise
+default_header: |
+  Copyright (c) 2025 Intel Corporation
+  SPDX-License-Identifier: Apache-2.0
+
+# Files/patterns to exclude from processing entirely
+exclude:
+  - ".git/*"
+  - "__pycache__/*"
+  - ".ci/**/*"
+  - ".github/**/*"
+  - "yaml/**/*"
+  - "tools/**/*"
+  - "**/__init__.py"
+  - "lint/**/*"
