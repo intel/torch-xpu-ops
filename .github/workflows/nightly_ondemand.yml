@@ -157,6 +157,7 @@ jobs:
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
       ut: ${{ matrix.ut_name }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
   Linux-Nightly-Ondemand-E2E-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.suite, 'e') }}
