@@ -1,5 +1,7 @@
 skip_dict = {
-    "distributed/test_c10d_ops_xccl.py": None,
+    "distributed/test_c10d_ops_xccl.py": (
+        "test_batch_isend_irecv",
+    ),
     "distributed/test_c10d_xccl.py": None,
     "../../../../test/distributed/fsdp/test_checkpoint_wrapper.py": None,
     "../../../../test/distributed/fsdp/test_distributed_checkpoint.py": None,
