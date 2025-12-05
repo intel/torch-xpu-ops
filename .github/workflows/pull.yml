@@ -24,31 +24,28 @@ jobs:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout torch-xpu-ops
+      - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Setup Linting Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libomp-dev dos2unix
+
+      - name: Run Code Quality Checks
+        id: lint-checks
+        uses: ./.github/actions/lint-checks
+
+      - name: Publish test report
+        uses: ./.github/actions/add-comment
         with:
-          path: torch-xpu-ops
-      - name: Run lint check
-        run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
-          cd ./torch-xpu-ops
-          bash .github/scripts/lintrunner.sh
-      - name: Run lint check with Clang
-        run: |
-          sudo apt update && sudo apt install -y libomp-dev
-          rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && cp -r ../torch-xpu-ops third_party/
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
-                                                    build/xpu/**/*.* \
-                                                    build/xpu/*.* \
-                                                    third_party/torch-xpu-ops/src/*.* \
-                                                    third_party/torch-xpu-ops/src/**/*.* \
-                                                    third_party/torch-xpu-ops/src/**/**/*.* \
-                                                    third_party/torch-xpu-ops/src/**/**/**/*.*"
-          export CLANG=1
-          bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
+          comment-body: './.ci/templates/ci-report.txt'
 
   conditions-filter:
     if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
@@ -66,7 +63,7 @@ jobs:
         id: check-files
         with:
           filters: |
-            src_changed: 
+            src_changed:
               - 'cmake/**'
               - 'tools/**'
               - 'src/**.cmake'
@@ -161,11 +158,11 @@ jobs:
 
   windows:
     name: windows
-    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
+    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }}
     needs: [conditions-filter, preci-lint-check]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
-    with: 
+    with:
       ut: op_extended,test_xpu
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
