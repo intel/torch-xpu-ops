@@ -561,4 +561,133 @@ void lu_factor_mkl(
   pivots.copy_(pivots_);
 }
 
+
+template <typename scalar_t>
+void linalg_qr_kernel_impl(
+    const at::Tensor& A,
+    std::string_view mode,
+    const at::Tensor& Q,
+    const at::Tensor& R) {
+
+
+  at::Tensor a_contig = A.contiguous();
+  at::Tensor result_r = at::clone(a_contig);
+
+  auto options = at::TensorOptions().dtype(A.dtype()).device(kXPU);
+  auto dimensions = A.sizes();
+
+  result_r = result_r.transpose(-2, -1).contiguous();
+
+  int numel = a_contig.numel();
+  int range = a_contig.dim();
+  int64_t n = a_contig.sizes().at(range - 2);
+  int64_t m = a_contig.sizes().at(range - 1);
+  int64_t mn = int64_t(m * n);
+  int64_t b = numel ==0 ? 0 : numel / mn;
+
+
+  if (b==0 && mode=="complete" && n>0) {
+    b=1;
+    for (int dimension=0; dimension<range-2; dimension++) {
+      b*=a_contig.sizes().at(dimension);
+    }
+  }
+
+  int out_q_columns = m > n ? n : m;
+  if (n > m && mode == "complete") {
+    out_q_columns = n;
+  }
+
+  std::vector v(dimensions.begin(), dimensions.end());
+  if (mode != "r") {
+    v[range - 1] = v[range - 2];
+    v[range - 2] = out_q_columns;
+  } else {
+    v = std::vector<long>({0});
+  }
+  auto q_dimensions = at::IntArrayRef(v);
+
+  at::Tensor result_q = at::empty(q_dimensions, options);
+
+
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+
+  int64_t bufsize1 =
+      oneapi::mkl::lapack::geqrf_scratchpad_size<scalar_t>(queue, n+1, m+1, n+1);
+  int64_t bufsize2 =
+      oneapi::mkl::lapack::orgqr_scratchpad_size<scalar_t>(queue, n+1, m+1, m+1, n+1);
+
+  int64_t bufsize = bufsize2 > bufsize1 ? bufsize2 : bufsize1;
+  int64_t tau_len = m > n ? n : m;
+  scalar_t* sbuffer = sycl::malloc_device<scalar_t>(bufsize, queue);
+  scalar_t* tau_buf = sycl::malloc_device<scalar_t>(tau_len, queue);
+  scalar_t* r_buf = result_r.data_ptr<scalar_t>();
+
+  scalar_t* q_buf = nullptr;
+  if (mode != "r") {
+    q_buf = result_q.data_ptr<scalar_t>();
+  }
+
+  for (int batch_item = 0; batch_item < b; batch_item++) {
+
+
+    if (mn!=0) // make QR if there is something to orthogonalize
+      oneapi::mkl::lapack::geqrf(queue, n, m, r_buf, n, tau_buf, sbuffer, bufsize)
+        .wait();
+
+    if (mode != "r") {
+      // copy relevant part of R matrix to Q matrix
+      int copy_columns = out_q_columns > m ? m : out_q_columns;
+      queue.memcpy(q_buf, r_buf, n * copy_columns * sizeof(scalar_t)).wait();
+
+      oneapi::mkl::lapack::orgqr(
+          queue,
+          n,
+          out_q_columns,
+          tau_len,
+          q_buf,
+          n,
+          tau_buf,
+          sbuffer,
+          bufsize)
+          .wait();
+
+      q_buf += n * out_q_columns;
+    }
+
+    r_buf += mn;
+
+  } // batch
+
+  sycl::free(sbuffer, queue);
+  sycl::free(tau_buf, queue);
+
+  if ((mode == "reduced" || mode == "r") && n > m) {
+    result_r =
+        result_r
+            .index(
+                {"...", at::indexing::Slice(0, n), at::indexing::Slice(0, m)})
+            .contiguous();
+  }
+
+  // normal case, non-zero dimensions
+  if (mode!="r") {
+    result_q.transpose_(-2, -1);
+  }
+  Q.set_(result_q);
+  R.set_(result_r.transpose(-2, -1).triu_());
+  queue.wait();
+}
+
+void linalg_qr_kernel(
+    const at::Tensor& A,
+    std::string_view mode,
+    const at::Tensor& Q,
+    const at::Tensor& R) {
+  AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "linalg_qr_xpu", [&] {
+    linalg_qr_kernel_impl<scalar_t>(A, mode, Q, R);
+  });
+}
 } // namespace at::native::xpu
+  //
