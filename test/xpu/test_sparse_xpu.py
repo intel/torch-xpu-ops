@@ -3361,7 +3361,7 @@ class TestSparse(TestSparseBase):
     @expectedFailureMPS
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_mv(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x, _, _ = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)
