@@ -1,0 +1,15 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Custom header groups - files listed here get a specific header
+# instead of the default one
+custom_headers:
+  - header: |
+      Copyright (c) 2025 Intel Corporation
+      SPDX-License-Identifier: Apache-2.0
+
+      Portions of this file are derived from PyTorchExamples
+      Copyright (c) Meta Platforms, Inc. and affiliates.
+      SPDX-License-Identifier: BSD-3-Clause
+    files:
+      - "test/profiling/rn50.py"

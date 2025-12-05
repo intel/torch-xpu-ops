@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 This linter ensures that users don't set a SHA hash checksum in Bazel for the http_archive.
 Although the security practice of setting the checksum is good, it doesn't work when the

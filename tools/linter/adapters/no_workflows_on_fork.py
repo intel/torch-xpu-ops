@@ -1,3 +1,6 @@
+# Copyright (c) 2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
 """
 This a linter that ensures that jobs that can be triggered by push,
 pull_request, or schedule will check if the repository owner is 'pytorch'.  This
