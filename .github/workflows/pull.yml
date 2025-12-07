@@ -101,7 +101,7 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       pytorch: distributed_2.10
-      runner: PVC-7358
+      runner: distributed
 
   linux-ut:
     needs: [conditions-filter, linux-build]
@@ -130,7 +130,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: PVC-7358
+      runner: distributed
       pytorch: distributed_2.10
       ut: ${{ matrix.ut_name }}
 
