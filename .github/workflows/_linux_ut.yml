@@ -52,6 +52,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Get runner
         id: runner-info
+        with:
+          ut_name: ${{ inputs.ut }}
         uses: ./.github/actions/get-runner
 
   test-in-container:
@@ -104,7 +106,8 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread --max-worker-restart 1000000
+                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
