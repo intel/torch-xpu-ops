@@ -79,7 +79,7 @@ check_passed_known_issues() {
     fi
     # Mark passed items in GitHub issues with strikethrough
     if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
-        mark_passed_issue "$output_file" "$known_file"
+        mark_passed_issue "$output_file" "issues.log"
     fi
     rm -f "$output_file"  # Clean up temporary file
 }
