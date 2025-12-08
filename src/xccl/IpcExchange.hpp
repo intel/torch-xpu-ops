@@ -287,9 +287,9 @@ void un_allgather(
   recv_buf[rank] = *send_buf;
 }
 
-class IpcChannel {
+class IpcChannels {
  public:
-  IpcChannel() {
+  IpcChannels() {
     initialized = false;
   }
   void init(sycl::queue& queue, uint32_t rank_in, uint32_t world_in) {
