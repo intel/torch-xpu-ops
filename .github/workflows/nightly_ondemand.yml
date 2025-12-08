@@ -57,12 +57,3 @@ jobs:
           clinfo --list
           id
           ip a
-          rm -rf logs && mkdir logs
-          cp ~/a.log logs
-          cp ~/b.log logs
-
-      - name: Upload files
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs
-          path: logs
