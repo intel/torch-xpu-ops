@@ -79,9 +79,7 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_math_ops.py": None,
     "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_redistribute.py": None,
-    "../../../../test/distributed/tensor/test_tensor_ops.py": (
-        "test_dtensor_dtype_conversion",
-    ),
+    "../../../../test/distributed/tensor/test_tensor_ops.py": None,
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": None,
@@ -191,10 +189,7 @@ skip_dict = {
     "../../../../test/distributed/checkpoint/test_consolidate_hf_safetensors.py": None,
     "../../../../test/distributed/checkpoint/test_hf_safetensor_e2e.py": None,
     "../../../../test/distributed/checkpoint/test_hf_storage.py": None,
-    "../../../../test/distributed/checkpoint/test_pg_transport.py": (
-        # hang
-        "test_pg_transport_with_sharded_tensor",
-    ),
+    "../../../../test/distributed/checkpoint/test_pg_transport.py": None,
     "../../../../test/distributed/checkpoint/test_quantized_hf_storage.py": None,
     "../../../../test/distributed/checkpoint/test_state_dict_stager.py": None,
     "../../../../test/distributed/flight_recorder/test_fr_analysis.py": None,
