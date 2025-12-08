@@ -1106,7 +1106,6 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
     if skip_list and len(skip_list) > 0:
-
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
