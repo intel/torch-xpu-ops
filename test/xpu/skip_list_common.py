@@ -745,7 +745,7 @@ skip_dict = {
         # CUDA specific case
         "test_cufft_plan_cache_xpu_float64",
     ),
-    "test_decomp.py": (
+    "test_decomp_xpu.py": (
         #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
         "test_comprehensive_baddbmm_xpu_float64",
         "test_comprehensive_logspace_tensor_overload_xpu_int16",
