@@ -1163,9 +1163,13 @@ def clone_if_tensor(t):
 
 
 instantiate_device_type_tests(
-    TestExpandedWeightHelperFunction, globals(), allow_xpu=True
+    TestExpandedWeightHelperFunction, globals(), only_for=("xpu"), allow_xpu=True
 )
-instantiate_device_type_tests(TestExpandedWeightFunctional, globals(), allow_xpu=True)
-instantiate_device_type_tests(TestExpandedWeightModule, globals(), allow_xpu=True)
+instantiate_device_type_tests(
+    TestExpandedWeightFunctional, globals(), only_for=("xpu"), allow_xpu=True
+)
+instantiate_device_type_tests(
+    TestExpandedWeightModule, globals(), only_for=("xpu"), allow_xpu=True
+)
 if __name__ == "__main__":
     run_tests()
