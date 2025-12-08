@@ -219,7 +219,7 @@ skip_dict = {
     "../../../../test/distributed/test_c10d_spawn_nccl.py": None,
     "../../../../test/distributed/test_c10d_pypg.py": None,
     "../../../../test/distributed/test_collective_utils.py": None,
-    "../../../../test/distributed/test_composability.py": None,
+    # "../../../../test/distributed/test_composability.py": None,
     "../../../../test/distributed/test_launcher.py": None,
     "../../../../test/distributed/test_local_tensor.py": None,
     "../../../../test/distributed/test_nccl.py": None,
