@@ -259,7 +259,10 @@ struct ReduceConfig {
     num_items = group_width * group_height;
 
     if (num_items < max_sg_sz)
+    {
       group_width = max_sg_sz;
+      num_items = group_width * group_height;
+    }
   }
 
   int split_input(int parallelism) {
