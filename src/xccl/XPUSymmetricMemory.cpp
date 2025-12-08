@@ -1,5 +1,6 @@
 #include <xccl/IpcExchange.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
+#include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 
@@ -28,7 +29,7 @@ AllocationRef::AllocationRef(
       handle(handle),
       block_size(block_size),
       device_idx(device_idx),
-      local_allocation(local_allocation){}
+      local_allocation(local_allocation) {}
 
 AllocationRef::~AllocationRef() {
   if (is_finalizing()) {
@@ -36,7 +37,7 @@ AllocationRef::~AllocationRef() {
   }
   // Currently, we cannot free virtual memory exchanged from other device.
   if (!local_allocation) {
-      return;
+    return;
   }
   c10::Device local_device(c10::DeviceType::XPU, device_idx);
   c10::DeviceGuard guard(local_device);
@@ -163,59 +164,98 @@ void check_channel(int channel, int world_size) {
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   check_channel(channel, world_size_);
 
-  // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
-  // implementation.
-  auto group = c10d::resolve_process_group(group_name_);
-  if (group == nullptr) {
-    TORCH_WARN(
-        "Process group '",
-        group_name_,
-        "' not found, please init process group first before calling SymmetricMemory");
-    throw std::runtime_error("Process group not found");
-  }
-  auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
-      group->getBackend(c10::DeviceType::XPU).get());
-
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
 
-  static thread_local at::Tensor barrier_tensor;
-  if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
-    barrier_tensor = at::zeros(
-        {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
-  } else {
-    barrier_tensor.zero_();
-  }
+  barrier_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
+  // // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
+  // // implementation.
+  // auto group = c10d::resolve_process_group(group_name_);
+  // if (group == nullptr) {
+  //   TORCH_WARN(
+  //       "Process group '",
+  //       group_name_,
+  //       "' not found, please init process group first before calling
+  //       SymmetricMemory");
+  //   throw std::runtime_error("Process group not found");
+  // }
+  // auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
+  //     group->getBackend(c10::DeviceType::XPU).get());
 
-  c10d::AllreduceOptions arOpts;
-  arOpts.asyncOp = false;
-  auto work =
-      xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier", arOpts);
+  // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  // c10::DeviceGuard guard(local_device);
 
-  if (work) {
-    bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-    TORCH_CHECK(
-        success,
-        "Barrier timeout after ",
-        timeout_ms,
-        " ms for group '",
-        group_name_,
-        "'");
-  }
+  // static thread_local at::Tensor barrier_tensor;
+  // if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
+  //   barrier_tensor = at::zeros(
+  //       {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
+  // } else {
+  //   barrier_tensor.zero_();
+  // }
+
+  // c10d::AllreduceOptions arOpts;
+  // arOpts.asyncOp = false;
+  // auto work =
+  //     xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier",
+  //     arOpts);
+
+  // if (work) {
+  //   bool success = work->wait(std::chrono::milliseconds(timeout_ms));
+  //   TORCH_CHECK(
+  //       success,
+  //       "Barrier timeout after ",
+  //       timeout_ms,
+  //       " ms for group '",
+  //       group_name_,
+  //       "'");
+  // }
 }
 
 void XPUSymmetricMemory::put_signal(
     int dst_rank,
     int channel,
     size_t timeout_ms) {
-  LOG(ERROR) << "XPUSymmetricMemory::put_signal not supported";
+  check_channel(channel, world_size_);
+
+  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
+
+  put_signal_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      dst_rank,
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
 }
 
 void XPUSymmetricMemory::wait_signal(
     int src_rank,
     int channel,
     size_t timeout_ms) {
-  LOG(ERROR) << "XPUSymmetricMemory::wait_signal not supported";
+  check_channel(channel, world_size_);
+
+  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  c10::DeviceGuard guard(local_device);
+  auto stream = at::xpu::getCurrentXPUStream();
+
+  wait_signal_impl_xpu(
+      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+      src_rank,
+      channel,
+      rank_,
+      world_size_,
+      timeout_ms,
+      stream);
 }
 
 int XPUSymmetricMemory::get_rank() {
@@ -254,8 +294,8 @@ void* XPUSymmetricMemoryAllocator::alloc(
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
   void* ptr = sycl::malloc_device(block_size, current_queue);
   current_queue.memset(ptr, 0, block_size);
-  auto alloc_ref =
-      c10::make_intrusive<AllocationRef>(ptr, ptr, block_size, device_idx, true);
+  auto alloc_ref = c10::make_intrusive<AllocationRef>(
+      ptr, ptr, block_size, device_idx, true);
   auto block = c10::make_intrusive<Block>(
       std::move(alloc_ref),
       device_idx,
@@ -345,8 +385,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
   c10::DeviceGuard guard(local_device);
 
-  // IpcChannel is used to do inter-process communication
-  IpcChannel ipc_channel;
+  // IpcChannels is used to do inter-process communication
+  IpcChannels ipc_channel;
   auto group_info = get_group_info(group_name_);
   auto store = group_info.store;
   int rank = group_info.rank;
@@ -444,13 +484,11 @@ c10::intrusive_ptr<Block> XPUSymmetricMemoryAllocator::find_block(void* ptr) {
 struct RegisterXPUSymmetricMemoryAllocator {
   RegisterXPUSymmetricMemoryAllocator() {
     auto allocator = c10::make_intrusive<XPUSymmetricMemoryAllocator>();
-    // Query backend used for XPU
+    // Always register availability to support dynamic backend switching
+    register_availability("XPU", allocator);
+    // If this is the preferred backend, also set it as default
     if (getSymmMemBackendXPU() == "XPU") {
-      // Direct set (static registration)
       register_allocator(c10::DeviceType::XPU, allocator);
-    } else {
-      // Register availability in case `set_backend` is called dynamically
-      register_availability("XPU", allocator);
     }
   }
 };

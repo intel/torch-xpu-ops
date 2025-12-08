@@ -1,20 +1,55 @@
 #pragma once
+
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryTypes.hpp>
+// A set of store-based exchange methods with a preset prefix typically type of
+// the SymmetricMemory.  Most used as static instances at respective
+// SymmetricMemory implementation files.
+#include <sys/socket.h>
+#include <sys/syscall.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include <c10/util/error.h>
+
+#include <torch/csrc/distributed/c10d/Store.hpp>
 
 namespace c10d {
 namespace symmetric_memory {
 
 std::string getSymmMemBackendXPU();
 
-bool device_has_multicast_support(int device_idx);
+// bool device_has_multicast_support(int device_idx);
 
-bool allow_overlapping_devices();
+// bool allow_overlapping_devices();
 
-// A set of store-based exchange methods with a preset prefix typically type of
-// the SymmetricMemory.  Most used as static instances at respective
-// SymmetricMemory implementation files.
+class IpcChannel {
+ public:
+  IpcChannel();
+  ~IpcChannel();
+
+  void send_fd(int dst_pid, int fd);
+  int recv_fd();
+
+  std::vector<int> all_gather_fds(
+      int rank,
+      const std::vector<int>& pids,
+      int fd);
+
+  int broadcast_fds(
+      int rank,
+      int src_rank,
+      const std::vector<int>& pids,
+      int fd);
+
+ private:
+  static std::string get_socket_name(int pid);
+
+  std::string socket_name_;
+  int socket_;
+};
+
 class StoreExchange {
  public:
   StoreExchange(const std::string& store_prefix)
@@ -79,11 +114,11 @@ class StoreExchange {
 // held by the handle.
 // todo: will follow such physical memory handle map with virtual address,
 // when L0 provides physical handle exchange API and we have multicast support.
-void map_block(
-    void** ptr,
-    ze_physical_mem_handle_t handle,
-    size_t size,
-    int device_idx);
+// void map_block(
+//     void** ptr,
+//     ze_physical_mem_handle_t handle,
+//     size_t size,
+//     int device_idx);
 
 } // namespace symmetric_memory
 } // namespace c10d
