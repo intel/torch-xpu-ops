@@ -44,7 +44,11 @@ if platform.startswith("win"):
 
         # First, copy all keys from default skip_dict
         for key in skip_dict:
-            merged_skip_dict[key] = list(skip_dict[key]) if isinstance(skip_dict[key], tuple) else (skip_dict[key].copy() if skip_dict[key] else [])
+            merged_skip_dict[key] = (
+                list(skip_dict[key])
+                if isinstance(skip_dict[key], tuple)
+                else (skip_dict[key].copy() if skip_dict[key] else [])
+            )
 
         # Then merge with window_skip_dict using intelligent strategy
         for key in window_skip_dict:
@@ -56,7 +60,9 @@ if platform.startswith("win"):
                 # Intelligent merge strategy:
                 if should_skip_entire_file(window_skip_list):
                     # If Windows wants to skip entire file, use ONLY Windows skip list
-                    window_skip_entire_file_list = [item.replace('::', '') for item in window_skip_list]
+                    window_skip_entire_file_list = [
+                        item.replace("::", "") for item in window_skip_list
+                    ]
                     merged_skip_dict[key] = window_skip_entire_file_list
                     print(
                         f"Windows entire file skip detected for {key}, using: {window_skip_entire_file_list}"
