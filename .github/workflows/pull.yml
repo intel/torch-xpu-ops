@@ -130,7 +130,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: PVC-7358
+      runner: distributed
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
