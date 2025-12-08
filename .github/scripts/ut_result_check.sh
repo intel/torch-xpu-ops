@@ -11,10 +11,10 @@ readonly REPO="intel/torch-xpu-ops"
 # Used to detect significant test case reductions (>5%)
 declare -A EXPECTED_CASES=(
     ["op_extended"]=5349
-    ["op_regression"]=244
+    ["op_regression"]=268
     ["op_regression_dev1"]=1
-    ["op_transformers"]=237
-    ["op_ut"]=120408
+    ["op_transformers"]=262
+    ["op_ut"]=178548
     ["test_xpu"]=69
 )
 
@@ -79,7 +79,7 @@ check_passed_known_issues() {
     fi
     # Mark passed items in GitHub issues with strikethrough
     if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
-        mark_passed_issue "$output_file" "$known_file"
+        mark_passed_issue "$output_file" "issues.log"
     fi
     rm -f "$output_file"  # Clean up temporary file
 }
