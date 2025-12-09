@@ -157,7 +157,7 @@ class FlashPrefillSoftmaxEpilogue<
         }
         CUTLASS_PRAGMA_UNROLL
         for (int z = 0; z < FragsNOut; z++) {
-          auto base_indx = indx + (z * Vec * FragsM); // z * 16 rows
+          auto base_indx = indx + (z * Vec * FragsM); // z * 16 rows -
           out(base_indx) *= exp_scale_bcast;
         }
       }
@@ -173,3 +173,5 @@ class FlashPrefillSoftmaxEpilogue<
 } // namespace collective
 } // namespace flash_attention
 } // namespace cutlass
+
+/////////////////////////////////////////////////////////////////////////////////////////////////

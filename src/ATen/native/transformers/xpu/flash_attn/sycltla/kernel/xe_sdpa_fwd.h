@@ -5,7 +5,7 @@
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/kernel_hardware_info.hpp"
 
-#include "../collective/xe_flash_attn_prefill_mma_bshd.h"
+#include "../collective/xe_flash_attn_sdpa_fwd_mma.h"
 
 namespace cutlass::flash_attention::kernel {
 
@@ -126,6 +126,7 @@ class FMHAPrefill {
     EpilogueArguments epilogue{};
     KernelHardwareInfo hw_info{};
     float softmax_scale;
+    bool is_bshd;
   };
 
   // Kernel entry point API
@@ -137,6 +138,7 @@ class FMHAPrefill {
     EpilogueParams epilogue;
     TileSchedulerParams scheduler;
     float softmax_scale;
+    bool is_bshd;
   };
 
   //
@@ -154,13 +156,14 @@ class FMHAPrefill {
         args.mode,
         args.problem_shape,
         CollectiveMainloop::to_underlying_arguments(
-            args.problem_shape, args.mainloop, workspace),
+            args.problem_shape, args.mainloop, workspace, args.is_bshd),
         CollectiveSoftmaxEpilogue::to_underlying_arguments(args.softmax),
         CollectiveEpilogue::to_underlying_arguments(
-            args.problem_shape, args.epilogue, workspace),
+            args.problem_shape, args.epilogue, workspace, args.is_bshd),
         TileScheduler::to_underlying_arguments(
-            args.problem_shape, args.hw_info, TileShapeOutput{}),
-        args.softmax_scale};
+            args.problem_shape, args.hw_info, TileShapeOutput{}, args.is_bshd),
+        args.softmax_scale,
+        args.is_bshd};
   }
 
   static bool can_implement(Arguments const& args) {
@@ -191,7 +194,7 @@ class FMHAPrefill {
   }
 
   // Find the length of the longest non masked sequence within that subgroup
-  CUTLASS_DEVICE int calculate_longest_non_masked_length(
+  int calculate_longest_non_masked_length(
       const int& seq_len_kv,
       const int& seq_len_qo,
       const int& last_seq_coord,
@@ -222,7 +225,7 @@ class FMHAPrefill {
   }
 
   template <class Tensor>
-  CUTLASS_DEVICE void handle_corner_cases(
+  void handle_corner_cases(
       Tensor& tSr,
       const int& thread_idx,
       const int& SubgroupSize,
@@ -344,11 +347,32 @@ class FMHAPrefill {
       /////////////////////////////////
       // Init coordinates / metadata //
       /////////////////////////////////
-      auto blk_coord = tile_scheduler.get_block_coord();
-      auto blk_m_coord = get<0>(blk_coord); // seq_len_blk_idx
-      auto q_head_coord = get<1>(blk_coord); // q_heads_idx
-      auto batch_coord = get<2>(blk_coord); // batch_blk_idx
-      auto blk_n_coord = 0; // nums_head_blk_idx - not defined in TileScheduler
+      int blk_m_coord = 0;
+      int q_head_coord = 0;
+      int batch_coord = 0;
+      int blk_n_coord = 0;
+      int blk_l_coord = 0;
+
+      if (params.is_bshd) {
+        auto blk_coord = tile_scheduler.get_block_coord_bshd();
+        blk_m_coord = get<0>(blk_coord); // seq_len_blk_idx
+        q_head_coord = get<1>(blk_coord); // q_heads_idx
+        batch_coord = get<2>(blk_coord); // batch_blk_idx
+        blk_n_coord = 0; // nums_head_blk_idx - not defined in TileScheduler
+      } else {
+        auto blk_coord =
+            tile_scheduler
+                .get_block_coord_bhsd(); // head_size_blk_idx, seq_len_blk_idx,
+                                         // batch_blk_idx, num_heads_blk_idx
+        blk_m_coord = get<1>(blk_coord); // seq_len_blk_idx
+        blk_n_coord = get<0>(blk_coord); // head_size_blk_idx
+        batch_coord = get<2>(blk_coord); // batch_blk_idx
+        int num_heads_coord = get<3>(blk_coord); // num_heads_blk_idx
+        blk_l_coord = is_var_len ? num_heads_coord
+                                 : batch_coord * num_heads_q + num_heads_coord;
+        q_head_coord = num_heads_coord; // q_heads_idx
+      }
+
       auto sequence_length_shape =
           get_sequence_length_shape(params.problem_shape, batch_coord);
       auto [seq_len_qo, seq_len_kv] = sequence_length_shape;
@@ -376,15 +400,34 @@ class FMHAPrefill {
       ////////////////////////////////////////////////
       // Init tensor for memory loading/prefetching //
       ////////////////////////////////////////////////
-      Tensor mQ_mkl = cute::get_xe_tensor(
-          make_shape(seq_len_qo, head_size_qk, 1)); //(m,k,l)
-      Tensor mK_nkl = cute::get_xe_tensor(
-          make_shape(seq_len_kv, head_size_qk, 1)); //(n,k,l)
-      Tensor mV_nkl = cute::get_xe_tensor(
-          make_shape(head_size_vo, seq_len_kv, 1)); //(n,k,l)
-      Tensor mQ_mk = mQ_mkl(_, _, 0); // (m, k)
-      Tensor mK_nk = mK_nkl(_, _, 0); // (n, k)
-      Tensor mV_nk = mV_nkl(_, _, 0); // (n, k)
+      Tensor mQ_mkl = cute::get_xe_tensor(make_shape(
+          seq_len_qo,
+          head_size_qk,
+          (is_var_len ? 1 : batch) * num_heads_q)); //(m,k,l)
+      Tensor mK_nkl = cute::get_xe_tensor(make_shape(
+          seq_len_kv,
+          head_size_qk,
+          (is_var_len ? 1 : batch) * num_head_kv)); //(n,k,l)
+      Tensor mV_nkl = cute::get_xe_tensor(make_shape(
+          head_size_vo,
+          seq_len_kv,
+          (is_var_len ? 1 : batch) * num_head_kv)); //(n,k,l)
+      Tensor mQ_mk = mQ_mkl(_, _, blk_l_coord); // (m,k)
+      Tensor mK_nk = mK_nkl(_, _, blk_l_coord / group_heads_q); // (n,k)
+      Tensor mV_nk = mV_nkl(_, _, blk_l_coord / group_heads_q); // (n,k)
+
+      if (params.is_bshd) {
+        mQ_mkl = cute::get_xe_tensor(
+            make_shape(seq_len_qo, head_size_qk, 1)); //(m,k,l)
+        mK_nkl = cute::get_xe_tensor(
+            make_shape(seq_len_kv, head_size_qk, 1)); //(n,k,l)
+        mV_nkl = cute::get_xe_tensor(
+            make_shape(head_size_vo, seq_len_kv, 1)); //(n,k,l)
+        mQ_mk = mQ_mkl(_, _, 0); // (m, k)
+        mK_nk = mK_nkl(_, _, 0); // (n, k)
+        mV_nk = mV_nkl(_, _, 0); // (n, k)
+      }
+
       auto gQ = local_tile(
           mQ_mk,
           TileShapeQK{},
@@ -402,6 +445,7 @@ class FMHAPrefill {
           params.problem_shape,
           sequence_length_shape,
           batch_coord,
+          params.is_bshd,
           q_head_coord);
       auto tiled_prefetch_q = cute::prefetch_selector<
           Shape<Int<QK_BLK_M>, Int<cute::max(cute::gcd(QK_BLK_K, 64), 32)>>,
@@ -543,19 +587,37 @@ class FMHAPrefill {
               params.problem_shape,
               sequence_length_shape,
               batch_coord,
-              q_head_coord);
+              q_head_coord,
+              params.is_bshd);
       CollectiveEpilogue epilogue{epilogue_params, shared_storage.epilogue};
-      auto blk_coord_mnkl =
-          make_coord(blk_m_coord, blk_n_coord, batch_coord, 0);
-      epilogue(
-          params.problem_shape,
-          sequence_length_shape,
-          blk_coord_mnkl,
-          out_reg,
-          max_reg,
-          sum_reg,
-          q_head_coord,
-          softmax_scale);
+
+      if (params.is_bshd) {
+        auto blk_coord_mnkl =
+            make_coord(blk_m_coord, blk_n_coord, batch_coord, 0);
+        epilogue(
+            params.problem_shape,
+            sequence_length_shape,
+            blk_coord_mnkl,
+            out_reg,
+            max_reg,
+            sum_reg,
+            q_head_coord,
+            softmax_scale,
+            params.is_bshd);
+      } else {
+        auto blk_coord_mnkl =
+            make_coord(blk_m_coord, blk_n_coord, batch_coord, blk_l_coord);
+        epilogue(
+            params.problem_shape,
+            sequence_length_shape,
+            blk_coord_mnkl,
+            out_reg,
+            max_reg,
+            sum_reg,
+            q_head_coord,
+            softmax_scale,
+            params.is_bshd);
+      }
     }
   }
 };
