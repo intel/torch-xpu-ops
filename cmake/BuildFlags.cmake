@@ -55,9 +55,11 @@ macro(set_build_flags)
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
       # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
       # the issue we wrap paths to SYCL headers in `-isystem`.
-      foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
-        list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
-      endforeach()
+      if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
+        foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
+          list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
+        endforeach()
+      endif()
       # Excluding warnings which flood the compilation output
       # TODO: fix warnings in the source code and then reenable them in compilation
       list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
