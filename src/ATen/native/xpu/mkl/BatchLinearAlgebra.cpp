@@ -585,7 +585,7 @@ void linalg_qr_kernel_impl(
   // correct R matrix  dimensions if needed
   if (numel == 0 && mode != "complete") {
     std::vector r(dimensions.begin(), dimensions.end());
-    if (r[range-1] == 0) 
+    if (r[range-1] == 0)
       r[range-2]=0;
     result_r = at::zeros(r,options);
   }
@@ -684,7 +684,7 @@ void linalg_qr_kernel_impl(
   }
   Q.set_(result_q);
   R.set_(result_r.transpose(-2, -1).triu_());
-  
+
 }
 
 
@@ -698,6 +698,6 @@ void linalg_qr_kernel(
     linalg_qr_kernel_impl<scalar_t>(A, mode, Q, R);
   });
 }
-  
+
 } // namespace at::native::xpu
   //
