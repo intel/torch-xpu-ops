@@ -569,32 +569,37 @@ void linalg_qr_kernel_impl(
     const at::Tensor& Q,
     const at::Tensor& R) {
 
+
   at::Tensor a_contig = A.contiguous();
   at::Tensor result_r = at::clone(a_contig);
 
   auto options = at::TensorOptions().dtype(A.dtype()).device(kXPU);
   auto dimensions = A.sizes();
 
+
+
   int numel = a_contig.numel();
   int range = a_contig.dim();
   int64_t n = a_contig.sizes().at(range - 2);
   int64_t m = a_contig.sizes().at(range - 1);
   int64_t mn = int64_t(m * n);
-  int64_t b = numel == 0 ? 0 : numel / mn;
+  int64_t b = numel ==0 ? 0 : numel / mn;
 
-  // correct R matrix  dimensions if needed
-  if (numel == 0 && mode != "complete") {
+
+  if (numel==0) {
     std::vector r(dimensions.begin(), dimensions.end());
-    if (r[range-1] == 0) 
-      r[range-2]=0;
+    if (r[range-1]==0) {
+      for (auto i=0; i<range; i++)
+	r[i]=0;
+    }
     result_r = at::zeros(r,options);
   }
-
-  result_r=result_r.transpose(-2,-1).contiguous();
-
+  //else {
+    result_r=result_r.transpose(-2,-1).contiguous();
+    //}
 
   if (b==0 && mode=="complete" && n>0) {
-    b = native::batchCount(a_contig);
+    //b = native::batchCount(a_contig);
   }
 
   int out_q_columns = m > n ? n : m;
@@ -602,16 +607,14 @@ void linalg_qr_kernel_impl(
     out_q_columns = n;
   }
 
-  // correct Q matrix output dimensions if needed
-  std::vector v_dim(dimensions.begin(), dimensions.end());
+  std::vector v(dimensions.begin(), dimensions.end());
   if (mode != "r") {
-    v_dim[range - 1] = v_dim[range - 2];
-    v_dim[range - 2] = out_q_columns;
+    v[range - 1] = v[range - 2];
+    v[range - 2] = out_q_columns;
   } else {
-    // dim =(0) for "r" mode
-    v_dim = std::vector<long>({0});
+    v = std::vector<long>({0});
   }
-  auto q_dimensions = at::IntArrayRef(v_dim);
+  auto q_dimensions = at::IntArrayRef(v);
 
   at::Tensor result_q = at::empty(q_dimensions, options);
 
@@ -619,7 +622,6 @@ void linalg_qr_kernel_impl(
 
   sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
 
-  // add one to size to avoid special case when any of dimensions is 0.
   int64_t bufsize1 =
       oneapi::mkl::lapack::geqrf_scratchpad_size<scalar_t>(queue, n+1, m+1, n+1);
   int64_t bufsize2 =
@@ -637,9 +639,12 @@ void linalg_qr_kernel_impl(
   }
 
 
+  std::cout << "INPUT " << A << mode << " " << A.strides() << " B " << b << std::endl; 
+  
   for (int batch_item = 0; batch_item < b; batch_item++) {
 
-    if (mn != 0) // make QR if there is something to orthogonalize
+
+    if (mn!=0) // make QR if there is something to orthogonalize
       oneapi::mkl::lapack::geqrf(queue, n, m, r_buf, n, tau_buf, sbuffer, bufsize)
         .wait();
 
@@ -684,7 +689,12 @@ void linalg_qr_kernel_impl(
   }
   Q.set_(result_q);
   R.set_(result_r.transpose(-2, -1).triu_());
+
+  std::cout << "OUTPUT" << std::endl;
+  std::cout << Q << " " <<  R  << std::endl;
+  std::cout << Q.strides() << " " <<  R.strides()  << std::endl;
   
+  queue.wait();
 }
 
 
