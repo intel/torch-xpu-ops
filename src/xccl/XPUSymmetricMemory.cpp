@@ -1,6 +1,4 @@
-#include <xccl/IpcExchange.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
-#include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 #include <xccl/XPUSymmetricMemoryUtils.hpp>
 
@@ -385,8 +383,6 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
   c10::DeviceGuard guard(local_device);
 
-  // IpcChannels is used to do inter-process communication
-  IpcChannels ipc_channel;
   auto group_info = get_group_info(group_name_);
   auto store = group_info.store;
   int rank = group_info.rank;
@@ -408,27 +404,61 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
     pids[r] = reqs[r].pid;
   }
 
-  // do IPC exchange for all peer ranks
-  ipc_channel.exchange_peer_ipc_mem(current_queue, ptr, rank, world_size);
+  // Step 1: Get base address and offset
+  sycl::context ctx = current_queue.get_context();
+  auto l0_ctx = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(ctx);
+  auto l0_device = sycl::get_native<sycl::backend::ext_oneapi_level_zero>(
+      current_queue.get_device());
 
-  // no physical memory handle, so handles and buffers are both for virtual
-  // address
+  void* base_addr;
+  size_t base_size;
+  ZE_CHECK(zeMemGetAddressRange(l0_ctx, ptr, &base_addr, &base_size));
+  size_t offset = (char*)ptr - (char*)base_addr;
+
+  // Step 2: Get IPC mem handle from base address
+  ze_ipc_mem_handle_t local_ipc_handle;
+  ZE_CHECK(zeMemGetIpcHandle(l0_ctx, base_addr, &local_ipc_handle));
+
+  // Step 3: Extract fd from IPC handle (ze_ipc_mem_handle_t's first field is
+  // fd)
+  int local_fd = *reinterpret_cast<int*>(&local_ipc_handle);
+
+  // Step 4: Exchange offsets via store
+  auto offsets = storeExchange.all_gather(store, rank, world_size, offset);
+
+  // Step 5: Exchange fds via IpcChannel (uses Unix domain socket + SCM_RIGHTS)
+  IpcChannel ipc_channel;
+  auto fds = ipc_channel.all_gather_fds(rank, pids, local_fd);
+
+  // Step 6: Reconstruct remote IPC handles and open them
   std::vector<HandleType> handles(world_size);
   std::vector<void*> buffers(world_size, nullptr);
   std::vector<void*> signal_pads(world_size, nullptr);
 
   for (int r = 0; r < world_size; ++r) {
     if (r == rank) {
-      handles[r] = block->alloc_ref->handle;
+      handles[r] = base_addr; // Store base address as handle
       buffers[r] = ptr;
       signal_pads[r] = (void*)((uintptr_t)ptr + block->signal_pad_offset);
       continue;
-    } else {
-      buffers[r] = ipc_channel.buffers[r];
-      handles[r] = ipc_channel.buffers[r];
-      signal_pads[r] =
-          (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
     }
+
+    // Reconstruct remote IPC handle by setting the fd field
+    ze_ipc_mem_handle_t remote_ipc_handle = local_ipc_handle; // Copy structure
+    *reinterpret_cast<int*>(&remote_ipc_handle) = fds[r]; // Set remote fd
+
+    // Open IPC handle to get remote base address
+    void* remote_base;
+    ZE_CHECK(zeMemOpenIpcHandle(
+        l0_ctx,
+        l0_device,
+        remote_ipc_handle,
+        ZE_IPC_MEMORY_FLAG_BIAS_CACHED,
+        &remote_base));
+
+    handles[r] = remote_base; // Store remote base address as handle
+    buffers[r] = (char*)remote_base + offsets[r];
+    signal_pads[r] = (void*)((uintptr_t)buffers[r] + block->signal_pad_offset);
   }
   storeExchange.barrier(store, rank, world_size);
 

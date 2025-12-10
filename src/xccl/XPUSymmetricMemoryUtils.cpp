@@ -93,10 +93,37 @@ void IpcChannel::send_fd(int dst_pid, int fd) {
     msg.msg_controllen = 0;
   }
 
-  // Finally send the message
+  // Retry sending with exponential backoff (wait for destination socket to be
+  // ready)
+  const int max_retries = 100;
+  int retry = 0;
+  ssize_t result = -1;
+
+  while (retry < max_retries) {
+    result = sendmsg(socket_, &msg, 0);
+    if (result > 0) {
+      return; // Success
+    }
+
+    // Check if error is because destination doesn't exist yet
+    if (errno == ENOENT || errno == ECONNREFUSED) {
+      // Exponential backoff: 1ms, 2ms, 4ms, ..., up to 100ms
+      int sleep_ms = std::min(1 << retry, 100);
+      usleep(sleep_ms * 1000);
+      retry++;
+      continue;
+    }
+
+    // Other errors should fail immediately
+    break;
+  }
+
+  // Finally check if we succeeded or report error
   TORCH_CHECK(
-      sendmsg(socket_, &msg, 0) > 0,
-      "Failed to send fd: ",
+      result > 0,
+      "Failed to send fd after ",
+      retry,
+      " retries: ",
       c10::utils::str_error(errno));
 }
 
