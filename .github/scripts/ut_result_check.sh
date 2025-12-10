@@ -21,10 +21,6 @@ declare -A EXPECTED_CASES=(
 # Tests that are known to randomly pass and should be ignored when detecting new passes
 # These are typically flaky tests that don't indicate real improvements
 IGNORE_TESTS=(
-    "test_parity__foreach_div_fastpath_inplace_xpu_complex128"
-    "test_parity__foreach_div_fastpath_outplace_xpu_complex128"
-    "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
-    "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
     "test_python_ref__refs_log2_xpu_complex128"
     "_jiterator_"  # Pattern to match all jiterator tests
 )

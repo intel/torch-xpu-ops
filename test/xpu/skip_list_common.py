@@ -21,11 +21,37 @@ skip_dict = {
         "test_python_ref_executor__refs_pow_executor_aten_xpu_complex32",
         "test_python_ref_executor__refs_mul_executor_aten_xpu_complex32",
         # https://github.com/intel/torch-xpu-ops/issues/2254
-        "histogramdd",
-        "_vdot_",
-        "_dot_",
-        "_flash_attention_",
-        "_efficient_attention_",
+        "test_dtypes_histogramdd_xpu",
+        "test_cow_input_histogramdd_xpu_float32",
+        "test_operator_histogramdd_xpu_float32",
+        "test_view_replay_histogramdd_xpu_float32",
+        "test_noncontiguous_samples_histogramdd_xpu_float32",
+        "test_out_histogramdd_xpu_float32",
+        "test_variant_consistency_eager_histogramdd_xpu_float32",
+        "test_out_warning_histogramdd_xpu",
+        "test_neg_view_histogramdd_xpu_float64",
+        "test_python_ref_torch_fallback__refs_vdot_xpu_complex128",
+        "test_python_ref_torch_fallback__refs_vdot_xpu_complex64",
+        "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex128",
+        "test_python_ref_executor__refs_vdot_executor_aten_xpu_complex64",
+        "test_dtypes_vdot_xpu",
+        "test_variant_consistency_eager_nn_functional_scaled_dot_product_attention_xpu_float32",
+        "test_multiple_devices_linalg_multi_dot_xpu_int64",
+        "test_cow_input_linalg_multi_dot_xpu_float32",
+        "test_cow_input_nn_functional_scaled_dot_product_attention_xpu_float32",
+        "test_dtypes_dot_xpu",
+        "test_dtypes_linalg_multi_dot_xpu",
+        "test_dtypes_torch_ops_aten__efficient_attention_forward_xpu",
+        "test_fake_crossref_backward_no_amp_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_cow_input_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_out_warning_torch_ops_aten__efficient_attention_forward_xpu",
+        "test_variant_consistency_eager_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_fake_crossref_backward_amp_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_out_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_view_replay_torch_ops_aten__efficient_attention_forward_xpu_float32",
+        "test_out_torch_ops_aten__flash_attention_forward_xpu_float16",
+        "test_out_warning_torch_ops_aten__flash_attention_forward_xpu",
+        "test_dtypes_torch_ops_aten__flash_attention_forward_xpu",
     ),
     "test_binary_ufuncs_xpu.py": (
         "test_fmod_remainder_by_zero_integral_xpu_int64",  # zero division is an undefined behavior: different handles on different backends
@@ -477,11 +503,6 @@ skip_dict = {
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
-        # randomly fails
-        "test_parity__foreach_div_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_div_fastpath_outplace_xpu_complex128",
-        "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128",
-        "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128",
     ),
     "nn/test_convolution_xpu.py": (
         # Summary: all of them are oneDNN related issues
@@ -772,7 +793,6 @@ skip_dict = {
         #  AssertionError: Tensor-likes are not close! ; Exception: Tensor-likes are not close!
         "test_comprehensive_nn_functional_instance_norm_xpu_float64",
         #  RuntimeError: Difference from float64 is larger with decomposition nll_loss_forward.default than original on output 0.
-        "test_comprehensive_nn_functional_nll_loss_xpu_float16",
         "test_comprehensive_nn_functional_pad_reflect_xpu_bfloat16",
         #  NotImplementedError: Could not run 'aten::_flash_attention_forward' with arguments from the 'CPU' backend.
         "test_comprehensive_torch_ops_aten__flash_attention_forward_xpu_float16",
@@ -800,14 +820,6 @@ skip_dict = {
         #  RuntimeError: I got this output for HasDecompTest.test_aten_core_operators:
         "test_aten_core_operators",
         "test_has_decomposition",
-        #  AssertionError: Tensor-likes are not close!
-        "test_comprehensive_diff_xpu_complex128",
-        "test_comprehensive_ormqr_xpu_complex128",
-        "test_quick_var_mean_xpu_float64",
-        "test_comprehensive_diff_xpu_complex64",
-        "test_comprehensive_ormqr_xpu_complex64",
-        "test_quick_mean_xpu_complex128",
-        "test_comprehensive_grid_sampler_2d_xpu_bfloat16",
     ),
     "functorch/test_ops_xpu.py": None,
     "test_sparse_xpu.py": None,
