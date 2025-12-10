@@ -14,9 +14,6 @@
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
-#include <ATen/ops/_efficient_attention_forward.h>
-#include <ATen/ops/_efficient_attention_forward_native.h>
-#include <ATen/ops/_fill_mem_eff_dropout_mask_native.h>
 #include <ATen/ops/_scaled_dot_product_attention_math.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
