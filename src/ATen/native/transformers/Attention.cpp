@@ -310,7 +310,7 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
 }
 
 /**
- * get the mask for dropout. only used for testing, not much
+ * Get the mask for dropout. only used for testing, not much
  * attention is paid to performance
  */
 at::Tensor& _fill_mem_eff_dropout_mask_(
