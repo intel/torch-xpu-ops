@@ -5,16 +5,13 @@
 #include <c10/util/error.h>
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <comm/SYCLContext.h>
-// Include ISHMEM headers - directly link to static library
+
 #include <ishmem.h>
 #include <ishmemx.h>
 
 namespace c10d {
 namespace symmetric_memory {
 
-/* Start of ISHMEMSymmetricMemory implementation */
-
-// XPU-specific constants for symmetric memory
 // Intel Data Center GPU Max can support up to 8 GPUs in a single node
 constexpr int max_xpu_p2p_domain_size = 8;
 // Maximum number of channels (same as CUDA)
@@ -34,7 +31,6 @@ struct ISHMEMAllocation {
       : ptr(ptr), buffer_size(buffer_size), device_idx(device_idx) {}
 
   ~ISHMEMAllocation() {
-    // Avoid calling XPU functions after driver shutting down
     if (is_finalizing()) {
       return;
     }
@@ -96,7 +92,6 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
     void* signal_pad_ptr = ishmem_malloc(xpu_signal_pad_size);
     TORCH_CHECK(signal_pad_ptr != nullptr, "ishmem_malloc failed");
 
-    // Use SYCL queue to initialize signal pad memory
     auto& queue = at::xpu::getCurrentSYCLQueue();
     queue.memset(signal_pad_ptr, 0, xpu_signal_pad_size).wait();
 
@@ -196,12 +191,10 @@ class ISHMEMSymmetricMemory : public SymmetricMemory {
   };
 
   bool has_multicast_support() override {
-    // ISHMEM does not have multicast support
     return false;
   }
 
   void* get_multicast_ptr() override {
-    // ISHMEM does not have multicast support
     return nullptr;
   }
 
@@ -210,13 +203,11 @@ class ISHMEMSymmetricMemory : public SymmetricMemory {
   }
 
   void barrier(int channel, size_t timeout_ms) override {
-    // Use ISHMEM barrier
     ishmem_barrier_all();
   }
 
   void put_signal(int dst_rank, int channel, size_t timeout_ms) override {
     // TODO: Implement signal mechanism for ISHMEM
-    // ISHMEM uses different signaling approach than NVSHMEM
   }
 
   void wait_signal(int src_rank, int channel, size_t timeout_ms) override {
@@ -263,26 +254,44 @@ static void initialize_ishmem_with_store(
   if (is_initialized) {
     return;
   }
-
   c10::OptionalDeviceGuard guard;
   guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 
+  // Generate unique ID - ONLY rank 0 should generate it
   ishmemx_uniqueid_t unique_id;
+  memset(
+      &unique_id, 0, sizeof(unique_id)); // Zero-initialize for non-root ranks
+
   if (rank == 0) {
+    LOG(INFO) << "[ISHMEM Init] Rank 0 generating unique ID";
     // Root rank generates the unique ID
     int ret = ishmemx_get_uniqueid(&unique_id);
     TORCH_CHECK(ret == 0, "ishmemx_get_uniqueid failed with error: ", ret);
+    LOG(INFO) << "[ISHMEM Init] Rank 0 unique ID generated";
   }
 
-  auto unique_ids =
-      storeExchange.all_gather(store, rank, world_size, unique_id);
+  // All-gather to distribute rank 0's unique_id to all ranks
+  // This creates a vector where all elements should contain rank 0's unique_id
+  std::vector<ishmemx_uniqueid_t> unique_ids;
+  LOG(INFO) << "[ISHMEM Init] Rank " << rank
+            << " about to all_gather unique_id";
+  try {
+    unique_ids = storeExchange.all_gather(store, rank, world_size, unique_id);
+    LOG(INFO) << "[ISHMEM Init] Rank " << rank
+              << " all_gather completed, received " << unique_ids.size()
+              << " unique_ids";
+  } catch (const std::exception& e) {
+    LOG(ERROR) << "[ISHMEM Init] Rank " << rank
+               << " all_gather failed: " << e.what();
+    throw;
+  }
 
-  // Initialize ISHMEM with attributes using unique ID
+  // Initialize ISHMEM with attributes using unique ID from rank 0
   ishmemx_attr_t attr;
-  attr.initialize_runtime = false; // MPI/OpenSHMEM backend already initialized
+  attr.initialize_runtime = false;
   attr.use_uid = true;
   attr.nranks = world_size;
-  attr.uid = &unique_ids[0];
+  attr.uid = &unique_ids[0]; // Use rank 0's unique_id (first element)
 
   // ishmemx_init_attr returns void, not int
   ishmemx_init_attr(&attr);
