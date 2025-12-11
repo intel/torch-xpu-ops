@@ -268,7 +268,7 @@ struct ReduceConfig {
     group_width = std::min(dim0_pow2, int(max_num_items / group_height));
     num_items = group_width * group_height;
 
-if (num_items < max_sg_sz) {
+    if (num_items < max_sg_sz) {
       group_width = max_sg_sz;
       num_items = group_width * group_height;
     }
