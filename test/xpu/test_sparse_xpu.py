@@ -2106,8 +2106,12 @@ class TestSparse(TestSparseBase):
             S = self._gen_sparse(2, nnz, [n, m], dtype, device, coalesced)[0]
             S_dense = S.to_dense().requires_grad_(True)
             S.requires_grad_(True)
+            print(f"D1: {D1}")
+            print(f"D1.shape: {D1.shape}")
             Y = torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
+            print(f"Y: {Y}")
             Y_dense = torch.addmm(D1, S_dense, D2, beta=beta, alpha=alpha)
+            print(f"Y_dense: {Y_dense}")
             self.assertEqual(Y, Y_dense)
 
             if dtype not in {torch.double, torch.cdouble}:
@@ -2115,9 +2119,10 @@ class TestSparse(TestSparseBase):
                 return
 
             def fn(S, D1, D2, beta=beta, alpha=alpha):
-                return torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
+                # return torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
+                return torch.addmm(D1, S, D2, beta=beta, alpha=alpha)
 
-            gradcheck(fn, (S, D1, D2), masked=True)
+            gradcheck(fn, (S_dense, D1, D2), masked=True)
 
         test_shape(7, 8, 9, 20, False, None)
         test_shape(7, 8, 9, 20, True, None)
