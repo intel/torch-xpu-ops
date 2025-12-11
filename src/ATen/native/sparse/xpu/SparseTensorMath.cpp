@@ -16,6 +16,9 @@
 #else
 #include <ATen/ops/addmm.h>
 #include <ATen/ops/matmul.h>
+#include <ATen/ops/bmm.h>
+#include <ATen/ops/zeros.h>
+#include <ATen/ops/_sparse_addmm.h>
 #endif
 
 #include <ATen/ExpandUtils.h>
