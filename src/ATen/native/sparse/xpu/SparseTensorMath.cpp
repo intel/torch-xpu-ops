@@ -53,7 +53,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
 
   Tensor mat1_dense = sparse_._to_dense(std::nullopt, std::nullopt);
 
-  r_ = t.add(mat1_dense.mm(dense).mul(alpha));
+  r_ = t.mul(beta).add(mat1_dense.mm(dense).mul(alpha));
 
   // at::addmm_out(r_, t, mat1_dense, dense, beta, alpha);
 
