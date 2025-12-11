@@ -24,7 +24,6 @@ XPU_RPATHS=(
 XPU_RPATHS=$(IFS=: ; echo "${XPU_RPATHS[*]}")
 export C_SO_RPATH=$XPU_RPATHS':$ORIGIN:$ORIGIN/lib'
 export LIB_SO_RPATH=$XPU_RPATHS':$ORIGIN'
-export FORCE_RPATH="--force-rpath"
 
 rm -rf tmp
 mkdir -p tmp
@@ -40,16 +39,19 @@ else
     PREFIX=libtorch
 fi
 
-# set RPATH of _C.so and similar to $ORIGIN, $ORIGIN/lib
+# set RUNPATH of _C.so and similar to $ORIGIN, $ORIGIN/lib
+# WARNING: RPATH is obsolete and is not recommended to be used. Note that
+# RPATH is handled before LD_LIBRARY_PATH which affects .so discovery. RUNPATH
+# does not have this issue.
 find $PREFIX -maxdepth 1 -type f -name "*.so*" | while read sofile; do
     echo "Setting rpath of $sofile to ${C_SO_RPATH:-'$ORIGIN:$ORIGIN/lib'}"
-    $PATCHELF_BIN --set-rpath ${C_SO_RPATH:-'$ORIGIN:$ORIGIN/lib'} ${FORCE_RPATH:-} $sofile
+    $PATCHELF_BIN --set-rpath ${C_SO_RPATH:-'$ORIGIN:$ORIGIN/lib'} $sofile
     $PATCHELF_BIN --print-rpath $sofile
 done
 
 # set RPATH of lib/ files to $ORIGIN
 find $PREFIX/lib -maxdepth 1 -type f -name "*.so*" | while read sofile; do    echo "Setting rpath of $sofile to ${LIB_SO_RPATH:-'$ORIGIN'}"
-    $PATCHELF_BIN --set-rpath ${LIB_SO_RPATH:-'$ORIGIN'} ${FORCE_RPATH:-} $sofile
+    $PATCHELF_BIN --set-rpath ${LIB_SO_RPATH:-'$ORIGIN'} $sofile
     $PATCHELF_BIN --print-rpath $sofile
 done
 
