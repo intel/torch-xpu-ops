@@ -1840,10 +1840,10 @@ class TestSparse(TestSparseBase):
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
     def test_bmm(self, device, dtype, coalesced):
-        if "xpu" in device:
-            self.skipTest(
-                "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-            )
+        # if "xpu" in device:
+        #     self.skipTest(
+        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
+        #     )
 
         def test_shape(num_mats, dim_i, dim_j, dim_k, nnz):
             a_list = []
@@ -1906,10 +1906,10 @@ class TestSparse(TestSparseBase):
         "bmm sparse-dense CUDA is not yet supported in Windows, at least up to CUDA 10.1",
     )
     def test_bmm_deterministic(self, device, dtype, coalesced):
-        if "xpu" in device:
-            self.skipTest(
-                "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-            )
+        # if "xpu" in device:
+        #     self.skipTest(
+        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
+        #     )
 
         def test_shape(num_mats, dim_i, dim_j, dim_k, nnz):
             a_list = []
@@ -1963,10 +1963,10 @@ class TestSparse(TestSparseBase):
         # doesn't perform bounds checking, we need the error to cause an
         # illegal memory access (by indexing into unallocated memory) for the
         # test to fail.
-        if "xpu" in device:
-            self.skipTest(
-                "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-            )
+        # if "xpu" in device:
+        #     self.skipTest(
+        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
+        #     )
         torch.accelerator.empty_cache()
         indices = torch.tensor([[1], [0], [0]], device=device)
         values = torch.tensor([1.0], device=device)
@@ -2236,7 +2236,7 @@ class TestSparse(TestSparseBase):
     @expectedFailureMPS
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_hsmm(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
