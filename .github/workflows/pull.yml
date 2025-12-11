@@ -118,6 +118,7 @@ jobs:
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
+      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
 
   linux-distributed:
     needs: [conditions-filter, linux-build]
