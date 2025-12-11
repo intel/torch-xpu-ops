@@ -9499,3 +9499,25 @@
   dispatch:
     SparseXPU: sparse_sparse_matmul_xpu
   autogen: _sparse_sparse_matmul.out
+
+- func: hspmm.out(Tensor mat1, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
+  dispatch:
+    SparseXPU: hspmm_out_sparse_xpu
+
+- func: hspmm(Tensor mat1, Tensor mat2) -> Tensor
+  dispatch:
+    SparseXPU: hspmm_sparse_xpu
+
+
+- func: bmm(Tensor self, Tensor mat2) -> Tensor
+  structured_delegate: bmm.out
+  variants: function, method
+  dispatch:
+    SparseXPU: bmm_sparse_xpu
+  tags: core
+
+- func: bmm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  variants: function
+  dispatch:
+    SparseCPU: bmm_out_sparse_xpu
