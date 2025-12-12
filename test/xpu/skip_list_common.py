@@ -812,4 +812,10 @@ skip_dict = {
     "functorch/test_ops_xpu.py": None,
     "test_sparse_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
+    "test_nestedtensor_xpu.py": None,
+    "functorch/test_eager_transforms_xpu.py": None,
+    "test_cpp_api_parity_xpu.py": None,
+    "test_expanded_weights_xpu.py": None,
+    "test_fake_tensor_xpu.py": None,
+    "test_matmul_cuda_xpu.py": None,
 }
