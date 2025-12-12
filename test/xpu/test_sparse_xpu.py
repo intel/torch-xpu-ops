@@ -2233,6 +2233,8 @@ class TestSparse(TestSparseBase):
             print(f"y: {y}")
             res = torch.hsmm(x, y)
             expected = torch.mm(self.safeToDense(x), y)
+            print(f"expected: {expected}")
+            print(f"res.to_dense(): {res.to_dense()}")
             self.assertEqual(res.to_dense(), expected)
 
         test_shape(7, 5, 3, 20)
