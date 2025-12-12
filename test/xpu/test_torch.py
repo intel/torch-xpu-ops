@@ -1,7 +1,6 @@
 # mypy: allow-untyped-decorators
 # mypy: allow-untyped-defs
 # Owner(s): ["module: tests"]
-
 import torch
 import torch.utils.data
 import numpy as np
@@ -44,7 +43,7 @@ from torch.testing._internal.common_utils import (  # type: ignore[attr-defined]
     wrapDeterministicFlagAPITest, DeterministicGuard, CudaSyncGuard,
     bytes_to_scalar, parametrize, skipIfMPS, noncontiguous_like,
     AlwaysWarnTypedStorageRemoval, TEST_WITH_TORCHDYNAMO, xfailIfTorchDynamo,
-    xfailIfS390X, set_warn_always_context, TEST_XPU)
+    xfailIfS390X, set_warn_always_context, TEST_XPU, skipIfXpu)
 from multiprocessing.reduction import ForkingPickler
 from torch.testing._internal.common_device_type import (
     expectedFailureMeta,
@@ -53,7 +52,7 @@ from torch.testing._internal.common_device_type import (
     onlyCUDA, onlyCPU,
     dtypes, dtypesIfCUDA, dtypesIfCPU, deviceCountAtLeast,
     skipMeta, PYTORCH_CUDA_MEMCHECK, largeTensorTest, onlyNativeDeviceTypes, skipCUDAIfNotRocm,
-    get_all_device_types, skipXLA, onlyOn)
+    get_all_device_types, skipXLA, onlyOn, skipXPU)
 import torch.backends.quantized
 import torch.testing._internal.data
 from torch.testing._internal.common_cuda import (
@@ -349,8 +348,8 @@ class TestTorchDeviceType(TestCase):
     @slowTestIf(IS_WINDOWS)
     def test_tensor_storage_type(self, device, dtype):
         a = make_tensor((10,), dtype=dtype, device=device, low=-9, high=9)
-
-        module = torch.cuda if (torch.device(device).type == 'cuda') else torch
+        device_type = torch.device(device).type
+        module = torch.cuda if (device_type == 'cuda') else (torch.xpu if device_type == 'xpu' else torch)
         expected_storage_type = getattr(module, torch.storage._dtype_to_storage_type_map()[dtype])
 
         self.assertEqual(a.storage_type(), expected_storage_type)
@@ -1190,6 +1189,10 @@ class TestTorchDeviceType(TestCase):
 
         if small.is_cuda and fn in ['map', 'map2']:
             # map and map2 are not implemented on CUDA tensors
+            return
+        
+        if small.is_xpu and fn in ['map', 'map2']:
+            # map and map2 are not implemented on XPU tensors
             return
 
         if hasattr(large_expanded, fn):
@@ -3398,6 +3401,7 @@ class TestTorchDeviceType(TestCase):
     @parametrize("use_cpu_scalar", [True, False])
     @dtypesIfCUDA(*set(get_all_math_dtypes('cuda')))
     @dtypes(*set(get_all_math_dtypes('cpu')))
+    @skipXPU
     def test_addcmul(self, device, dtype, use_cpu_scalar):
         # Returns floating or integral scalar corresponding to dtype
         def _number(floating, integer, dtype):
@@ -4309,7 +4313,7 @@ class TestTorchDeviceType(TestCase):
         with self.assertRaisesRegex(RuntimeError, 'unsupported operation'):
             ind.index_add_(0, ind.clone(), ind)
 
-    @onlyOn(['cuda', 'xpu'])
+    @onlyOn(['cuda'])
     @skipCUDAIfNotRocm  # This UT throws an OOM error on CUDA
     def test_index_add_large_inputs(self, device):
         D = 6144
@@ -4350,6 +4354,7 @@ class TestTorchDeviceType(TestCase):
     # (but have to extend ErrorInputs to handle inplace-only errors!)
     @expectedFailureMeta  # Warning not triggered
     @onlyNativeDeviceTypes
+    @skipXPU
     def test_index_fill_mem_overlap(self, device):
         x = torch.rand((1,), device=device).expand((6,))
         ind = torch.tensor([2, 1, 0], device=device)
@@ -4613,7 +4618,7 @@ class TestTorchDeviceType(TestCase):
         self.assertRaises(RuntimeError, lambda: f_cuda0.set_(f_cuda1))
 
     # FIXME: move to test_serialization
-    @onlyOn(['cuda', 'xpu'])
+    @onlyOn(['cuda'])
     @deviceCountAtLeast(1)  # Note: Tests works with one but prefers more devices
     def test_serialization(self, devices):
         def _test_serialization(filecontext_lambda):
@@ -5706,6 +5711,7 @@ class TestTorchDeviceType(TestCase):
     @skipIfTorchDynamo("Failed running call_function for sparse_coo_tensor. See https://github.com/pytorch/pytorch/issues/118856")
     @onlyNativeDeviceTypes
     @dtypes(torch.float)
+    @skipXPU
     def test_grad_scaling_unscale_sparse(self, device, dtype):
         device = torch.device(device)
         scaler = torch.GradScaler(device=device.type)
@@ -6346,6 +6352,7 @@ class TestTorchDeviceType(TestCase):
     @dtypes(*all_types_complex_float8_and(
         torch.bool, torch.half, torch.bfloat16, torch.complex32,
         torch.uint16, torch.uint32, torch.uint64))
+    @skipXPU
     def test_item(self, device, dtype):
         xla_unsupported_dtypes = [
             torch.uint16,
@@ -6796,6 +6803,7 @@ class TestTorch(TestCase):
                 check_fn(torch.tensor(True))
 
     # FIXME: move to indexing test suite
+    # @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
     def test_index_add(self):
         for device in get_all_device_types():
             for dest_contig, src_contig, index_contig in product([True, False], repeat=3):
@@ -6828,6 +6836,7 @@ class TestTorch(TestCase):
     # add coverage for issue with atomic add that appeared only for
     # specific dtypes on cuda:
     # https://github.com/pytorch/pytorch/issues/29153
+    # @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
     def test_index_add_all_dtypes(self):
         for device in get_all_device_types():
             for dtype in get_all_math_dtypes(device):
@@ -6851,6 +6860,7 @@ class TestTorch(TestCase):
 
     @unittest.mock.patch.object(torch._dynamo.config, "suppress_errors", False)
     @set_default_dtype(torch.double)
+    # @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
     def test_index_add_correctness(self):
         # Check whether index_add can get correct result when
         # alpha is 1, and dtype of index is torch.long,
