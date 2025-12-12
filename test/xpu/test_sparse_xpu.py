@@ -2108,10 +2108,10 @@ class TestSparse(TestSparseBase):
                 return
 
             def fn(S, D1, D2, beta=beta, alpha=alpha):
-                # return torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
-                return torch.addmm(D1, S, D2, beta=beta, alpha=alpha)
+                return torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
+                # return torch.addmm(D1, S, D2, beta=beta, alpha=alpha)
 
-            gradcheck(fn, (S_dense, D1, D2), masked=True)
+            gradcheck(fn, (S, D1, D2), masked=True)
 
         test_shape(7, 8, 9, 20, False, None)
         test_shape(7, 8, 9, 20, True, None)
