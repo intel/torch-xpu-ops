@@ -6803,7 +6803,7 @@ class TestTorch(TestCase):
                 check_fn(torch.tensor(True))
 
     # FIXME: move to indexing test suite
-    # @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
+    @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
     def test_index_add(self):
         for device in get_all_device_types():
             for dest_contig, src_contig, index_contig in product([True, False], repeat=3):
@@ -6836,7 +6836,7 @@ class TestTorch(TestCase):
     # add coverage for issue with atomic add that appeared only for
     # specific dtypes on cuda:
     # https://github.com/pytorch/pytorch/issues/29153
-    # @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
+    @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
     def test_index_add_all_dtypes(self):
         for device in get_all_device_types():
             for dtype in get_all_math_dtypes(device):
@@ -6860,7 +6860,7 @@ class TestTorch(TestCase):
 
     @unittest.mock.patch.object(torch._dynamo.config, "suppress_errors", False)
     @set_default_dtype(torch.double)
-    # @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
+    @skipIfXpu(msg="Skip due to issue https://github.com/intel/torch-xpu-ops/issues/2496")
     def test_index_add_correctness(self):
         # Check whether index_add can get correct result when
         # alpha is 1, and dtype of index is torch.long,
