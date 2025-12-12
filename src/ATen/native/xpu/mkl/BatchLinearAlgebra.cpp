@@ -497,7 +497,7 @@ static void apply_lu_solve_xpu_(
               batch_size,
               scratchpad_at.data_ptr<scalar_t>(),
               scratchpad_size);
-        } catch (oneapi::mkl::lapack::batch_error be) {
+        } catch (const oneapi::mkl::lapack::batch_error& be) {
           error_handle(info_data, be);
         }
       };

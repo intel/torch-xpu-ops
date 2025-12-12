@@ -84,14 +84,14 @@ void _mkl_dft(
     desc.set_value(config_param::FWD_DISTANCE, idist);
     desc.set_value(config_param::BWD_DISTANCE, odist);
 
-    desc.set_value(config_param::FWD_STRIDES, input_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, output_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, input_strides);
+    desc.set_value(config_param::BWD_STRIDES, output_strides);
   } else {
     desc.set_value(config_param::FWD_DISTANCE, odist);
     desc.set_value(config_param::BWD_DISTANCE, idist);
 
-    desc.set_value(config_param::FWD_STRIDES, output_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, input_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, output_strides);
+    desc.set_value(config_param::BWD_STRIDES, input_strides);
   }
 
   if (!complex_input || !complex_output) {
@@ -104,7 +104,7 @@ void _mkl_dft(
   desc.commit(queue);
 
   // Obtain the size of workspace required after commit.
-  size_t workspaceSizeBytes = 0;
+  int64_t workspaceSizeBytes = 0;
   desc.get_value(
       oneapi::mkl::dft::config_param::WORKSPACE_BYTES, &workspaceSizeBytes);
 
