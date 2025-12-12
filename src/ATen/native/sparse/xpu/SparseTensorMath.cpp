@@ -13,6 +13,8 @@
 
 #include <ATen/ExpandUtils.h>
 
+#include <iostream>
+
 namespace at::native {
 
 using namespace at::sparse;
@@ -208,11 +210,16 @@ SparseTensor& hspmm_out_sparse_xpu(
   TORCH_CHECK(dense.size(0) == k,
       "hspmm: Argument #3: Expected dim 0 size ", k, ", got ", dense.size(0));
 
-  get_sparse_impl(r_)->resize_and_clear_(1, 1, {m, n});
+                                                                                                      (r_)->resize_and_clear_(1, 1, {m, n});
   Tensor t = at::zeros({sparse_.size(-2), dense.size(-1)}, dense.options());
   Tensor output_dense = at::_sparse_addmm(t, sparse_, dense, 0, 1);
+  std::cout << "output_dense" << output_dense << endl;
+  std::cout << "sparse_.layout()" << sparse_.layout() << endl;
   Tensor output_sparse = output_dense._to_sparse(sparse_.layout());
-  get_sparse_impl(r_)->set_indices_and_values_unsafe(output_sparse._indices(), output_sparse._values());
+  std::cout << "output_sparse" << output_sparse << endl;
+  std::cout << "output_sparse._indices()" << output_sparse._indices() << endl;
+  std::cout << "output_sparse._values()" << output_sparse._values() << endl;
+  // get_sparse_impl(r_)->set_indices_and_values_unsafe(output_sparse._indices(), output_sparse._values());
 
   return r_;
 }
