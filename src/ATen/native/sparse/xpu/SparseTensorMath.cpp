@@ -210,7 +210,7 @@ SparseTensor& hspmm_out_sparse_xpu(
   TORCH_CHECK(dense.size(0) == k,
       "hspmm: Argument #3: Expected dim 0 size ", k, ", got ", dense.size(0));
 
-                                                                                                      (r_)->resize_and_clear_(1, 1, {m, n});
+  get_sparse_impl(r_)->resize_and_clear_(1, 1, {m, n});                                                                                                    (r_)->resize_and_clear_(1, 1, {m, n});
   Tensor t = at::zeros({sparse_.size(-2), dense.size(-1)}, dense.options());
   Tensor output_dense = at::_sparse_addmm(t, sparse_, dense, 0, 1);
   std::cout << "output_dense" << output_dense << std::endl;
