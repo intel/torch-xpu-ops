@@ -95,13 +95,16 @@ def update_reference_dataframe(refer_data, model_name, dtype, accuracy):
     return refer_data
 
 
-def categorize_model(test_accuracy, refer_accuracy, known_accuracy):
+def categorize_model(model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models):
     """
     Categorize a model based on its test results.
 
     Returns:
         tuple: (category, should_update_reference)
     """
+    if any(term in model_name for term in skipped_models):
+        return "skipped", False
+
     if test_accuracy == "N/A":
         return "lost", False
     elif 'pass' in test_accuracy:
@@ -118,7 +121,7 @@ def categorize_model(test_accuracy, refer_accuracy, known_accuracy):
         if refer_accuracy == "N/A":
             return "expected_failed", True
         elif "pass" in refer_accuracy and known_accuracy != test_accuracy:
-            return "real_failed", False
+            return "real_failed", True
         else:
             if test_accuracy != refer_accuracy:
                 return "expected_failed", True
@@ -135,6 +138,7 @@ def print_results_summary(suite, dtype, mode, categories):
     print(f"Warning timeout models: {len(categories['timeout'])} , {categories['timeout']}")
     print(f"New models: {len(categories['new'])} , {categories['new']}")
     print(f"Failed to passed models: {len(categories['new_pass'])} , {categories['new_pass']}")
+    print(f"Skipped check models: {len(categories['skipped'])} , {categories['skipped']}")
     print(f"Not run/in models: {len(categories['lost'])} , {categories['lost']}")
 
     total_models = len(categories['all_models'])
@@ -185,9 +189,13 @@ def main():
         'new': [],
         'new_pass': [],
         'lost': [],
+        'skipped': [],
         'timeout': []
     }
-
+    # detectron2: cuda not run it
+    # torchrec_dlrm: fbgemm_gpu not incompatable
+    # stable_diffusion_text_encoder: out of memory randomly
+    skipped_models = ['detectron2', 'torchrec_dlrm', 'stable_diffusion_text_encoder']
     needs_update = False
 
     # Process each model
@@ -204,7 +212,7 @@ def main():
 
         # Categorize model and determine if reference needs update
         category, should_update = categorize_model(
-            test_accuracy, refer_accuracy, known_accuracy
+            model_name, test_accuracy, refer_accuracy, known_accuracy, skipped_models
         )
 
         categories[category].append([model_name, test_accuracy])
