@@ -81,6 +81,11 @@ runs:
         # apply extra PRs for stock pytorch
         pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
+        if [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+          rm -rf 169257.diff
+          wget -q https://github.com/pytorch/pytorch/pull/169257.diff
+          git apply 169257.diff
+        fi
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
