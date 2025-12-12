@@ -10,12 +10,12 @@ on:
         description: Runner label
       pytorch:
         type: string
-        default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        default: 'release/2.10'
+        description: Pytorch release/2.10 by default, or 'commit/branch', or 'repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
-        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        default: 'release/2.10'
+        description: Torch-xpu-ops release/2.10 by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
       triton:
         required: false
         type: string
