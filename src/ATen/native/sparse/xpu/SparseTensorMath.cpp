@@ -213,12 +213,12 @@ SparseTensor& hspmm_out_sparse_xpu(
                                                                                                       (r_)->resize_and_clear_(1, 1, {m, n});
   Tensor t = at::zeros({sparse_.size(-2), dense.size(-1)}, dense.options());
   Tensor output_dense = at::_sparse_addmm(t, sparse_, dense, 0, 1);
-  std::cout << "output_dense" << output_dense << endl;
-  std::cout << "sparse_.layout()" << sparse_.layout() << endl;
+  std::cout << "output_dense" << output_dense << std::endl;
+  std::cout << "sparse_.layout()" << sparse_.layout() << std::endl;
   Tensor output_sparse = output_dense._to_sparse(sparse_.layout());
-  std::cout << "output_sparse" << output_sparse << endl;
-  std::cout << "output_sparse._indices()" << output_sparse._indices() << endl;
-  std::cout << "output_sparse._values()" << output_sparse._values() << endl;
+  std::cout << "output_sparse" << output_sparse << std::endl;
+  std::cout << "output_sparse._indices()" << output_sparse._indices() << std::endl;
+  std::cout << "output_sparse._values()" << output_sparse._values() << std::endl;
   // get_sparse_impl(r_)->set_indices_and_values_unsafe(output_sparse._indices(), output_sparse._values());
 
   return r_;
