@@ -2119,10 +2119,10 @@ class TestSparse(TestSparseBase):
                 return
 
             def fn(S, D1, D2, beta=beta, alpha=alpha):
-                # return torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
-                return torch.addmm(D1, S, D2, beta=beta, alpha=alpha)
+                return torch.sparse.addmm(D1, S, D2, beta=beta, alpha=alpha)
+                # return torch.addmm(D1, S, D2, beta=beta, alpha=alpha)
 
-            gradcheck(fn, (S_dense, D1, D2), masked=True)
+            gradcheck(fn, (S, D1, D2), masked=True)
 
         test_shape(7, 8, 9, 20, False, None)
         test_shape(7, 8, 9, 20, True, None)
@@ -2241,7 +2241,8 @@ class TestSparse(TestSparseBase):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
             y = self.randn(dj, dk, dtype=dtype, device=device)
-
+            print(f"x: {x}")
+            print(f"y: {y}")
             res = torch.hsmm(x, y)
             expected = torch.mm(self.safeToDense(x), y)
             self.assertEqual(res.to_dense(), expected)
