@@ -185,7 +185,7 @@ Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor&
   }
   // Need to transpose the result matrices since cusparse stores
   // them in column-major order in memory
-  result.transpose_(1,2);
+  // result.transpose_(1,2);
 
   return result;
 }
@@ -229,7 +229,7 @@ SparseTensor& hspmm_out_sparse_xpu(
   std::cout << "output_sparse" << output_sparse << std::endl;
   std::cout << "output_sparse._indices()" << output_sparse._indices() << std::endl;
   std::cout << "output_sparse._values()" << output_sparse._values() << std::endl;
-  // get_sparse_impl(r_)->set_indices_and_values_unsafe(output_sparse._indices(), output_sparse._values());
+  get_sparse_impl(r_)->set_indices_and_values_unsafe(output_sparse._indices(), output_sparse._values());
 
   return r_;
 }
