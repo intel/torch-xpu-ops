@@ -201,6 +201,7 @@ skip_dict = {
     "../../../../test/distributed/tensor/debug/test_comm_mode.py": None,
     "../../../../test/distributed/tensor/debug/test_comm_mode_features.py": None,
     "../../../../test/distributed/tensor/debug/test_op_coverage.py": None,
+    "../../../../test/distributed/tensor/debug/test_debug_mode.py": None,
     "../../../../test/distributed/tensor/experimental/test_local_map.py": None,
     "../../../../test/distributed/tensor/experimental/test_tp_transform.py": None,
     "../../../../test/distributed/tensor/test_convolution_ops.py": None,
