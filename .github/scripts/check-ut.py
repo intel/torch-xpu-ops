@@ -262,8 +262,7 @@ def process_log_file(log_file):
 def process_xml_file(xml_file):
     try:
         xml = JUnitXml.fromfile(xml_file)
-        parts = os.path.basename(xml_file).rsplit('.', 2)
-        ut = parts[0]
+        ut = os.path.basename(xml_file).replace('.xml', '')
         parts_category = os.path.basename(xml_file).split('.')[0]
         category = determine_category(parts_category)
 
