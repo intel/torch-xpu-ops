@@ -1830,10 +1830,6 @@ class TestSparse(TestSparseBase):
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
     def test_bmm(self, device, dtype, coalesced):
-        # if "xpu" in device:
-        #     self.skipTest(
-        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-        #     )
 
         def test_shape(num_mats, dim_i, dim_j, dim_k, nnz):
             a_list = []
@@ -1896,10 +1892,6 @@ class TestSparse(TestSparseBase):
         "bmm sparse-dense CUDA is not yet supported in Windows, at least up to CUDA 10.1",
     )
     def test_bmm_deterministic(self, device, dtype, coalesced):
-        # if "xpu" in device:
-        #     self.skipTest(
-        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-        #     )
 
         def test_shape(num_mats, dim_i, dim_j, dim_k, nnz):
             a_list = []
@@ -1953,10 +1945,6 @@ class TestSparse(TestSparseBase):
         # doesn't perform bounds checking, we need the error to cause an
         # illegal memory access (by indexing into unallocated memory) for the
         # test to fail.
-        # if "xpu" in device:
-        #     self.skipTest(
-        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-        #     )
         torch.accelerator.empty_cache()
         indices = torch.tensor([[1], [0], [0]], device=device)
         values = torch.tensor([1.0], device=device)
@@ -2076,7 +2064,6 @@ class TestSparse(TestSparseBase):
     @toleranceOverride({torch.double: tol(atol=2e-6, rtol=2e-6)})
     @dtypes(torch.double, torch.cdouble, torch.bfloat16, torch.float16)
     @dtypesIfMPS(torch.float32, torch.complex64, torch.bfloat16, torch.float16)
-    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sparse_addmm(self, device, dtype, coalesced):
         if (dtype is torch.bfloat16 or dtype is torch.float16) and device.startswith(
             "cuda"
@@ -2124,7 +2111,6 @@ class TestSparse(TestSparseBase):
     @unittest.skipIf(
         TEST_WITH_CROSSREF, "generator unsupported triggers assertion error"
     )
-    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sparse_mm(self, device, dtype, coalesced):
         def test_shape(d1, d2, d3, nnz, transposed):
             if transposed:
@@ -2200,7 +2186,6 @@ class TestSparse(TestSparseBase):
     @coalescedonoff
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_dsmm(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
@@ -4761,7 +4746,6 @@ class TestSparse(TestSparseBase):
             *[torch.half], *[torch.bfloat16], torch.complex64, *[torch.complex128]
         )
     )
-    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     @unittest.skipIf(TEST_WITH_CROSSREF, "not working with fake tensor")
     @precisionOverride(
         {
