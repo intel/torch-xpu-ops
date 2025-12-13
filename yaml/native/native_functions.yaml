@@ -9500,15 +9500,6 @@
     SparseXPU: sparse_sparse_matmul_xpu
   autogen: _sparse_sparse_matmul.out
 
-- func: hspmm.out(Tensor mat1, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
-  dispatch:
-    SparseXPU: hspmm_out_sparse_xpu
-
-- func: hspmm(Tensor mat1, Tensor mat2) -> Tensor
-  dispatch:
-    SparseXPU: hspmm_sparse_xpu
-
-
 - func: bmm(Tensor self, Tensor mat2) -> Tensor
   structured_delegate: bmm.out
   variants: function, method

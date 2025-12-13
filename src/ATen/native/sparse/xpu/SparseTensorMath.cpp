@@ -131,9 +131,6 @@ Tensor sparse_sparse_matmul_xpu(const Tensor& mat1_, const Tensor& mat2_) {
   Tensor output_sparse = output_dense._to_sparse(mat1_.layout());
 
   return output_sparse;
-
-  // auto output = at::native::empty_like(mat1_);
-  // output.sparse_resize_and_clear_({mat1_.size(0), mat2_.size(1)}, mat1_.sparse_dim(), 0);
 }
 
 Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor& result) {
@@ -172,62 +169,14 @@ Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor&
   at::bmm_out(tmp_result, mat1_dense, mat2);
   if (need_copy_result) {
     result.copy_(tmp_result);
+    result.transpose_(1,2);
   }
-  // Need to transpose the result matrices since cusparse stores
-  // them in column-major order in memory
-  // result.transpose_(1,2);
-
   return result;
 }
 
 Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
   Tensor result = at::empty({self.size(0), mat2.size(2), self.size(1)}, mat2.options(), at::MemoryFormat::Contiguous);
   return bmm_out_sparse_xpu(self, mat2, result);
-}
-
-SparseTensor& hspmm_out_sparse_xpu(
-    const SparseTensor& sparse_,
-    const Tensor& dense,
-    SparseTensor& r_
-    /* , const Scalar& alpha */) {
-  TORCH_CHECK(sparse_.is_xpu(), "hspmm: expected 'self' to be XPU, but got CPU");
-  TORCH_CHECK(r_.is_xpu(), "hspmm: expected 'out' to be XPU, but got CPU");
-  TORCH_CHECK(dense.is_xpu(), "hspmm: expected 'mat2' to be XPU, but got CPU");
-
-  // TORCH_CHECK(xpu::check_device({r_, sparse_, dense}));
-
-  TORCH_CHECK(sparse_.sparse_dim() == 2,
-      "hspmm: Argument #2: 2D tensor expected, got ", sparse_.sparse_dim(), "D tensor");
-  TORCH_CHECK(sparse_.dense_dim() == 0,
-      "hspmm: Argument #2: scalar values expected, got ", sparse_.dense_dim(), "D values");
-  TORCH_CHECK(dense.dim() == 2,
-      "hspmm: Argument #3: 2D tensor expected, got ", dense.dim(), "D tensor");
-
-  int64_t m = sparse_.size(0);
-  int64_t k = sparse_.size(1);
-  int64_t n = dense.size(1);
-
-  TORCH_CHECK(dense.size(0) == k,
-      "hspmm: Argument #3: Expected dim 0 size ", k, ", got ", dense.size(0));
-
-  get_sparse_impl(r_)->resize_and_clear_(1, 1, {m, n});
-  Tensor t = at::zeros({sparse_.size(-2), dense.size(-1)}, dense.options());
-  Tensor output_dense = at::_sparse_addmm(t, sparse_, dense, 0, 1);
-  std::cout << "output_dense" << output_dense << std::endl;
-  std::cout << "sparse_.layout()" << sparse_.layout() << std::endl;
-  Tensor output_sparse = output_dense._to_sparse(sparse_.layout());
-  std::cout << "output_sparse" << output_sparse << std::endl;
-  std::cout << "output_sparse._indices()" << output_sparse._indices() << std::endl;
-  std::cout << "output_sparse._values()" << output_sparse._values() << std::endl;
-  get_sparse_impl(r_)->set_indices_and_values_unsafe(output_sparse._indices(), output_sparse._values());
-
-  return r_;
-}
-
-SparseTensor hspmm_sparse_xpu(const SparseTensor& sparse, const Tensor& dense) {
-  SparseTensor r = at::empty({0}, sparse.options());
-  hspmm_out_sparse_xpu(sparse, dense, r);
-  return r;
 }
 
 } // namespace at::native
