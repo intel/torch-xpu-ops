@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/SharedReduceOps.h>
@@ -48,15 +58,6 @@ struct SumFunctor {
   }
 };
 
-template <>
-struct SumFunctor<c10::complex<at::Half>> {
-  using scalar_t = c10::complex<at::Half>;
-  using acc_t = at::opmath_type<scalar_t>;
-  inline acc_t operator()(acc_t a, acc_t b) const {
-    return a + b;
-  }
-};
-
 template <
     typename scalar_t,
     typename acc_t = scalar_t,
@@ -65,6 +66,16 @@ struct sum_functor {
   void operator()(TensorIterator& iter) {
     gpu_reduce_kernel<scalar_t, out_t>(
         iter, func_wrapper<out_t>(SumFunctor<acc_t>()));
+  }
+};
+
+template <>
+struct sum_functor<c10::complex<at::Half>> {
+  void operator()(TensorIterator& iter) {
+    using scalar_t = c10::complex<at::Half>;
+    using acc_t = at::opmath_type<scalar_t>;
+    gpu_reduce_kernel<scalar_t, scalar_t>(
+        iter, func_wrapper<scalar_t>(SumFunctor<acc_t>()));
   }
 };
 
