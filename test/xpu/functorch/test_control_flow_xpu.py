@@ -42,6 +42,7 @@ requires_accelerator = unittest.skipUnless(
     torch.accelerator.is_available(), "Accelerator is needed"
 )
 
+
 # TODO: pull these helpers from AOTAutograd later
 def to_fun(t):
     if isinstance(t, torch.Tensor):
@@ -448,6 +449,7 @@ if torch.accelerator.is_available():
 else:
     # use cuda as default device type for testing when accelerator is not available
     DEVICE_TYPE = "cpu"
+
 
 @unittest.skipIf(IS_WINDOWS, "Windows not supported for this test")
 @skipIfNoDynamoSupport
@@ -1226,7 +1228,10 @@ def forward(self, pred_1, x_1):
             return x.cos()
 
         for pred, fn in zip(
-            [torch.tensor(False, device=DEVICE_TYPE), torch.tensor(True, device=DEVICE_TYPE)],
+            [
+                torch.tensor(False, device=DEVICE_TYPE),
+                torch.tensor(True, device=DEVICE_TYPE),
+            ],
             [false_fn, true_fn],
         ):
             x = torch.randn(4, requires_grad=True, device=DEVICE_TYPE)
@@ -3716,9 +3721,9 @@ class AssociativeScanTests(TestCase):
         result_exp_flatten = [r for r in result_exp_flatten if r.requires_grad]
 
         # Check the result and parameter lists
-        assert len(result_flatten) == len(result_exp_flatten), (
-            "The number of elements requiring gradients is different for the results and the expected results"
-        )
+        assert len(result_flatten) == len(
+            result_exp_flatten
+        ), "The number of elements requiring gradients is different for the results and the expected results"
 
         grad_exp_init = [torch.ones_like(el) for el in result_exp_flatten]
         expected_grads = torch.autograd.grad(
@@ -5202,7 +5207,9 @@ class GraphModule(torch.nn.Module):
 
         def fct_wrong_device(x, y):
             return (x + y).to(
-                torch.device("cpu") if device.type == DEVICE_TYPE else torch.device(DEVICE_TYPE)
+                torch.device("cpu")
+                if device.type == DEVICE_TYPE
+                else torch.device(DEVICE_TYPE)
             )
 
         def fct_wrong_stride(x, y):
