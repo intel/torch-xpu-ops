@@ -19,6 +19,20 @@ namespace at::native {
 
 using namespace at::sparse;
 
+// Check if every tensor in a list of tensors matches the current
+// device.
+inline bool check_device(ArrayRef<Tensor> ts) {
+  if (ts.empty()) {
+    return true;
+  }
+  Device curDevice = Device(kXPU, c10::xpu::current_device());
+  for (const Tensor& t : ts) {
+    if (t.device() != curDevice)
+      return false;
+  }
+  return true;
+}
+
 SparseTensor& add_out_sparse_xpu(
     const SparseTensor& t,
     const SparseTensor& src,
@@ -47,7 +61,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
   TORCH_CHECK(sparse_.is_xpu(), "Expected all tensors to be on the same device. addmm: expected 'mat1' to be XPU, but got CPU");
   TORCH_CHECK(dense.is_xpu(), "Expected all tensors to be on the same device. addmm: expected 'mat2' to be XPU, but got CPU");
 
-  TORCH_CHECK(xpu::check_device({sparse_, r_, t, dense}));
+  TORCH_CHECK(check_device({sparse_, r_, t, dense}));
 
   TORCH_CHECK(dense.dim() == 2, "addmm: 2D tensor expected, got ", dense.dim(), "D tensor");
   TORCH_CHECK(sparse_.sparse_dim() == 2, "addmm: expected first two dims to be sparse (indices has size 2 at first dim), but got ", sparse_.sparse_dim(), " sparse dims");
