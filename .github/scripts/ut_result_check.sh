@@ -11,10 +11,10 @@ readonly REPO="intel/torch-xpu-ops"
 # Used to detect significant test case reductions (>5%)
 declare -A EXPECTED_CASES=(
     ["op_extended"]=5349
-    ["op_regression"]=244
+    ["op_regression"]=268
     ["op_regression_dev1"]=1
-    ["op_transformers"]=237
-    ["op_ut"]=120408
+    ["op_transformers"]=262
+    ["op_ut"]=178548
     ["test_xpu"]=69
 )
 
@@ -79,7 +79,7 @@ check_passed_known_issues() {
     fi
     # Mark passed items in GitHub issues with strikethrough
     if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
-        mark_passed_issue "$output_file" "$known_file"
+        mark_passed_issue "$output_file" "issues.log"
     fi
     rm -f "$output_file"  # Clean up temporary file
 }
@@ -277,6 +277,7 @@ run_distributed_tests() {
 mark_passed_issue() {
     local PASSED_FILE="$1"
     local ISSUE_FILE="$2"
+    random_issues="$(gh issue list --repo ${REPO} --label 'skipped,random' --json number --jq '.[].number')"
     # Cehck before start
     [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
     [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
@@ -299,6 +300,10 @@ mark_passed_issue() {
         # Extract issue ID if this line contains an issue
         if [[ "$line" =~ Issue\ #([0-9]+) ]]; then
             issue_id="${BASH_REMATCH[1]}"
+            continue
+        fi
+        # Skip random cases check
+        if [ $(echo "${random_issues}" |grep -w "${issue_id}" -c) -ge 1 ];then
             continue
         fi
         if [[ $in_cases_section -eq 1 && -n "$issue_id" ]]; then

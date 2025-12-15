@@ -1,3 +1,25 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Copyright (c) 2018 MathInf GmbH, Thomas Viehmann
+ * Licensed under the BSD-3-Clause license
+ * This is the CPU implementation of the Connectionist Temporal Loss.
+ * We mostly follow Graves.
+ * 1. Graves et al: http://www.cs.toronto.edu/~graves/icml_2006.pdf
+ * We use the equations from above link, but note that [1] has 1-based indexing and we (of course) use 0-based.
+ * Graves et al call the probabilities y, we use log_probs (also calling them inputs)
+ */
+
 #pragma clang diagnostic push
 #pragma GCC diagnostic push
 // Avoid SYCL compiler return-type error
