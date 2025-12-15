@@ -1903,11 +1903,6 @@ class TestSparse(TestSparseBase):
         "bmm sparse-dense CUDA is not yet supported in Windows, at least up to CUDA 10.1",
     )
     def test_bmm_deterministic(self, device, dtype, coalesced):
-        # if "xpu" in device:
-        #     self.skipTest(
-        #         "skipped! see https://github.com/intel/torch-xpu-ops/issues/2211 for details"
-        #     )
-
         def test_shape(num_mats, dim_i, dim_j, dim_k, nnz):
             a_list = []
             b_list = []
