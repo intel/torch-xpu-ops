@@ -194,8 +194,8 @@ def main():
     }
     # detectron2: cuda not run it
     # torchrec_dlrm: fbgemm_gpu not incompatable
-    # stable_diffusion_text_encoder: out of memory randomly
-    skipped_models = ['detectron2', 'torchrec_dlrm', 'stable_diffusion_text_encoder']
+    # stable_diffusion: stabilityai/stable-diffusion-2 is not a valid model identifier listed on 'https://huggingface.co/models'
+    skipped_models = ['detectron2', 'torchrec_dlrm', 'stable_diffusion_text_encoder', 'stable_diffusion_unet']
     needs_update = False
 
     # Process each model
