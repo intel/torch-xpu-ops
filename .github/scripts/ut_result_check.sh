@@ -277,6 +277,7 @@ run_distributed_tests() {
 mark_passed_issue() {
     local PASSED_FILE="$1"
     local ISSUE_FILE="$2"
+    random_issues="$(gh issue list --repo ${REPO} --label 'skipped,random' --json number --jq '.[].number')"
     # Cehck before start
     [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
     [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
@@ -299,6 +300,10 @@ mark_passed_issue() {
         # Extract issue ID if this line contains an issue
         if [[ "$line" =~ Issue\ #([0-9]+) ]]; then
             issue_id="${BASH_REMATCH[1]}"
+            continue
+        fi
+        # Skip random cases check
+        if [ $(echo "${random_issues}" |grep -w "${issue_id}" -c) -ge 1 ];then
             continue
         fi
         if [[ $in_cases_section -eq 1 && -n "$issue_id" ]]; then
