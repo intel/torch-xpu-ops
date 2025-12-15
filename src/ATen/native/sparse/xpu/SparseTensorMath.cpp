@@ -9,6 +9,7 @@
  */
 
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
+#include <c10/xpu/XPUFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
