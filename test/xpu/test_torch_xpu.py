@@ -1,4 +1,3 @@
-
 # Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
