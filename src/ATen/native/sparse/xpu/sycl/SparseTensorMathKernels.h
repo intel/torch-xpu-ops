@@ -19,7 +19,7 @@ using namespace at::sparse;
 
 // Check if every tensor in a list of tensors matches the current
 // device.
-inline bool check_device(ArrayRef<Tensor> ts) {
+bool check_device(ArrayRef<Tensor> ts) {
   if (ts.empty()) {
     return true;
   }
