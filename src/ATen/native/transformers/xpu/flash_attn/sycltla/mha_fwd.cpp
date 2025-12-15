@@ -1,3 +1,41 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Copyright (c) 2024 - 2025 Codeplay Software Ltd. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #include "mha_fwd.h"
 #include "mha_common.h"
 
@@ -94,7 +132,8 @@ struct FA2Runner {
       const ElementV* inputV,
       ElementOutput* output,
       float* logsumexp,
-      float softmax_scale) {
+      float softmax_scale,
+      bool is_bshd) {
     auto
         [batch,
          num_heads_q,
@@ -104,18 +143,33 @@ struct FA2Runner {
          head_size_qk,
          head_size_vo] = problem_size;
 
-    stride_Q = cutlass::make_cute_packed_stride(
-        StrideQ{},
-        cute::make_shape(seq_len_qo, head_size_qk, batch * num_heads_q));
-    stride_K = cutlass::make_cute_packed_stride(
-        StrideK{},
-        cute::make_shape(seq_len_kv, head_size_qk, batch * num_heads_kv));
-    stride_V = cutlass::make_cute_packed_stride(
-        StrideV{},
-        cute::make_shape(head_size_vo, seq_len_kv, batch * num_heads_kv));
-    stride_O = cutlass::make_cute_packed_stride(
-        StrideO{},
-        cute::make_shape(seq_len_qo, head_size_vo, batch * num_heads_q));
+    if (is_bshd) {
+      stride_Q = cutlass::make_cute_packed_stride(
+          StrideQ{},
+          cute::make_shape(seq_len_qo, num_heads_q * head_size_qk, batch));
+      stride_K = cutlass::make_cute_packed_stride(
+          StrideK{},
+          cute::make_shape(seq_len_kv, num_heads_kv * head_size_qk, batch));
+      stride_V = cutlass::make_cute_packed_stride(
+          StrideV{},
+          cute::make_shape(head_size_vo * num_heads_kv, seq_len_kv, batch));
+      stride_O = cutlass::make_cute_packed_stride(
+          StrideO{},
+          cute::make_shape(seq_len_qo, num_heads_q * head_size_vo, batch));
+    } else {
+      stride_Q = cutlass::make_cute_packed_stride(
+          StrideQ{},
+          cute::make_shape(seq_len_qo, head_size_qk, batch * num_heads_q));
+      stride_K = cutlass::make_cute_packed_stride(
+          StrideK{},
+          cute::make_shape(seq_len_kv, head_size_qk, batch * num_heads_kv));
+      stride_V = cutlass::make_cute_packed_stride(
+          StrideV{},
+          cute::make_shape(head_size_vo, seq_len_kv, batch * num_heads_kv));
+      stride_O = cutlass::make_cute_packed_stride(
+          StrideO{},
+          cute::make_shape(seq_len_qo, head_size_vo, batch * num_heads_q));
+    }
 
     typename FMHAPrefillKernel::Arguments arguments{
         cutlass::gemm::GemmUniversalMode::kGemm,
@@ -124,7 +178,8 @@ struct FA2Runner {
         {softmax_scale},
         {output, stride_O, logsumexp},
         hw_info,
-        softmax_scale};
+        softmax_scale,
+        is_bshd};
 
     // Define device-global scratch memory
     size_t workspace_size = FMHAPrefillKernel::get_workspace_size(arguments);
@@ -181,7 +236,8 @@ void run_mha_fwd_(
     const T* value,
     T* out,
     float* logsumexp,
-    float scale) {
+    float scale,
+    bool is_bshd) {
   cutlass::KernelHardwareInfo hw_info;
 
   using LayoutQ = cutlass::layout::RowMajor;
@@ -257,7 +313,16 @@ void run_mha_fwd_(
 
   FA2Runner<FMHAPrefillKernel> runner;
   runner.run(
-      queue, problem_shape, hw_info, query, key, value, out, logsumexp, scale);
+      queue,
+      problem_shape,
+      hw_info,
+      query,
+      key,
+      value,
+      out,
+      logsumexp,
+      scale,
+      is_bshd);
 }
 
 template <typename T, typename ProblemShape, bool IS_CAUSAL>
@@ -269,7 +334,8 @@ void run_mha_fwd_(
     const T* value,
     T* out,
     float* logsumexp,
-    float scale) {
+    float scale,
+    bool is_bshd) {
   const int headdim = get<5>(problem_shape);
 
 #define run_mha_fwd_specialized( \
@@ -287,7 +353,15 @@ void run_mha_fwd_(
       TileShapeOutPut_,          \
       SubgroupLayout_,           \
       PipelineStages_>(          \
-      queue, problem_shape, query, key, value, out, logsumexp, scale);
+      queue,                     \
+      problem_shape,             \
+      query,                     \
+      key,                       \
+      value,                     \
+      out,                       \
+      logsumexp,                 \
+      scale,                     \
+      is_bshd);
 
   if (headdim == 64) {
     constexpr int PipelineStages = 2;
@@ -334,17 +408,17 @@ void run_mha_fwd_(
           SubgroupLayout,
           PipelineStages);
     } else {
-        constexpr int PipelineStages = 2;
-        using TileShapeQK = Shape<_256, _32, _64>;
-        using TileShapePV = Shape<_256, _32, _32>;
-        using TileShapeOutPut = Shape<_256, _128, _32>;
-        using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
-        run_mha_fwd_specialized(
-            TileShapeQK,
-            TileShapePV,
-            TileShapeOutPut,
-            SubgroupLayout,
-            PipelineStages);
+      constexpr int PipelineStages = 2;
+      using TileShapeQK = Shape<_256, _32, _64>;
+      using TileShapePV = Shape<_256, _32, _32>;
+      using TileShapeOutPut = Shape<_256, _128, _32>;
+      using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+      run_mha_fwd_specialized(
+          TileShapeQK,
+          TileShapePV,
+          TileShapeOutPut,
+          SubgroupLayout,
+          PipelineStages);
     }
   } else if (headdim == 192) {
     constexpr int PipelineStages = 2;
@@ -375,6 +449,7 @@ void run_mha_fwd(
     void* logsumexp,
     bool is_causal,
     float scale,
+    bool is_bshd,
     at::ScalarType dtype) {
   FP16_SWITCH(dtype == at::kHalf, [&] {
     BOOL_SWITCH(is_causal, IS_CAUSAL, [&] {
@@ -386,7 +461,8 @@ void run_mha_fwd(
           static_cast<const elem_type*>(value),
           static_cast<elem_type*>(out),
           static_cast<float*>(logsumexp),
-          scale);
+          scale,
+          is_bshd);
     });
   });
 }
@@ -490,25 +566,6 @@ flash_attention_forward_sycltla(
     layout = ATTN_TENSOR_LAYOUT::BSHD;
   }
 
-  at::Tensor query_ = query, key_ = key, value_ = value;
-  {
-    // Currently fwd only supports BSHD layout.
-    // However, input headdim may be padded when headdim is not multiple of 64.
-    // The pad op will make input tensor become BHSD contiguous.
-    // TODO: This code block is temporary WA. Remove it after supporting BHSD
-    // layouts.
-    if (layout != ATTN_TENSOR_LAYOUT::BSHD) {
-      query_ = attn_tensor_to_layout(query, ATTN_TENSOR_LAYOUT::BSHD);
-      key_ = attn_tensor_to_layout(key, ATTN_TENSOR_LAYOUT::BSHD);
-      value_ = attn_tensor_to_layout(value, ATTN_TENSOR_LAYOUT::BSHD);
-      layout = ATTN_TENSOR_LAYOUT::BSHD;
-    }
-  }
-
-  TORCH_CHECK(
-      layout == ATTN_TENSOR_LAYOUT::BSHD,
-      "FlashAttentionForwardXPU: currently only support BSHD layout");
-
   auto opts = query.options();
   at::Tensor out;
   if (layout == ATTN_TENSOR_LAYOUT::BHSD) {
@@ -559,16 +616,18 @@ flash_attention_forward_sycltla(
       headsize_qk,
       headsize_vo);
 
+  bool is_bshd = (layout == ATTN_TENSOR_LAYOUT::BSHD);
   cute::run_mha_fwd<decltype(problem_shape)>(
       sycl_queue,
       problem_shape,
-      query_.data_ptr(),
-      key_.data_ptr(),
-      value_.data_ptr(),
+      query.data_ptr(),
+      key.data_ptr(),
+      value.data_ptr(),
       out.data_ptr(),
       logsumexp.data_ptr(),
       is_causal,
       scale,
+      is_bshd,
       dtype);
 
   return std::tuple<

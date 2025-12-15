@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <sycl/sycl.hpp>
@@ -157,7 +167,7 @@ class FlashPrefillSoftmaxEpilogue<
         }
         CUTLASS_PRAGMA_UNROLL
         for (int z = 0; z < FragsNOut; z++) {
-          auto base_indx = indx + (z * Vec * FragsM); // z * 16 rows
+          auto base_indx = indx + (z * Vec * FragsM); // z * 16 rows -
           out(base_indx) *= exp_scale_bcast;
         }
       }
@@ -173,3 +183,5 @@ class FlashPrefillSoftmaxEpilogue<
 } // namespace collective
 } // namespace flash_attention
 } // namespace cutlass
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
