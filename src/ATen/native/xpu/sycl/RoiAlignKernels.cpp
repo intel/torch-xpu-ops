@@ -561,4 +561,3 @@ Tensor roi_align_backward_kernel(
 }
 
 } // namespace at::native::xpu
-

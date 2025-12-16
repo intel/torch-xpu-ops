@@ -1698,4 +1698,3 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
 }
 
 } // namespace at::native::xpu
-

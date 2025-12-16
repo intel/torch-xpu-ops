@@ -539,4 +539,3 @@ void nll_loss2d_backward_kernel(
 }
 
 } // namespace at::native::xpu
-

@@ -324,4 +324,3 @@ Tensor quantized_max_pool2d_kernel(
 }
 
 } // namespace at::native::xpu
-

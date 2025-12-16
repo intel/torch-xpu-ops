@@ -854,4 +854,3 @@ void scatter_scalar_reduce_kernel(
 } // namespace xpu
 } // namespace native
 } // namespace at
-

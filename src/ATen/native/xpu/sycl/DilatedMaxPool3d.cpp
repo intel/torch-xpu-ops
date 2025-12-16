@@ -795,4 +795,3 @@ void max_pool3d_with_indices_backward_kernel(
 }
 
 } // namespace at::native::xpu
-

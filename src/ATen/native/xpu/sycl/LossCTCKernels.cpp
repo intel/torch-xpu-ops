@@ -1295,4 +1295,3 @@ Tensor ctc_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
-

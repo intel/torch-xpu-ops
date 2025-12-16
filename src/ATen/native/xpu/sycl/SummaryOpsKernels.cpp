@@ -325,4 +325,3 @@ Tensor bincount_kernel(
   });
 }
 } // namespace at::native::xpu
-

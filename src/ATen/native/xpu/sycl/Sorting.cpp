@@ -548,4 +548,3 @@ void launch_kthvalue_kernel(
 }
 
 } // namespace at::native::xpu
-

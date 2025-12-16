@@ -290,4 +290,3 @@ void fractional_max_pool2d_backward_kernel(
 }
 
 } // namespace at::native::xpu
-

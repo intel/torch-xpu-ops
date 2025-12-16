@@ -1806,4 +1806,3 @@ void grid_sampler_3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
-

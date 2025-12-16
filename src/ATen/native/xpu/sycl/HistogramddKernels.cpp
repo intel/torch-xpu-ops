@@ -543,4 +543,3 @@ void histogram_select_outer_bin_edges_kernel(
 }
 
 } // namespace at::native::xpu
-

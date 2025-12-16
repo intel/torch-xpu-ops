@@ -2183,4 +2183,3 @@ Tensor index_select_sparse_kernel(
 }
 
 } // namespace at::native::xpu
-
