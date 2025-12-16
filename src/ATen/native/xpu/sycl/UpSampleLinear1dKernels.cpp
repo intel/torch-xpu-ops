@@ -217,4 +217,3 @@ void upsample_linear1d_backward_kernel(
       });
 }
 } // namespace at::native::xpu
-

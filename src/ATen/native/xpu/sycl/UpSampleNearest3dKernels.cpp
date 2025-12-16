@@ -439,4 +439,3 @@ void upsample_nearest3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
