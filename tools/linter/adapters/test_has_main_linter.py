@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """
 This lint verifies that every Python test file (file that matches test_*.py or
 *_test.py in the test folder) has a main block which raises an exception or
