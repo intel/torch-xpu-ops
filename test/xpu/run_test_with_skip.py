@@ -33,13 +33,13 @@ def should_skip_entire_file(skip_list):
 
 platform = sys.platform
 print(f"Running test on the platform: {platform}")
-# Import window skip dictionary if Platform is Windows
+# Import Windows skip dictionary if Platform is Windows
 if platform.startswith("win"):
     try:
-        # Import the window skip dictionary module
-        from windows_skip_dict import skip_dict as window_skip_dict
+        # Import the Windows skip dictionary module
+        from windows_skip_dict import skip_dict as win_skip_dict
 
-        # Merge the window skip dictionary with the default one using intelligent strategy
+        # Merge the Windows skip dictionary with the default one using intelligent strategy
         merged_skip_dict = {}
 
         # First, copy all keys from default skip_dict
@@ -50,9 +50,9 @@ if platform.startswith("win"):
                 else (skip_dict[key].copy() if skip_dict[key] else [])
             )
 
-        # Then merge with window_skip_dict using intelligent strategy
-        for key in window_skip_dict:
-            window_skip_list = window_skip_dict[key]
+        # Then merge with win_skip_dict using intelligent strategy
+        for key in win_skip_dict:
+            window_skip_list = win_skip_dict[key]
 
             if key in merged_skip_dict:
                 default_skip_list = merged_skip_dict[key]
@@ -77,7 +77,7 @@ if platform.startswith("win"):
                     merged_skip_dict[key] = combined_list
                     print(f"Windows merging skip lists for {key}: {combined_list}")
             else:
-                # Add new key-value pair from window_skip_dict
+                # Add new key-value pair from win_skip_dict
                 merged_skip_dict[key] = window_skip_list
                 print(f"Windows adding new skip key: {key} with {window_skip_list}")
 
@@ -85,11 +85,11 @@ if platform.startswith("win"):
 
     except ImportError:
         print(
-            "Warning: window_skip_dict module not found, using default skip dictionary"
+            "Warning: win_skip_dict module not found, using default skip dictionary"
         )
         merged_skip_dict = skip_dict
     except Exception as e:
-        print(f"Error importing window skip dictionary: {e}")
+        print(f"Error importing Windows skip dictionary: {e}")
         merged_skip_dict = skip_dict
 else:
     merged_skip_dict = skip_dict

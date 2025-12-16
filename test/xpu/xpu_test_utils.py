@@ -1105,7 +1105,7 @@ def copy_tests(
 def launch_test(test_case, skip_list=None, exe_list=None):
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
     module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
-    if skip_list and len(skip_list) > 0:
+    if skip_list is not None and len(skip_list) > 0:
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
@@ -1115,7 +1115,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
         )
         test_command += skip_options
-    elif exe_list and len(exe_list) > 0:
+    elif exe_list is not None and len(exe_list) > 0:
         exe_options = ' -k "' + exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
