@@ -84,9 +84,7 @@ if platform.startswith("win"):
         print("Using intelligently merged skip dictionary")
 
     except ImportError:
-        print(
-            "Warning: win_skip_dict module not found, using default skip dictionary"
-        )
+        print("Warning: win_skip_dict module not found, using default skip dictionary")
         merged_skip_dict = skip_dict
     except Exception as e:
         print(f"Error importing Windows skip dictionary: {e}")
