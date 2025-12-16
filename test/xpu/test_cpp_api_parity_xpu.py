@@ -21,7 +21,7 @@ from cpp_api_parity.utils import is_torch_nn_functional_test
 # NOTE: turn this on if you want to print source code of all C++ tests (e.g. for debugging purpose)
 PRINT_CPP_SOURCE = False
 
-devices = ["cpu", "cuda", "xpu"]
+devices = ["cpu", "xpu"]
 
 PARITY_TABLE_PATH = os.path.join(
     os.path.dirname(__file__) + "/../../../../test",
@@ -75,11 +75,11 @@ assert len(
 # Assert that there exists auto-generated tests for `SampleModule` and `sample_functional`.
 # 4 == 2 (number of test dicts that are not skipped) * 2 (number of devices)
 print([name for name in TestCppApiParity.__dict__ if "SampleModule" in name])
-assert len([name for name in TestCppApiParity.__dict__ if "SampleModule" in name]) == 6
+assert len([name for name in TestCppApiParity.__dict__ if "SampleModule" in name]) == 4
 # 4 == 2 (number of test dicts that are not skipped) * 2 (number of devices)
 assert (
     len([name for name in TestCppApiParity.__dict__ if "sample_functional" in name])
-    == 6
+    == 4
 )
 
 module_impl_check.build_cpp_tests(TestCppApiParity, print_cpp_source=PRINT_CPP_SOURCE)

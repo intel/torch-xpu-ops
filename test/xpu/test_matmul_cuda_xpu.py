@@ -1291,11 +1291,9 @@ class TestMixedDtypesLinearCuda(TestCase):
             )
 
 
+instantiate_device_type_tests(TestMatmulCuda, globals(), allow_xpu=True, only_for="xpu")
 instantiate_device_type_tests(
-    TestMatmulCuda, globals(), allow_xpu=True, except_for="cpu"
-)
-instantiate_device_type_tests(
-    TestMixedDtypesLinearCuda, globals(), allow_xpu=True, except_for="cpu"
+    TestMixedDtypesLinearCuda, globals(), allow_xpu=True, only_for="xpu"
 )
 
 if __name__ == "__main__":
