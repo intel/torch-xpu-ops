@@ -22,7 +22,9 @@
 #else
 #include <ATen/ops/_scaled_dot_product_efficient_attention_native.h>
 #include <ATen/ops/empty_like.h>
+#include <ATen/ops/full.h>
 #include <ATen/ops/linear.h>
+#include <ATen/ops/scalar_tensor.h>
 #include <ATen/ops/scaled_dot_product_attention.h>
 #include <ATen/ops/split_native.h>
 #endif
@@ -357,8 +359,17 @@ _scaled_dot_product_efficient_attention_xpu(
       std::nullopt, /*dropout_mask*/
       scale,
       true);
+  auto attention = std::get<0>(res);
+  auto sizes = attention.sizes(); // [B,H,L,D]
+  int64_t B = sizes[0];
+  int64_t H = sizes[1];
+  Tensor out =
+      attention.permute({0, 2, 1, 3}).contiguous().permute({0, 2, 1, 3});
   return std::make_tuple(
-      std::get<0>(res), std::get<1>(res), Tensor(), Tensor());
+      out,
+      at::full({B, H, 32}, 0.0, attention.options()),
+      at::scalar_tensor(1, query.options()),
+      at::scalar_tensor(1, query.options()));
 }
 
 } // namespace native
