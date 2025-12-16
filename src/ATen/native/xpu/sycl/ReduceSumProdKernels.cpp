@@ -58,15 +58,6 @@ struct SumFunctor {
   }
 };
 
-template <>
-struct SumFunctor<c10::complex<at::Half>> {
-  using scalar_t = c10::complex<at::Half>;
-  using acc_t = at::opmath_type<scalar_t>;
-  inline acc_t operator()(acc_t a, acc_t b) const {
-    return a + b;
-  }
-};
-
 template <
     typename scalar_t,
     typename acc_t = scalar_t,
@@ -75,6 +66,16 @@ struct sum_functor {
   void operator()(TensorIterator& iter) {
     gpu_reduce_kernel<scalar_t, out_t>(
         iter, func_wrapper<out_t>(SumFunctor<acc_t>()));
+  }
+};
+
+template <>
+struct sum_functor<c10::complex<at::Half>> {
+  void operator()(TensorIterator& iter) {
+    using scalar_t = c10::complex<at::Half>;
+    using acc_t = at::opmath_type<scalar_t>;
+    gpu_reduce_kernel<scalar_t, scalar_t>(
+        iter, func_wrapper<scalar_t>(SumFunctor<acc_t>()));
   }
 };
 
