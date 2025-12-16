@@ -100,7 +100,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      pytorch: distributed_2.10
+      pytorch: release/2.10
       runner: distributed
 
   linux-ut:
@@ -131,7 +131,7 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: distributed_2.10
+      pytorch: release/2.10
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
