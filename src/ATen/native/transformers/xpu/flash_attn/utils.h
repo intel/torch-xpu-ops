@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/ATen.h>
@@ -101,7 +111,8 @@ inline bool check_flash_attention_layout(
       sycltla::get_attn_tensor_layout(params.query);
   if (layout == sycltla::ATTN_TENSOR_LAYOUT::UNSUPPORTED) {
     if (debug) {
-      TORCH_WARN("FlashAttentionXPU requires query to be in BSHD layout.");
+      TORCH_WARN(
+          "FlashAttentionXPU requires query to be contiguous in [batch_size, num_head, seq_len, head_dim] or [batch_size, seq_len, num_head, head_dim].");
     }
     return false;
   }
@@ -109,7 +120,8 @@ inline bool check_flash_attention_layout(
       layout, sycltla::get_attn_tensor_layout(params.key));
   if (layout == sycltla::ATTN_TENSOR_LAYOUT::UNSUPPORTED) {
     if (debug) {
-      TORCH_WARN("FlashAttentionXPU requires key to be in BSHD layout.");
+      TORCH_WARN(
+          "FlashAttentionXPU requires key to be contiguous in [batch_size, num_head, seq_len, head_dim] or [batch_size, seq_len, num_head, head_dim].");
     }
     return false;
   }
@@ -117,15 +129,17 @@ inline bool check_flash_attention_layout(
       layout, sycltla::get_attn_tensor_layout(params.value));
   if (layout == sycltla::ATTN_TENSOR_LAYOUT::UNSUPPORTED) {
     if (debug) {
-      TORCH_WARN("FlashAttentionXPU requires value to be in BSHD layout.");
+      TORCH_WARN(
+          "FlashAttentionXPU requires value to be contiguous in [batch_size, num_head, seq_len, head_dim] or [batch_size, seq_len, num_head, head_dim].");
     }
     return false;
   }
   if (layout != sycltla::ATTN_TENSOR_LAYOUT::BSHD &&
+      layout != sycltla::ATTN_TENSOR_LAYOUT::BHSD &&
       layout != sycltla::ATTN_TENSOR_LAYOUT::BXD) {
     if (debug) {
       TORCH_WARN(
-          "FlashAttentionXPU requires query, key, and value to be in BSHD layout.");
+          "FlashAttentionXPU requires query, key, and value to be in [batch_size, num_head, seq_len, head_dim] or [batch_size, seq_len, num_head, head_dim].");
     }
     return false;
   }

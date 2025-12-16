@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # Setup building flags for SYCL device and host codes.
 
 function(CHECK_SYCL_FLAG FLAG VARIABLE_NAME)
@@ -55,9 +63,11 @@ macro(set_build_flags)
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
       # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
       # the issue we wrap paths to SYCL headers in `-isystem`.
-      foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
-        list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
-      endforeach()
+      if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
+        foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
+          list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
+        endforeach()
+      endif()
       # Excluding warnings which flood the compilation output
       # TODO: fix warnings in the source code and then reenable them in compilation
       list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
@@ -144,7 +154,11 @@ macro(set_build_flags)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} ${SYCL_TARGETS_OPTION})
       set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
       set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")
-      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
+      if(TORCH_XPU_ARCH_LIST STREQUAL "cri")
+        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device cri")
+      else()
+        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
+      endif()
     else()
       if(WIN32)
         set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m,ptl")
