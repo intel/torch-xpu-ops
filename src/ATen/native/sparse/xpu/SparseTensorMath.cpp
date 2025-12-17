@@ -294,7 +294,7 @@ Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor&
     tmp_result = at::empty({num_matrices, dim_k, dim_i}, result.options(), at::MemoryFormat::Contiguous);
     need_copy_result = true;
   }
-  Tensor mat1_dense = self._to_dense(std::nullopt, std::nullopt);
+  Tensor mat1_dense = self._to_dense();
   at::bmm_out(tmp_result, mat1_dense, mat2);
   if (need_copy_result) {
     result.copy_(tmp_result);
