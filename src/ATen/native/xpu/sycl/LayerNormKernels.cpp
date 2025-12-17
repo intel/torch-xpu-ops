@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/detail/FunctionTraits.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -1063,8 +1073,10 @@ void _layer_norm_backward_kernel(
       norm_config_global_size / syclMaxSubGroupSize() * 2 <= thread_slots;
   // cuda uses condition M > 64 * 1024 && N / 32 < sm_count / 2 to parallelize
   // in the M dimension
-  if (use_two_stage_col_reduction && M > 64 * 1024 &&
-      N / 32 < syclGpuEuCount() / syclGpuEUCountPerSubslice() / 2) {
+  int xe_core_count = syclGpuEuCount() / syclGpuEUCountPerSubslice();
+  int tile_n = N / 32;
+  if (use_two_stage_col_reduction && M > xe_core_count * 1024 &&
+      tile_n < xe_core_count * 2) {
     const size_t local_size_x = 8;
     const size_t SIMD = 32;
     // workgroup size is 256

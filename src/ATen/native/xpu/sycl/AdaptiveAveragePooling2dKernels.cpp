@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
@@ -695,6 +705,8 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
         numel_(numel) {}
 
  private:
+  vec_t* output_;
+  const vec_t* input_;
   int ih_;
   int iw_;
   int ob_;
@@ -702,8 +714,6 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
   int oh_;
   int ow_;
   int64_t numel_;
-  const vec_t* input_;
-  vec_t* output_;
 };
 
 #define LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(                                  \

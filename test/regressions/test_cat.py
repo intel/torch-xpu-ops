@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # Owner(s): ["module: intel"]
 import torch
 from torch.testing._internal.common_device_type import (
@@ -6,6 +14,9 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_dtype import float8_types_and
 from torch.testing._internal.common_utils import run_tests, TestCase
+
+cpu_device = torch.device("cpu")
+xpu_device = torch.device("xpu")
 
 
 class TestTorchMethod(TestCase):
@@ -60,6 +71,21 @@ class TestTorchMethod(TestCase):
         dim = 1
 
         self._test_cat_float8_core(tensors, dim, dtype)
+
+    def _float4_dummy_tensor(self, shape, device):
+        data = torch.ones(shape, dtype=torch.uint8, device=device)
+        return data.view(torch.float4_e2m1fn_x2)
+
+    def test_cat_float4_simple(self):
+        input_cpu1 = self._float4_dummy_tensor([2, 2, 6], device=cpu_device)
+        input_cpu2 = self._float4_dummy_tensor([2, 2, 6], device=cpu_device)
+        output_cpu = torch.stack([input_cpu1, input_cpu2]).view(torch.uint8)
+
+        input_xpu1 = self._float4_dummy_tensor([2, 2, 6], device=xpu_device)
+        input_xpu2 = self._float4_dummy_tensor([2, 2, 6], device=xpu_device)
+        output_xpu = torch.stack([input_xpu1, input_xpu2]).view(torch.uint8)
+
+        self.assertEqual(output_xpu, output_cpu)
 
     def test_cat_8d(self, dtype=torch.float):
         input1 = torch.randn([256, 8, 8, 3, 3, 3, 3], dtype=dtype)

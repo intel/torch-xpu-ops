@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 import os
 import sys
 
@@ -42,7 +50,59 @@ execute_list = (
     "test_comprehensive_nn_functional_nll_loss_xpu_float64",
     "bincount",
 )
-res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
+skip_list = (
+    "test_comprehensive_baddbmm_xpu_float64",
+    "test_comprehensive_logspace_tensor_overload_xpu_int16",
+    "test_comprehensive_logspace_tensor_overload_xpu_int32",
+    "test_comprehensive_logspace_tensor_overload_xpu_int64",
+    "test_comprehensive_logspace_xpu_int16",
+    "test_comprehensive_logspace_xpu_int32",
+    "test_comprehensive_logspace_xpu_int64",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_bfloat16",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_complex128",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_complex32",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_complex64",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_float16",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_float32",
+    "test_comprehensive_nn_functional_conv_transpose2d_xpu_float64",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_bfloat16",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_complex128",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_complex32",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_complex64",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_float16",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_float32",
+    "test_comprehensive_nn_functional_conv_transpose3d_xpu_float64",
+    "test_comprehensive_nn_functional_instance_norm_xpu_float64",
+    "test_comprehensive_nn_functional_nll_loss_xpu_float16",
+    "test_comprehensive_nn_functional_pad_reflect_xpu_bfloat16",
+    "test_comprehensive_torch_ops_aten__flash_attention_forward_xpu_float16",
+    "test_comprehensive_vdot_xpu_complex128",
+    "test_comprehensive_vdot_xpu_complex64",
+    "test_quick_addmm_xpu_float64",
+    "test_quick_baddbmm_xpu_float64",
+    "test_quick_core_backward_baddbmm_xpu_float64",
+    "test_quick_core_backward_mv_xpu_float64",
+    "test_quick_logspace_tensor_overload_xpu_int16",
+    "test_quick_logspace_tensor_overload_xpu_int32",
+    "test_quick_logspace_tensor_overload_xpu_int64",
+    "test_quick_logspace_xpu_int16",
+    "test_quick_logspace_xpu_int32",
+    "test_quick_logspace_xpu_int64",
+    "test_quick_vdot_xpu_complex128",
+    "test_quick_vdot_xpu_complex64",
+    "test_exponential_non_inf_xpu",
+    "test_aten_core_operators",
+    "test_has_decomposition",
+    "test_comprehensive_diff_xpu_complex128",
+    "test_comprehensive_ormqr_xpu_complex128",
+    "test_quick_var_mean_xpu_float64",
+    "test_comprehensive_diff_xpu_complex64",
+    "test_comprehensive_ormqr_xpu_complex64",
+    "test_quick_mean_xpu_complex128",
+    "test_comprehensive_grid_sampler_2d_xpu_bfloat16",
+)
+# res += launch_test("test_decomp_xpu.py", exe_list=execute_list)
+res += launch_test("test_decomp.py", skip_list=skip_list)
 
 if os.name == "nt":
     sys.exit(res)

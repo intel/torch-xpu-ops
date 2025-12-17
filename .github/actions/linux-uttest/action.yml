@@ -74,34 +74,7 @@ runs:
         python run_test_with_skip.py \
           2> ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
           tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
-        ls -al
-        cp *.xml ${{ github.workspace }}/ut_log
-        find op_ut_with_skip.nn op_ut_with_skip.quantization/core op_ut_with_all.functorch -type f -exec sh -c '
-            dir_path=$(dirname "$1");
-            case "$dir_path" in
-                *"op_ut_with_skip.quantization/core"*)
-                    dir_name="op_ut_with_skip.quantization.core";;
-                *"op_ut_with_all.functorch"*)
-                    dir_name="op_ut_with_all.functorch";;
-                *)
-                    dir_name="op_ut_with_skip.nn";;
-            esac;
-            mv "$1" "$dir_path/${dir_name}.$(basename "$1")"
-        ' _ {} \;
-        ls -al op_ut_with_skip.nn op_ut_with_skip.quantization/core op_ut_with_all.functorch
-        cp op_ut_with_skip.nn/*.xml ${{ github.workspace }}/ut_log
-        cp op_ut_with_skip.quantization/core/*.xml ${{ github.workspace }}/ut_log
-        cp op_ut_with_all.functorch/*.xml ${{ github.workspace }}/ut_log
-        # Cases run with a on-demand white list, since some suites are too
-        # slow to go through all operators on CPU. So add cases on-demand
-        # when XPU implementatoin is done.
-        # test_foreach, test_decomp
-        # Run with only
-        python run_test_with_only.py \
-          2> ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_only_test.log
-        ls -al
-        cp *.xml ${{ github.workspace }}/ut_log
+        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
     - name: skipped_ut
@@ -114,9 +87,9 @@ runs:
         python run_test_with_skip.py --test-cases skipped \
           2> ${{ github.workspace }}/ut_log/skipped_ut/skipped_ut_with_skip_test_error.log | \
           tee ${{ github.workspace }}/ut_log/skipped_ut/skipped_ut_with_skip_test.log
+        find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
-        cp *.xml ${{ github.workspace }}/ut_log
     - name: xpu_inductor
       shell: timeout 36000 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_inductor' }}

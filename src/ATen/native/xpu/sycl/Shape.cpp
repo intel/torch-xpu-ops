@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/WrapDimUtils.h>
@@ -395,7 +405,8 @@ void cat_out_kernel(
         kBool,
         kBFloat16,
         AT_EXPAND(AT_FLOAT8_TYPES),
-        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+        kFloat4_e2m1fn_x2);
   } else {
     offset = 0;
     for (j = 0; j < numInputs; j++) {
