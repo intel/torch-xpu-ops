@@ -31,10 +31,9 @@ def should_skip_entire_file(skip_list):
     return any(item.endswith(".py::") for item in skip_list)
 
 
-platform = sys.platform
-print(f"Running test on the platform: {platform}")
+print(f"Running test on the platform: {os.name}")
 # Import Windows skip dictionary if Platform is Windows
-if platform.startswith("win"):
+if os.name == "nt":
     try:
         # Import the Windows skip dictionary module
         from windows_skip_dict import skip_dict as win_skip_dict
