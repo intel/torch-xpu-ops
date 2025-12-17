@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #pragma once
 
 #ifdef USE_C10D_XCCL
@@ -6,7 +20,7 @@
 #define CCL_ENABLE_ZE
 #define CCL_ENABLE_SYCL
 
-#include <oneapi/ccl.hpp>
+#include <xccl/xccl.h>
 #include <exception>
 #include <future>
 #include <list>
@@ -41,8 +55,6 @@ static std::vector<std::string> TORCH_XCCL_XPU_EVENT_CACHE = {
 
 static std::vector<std::string> TORCH_XCCL_ENABLE_TIMING = {
     "TORCH_XCCL_ENABLE_TIMING"};
-
-using xcclComm_t = ccl::communicator;
 
 static std::vector<std::string> TORCH_XCCL_NAN_CHECK = {"TORCH_XCCL_NAN_CHECK"};
 
@@ -308,11 +320,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // `xcclActiveGroupCounter_` is introduced to track group calls made
           // in the frontend. In this scenario, the `groupStart` wrap API is
           // used.
-          ccl::group_start();
+          xccl::oneccl_group_start();
         },
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
-          ccl::group_end();
+          xccl::oneccl_group_end();
         },
         opType,
         asyncOp,
@@ -469,8 +481,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
-  std::unordered_map<std::string, std::pair<at::xpu::XPUStream, ccl::stream>>
-      xcclStreamsMap_;
+  std::unordered_map<std::string, XCCLStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
   std::unordered_map<std::string, std::shared_ptr<xcclComm_t>> devXCCLCommMap_;
   c10::intrusive_ptr<Store> store_;
@@ -501,41 +512,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   friend class HeartbeatMonitorXCCL;
 
  private:
-  std::mutex kvs_mutex;
-
-  ccl::shared_ptr_class<ccl::kvs> get_kvs(
-      int rank,
-      c10d::Store& store,
-      bool singleP2POp = false,
-      const std::string& p2pKey = "",
-      int p2pRank = 0) {
-    std::lock_guard<std::mutex> lock(kvs_mutex);
-    ccl::shared_ptr_class<ccl::kvs> kvs;
-    std::string storeKey;
-    if (!singleP2POp) {
-      storeKey = std::to_string(xcclCommCounter_++);
-    } else {
-      storeKey = p2pKey;
-    }
-    // Rank 0 broadcast the bootstrap network information to other ranks
-    if (rank == 0 || (singleP2POp && p2pRank == 0)) {
-      kvs = ccl::create_main_kvs();
-      ccl::kvs::address_type main_addr = kvs->get_address();
-      auto ccl_kvs_addr =
-          std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-      store.set(storeKey, ccl_kvs_addr);
-    } else {
-      auto ccl_kvs_addr = store.get(storeKey);
-      if (ccl_kvs_addr.size() != ccl::kvs::address_max_size) {
-        throw std::runtime_error("Unexpected ccl kvs addr from the store\n");
-      }
-      ccl::kvs::address_type main_addr;
-      std::copy_n(
-          ccl_kvs_addr.begin(), ccl::kvs::address_max_size, main_addr.begin());
-      kvs = ccl::create_kvs(main_addr);
-    }
-    return kvs;
-  }
+  std::mutex kvs_mutex_;
 };
 
 // Dumps the comm traces and additional information about the ProcessGroup.
@@ -566,31 +543,6 @@ ReduceOp makeXCCLPreMulSum(const T& factor) {
 } // namespace c10d
 
 namespace {
-
-inline std::string reduceOpToString(c10d::ReduceOp op) {
-  switch (op) {
-    case c10d::ReduceOp::SUM:
-      return "SUM";
-    case c10d::ReduceOp::PRODUCT:
-      return "PRODUCT";
-    case c10d::ReduceOp::MIN:
-      return "MIN";
-    case c10d::ReduceOp::MAX:
-      return "MAX";
-    case c10d::ReduceOp::BAND:
-      return "BAND";
-    case c10d::ReduceOp::BOR:
-      return "BOR";
-    case c10d::ReduceOp::BXOR:
-      return "BXOR";
-    case c10d::ReduceOp::AVG:
-      return "AVG";
-    case c10d::ReduceOp::PREMUL_SUM:
-      return "PREMUL_SUM";
-    default:
-      return "UNKNOWN";
-  }
-}
 
 // Since the current profiler trace support for XCCL is unclear, wrap
 // `RECORD_PARAM_COMMS_DATA` and output parameters as debug logs.
