@@ -2071,7 +2071,7 @@ class TestSparse(TestSparseBase):
 
     @coalescedonoff
     @precisionOverride({torch.bfloat16: 5e-2, torch.float16: 5e-2})
-    @toleranceOverride({torch.double: tol(atol=2e-6, rtol=2e-6)})
+    @toleranceOverride({torch.double: tol(atol=2e-6, rtol=1e-6)})
     @dtypes(torch.double, torch.cdouble, torch.bfloat16, torch.float16)
     @dtypesIfMPS(torch.float32, torch.complex64, torch.bfloat16, torch.float16)
     def test_sparse_addmm(self, device, dtype, coalesced):
