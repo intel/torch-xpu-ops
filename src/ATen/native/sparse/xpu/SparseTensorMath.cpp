@@ -11,6 +11,7 @@
 #include <ATen/TensorOperators.h>
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
 #include <c10/xpu/XPUFunctions.h>
+#include <ATen/TensorOperators.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -24,8 +25,6 @@
 #endif
 
 #include <ATen/ExpandUtils.h>
-
-#include <iostream>
 
 namespace at::native {
 
@@ -294,7 +293,7 @@ Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor&
     tmp_result = at::empty({num_matrices, dim_k, dim_i}, result.options(), at::MemoryFormat::Contiguous);
     need_copy_result = true;
   }
-  Tensor mat1_dense = self._to_dense();
+  Tensor mat1_dense = self.to_dense();
   at::bmm_out(tmp_result, mat1_dense, mat2);
   if (need_copy_result) {
     result.copy_(tmp_result);
