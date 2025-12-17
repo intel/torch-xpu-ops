@@ -79,9 +79,12 @@ fi
 # Test
 pip install -U numpy==1.26.4
 test_result=1
+rm -rf /tmp/test-xpu-tmp
+git clone https://github.com/intel/torch-xpu-ops /tmp/test-xpu-tmp
+
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
-    rsync -avz ${GITHUB_WORKSPACE}/gs-scripts/.ci/benchmarks/ benchmarks/dynamo/
+    rsync -avz /tmp/test-xpu-tmp/gs-scripts/.ci/benchmarks/ benchmarks/dynamo/
     rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
@@ -93,7 +96,7 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
     fi
 elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
-    rsync -avz ${GITHUB_WORKSPACE}/gs-scripts/.ci/benchmarks/ benchmarks/dynamo/
+    rsync -avz /tmp/test-xpu-tmp/gs-scripts/.ci/benchmarks/ benchmarks/dynamo/
     rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
