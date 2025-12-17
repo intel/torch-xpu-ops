@@ -9,6 +9,7 @@
  */
 
 #include <ATen/NestedTensorImpl.h>
+#include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/transformers/attention.h>
@@ -360,14 +361,21 @@ _scaled_dot_product_efficient_attention_xpu(
       scale,
       true);
   auto attention = std::get<0>(res);
-  auto sizes = attention.sizes(); // [B,H,L,D]
-  int64_t B = sizes[0];
-  int64_t H = sizes[1];
+  // logsumexp is padded along the query dimension to kAlignLSE
+  // so that backward kernels can perform vectorized loads safely.
+  // This matches the contract expected by memory-efficient attention kernels.
+  constexpr int64_t kAlignLSE = 32;
+  int64_t B = query.size(0);
+  int64_t H = query.size(1);
+  int64_t L = query.size(2);
   Tensor out =
       attention.permute({0, 2, 1, 3}).contiguous().permute({0, 2, 1, 3});
   return std::make_tuple(
       out,
-      at::full({B, H, 32}, 0.0, attention.options()),
+      at::full(
+          {B, H, (compute_log_sumexp ? ceil_div(L, kAlignLSE) * kAlignLSE : 0)},
+          0.0,
+          attention.options()),
       at::scalar_tensor(1, query.options()),
       at::scalar_tensor(1, query.options()));
 }
