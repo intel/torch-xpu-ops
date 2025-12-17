@@ -78,7 +78,8 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
   TORCH_CHECK(sparse_.sparse_dim() == 2, "addmm: expected first two dims to be sparse (indices has size 2 at first dim), but got ", sparse_.sparse_dim(), " sparse dims");
   // no need to check dense_dim because dense_dim + sparse_dim = dim
 
-  Tensor mat1_dense = sparse_._to_dense(std::nullopt, std::nullopt);
+  // Tensor mat1_dense = sparse_._to_dense(std::nullopt, std::nullopt);
+  Tensor mat1_dense = sparse_._to_dense();
 
   r_ = t.mul(beta).add(mat1_dense.mm(dense).mul(alpha));
 
