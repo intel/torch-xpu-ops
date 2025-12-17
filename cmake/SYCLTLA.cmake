@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 macro(replace_cmake_build_flags)
   set(CMAKE_C_FLAG_BK "${CMAKE_C_FLAGS}")
   set(CMAKE_CXX_FLAGS_BK "${CMAKE_CXX_FLAGS}")

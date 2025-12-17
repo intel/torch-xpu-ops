@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
@@ -70,14 +84,14 @@ void _mkl_dft(
     desc.set_value(config_param::FWD_DISTANCE, idist);
     desc.set_value(config_param::BWD_DISTANCE, odist);
 
-    desc.set_value(config_param::FWD_STRIDES, input_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, output_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, input_strides);
+    desc.set_value(config_param::BWD_STRIDES, output_strides);
   } else {
     desc.set_value(config_param::FWD_DISTANCE, odist);
     desc.set_value(config_param::BWD_DISTANCE, idist);
 
-    desc.set_value(config_param::FWD_STRIDES, output_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, input_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, output_strides);
+    desc.set_value(config_param::BWD_STRIDES, input_strides);
   }
 
   if (!complex_input || !complex_output) {
@@ -90,7 +104,7 @@ void _mkl_dft(
   desc.commit(queue);
 
   // Obtain the size of workspace required after commit.
-  size_t workspaceSizeBytes = 0;
+  int64_t workspaceSizeBytes = 0;
   desc.get_value(
       oneapi::mkl::dft::config_param::WORKSPACE_BYTES, &workspaceSizeBytes);
 

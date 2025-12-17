@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
@@ -222,14 +232,14 @@ struct Param {
         k_ptr(k),
         v_ptr(v),
         lse_ptr(lse),
+        scale_softmax(softmax_scale),
+        scale_softmax_log2(softmax_scale * M_LOG2E),
         odo_ptr(odo),
         dqaccum_ptr(dqaccum),
         dq_ptr(dq),
         dk_ptr(dk),
         dv_ptr(dv),
         pb_ptr(pb),
-        scale_softmax(softmax_scale),
-        scale_softmax_log2(softmax_scale * M_LOG2E),
         is_bhsd(true) {}
   // read only
   const T* do_ptr;

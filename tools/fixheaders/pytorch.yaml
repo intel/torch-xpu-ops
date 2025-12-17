@@ -1,0 +1,215 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
+exclude:
+  - "tools/linter/adapters/README.md" # Original README file (unmodified)
+  - ".cmakelintrc"
+
+# Custom header groups - files listed here get a specific header
+# instead of the default one
+custom_headers:
+  - header: |
+      Copyright 2020-2025 Intel Corporation
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+      Portions of this file are derived from PyTorch
+      Copyright (c) Meta Platforms, Inc. and affiliates.
+      SPDX-License-Identifier: BSD-3-Clause
+    files:
+      - ".github/ISSUE_TEMPLATE/documentation.yml"
+      - "src/ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.cpp"
+      - "src/ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.cpp"
+      - "src/ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.cpp"
+      - "src/ATen/native/xpu/mkl/SpectralOps.cpp"
+      - "src/ATen/native/xpu/sycl/AveragePool2dKernels.cpp"
+      - "src/ATen/native/xpu/sycl/AveragePool3dKernels.cpp"
+      - "src/ATen/native/xpu/sycl/BucketizationKernels.cpp"
+      - "src/ATen/native/xpu/sycl/DilatedMaxPool2d.cpp"
+      - "src/ATen/native/xpu/sycl/DilatedMaxPool3d.cpp"
+      - "src/ATen/native/xpu/sycl/DistributionTemplates.h"
+      - "src/ATen/native/xpu/sycl/GridSampler.cpp"
+      - "src/ATen/native/xpu/sycl/GridSampler.h"
+      - "src/ATen/native/xpu/sycl/HistogramddKernels.cpp"
+      - "src/ATen/native/xpu/sycl/Im2ColKernel.cpp"
+      - "src/ATen/native/xpu/sycl/IndexUtils.h"
+      - "src/ATen/native/xpu/sycl/MathExtensions.h"
+      - "src/ATen/native/xpu/sycl/MaxUnpoolingKernels.cpp"
+      - "src/ATen/native/xpu/sycl/ResizeKernel.cpp"
+      - "src/ATen/native/xpu/sycl/SharedReduceOps.h"
+      - "src/ATen/native/xpu/sycl/TensorModeKernel.cpp"
+      - "src/ATen/native/xpu/sycl/UnfoldBackwardKernels.cpp"
+      - "src/ATen/native/xpu/Bucketization.cpp"
+      - "src/ATen/native/xpu/DilatedMaxPool3d.cpp"
+      - "src/ATen/native/xpu/GatedLinearUnit.cpp"
+      - "src/ATen/native/xpu/GridSampler.cpp"
+      - "src/ATen/native/xpu/Indexing.cpp"
+      - "src/ATen/native/xpu/LayerNorm.cpp"
+      - "src/ATen/native/xpu/LossMultiLabelMargin.cpp"
+      - "src/ATen/native/xpu/RangeFactories.cpp"
+      - "src/ATen/native/xpu/ReduceOps.cpp"
+      - "src/ATen/native/xpu/ScanKernels.cpp"
+      - "src/ATen/native/xpu/Sorting.cpp"
+      - "src/ATen/native/xpu/TensorAdvancedIndexing.cpp"
+      - "src/ATen/native/xpu/UpSample.h"
+      - "src/ATen/xpu/EmptyTensor.cpp"
+      - "src/comm/MemoryFormat.h"
+      - "src/comm/RegisterUtils.h"
+      - "src/xccl/ProcessGroupXCCL.cpp"
+      - "src/xccl/ProcessGroupXCCL.hpp"
+      - "src/xccl/reducer_xpu.cpp"
+      - "test/xpu/distributed/test_c10d_ops_xccl.py"
+      - "test/xpu/distributed/test_c10d_xccl.py"
+      - "test/xpu/nn/test_convolution_xpu.py"
+      - "test/xpu/nn/test_dropout_xpu.py"
+      - "test/xpu/nn/test_packed_sequence_xpu.py"
+      - "test/xpu/nn/test_pooling_xpu.py"
+      - "test/xpu/quantization/core/test_quantized_tensor_xpu.py"
+      - "test/xpu/quantization/core/test_workflow_ops_xpu.py"
+      - "test/xpu/test_autograd_xpu.py"
+      - "test/xpu/test_binary_ufuncs_xpu.py"
+      - "test/xpu/test_dataloader_xpu.py"
+      - "test/xpu/test_distributions_xpu.py"
+      - "test/xpu/test_linalg_xpu.py"
+      - "test/xpu/test_modules_xpu.py"
+      - "test/xpu/test_nestedtensor_xpu.py"
+      - "test/xpu/test_nn_xpu.py"
+      - "test/xpu/test_sort_and_select_xpu.py"
+      - "test/xpu/test_sparse_csr_xpu.py"
+      - "test/xpu/test_sparse_xpu.py"
+      - "test/xpu/test_tensor_creation_ops_xpu.py"
+      - "test/xpu/test_torch_xpu.py"
+      - "test/xpu/test_unary_ufuncs_xpu.py"
+      - "test/xpu/xpu_test_utils.py"
+      - "tools/linter/adapters/actionlint_linter.py"
+      - "tools/linter/adapters/black_linter.py"
+      - "tools/linter/adapters/clangformat_linter.py"
+      - "tools/linter/adapters/clangtidy_linter.py"
+      - "tools/linter/adapters/cmake_linter.py"
+      - "tools/linter/adapters/constexpr_linter.py"
+      - "tools/linter/adapters/exec_linter.py"
+      - "tools/linter/adapters/flake8_linter.py"
+      - "tools/linter/adapters/grep_linter.py"
+      - "tools/linter/adapters/mypy_linter.py"
+      - "tools/linter/adapters/nativefunctions_linter.py"
+      - "tools/linter/adapters/newlines_linter.py"
+      - "tools/linter/adapters/no_merge_conflict_csv_linter.py"
+      - "tools/linter/adapters/pip_init.py"
+      - "tools/linter/adapters/pyfmt_linter.py"
+      - "tools/linter/adapters/ruff_linter.py"
+      - "tools/linter/adapters/s3_init.py"
+      - "tools/linter/adapters/ufmt_linter.py"
+      - "tools/linter/adapters/update_s3.py"
+      - "tools/linter/clang_tidy/generate_build_files.py"
+
+
+
+  - header: |
+      Copyright 2020-2025 Intel Corporation
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+      Portions of this file are derived from PyTorch
+      Copyright (c) Meta Platforms, Inc. and affiliates.
+      SPDX-License-Identifier: BSD-3-Clause
+
+      Kernel for fast unfold+copy
+      (borrowed from Caffe: https://github.com/BVLC/caffe/blob/master/src/caffe/layers/conv_layer.cu)
+    files:
+      - "src/ATen/native/xpu/sycl/Col2ImKernel.cpp"
+
+  - header: |
+      Copyright 2020-2025 Intel Corporation
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+      Portions of this file are derived from PyTorch
+      Copyright (c) Meta Platforms, Inc. and affiliates.
+      SPDX-License-Identifier: BSD-3-Clause
+
+      Copyright (c) 2018 MathInf GmbH, Thomas Viehmann
+      Licensed under the BSD-3-Clause license
+      This is the CPU implementation of the Connectionist Temporal Loss.
+      We mostly follow Graves.
+      1. Graves et al: http://www.cs.toronto.edu/~graves/icml_2006.pdf
+      We use the equations from above link, but note that [1] has 1-based indexing and we (of course) use 0-based.
+      Graves et al call the probabilities y, we use log_probs (also calling them inputs)
+    files:
+      - "src/ATen/native/xpu/sycl/LossCTCKernels.cpp"
+
+  - header: |
+      Copyright 2020-2025 Intel Corporation
+
+      Licensed under the Apache License, Version 2.0 (the "License");
+      you may not use this file except in compliance with the License.
+      You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+      Portions of this file are derived from PyTorch
+      Copyright (c) Meta Platforms, Inc. and affiliates.
+      SPDX-License-Identifier: BSD-3-Clause
+
+      Copyright (c) 2016-     Facebook, Inc            (Adam Paszke)
+      Copyright (c) 2014-     Facebook, Inc            (Soumith Chintala)
+      Copyright (c) 2011-2014 Idiap Research Institute (Ronan Collobert)
+      Copyright (c) 2012-2014 Deepmind Technologies    (Koray Kavukcuoglu)
+      Copyright (c) 2011-2012 NEC Laboratories America (Koray Kavukcuoglu)
+      Copyright (c) 2011-2013 NYU                      (Clement Farabet)
+      Copyright (c) 2006-2010 NEC Laboratories America (Ronan Collobert, Leon Bottou, Iain Melvin, Jason Weston)
+      Copyright (c) 2006      Idiap Research Institute (Samy Bengio)
+      Copyright (c) 2001-2004 Idiap Research Institute (Ronan Collobert, Samy Bengio, Johnny Mariethoz)
+
+      All rights reserved.
+
+      Redistribution and use in source and binary forms, with or without
+      modification, are permitted provided that the following conditions are met:
+
+      1. Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+
+      2. Redistributions in binary form must reproduce the above copyright
+      notice, this list of conditions and the following disclaimer in the
+      documentation and/or other materials provided with the distribution.
+
+      3. Neither the names of Facebook, Deepmind Technologies, NYU, NEC Laboratories America
+      and IDIAP Research Institute nor the names of its contributors may be
+      used to endorse or promote products derived from this software without
+      specific prior written permission.
+
+      THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+      AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+      IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+      ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+      LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+      CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+      SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+      INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+      CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+      ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+      POSSIBILITY OF SUCH DAMAGE.
+
+
+      pytroch's implementation using radix-selection
+      - from pytorch/aten/src/THC/THCTensorTopK.cuh
+      https://github.com/pytorch/pytorch/blob/d792c21f72b6bcace80face2a4157528d977bfa9/aten/src/THC/THCTensorTopK.cuh
+      - warning: ignore some types, for eg., does not include THCNumerics for T==half
+    files:
+      - "src/ATen/native/xpu/sycl/SortingRadixSelect.h"

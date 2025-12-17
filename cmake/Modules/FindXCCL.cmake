@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # This will define the following variables:
 # XCCL_FOUND               : True if the system has the XCCL library.
 # XCCL_INCLUDE_DIR         : Include directories needed to use XCCL.
@@ -49,7 +57,14 @@ find_library(
   NO_DEFAULT_PATH
 )
 
-if((NOT XCCL_INCLUDE_DIR) OR (NOT XCCL_LIBRARY_DIR) OR (NOT XCCL_LIBRARY))
+find_file(
+  XCCL_LIBRARY_2_0
+  NAMES libccl.so.2.0
+  HINTS ${XCCL_LIBRARY_DIR}
+  NO_DEFAULT_PATH
+)
+
+if((NOT XCCL_INCLUDE_DIR) OR (NOT XCCL_LIBRARY_DIR) OR (NOT XCCL_LIBRARY) OR (NOT XCCL_LIBRARY_2_0))
   set(XCCL_FOUND False)
   set(XCCL_NOT_FOUND_MESSAGE "OneCCL library not found!!")
   return()
@@ -63,6 +78,6 @@ SET(CMAKE_LIBRARY_PATH ${CMAKE_LIBRARY_PATH}
 find_package_handle_standard_args(
   XCCL
   FOUND_VAR XCCL_FOUND
-  REQUIRED_VARS XCCL_INCLUDE_DIR XCCL_LIBRARY_DIR XCCL_LIBRARY
+  REQUIRED_VARS XCCL_INCLUDE_DIR XCCL_LIBRARY_DIR XCCL_LIBRARY XCCL_LIBRARY_2_0
   REASON_FAILURE_MESSAGE "${XCCL_NOT_FOUND_MESSAGE}"
 )
