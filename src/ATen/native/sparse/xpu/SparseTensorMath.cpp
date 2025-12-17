@@ -78,7 +78,6 @@ Tensor& s_addmm_out_sparse_dense_xpu(Tensor& r_, const Tensor& t, const SparseTe
   TORCH_CHECK(sparse_.sparse_dim() == 2, "addmm: expected first two dims to be sparse (indices has size 2 at first dim), but got ", sparse_.sparse_dim(), " sparse dims");
   // no need to check dense_dim because dense_dim + sparse_dim = dim
 
-  // Tensor mat1_dense = sparse_._to_dense(std::nullopt, std::nullopt);
   Tensor mat1_dense = sparse_._to_dense();
 
   r_ = t.mul(beta).add(mat1_dense.mm(dense).mul(alpha));
@@ -149,8 +148,8 @@ Tensor sparse_sparse_matmul_xpu(const Tensor& mat1_, const Tensor& mat2_) {
   TORCH_CHECK(mat1_.scalar_type() == mat2_.scalar_type(),
            "mat1 dtype ", mat1_.scalar_type(), " does not match mat2 dtype ", mat2_.scalar_type());
 
-  Tensor mat1_dense = mat1_._to_dense(std::nullopt, std::nullopt);
-  Tensor mat2_dense = mat2_._to_dense(std::nullopt, std::nullopt);
+  Tensor mat1_dense = mat1_._to_dense();
+  Tensor mat2_dense = mat2_._to_dense();
 
   Tensor output_dense = at::matmul(mat1_dense, mat2_dense);
 
@@ -191,7 +190,7 @@ Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor&
     tmp_result = at::empty({num_matrices, dim_k, dim_i}, result.options(), at::MemoryFormat::Contiguous);
     need_copy_result = true;
   }
-  Tensor mat1_dense = self._to_dense(std::nullopt, std::nullopt);
+  Tensor mat1_dense = self._to_dense();
   at::bmm_out(tmp_result, mat1_dense, mat2);
   if (need_copy_result) {
     result.copy_(tmp_result);
