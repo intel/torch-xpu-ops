@@ -9524,4 +9524,4 @@
   structured: True
   variants: function
   dispatch:
-    SparseCPU: bmm_out_sparse_xpu
+    SparseXPU: bmm_out_sparse_xpu
