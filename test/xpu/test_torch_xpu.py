@@ -28,7 +28,6 @@ import subprocess
 import sys
 import tempfile
 import textwrap
-import types
 import unittest
 import warnings
 import weakref
