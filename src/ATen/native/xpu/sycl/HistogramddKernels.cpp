@@ -61,7 +61,7 @@ struct HistogramddKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (active && batch_local_id == 0) {
       slm_[batch_idx] = 0;
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // loop if wg_size_ is smaller than total_bin_size_
     for (int s = 0; active && s < scan_size_; ++s) {
@@ -112,7 +112,7 @@ struct HistogramddKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             bin_idx * hist_strides_[dim]);
       }
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     if (active && batch_local_id == 0) {
       auto hist_idx = slm_[batch_idx];
