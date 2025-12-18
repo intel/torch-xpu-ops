@@ -221,11 +221,11 @@ static inline scalar_t group_reduce_agg_without_broadcast(
         item, agg, sg_size);
     if (num_active_sg == 1)
       return agg;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (0 == lane_id) {
       local_shared_mem[sg_id] = agg;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     agg =
         local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
     if (num_active_sg > sg_size)
@@ -233,7 +233,7 @@ static inline scalar_t group_reduce_agg_without_broadcast(
   } while (num_active_sg > sg_size);
 
   // num of active sgs < sg_size
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   if (0 == sg_id) {
     agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
         item, agg, sg_size);

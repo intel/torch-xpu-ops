@@ -294,7 +294,7 @@ void countRadixUsingMask(
     smem[local_id] = 0;
   }
 
-  item_id.barrier(sycl_local_fence);
+  sycl::group_barrier(item_id.get_group());
   // Scan over all the data. Upon a read, the warp will accumulate
   // counts per each digit in the radix using warp voting.
   for (index_t i = local_id; i < sliceSize; i += item_id.get_local_range(0)) {
@@ -315,14 +315,14 @@ void countRadixUsingMask(
     atomicAdd(smem_ptr + i, counts[i]);
   }
 
-  item_id.barrier(sycl_local_fence);
+  sycl::group_barrier(item_id.get_group());
 
   // For each thread, read in the total counts
   for (uint32_t i = 0; i < RadixSize; ++i) {
     counts[i] = smem[i];
   }
 
-  item_id.barrier(sycl_local_fence);
+  sycl::group_barrier(item_id.get_group());
 }
 
 // Over what radix we are selecting values
@@ -348,7 +348,7 @@ scalar_t findPattern(
     smem_ptr[RADIX_SIZE] = static_cast<scalar_t>(0);
   }
 
-  item_id.barrier(sycl_local_fence);
+  sycl::group_barrier(item_id.get_group());
 
   // All threads participate in the loop, in order to sync on the flag
   index_t numIterations =
@@ -367,12 +367,12 @@ scalar_t findPattern(
       smem_ptr[1] = v; // can't use val as the flag, since it could be 0
     }
 
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     scalar_t found = smem_ptr[0];
     scalar_t val = smem_ptr[1];
 
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // Check to see if a thread found the value
     if (found != static_cast<scalar_t>(0)) {

@@ -98,7 +98,7 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       cached_roi_[3] = current_roi[3] * spatial_scale_ - offset;
       cached_roi_[4] = current_roi[4] * spatial_scale_ - offset;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_index_on_batch_n < items_per_roi_) {
       int pw = output_index_on_batch_n % pooled_width_;

@@ -369,7 +369,7 @@ struct ConvDepthwise3dXpuBackwardWeightFunctor
 
     sdata[item.get_local_id(0)] = grad;
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
 #pragma unroll
     for (int i = item.get_local_range(0) / 2; i >= 1; i >>= 1) {
@@ -377,7 +377,7 @@ struct ConvDepthwise3dXpuBackwardWeightFunctor
         sdata[item.get_local_id(0)] += sdata[item.get_local_id(0) + i];
       }
 
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     if (item.get_local_id(0) == 0) {

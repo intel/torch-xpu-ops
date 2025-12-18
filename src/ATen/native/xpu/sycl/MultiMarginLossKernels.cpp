@@ -88,7 +88,7 @@ struct MultiMarginLossForwardKernelFunctor
         smem_[item.get_local_linear_id()] += h;
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // reduce
     if (item.get_local_linear_id() == 0) {
@@ -175,7 +175,7 @@ struct MultiMarginLossBackwardKernelFunctor
         gradInput_k[i] = static_cast<scalar_t>(0);
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // reduce
     if (item.get_local_linear_id() == 0) {

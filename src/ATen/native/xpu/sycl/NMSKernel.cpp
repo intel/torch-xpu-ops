@@ -64,7 +64,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       block_boxes[item.get_local_id(1) * 4 + 3] = dets_sorted_ptr_
           [(nms_items_per_group * col_start + item.get_local_id(1)) * 4 + 3];
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (item.get_local_id(1) < row_size) {
       const int cur_box_idx =
@@ -116,11 +116,11 @@ struct GatherKeepFromMask : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int i = thread_id; i < col_blocks_; i += nms_items_per_group) {
       removed_[i] = 0;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     for (int nblock = 0; nblock < col_blocks_; nblock++) {
       auto removed_val = removed_[nblock];
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       const int i_offset = nblock * nms_items_per_group;
 
       for (int inblock = 0; inblock < nms_items_per_group; inblock++) {
@@ -140,7 +140,7 @@ struct GatherKeepFromMask : public __SYCL_KER_CONFIG_CONVENTION__ {
             if (j >= nblock)
               removed_[j] |= p[j];
           }
-          item.barrier(sycl_local_fence);
+          sycl::group_barrier(item.get_group());
           removed_val = removed_[nblock];
         }
       }

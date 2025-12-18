@@ -321,12 +321,12 @@ inline T group_cumsum(T* storage, sycl::nd_item<1>& item) {
       lane_all_sum,
       subgroup_inclusive_sum,
       subgroup_exclusive_sum);
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // Write to storage
   if (subgroup_local_id == (SUBGROUP_SIZE - 1))
     storage[subgroup_id] = subgroup_inclusive_sum;
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // Get group prefix
   T group_all_sum = 0, group_exclusive_sum;
@@ -336,7 +336,7 @@ inline T group_cumsum(T* storage, sycl::nd_item<1>& item) {
       group_exclusive_sum = group_all_sum;
     group_all_sum += storage[i];
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // Write to storage
   subgroup_exclusive_sum += group_exclusive_sum;
@@ -344,7 +344,7 @@ inline T group_cumsum(T* storage, sycl::nd_item<1>& item) {
   for (int lane = 0; lane < COUNTER_LANES; ++lane) {
     storage_lanes[lane] = subgroup_exclusive_sum + lane_temp_values[lane];
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   return group_all_sum;
 }

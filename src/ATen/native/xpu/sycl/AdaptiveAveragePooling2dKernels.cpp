@@ -145,7 +145,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
                      native::start_index(_ow, ow_, iw_));
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     for (int64_t i = gi; i < numel_; i += global_range_) {
       int64_t _iw, _ih, _ic, _ib;
@@ -289,7 +289,7 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
       out_cached[i] = scalar_t(0.0);
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     auto gradInput = gradInput_ + batch_id * isizeH_ * isizeW_ * sizeC_;
     auto gradOutput = gradOutput_ + batch_id * ostrideB_;

@@ -161,14 +161,14 @@ struct NllLossForwardReduce2DKernelFunctor
       }
     }
 
-    item.barrier(sycl_global_and_local_fence);
+    sycl::group_barrier(item.get_group());
 
     for (int stride = local_range / 2; stride > 0; stride >>= 1) {
       if (local_id < stride) {
         sh_inputs[local_id] += sh_inputs[local_id + stride];
         acc_weight[local_id] += acc_weight[local_id + stride];
       }
-      item.barrier(sycl_global_and_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     if (local_id == 0) {
