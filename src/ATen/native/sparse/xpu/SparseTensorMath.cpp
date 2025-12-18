@@ -11,7 +11,6 @@
 #include <ATen/TensorOperators.h>
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
 #include <c10/xpu/XPUFunctions.h>
-#include <ATen/TensorOperators.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -258,52 +257,6 @@ Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
       {self.size(0), self.size(1), mat2.size(2)},
       mat2.options(),
       at::MemoryFormat::Contiguous);
-  return bmm_out_sparse_xpu(self, mat2, result);
-}
-
-Tensor& bmm_out_sparse_xpu(const SparseTensor& self, const Tensor& mat2, Tensor& result) {
-  TORCH_CHECK(!mat2.is_sparse(), "bmm_sparse: Tensor 'mat2' must be dense");
-  TORCH_CHECK(self.dense_dim() == 0, "bmm_sparse: Tensor 'self' must have 0 dense dims, but has ", self.dense_dim());
-  TORCH_CHECK(self.sparse_dim() == 3, "bmm_sparse: Tensor 'self' must have 3 sparse dims, but has ", self.sparse_dim());
-  TORCH_CHECK(mat2.dim() == 3, "bmm_sparse: Tensor 'mat2' must have 3 dims, but has ", mat2.dim());
-  TORCH_CHECK(self.size(0) == mat2.size(0), "bmm_sparse: 'self.size(0)' and 'mat2.size(0)' must match");
-  TORCH_CHECK(self.size(2) == mat2.size(1), "bmm_sparse: 'self.size(2)' and 'mat2.size(1)' must match");
-
-  int64_t num_matrices = self.size(0);
-  int64_t dim_i = self.size(1);
-  int64_t dim_j = self.size(2);
-  int64_t dim_k = mat2.size(2);
-
-  result.resize_({num_matrices, dim_k, dim_i});
-
-  if ((self._nnz() == 0) || (dim_j == 0) || (dim_k == 0)) {
-    result.zero_().transpose_(1, 2);
-    return result;
-  }
-
-  Tensor tmp_result;
-  bool need_copy_result;
-
-  // If the result tensor is contiguous, we can just write results directly to it.
-  // Otherwise, we'll need to write results to a temp buffer and then copy.
-  if (result.is_contiguous()) {
-    tmp_result = result;
-    need_copy_result = false;
-  } else {
-    tmp_result = at::empty({num_matrices, dim_k, dim_i}, result.options(), at::MemoryFormat::Contiguous);
-    need_copy_result = true;
-  }
-  Tensor mat1_dense = self.to_dense();
-  at::bmm_out(tmp_result, mat1_dense, mat2);
-  if (need_copy_result) {
-    result.copy_(tmp_result);
-    result.transpose_(1,2);
-  }
-  return result;
-}
-
-Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
-  Tensor result = at::empty({self.size(0), mat2.size(2), self.size(1)}, mat2.options(), at::MemoryFormat::Contiguous);
   return bmm_out_sparse_xpu(self, mat2, result);
 }
 
