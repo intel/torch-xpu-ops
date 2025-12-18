@@ -110,6 +110,9 @@ dtype:
   force_fp16_for_bf16_models:
     - vision_maskrcnn
 
+  amp_dtype_bfloat16:
+    - modded_nanogpt
+
 
 # models in canary_models that we should run anyway
 canary_models:
