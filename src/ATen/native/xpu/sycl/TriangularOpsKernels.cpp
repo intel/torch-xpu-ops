@@ -41,115 +41,102 @@ template <
     bool upper,
     int elements_per_thread,
     bool inplace>
-struct ApplyTriuTrilKernelFunctor {
-  void operator()(sycl::nd_item<1> item) const {
-    IndexType linear_idx = item.get_global_id(0) * elements_per_thread;
-    if (linear_idx >= N_padded_) {
-      return;
-    }
-    auto dims = self_info_.dims;
-
-    // Compute column index amd row index
-    IndexType col = linear_idx % last_dim_padded_;
-    linear_idx /= last_dim_padded_;
-    IndexType row = linear_idx % self_info_.sizes[dims - 2];
-
-    if constexpr (inplace) {
-      bool mask_all_true =
-          upper ? (col - row >= k_) : (col + elements_per_thread - row <= k_);
-      if (mask_all_true)
-        return;
-    }
-
-    // Compute offset
-    IndexType self_offset = 0, result_offset = 0;
-    self_offset += self_info_.strides[dims - 1] * col;
-    result_offset += result_info_.strides[dims - 1] * col;
-    linear_idx /= self_info_.sizes[dims - 2];
-    self_offset += self_info_.strides[dims - 2] * row;
-    result_offset += result_info_.strides[dims - 2] * row;
-
-    // Compute remaining offsets
-    IndexType running_index;
-    for (int i = dims - 3; i >= 0; --i) {
-      running_index = linear_idx % self_info_.sizes[i];
-      linear_idx /= self_info_.sizes[i];
-      self_offset += running_index * self_info_.strides[i];
-      result_offset += running_index * result_info_.strides[i];
-    }
-
-    if constexpr (inplace) {
-#pragma unroll
-      for (int i = 0;
-           i < elements_per_thread && col + i < self_info_.sizes[dims - 1];
-           i++) {
-        bool mask = upper ? (col + i - row >= k_) : (col + i - row <= k_);
-        if (!mask)
-          result_info_
-              .data[result_offset + i * result_info_.strides[dims - 1]] =
-              scalar_t(0);
-      }
-    } else {
-      scalar_t frag[elements_per_thread] = {};
-      bool has_mask = (upper && col + elements_per_thread - row >= k_) ||
-          (!upper && col - row <= k_);
-      if (has_mask) {
-#pragma unroll
-        for (int i = 0;
-             i < elements_per_thread && col + i < self_info_.sizes[dims - 1];
-             i++)
-          frag[i] =
-              self_info_.data[self_offset + i * self_info_.strides[dims - 1]];
-
-#pragma unroll
-        for (int i = 0; i < elements_per_thread; i++) {
-          bool mask = upper ? (col + i - row >= k_) : (col + i - row <= k_);
-          frag[i] = mask ? frag[i] : scalar_t(0);
-        }
-      }
-
-#pragma unroll
-      for (int i = 0;
-           i < elements_per_thread && col + i < self_info_.sizes[dims - 1];
-           i++)
-        result_info_.data[result_offset + i * result_info_.strides[dims - 1]] =
-            frag[i];
-    }
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void applyTriuTrilKernel(
+    at::xpu::detail::TensorInfo<scalar_t, IndexType> result_info,
+    at::xpu::detail::TensorInfo<const scalar_t, IndexType> self_info,
+    const int64_t k,
+    const int64_t N_padded,
+    const IndexType last_dim_padded) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  IndexType linear_idx = item.get_global_id(0) * elements_per_thread;
+  if (linear_idx >= N_padded) {
+    return;
   }
-  ApplyTriuTrilKernelFunctor(
-      at::xpu::detail::TensorInfo<scalar_t, IndexType> result_info,
-      at::xpu::detail::TensorInfo<const scalar_t, IndexType> self_info,
-      const int64_t k,
-      const int64_t N_padded,
-      const IndexType last_dim_padded)
-      : result_info_(result_info),
-        self_info_(self_info),
-        k_(k),
-        N_padded_(N_padded),
-        last_dim_padded_(last_dim_padded) {}
+  auto dims = self_info.dims;
 
- private:
-  at::xpu::detail::TensorInfo<scalar_t, IndexType> result_info_;
-  at::xpu::detail::TensorInfo<const scalar_t, IndexType> self_info_;
-  const int64_t k_;
-  const int64_t N_padded_;
-  const IndexType last_dim_padded_;
-};
+  // Compute column index amd row index
+  IndexType col = linear_idx % last_dim_padded;
+  linear_idx /= last_dim_padded;
+  IndexType row = linear_idx % self_info.sizes[dims - 2];
+
+  if constexpr (inplace) {
+    bool mask_all_true =
+        upper ? (col - row >= k) : (col + elements_per_thread - row <= k);
+    if (mask_all_true)
+      return;
+  }
+
+  // Compute offset
+  IndexType self_offset = 0, result_offset = 0;
+  self_offset += self_info.strides[dims - 1] * col;
+  result_offset += result_info.strides[dims - 1] * col;
+  linear_idx /= self_info.sizes[dims - 2];
+  self_offset += self_info.strides[dims - 2] * row;
+  result_offset += result_info.strides[dims - 2] * row;
+
+  // Compute remaining offsets
+  IndexType running_index;
+  for (int i = dims - 3; i >= 0; --i) {
+    running_index = linear_idx % self_info.sizes[i];
+    linear_idx /= self_info.sizes[i];
+    self_offset += running_index * self_info.strides[i];
+    result_offset += running_index * result_info.strides[i];
+  }
+
+  if constexpr (inplace) {
+#pragma unroll
+    for (int i = 0;
+          i < elements_per_thread && col + i < self_info.sizes[dims - 1];
+          i++) {
+      bool mask = upper ? (col + i - row >= k) : (col + i - row <= k);
+      if (!mask)
+        result_info
+            .data[result_offset + i * result_info.strides[dims - 1]] =
+            scalar_t(0);
+    }
+  } else {
+    scalar_t frag[elements_per_thread] = {};
+    bool has_mask = (upper && col + elements_per_thread - row >= k) ||
+        (!upper && col - row <= k);
+    if (has_mask) {
+#pragma unroll
+      for (int i = 0;
+            i < elements_per_thread && col + i < self_info.sizes[dims - 1];
+            i++)
+        frag[i] =
+            self_info.data[self_offset + i * self_info.strides[dims - 1]];
+
+#pragma unroll
+      for (int i = 0; i < elements_per_thread; i++) {
+        bool mask = upper ? (col + i - row >= k) : (col + i - row <= k);
+        frag[i] = mask ? frag[i] : scalar_t(0);
+      }
+    }
+
+#pragma unroll
+    for (int i = 0;
+          i < elements_per_thread && col + i < self_info.sizes[dims - 1];
+          i++)
+      result_info.data[result_offset + i * result_info.strides[dims - 1]] =
+          frag[i];
+  }
+}
 
 #define LAUNCH_KERNEL(elements_per_thread, inplace_condition)      \
   BOOL_SWITCH(inplace_condition, inplace, [&] {                    \
-    ApplyTriuTrilKernelFunctor<                                    \
-        scalar_t,                                                  \
-        IndexType,                                                 \
-        upper,                                                     \
-        elements_per_thread,                                       \
-        inplace>                                                   \
-        kfn(result_info, self_info, k, N_padded, last_dim_padded); \
-    sycl_kernel_submit(                                            \
+    constexpr auto kfn = applyTriuTrilKernel<                      \
+                                            scalar_t,              \
+                                            IndexType,             \
+                                            upper,                 \
+                                            elements_per_thread,   \
+                                            inplace>;              \
+    sycl_kernel_submit<kfn>(                                       \
         sycl::range<1>(global_range),                              \
         sycl::range<1>(local_range),                               \
         getCurrentSYCLQueue(),                                     \
-        kfn);                                                      \
+        0,                                                         \
+        result_info, self_info, k, N_padded, last_dim_padded);     \
   })
 
 template <typename scalar_t, typename IndexType, bool upper>
