@@ -56,7 +56,6 @@ from torch.testing._internal.common_device_type import (
     dtypesIfCUDA,
     expectedFailureMeta,
     expectedFailureXLA,
-    get_all_device_types,
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
