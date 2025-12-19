@@ -65,6 +65,7 @@ jobs:
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     env:
       GH_TOKEN: ${{ github.token }}
     timeout-minutes: 300
