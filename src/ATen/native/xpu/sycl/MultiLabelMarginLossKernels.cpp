@@ -72,7 +72,7 @@ struct MultilabelMarginLossForwardKernelFunctor
          d += item.get_local_range(0)) {
       is_target_k[d] = static_cast<scalar_t>(0);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (item.get_local_linear_id() == 0) {
       for (int dt = 0; dt < dim_; dt++) {
@@ -83,7 +83,7 @@ struct MultilabelMarginLossForwardKernelFunctor
         is_target_k[target_idx] = static_cast<scalar_t>(1);
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     accscalar_t sum = 0;
     for (int dt = 0; dt < dim_; dt++) {
@@ -181,7 +181,7 @@ struct MultilabelMarginLossBackwardKernelFunctor
     for (int d = item.get_local_id(0); d < dim_; d += item.get_local_range(0)) {
       grad_input_k[d] = static_cast<scalar_t>(0);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // iterate over targets
     for (int dt = 0; dt < dim_; dt++) {
@@ -207,7 +207,7 @@ struct MultilabelMarginLossBackwardKernelFunctor
           }
         }
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       sum = GroupReduceSumWithoutBroadcast<
           accscalar_t,
