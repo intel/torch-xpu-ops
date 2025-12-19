@@ -53,11 +53,15 @@ macro(set_build_flags)
       # SYCL headers warnings
       list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
       list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+      list(APPEND SYCL_HOST_FLAGS /WX) # treat warnings as errors
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       list(APPEND SYCL_HOST_FLAGS -fPIC)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
+      # Disable warnings for unsupported SYCL attributes in GCC
+      list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
+      list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -154,11 +158,7 @@ macro(set_build_flags)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} ${SYCL_TARGETS_OPTION})
       set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} ${SYCL_TARGETS_OPTION})
       set(SYCL_DEVICE_LINK_FLAGS ${SYCL_DEVICE_LINK_FLAGS} "-Xspirv-translator;-spirv-ext=+SPV_INTEL_split_barrier,+SPV_INTEL_2d_block_io,+SPV_INTEL_subgroup_matrix_multiply_accumulate")
-      if(TORCH_XPU_ARCH_LIST STREQUAL "cri")
-        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device cri")
-      else()
-        set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
-      endif()
+      set(SYCL_OFFLINE_COMPILER_AOT_OPTIONS "-device pvc,bmg")
     else()
       if(WIN32)
         set(AOT_TARGETS "mtl,mtl-h,bmg,dg2,arl-h,lnl-m,ptl")
