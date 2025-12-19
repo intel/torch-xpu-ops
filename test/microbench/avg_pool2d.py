@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Copyright 2020-2025 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -7,9 +6,6 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-import time
-=======
->>>>>>> f99acaac (align the lint check)
 import argparse
 import time
 
