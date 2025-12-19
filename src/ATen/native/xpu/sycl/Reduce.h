@@ -271,7 +271,7 @@ struct ReduceConfig {
     if (num_items < max_sg_sz) {
       group_width = max_sg_sz;
       num_items = group_width * group_height;
-      assert(num_items <= max_num_items);
+      TORCH_INTERNAL_ASSERT(num_items <= max_num_items);
     }
   }
 
