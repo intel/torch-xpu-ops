@@ -169,7 +169,7 @@ jobs:
         suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: pvc_rolling
+      runner: PVC-7901
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
