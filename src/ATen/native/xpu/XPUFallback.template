@@ -5,9 +5,54 @@ namespace at {
 
 static bool DEBUG_XPU_FALLBACK = false;
 
+static inline void check_device_consistency(
+    const c10::IValue& iv,
+    bool& has_xpu,
+    bool& has_non_xpu) {
+  
+  if (iv.isTensor()){
+    const auto& t = iv.toTensor();
+    if (t.defined())
+      if (t.device().type() == c10::DeviceType::XPU)
+        has_xpu = true;
+      else
+        has_non_xpu = true;
+    return;
+  }
+
+  if (iv.isTensorList()) {
+    const auto& list = iv.toTensorList();
+    for (const at::Tensor& t : list) {
+      if (t.defined())
+        if (t.device().type() == c10::DeviceType::XPU)
+           has_xpu = true;
+        else
+           has_non_xpu = true;
+      if (has_xpu && has_non_xpu) return;
+    }
+    return;
+  }
+}
+
 static void xpu_fallback_impl(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
+
+  bool has_xpu = false;
+  bool has_non_xpu = false;
+
+  // Check all inputs device
+  for (const auto& iv : *stack) {
+    check_device_consistency(iv, has_xpu, has_non_xpu);
+    if (has_xpu && has_non_xpu) break;
+  }
+
+  if (has_xpu && has_non_xpu) {
+     std::string msg = "Expected all tensors to be on the same device, but found at least two devices, xpu and cpu! (Operator " + 
+                        op.schema().operator_name().name +")";
+     TORCH_CHECK(false, msg);
+  }
+
   if (!DEBUG_XPU_FALLBACK) {
     TORCH_WARN_ONCE(
         "Aten Op fallback from XPU to CPU happends.",
