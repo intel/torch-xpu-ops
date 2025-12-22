@@ -9,7 +9,6 @@ static inline void check_device_consistency(
     const c10::IValue& iv,
     bool& has_xpu,
     bool& has_non_xpu) {
-  
   if (iv.isTensor()){
     const auto& t = iv.toTensor();
     if (t.defined())
@@ -48,7 +47,7 @@ static void xpu_fallback_impl(
   }
 
   if (has_xpu && has_non_xpu) {
-     std::string msg = "Expected all tensors to be on the same device, but found at least two devices, xpu and cpu! (Operator " + 
+     std::string msg = "Expected all tensors to be on the same device, but found at least two devices, xpu and cpu! (Operator " +
                         op.schema().operator_name().name +")";
      TORCH_CHECK(false, msg);
   }
