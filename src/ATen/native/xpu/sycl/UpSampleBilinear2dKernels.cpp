@@ -1153,7 +1153,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_x < output_width_ && output_y < output_height_) {
       const scalar_t* buffer1;
@@ -1292,7 +1292,7 @@ struct UpsampleGen2dAaBackwardKernelFunctor
       }
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_x < output_width_ && output_y < output_height_) {
       // Parallelized across batch/channels

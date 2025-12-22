@@ -200,7 +200,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       num_nan_[0] = 0;
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (nan_count > 0) {
       atomicAdd(
           (sycl_local_ptr<index_t>)(num_nan_
@@ -209,7 +209,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                                         .get()),
           nan_count);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // For torch.median, if we found nan set k to last index so the computed
     // value is nan, otherwise set k to the middle element of the non-nan
