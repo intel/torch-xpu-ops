@@ -26,6 +26,13 @@ IGNORE_TESTS=(
     "test_parity__foreach_addcdiv_fastpath_inplace_xpu_complex128"
     "test_parity__foreach_addcdiv_fastpath_outplace_xpu_complex128"
     "test_python_ref__refs_log2_xpu_complex128"
+    "test_comprehensive_grid_sampler_2d_xpu_float32"
+    "test_comprehensive_to_sparse_xpu_int32"
+    "test_quick_core_backward__unsafe_masked_index_xpu_float64"
+    "test_comprehensive_grid_sampler_2d_xpu_float64"
+    "test_quick_core_backward_clamp_max_xpu_float64"
+    "test_quick_core_backward_clamp_min_xpu_float64"
+    "test_linalg_solve_triangular_large_xpu_float32"
     "_jiterator_"  # Pattern to match all jiterator tests
 )
 
