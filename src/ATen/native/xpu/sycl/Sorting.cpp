@@ -1,3 +1,12 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #pragma clang diagnostic push
 #pragma GCC diagnostic push
@@ -191,7 +200,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       num_nan_[0] = 0;
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (nan_count > 0) {
       atomicAdd(
           (sycl_local_ptr<index_t>)(num_nan_
@@ -200,7 +209,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                                         .get()),
           nan_count);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // For torch.median, if we found nan set k to last index so the computed
     // value is nan, otherwise set k to the middle element of the non-nan

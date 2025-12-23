@@ -93,18 +93,22 @@ runs:
             printf(" numactl -l ");
           }
         }')"
-        pytest_extra_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
-          split(z, xpu_list, ",");
-          if (length(xpu_list) > 1) {
-            for (i=0;i<length(xpu_list);i++) {
-              ze = xpu_list[i+1];
-              printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
-                      ze, cx, i*cx, (i+1)*cx-1);
+        if [ "${{ inputs.ut_name }}" == "xpu_distributed" ];then
+          pytest_extra_args="$(python ${{ github.workspace }}/.github/scripts/check-topology.py)"
+        else
+          pytest_extra_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
+            split(z, xpu_list, ",");
+            if (length(xpu_list) > 1) {
+              for (i=0;i<length(xpu_list);i++) {
+                ze = xpu_list[i+1];
+                printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
+                        ze, cx, i*cx, (i+1)*cx-1);
+              }
+            }else {
+              printf(" -n 1 ");
             }
-          }else {
-            printf(" -n 1 ");
-          }
-        }')"
+          }')"
+        fi
         echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
         echo "numactl_args=${numactl_args}" |tee -a ${GITHUB_OUTPUT}
         echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}

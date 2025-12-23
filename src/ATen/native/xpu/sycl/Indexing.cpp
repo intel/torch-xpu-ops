@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma clang diagnostic push
 #pragma GCC diagnostic push
 // Avoid SYCL compiler return-type error
@@ -367,11 +377,8 @@ void index_add_kernel(
     result.copy_(self);
   }
 
-  auto numel = index.numel();
-  if (result.dim() > 1) {
-    if (numel == 0 || self.numel() == 0) {
-      return;
-    }
+  if (index.numel() == 0 || self.numel() == 0) {
+    return;
   }
 
   // Scalars are treated as 1-d tensor

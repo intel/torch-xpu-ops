@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/Functions.h>
@@ -151,14 +161,14 @@ struct NllLossForwardReduce2DKernelFunctor
       }
     }
 
-    item.barrier(sycl_global_and_local_fence);
+    sycl::group_barrier(item.get_group());
 
     for (int stride = local_range / 2; stride > 0; stride >>= 1) {
       if (local_id < stride) {
         sh_inputs[local_id] += sh_inputs[local_id + stride];
         acc_weight[local_id] += acc_weight[local_id + stride];
       }
-      item.barrier(sycl_global_and_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     if (local_id == 0) {

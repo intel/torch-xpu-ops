@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -359,7 +369,7 @@ struct ConvDepthwise3dXpuBackwardWeightFunctor
 
     sdata[item.get_local_id(0)] = grad;
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
 #pragma unroll
     for (int i = item.get_local_range(0) / 2; i >= 1; i >>= 1) {
@@ -367,7 +377,7 @@ struct ConvDepthwise3dXpuBackwardWeightFunctor
         sdata[item.get_local_id(0)] += sdata[item.get_local_id(0) + i];
       }
 
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     if (item.get_local_id(0) == 0) {

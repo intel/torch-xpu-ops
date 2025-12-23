@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 skip_dict = {
     "test_ops_xpu.py": (
         # Jiterator is only supported on CUDA and ROCm GPUs, none are available.
@@ -96,6 +104,7 @@ skip_dict = {
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_5_xpu",
         "test_scaled_dot_product_attention_3D_input_dim_2D_attn_mask_dropout_p_0_2_xpu",
     ),
+    "test_schema_check.py": None,
     "test_complex_xpu.py": None,
     "test_modules_xpu.py": (
         # oneDNN issues
@@ -804,4 +813,10 @@ skip_dict = {
     "functorch/test_ops_xpu.py": None,
     "test_sparse_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
+    "test_nestedtensor_xpu.py": None,
+    "functorch/test_eager_transforms_xpu.py": None,
+    "test_cpp_api_parity_xpu.py": None,
+    "test_expanded_weights_xpu.py": None,
+    "test_fake_tensor_xpu.py": None,
+    "test_matmul_cuda_xpu.py": None,
 }

@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #pragma clang diagnostic push
 #pragma GCC diagnostic push
 // Avoid SYCL compiler return-type error
@@ -47,7 +61,7 @@ struct HistogramddKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (active && batch_local_id == 0) {
       slm_[batch_idx] = 0;
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // loop if wg_size_ is smaller than total_bin_size_
     for (int s = 0; active && s < scan_size_; ++s) {
@@ -98,7 +112,7 @@ struct HistogramddKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             bin_idx * hist_strides_[dim]);
       }
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     if (active && batch_local_id == 0) {
       auto hist_idx = slm_[batch_idx];

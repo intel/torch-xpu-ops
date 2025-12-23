@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <comm/SYCLHelpers.h>
@@ -26,11 +36,11 @@ inline T GroupReduceSumSGSizeEqualstoNumSG(item_t& item, T val, T* shared) {
   int lid = thread_idx % sg_size;
   int wid = thread_idx / sg_size;
   val = GroupReduceSumSGSizeEqualstoNumSG(sg, val);
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   if (lid == 0) {
     shared[wid] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   val = (thread_idx < group_size / sg_size) ? shared[lid] : T(0);
   if (wid == 0) {
     val = GroupReduceSumSGSizeEqualstoNumSG(sg, val);
