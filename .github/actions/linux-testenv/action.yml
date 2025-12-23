@@ -85,6 +85,7 @@ runs:
           rm -rf 169257.diff
           wget -q https://github.com/pytorch/pytorch/pull/169257.diff
           git apply 169257.diff
+          cp torch/_inductor/runtime/triton_heuristics.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/runtime/triton_heuristics.py"
         fi
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
