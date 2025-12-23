@@ -270,8 +270,8 @@ struct ReduceConfig {
 
     if (num_items < max_sg_sz) {
       group_width = max_sg_sz;
+      group_height = std::min(group_height, max_num_items / group_width);
       num_items = group_width * group_height;
-      TORCH_INTERNAL_ASSERT(num_items <= max_num_items);
     }
   }
 
