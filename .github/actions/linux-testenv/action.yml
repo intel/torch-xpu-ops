@@ -84,8 +84,11 @@ runs:
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           rm -rf 169257.diff
           wget -q https://github.com/pytorch/pytorch/pull/169257.diff
-          git apply 169257.diff
+          wget -q https://github.com/pytorch/pytorch/pull/170755.diff
+          git apply 169257.diff 170755.diff
           cp torch/_inductor/runtime/triton_heuristics.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/runtime/triton_heuristics.py"
+          cp test/inductor/test_torchinductor.py "`dirname $(which python)`/../lib/python3.10/site-packages/test/inductor/test_torchinductor.py"
+          cp torch/_inductor/utils.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/utils.py"
         fi
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
