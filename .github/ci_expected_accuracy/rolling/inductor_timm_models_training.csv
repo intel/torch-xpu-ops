@@ -2,7 +2,7 @@ name,float32,bfloat16,float16,amp_bf16,amp_fp16
 adv_inception_v3,pass,pass,pass,pass,pass
 beit_base_patch16_224,pass,pass,pass,pass,pass
 botnet26t_256,pass,pass,pass,pass,pass
-cait_m36_384,pass,pass,fail_accuracy,pass,fail_accuracy
+cait_m36_384,pass,pass,fail_accuracy,pass,pass
 coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,fail_accuracy,pass,pass,pass
