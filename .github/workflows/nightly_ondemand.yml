@@ -122,7 +122,7 @@ jobs:
           echo "ut=${ut}" >> ${GITHUB_OUTPUT}
           echo "suite=${suite}" >> ${GITHUB_OUTPUT}
           echo "triton=${triton}" >> ${GITHUB_OUTPUT}
-          echo "python=${python}" >> ${GITHUB_OUTPUT}
+          echo "python=3.12" >> ${GITHUB_OUTPUT}
 
   Linux-Nightly-Ondemand-Build:
     needs: [Conditions-Filter]
