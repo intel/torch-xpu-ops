@@ -315,7 +315,7 @@ struct LegacyKernelWithCastScalarFunctor {
   const func_t f_;
 };
 
-template <int vec_size, typename func_t>
+template <int vec_size, typename func_t, bool force_small_grf = false>
 static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
   TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
   if (N == 0) {
@@ -326,7 +326,12 @@ static void launch_legacy_group_range_kernel(int64_t N, const func_t& f) {
 
   int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  if constexpr (force_small_grf) {
+    sycl_kernel_submit_small_grf(
+        wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  } else {
+    sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  }
 }
 
 template <typename func_t>
@@ -351,7 +356,8 @@ template <
     typename in_calc_t,
     typename out_calc_t,
     typename loader_t,
-    typename storer_t>
+    typename storer_t,
+    bool force_small_grf = false>
 static inline void launch_unrolled_kernel(
     int64_t N,
     const func_t& f,
@@ -367,7 +373,12 @@ static inline void launch_unrolled_kernel(
 
   int64_t wg_sz = syclMaxWorkItemsPerSubSlice();
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz * ker_t::item_work_size);
-  sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  if constexpr (force_small_grf) {
+    sycl_kernel_submit_small_grf(
+        wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  } else {
+    sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
+  }
 }
 
 constexpr int max_scalar_size_(std::tuple<>) {
@@ -580,7 +591,14 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
     auto storer = memory::StoreWithCast<1>(iter);
     auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
     auto output_offset_calculator = TrivialOffsetCalculator<1>();
-    launch_unrolled_kernel(
+    launch_unrolled_kernel<
+        func_t,
+        decltype(data),
+        decltype(input_offset_calculator),
+        decltype(output_offset_calculator),
+        decltype(loader),
+        decltype(storer),
+        true>(
         numel,
         f,
         data,
@@ -595,13 +613,13 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
     }
     auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);
     constexpr int unroll_factor = sizeof(arg0_t) > 4 ? 2 : 4;
-    launch_legacy_group_range_kernel<unroll_factor>(
-        numel,
-        LegacyKernelWithCastScalarFunctor<
-            arg0_t,
-            ntensors,
-            decltype(offset_calc),
-            func_t>(data, dtypes, offset_calc, f));
+    using functor = LegacyKernelWithCastScalarFunctor<
+        arg0_t,
+        ntensors,
+        decltype(offset_calc),
+        func_t>;
+    launch_legacy_group_range_kernel<unroll_factor, functor, true>(
+        numel, functor(data, dtypes, offset_calc, f));
   }
 }
 
