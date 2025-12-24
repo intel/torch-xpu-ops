@@ -416,7 +416,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     auto out_ptr = out_data_;
     auto in_ptr = in_data_;
-    item_id.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item_id.get_group());
 
     // compute the in/out/indices offsets and perform memory copy
     for (int64_t local_index = local_id; local_index < group_numel_range;

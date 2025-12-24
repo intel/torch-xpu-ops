@@ -128,7 +128,7 @@ struct RenormKernelFunctor {
     if (tid == 0) {
       smem_[0] = std::pow(v, static_cast<accscalar_t>(1.0 / norm_type_));
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (smem_[0] > max_norm_) {
       auto factor = static_cast<scalar_t>(

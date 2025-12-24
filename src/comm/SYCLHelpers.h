@@ -21,13 +21,6 @@ static constexpr auto sycl_local_space =
 static constexpr auto sycl_global_space =
     sycl::access::address_space::global_space;
 
-// sycl access fence space
-static constexpr auto sycl_local_fence = sycl::access::fence_space::local_space;
-static constexpr auto sycl_global_fence =
-    sycl::access::fence_space::global_space;
-static constexpr auto sycl_global_and_local_fence =
-    sycl::access::fence_space::global_and_local;
-
 // sycl memory ordering
 static constexpr auto sycl_mem_odr_rlx = sycl::memory_order::relaxed;
 static constexpr auto sycl_mem_odr_acq = sycl::memory_order::acquire;

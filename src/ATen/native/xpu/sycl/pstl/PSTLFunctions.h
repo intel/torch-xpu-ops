@@ -130,14 +130,14 @@ struct KSScanKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     if (local_id == 0)
       local_scan_[local_id] += cur_init;
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // body of KS algo
     for (auto __k = 1; __k < N_; __k <<= 1) {
       auto tmp = (local_id >= __k) ? local_scan_[local_id - __k] : 0;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
       local_scan_[local_id] += tmp;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
     }
 
     // flush result into dst
@@ -183,14 +183,14 @@ struct KSScanWithCarrierKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         carry_ptr_[group_id] = c10::load(&first_[global_id]);
       }
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // body of KS algo
     for (auto __k = 1; __k < wgroup_size_; __k <<= 1) {
       auto tmp = (local_id >= __k) ? local_scan_[local_id - __k] : 0;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
       local_scan_[local_id] += tmp;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
     }
 
     // flush result into dst
@@ -243,7 +243,7 @@ struct ScanAccumulateKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     if (local_id == 0)
       local_carry_[0] = carry_ptr_[group_id];
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     if (global_id < N_) {
       d_first_[global_id] += local_carry_[0];

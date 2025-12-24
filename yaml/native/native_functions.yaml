@@ -1495,11 +1495,13 @@
   variants: function
   dispatch:
     XPU: view_as_real
+    SparseXPU: view_as_real_sparse
 
 - func: view_as_complex(Tensor(a) self) -> Tensor(a)
   variants: function
   dispatch:
     XPU: view_as_complex
+    SparseXPU: view_as_complex_sparse
 
 - func: view_copy(Tensor self, SymInt[] size) -> Tensor
   variants: function
