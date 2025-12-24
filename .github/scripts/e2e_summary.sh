@@ -352,8 +352,8 @@ EOF
 generate_highlights() {
     if (( accuracy_regression + performance_regression > 0 )); then
         echo -e "### 🎯 Highlight regressions\n"
-        [[ $accuracy_regression -gt 0 ]] && cat accuracy.regression.html
-        [[ $performance_regression -gt 0 ]] && cat performance.regression.html
+        [[ $accuracy_regression -gt 0 ]] && cat accuracy.regression.html || true
+        [[ $performance_regression -gt 0 ]] && cat performance.regression.html || true
     else
         echo -e "### ✅ No regressions detected\n"
     fi
