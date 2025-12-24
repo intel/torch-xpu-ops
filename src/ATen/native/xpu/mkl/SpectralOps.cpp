@@ -127,6 +127,15 @@ void _mkl_dft(
   queue.throw_asynchronous();
 }
 
+// TODO: Remove this work-around in future.
+Tensor promote_fft_input(const Tensor& input) {
+  if (input.scalar_type() == ScalarType::Half)
+    return input.to(ScalarType::Float);
+  if (input.scalar_type() == ScalarType::ComplexHalf)
+    return input.to(ScalarType::ComplexFloat);
+  return input;
+}
+
 void _fft_with_size(
     Tensor& output,
     const Tensor& self,
@@ -162,7 +171,7 @@ void _fft_with_size(
       bool,
       class c10::ArrayRef<int64_t>,
       bool);
-  Tensor input = input_;
+  Tensor input = promote_fft_input(input_);
 
   if (input.scalar_type() == ScalarType::Float ||
       input.scalar_type() == ScalarType::ComplexFloat) {
@@ -188,6 +197,13 @@ void _fft_with_size(
       inverse,
       checked_signal_sizes,
       onesided);
+
+  // TODO: Remove this work-around in future.
+  if (self.scalar_type() == ScalarType::Half ||
+      self.scalar_type() == ScalarType::ComplexHalf) {
+    output = complex_output ? output.to(ScalarType::ComplexHalf)
+                            : output.to(ScalarType::Half);
+  }
 }
 
 // Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
