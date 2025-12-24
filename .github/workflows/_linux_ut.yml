@@ -164,7 +164,7 @@ jobs:
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
           # get skipped known issues
-          count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" --jq 'length')
+          count=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
           if [ "$count" -gt 0 ]; then
             echo -e "$count issues with skipped label found"
             gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
