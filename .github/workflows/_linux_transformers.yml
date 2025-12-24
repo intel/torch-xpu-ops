@@ -38,11 +38,6 @@ on:
         type: string
         default: 'v1.7.0'
         description: Accelerate version
-      datasets:
-        required: false
-        type: string
-        default: 'v3.6.0'
-        description: Accelerate version
       transformers:
         required: false
         type: string
@@ -61,8 +56,8 @@ env:
   HF_HUB_DOWNLOAD_TIMEOUT: 120
   python: ${{ inputs.python != '' && inputs.python || '3.10' }}
   accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.7.0'}}
-  datasets: ${{ inputs.datasets != '' && inputs.datasets || 'v3.6.0'}}
   transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
+  EXCLUDE_NEWER: '2025-06-14'
   PACKAGES: |
     espeak-ng
     git-lfs
@@ -75,6 +70,7 @@ env:
     libswresample-dev
     libswscale-dev
     pciutils
+    python3-dev
   TORCH_INDEX: '--pre --index-url https://download.pytorch.org/whl/nightly/xpu'
   AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
 
@@ -117,20 +113,36 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}/.venv
     steps:
+      - name: Install uv and python-${{ env.python }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.python }}
+      - name: Prepare environment
+        run: |
+          rm -rf ${{ env.VIRTUAL_ENV }}
+          uv venv ${{ env.VIRTUAL_ENV }}
       - id: getver
         run: |
           # We can't just `pip index version...` and get the last available
           # version as pytorch packages may have tricky dependencies. Instead
-          # we dry run install packages and get versions which would be installed.
+          # we install packages and get versions which got installed. Note that
+          # trying to --dry-run is not actually reliable as it does not make
+          # the thorough check of package dependencies.
           # See: https://github.com/pytorch/pytorch/issues/154687
-          pip install --dry-run --ignore-installed $TORCH_INDEX \
+          uv pip install $TORCH_INDEX \
             torch torchvision torchaudio pytorch-triton-xpu >_log.txt
 
-          torch=$(cat _log.txt | grep "Would install" | sed -E "s/.*torch-([^ ]*).*/\1/")
-          torchvision=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchvision-([^ ]*).*/\1/")
-          torchaudio=$(cat _log.txt | grep "Would install" | sed -E "s/.*torchaudio-([^ ]*).*/\1/")
-          triton=$(cat _log.txt | grep "Would install" | sed -E "s/.*pytorch-triton-xpu-([^ ]*).*/\1/")
+          torch=$(uv pip show torch | grep Version)
+          torchvision=$(uv pip show torchvision | grep Version)
+          torchaudio=$(uv pip show torchaudio | grep Version)
+          triton=$(uv pip show pytorch-triton-xpu | grep Version)
+          torch=${torch#Version: *}
+          torchvision=${torchvision#Version: *}
+          torchaudio=${torchaudio#Version: *}
+          triton=${triton#Version: *}
           echo "torch=$torch" | tee -a "$GITHUB_OUTPUT"
           echo "torchvision=$torchvision" | tee -a "$GITHUB_OUTPUT"
           echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
@@ -155,8 +167,33 @@ jobs:
       env:
         PYTORCH_DEBUG_XPU_FALLBACK: '1'
         TRANSFORMERS_TEST_DEVICE_SPEC: 'spec.py'
-        # enable pytest parallel run, and continue others if meets crash case such as segmentation fault
-        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist worksteal ${{ needs.prepare.outputs.pytest_extra_args }}
+        # NOTE: IMPORTANT! Read before updating!
+        # Unfortunately as of now we can't parallelize test execution with pytest-xdist as
+        # tests start to error out. See explanation below.
+        #
+        # First note that pytest-xdist can't be applied blindly to test just any arbitrary
+        # project since project tests must have been specifically designed to allow
+        # parallelization with pytest-xdist. Otherwise race conditions on test shared
+        # resources (for example, allocated at `setUpClass` methods) might happen.
+        #
+        # Further, even if project allows pytest-xdist, it might require specific distribution
+        # strategy. For example, if project uses test ordering clauses such as @run_first, then
+        # tests must be executed with the `--dist loadfile` strategy.
+        #
+        # HF Transformers does use orderning clauses. Thus, it must be executed with the
+        # `--dist loadfile` strategy. Other distribution strategies will lead to random test
+        # failures. HF Transformers documentation explicitly suggests to use `--dist loadfile`.
+        # See: https://github.com/huggingface/transformers/blob/v4.56.2/CONTRIBUTING.md?plain=1#L312
+        #
+        # Unfortunately our CI setup has a problem with network access of HF Hub to fetch test
+        # models and data sets. As soon as we have parallel requests we start to see enormous number
+        # of random failures. We could not overcome these issues by adding timeouts or reducing parallel
+        # jobs - even with just 2 parallel threads we start to see these issues. That's the reason
+        # we currently disable parallelism for Transformers test. To somewhat mitigate the issue, we
+        # break test into multiple shards to have quicker turnarounds.
+        PYTEST_ADDOPTS: -rsf --timeout 600 --timeout_method=thread --dist no #${{ needs.prepare.outputs.pytest_extra_args }}
+        VIRTUAL_ENV: ${{ github.workspace }}/.venv
+        ZE_AFFINITY_MASK: 0
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -177,17 +214,36 @@ jobs:
           # Excluding tests due to:
           # * https://github.com/pytorch/pytorch/issues/140965 (aten::_linalg_eigvals)
           # * https://github.com/huggingface/transformers/issues/36267 (marian tests)
+          #
+          # NOTE: IMPORTANT! Read before updating.
+          # Be careful reducing number of shards. We saw "Fatal Python error" on 4
+          # shards which was causing CI test hang and exit by timeout after 6h. Issue
+          # was happening on the `--shard-id 1` on this test:
+          #   tests/models/qwen2_5_vl/test_modeling_qwen2_5_vl.py::Qwen2_5_VLModelTest::test_constrained_beam_search_generate_dict_output
+          # Test passes if executed standalone. Likely we step into some resource limit or a leak.
           - test_case: 'tests_models_0'
-            cmd: 'tests/models --num-shards 4 --shard-id 0 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 0 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           - test_case: 'tests_models_1'
-            cmd: 'tests/models --num-shards 4 --shard-id 1 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 1 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           - test_case: 'tests_models_2'
-            cmd: 'tests/models --num-shards 4 --shard-id 2 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 2 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           - test_case: 'tests_models_3'
-            cmd: 'tests/models --num-shards 4 --shard-id 3 --ignore=tests/models/marian/test_modeling_marian.py'
+            cmd: 'tests/models --num-shards 8 --shard-id 3 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_4'
+            cmd: 'tests/models --num-shards 8 --shard-id 4 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_5'
+            cmd: 'tests/models --num-shards 8 --shard-id 5 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_6'
+            cmd: 'tests/models --num-shards 8 --shard-id 6 --ignore=tests/models/marian/test_modeling_marian.py'
+            filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
+          - test_case: 'tests_models_7'
+            cmd: 'tests/models --num-shards 8 --shard-id 7 --ignore=tests/models/marian/test_modeling_marian.py'
             filter: 'not test_resize_embeddings_untied and not test_resize_tokens_embeddings'
           # Excluding tests due to:
           # * Some ray tests hang, reason unknown
@@ -213,6 +269,10 @@ jobs:
           repository: huggingface/transformers
           ref: ${{ env.transformers }}
           path: transformers
+      - name: Install uv and python-${{ env.python }}
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ env.python }}
       - name: Prepare test vars
         run: |
           echo "HF_HOME=$HOME/.hf_home_of_transformers_test" >> $GITHUB_ENV
@@ -225,47 +285,38 @@ jobs:
           fi
       - name: Prepare OS environment
         run: |
-          # as jobs might run in parallel on the same system, apt-get might
-          # step into the lock hold by other job
-          start_time=$SECONDS
-          while ! sudo apt-get update; do
-            sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
-          done
-          while ! sudo apt-get install -y $PACKAGES; do
-            sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
-          done
-          while ! git lfs install; do
-            sleep 1;
-            if (( $SECONDS - start_time > 60 )); then false; fi
-          done
-      - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.python }}
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+          git lfs install
+          rm -rf $VIRTUAL_ENV
+          uv venv $VIRTUAL_ENV
+          # Add path to virtual environment bin folder to make
+          # python and other executables visible
+          echo "$VIRTUAL_ENV/bin/" >> $GITHUB_PATH
       - name: Check python
         run: |
           which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools
       - name: Prepare pytorch and deps
         run: |
-          pip install junitparser
-          pip install $TORCH_INDEX \
+          uv pip install $TORCH_INDEX \
             torch==${{ needs.prepare.outputs.torch }} \
             torchvision==${{ needs.prepare.outputs.torchvision }} \
             torchaudio==${{ needs.prepare.outputs.torchaudio }} \
             pytorch-triton-xpu==${{needs.prepare.outputs.triton }}
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} \
+            junitparser \
+            pytest \
+            pytest-timeout \
+            pytest-xdist \
+            pytest-shard
       - name: Prepare Transformers
         run: |
           pwd
           cd transformers
-          pip install \
-            accelerate==${{ env.accelerate }} \
-            datasets==${{ env.datasets }}
-          pip install -e .
-          pip install -e ".[dev-torch,testing,video]"
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} \
+            accelerate==${{ env.accelerate }}
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} -e .
+          uv pip install --exclude-newer ${{ env.EXCLUDE_NEWER}} -e ".[dev-torch,testing,video]"
           rm -rf logs && mkdir -p logs
           rm -rf reports
           cp ${{ github.workspace }}/torch-xpu-ops/.github/scripts/spec.py ./
@@ -273,7 +324,7 @@ jobs:
         run: |
           LOGS_DIR="${{ github.workspace }}/transformers/logs"
           echo "pip installed packages:"
-          pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
+          uv pip list | tee "$LOGS_DIR/pip_list-$TEST_CASE.txt"
           echo "lspci gpu devices:"
           lspci -d ::0380 | tee "$LOGS_DIR/lspci_0380-$TEST_CASE.txt"
           echo "GPU render nodes:"
@@ -282,13 +333,11 @@ jobs:
           xpu-smi discovery -y --json --dump -1
       - name: Sanity check installed packages
         run: |
-          # Use latest pytest
-          pip install -U pytest pytest-timeout pytest-xdist pytest-shard
           # These checks are to exit earlier if for any reason Transformers
           # reinstalled torch packages back to CUDA versions (not expected).
-          pip show torch | grep Version | grep xpu
-          pip show torchaudio | grep Version | grep xpu
-          pip show torchvision | grep Version | grep xpu
+          uv pip show torch | grep Version | grep xpu
+          uv pip show torchaudio | grep Version | grep xpu
+          uv pip show torchvision | grep Version | grep xpu
           python -c 'import torch; exit(not torch.xpu.is_available())'
       - name: Run tests on ${{ needs.prepare.outputs.hostname }}
         run: |
