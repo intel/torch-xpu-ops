@@ -12,11 +12,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -566,6 +561,3 @@ Tensor roi_align_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
