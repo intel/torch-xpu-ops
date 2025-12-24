@@ -128,7 +128,7 @@ Tensor& _fft_c2r_xpu_out(
   const auto input = promote_fft_input(self);
 
 #if defined(USE_ONEMKL_XPU)
-  if (!needs_fft_promotion(input_dtype) && input_dtype == out.scalar_type()) {
+  if (!needs_fft_promotion(input_dtype)) {
     return native::xpu::_fft_c2r_mkl_out(
         self, dim, normalization, last_dim_size, out);
   }
@@ -181,7 +181,7 @@ Tensor& _fft_r2c_xpu_out(
   const auto input = promote_fft_input(self);
 
 #if defined(USE_ONEMKL_XPU)
-  if (!needs_fft_promotion(input_dtype) && input_dtype == out.scalar_type()) {
+  if (!needs_fft_promotion(input_dtype)) {
     return native::xpu::_fft_r2c_mkl_out(
         self, dim, normalization, onesided, out);
   }
