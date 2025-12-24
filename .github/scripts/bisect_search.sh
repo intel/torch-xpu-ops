@@ -103,10 +103,12 @@ elif [ "${SEARCH_CHECK}" == "performance" ];then
     if [ ${test_status} -eq 0 ];then
         perf_result=$(tail -n 1 ${WORKSPACE}/tmp.csv |awk -F, '{print $5}')
         test_result=$(echo "${perf_result},${SEARCH_GOOD_VALUE:-"0.00001"},${SEARCH_CRITERIA}" |awk -F, '{
-            if ($2/$1 > (1 - $3)){
+            if ($2 == 0.00001) {
                 print "0";
-            }else{
+            }else if ($2/$1 < (1 - $3) || $1/$2 < (1 - $3)){
                 print "1";
+            }else{
+                print "0";
             }
         }')
     fi
