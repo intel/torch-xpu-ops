@@ -263,7 +263,8 @@ def process_xml_file(xml_file):
     try:
         xml = JUnitXml.fromfile(xml_file)
         parts = os.path.basename(xml_file).rsplit('.', 2)
-        ut = parts[0]
+        parts[0] = re.sub(r'\.{2,}', '.', parts[0])
+        ut = parts[0] + "." + parts[1]
         parts_category = os.path.basename(xml_file).split('.')[0]
         category = determine_category(parts_category)
 
