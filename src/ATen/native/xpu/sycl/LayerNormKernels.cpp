@@ -191,7 +191,7 @@ bool can_vectorize(const T* ptr, int alignment) {
   return addr % alignment == 0;
 };
 
-template <typename T, typename T_ACC>
+template <typename T, typename T_ACC, bool rms_norm>
 struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
@@ -214,8 +214,12 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       T_ACC m1;
       T_ACC m2;
       std::tie(m2, m1) = welford_op.project(val);
-      mean_[i] = m1;
-      rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
+      if constexpr (!rms_norm) {
+        mean_[i] = m1;
+        rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
+      } else {
+        rstd_[i] = c10::xpu::compat::rsqrt(m2 + m1 * m1 + eps_);
+      }
     }
   }
 
@@ -259,7 +263,7 @@ void launch_rowwise_moments_kernel(
   sycl_kernel_submit(global_range, local_range, queue, kfn);
 }
 
-template <typename T, typename T_ACC>
+template <typename T, typename T_ACC, bool rms_norm>
 struct LayerNormForwardKernelFunctor {
   void operator()(sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
@@ -268,12 +272,17 @@ struct LayerNormForwardKernelFunctor {
       const int64_t index = i * N_ + j;
       const T_ACC gamma_v =
           gamma_ == nullptr ? T_ACC(1) : static_cast<T_ACC>(gamma_[j]);
-      const T_ACC beta_v =
-          beta_ == nullptr ? T_ACC(0) : static_cast<T_ACC>(beta_[j]);
-      Y_[index] =
-          (static_cast<T_ACC>(X_[index]) - static_cast<T_ACC>(mean_[i])) *
-              static_cast<T_ACC>(rstd_[i]) * gamma_v +
-          beta_v;
+      if constexpr (!rms_norm) {
+        const T_ACC beta_v =
+            beta_ == nullptr ? T_ACC(0) : static_cast<T_ACC>(beta_[j]);
+        Y_[index] =
+            (static_cast<T_ACC>(X_[index]) - static_cast<T_ACC>(mean_[i])) *
+                static_cast<T_ACC>(rstd_[i]) * gamma_v +
+            beta_v;
+      } else {
+        Y_[index] = (static_cast<T_ACC>(X_[index])) *
+            static_cast<T_ACC>(rstd_[i]) * gamma_v;
+      }
     }
   }
   LayerNormForwardKernelFunctor(
@@ -333,17 +342,17 @@ struct WelfordDataLN {
       : mean(mean), sigma2(sigma2), count(count) {}
 };
 
-template <typename U>
+template <typename U, bool rms_norm>
 WelfordDataLN WelfordOnlineSum(const U val, const WelfordDataLN& curr_sum) {
-  U delta = val - curr_sum.mean;
-  U new_count = curr_sum.count + 1.f;
-  U new_mean = curr_sum.mean +
-      delta * (1.f / new_count); // proper division is slow, this is less
-                                 // accurate but noticeably faster
-  return {
-      static_cast<float>(new_mean),
-      static_cast<float>(curr_sum.sigma2 + delta * (val - new_mean)),
-      static_cast<float>(new_count)};
+  if constexpr (!rms_norm) {
+    U delta = val - curr_sum.mean;
+    U new_count = curr_sum.count + 1.f;
+    // proper division is slow, this is less accurate but noticeably faster
+    U new_mean = curr_sum.mean + delta * (1.f / new_count);
+    return {new_mean, curr_sum.sigma2 + delta * (val - new_mean), new_count};
+  } else {
+    return {0.f, curr_sum.sigma2 + val * val, 0};
+  }
 }
 
 WelfordDataLN WelfordCombine(
