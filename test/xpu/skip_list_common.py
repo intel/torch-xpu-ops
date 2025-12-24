@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 skip_dict = {
+    "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
     "nn/test_convolution_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
