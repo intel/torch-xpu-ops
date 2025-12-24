@@ -47,8 +47,8 @@ git clone https://github.com/pytorch/vision gs-vision
 git clone https://github.com/pytorch/audio gs-audio
 cd gs-vision && git checkout ${TORCHVISION_COMMIT_ID} && python setup.py install && cd ..
 cd gs-audio && git checkout ${TORCHAUDIO_COMMIT_ID} && python setup.py install && cd ..
-cd .. && pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
-                pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
+pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID} || \
+    pip install git+https://github.com/intel/intel-xpu-backend-for-triton@${TRITON_COMMIT_ID}#subdirectory=python
 
 git clone https://github.com/pytorch/benchmark gs-benchmark
 export PYTHONPATH="${PWD}/gs-benchmark:${PYTHONPATH}"
