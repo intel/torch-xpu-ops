@@ -413,7 +413,7 @@ WelfordDataLN compute_stats(
         buf[2 * wrt_y + 1] = wd.sigma2;
         buf[wrt_y + addr_offset] = wd.count;
       }
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
 
       // lower half merges
       if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) < offset) {
@@ -424,14 +424,14 @@ WelfordDataLN compute_stats(
             static_cast<float>(buf[rd_y + addr_offset])};
         wd = WelfordCombine(wd, wdB);
       }
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
     }
 
     if (item_id.get_local_id(1) == 0 && item_id.get_local_id(0) == 0) {
       buf[0] = wd.mean;
       buf[1] = wd.sigma2 / float(N);
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
     return WelfordDataLN{
         static_cast<float>(buf[0]), static_cast<float>(buf[1]), 0.f};
   } else {
@@ -684,7 +684,7 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
               sum_gamma;
         }
 
-        // item.barrier(sycl_local_fence);
+        // sycl::group_barrier(item.get_group());
         accscalar_t slm_sum_beta = accscalar_t(0);
         accscalar_t slm_sum_gamma = accscalar_t(0);
         // slm row 64, 8 subgroup, i = 0,2,4,6
@@ -700,7 +700,7 @@ struct GammaBetaReduceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         local_sum_beta_[local_m * tile_size_n_ + local_n] = slm_sum_beta;
         local_sum_gamma_[local_m * tile_size_n_ + local_n] = slm_sum_gamma;
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       accscalar_t output_sum_beta = accscalar_t(0);
       accscalar_t output_sum_gamma = accscalar_t(0);
       if (local_m == 0 && actual_column < N_) {
