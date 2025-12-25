@@ -317,7 +317,7 @@ update_best_performance() {
         --gcc "${GCC_VERSION:-}" \
         --python "${python:-}" \
         --pytorch "${TORCH_BRANCH_ID:-}/${TORCH_COMMIT_ID:-}" \
-        --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-${GITHUB_SHA:-}}"
+        --torch-xpu-ops "${TORCH_XPU_OPS_COMMIT:-${GITHUB_SHA:-}}" || true
 
     echo "performance_regression=$performance_regression" >> "$output_file"
 }
@@ -352,8 +352,12 @@ EOF
 generate_highlights() {
     if (( accuracy_regression + performance_regression > 0 )); then
         echo -e "### 🎯 Highlight regressions\n"
-        [[ $accuracy_regression -gt 0 ]] && cat accuracy.regression.html || true
-        [[ $performance_regression -gt 0 ]] && cat performance.regression.html || true
+        if [[ $accuracy_regression -gt 0 ]];then
+            cat accuracy.regression.html
+        fi
+        if [[ $performance_regression -gt 0 ]];then
+            cat performance.regression.html
+        fi
     else
         echo -e "### ✅ No regressions detected\n"
     fi
