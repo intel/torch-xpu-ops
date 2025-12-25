@@ -364,6 +364,7 @@ _scaled_dot_product_efficient_attention_xpu(
   // logsumexp is padded along the query dimension to kAlignLSE
   // so that backward kernels can perform vectorized loads safely.
   // This matches the contract expected by memory-efficient attention kernels.
+  // Align with CUDA: kAlignLSE = 32.
   constexpr int64_t kAlignLSE = 32;
   int64_t B = query.size(0);
   int64_t H = query.size(1);
