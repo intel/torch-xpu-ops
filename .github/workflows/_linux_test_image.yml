@@ -31,7 +31,7 @@ on:
         description: Whether push image to docker hub or not
       push_to_hub:
         type: boolean
-        default: false
+        default: true
         description: Whether push image to docker hub or not
 
 permissions: read-all
