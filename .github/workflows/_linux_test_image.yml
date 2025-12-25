@@ -8,7 +8,7 @@ on:
       - '.ci/docker/common/install_xpu.sh'
       - '.ci/docker/ubuntu/Dockerfile'
       - '.github/workflows/_linux_test_image.yml'
-  workflow_call:
+  workflow_dispatch:
     inputs:
       runner:
         type: string
@@ -22,7 +22,7 @@ on:
       ubuntu:
         required: true
         type: string
-        default: '22.04'
+        default: '24.04'
         description: Ubuntu version, 22.04 or 24.04
       tag:
         required: true
@@ -61,8 +61,8 @@ jobs:
       - name: Build image
         run: |
           cd .ci/docker
-          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }} \
-            --build-arg UBUNTU_VERSION=${{ inputs.ubuntu != '' && inputs.ubuntu || '22.04' }} \
+          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:latest' }} \
+            --build-arg UBUNTU_VERSION=${{ inputs.ubuntu != '' && inputs.ubuntu || '24.04' }} \
             --build-arg XPU_DRIVER_TYPE=${{ inputs.driver != '' && inputs.driver || 'lts2' }} \
             -f ubuntu/Dockerfile
           docker images
@@ -70,4 +70,4 @@ jobs:
         if: ${{ inputs.push_to_hub }}
         run: |
           echo "$DOCKER_REGISTRY_AUTH_TOKEN" | docker login -u intelgpu --password-stdin
-          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }}
+          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:latest' }}
