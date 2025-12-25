@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/OpMathType.h>
 #include <ATen/ceil_div.h>
@@ -135,7 +145,7 @@ struct AdaptiveAvgPool2dBwdSLMKernelFunctor
                      native::start_index(_ow, ow_, iw_));
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     for (int64_t i = gi; i < numel_; i += global_range_) {
       int64_t _iw, _ih, _ic, _ib;
@@ -279,7 +289,7 @@ struct AdaptiveAvgPool2dBwdSLMChannelsLastKernelFunctor
       out_cached[i] = scalar_t(0.0);
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     auto gradInput = gradInput_ + batch_id * isizeH_ * isizeW_ * sizeC_;
     auto gradOutput = gradOutput_ + batch_id * ostrideB_;
@@ -695,6 +705,8 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
         numel_(numel) {}
 
  private:
+  vec_t* output_;
+  const vec_t* input_;
   int ih_;
   int iw_;
   int ob_;
@@ -702,8 +714,6 @@ struct AdaptiveAvgPool2dKernelFunctor_cl {
   int oh_;
   int ow_;
   int64_t numel_;
-  const vec_t* input_;
-  vec_t* output_;
 };
 
 #define LAUNCH_AVGPOOL_CHANNEL_LAST_VEC(                                  \

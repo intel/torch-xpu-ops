@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # Owner(s): ["module: intel"]
 import numpy as np
 import torch
@@ -111,3 +119,16 @@ class TestTorchMethod(TestCase):
             b_cpu = torch.flip(a_cpu, [0]).to(torch.float32)
             b_xpu = torch.flip(a_xpu, [0]).cpu().to(torch.float32)
             self.assertEqual(b_cpu, b_xpu)
+
+    def test_index_add_empty(self):
+        x_cpu = torch.zeros([128], dtype=torch.int32)
+        idx_cpu = torch.tensor([], dtype=torch.int32)
+        src_cpu = torch.tensor([], dtype=torch.int32)
+        y_cpu = x_cpu.index_add(0, idx_cpu, src_cpu)
+
+        x_xpu = x_cpu.xpu()
+        idx_xpu = idx_cpu.xpu()
+        src_xpu = src_cpu.xpu()
+        y_xpu = x_xpu.index_add(0, idx_xpu, src_xpu)
+
+        self.assertEqual(y_xpu.cpu(), y_cpu)

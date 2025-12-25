@@ -8,7 +8,7 @@ import os
 import re
 import json
 import argparse
-from github import Github
+from github import Github, Auth
 
 
 def get_github_issues(repo_owner, repo_name, labels, state='open'):
@@ -91,8 +91,9 @@ def main():
 
     # Quick token check
     token = os.getenv('GH_TOKEN')
+    auth = Auth.Token(token)
     global g
-    g = Github(token)  # Increase page size for fewer API calls
+    g = Github(auth=auth)
 
     print(f"Fetching known issues from {args.repo_owner}/{args.repo_name}...")
 

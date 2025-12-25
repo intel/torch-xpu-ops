@@ -213,7 +213,7 @@ process_model() {
     done
 
     local row
-    row=$(generate_html_row "$suite" "$model" "${results[@]}")
+    row=$(generate_html_row "$suite" "$model")
 
     if [[ "$row" =~ ${RED}|${GREEN}|${YELLOW} ]]; then
         echo "$row" | tee -a accuracy.details.html >> accuracy.regression.html
@@ -258,15 +258,20 @@ determine_color() {
 
 generate_html_row() {
     local suite="$1" model="$2"
-    shift 2
-    local results=("$@")
-
     cat << EOF
 <tr>
     <td>$suite</td>
     <td>$model</td>
-    <td>${results[0]}</td><td>${results[1]}</td><td>${results[2]}</td><td>${results[3]}</td><td>${results[4]}</td>
-    <td>${results[5]}</td><td>${results[6]}</td><td>${results[7]}</td><td>${results[8]}</td><td>${results[9]}</td>
+    <td>${results["training_float32"]}</td>
+    <td>${results["training_bfloat16"]}</td>
+    <td>${results["training_float16"]}</td>
+    <td>${results["training_amp_bf16"]}</td>
+    <td>${results["training_amp_fp16"]}</td>
+    <td>${results["inference_float32"]}</td>
+    <td>${results["inference_bfloat16"]}</td>
+    <td>${results["inference_float16"]}</td>
+    <td>${results["inference_amp_bf16"]}</td>
+    <td>${results["inference_amp_fp16"]}</td>
 </tr>
 EOF
 }
