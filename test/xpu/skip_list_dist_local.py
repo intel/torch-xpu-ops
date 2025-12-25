@@ -81,6 +81,9 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_redistribute.py": None,
     "../../../../test/distributed/tensor/test_tensor_ops.py": None,
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
+    "../../../../test/distributed/tensor/test_embedding_ops.py": None,
+    "../../../../test/distributed/tensor/test_dtensor_testbase.py": None,
+    "../../../../test/distributed/tensor/test_dynamic.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_comm.py": (
