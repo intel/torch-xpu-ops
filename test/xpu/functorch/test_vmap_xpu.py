@@ -11,11 +11,14 @@ import functools
 import itertools
 import os
 import random
+import sys
 import types
 import unittest
 import warnings
 from collections import namedtuple, OrderedDict
 from unittest.case import skipIf
+
+sys.path.append("../../../../test/functorch")
 
 import functorch
 import torch
