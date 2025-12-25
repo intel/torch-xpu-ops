@@ -22,7 +22,7 @@ function install_ubuntu() {
     fi
 
     apt-get update -y
-    apt-get install -y gpg-agent wget
+    apt-get install -y gpg gpg-agent wget
     # To add the online network package repository for the GPU Driver
     wget -qO - https://repositories.intel.com/gpu/intel-graphics.key \
         | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg
