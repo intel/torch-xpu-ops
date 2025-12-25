@@ -339,11 +339,11 @@ Tensor _fft_c2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
-  auto self = impl::promote_fft_input(orig_self);
 
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto sorted_dims = impl::_sort_dims(self, dim);
   auto out_sizes = self.sizes();
@@ -425,11 +425,11 @@ Tensor _fft_c2r_mkl(
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
-  auto self = impl::promote_fft_input(orig_self);
 
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto input = self;
 
@@ -490,11 +490,11 @@ Tensor _fft_r2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
-  auto self = impl::promote_fft_input(orig_self);
 
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto input_sizes = self.sizes();
   DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
