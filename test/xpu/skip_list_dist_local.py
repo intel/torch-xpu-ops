@@ -105,6 +105,9 @@ skip_dict = {
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_training.py": None,
     "../../../../test/distributed/_composable/test_replicate_with_compiler.py": None,
+    "../../../../test/distributed/_composable/test_checkpoint.py": None,
+    "../../../../test/distributed/_composable/test_composability/test_2d_composability.py": None,
+    "../../../../test/distributed/_composable/test_replicate.py": None,
     "../../../../test/distributed/_shard/test_sharder.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": None,
@@ -151,6 +154,7 @@ skip_dict = {
     "../../../../test/distributed/elastic/events/lib_test.py": None,
     "../../../../test/distributed/elastic/metrics/api_test.py": None,
     "../../../../test/distributed/elastic/multiprocessing/api_test.py": None,
+    "../../../../test/distributed/elastic/multiprocessing/test_api.py": None,
     "../../../../test/distributed/elastic/test_control_plane.py": (
         # https://github.com/intel/torch-xpu-ops/issues/1871 same failure on cuda
         "test_tcp",
@@ -165,7 +169,7 @@ skip_dict = {
     "../../../../test/distributed/optim/test_named_optimizer.py": None,
     "../../../../test/distributed/optim/test_zero_redundancy_optimizer.py": None,
     "../../../../test/distributed/test_c10d_functional_native.py": None,
-    # "../../../../test/distributed/pipelining/test_stage.py": None,
+    "../../../../test/distributed/pipelining/test_stage.py": None,
     "../../../../test/distributed/pipelining/test_transformer.py": None,
     "../../../../test/distributed/_composable/test_contract.py": None,
     "../../../../test/distributed/_composable/test_replicate_mixed_precision.py": None,
