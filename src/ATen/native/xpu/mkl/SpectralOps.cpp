@@ -127,15 +127,6 @@ void _mkl_dft(
   queue.throw_asynchronous();
 }
 
-// TODO: Remove this work-around in future.
-Tensor promote_fft_input(const Tensor& input) {
-  if (input.scalar_type() == ScalarType::Half)
-    return input.to(ScalarType::Float);
-  if (input.scalar_type() == ScalarType::ComplexHalf)
-    return input.to(ScalarType::ComplexFloat);
-  return input;
-}
-
 void _fft_with_size(
     Tensor& output,
     const Tensor& self,
@@ -171,7 +162,7 @@ void _fft_with_size(
       bool,
       class c10::ArrayRef<int64_t>,
       bool);
-  Tensor input = promote_fft_input(input_);
+  Tensor input = input_;
 
   if (input.scalar_type() == ScalarType::Float ||
       input.scalar_type() == ScalarType::ComplexFloat) {
@@ -197,13 +188,6 @@ void _fft_with_size(
       inverse,
       checked_signal_sizes,
       onesided);
-
-  // TODO: Remove this work-around in future.
-  if (self.scalar_type() == ScalarType::Half ||
-      self.scalar_type() == ScalarType::ComplexHalf) {
-    output = complex_output ? output.to(ScalarType::ComplexHalf)
-                            : output.to(ScalarType::Half);
-  }
 }
 
 // Execute a general fft operation (can be c2c, onesided r2c or onesided c2r)
@@ -339,13 +323,24 @@ const Tensor& _fft_apply_normalization(
   return (scale == 1.0) ? self : self.mul_(scale);
 }
 
+// TODO: Remove this work-around in future.
+Tensor promote_fft_input(const Tensor& input) {
+  if (input.scalar_type() == ScalarType::Half)
+    return input.to(ScalarType::Float);
+  if (input.scalar_type() == ScalarType::ComplexHalf)
+    return input.to(ScalarType::ComplexFloat);
+  return input;
+}
+
 } // namespace impl
 
 Tensor _fft_c2c_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
+  auto self = impl::promote_fft_input(orig_self);
+
   if (dim.empty()) {
     return self.clone();
   }
@@ -386,7 +381,11 @@ Tensor _fft_c2c_mkl(
     }
   }
 
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
+    return out.to(ScalarType::ComplexHalf);
+  return out;
 }
 
 Tensor& _fft_c2c_mkl_out(
@@ -422,10 +421,12 @@ void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
 }
 
 Tensor _fft_c2r_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
+  auto self = impl::promote_fft_input(orig_self);
+
   if (dim.empty()) {
     return self.clone();
   }
@@ -461,7 +462,11 @@ Tensor _fft_c2r_mkl(
       /*onesided=*/true,
       /*forward=*/false);
 
-  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+  impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
+    return out.to(ScalarType::Half);
+  return out;
 }
 
 Tensor& _fft_c2r_mkl_out(
@@ -481,10 +486,12 @@ REGISTER_XPU_DISPATCH(
     &_fft_fill_with_conjugate_symmetry_xpu);
 
 Tensor _fft_r2c_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
+  auto self = impl::promote_fft_input(orig_self);
+
   if (dim.empty()) {
     return self.clone();
   }
@@ -547,6 +554,8 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
+  if (orig_self.scalar_type() == ScalarType::Half)
+    return out.to(ScalarType::ComplexHalf);
   return out;
 }
 
