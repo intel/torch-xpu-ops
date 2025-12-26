@@ -11,6 +11,8 @@ Default: Compare both record['time(us)'] and record['E2E total time(us)'] in sam
 import pandas as pd
 import argparse
 import os
+import json
+import re
 from ast import literal_eval
 from tabulate import tabulate
 
@@ -54,7 +56,110 @@ def format_parameters(record):
                 params.append(f"{key}: {value}")
     return "<br>".join(params)
 
-def display_comparison(results, threshold, xpu_file, compare_both, show_all):
+def build_runpy_case_config(record, is_backward_from_filename=None):
+    """
+    Returns:
+      op_from_case_name: str   → for --op
+      op_name_raw: str         → original op_name (top-level field)
+      case_config: dict        → parameters for --case
+    """
+    case_config = {}
+
+    # Get case_name (for --op)
+    case_name = record.get('case_name')
+    if case_name == "NULL" or pd.isna(case_name):
+        case_name = None
+
+    # Get op_name (for top-level field)
+    op_name_raw = record.get('op_name')
+    if op_name_raw == "NULL" or pd.isna(op_name_raw):
+        op_name_raw = None
+
+    # Skip columns
+    skip_cols = {
+        'case_name', 'op_name',
+        'time(us)', 'E2E total time(us)', 'E2E forward time(us)',
+        #Critical: skip comparison temp fields
+        'profile_time_xpu', 'profile_time_base', 'profile_diff', 'profile_change',
+        'e2e_time_xpu', 'e2e_time_base', 'e2e_diff', 'e2e_change',
+    }
+
+    for col, val in record.items():
+        if col in skip_cols:
+            continue
+        if val == "NULL" or pd.isna(val) or val == "":
+            continue
+
+        if col == 'backward':
+            if val not in ("NULL", "", None) and not pd.isna(val):
+                # Normalize to Python bool, but only if recognizable; otherwise keep raw (rare)
+                str_val = str(val).strip().lower()
+                if str_val in ('true', '1', 'yes', 't', 'on'):
+                    case_config['backward'] = True
+                elif str_val in ('false', '0', 'no', 'f', 'off'):
+                    case_config['backward'] = False
+                else:
+                    # Fallback: keep as-is (e.g., if it's already bool or unexpected string)
+                    case_config['backward'] = val
+            continue
+        elif col in {'channels_last', 'replacement', 'affine'}:
+            case_config[col] = str(val).lower() in ('true', '1', 'yes', 't')
+        elif col == 'dtype' or col == 'datatype':
+            dt = str(val).strip().lower()
+            if dt in {'bfloat16', 'bf16'}:
+                case_config['dtype'] = 'torch.bfloat16'
+            elif dt in {'float16', 'fp16'}:
+                case_config['dtype'] = 'torch.float16'
+            elif dt in {'float32', 'fp32'}:
+                case_config['dtype'] = 'torch.float32'
+            elif dt in {'int8'}:
+                case_config['dtype'] = 'torch.int8'
+            elif dt in {'int32', 'int'}:
+                case_config['dtype'] = 'torch.int32'
+            elif dt in {'bool'}:
+                case_config['dtype'] = 'torch.bool'
+            else:
+                case_config['dtype'] = f'torch.{dt}' if not dt.startswith('torch.') else dt
+        elif col in {'shape', 'out', 'kernel_size', 'stride', 'shifts', 'output_size'}:
+            try:
+                if isinstance(val, str):
+                    if val.startswith('[') or val.startswith('('):
+                        parsed = literal_eval(val)
+                    else:
+                        parsed = [int(x.strip()) for x in val.split(',') if x.strip()]
+                    case_config[col] = parsed
+                elif isinstance(val, (list, tuple)):
+                    case_config[col] = list(val)
+                else:
+                    case_config[col] = val
+            except Exception:
+                case_config[col] = val
+        elif col in {'dim', 'P', 'num_samples'}:
+            try:
+                case_config[col] = int(float(val))
+            except (ValueError, TypeError):
+                case_config[col] = val
+        elif col in {'scale_factor'}:
+            try:
+                case_config[col] = float(val)
+            except (ValueError, TypeError):
+                case_config[col] = val
+        else:
+            case_config[col] = val
+
+    # Set backward
+    if is_backward_from_filename is not None:
+        case_config['backward'] = is_backward_from_filename
+    else:
+        raw_back = record.get('backward')
+        if raw_back != "NULL" and not pd.isna(raw_back):
+            case_config['backward'] = str(raw_back).lower() in ('true', '1', 'yes', 't')
+        else:
+            case_config['backward'] = False
+
+    return case_name, op_name_raw, case_config
+
+def display_comparison(results, threshold, xpu_file, compare_both, show_all, json_output=None):
     if 'forward' in xpu_file.lower():
         direction = "Forward"
     elif 'backward' in xpu_file.lower():
@@ -202,7 +307,31 @@ def display_comparison(results, threshold, xpu_file, compare_both, show_all):
 
     write_to_github_summary(summary_output)
 
-def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=False, e2e_only=False, show_all=False):
+    if regression_records and json_output:
+        try:
+            with open(json_output, 'w') as f:
+                written = 0
+                for record in regression_records:
+                    case_name, op_name_raw, case_cfg = build_runpy_case_config(
+                        record,
+                    )
+                    if case_name and case_cfg:
+                        line = {
+                            "op": case_name,
+                            "case": case_cfg
+                        }
+                        if op_name_raw is not None:
+                            line["op_name"] = op_name_raw
+                        f.write(json.dumps(line, separators=(',', ':')) + '\n')
+                        written += 1
+                print(f"✅ Wrote {written} regression cases to: {json_output}")
+                if written > 0:
+                    example = line
+                    print(f"📌 Example command:\n   python run.py --op {example['op']} --case '{json.dumps(example['case'])}'")
+        except Exception as e:
+            print(f"❌ Error writing JSONL: {e}")
+
+def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=False, e2e_only=False, show_all=False, json_output=None):
     def prepare_df(df):
         df.columns = df.columns.str.strip()
         if 'time(us)' not in df.columns:
@@ -295,7 +424,7 @@ def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=Fa
                 results.append(record)
 
     result_df = pd.DataFrame(results) if results else pd.DataFrame()
-    display_comparison(result_df, threshold, xpu_file, compare_both, show_all)
+    display_comparison(result_df, threshold, xpu_file, compare_both, show_all, json_output=json_output)
 
 def main():
     parser = argparse.ArgumentParser(description='Compare time values between two CSV files')
@@ -309,6 +438,8 @@ def main():
                        help='Only compare E2E time (E2E total time(us))')
     parser.add_argument('--show-all', action='store_true',
                        help='Show improvement and mixed changes in GitHub summary (default: only show regression)')
+    parser.add_argument('--output-json', type=str, default='regression_cases.json',
+                       help='Output regression cases to JSONL file (default: regression_cases.json)')
     args = parser.parse_args()
 
     if args.profile_only and args.e2e_only:
@@ -338,7 +469,8 @@ def main():
         threshold=args.threshold,
         profile_only=args.profile_only,
         e2e_only=args.e2e_only,
-        show_all=args.show_all
+        show_all=args.show_all,
+        json_output=args.output_json
     )
 
 if __name__ == "__main__":

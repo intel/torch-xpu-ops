@@ -1,0 +1,13 @@
+case_name;datatype;op_name;shape;channels_last;dim;output_size;P;reduce;kernel_size;stride;replacement;num_samples;scale_factor;mode;padding_mode;align_corners;shifts;affine;backward;time(us);E2E total time(us)
+adaptive_avg_pool2d;bfloat16;adaptive_avg_pool2d_backward;[8, 512, 32, 32];False;;[7, 7];;;;;;;;;;;;;True;554.005;15352.153778076172
+adaptive_avg_pool2d;bfloat16;adaptive_avg_pool2d_backward;[8, 512, 32, 32];True;;[7, 7];;;;;;;;;;;;;True;1107.0;18506.264686584473
+adaptive_avg_pool2d;float16;adaptive_avg_pool2d_backward;[8, 512, 32, 32];False;;[7, 7];;;;;;;;;;;;;True;558.927;14413.35678100586
+adaptive_avg_pool2d;float16;adaptive_avg_pool2d_backward;[8, 512, 32, 32];True;;[7, 7];;;;;;;;;;;;;True;1102.0;23999.273777008057
+adaptive_avg_pool2d;float32;adaptive_avg_pool2d_backward;[8, 512, 32, 32];False;;[7, 7];;;;;;;;;;;;;True;1087.0;16393.99528503418
+adaptive_avg_pool2d;float32;adaptive_avg_pool2d_backward;[8, 512, 32, 32];True;;[7, 7];;;;;;;;;;;;;True;2054.0;21354.317665100098
+adaptive_avg_pool2d;bfloat16;adaptive_avg_pool2d_backward;[8, 256, 56, 56];False;;[14, 14];;;;;;;;;;;;;True;824.859;22435.903549194336
+adaptive_avg_pool2d;bfloat16;adaptive_avg_pool2d_backward;[8, 256, 56, 56];True;;[14, 14];;;;;;;;;;;;;True;1664.0;34906.42309188843
+adaptive_avg_pool2d;float16;adaptive_avg_pool2d_backward;[8, 256, 56, 56];False;;[14, 14];;;;;;;;;;;;;True;835.393;22244.954109191895
+adaptive_avg_pool2d;float16;adaptive_avg_pool2d_backward;[8, 256, 56, 56];True;;[14, 14];;;;;;;;;;;;;True;1675.0;30519.24705505371
+adaptive_avg_pool2d;float32;adaptive_avg_pool2d_backward;[8, 256, 56, 56];False;;[14, 14];;;;;;;;;;;;;True;1673.0;25913.619995117188
+adaptive_avg_pool2d;float32;adaptive_avg_pool2d_backward;[8, 256, 56, 56];True;;[14, 14];;;;;;;;;;;;;True;3160.0;33980.38148880005

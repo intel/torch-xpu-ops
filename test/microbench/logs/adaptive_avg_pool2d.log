@@ -1,0 +1,592 @@
+shape: (8, 512, 32, 32) ; datatype: torch.bfloat16 ; output_size: (7, 7) ; channels_last: False ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        19.85%      63.953ms        69.65%     224.430ms       1.122ms      41.071ms        56.69%      71.964ms     359.822us           200  
+                                               aten::to         0.05%     147.798us        38.25%     123.248ms       1.232ms       0.000us         0.00%      30.894ms     308.938us           100  
+                                         aten::_to_copy         0.17%     532.887us        38.20%     123.100ms       1.231ms       0.000us         0.00%      30.894ms     308.938us           100  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      20.600ms        28.44%      20.600ms     515.007us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     120.344us         0.88%       2.833ms     141.650us       0.000us         0.00%      20.410ms       1.020ms            20  
+                                        SelectBackward0         0.03%      90.895us         0.84%       2.713ms     135.633us       0.000us         0.00%      20.410ms       1.020ms            20  
+                                  aten::select_backward         0.03%     108.616us         0.81%       2.622ms     131.088us       0.000us         0.00%      20.410ms       1.020ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.03%      93.592us         0.72%       2.324ms     116.212us       0.000us         0.00%      10.889ms     544.458us            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      60.767us         0.69%       2.231ms     111.533us       0.000us         0.00%      10.889ms     544.458us            20  
+                    aten::_adaptive_avg_pool2d_backward         0.52%       1.669ms         0.67%       2.170ms     108.494us      10.889ms        15.03%      10.889ms     544.458us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us      10.889ms        15.03%      10.889ms     544.458us            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.10%     334.946us        12.27%      39.531ms       1.977ms       0.000us         0.00%      10.294ms     514.677us            20  
+                                        ToCopyBackward0         0.02%      65.182us        12.16%      39.196ms       1.960ms       0.000us         0.00%      10.294ms     514.677us            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      10.294ms        14.21%      10.294ms     514.677us            20  
+                              aten::adaptive_avg_pool2d         0.02%      60.257us         0.63%       2.031ms     101.558us       0.000us         0.00%      10.252ms     512.578us            20  
+                             aten::_adaptive_avg_pool2d         0.32%       1.031ms         0.61%       1.971ms      98.546us      10.252ms        14.15%      10.252ms     512.578us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<c10:...         0.00%       0.000us         0.00%       0.000us       0.000us      10.252ms        14.15%      10.252ms     512.578us            20  
+                                            aten::zeros         0.02%      76.091us         0.51%       1.628ms      81.376us       0.000us         0.00%      10.233ms     511.661us            20  
+                                            aten::zero_         0.01%      41.463us         0.46%       1.472ms      73.612us       0.000us         0.00%      10.233ms     511.661us            20  
+                                            aten::fill_         0.22%     706.544us         0.44%       1.431ms      71.539us      10.233ms        14.13%      10.233ms     511.661us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.233ms        14.13%      10.233ms     511.661us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.177ms        14.05%      10.177ms     508.838us            20  
+                                            aten::randn         0.04%     119.166us        61.03%     196.659ms       9.833ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.10%     333.239us         0.10%     333.239us       2.777us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::normal_        60.97%     196.461ms        60.97%     196.461ms       9.823ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.99%       3.190ms         0.99%       3.190ms      31.898us       0.000us         0.00%       0.000us       0.000us           100  
+                                        aten::expand_as         0.03%     104.755us         0.10%     306.949us       5.116us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.04%     121.421us         0.06%     202.194us       3.370us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.04%     128.439us         0.04%     128.439us       1.284us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        14.98%      48.282ms        14.98%      48.282ms     804.692us       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.03%      88.728us         0.42%       1.357ms      67.847us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.37%       1.208ms         0.37%       1.208ms      60.379us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.03%      90.250us         0.03%      90.250us       4.512us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.74%       2.395ms         0.74%       2.395ms      29.943us       0.000us         0.00%       0.000us       0.000us            80  
+                                           aten::select         0.07%     230.880us         0.09%     278.546us       6.964us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.02%      49.718us         0.04%     117.940us       2.949us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     103.824us         0.10%     317.092us      15.855us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.04%     114.576us         0.07%     213.268us      10.663us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::detach         0.01%      28.821us         0.03%      98.692us       4.935us       0.000us         0.00%       0.000us       0.000us            20  
+                                                 detach         0.02%      69.871us         0.02%      69.871us       3.494us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 322.210ms
+Self XPU time total: 72.445ms
+
+E2E total time: 0.01924756765365600447
+shape: (8, 512, 32, 32) ; datatype: torch.bfloat16 ; output_size: (7, 7) ; channels_last: True ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        24.05%     113.652ms        71.87%     339.676ms       1.061ms      76.588ms        70.04%     131.216ms     410.051us           320  
+                                               aten::to         0.06%     302.441us        38.16%     180.349ms       1.288ms       0.000us         0.00%      54.629ms     390.205us           140  
+                                         aten::_to_copy         0.23%       1.071ms        38.10%     180.047ms       1.500ms       0.000us         0.00%      54.629ms     455.239us           120  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      32.706ms        29.91%      32.706ms     545.104us            60  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%     109.005us         0.55%       2.612ms     130.604us       0.000us         0.00%      21.913ms       1.096ms            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      71.040us         0.53%       2.503ms     125.154us       0.000us         0.00%      21.913ms       1.096ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.24%       1.133ms         0.51%       2.432ms     121.602us      10.899ms         9.97%      21.913ms       1.096ms            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      21.895ms        20.02%      21.895ms     547.371us            40  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.11%     516.068us         7.78%      36.758ms     918.946us       0.000us         0.00%      21.876ms     546.892us            40  
+                                        ToCopyBackward0         0.04%     192.471us         7.67%      36.242ms     906.044us       0.000us         0.00%      21.876ms     546.892us            40  
+                                       aten::contiguous         0.01%      68.687us         2.61%      12.322ms     205.362us       0.000us         0.00%      21.848ms     364.134us            60  
+                                            aten::clone         0.03%     124.329us         2.59%      12.253ms     204.217us       0.000us         0.00%      21.848ms     364.134us            60  
+autograd::engine::evaluate_function: SelectBackward0...         0.05%     212.943us         0.68%       3.207ms     160.366us       0.000us         0.00%      21.837ms       1.092ms            20  
+                                        SelectBackward0         0.04%     169.781us         0.63%       2.994ms     149.719us       0.000us         0.00%      21.837ms       1.092ms            20  
+                                  aten::select_backward         0.03%     133.575us         0.60%       2.825ms     141.230us       0.000us         0.00%      21.837ms       1.092ms            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      11.042ms        10.10%      11.042ms     552.114us            20  
+                              aten::adaptive_avg_pool2d         0.01%      69.553us         0.39%       1.847ms      92.352us       0.000us         0.00%      10.973ms     548.651us            20  
+                             aten::_adaptive_avg_pool2d         0.20%     949.812us         0.38%       1.777ms      88.874us      10.973ms        10.03%      10.973ms     548.651us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<c...         0.00%       0.000us         0.00%       0.000us       0.000us      10.973ms        10.03%      10.973ms     548.651us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.944ms        10.01%      10.944ms     547.219us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      10.899ms         9.97%      10.899ms     544.940us            20  
+                                            aten::zeros         0.02%      89.647us         0.38%       1.812ms      90.616us       0.000us         0.00%      10.893ms     544.648us            20  
+                                            aten::zero_         0.01%      40.454us         0.35%       1.634ms      81.714us       0.000us         0.00%      10.893ms     544.648us            20  
+                                            aten::fill_         0.16%     770.575us         0.34%       1.594ms      79.691us      10.893ms         9.96%      10.893ms     544.648us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.893ms         9.96%      10.893ms     544.648us            20  
+                                            aten::randn         0.03%     163.497us        56.70%     267.968ms      13.398ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.17%     793.428us         0.17%     793.428us       3.606us       0.000us         0.00%       0.000us       0.000us           220  
+                                          aten::normal_        56.63%     267.619ms        56.63%     267.619ms      13.381ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.73%       3.469ms         0.73%       3.469ms      28.912us       0.000us         0.00%       0.000us       0.000us           120  
+                                       aten::empty_like         0.03%     136.340us         0.08%     377.991us       3.150us       0.000us         0.00%       0.000us       0.000us           120  
+                                        aten::expand_as         0.02%     108.891us         0.08%     360.050us       6.001us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.03%     156.797us         0.05%     251.159us       4.186us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.03%     164.283us         0.03%     164.283us       1.643us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        15.66%      74.027ms        15.66%      74.027ms       1.234ms       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.88%       4.150ms         0.88%       4.150ms      29.643us       0.000us         0.00%       0.000us       0.000us           140  
+                                             aten::rand         0.02%     104.604us         0.31%       1.466ms      73.287us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.27%       1.289ms         0.27%       1.289ms      64.452us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.03%     120.805us         0.03%     120.805us       6.040us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.06%     281.049us         0.07%     350.970us       8.774us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.01%      58.141us         4.30%      20.324ms       1.016ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.05%     225.828us         4.29%      20.265ms       1.013ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      51.805us         0.06%     283.457us      14.173us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 472.597ms
+Self XPU time total: 109.353ms
+
+E2E total time: 0.02028282880783081193
+shape: (8, 512, 32, 32) ; datatype: torch.float16 ; output_size: (7, 7) ; channels_last: False ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        19.69%      72.343ms        81.20%     298.346ms       1.492ms      41.614ms        56.57%      72.945ms     364.724us           200  
+                                               aten::to         0.04%     139.148us        43.52%     159.921ms       1.599ms       0.000us         0.00%      31.331ms     313.310us           100  
+                                         aten::_to_copy         0.14%     519.385us        43.49%     159.782ms       1.598ms       0.000us         0.00%      31.331ms     313.310us           100  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      20.785ms        28.26%      20.785ms     519.634us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     149.488us         0.78%       2.876ms     143.786us       0.000us         0.00%      20.748ms       1.037ms            20  
+                                        SelectBackward0         0.04%     155.804us         0.74%       2.726ms     136.311us       0.000us         0.00%      20.748ms       1.037ms            20  
+                                  aten::select_backward         0.04%     141.714us         0.70%       2.570ms     128.521us       0.000us         0.00%      20.748ms       1.037ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%      88.842us         0.58%       2.148ms     107.402us       0.000us         0.00%      11.023ms     551.127us            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      56.135us         0.56%       2.059ms     102.960us       0.000us         0.00%      11.023ms     551.127us            20  
+                    aten::_adaptive_avg_pool2d_backward         0.41%       1.516ms         0.55%       2.003ms     100.154us      11.023ms        14.98%      11.023ms     551.127us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us      11.023ms        14.98%      11.023ms     551.127us            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.04%     147.472us        12.09%      44.440ms       2.222ms       0.000us         0.00%      10.546ms     527.283us            20  
+                                        ToCopyBackward0         0.01%      42.847us        12.05%      44.292ms       2.215ms       0.000us         0.00%      10.546ms     527.283us            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      10.546ms        14.34%      10.546ms     527.283us            20  
+                                            aten::zeros         0.02%      78.733us         0.42%       1.537ms      76.859us       0.000us         0.00%      10.465ms     523.260us            20  
+                                            aten::zero_         0.01%      33.317us         0.38%       1.385ms      69.252us       0.000us         0.00%      10.465ms     523.260us            20  
+                                            aten::fill_         0.18%     643.170us         0.37%       1.352ms      67.586us      10.465ms        14.23%      10.465ms     523.260us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.465ms        14.23%      10.465ms     523.260us            20  
+                              aten::adaptive_avg_pool2d         0.02%      60.250us         0.56%       2.074ms     103.714us       0.000us         0.00%      10.460ms     523.000us            20  
+                             aten::_adaptive_avg_pool2d         0.28%       1.044ms         0.55%       2.014ms     100.702us      10.460ms        14.22%      10.460ms     523.000us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<c10:...         0.00%       0.000us         0.00%       0.000us       0.000us      10.460ms        14.22%      10.460ms     523.000us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.283ms        13.98%      10.283ms     514.135us            20  
+                                            aten::randn         0.03%     111.403us        55.83%     205.143ms      10.257ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.09%     325.953us         0.09%     325.953us       2.716us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::normal_        55.78%     204.951ms        55.78%     204.951ms      10.248ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.89%       3.256ms         0.89%       3.256ms      32.558us       0.000us         0.00%       0.000us       0.000us           100  
+                                        aten::expand_as         0.03%     116.177us         0.10%     358.262us       5.971us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.04%     145.004us         0.07%     242.085us       4.035us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.04%     144.051us         0.04%     144.051us       1.441us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        20.89%      76.763ms        20.89%      76.763ms       1.279ms       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.03%      92.172us         0.38%       1.397ms      69.864us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.34%       1.241ms         0.34%       1.241ms      62.034us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.03%      92.148us         0.03%      92.148us       4.607us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.66%       2.426ms         0.66%       2.426ms      30.331us       0.000us         0.00%       0.000us       0.000us            80  
+                                           aten::select         0.06%     229.247us         0.08%     276.217us       6.905us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      44.546us         0.03%     103.745us       2.594us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     121.737us         0.09%     342.790us      17.140us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.03%     109.811us         0.06%     221.053us      11.053us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::detach         0.01%      36.434us         0.03%     111.242us       5.562us       0.000us         0.00%       0.000us       0.000us            20  
+                                                 detach         0.02%      74.808us         0.02%      74.808us       3.740us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 367.439ms
+Self XPU time total: 73.561ms
+
+E2E total time: 0.01989885568618774553
+shape: (8, 512, 32, 32) ; datatype: torch.float16 ; output_size: (7, 7) ; channels_last: True ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        29.13%     136.331ms        70.78%     331.279ms       1.035ms      76.832ms        70.06%     131.707ms     411.585us           320  
+                                               aten::to         0.06%     278.044us        37.73%     176.561ms       1.261ms       0.000us         0.00%      54.875ms     391.962us           140  
+                                         aten::_to_copy         0.24%       1.123ms        37.67%     176.283ms       1.469ms       0.000us         0.00%      54.875ms     457.289us           120  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      32.776ms        29.89%      32.776ms     546.259us            60  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      22.015ms        20.07%      22.015ms     550.385us            40  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.08%     378.561us         8.11%      37.935ms     948.379us       0.000us         0.00%      21.965ms     549.134us            40  
+                                        ToCopyBackward0         0.03%     137.077us         8.02%      37.557ms     938.914us       0.000us         0.00%      21.965ms     549.134us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     178.505us         0.69%       3.251ms     162.563us       0.000us         0.00%      21.952ms       1.098ms            20  
+                                        SelectBackward0         0.03%     140.449us         0.66%       3.073ms     153.638us       0.000us         0.00%      21.952ms       1.098ms            20  
+                                  aten::select_backward         0.03%     129.579us         0.63%       2.932ms     146.615us       0.000us         0.00%      21.952ms       1.098ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%     103.481us         0.58%       2.714ms     135.676us       0.000us         0.00%      21.912ms       1.096ms            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      71.546us         0.56%       2.610ms     130.502us       0.000us         0.00%      21.912ms       1.096ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.25%       1.158ms         0.54%       2.538ms     126.925us      10.975ms        10.01%      21.912ms       1.096ms            20  
+                                       aten::contiguous         0.02%      71.836us         2.93%      13.727ms     228.792us       0.000us         0.00%      21.882ms     364.694us            60  
+                                            aten::clone         0.03%     159.349us         2.92%      13.656ms     227.594us       0.000us         0.00%      21.882ms     364.694us            60  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      11.022ms        10.05%      11.022ms     551.075us            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      11.020ms        10.05%      11.020ms     551.000us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      10.975ms        10.01%      10.975ms     548.768us            20  
+                                            aten::zeros         0.02%      86.494us         0.41%       1.911ms      95.533us       0.000us         0.00%      10.931ms     546.536us            20  
+                                            aten::zero_         0.01%      42.291us         0.37%       1.729ms      86.439us       0.000us         0.00%      10.931ms     546.536us            20  
+                                            aten::fill_         0.18%     820.454us         0.36%       1.686ms      84.325us      10.931ms         9.97%      10.931ms     546.536us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      10.931ms         9.97%      10.931ms     546.536us            20  
+                              aten::adaptive_avg_pool2d         0.01%      65.803us         0.38%       1.768ms      88.408us       0.000us         0.00%      10.930ms     546.523us            20  
+                             aten::_adaptive_avg_pool2d         0.20%     914.913us         0.36%       1.702ms      85.118us      10.930ms         9.97%      10.930ms     546.523us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<c...         0.00%       0.000us         0.00%       0.000us       0.000us      10.930ms         9.97%      10.930ms     546.523us            20  
+                                            aten::randn         0.03%     157.009us        55.03%     257.539ms      12.877ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.17%     797.408us         0.17%     797.408us       3.625us       0.000us         0.00%       0.000us       0.000us           220  
+                                          aten::normal_        54.96%     257.202ms        54.96%     257.202ms      12.860ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.77%       3.601ms         0.77%       3.601ms      30.012us       0.000us         0.00%       0.000us       0.000us           120  
+                                       aten::empty_like         0.03%     131.713us         0.08%     386.267us       3.219us       0.000us         0.00%       0.000us       0.000us           120  
+                                        aten::expand_as         0.02%     112.751us         0.08%     351.289us       5.855us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.03%     146.993us         0.05%     238.538us       3.976us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.03%     159.977us         0.03%     159.977us       1.600us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        12.22%      57.205ms        12.22%      57.205ms     953.415us       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.90%       4.196ms         0.90%       4.196ms      29.974us       0.000us         0.00%       0.000us       0.000us           140  
+                                             aten::rand         0.02%      94.689us         0.30%       1.419ms      70.969us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.27%       1.264ms         0.27%       1.264ms      63.190us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.03%     119.381us         0.03%     119.381us       5.969us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.06%     268.670us         0.07%     337.102us       8.428us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.01%      57.078us         6.41%      29.990ms       1.500ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.05%     255.989us         6.40%      29.933ms       1.497ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      52.212us         0.07%     321.244us      16.062us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 468.013ms
+Self XPU time total: 109.669ms
+
+E2E total time: 0.01806138753890991142
+shape: (8, 512, 32, 32) ; datatype: torch.float32 ; output_size: (7, 7) ; channels_last: False ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        19.63%      64.971ms        38.63%     127.874ms       1.598ms      82.611ms        56.65%      82.611ms       1.033ms            80  
+                                               aten::to         0.02%      80.515us        39.22%     129.816ms       2.164ms       0.000us         0.00%      62.005ms       1.033ms            60  
+                                         aten::_to_copy         0.10%     337.357us        39.19%     129.736ms       2.162ms       0.000us         0.00%      62.005ms       1.033ms            60  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      41.381ms        28.38%      41.381ms       1.035ms            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.05%     151.629us         0.73%       2.430ms     121.480us       0.000us         0.00%      41.288ms       2.064ms            20  
+                                        SelectBackward0         0.04%     134.058us         0.69%       2.278ms     113.899us       0.000us         0.00%      41.288ms       2.064ms            20  
+                                  aten::select_backward         0.04%     133.142us         0.65%       2.144ms     107.196us       0.000us         0.00%      41.288ms       2.064ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%      74.821us         0.54%       1.791ms      89.545us       0.000us         0.00%      21.837ms       1.092ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      38.277us         0.52%       1.716ms      85.804us       0.000us         0.00%      21.837ms       1.092ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.36%       1.193ms         0.51%       1.678ms      83.890us      21.837ms        14.97%      21.837ms       1.092ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us      21.837ms        14.97%      21.837ms       1.092ms            20  
+                              aten::adaptive_avg_pool2d         0.01%      37.110us         0.48%       1.583ms      79.147us       0.000us         0.00%      20.698ms       1.035ms            20  
+                             aten::_adaptive_avg_pool2d         0.23%     755.424us         0.47%       1.546ms      77.292us      20.698ms        14.19%      20.698ms       1.035ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<floa...         0.00%       0.000us         0.00%       0.000us       0.000us      20.698ms        14.19%      20.698ms       1.035ms            20  
+                                            aten::zeros         0.03%     101.346us         0.38%       1.248ms      62.402us       0.000us         0.00%      20.682ms       1.034ms            20  
+                                            aten::zero_         0.01%      24.902us         0.31%       1.040ms      52.019us       0.000us         0.00%      20.682ms       1.034ms            20  
+                                            aten::fill_         0.14%     453.695us         0.31%       1.015ms      50.774us      20.682ms        14.18%      20.682ms       1.034ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      20.682ms        14.18%      20.682ms       1.034ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.03%      88.573us        14.55%      48.177ms       2.409ms       0.000us         0.00%      20.624ms       1.031ms            20  
+                                        ToCopyBackward0         0.01%      24.248us        14.53%      48.089ms       2.404ms       0.000us         0.00%      20.624ms       1.031ms            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      20.624ms        14.14%      20.624ms       1.031ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      20.606ms        14.13%      20.606ms       1.030ms            20  
+                                            aten::randn         0.02%      82.465us        58.48%     193.580ms       9.679ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.09%     297.563us         0.09%     297.563us       2.976us       0.000us         0.00%       0.000us       0.000us           100  
+                                          aten::normal_        58.43%     193.427ms        58.43%     193.427ms       9.671ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.67%       2.218ms         0.67%       2.218ms      36.973us       0.000us         0.00%       0.000us       0.000us            60  
+                                     urEnqueueUSMMemcpy        18.87%      62.467ms        18.87%      62.467ms       1.041ms       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.02%      62.214us         0.40%       1.328ms      66.421us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.37%       1.212ms         0.37%       1.212ms      60.624us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%      58.703us         0.02%      58.703us       2.935us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.64%       2.127ms         0.64%       2.127ms      26.592us       0.000us         0.00%       0.000us       0.000us            80  
+                                           aten::select         0.05%     163.586us         0.06%     203.306us       5.083us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.01%      39.720us         0.01%      39.720us       0.993us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      20.226us         0.02%      49.914us       2.496us       0.000us         0.00%       0.000us       0.000us            20  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     110.057us         0.08%     256.325us      12.816us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.02%      71.873us         0.04%     146.268us       7.313us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::detach         0.01%      25.093us         0.02%      74.395us       3.720us       0.000us         0.00%       0.000us       0.000us            20  
+                                                 detach         0.01%      49.302us         0.01%      49.302us       2.465us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 331.032ms
+Self XPU time total: 145.829ms
+
+E2E total time: 0.01603322029113769462
+shape: (8, 512, 32, 32) ; datatype: torch.float32 ; output_size: (7, 7) ; channels_last: True ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        25.60%     101.216ms        47.16%     186.421ms       1.332ms     105.016ms        62.14%     105.016ms     750.117us           140  
+                                               aten::to         0.05%     181.006us        43.47%     171.829ms       1.718ms       0.000us         0.00%      62.994ms     629.942us           100  
+                                         aten::_to_copy         0.20%     779.723us        43.42%     171.648ms       2.146ms       0.000us         0.00%      62.994ms     787.427us            80  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%      76.076us         0.63%       2.486ms     124.291us       0.000us         0.00%      43.459ms       2.173ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      56.923us         0.61%       2.410ms     120.488us       0.000us         0.00%      43.459ms       2.173ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.27%       1.048ms         0.60%       2.353ms     117.641us      21.769ms        12.88%      43.459ms       2.173ms            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      42.464ms        25.13%      42.464ms       1.062ms            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     168.945us         0.70%       2.755ms     137.745us       0.000us         0.00%      42.075ms       2.104ms            20  
+                                        SelectBackward0         0.04%     141.549us         0.65%       2.586ms     129.298us       0.000us         0.00%      42.075ms       2.104ms            20  
+                                  aten::select_backward         0.03%     108.725us         0.62%       2.444ms     122.220us       0.000us         0.00%      42.075ms       2.104ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      21.769ms        12.88%      21.769ms       1.088ms            20  
+                                            aten::zeros         0.02%      77.792us         0.38%       1.502ms      75.094us       0.000us         0.00%      21.743ms       1.087ms            20  
+                                            aten::zero_         0.01%      32.325us         0.34%       1.356ms      67.802us       0.000us         0.00%      21.743ms       1.087ms            20  
+                                            aten::fill_         0.16%     640.100us         0.33%       1.324ms      66.186us      21.743ms        12.86%      21.743ms       1.087ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      21.743ms        12.86%      21.743ms       1.087ms            20  
+                                       aten::contiguous         0.01%      26.458us         0.22%     861.382us      43.069us       0.000us         0.00%      21.690ms       1.084ms            20  
+                                            aten::clone         0.01%      50.052us         0.21%     834.924us      41.746us       0.000us         0.00%      21.690ms       1.084ms            20  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      21.690ms        12.83%      21.690ms       1.084ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.05%     202.495us        12.41%      49.048ms       1.226ms       0.000us         0.00%      20.530ms     513.246us            40  
+                                        ToCopyBackward0         0.02%      95.547us        12.36%      48.846ms       1.221ms       0.000us         0.00%      20.530ms     513.246us            40  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      20.530ms        12.15%      20.530ms       1.026ms            20  
+                              aten::adaptive_avg_pool2d         0.02%      68.042us         0.60%       2.377ms     118.835us       0.000us         0.00%      20.482ms       1.024ms            20  
+                             aten::_adaptive_avg_pool2d         0.31%       1.245ms         0.58%       2.309ms     115.433us      20.482ms        12.12%      20.482ms       1.024ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<f...         0.00%       0.000us         0.00%       0.000us       0.000us      20.482ms        12.12%      20.482ms       1.024ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      20.332ms        12.03%      20.332ms       1.017ms            20  
+                                            aten::randn         0.03%     137.396us        49.59%     196.053ms       9.803ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.11%     425.276us         0.11%     425.276us       3.038us       0.000us         0.00%       0.000us       0.000us           140  
+                                          aten::normal_        49.53%     195.814ms        49.53%     195.814ms       9.791ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.84%       3.328ms         0.84%       3.328ms      41.601us       0.000us         0.00%       0.000us       0.000us            80  
+                                     urEnqueueUSMMemcpy        21.34%      84.348ms        21.34%      84.348ms       1.406ms       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.03%      99.862us         0.36%       1.431ms      71.529us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.32%       1.263ms         0.32%       1.263ms      63.136us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.03%     123.161us         0.03%     123.161us       6.158us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.72%       2.829ms         0.72%       2.829ms      28.289us       0.000us         0.00%       0.000us       0.000us           100  
+                                           aten::select         0.06%     252.005us         0.08%     330.557us       8.264us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.02%      78.552us         0.02%      78.552us       1.964us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      41.859us         0.02%      98.620us       2.465us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.01%      56.496us         4.51%      17.821ms     891.063us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.06%     252.347us         4.49%      17.765ms     888.238us       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      44.467us         0.03%     128.067us       6.403us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 395.308ms
+Self XPU time total: 169.010ms
+
+E2E total time: 0.01924568414688110352
+shape: (8, 256, 56, 56) ; datatype: torch.bfloat16 ; output_size: (14, 14) ; channels_last: False ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        18.85%      86.561ms        60.13%     276.100ms       1.381ms      63.638ms        56.68%     111.442ms     557.212us           200  
+                                               aten::to         0.05%     208.774us        34.47%     158.263ms       1.583ms       0.000us         0.00%      47.805ms     478.045us           100  
+                                         aten::_to_copy         0.18%     840.962us        34.42%     158.054ms       1.581ms       0.000us         0.00%      47.805ms     478.045us           100  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      31.868ms        28.38%      31.868ms     796.696us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     167.398us         0.71%       3.270ms     163.518us       0.000us         0.00%      31.747ms       1.587ms            20  
+                                        SelectBackward0         0.04%     185.617us         0.68%       3.103ms     155.148us       0.000us         0.00%      31.747ms       1.587ms            20  
+                                  aten::select_backward         0.04%     164.458us         0.64%       2.917ms     145.867us       0.000us         0.00%      31.747ms       1.587ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.03%     116.609us         0.55%       2.526ms     126.314us       0.000us         0.00%      16.785ms     839.273us            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      71.373us         0.52%       2.410ms     120.484us       0.000us         0.00%      16.785ms     839.273us            20  
+                    aten::_adaptive_avg_pool2d_backward         0.40%       1.843ms         0.51%       2.338ms     116.915us      16.785ms        14.95%      16.785ms     839.273us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us      16.785ms        14.95%      16.785ms     839.273us            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.10%     440.125us        10.01%      45.961ms       2.298ms       0.000us         0.00%      15.937ms     796.833us            20  
+                                        ToCopyBackward0         0.02%      81.242us         9.91%      45.521ms       2.276ms       0.000us         0.00%      15.937ms     796.833us            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      15.937ms        14.19%      15.937ms     796.833us            20  
+                              aten::adaptive_avg_pool2d         0.02%      79.920us         0.54%       2.478ms     123.892us       0.000us         0.00%      15.935ms     796.752us            20  
+                             aten::_adaptive_avg_pool2d         0.29%       1.321ms         0.52%       2.398ms     119.896us      15.935ms        14.19%      15.935ms     796.752us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<c10:...         0.00%       0.000us         0.00%       0.000us       0.000us      15.935ms        14.19%      15.935ms     796.752us            20  
+                                            aten::zeros         0.02%     110.112us         0.40%       1.833ms      91.671us       0.000us         0.00%      15.913ms     795.658us            20  
+                                            aten::zero_         0.01%      40.298us         0.35%       1.617ms      80.870us       0.000us         0.00%      15.913ms     795.658us            20  
+                                            aten::fill_         0.17%     795.756us         0.34%       1.577ms      78.855us      15.913ms        14.17%      15.913ms     795.658us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.913ms        14.17%      15.913ms     795.658us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.833ms        14.10%      15.833ms     791.669us            20  
+                                            aten::randn         0.03%     133.603us        66.26%     304.250ms      15.212ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.09%     419.476us         0.09%     419.476us       3.496us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::normal_        66.21%     304.036ms        66.21%     304.036ms      15.202ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.76%       3.511ms         0.76%       3.511ms      35.114us       0.000us         0.00%       0.000us       0.000us           100  
+                                        aten::expand_as         0.06%     255.025us         0.13%     619.329us      10.322us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.05%     221.542us         0.08%     364.304us       6.072us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.04%     199.386us         0.04%     199.386us       1.994us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        11.21%      51.457ms        11.21%      51.457ms     857.613us       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.03%     127.936us         0.58%       2.653ms     132.652us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.53%       2.416ms         0.53%       2.416ms     120.783us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%     114.301us         0.02%     114.301us       5.715us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.56%       2.550ms         0.56%       2.550ms      31.869us       0.000us         0.00%       0.000us       0.000us            80  
+                                           aten::select         0.06%     287.807us         0.08%     344.431us       8.611us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      50.123us         0.02%     112.218us       2.805us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     128.379us         0.08%     380.740us      19.037us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.03%     134.834us         0.05%     252.361us      12.618us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::detach         0.01%      39.008us         0.03%     117.527us       5.876us       0.000us         0.00%       0.000us       0.000us            20  
+                                                 detach         0.02%      78.519us         0.02%      78.519us       3.926us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 459.187ms
+Self XPU time total: 112.272ms
+
+E2E total time: 0.02203779220581054618
+shape: (8, 256, 56, 56) ; datatype: torch.bfloat16 ; output_size: (14, 14) ; channels_last: True ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        29.27%     159.936ms        69.50%     379.840ms       1.187ms     115.835ms        70.01%     198.620ms     620.688us           320  
+                                               aten::to         0.07%     377.166us        37.45%     204.640ms       1.462ms       0.000us         0.00%      82.785ms     591.324us           140  
+                                         aten::_to_copy         0.29%       1.584ms        37.38%     204.263ms       1.702ms       0.000us         0.00%      82.785ms     689.878us           120  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      49.624ms        29.99%      49.624ms     827.071us            60  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      33.128ms        20.02%      33.128ms     828.189us            40  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%     125.538us         0.50%       2.716ms     135.807us       0.000us         0.00%      33.116ms       1.656ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      77.209us         0.47%       2.591ms     129.530us       0.000us         0.00%      33.116ms       1.656ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.22%       1.205ms         0.46%       2.513ms     125.670us      16.558ms        10.01%      33.116ms       1.656ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.07%     397.666us         8.35%      45.622ms       1.141ms       0.000us         0.00%      33.110ms     827.738us            40  
+                                        ToCopyBackward0         0.03%     163.155us         8.28%      45.224ms       1.131ms       0.000us         0.00%      33.110ms     827.738us            40  
+                                       aten::contiguous         0.02%      95.986us         4.43%      24.210ms     403.493us       0.000us         0.00%      33.076ms     551.266us            60  
+                                            aten::clone         0.04%     236.453us         4.41%      24.114ms     401.893us       0.000us         0.00%      33.076ms     551.266us            60  
+autograd::engine::evaluate_function: SelectBackward0...         0.03%     174.576us         0.64%       3.503ms     175.170us       0.000us         0.00%      33.016ms       1.651ms            20  
+                                        SelectBackward0         0.03%     156.128us         0.61%       3.329ms     166.441us       0.000us         0.00%      33.016ms       1.651ms            20  
+                                  aten::select_backward         0.03%     150.952us         0.58%       3.173ms     158.634us       0.000us         0.00%      33.016ms       1.651ms            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      16.591ms        10.03%      16.591ms     829.568us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      16.558ms        10.01%      16.558ms     827.916us            20  
+                              aten::adaptive_avg_pool2d         0.01%      70.224us         0.36%       1.964ms      98.177us       0.000us         0.00%      16.542ms     827.114us            20  
+                             aten::_adaptive_avg_pool2d         0.19%       1.013ms         0.35%       1.893ms      94.666us      16.542ms        10.00%      16.542ms     827.114us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<c...         0.00%       0.000us         0.00%       0.000us       0.000us      16.542ms        10.00%      16.542ms     827.114us            20  
+                                            aten::zeros         0.02%     122.140us         0.39%       2.129ms     106.457us       0.000us         0.00%      16.525ms     826.226us            20  
+                                            aten::zero_         0.01%      46.591us         0.34%       1.854ms      92.699us       0.000us         0.00%      16.525ms     826.226us            20  
+                                            aten::fill_         0.17%     930.016us         0.33%       1.807ms      90.370us      16.525ms         9.99%      16.525ms     826.226us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      16.525ms         9.99%      16.525ms     826.226us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      16.492ms         9.97%      16.492ms     824.586us            20  
+                                            aten::randn         0.04%     232.422us        57.19%     312.541ms      15.627ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.16%     899.610us         0.16%     899.610us       4.089us       0.000us         0.00%       0.000us       0.000us           220  
+                                          aten::normal_        57.12%     312.151ms        57.12%     312.151ms      15.608ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.69%       3.754ms         0.69%       3.754ms      31.283us       0.000us         0.00%       0.000us       0.000us           120  
+                                       aten::empty_like         0.03%     157.921us         0.09%     494.459us       4.120us       0.000us         0.00%       0.000us       0.000us           120  
+                                        aten::expand_as         0.03%     179.514us         0.09%     473.331us       7.889us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.03%     177.156us         0.05%     293.817us       4.897us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.03%     190.545us         0.03%     190.545us       1.905us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy         9.89%      54.071ms         9.89%      54.071ms     901.190us       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.79%       4.300ms         0.79%       4.300ms      30.715us       0.000us         0.00%       0.000us       0.000us           140  
+                                             aten::rand         0.02%     110.968us         0.48%       2.640ms     131.993us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.45%       2.442ms         0.45%       2.442ms     122.084us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%     126.631us         0.02%     126.631us       6.332us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.05%     283.124us         0.07%     357.008us       8.925us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.02%      82.202us         5.92%      32.353ms       1.618ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.07%     402.136us         5.91%      32.271ms       1.614ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      74.766us         0.04%     198.764us       9.938us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 546.497ms
+Self XPU time total: 165.460ms
+
+E2E total time: 0.02681921720504760673
+shape: (8, 256, 56, 56) ; datatype: torch.float16 ; output_size: (14, 14) ; channels_last: False ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        18.02%      85.540ms        57.36%     272.267ms       1.361ms      63.662ms        56.68%     111.518ms     557.589us           200  
+                                               aten::to         0.04%     199.605us        32.88%     156.047ms       1.560ms       0.000us         0.00%      47.856ms     478.559us           100  
+                                         aten::_to_copy         0.16%     774.921us        32.83%     155.847ms       1.558ms       0.000us         0.00%      47.856ms     478.559us           100  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      31.914ms        28.42%      31.914ms     797.855us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     185.181us         0.73%       3.474ms     173.686us       0.000us         0.00%      31.692ms       1.585ms            20  
+                                        SelectBackward0         0.03%     155.959us         0.69%       3.289ms     164.427us       0.000us         0.00%      31.692ms       1.585ms            20  
+                                  aten::select_backward         0.03%     145.375us         0.66%       3.133ms     156.629us       0.000us         0.00%      31.692ms       1.585ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.03%     124.146us         0.54%       2.582ms     129.094us       0.000us         0.00%      16.840ms     842.010us            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      76.183us         0.52%       2.458ms     122.887us       0.000us         0.00%      16.840ms     842.010us            20  
+                    aten::_adaptive_avg_pool2d_backward         0.39%       1.859ms         0.50%       2.382ms     119.077us      16.840ms        14.99%      16.840ms     842.010us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us      16.840ms        14.99%      16.840ms     842.010us            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.08%     371.257us         9.61%      45.625ms       2.281ms       0.000us         0.00%      15.942ms     797.083us            20  
+                                        ToCopyBackward0         0.01%      68.143us         9.53%      45.254ms       2.263ms       0.000us         0.00%      15.942ms     797.083us            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      15.942ms        14.19%      15.942ms     797.083us            20  
+                              aten::adaptive_avg_pool2d         0.02%      71.923us         0.53%       2.493ms     124.633us       0.000us         0.00%      15.924ms     796.218us            20  
+                             aten::_adaptive_avg_pool2d         0.29%       1.353ms         0.51%       2.421ms     121.037us      15.924ms        14.18%      15.924ms     796.218us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<c10:...         0.00%       0.000us         0.00%       0.000us       0.000us      15.924ms        14.18%      15.924ms     796.218us            20  
+                                            aten::zeros         0.02%      97.541us         0.42%       1.976ms      98.815us       0.000us         0.00%      15.886ms     794.286us            20  
+                                            aten::zero_         0.01%      43.333us         0.37%       1.773ms      88.631us       0.000us         0.00%      15.886ms     794.286us            20  
+                                            aten::fill_         0.19%     886.618us         0.36%       1.729ms      86.464us      15.886ms        14.14%      15.886ms     794.286us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.886ms        14.14%      15.886ms     794.286us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.806ms        14.07%      15.806ms     790.302us            20  
+                                            aten::randn         0.03%     142.475us        67.72%     321.426ms      16.071ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.10%     461.602us         0.10%     461.602us       3.847us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::normal_        67.67%     321.181ms        67.67%     321.181ms      16.059ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.77%       3.637ms         0.77%       3.637ms      36.374us       0.000us         0.00%       0.000us       0.000us           100  
+                                        aten::expand_as         0.05%     226.851us         0.12%     586.672us       9.778us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.05%     224.672us         0.08%     359.821us       5.997us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.04%     196.965us         0.04%     196.965us       1.970us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        10.64%      50.514ms        10.64%      50.514ms     841.897us       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.03%     130.872us         0.56%       2.680ms     134.007us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.51%       2.417ms         0.51%       2.417ms     120.852us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%     117.196us         0.02%     117.196us       5.860us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.56%       2.650ms         0.56%       2.650ms      33.122us       0.000us         0.00%       0.000us       0.000us            80  
+                                           aten::select         0.06%     301.815us         0.08%     363.631us       9.091us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      48.964us         0.02%     111.353us       2.784us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     157.850us         0.10%     453.521us      22.676us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.03%     151.790us         0.06%     295.671us      14.784us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::detach         0.01%      44.446us         0.03%     143.881us       7.194us       0.000us         0.00%       0.000us       0.000us            20  
+                                                 detach         0.02%      99.435us         0.02%      99.435us       4.972us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 474.656ms
+Self XPU time total: 112.312ms
+
+E2E total time: 0.02245359420776367118
+shape: (8, 256, 56, 56) ; datatype: torch.float16 ; output_size: (14, 14) ; channels_last: True ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        28.71%     161.217ms        73.10%     410.536ms       1.283ms     117.478ms        70.00%     201.277ms     628.992us           320  
+                                               aten::to         0.06%     337.167us        38.90%     218.478ms       1.561ms       0.000us         0.00%      83.799ms     598.566us           140  
+                                         aten::_to_copy         0.25%       1.418ms        38.84%     218.141ms       1.818ms       0.000us         0.00%      83.799ms     698.327us           120  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      50.314ms        29.98%      50.314ms     838.566us            60  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%     112.640us         0.50%       2.833ms     141.654us       0.000us         0.00%      33.637ms       1.682ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      74.994us         0.48%       2.720ms     136.022us       0.000us         0.00%      33.637ms       1.682ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.22%       1.253ms         0.47%       2.645ms     132.273us      16.794ms        10.01%      33.637ms       1.682ms            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      33.584ms        20.01%      33.584ms     839.598us            40  
+                                       aten::contiguous         0.02%     100.832us         4.99%      28.016ms     466.939us       0.000us         0.00%      33.575ms     559.579us            60  
+                                            aten::clone         0.04%     211.673us         4.97%      27.915ms     465.258us       0.000us         0.00%      33.575ms     559.579us            60  
+autograd::engine::evaluate_function: SelectBackward0...         0.03%     162.426us         0.58%       3.262ms     163.093us       0.000us         0.00%      33.568ms       1.678ms            20  
+                                        SelectBackward0         0.02%     131.192us         0.55%       3.099ms     154.972us       0.000us         0.00%      33.568ms       1.678ms            20  
+                                  aten::select_backward         0.02%     135.199us         0.53%       2.968ms     148.412us       0.000us         0.00%      33.568ms       1.678ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.07%     417.702us         8.10%      45.510ms       1.138ms       0.000us         0.00%      33.476ms     836.902us            40  
+                                        ToCopyBackward0         0.03%     179.168us         8.03%      45.092ms       1.127ms       0.000us         0.00%      33.476ms     836.902us            40  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      16.836ms        10.03%      16.836ms     841.818us            20  
+                              aten::adaptive_avg_pool2d         0.01%      69.596us         0.34%       1.901ms      95.060us       0.000us         0.00%      16.824ms     841.187us            20  
+                             aten::_adaptive_avg_pool2d         0.18%       1.015ms         0.33%       1.832ms      91.580us      16.824ms        10.02%      16.824ms     841.187us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<c...         0.00%       0.000us         0.00%       0.000us       0.000us      16.824ms        10.02%      16.824ms     841.187us            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      16.794ms        10.01%      16.794ms     839.698us            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      16.744ms         9.98%      16.744ms     837.203us            20  
+                                            aten::zeros         0.02%      91.734us         0.34%       1.910ms      95.514us       0.000us         0.00%      16.732ms     836.586us            20  
+                                            aten::zero_         0.01%      44.237us         0.31%       1.721ms      86.042us       0.000us         0.00%      16.732ms     836.586us            20  
+                                            aten::fill_         0.15%     865.193us         0.30%       1.677ms      83.831us      16.732ms         9.97%      16.732ms     836.586us            20  
+at::native::xpu::VectorizedElementwiseKernel<8, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      16.732ms         9.97%      16.732ms     836.586us            20  
+                                            aten::randn         0.04%     208.875us        55.91%     314.014ms      15.701ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.16%     920.635us         0.16%     920.635us       4.185us       0.000us         0.00%       0.000us       0.000us           220  
+                                          aten::normal_        55.85%     313.630ms        55.85%     313.630ms      15.682ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.64%       3.597ms         0.64%       3.597ms      29.978us       0.000us         0.00%       0.000us       0.000us           120  
+                                       aten::empty_like         0.03%     159.334us         0.09%     515.780us       4.298us       0.000us         0.00%       0.000us       0.000us           120  
+                                        aten::expand_as         0.03%     166.125us         0.09%     477.878us       7.965us       0.000us         0.00%       0.000us       0.000us            60  
+                                           aten::expand         0.03%     192.459us         0.06%     311.753us       5.196us       0.000us         0.00%       0.000us       0.000us            60  
+                                       aten::as_strided         0.03%     186.832us         0.03%     186.832us       1.868us       0.000us         0.00%       0.000us       0.000us           100  
+                                     urEnqueueUSMMemcpy        11.95%      67.110ms        11.95%      67.110ms       1.118ms       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.75%       4.196ms         0.75%       4.196ms      29.970us       0.000us         0.00%       0.000us       0.000us           140  
+                                             aten::rand         0.02%     108.962us         0.48%       2.677ms     133.842us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.44%       2.466ms         0.44%       2.466ms     123.325us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%     126.613us         0.02%     126.613us       6.331us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.05%     275.483us         0.06%     343.021us       8.576us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.01%      64.382us         5.56%      31.228ms       1.561ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.05%     303.861us         5.55%      31.163ms       1.558ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      57.264us         0.03%     155.112us       7.756us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 561.607ms
+Self XPU time total: 167.828ms
+
+E2E total time: 0.02702689170837402344
+shape: (8, 256, 56, 56) ; datatype: torch.float32 ; output_size: (14, 14) ; channels_last: False ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        17.62%      92.869ms        39.45%     207.929ms       2.599ms     124.587ms        56.67%     124.587ms       1.557ms            80  
+                                               aten::to         0.02%     102.944us        39.91%     210.354ms       3.506ms       0.000us         0.00%      93.531ms       1.559ms            60  
+                                         aten::_to_copy         0.09%     483.661us        39.89%     210.251ms       3.504ms       0.000us         0.00%      93.531ms       1.559ms            60  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      62.384ms        28.37%      62.384ms       1.560ms            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.02%     121.427us         0.51%       2.662ms     133.086us       0.000us         0.00%      62.233ms       3.112ms            20  
+                                        SelectBackward0         0.02%     111.639us         0.48%       2.540ms     127.014us       0.000us         0.00%      62.233ms       3.112ms            20  
+                                  aten::select_backward         0.02%     115.149us         0.46%       2.429ms     121.432us       0.000us         0.00%      62.233ms       3.112ms            20  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%      87.123us         0.40%       2.131ms     106.570us       0.000us         0.00%      32.949ms       1.647ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      50.741us         0.39%       2.044ms     102.214us       0.000us         0.00%      32.949ms       1.647ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.29%       1.509ms         0.38%       1.994ms      99.677us      32.949ms        14.99%      32.949ms       1.647ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMKernelFuncto...         0.00%       0.000us         0.00%       0.000us       0.000us      32.949ms        14.99%      32.949ms       1.647ms            20  
+                                            aten::zeros         0.02%      90.663us         0.28%       1.476ms      73.806us       0.000us         0.00%      31.177ms       1.559ms            20  
+                                            aten::zero_         0.01%      31.682us         0.24%       1.287ms      64.342us       0.000us         0.00%      31.177ms       1.559ms            20  
+                                            aten::fill_         0.12%     615.372us         0.24%       1.255ms      62.758us      31.177ms        14.18%      31.177ms       1.559ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      31.177ms        14.18%      31.177ms       1.559ms            20  
+                              aten::adaptive_avg_pool2d         0.01%      65.877us         0.38%       1.978ms      98.913us       0.000us         0.00%      31.149ms       1.557ms            20  
+                             aten::_adaptive_avg_pool2d         0.19%     988.317us         0.36%       1.912ms      95.619us      31.149ms        14.17%      31.149ms       1.557ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<floa...         0.00%       0.000us         0.00%       0.000us       0.000us      31.149ms        14.17%      31.149ms       1.557ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.02%     103.893us        13.66%      71.991ms       3.600ms       0.000us         0.00%      31.148ms       1.557ms            20  
+                                        ToCopyBackward0         0.01%      35.419us        13.64%      71.887ms       3.594ms       0.000us         0.00%      31.148ms       1.557ms            20  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      31.148ms        14.17%      31.148ms       1.557ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      31.056ms        14.13%      31.056ms       1.553ms            20  
+                                            aten::randn         0.02%     102.450us        58.20%     306.705ms      15.335ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.07%     365.383us         0.07%     365.383us       3.654us       0.000us         0.00%       0.000us       0.000us           100  
+                                          aten::normal_        58.16%     306.513ms        58.16%     306.513ms      15.326ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.49%       2.594ms         0.49%       2.594ms      43.232us       0.000us         0.00%       0.000us       0.000us            60  
+                                     urEnqueueUSMMemcpy        21.75%     114.620ms        21.75%     114.620ms       1.910ms       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.02%     107.530us         0.48%       2.547ms     127.335us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.44%       2.345ms         0.44%       2.345ms     117.225us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%      83.958us         0.02%      83.958us       4.198us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.44%       2.296ms         0.44%       2.296ms      28.698us       0.000us         0.00%       0.000us       0.000us            80  
+                                           aten::select         0.05%     250.817us         0.06%     302.016us       7.550us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.01%      51.199us         0.01%      51.199us       1.280us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.00%      25.005us         0.01%      60.096us       3.005us       0.000us         0.00%       0.000us       0.000us            20  
+autograd::engine::evaluate_function: torch::autograd...         0.02%     123.766us         0.06%     293.322us      14.666us       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.02%      86.761us         0.03%     169.556us       8.478us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::detach         0.01%      26.735us         0.02%      82.795us       4.140us       0.000us         0.00%       0.000us       0.000us            20  
+                                                 detach         0.01%      56.060us         0.01%      56.060us       2.803us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 527.030ms
+Self XPU time total: 219.862ms
+
+E2E total time: 0.02415533065795898507
+shape: (8, 256, 56, 56) ; datatype: torch.float32 ; output_size: (14, 14) ; channels_last: True ; backward: True
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        26.30%     156.008ms        45.42%     269.400ms       1.924ms     159.966ms        62.15%     159.966ms       1.143ms           140  
+                                               aten::to         0.05%     294.328us        39.48%     234.159ms       2.342ms       0.000us         0.00%      95.768ms     957.676us           100  
+                                         aten::_to_copy         0.25%       1.509ms        39.43%     233.865ms       2.923ms       0.000us         0.00%      95.768ms       1.197ms            80  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.01%      85.649us         0.49%       2.929ms     146.430us       0.000us         0.00%      66.079ms       3.304ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      72.677us         0.48%       2.843ms     142.148us       0.000us         0.00%      66.079ms       3.304ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.20%       1.159ms         0.47%       2.770ms     138.514us      33.093ms        12.86%      66.079ms       3.304ms            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      64.519ms        25.07%      64.519ms       1.613ms            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.03%     206.288us         0.52%       3.089ms     154.475us       0.000us         0.00%      64.319ms       3.216ms            20  
+                                        SelectBackward0         0.02%     146.357us         0.49%       2.883ms     144.161us       0.000us         0.00%      64.319ms       3.216ms            20  
+                                  aten::select_backward         0.02%     125.468us         0.46%       2.737ms     136.843us       0.000us         0.00%      64.319ms       3.216ms            20  
+                                            aten::zeros         0.02%      90.683us         0.29%       1.722ms      86.123us       0.000us         0.00%      33.106ms       1.655ms            20  
+                                            aten::zero_         0.01%      37.393us         0.26%       1.541ms      77.068us       0.000us         0.00%      33.106ms       1.655ms            20  
+                                            aten::fill_         0.13%     770.793us         0.25%       1.504ms      75.198us      33.106ms        12.86%      33.106ms       1.655ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      33.106ms        12.86%      33.106ms       1.655ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      33.093ms        12.86%      33.093ms       1.655ms            20  
+                                       aten::contiguous         0.00%      29.028us         0.15%     904.469us      45.223us       0.000us         0.00%      32.985ms       1.649ms            20  
+                                            aten::clone         0.01%      55.090us         0.15%     875.441us      43.772us       0.000us         0.00%      32.985ms       1.649ms            20  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      32.985ms        12.81%      32.985ms       1.649ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.04%     225.157us        11.18%      66.331ms       1.658ms       0.000us         0.00%      31.248ms     781.207us            40  
+                                        ToCopyBackward0         0.02%     108.375us        11.15%      66.106ms       1.653ms       0.000us         0.00%      31.248ms     781.207us            40  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      31.248ms        12.14%      31.248ms       1.562ms            20  
+                              aten::adaptive_avg_pool2d         0.01%      73.136us         0.44%       2.603ms     130.147us       0.000us         0.00%      31.241ms       1.562ms            20  
+                             aten::_adaptive_avg_pool2d         0.23%       1.390ms         0.43%       2.530ms     126.490us      31.241ms        12.14%      31.241ms       1.562ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<f...         0.00%       0.000us         0.00%       0.000us       0.000us      31.241ms        12.14%      31.241ms       1.562ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      31.213ms        12.13%      31.213ms       1.561ms            20  
+                                            aten::randn         0.04%     236.009us        51.80%     307.212ms      15.361ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.12%     709.706us         0.12%     709.706us       5.069us       0.000us         0.00%       0.000us       0.000us           140  
+                                          aten::normal_        51.72%     306.757ms        51.72%     306.757ms      15.338ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.62%       3.675ms         0.62%       3.675ms      45.937us       0.000us         0.00%       0.000us       0.000us            80  
+                                     urEnqueueUSMMemcpy        18.97%     112.527ms        18.97%     112.527ms       1.875ms       0.000us         0.00%       0.000us       0.000us            60  
+                                             aten::rand         0.02%     136.206us         0.44%       2.602ms     130.124us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.40%       2.350ms         0.40%       2.350ms     117.489us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%     140.169us         0.02%     140.169us       7.008us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.54%       3.198ms         0.54%       3.198ms      31.978us       0.000us         0.00%       0.000us       0.000us           100  
+                                           aten::select         0.05%     288.937us         0.06%     369.071us       9.227us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.01%      80.134us         0.01%      80.134us       2.003us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      47.393us         0.02%     113.535us       2.838us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.01%      80.185us         6.72%      39.880ms       1.994ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.07%     434.190us         6.71%      39.799ms       1.990ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      51.423us         0.03%     151.526us       7.576us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 593.096ms
+Self XPU time total: 257.406ms
+
+E2E total time: 0.02704823017120361328
