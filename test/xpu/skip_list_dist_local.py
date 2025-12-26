@@ -83,7 +83,9 @@ skip_dict = {
     "../../../../test/distributed/tensor/experimental/test_register_sharding.py": None,
     "../../../../test/distributed/tensor/test_embedding_ops.py": None,
     "../../../../test/distributed/tensor/test_dtensor_testbase.py": None,
+    "../../../../test/distributed/tensor/test_dtensor_dispatch_overhead.py": None,
     "../../../../test/distributed/tensor/test_dynamic.py": None,
+    "../../../../test/distributed/tensor/test_dtensor_export.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_autograd.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_clip_grad_norm_.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_comm.py": (
@@ -234,6 +236,8 @@ skip_dict = {
     "../../../../test/distributed/test_run.py": None,
     "../../../../test/distributed/test_serialization.py": None,
     "../../../../test/distributed/test_distributed_spawn.py": None,
+    "../../../../test/distributed/test_dist2.py": None,
+    "../../../../test/distributed/test_aten_comm_compute_reordering.py": None,
 }
 
 skip_dict_python = {
