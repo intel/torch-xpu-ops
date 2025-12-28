@@ -1,0 +1,207 @@
+name: Weekly-Distributed-OnDemand Tests
+
+on:
+  schedule:
+    # GMT+8 0:00 Saturday
+    - cron: '0 16 * * 5'
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        required: false
+        type: string
+        default: 'https://github.com/daisyden/pytorch.git@distributed_2.9'
+        description: Pytorch branch/commit
+      keep_torch_xpu_ops:
+        required: false
+        type: string
+        default: 'https://github.com/intel/torch-xpu-ops.git@daisyden/distributed_2.9'
+        description: Keep torch-xpu-ops pin. `true` means use pined commit
+      triton:
+        required: false
+        type: string
+        default: 'bdd0656b'
+        description: Triton commit. Use pytorch pined commit by default
+      python:
+        required: false
+        type: string
+        default: '3.10'
+        description: Python version
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}-${{ github.event_name }}-${{ inputs.pytorch }}-${{ inputs.keep_torch_xpu_ops }}-${{ inputs.triton }}-${{ inputs.python }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+jobs:
+  Linux-Weekly-Ondemand-Build:
+    if: ${{ github.repository_owner == 'intel' }}
+    name: linux-weekly-ondemand
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      pytorch: ${{ github.event_name == 'schedule' && 'main' || inputs.pytorch }}
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      runner: PVC-7358
+
+  Linux-Weekly-Ondemand-Distributed-Tests:
+    runs-on:  PVC-7358
+    name: linux-weekly-ondemand / distributed_weekly
+    needs: Linux-Weekly-Ondemand-Build
+    timeout-minutes: 3600
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      pytorch: ${{ needs.Linux-Weekly-Ondemand-Build.outputs.torch_commit_id }}
+      keep_torch_xpu_ops: ${{ github.event_name == 'schedule' && 'false' || inputs.keep_torch_xpu_ops }}
+      python: ${{ github.event_name == 'schedule' && '3.10' || inputs.python }}
+      run_type: ${{ (github.event_name == 'schedule' && (github.event.schedule == '0 16 * * 5' && 'weekly' || 'nightly')) || 'on-demand' }}
+    outputs:
+      TORCH_BRANCH_ID: ${{ steps.pinned.outputs.TORCH_BRANCH_ID }}
+      TORCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCH_COMMIT_ID }}
+      DRIVER_VERSION: ${{ steps.pinned.outputs.DRIVER_VERSION }}
+      KERNEL_VERSION: ${{ steps.pinned.outputs.KERNEL_VERSION }}
+      BUNDLE_VERSION: ${{ steps.pinned.outputs.BUNDLE_VERSION }}
+      OS_PRETTY_NAME: ${{ steps.pinned.outputs.OS_PRETTY_NAME }}
+      GCC_VERSION: ${{ steps.pinned.outputs.GCC_VERSION }}
+      TORCHBENCH_COMMIT_ID: ${{ steps.pinned.outputs.TORCHBENCH_COMMIT_ID }}
+      TORCHVISION_COMMIT_ID: ${{ steps.pinned.outputs.TORCHVISION_COMMIT_ID }}
+      TORCHAUDIO_COMMIT_ID: ${{ steps.pinned.outputs.TORCHAUDIO_COMMIT_ID }}
+      TRANSFORMERS_VERSION: ${{ steps.pinned.outputs.TRANSFORMERS_VERSION }}
+      TIMM_COMMIT_ID: ${{ steps.pinned.outputs.TIMM_COMMIT_ID }}
+      TRITON_COMMIT_ID: ${{ steps.pinned.outputs.TRITON_COMMIT_ID }}
+      TIMEOUT_MODELS: ${{ steps.summary.outputs.TIMEOUT_MODELS }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare Conda ENV
+        run: |
+          which conda && conda clean -ay
+          conda remove --all -y -n e2e_ci || rm -rf $(dirname ${CONDA_EXE})/../envs/e2e_ci
+          conda create -n e2e_ci python=${{ env.python }} cmake ninja -y
+          source activate e2e_ci
+          pip install pandas scipy psutil requests
+      - name: Download Pytorch wheel
+        if: ${{ inputs.pytorch != 'nightly_wheel' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}
+      - name: Prepare Stock Pytorch
+        run: |
+          pwd
+          cd ../
+          rm -rf pytorch || sudo rm -rf pytorch
+          source activate e2e_ci
+          pip install --force-reinstall ${{ github.workspace }}/torch*.whl
+          TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+          git clone https://github.com/daisyden/pytorch.git pytorch
+          cd pytorch
+          git checkout ${TORCH_COMMIT_ID}
+          git status && git diff && git show -s
+          rm -rf vision || sudo rm -rf vision
+          git clone https://github.com/pytorch/vision && cd vision && python setup.py install && cd ..
+          pip install -r .ci/docker/requirements-ci.txt
+      - name: Prepare Torch-xpu-ops
+        run: |
+          cd ../pytorch
+          rm -rf third_party/torch-xpu-ops
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            cd third_party
+            git clone https://github.com/intel/torch-xpu-ops.git
+            cd torch-xpu-ops
+            git checkout daisyden/distributed_2.9
+          else
+            TORCH_XPU_OPS_COMMIT=$(<third_party/xpu.txt)
+            git clone https://github.com/intel/torch-xpu-ops.git third_party/torch-xpu-ops
+            cd third_party/torch-xpu-ops
+            git checkout ${TORCH_XPU_OPS_COMMIT}
+          fi
+      - name: Triton Installation
+        run: |
+          source activate e2e_ci
+          cd ../pytorch
+          if [ -z ${{ inputs.triton }} ]; then
+            TRITON_COMMIT_ID="$(<.ci/docker/ci_commit_pins/triton-xpu.txt)"
+          else
+            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          fi
+          if [ "${{ inputs.pytorch }}" != "nightly_wheel" ]; then
+            pip install cmake ninja pybind11
+            pip install --force-reinstall "git+${TRITON_REPO}@${TRITON_COMMIT_ID}#subdirectory=python"
+          fi
+      - name: Identify pinned versions
+        id: pinned
+        run: |
+          source .github/scripts/env.sh
+          cd ../pytorch
+          if [ -z ${{ inputs.triton }} ]; then
+            echo "TRITON_COMMIT_ID=$(<.ci/docker/ci_commit_pins/triton-xpu.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          else
+            echo "TRITON_COMMIT_ID=${{ inputs.triton }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          fi
+          echo "TORCH_BRANCH_ID=${{ inputs.pytorch }}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCH_COMMIT_ID=$(git rev-parse HEAD)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TORCHVISION_COMMIT_ID=$(<.github/ci_commit_pins/vision.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "TRANSFORMERS_VERSION=$(<.ci/docker/ci_commit_pins/huggingface.txt)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "DRIVER_VERSION=$(sycl-ls |grep 'opencl:gpu' |awk '{print $NF}' |sort |uniq -c |sed 's/ //g;s/\[/*[/')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "KERNEL_VERSION=$(uname -rv 2>&1)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "BUNDLE_VERSION=$(icpx --version 2>&1 |grep 'DPC++/C++' |sed 's/.*(//;s/).*//')" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          . /etc/os-release
+          echo "OS_PRETTY_NAME=${PRETTY_NAME}" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo "GCC_VERSION=$(gcc -dumpversion)" |tee -a "${GITHUB_OUTPUT}" >> "${GITHUB_ENV}"
+          echo ${GITHUB_ENV}
+      - name: Show GITHUB_ENV
+        run: |
+          echo "$GITHUB_ENV"
+      - name: Set Ptrace_scope
+        if: ${{ always() }}
+        run: |
+          set -x -e -u -o pipefail
+          sudo rm -rf ptrace_scope.bk
+          sudo cp /proc/sys/kernel/yama/ptrace_scope ptrace_scope.bk
+          cat ptrace_scope.bk
+          echo "0" |sudo tee /proc/sys/kernel/yama/ptrace_scope
+      - name: Run Torch XPU Distributed UT
+        run: |
+          set -x -e -o pipefail
+          source activate e2e_ci
+          pip install pytest pytest-timeout xmlrunner unittest-xml-reporting zstandard transformers
+          pip install hypothesis==6.131.27
+          mkdir -p ut_log/xpu_distributed
+          cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/ut_result_check.sh ut_log/xpu_distributed/
+          cp ../pytorch/third_party/torch-xpu-ops/.github/scripts/check-ut.py ut_log/
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu
+          XCCL_ENABLE=$(python -c "import torch;print(torch.distributed.is_xccl_available())")
+          if [[ "${XCCL_ENABLE,,}" == 'false' ]] || [[ "${XCCL_ENABLE}" == '0' ]]; then
+            echo -e "[ERROR] XCCL is not enabled"
+            exit 1
+          fi
+          python run_distributed_local.py \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_error.log | \
+            tee ${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test.log || true
+          cp *.xml ${{ github.workspace }}/ut_log
+      - name: Reset Ptrace_scope
+        if: ${{ always() }}
+        run: |
+          if [ -f ptrace_scope.bk ]; then
+            sudo cp ptrace_scope.bk /proc/sys/kernel/yama/ptrace_scope
+          fi
+      - name: UT Test Results Summary
+        run: |
+          source activate xpu_op_${ZE_AFFINITY_MASK}
+          pip install junitparser
+          cd ${{ github.workspace }}/ut_log/
+          python check-ut.py ${{ github.workspace }}/ut_log/*.xml \
+            2>${{ github.workspace }}/ut_log/xpu_distributed/pytorch_distributed_test_summary.log | \
+            >> $GITHUB_STEP_SUMMARY || true
+          cd ${{ github.workspace }}/ut_log/xpu_distributed
+          gh --repo https://github.com/intel/torch-xpu-ops.git issue view 1624  --json body -q .body | sed '/^$/d' > Known_issue.log
+          bash ut_result_check.sh 'pytorch_distributed'
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-xpu_distributed
+          path: ${{ github.workspace }}/ut_log
