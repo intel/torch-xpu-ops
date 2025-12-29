@@ -1,0 +1,300 @@
+
+================================================================================
+# CASE 1 | RUN 1/3
+# Command: /home/sdp/miniforge3/envs/op_microbench/bin/python run.py --op adaptive_avg_pool2d --case {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true}
+# Config: {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true}
+================================================================================
+
+/home/sdp/miniforge3/envs/op_microbench/lib/python3.10/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+[Single-case] OP: adaptive_avg_pool2d
+config: {'dtype': torch.bfloat16, 'shape': [8, 512, 32, 32], 'channels_last': True, 'output_size': [7, 7], 'backward': True}
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        19.80%      92.015ms        40.53%     188.369ms       1.345ms     134.741ms        70.81%     134.741ms     962.437us           140  
+                                               aten::to         0.04%     191.491us        35.59%     165.425ms       1.654ms       0.000us         0.00%      87.086ms     870.862us           100  
+                                         aten::_to_copy         0.15%     686.168us        35.55%     165.234ms       2.065ms       0.000us         0.00%      87.086ms       1.089ms            80  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      48.063ms        25.26%      48.063ms       1.202ms            40  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%     106.716us         0.63%       2.916ms     145.809us       0.000us         0.00%      40.479ms       2.024ms            20  
+                             AdaptiveAvgPool2DBackward0         0.02%      75.295us         0.60%       2.809ms     140.473us       0.000us         0.00%      40.479ms       2.024ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.26%       1.207ms         0.59%       2.734ms     136.709us      16.524ms         8.68%      40.479ms       2.024ms            20  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      39.312ms        20.66%      39.312ms     982.801us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.03%     159.059us         0.73%       3.406ms     170.322us       0.000us         0.00%      39.057ms       1.953ms            20  
+                                        SelectBackward0         0.02%     113.086us         0.70%       3.247ms     162.369us       0.000us         0.00%      39.057ms       1.953ms            20  
+                                  aten::select_backward         0.03%     132.972us         0.67%       3.134ms     156.714us       0.000us         0.00%      39.057ms       1.953ms            20  
+                                       aten::contiguous         0.01%      30.016us         0.21%     983.733us      49.187us       0.000us         0.00%      23.955ms       1.198ms            20  
+                                            aten::clone         0.01%      61.918us         0.21%     953.717us      47.686us       0.000us         0.00%      23.955ms       1.198ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      23.700ms        12.46%      23.700ms       1.185ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.04%     167.968us         8.52%      39.603ms     990.087us       0.000us         0.00%      23.666ms     591.641us            40  
+                                        ToCopyBackward0         0.01%      58.217us         8.48%      39.436ms     985.888us       0.000us         0.00%      23.666ms     591.641us            40  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      23.666ms        12.44%      23.666ms       1.183ms            20  
+                              aten::adaptive_avg_pool2d         0.01%      59.202us         0.32%       1.475ms      73.758us       0.000us         0.00%      23.662ms       1.183ms            20  
+                             aten::_adaptive_avg_pool2d         0.16%     744.054us         0.30%       1.416ms      70.798us      23.662ms        12.43%      23.662ms       1.183ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<f...         0.00%       0.000us         0.00%       0.000us       0.000us      23.662ms        12.43%      23.662ms       1.183ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      16.524ms         8.68%      16.524ms     826.200us            20  
+                                            aten::zeros         0.02%      93.872us         0.43%       2.008ms     100.393us       0.000us         0.00%      15.357ms     767.867us            20  
+                                            aten::zero_         0.01%      46.528us         0.39%       1.815ms      90.732us       0.000us         0.00%      15.357ms     767.867us            20  
+                                            aten::fill_         0.19%     868.525us         0.38%       1.768ms      88.406us      15.357ms         8.07%      15.357ms     767.867us            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.357ms         8.07%      15.357ms     767.867us            20  
+                                            aten::randn         0.03%     151.443us        57.26%     266.120ms      13.306ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.12%     574.309us         0.12%     574.309us       4.102us       0.000us         0.00%       0.000us       0.000us           140  
+                                          aten::normal_        57.18%     265.765ms        57.18%     265.765ms      13.288ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.15%     697.403us         0.15%     697.403us       8.718us       0.000us         0.00%       0.000us       0.000us            80  
+                                     urEnqueueUSMMemcpy        20.32%      94.458ms        20.32%      94.458ms       1.574ms       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.82%       3.815ms         0.82%       3.815ms      31.793us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::resize_         0.02%     112.163us         0.02%     112.163us       5.608us       0.000us         0.00%       0.000us       0.000us            20  
+                                             aten::rand         0.02%      78.688us         0.33%       1.520ms      75.983us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.30%       1.382ms         0.30%       1.382ms      69.083us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.07%     311.462us         0.08%     393.569us       9.839us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.02%      82.107us         0.02%      82.107us       2.053us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      68.076us         0.03%     147.790us       3.695us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     122.733us         5.04%      23.412ms       1.171ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.06%     297.874us         5.01%      23.290ms       1.164ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      56.056us         0.06%     290.251us      14.513us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 464.788ms
+Self XPU time total: 190.284ms
+
+E2E total time: 0.02294145822525024345
+
+
+# [RUN 1] Exit code: 0
+--------------------------------------------------------------------------------
+
+================================================================================
+# CASE 1 | RUN 2/3
+# Command: /home/sdp/miniforge3/envs/op_microbench/bin/python run.py --op adaptive_avg_pool2d --case {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true}
+# Config: {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true}
+================================================================================
+
+/home/sdp/miniforge3/envs/op_microbench/lib/python3.10/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+[Single-case] OP: adaptive_avg_pool2d
+config: {'dtype': torch.bfloat16, 'shape': [8, 512, 32, 32], 'channels_last': True, 'output_size': [7, 7], 'backward': True}
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        19.83%      99.493ms        38.73%     194.258ms       1.388ms     136.292ms        70.74%     136.292ms     973.515us           140  
+                                               aten::to         0.04%     178.596us        32.93%     165.167ms       1.652ms       0.000us         0.00%      88.129ms     881.293us           100  
+                                         aten::_to_copy         0.14%     699.032us        32.89%     164.989ms       2.062ms       0.000us         0.00%      88.129ms       1.102ms            80  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      48.575ms        25.21%      48.575ms       1.214ms            40  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%     103.686us         0.55%       2.755ms     137.745us       0.000us         0.00%      41.009ms       2.050ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      74.678us         0.53%       2.651ms     132.561us       0.000us         0.00%      41.009ms       2.050ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.24%       1.183ms         0.51%       2.577ms     128.827us      16.789ms         8.71%      41.009ms       2.050ms            20  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      39.824ms        20.67%      39.824ms     995.597us            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.04%     204.687us         0.70%       3.492ms     174.619us       0.000us         0.00%      39.547ms       1.977ms            20  
+                                        SelectBackward0         0.03%     139.627us         0.66%       3.288ms     164.385us       0.000us         0.00%      39.547ms       1.977ms            20  
+                                  aten::select_backward         0.03%     138.846us         0.63%       3.148ms     157.403us       0.000us         0.00%      39.547ms       1.977ms            20  
+                                       aten::contiguous         0.01%      28.660us         0.18%     908.927us      45.446us       0.000us         0.00%      24.221ms       1.211ms            20  
+                                            aten::clone         0.01%      54.231us         0.18%     880.267us      44.013us       0.000us         0.00%      24.221ms       1.211ms            20  
+                              aten::adaptive_avg_pool2d         0.01%      56.709us         0.28%       1.382ms      69.105us       0.000us         0.00%      23.980ms       1.199ms            20  
+                             aten::_adaptive_avg_pool2d         0.14%     694.844us         0.26%       1.325ms      66.270us      23.980ms        12.45%      23.980ms       1.199ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<f...         0.00%       0.000us         0.00%       0.000us       0.000us      23.980ms        12.45%      23.980ms       1.199ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.04%     194.668us         8.05%      40.392ms       1.010ms       0.000us         0.00%      23.951ms     598.772us            40  
+                                        ToCopyBackward0         0.01%      56.176us         8.01%      40.197ms       1.005ms       0.000us         0.00%      23.951ms     598.772us            40  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      23.951ms        12.43%      23.951ms       1.198ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      23.942ms        12.43%      23.942ms       1.197ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      16.789ms         8.71%      16.789ms     839.437us            20  
+                                            aten::zeros         0.02%      98.389us         0.41%       2.069ms     103.468us       0.000us         0.00%      15.605ms     780.229us            20  
+                                            aten::zero_         0.01%      43.781us         0.37%       1.863ms      93.151us       0.000us         0.00%      15.605ms     780.229us            20  
+                                            aten::fill_         0.18%     909.457us         0.36%       1.819ms      90.962us      15.605ms         8.10%      15.605ms     780.229us            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.605ms         8.10%      15.605ms     780.229us            20  
+                                            aten::randn         0.04%     182.299us        59.21%     297.034ms      14.852ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.13%     651.374us         0.13%     651.374us       4.653us       0.000us         0.00%       0.000us       0.000us           140  
+                                          aten::normal_        59.12%     296.554ms        59.12%     296.554ms      14.828ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.16%     781.273us         0.16%     781.273us       9.766us       0.000us         0.00%       0.000us       0.000us            80  
+                                     urEnqueueUSMMemcpy        18.53%      92.960ms        18.53%      92.960ms       1.549ms       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.73%       3.655ms         0.73%       3.655ms      30.457us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::resize_         0.02%     106.876us         0.02%     106.876us       5.344us       0.000us         0.00%       0.000us       0.000us            20  
+                                             aten::rand         0.01%      70.556us         0.28%       1.394ms      69.703us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.25%       1.270ms         0.25%       1.270ms      63.506us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.06%     320.665us         0.08%     405.610us      10.140us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.02%      84.945us         0.02%      84.945us       2.124us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      57.245us         0.03%     126.675us       3.167us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     147.448us         5.95%      29.851ms       1.493ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.07%     365.928us         5.92%      29.703ms       1.485ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      67.916us         0.07%     360.218us      18.011us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 501.627ms
+Self XPU time total: 192.666ms
+
+E2E total time: 0.02182714939117431571
+
+
+# [RUN 2] Exit code: 0
+--------------------------------------------------------------------------------
+
+================================================================================
+# CASE 1 | RUN 3/3
+# Command: /home/sdp/miniforge3/envs/op_microbench/bin/python run.py --op adaptive_avg_pool2d --case {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true}
+# Config: {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true}
+================================================================================
+
+/home/sdp/miniforge3/envs/op_microbench/lib/python3.10/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+[Single-case] OP: adaptive_avg_pool2d
+config: {'dtype': torch.bfloat16, 'shape': [8, 512, 32, 32], 'channels_last': True, 'output_size': [7, 7], 'backward': True}
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                            aten::copy_        20.60%      94.589ms        40.39%     185.432ms       1.325ms     137.612ms        70.70%     137.612ms     982.945us           140  
+                                               aten::to         0.03%     157.821us        35.01%     160.711ms       1.607ms       0.000us         0.00%      89.006ms     890.058us           100  
+                                         aten::_to_copy         0.14%     626.104us        34.97%     160.553ms       2.007ms       0.000us         0.00%      89.006ms       1.113ms            80  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      49.066ms        25.21%      49.066ms       1.227ms            40  
+autograd::engine::evaluate_function: AdaptiveAvgPool...         0.02%      82.028us         0.52%       2.398ms     119.877us       0.000us         0.00%      41.453ms       2.073ms            20  
+                             AdaptiveAvgPool2DBackward0         0.01%      60.948us         0.50%       2.316ms     115.775us       0.000us         0.00%      41.453ms       2.073ms            20  
+                    aten::_adaptive_avg_pool2d_backward         0.22%     998.945us         0.49%       2.255ms     112.728us      17.001ms         8.73%      41.453ms       2.073ms            20  
+at::native::xpu::ElementwiseGlobalRangeKernel<at::na...         0.00%       0.000us         0.00%       0.000us       0.000us      40.252ms        20.68%      40.252ms       1.006ms            40  
+autograd::engine::evaluate_function: SelectBackward0...         0.03%     126.926us         0.61%       2.819ms     140.975us       0.000us         0.00%      39.956ms       1.998ms            20  
+                                        SelectBackward0         0.02%     102.213us         0.59%       2.693ms     134.629us       0.000us         0.00%      39.956ms       1.998ms            20  
+                                  aten::select_backward         0.02%     110.793us         0.56%       2.590ms     129.518us       0.000us         0.00%      39.956ms       1.998ms            20  
+                                       aten::contiguous         0.01%      25.812us         0.18%     805.735us      40.287us       0.000us         0.00%      24.451ms       1.223ms            20  
+                                            aten::clone         0.01%      49.317us         0.17%     779.923us      38.996us       0.000us         0.00%      24.451ms       1.223ms            20  
+                              aten::adaptive_avg_pool2d         0.01%      55.555us         0.29%       1.317ms      65.839us       0.000us         0.00%      24.223ms       1.211ms            20  
+                             aten::_adaptive_avg_pool2d         0.14%     659.448us         0.27%       1.261ms      63.061us      24.223ms        12.45%      24.223ms       1.211ms            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor_cl<f...         0.00%       0.000us         0.00%       0.000us       0.000us      24.223ms        12.45%      24.223ms       1.211ms            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      24.155ms        12.41%      24.155ms       1.208ms            20  
+autograd::engine::evaluate_function: ToCopyBackward0...         0.02%     108.846us         8.27%      37.971ms     949.282us       0.000us         0.00%      24.140ms     603.491us            40  
+                                        ToCopyBackward0         0.01%      44.270us         8.25%      37.862ms     946.561us       0.000us         0.00%      24.140ms     603.491us            40  
+                 Memcpy D2M (DEVICE -> MEMORY(Unknown))         0.00%       0.000us         0.00%       0.000us       0.000us      24.140ms        12.40%      24.140ms       1.207ms            20  
+at::native::xpu::AdaptiveAvgPool2dBwdSLMChannelsLast...         0.00%       0.000us         0.00%       0.000us       0.000us      17.001ms         8.73%      17.001ms     850.072us            20  
+                                            aten::zeros         0.02%      81.115us         0.36%       1.663ms      83.155us       0.000us         0.00%      15.801ms     790.025us            20  
+                                            aten::zero_         0.01%      39.312us         0.33%       1.498ms      74.888us       0.000us         0.00%      15.801ms     790.025us            20  
+                                            aten::fill_         0.16%     711.664us         0.32%       1.458ms      72.923us      15.801ms         8.12%      15.801ms     790.025us            20  
+at::native::xpu::VectorizedElementwiseKernel<4, at::...         0.00%       0.000us         0.00%       0.000us       0.000us      15.801ms         8.12%      15.801ms     790.025us            20  
+                                            aten::randn         0.03%     141.281us        57.65%     264.636ms      13.232ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.11%     509.706us         0.11%     509.706us       3.641us       0.000us         0.00%       0.000us       0.000us           140  
+                                          aten::normal_        57.57%     264.295ms        57.57%     264.295ms      13.215ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.15%     698.705us         0.15%     698.705us       8.734us       0.000us         0.00%       0.000us       0.000us            80  
+                                     urEnqueueUSMMemcpy        19.41%      89.125ms        19.41%      89.125ms       1.485ms       0.000us         0.00%       0.000us       0.000us            60  
+                                  urEnqueueKernelLaunch         0.73%       3.349ms         0.73%       3.349ms      27.906us       0.000us         0.00%       0.000us       0.000us           120  
+                                          aten::resize_         0.02%     106.297us         0.02%     106.297us       5.315us       0.000us         0.00%       0.000us       0.000us            20  
+                                             aten::rand         0.01%      66.772us         0.29%       1.309ms      65.468us       0.000us         0.00%       0.000us       0.000us            20  
+                                         aten::uniform_         0.26%       1.191ms         0.26%       1.191ms      59.548us       0.000us         0.00%       0.000us       0.000us            20  
+                                           aten::select         0.06%     289.794us         0.08%     361.329us       9.033us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::as_strided         0.02%      71.535us         0.02%      71.535us       1.788us       0.000us         0.00%       0.000us       0.000us            40  
+                                       aten::empty_like         0.01%      52.742us         0.02%     107.966us       2.699us       0.000us         0.00%       0.000us       0.000us            40  
+autograd::engine::evaluate_function: torch::autograd...         0.03%     130.879us         5.54%      25.446ms       1.272ms       0.000us         0.00%       0.000us       0.000us            20  
+                        torch::autograd::AccumulateGrad         0.08%     348.645us         5.51%      25.315ms       1.266ms       0.000us         0.00%       0.000us       0.000us            20  
+                                aten::new_empty_strided         0.01%      62.988us         0.07%     343.602us      17.180us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 459.070ms
+Self XPU time total: 194.637ms
+
+E2E total time: 0.02238675355911255022
+
+
+# [RUN 3] Exit code: 0
+--------------------------------------------------------------------------------
+
+================================================================================
+# CASE 2 | RUN 1/3
+# Command: /home/sdp/miniforge3/envs/op_microbench/bin/python run.py --op adaptive_avg_pool2d --case {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false}
+# Config: {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false}
+================================================================================
+
+/home/sdp/miniforge3/envs/op_microbench/lib/python3.10/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+[Single-case] OP: adaptive_avg_pool2d
+config: {'dtype': torch.bfloat16, 'shape': [8, 512, 32, 32], 'channels_last': False, 'output_size': [7, 7], 'backward': False}
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               aten::to         0.01%      30.782us        17.87%      41.116ms       2.056ms       0.000us         0.00%      13.618ms     680.882us            20  
+                                         aten::_to_copy         0.06%     127.786us        17.85%      41.085ms       2.054ms       0.000us         0.00%      13.618ms     680.882us            20  
+                                            aten::copy_        13.29%      30.593ms        17.77%      40.902ms       2.045ms      13.618ms        50.08%      13.618ms     680.882us            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      13.618ms        50.08%      13.618ms     680.882us            20  
+                              aten::adaptive_avg_pool2d         0.01%      29.270us         0.55%       1.261ms      63.065us       0.000us         0.00%      13.574ms     678.715us            20  
+                             aten::_adaptive_avg_pool2d         0.25%     571.389us         0.54%       1.232ms      61.602us      13.574ms        49.92%      13.574ms     678.715us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<floa...         0.00%       0.000us         0.00%       0.000us       0.000us      13.574ms        49.92%      13.574ms     678.715us            20  
+                                            aten::randn         0.03%      78.415us        81.59%     187.755ms       9.388ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.03%      67.872us         0.03%      67.872us       1.697us       0.000us         0.00%       0.000us       0.000us            40  
+                                          aten::normal_        81.53%     187.637ms        81.53%     187.637ms       9.382ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.02%      55.376us         0.02%      55.376us       2.769us       0.000us         0.00%       0.000us       0.000us            20  
+                                     urEnqueueUSMMemcpy         4.48%      10.309ms         4.48%      10.309ms     515.427us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%      42.555us         0.02%      42.555us       2.128us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.26%     590.207us         0.26%     590.207us      29.510us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 230.132ms
+Self XPU time total: 27.192ms
+
+E2E total time: 0.01119263172149658273
+
+
+# [RUN 1] Exit code: 0
+--------------------------------------------------------------------------------
+
+================================================================================
+# CASE 2 | RUN 2/3
+# Command: /home/sdp/miniforge3/envs/op_microbench/bin/python run.py --op adaptive_avg_pool2d --case {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false}
+# Config: {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false}
+================================================================================
+
+/home/sdp/miniforge3/envs/op_microbench/lib/python3.10/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+[Single-case] OP: adaptive_avg_pool2d
+config: {'dtype': torch.bfloat16, 'shape': [8, 512, 32, 32], 'channels_last': False, 'output_size': [7, 7], 'backward': False}
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               aten::to         0.01%      33.126us        17.90%      41.620ms       2.081ms       0.000us         0.00%      13.042ms     652.117us            20  
+                                         aten::_to_copy         0.06%     128.158us        17.89%      41.586ms       2.079ms       0.000us         0.00%      13.042ms     652.117us            20  
+                                            aten::copy_        13.09%      30.426ms        17.81%      41.402ms       2.070ms      13.042ms        50.06%      13.042ms     652.117us            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      13.042ms        50.06%      13.042ms     652.117us            20  
+                              aten::adaptive_avg_pool2d         0.01%      28.423us         0.53%       1.244ms      62.190us       0.000us         0.00%      13.011ms     650.533us            20  
+                             aten::_adaptive_avg_pool2d         0.25%     571.409us         0.52%       1.215ms      60.769us      13.011ms        49.94%      13.011ms     650.533us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<floa...         0.00%       0.000us         0.00%       0.000us       0.000us      13.011ms        49.94%      13.011ms     650.533us            20  
+                                            aten::randn         0.03%      69.692us        81.56%     189.642ms       9.482ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.03%      70.205us         0.03%      70.205us       1.755us       0.000us         0.00%       0.000us       0.000us            40  
+                                          aten::normal_        81.52%     189.531ms        81.52%     189.531ms       9.477ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.02%      56.554us         0.02%      56.554us       2.828us       0.000us         0.00%       0.000us       0.000us            20  
+                                     urEnqueueUSMMemcpy         4.72%      10.976ms         4.72%      10.976ms     548.798us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%      48.145us         0.02%      48.145us       2.407us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.24%     566.933us         0.24%     566.933us      28.347us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 232.505ms
+Self XPU time total: 26.053ms
+
+E2E total time: 0.01125237941741943394
+
+
+# [RUN 2] Exit code: 0
+--------------------------------------------------------------------------------
+
+================================================================================
+# CASE 2 | RUN 3/3
+# Command: /home/sdp/miniforge3/envs/op_microbench/bin/python run.py --op adaptive_avg_pool2d --case {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false}
+# Config: {"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false}
+================================================================================
+
+/home/sdp/miniforge3/envs/op_microbench/lib/python3.10/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+[Single-case] OP: adaptive_avg_pool2d
+config: {'dtype': torch.bfloat16, 'shape': [8, 512, 32, 32], 'channels_last': False, 'output_size': [7, 7], 'backward': False}
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg      Self XPU    Self XPU %     XPU total  XPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                               aten::to         0.01%      32.161us        16.98%      40.461ms       2.023ms       0.000us         0.00%      13.035ms     651.763us            20  
+                                         aten::_to_copy         0.06%     148.156us        16.97%      40.429ms       2.021ms       0.000us         0.00%      13.035ms     651.763us            20  
+                                            aten::copy_        12.61%      30.052ms        16.88%      40.224ms       2.011ms      13.035ms        50.05%      13.035ms     651.763us            20  
+                 Memcpy M2D (MEMORY(Unknown) -> DEVICE)         0.00%       0.000us         0.00%       0.000us       0.000us      13.035ms        50.05%      13.035ms     651.763us            20  
+                              aten::adaptive_avg_pool2d         0.01%      32.217us         0.59%       1.397ms      69.873us       0.000us         0.00%      13.008ms     650.398us            20  
+                             aten::_adaptive_avg_pool2d         0.27%     640.853us         0.57%       1.365ms      68.262us      13.008ms        49.95%      13.008ms     650.398us            20  
+at::native::xpu::AdaptiveAvgPool2dKernelFunctor<floa...         0.00%       0.000us         0.00%       0.000us       0.000us      13.008ms        49.95%      13.008ms     650.398us            20  
+                                            aten::randn         0.03%      79.740us        82.43%     196.446ms       9.822ms       0.000us         0.00%       0.000us       0.000us            20  
+                                            aten::empty         0.04%      84.900us         0.04%      84.900us       2.122us       0.000us         0.00%       0.000us       0.000us            40  
+                                          aten::normal_        82.38%     196.316ms        82.38%     196.316ms       9.816ms       0.000us         0.00%       0.000us       0.000us            20  
+                                    aten::empty_strided         0.02%      57.186us         0.02%      57.186us       2.859us       0.000us         0.00%       0.000us       0.000us            20  
+                                     urEnqueueUSMMemcpy         4.27%      10.172ms         4.27%      10.172ms     508.583us       0.000us         0.00%       0.000us       0.000us            20  
+                                          aten::resize_         0.02%      51.289us         0.02%      51.289us       2.564us       0.000us         0.00%       0.000us       0.000us            20  
+                                  urEnqueueKernelLaunch         0.27%     639.031us         0.27%     639.031us      31.952us       0.000us         0.00%       0.000us       0.000us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 238.305ms
+Self XPU time total: 26.043ms
+
+E2E total time: 0.01126616001129150321
+
+
+# [RUN 3] Exit code: 0
+--------------------------------------------------------------------------------

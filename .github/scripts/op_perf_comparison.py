@@ -159,7 +159,7 @@ def build_runpy_case_config(record, is_backward_from_filename=None):
 
     return case_name, op_name_raw, case_config
 
-def display_comparison(results, threshold, xpu_file, compare_both, show_all, json_output=None):
+def display_comparison(results, threshold, xpu_file, compare_both, show_all, json_output=None, hide_regression_in_summary=False):
     if 'forward' in xpu_file.lower():
         direction = "Forward"
     elif 'backward' in xpu_file.lower():
@@ -269,7 +269,7 @@ def display_comparison(results, threshold, xpu_file, compare_both, show_all, jso
     # Generate GitHub summary
     summary_output = f"## {direction} Performance Comparison Results\n"
 
-    if regression_records:
+    if regression_records and not hide_regression_in_summary:
         summary_output += "\n### 🔴 Regression (both profile and E2E regression)\n"
         summary_output += tabulate(
             [r for r in display_records
@@ -331,7 +331,7 @@ def display_comparison(results, threshold, xpu_file, compare_both, show_all, jso
         except Exception as e:
             print(f"❌ Error writing JSONL: {e}")
 
-def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=False, e2e_only=False, show_all=False, json_output=None):
+def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=False, e2e_only=False, show_all=False, json_output=None, hide_regression_in_summary=False):
     def prepare_df(df):
         df.columns = df.columns.str.strip()
         if 'time(us)' not in df.columns:
@@ -424,7 +424,7 @@ def compare_time_values(xpu_file, baseline_file, threshold=0.05, profile_only=Fa
                 results.append(record)
 
     result_df = pd.DataFrame(results) if results else pd.DataFrame()
-    display_comparison(result_df, threshold, xpu_file, compare_both, show_all, json_output=json_output)
+    display_comparison(result_df, threshold, xpu_file, compare_both, show_all, json_output=json_output, hide_regression_in_summary=hide_regression_in_summary)
 
 def main():
     parser = argparse.ArgumentParser(description='Compare time values between two CSV files')
@@ -440,6 +440,9 @@ def main():
                        help='Show improvement and mixed changes in GitHub summary (default: only show regression)')
     parser.add_argument('--output-json', type=str, default='regression_cases.json',
                        help='Output regression cases to JSONL file (default: regression_cases.json)')
+    parser.add_argument('--hide-regression-in-summary', action='store_true',
+                       help='Do NOT show regression cases in GitHub summary (default: show them). '
+                            'Note: regression cases are still printed to console and written to JSON if enabled.')
     args = parser.parse_args()
 
     if args.profile_only and args.e2e_only:
@@ -470,7 +473,8 @@ def main():
         profile_only=args.profile_only,
         e2e_only=args.e2e_only,
         show_all=args.show_all,
-        json_output=args.output_json
+        json_output=args.output_json,
+        hide_regression_in_summary=args.hide_regression_in_summary
     )
 
 if __name__ == "__main__":
