@@ -238,6 +238,13 @@ skip_dict = {
     "../../../../test/distributed/test_distributed_spawn.py": None,
     "../../../../test/distributed/test_dist2.py": None,
     "../../../../test/distributed/test_aten_comm_compute_reordering.py": None,
+    "../../../../test/distributed/_pycute/test_coalesce.py": None,
+    "../../../../test/distributed/_pycute/test_complement.py": None,
+    "../../../../test/distributed/_pycute/test_composition.py": None,
+    "../../../../test/distributed/_pycute/test_int_tuple.py": None,
+    "../../../../test/distributed/_pycute/test_left_inverse.py": None,
+    "../../../../test/distributed/_pycute/test_right_inverse.py": None,
+    "../../../../test/distributed/_pycute/test_typing.py": None,
 }
 
 skip_dict_python = {
