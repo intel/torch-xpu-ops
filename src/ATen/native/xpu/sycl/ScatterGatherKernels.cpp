@@ -8,6 +8,12 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/ceil_div.h>
@@ -854,3 +860,8 @@ void scatter_scalar_reduce_kernel(
 } // namespace xpu
 } // namespace native
 } // namespace at
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
+

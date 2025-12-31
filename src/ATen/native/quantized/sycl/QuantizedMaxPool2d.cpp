@@ -8,6 +8,12 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
@@ -324,3 +330,8 @@ Tensor quantized_max_pool2d_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
+

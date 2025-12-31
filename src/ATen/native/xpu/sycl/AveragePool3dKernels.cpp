@@ -12,6 +12,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
@@ -980,3 +985,8 @@ void avg_pool3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
+

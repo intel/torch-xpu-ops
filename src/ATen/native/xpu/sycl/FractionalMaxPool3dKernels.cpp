@@ -8,6 +8,11 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/NativeFunctions.h>
@@ -323,3 +328,8 @@ void fractional_max_pool3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
+

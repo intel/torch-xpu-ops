@@ -8,6 +8,11 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
@@ -431,3 +436,8 @@ void upsample_trilinear3d_backward_out_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
+
