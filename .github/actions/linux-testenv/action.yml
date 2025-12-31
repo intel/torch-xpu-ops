@@ -77,21 +77,21 @@ runs:
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
+        git checkout c27eca275daf8601d760c5862cdec932b02bd4b1
         # apply extra PRs for stock pytorch
         pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          rm -rf 169257.diff
-          wget -q https://github.com/pytorch/pytorch/pull/169257.diff
-          wget -q https://github.com/pytorch/pytorch/pull/170755.diff
-          git apply 169257.diff 170755.diff
-          cp torch/_inductor/runtime/triton_heuristics.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/runtime/triton_heuristics.py"
-          # cp test/inductor/test_torchinductor.py "`dirname $(which python)`/../lib/python3.10/site-packages/test/inductor/test_torchinductor.py"
-          cp torch/_inductor/utils.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/utils.py"
-        fi
+        # if [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
+        #   rm -rf 169257.diff
+        #   wget -q https://github.com/pytorch/pytorch/pull/169257.diff
+        #   wget -q https://github.com/pytorch/pytorch/pull/170755.diff
+        #   git apply 169257.diff 170755.diff
+        #   cp torch/_inductor/runtime/triton_heuristics.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/runtime/triton_heuristics.py"
+        #   # cp test/inductor/test_torchinductor.py "`dirname $(which python)`/../lib/python3.10/site-packages/test/inductor/test_torchinductor.py"
+        #   cp torch/_inductor/utils.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/utils.py"
+        # fi
         git status && git diff && git show -s
-        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
+        echo "TORCH_COMMIT_ID=c27eca275daf8601d760c5862cdec932b02bd4b1" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
@@ -192,6 +192,22 @@ runs:
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
         fi
+    - name: Download Pytorch wheel
+      if: ${{ inputs.pytorch == 'test_wheel' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: manywheel-py3_10-xpu
+        github-token: ${{ github.token }}
+        repository: pytorch/pytorch
+        run-id: 20518902036
+        path: ${{ github.workspace }}/wheels
+    - name: Install test target
+      if: ${{ inputs.pytorch == 'test_wheel' }}
+      shell: bash -xe {0}
+      run: |
+        pip uninstall -y torch && pip uninstall -y torch
+        pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
+        pip list |grep -E 'intel|torch|triton'
     - name: Torch Config
       shell: bash -xe {0}
       run: |
@@ -209,19 +225,3 @@ runs:
           echo "Torch is re-installed when installing deps, please check"
           exit 1
         fi
-    - name: Download Pytorch wheel
-      if: ${{ inputs.pytorch == 'test_wheel' }}
-      uses: actions/download-artifact@v4
-      with:
-        name: manywheel-py3_10-xpu
-        github-token: ${{ github.token }}
-        repository: pytorch/pytorch
-        run-id: 20518902036
-        path: ${{ github.workspace }}/wheels
-    - name: Install test target
-      if: ${{ inputs.pytorch == 'test_wheel' }}
-      shell: bash -xe {0}
-      run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
-        pip list |grep -E 'intel|torch|triton'
