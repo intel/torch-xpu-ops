@@ -13,6 +13,10 @@
 // Avoid SYCL compiler return-type error
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
 
 #include <ATen/ATen.h>
 #include <ATen/NumericUtils.h>
@@ -399,3 +403,6 @@ void adaptive_max_pool2d_backward_kernel(
 
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
