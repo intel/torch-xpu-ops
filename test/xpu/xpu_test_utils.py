@@ -332,6 +332,7 @@ _ops_without_cuda_support = [
 
 _ops_dtype_different_cuda_support = {
     "histc": {"forward": {torch.bfloat16, torch.float16}},
+    "stft": {"forward": {torch.float16}, "backward": {torch.float16}},
 }
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -933,6 +934,12 @@ class XPUPatchForImport:
                     opinfo.dtypesIfXPU.update(
                         _ops_dtype_different_cuda_support[opinfo.name]["forward"]
                     )
+                if "backward" in _ops_dtype_different_cuda_support[opinfo.name]:
+                    backward_dtypes = set(opinfo.backward_dtypes)
+                    backward_dtypes.update(
+                        _ops_dtype_different_cuda_support[opinfo.name]["backward"]
+                    )
+                    opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
                 fp64_dtypes = [
