@@ -24,9 +24,9 @@ static inline void check_device_consistency(
     for (const at::Tensor& t : list) {
       if (t.defined())
         if (t.device().type() == c10::DeviceType::XPU)
-           has_xpu = true;
+          has_xpu = true;
         else
-           has_non_xpu = true;
+          has_non_xpu = true;
       if (has_xpu && has_non_xpu) return;
     }
     return;
@@ -48,7 +48,7 @@ static void xpu_fallback_impl(
 
   if (has_xpu && has_non_xpu) {
      std::string msg = "Expected all tensors to be on the same device, but found at least two devices, xpu and cpu! (Operator " +
-                        op.schema().operator_name().name +")";
+                        op.schema().operator_name().name + ")";
      TORCH_CHECK(false, msg);
   }
 
