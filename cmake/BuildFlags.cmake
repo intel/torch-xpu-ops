@@ -106,7 +106,6 @@ macro(set_build_flags)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:precise)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qfma)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /Qftz-)
       # Suppress warnings about dllexport.
