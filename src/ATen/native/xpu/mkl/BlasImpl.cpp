@@ -323,13 +323,13 @@ Tensor& baddbmm_complex_out_xpu_mkl(
 
 Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
   Tensor result = at::empty({}, self.options());
-  
+
   const int64_t n = self.numel();
   const int64_t incx = self.stride(0);
   const int64_t incy = other.stride(0);
 
   auto queue = c10::xpu::getCurrentXPUStream().queue();
-  
+
   // Handle complex types with dotu (unconjugated dot product)
   // Note: oneMKL uses std::complex<T> for complex types
   if (self.is_complex()) {
@@ -338,7 +338,7 @@ Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
           std::is_same_v<scalar_t, c10::complex<float>>,
           std::complex<float>,
           std::complex<double>>;
-      
+
       oneapi::mkl::blas::column_major::dotu(
           queue,
           n,
@@ -361,7 +361,7 @@ Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
               std::is_same_v<scalar_t, at::BFloat16>,
               oneapi::mkl::bfloat16,
               scalar_t>>;
-      
+
       oneapi::mkl::blas::column_major::dot(
           queue,
           n,
@@ -378,20 +378,20 @@ Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
 
 Tensor vdot_xpu_mkl(const Tensor& self, const Tensor& other) {
   Tensor result = at::empty({}, self.options());
-  
+
   const int64_t n = self.numel();
   const int64_t incx = self.stride(0);
   const int64_t incy = other.stride(0);
 
   auto queue = c10::xpu::getCurrentXPUStream().queue();
-  
+
   AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "vdot_xpu_mkl", [&] {
     // For complex types, use dotc (conjugated dot product)
     using mkl_scalar_t = std::conditional_t<
         std::is_same_v<scalar_t, c10::complex<float>>,
         std::complex<float>,
         std::complex<double>>;
-    
+
     oneapi::mkl::blas::column_major::dotc(
         queue,
         n,
