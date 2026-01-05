@@ -325,8 +325,12 @@ Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
   Tensor result = at::empty({}, self.options());
 
   const int64_t n = self.numel();
-  const int64_t incx = self.stride(0);
-  const int64_t incy = other.stride(0);
+  int64_t incx = self.stride(0);
+  int64_t incy = other.stride(0);
+  if (n == 1) {
+    incx = 1;
+    incy = 1;
+  }
 
   auto queue = c10::xpu::getCurrentXPUStream().queue();
 
@@ -350,7 +354,7 @@ Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
     });
   } else {
     // Handle real types (float, double, half, bfloat16) with dot
-    // Note: oneMKL uses sycl::half and oneapi::mkl::bfloat16 for 16-bit types,
+    // Note: oneMKL uses sycl::half and oneapi::mkl::bfloat16 for 16-bit types
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half, at::ScalarType::BFloat16,
         self.scalar_type(), "dot_xpu_mkl", [&] {
@@ -380,8 +384,12 @@ Tensor vdot_xpu_mkl(const Tensor& self, const Tensor& other) {
   Tensor result = at::empty({}, self.options());
 
   const int64_t n = self.numel();
-  const int64_t incx = self.stride(0);
-  const int64_t incy = other.stride(0);
+  int64_t incx = self.stride(0);
+  int64_t incy = other.stride(0);
+  if (n == 1) {
+    incx = 1;
+    incy = 1;
+  }
 
   auto queue = c10::xpu::getCurrentXPUStream().queue();
 
