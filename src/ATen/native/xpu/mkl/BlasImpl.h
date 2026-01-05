@@ -38,4 +38,8 @@ Tensor& baddbmm_complex_out_xpu_mkl(
     const Scalar& alpha,
     Tensor& out);
 
+Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other);
+
+Tensor vdot_xpu_mkl(const Tensor& self, const Tensor& other);
+
 } // namespace at::native::xpu

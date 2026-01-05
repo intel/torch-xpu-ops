@@ -320,4 +320,89 @@ Tensor& baddbmm_complex_out_xpu_mkl(
 
   return out;
 }
+
+Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
+  Tensor result = at::empty({}, self.options());
+  
+  const int64_t n = self.numel();
+  const int64_t incx = self.stride(0);
+  const int64_t incy = other.stride(0);
+
+  auto queue = c10::xpu::getCurrentXPUStream().queue();
+  
+  // Handle complex types with dotu (unconjugated dot product)
+  // Note: oneMKL uses std::complex<T> for complex types
+  if (self.is_complex()) {
+    AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "dot_xpu_mkl", [&] {
+      using mkl_scalar_t = std::conditional_t<
+          std::is_same_v<scalar_t, c10::complex<float>>,
+          std::complex<float>,
+          std::complex<double>>;
+      
+      oneapi::mkl::blas::column_major::dotu(
+          queue,
+          n,
+          reinterpret_cast<const mkl_scalar_t*>(self.const_data_ptr<scalar_t>()),
+          incx,
+          reinterpret_cast<const mkl_scalar_t*>(other.const_data_ptr<scalar_t>()),
+          incy,
+          reinterpret_cast<mkl_scalar_t*>(result.mutable_data_ptr<scalar_t>()));
+    });
+  } else {
+    // Handle real types (float, double, half, bfloat16) with dot
+    // Note: oneMKL uses sycl::half and oneapi::mkl::bfloat16 for 16-bit types,
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half, at::ScalarType::BFloat16,
+        self.scalar_type(), "dot_xpu_mkl", [&] {
+      using mkl_scalar_t = std::conditional_t<
+          std::is_same_v<scalar_t, at::Half>,
+          sycl::half,
+          std::conditional_t<
+              std::is_same_v<scalar_t, at::BFloat16>,
+              oneapi::mkl::bfloat16,
+              scalar_t>>;
+      
+      oneapi::mkl::blas::column_major::dot(
+          queue,
+          n,
+          reinterpret_cast<const mkl_scalar_t*>(self.const_data_ptr<scalar_t>()),
+          incx,
+          reinterpret_cast<const mkl_scalar_t*>(other.const_data_ptr<scalar_t>()),
+          incy,
+          reinterpret_cast<mkl_scalar_t*>(result.mutable_data_ptr<scalar_t>()));
+    });
+  }
+
+  return result;
+}
+
+Tensor vdot_xpu_mkl(const Tensor& self, const Tensor& other) {
+  Tensor result = at::empty({}, self.options());
+  
+  const int64_t n = self.numel();
+  const int64_t incx = self.stride(0);
+  const int64_t incy = other.stride(0);
+
+  auto queue = c10::xpu::getCurrentXPUStream().queue();
+  
+  AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "vdot_xpu_mkl", [&] {
+    // For complex types, use dotc (conjugated dot product)
+    using mkl_scalar_t = std::conditional_t<
+        std::is_same_v<scalar_t, c10::complex<float>>,
+        std::complex<float>,
+        std::complex<double>>;
+    
+    oneapi::mkl::blas::column_major::dotc(
+        queue,
+        n,
+        reinterpret_cast<const mkl_scalar_t*>(self.const_data_ptr<scalar_t>()),
+        incx,
+        reinterpret_cast<const mkl_scalar_t*>(other.const_data_ptr<scalar_t>()),
+        incy,
+        reinterpret_cast<mkl_scalar_t*>(result.mutable_data_ptr<scalar_t>()));
+  });
+
+  return result;
+}
+
 } // namespace at::native::xpu
