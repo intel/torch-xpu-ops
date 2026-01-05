@@ -45,22 +45,18 @@ RUN --mount=type=cache,target=/var/cache/apt \
         rsync \
         jq \
         # Build tools
-        build-essential \
         cmake \
         ninja-build \
         pkg-config \
         autoconf \
         automake \
         libtool \
-        # Libraries
-        libgl1-mesa-glx \
+        # Graphics libraries
+        libgl1 \
         libglib2.0-0 \
         libglib2.0-dev \
         zlib1g \
         zlib1g-dev \
-        libnl-genl-3-200 \
-        libnl-3-200 \
-        libnl-route-3-200 \
         # Python and pip
         python3 \
         python3-venv \
@@ -87,8 +83,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
 #     psutil
 
 # Create sudoers.d directory and add nopasswd rule
-RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |sudo tee /etc/sudoers.d/nopasswd && \
-    sudo chmod 0440 /etc/sudoers.d/nopasswd
+RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |tee /etc/sudoers.d/nopasswd && \
+    chmod 0440 /etc/sudoers.d/nopasswd
 # Verify sudoers syntax (important for safety)
 RUN sudo visudo -c
 
