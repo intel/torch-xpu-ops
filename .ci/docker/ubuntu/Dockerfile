@@ -9,11 +9,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     TZ=UTC
 
-# Create jenkins user with explicit UID/GID for better compatibility
-RUN groupadd -g 1000 jenkins && \
-    useradd -m -u 1000 -g jenkins -s /bin/bash jenkins && \
-    echo "jenkins ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/jenkins && \
-    chmod 0440 /etc/sudoers.d/jenkins
+# Create jenkins user if it doesn't exist
+RUN if ! id -u jenkins > /dev/null 2>&1; then \
+        useradd -m -s /bin/bash jenkins && \
+        echo "jenkins ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/jenkins && \
+        chmod 0440 /etc/sudoers.d/jenkins; \
+    fi
 
 # Install XPU driver - moved earlier to leverage Docker cache
 ARG XPU_DRIVER_TYPE
