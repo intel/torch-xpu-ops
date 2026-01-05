@@ -146,8 +146,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       issues: write
-    env:
-      REFERENCE_ISSUE_ID: 2440
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -165,9 +163,28 @@ jobs:
           else
             artifact_type="${{ inputs.test_type }}"
           fi
-          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
-          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+          json=$(gh run list \
+            --workflow nightly_ondemand.yml \
+            --event schedule \
+            --repo intel/torch-xpu-ops \
+            --limit 50 \
+            --json databaseId,displayTitle 2>/dev/null)
+          get_run_id() {
+            local title="$1"
+            echo "$json" | jq -r --arg t "$title" '.[] | select(.displayTitle == $t) | .databaseId' | head -n1
+          }
+          case "${artifact_type}" in
+            "build-nightly")   REFERENCE_RUN_ID="$(get_run_id "Nightly / Build-from-source")" ;;
+            "wheel-nightly")   REFERENCE_RUN_ID="$(get_run_id "Nightly / Nightly-wheel")" ;;
+            "build-weekly")    REFERENCE_RUN_ID="$(get_run_id "Weekly / Build-from-source")" ;;
+            "wheel-weekly")    REFERENCE_RUN_ID="$(get_run_id "Weekly / Nightly-wheel")" ;;
+            *)
+              echo "⚠️  unknown artifact_type: '${artifact_type}', skip download"
+              exit 0
+              ;;
+          esac
           if [ "${REFERENCE_RUN_ID}" != "" ];then
+            echo "✅ Using run ID: ${REFERENCE_RUN_ID} for artifact_type='${artifact_type}'"
             gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-UT-Data-*"
             find Inductor-XPU-UT-Data-*/ -type f -path "*/Inductor-XPU-UT-Data-*/*" -print0 | \
               xargs -0 -I {} cp {} .
@@ -236,22 +253,6 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
-      - name: Upload Reference Run ID
-        if: ${{ endsWith(inputs.test_type, 'ly') }}
-        run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
-          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
-          if [ ${has_or_not} -ne 0 ];then
-            existing_run_id=$(grep -o "Inductor-${{ inputs.test_type }}-LTS2: [0-9]*" new_body.txt | grep -o "[0-9]*" || echo "")
-            if [ "${existing_run_id}" = "${GITHUB_RUN_ID}" ]; then
-              echo "Existing Run ID (${existing_run_id}) is the same as new Run ID (${GITHUB_RUN_ID}). No update needed."
-              exit 0
-            fi
-            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
-          else
-            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
-          fi
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
