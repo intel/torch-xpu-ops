@@ -11,9 +11,15 @@ from core.runner import normalize_dtype
 
 
 def run_op(config, device):
-    """config keys: shape[N,C,H,W], out[OH,OW], dtype, channels_last(bool), backward(bool)"""
+    """config keys:
+    - shape: [N, C, H, W]          (input tensor shape)
+    - num_features: int             (must equal C; explicit, as in original)
+    - datatype: torch.dtype
+    - channels_last: bool
+    - backward: bool
+    """
     N, C, H, W = config["shape"]
-    output_size = tuple(config["output_size"])
+    num_features = config["num_features"]  # explicit, matches original intent
     dtype = normalize_dtype(config.get("datatype", torch.float32))
     channels_last = config.get("channels_last", False)
     backward = config.get("backward", True)
@@ -22,29 +28,34 @@ def run_op(config, device):
     if channels_last:
         input = input.to(memory_format=torch.channels_last)
 
-    output = torch.nn.AdaptiveAvgPool2d(output_size)(input)
+    BTN = torch.nn.BatchNorm2d(num_features, device=device)
+    output = BTN(input)
 
     if backward:
-        Wout = output_size[0]
-        Hout = output_size[1]
-        grad = torch.rand([C, Hout, Wout], device=device, dtype=dtype, requires_grad=True)
+        grad = torch.randn([C, H, W], device=device, dtype=dtype)
         output[0].backward(grad)
 
+
 def get_default_cases():
-    base_shapes = [
-        ([8, 512, 32, 32], [7, 7]),
-        ([8, 256, 56, 56], [14, 14]),
+    base_cases = [
+        (256, 256, 56, 56, 256),
+        (256, 2048, 7, 7, 2048),
+        (24, 512, 28, 28, 512),
+        (24, 1024, 14, 14, 1024),
+        (4, 8, 640, 1024, 8),
+        (4, 48, 20, 32, 48),
     ]
     dtypes = [torch.bfloat16, torch.float16, torch.float32]
     cases = []
-    for shape, out in base_shapes:
+    for N, C, H, W, num_features in base_cases:
+        input_shape = [N, C, H, W]
         for dtype in dtypes:
             for channels_last in [False, True]:
                 cases.append({
-                    "shape": shape,
+                    "shape": input_shape,
                     "datatype": dtype,
+                    "num_features": num_features,
                     "channels_last": channels_last,
-                    "output_size": out,
                     "backward": True,
                 })
     return cases

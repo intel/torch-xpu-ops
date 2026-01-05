@@ -11,40 +11,49 @@ from core.runner import normalize_dtype
 
 
 def run_op(config, device):
-    """config keys: shape[N,C,H,W], out[OH,OW], dtype, channels_last(bool), backward(bool)"""
-    N, C, H, W = config["shape"]
-    output_size = tuple(config["output_size"])
+    """config keys:
+    - shape: [N, C, D, H, W]      (input tensor shape)
+    - num_features: int            (must equal C; explicit, as in original)
+    - datatype: torch.dtype
+    - channels_last: bool
+    - backward: bool
+    """
+    N, C, D, H, W = config["shape"]
+    num_features = config["num_features"]  # explicit, matches original benchmark
     dtype = normalize_dtype(config.get("datatype", torch.float32))
     channels_last = config.get("channels_last", False)
     backward = config.get("backward", True)
 
-    input = torch.randn(N, C, H, W, device=device, dtype=dtype, requires_grad=True)
-    if channels_last:
-        input = input.to(memory_format=torch.channels_last)
+    input = torch.randn(N, C, D, H, W, device=device, dtype=dtype, requires_grad=True)
 
-    output = torch.nn.AdaptiveAvgPool2d(output_size)(input)
+    if channels_last:
+        input = input.to(memory_format=torch.channels_last_3d)
+
+    BTN = torch.nn.BatchNorm3d(num_features, device=device)
+    output = BTN(input)
 
     if backward:
-        Wout = output_size[0]
-        Hout = output_size[1]
-        grad = torch.rand([C, Hout, Wout], device=device, dtype=dtype, requires_grad=True)
+        grad = torch.randn([C, D, H, W], device=device, dtype=dtype)
         output[0].backward(grad)
 
+
 def get_default_cases():
-    base_shapes = [
-        ([8, 512, 32, 32], [7, 7]),
-        ([8, 256, 56, 56], [14, 14]),
+    base_cases = [
+        (2, 5, 6, 3, 5, 5),
+        (2, 8, 64, 64, 64, 8),
+        (16, 16, 128, 128, 256, 16),
     ]
     dtypes = [torch.bfloat16, torch.float16, torch.float32]
     cases = []
-    for shape, out in base_shapes:
+    for N, C, D, H, W, num_features in base_cases:
+        input_shape = [N, C, D, H, W]
         for dtype in dtypes:
             for channels_last in [False, True]:
                 cases.append({
-                    "shape": shape,
+                    "shape": input_shape,
                     "datatype": dtype,
+                    "num_features": num_features,
                     "channels_last": channels_last,
-                    "output_size": out,
                     "backward": True,
                 })
     return cases
