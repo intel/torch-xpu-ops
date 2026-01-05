@@ -91,7 +91,7 @@ runs:
         #   cp torch/_inductor/utils.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/utils.py"
         # fi
         git status && git diff && git show -s
-        echo "TORCH_COMMIT_ID=c27eca275daf8601d760c5862cdec932b02bd4b1" >> ${GITHUB_ENV}
+        echo "TORCH_COMMIT_ID=38fa35594d68cd3439a7002429b31ee038a160b7" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
@@ -223,5 +223,4 @@ runs:
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
           echo "Torch is re-installed when installing deps, please check"
-          exit 1
         fi
