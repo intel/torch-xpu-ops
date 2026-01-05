@@ -9,12 +9,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     TZ=UTC
 
-# Create sudoers.d directory and add nopasswd rule
-RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/nopasswd && \
-    chmod 0440 /etc/sudoers.d/nopasswd
-# Verify sudoers syntax (important for safety)
-RUN visudo -c
-
 # Install XPU driver - moved earlier to leverage Docker cache
 ARG XPU_DRIVER_TYPE
 ENV XPU_DRIVER_TYPE=${XPU_DRIVER_TYPE}
@@ -67,9 +61,8 @@ RUN --mount=type=cache,target=/var/cache/apt \
         libnl-genl-3-200 \
         libnl-3-200 \
         libnl-route-3-200 \
-        # Python and pip (if needed for pytorch)
+        # Python and pip
         python3 \
-        python3-pip \
         python3-venv \
         python3-dev && \
     # Cleanup
@@ -82,17 +75,22 @@ RUN --mount=type=cache,target=/var/cache/apt \
         /usr/share/doc/* \
         /usr/share/man/*
 
-# Install Python packages (if needed for pytorch benchmark)
-# Uncomment and modify as needed
-RUN pip3 install --no-cache-dir --upgrade \
-    pip \
-    setuptools \
-    wheel && \
-    pip3 install --no-cache-dir \
-    numpy \
-    pandas \
-    scipy \
-    psutil
+# Install Python packages
+# RUN pip3 install --no-cache-dir --upgrade \
+#     pip \
+#     setuptools \
+#     wheel && \
+#     pip3 install --no-cache-dir \
+#     numpy \
+#     pandas \
+#     scipy \
+#     psutil
+
+# Create sudoers.d directory and add nopasswd rule
+RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |sudo tee /etc/sudoers.d/nopasswd && \
+    sudo chmod 0440 /etc/sudoers.d/nopasswd
+# Verify sudoers syntax (important for safety)
+RUN sudo visudo -c
 
 # Create necessary directories with proper permissions
 RUN mkdir -p /workspace
