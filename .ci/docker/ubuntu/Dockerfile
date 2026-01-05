@@ -9,12 +9,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     TZ=UTC
 
-# Create jenkins user if it doesn't exist
-RUN if ! id -u jenkins > /dev/null 2>&1; then \
-        useradd -m -s /bin/bash jenkins && \
-        echo "jenkins ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/jenkins && \
-        chmod 0440 /etc/sudoers.d/jenkins; \
-    fi
+# Create sudoers.d directory and add nopasswd rule
+RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/nopasswd && \
+    chmod 0440 /etc/sudoers.d/nopasswd
+# Verify sudoers syntax (important for safety)
+RUN visudo -c
 
 # Install XPU driver - moved earlier to leverage Docker cache
 ARG XPU_DRIVER_TYPE
@@ -96,12 +95,7 @@ RUN pip3 install --no-cache-dir --upgrade \
     psutil
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /workspace && \
-    chown -R jenkins:jenkins /workspace
-
-# Switch to jenkins user
-USER jenkins:jenkins
-
+RUN mkdir -p /workspace
 # Set working directory
 WORKDIR /workspace
 
