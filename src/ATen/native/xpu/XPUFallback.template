@@ -12,7 +12,7 @@ static void check_device_consistency(const torch::jit::Stack* stack, const c10::
     if (!t.defined()) return;
     auto cur_device = t.device().type();
 
-    if (!target_device.has_value()) {
+    if (!target_device) {
       target_device = cur_device;
       return;
     }
