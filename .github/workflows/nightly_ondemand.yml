@@ -57,3 +57,11 @@ jobs:
           clinfo --list
           id
           ip a
+          uname -r
+          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
+          sudo apt update
+          echo yes |sudo apt upgrade
+          sudo apt autoremove -y
+          uname -r
+          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
+          sudo reboot
