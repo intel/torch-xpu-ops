@@ -30,7 +30,7 @@ static bool check_device_inconsistency(const torch::jit::Stack* stack) {
       }
     }
   }
-  return false; 
+  return false;
 }
 
 static void xpu_fallback_impl(
