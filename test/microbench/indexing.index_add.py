@@ -77,7 +77,6 @@ def benchmark(args):
                     dim,
                     "; backward:",
                     backward,
-                    dim,
                 )
                 if not args.e2e_only:
                     run_profile(
