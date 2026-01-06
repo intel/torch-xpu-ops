@@ -8,66 +8,109 @@ on:
       - '.ci/docker/common/install_xpu.sh'
       - '.ci/docker/ubuntu/Dockerfile'
       - '.github/workflows/_linux_test_image.yml'
-  workflow_call:
+  workflow_dispatch:
     inputs:
       runner:
-        type: string
+        type: choice
         default: 'ubuntu-24.04'
-        description: Runner label
+        description: 'Runner label'
+        options:
+          - ubuntu-24.04
+          - ubuntu-22.04
       driver:
+        type: choice
         required: true
-        type: string
         default: 'lts2'
-        description: Driver version, lts, lts2 or rolling
+        description: 'Driver version, lts, lts2 or rolling'
+        options:
+          - lts
+          - lts2
+          - rolling
       ubuntu:
+        type: choice
         required: true
-        type: string
-        default: '22.04'
-        description: Ubuntu version, 22.04 or 24.04
+        default: '24.04'
+        description: 'Ubuntu version, 22.04 or 24.04'
+        options:
+          - '22.04'
+          - '24.04'
       tag:
-        required: true
         type: string
-        default: 'intelgpu/ubuntu-22.04-lts2:2523.31'
-        description: Whether push image to docker hub or not
+        required: true
+        default: 'intelgpu/ubuntu-24.04-lts2:2523.40'
+        description: 'Image tag'
       push_to_hub:
         type: boolean
-        default: false
-        description: Whether push image to docker hub or not
+        default: true
+        description: 'Whether push image to docker hub or not'
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:
     shell: bash -xe {0}
 env:
   GH_TOKEN: ${{ github.token }}
-  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  # Set default values for PR-triggered builds
+  WORKFLOW_DRIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.driver || 'lts2' }}
+  WORKFLOW_UBUNTU: ${{ github.event_name == 'workflow_dispatch' && inputs.ubuntu || '24.04' }}
+  WORKFLOW_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
+  WORKFLOW_PUSH_TO_HUB: ${{ github.event_name == 'workflow_dispatch' && inputs.push_to_hub || false }}
 
 jobs:
   build-image:
-    runs-on: ${{ inputs.runner != '' && inputs.runner || 'ubuntu-24.04' }}
-    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'ubuntu-24.04' }}
+    if: ${{ github.event.pull_request.draft == false || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Cleanup
         run: |
-          if systemctl is-active --quiet docker; then
-            echo "Docker daemon is running...";
-          else
-            echo "Starting docker deamon..." && sudo sh -c "systemctl start docker";
-          fi
-          docker system prune -af || true
-      - name: Checkout torch-xpu-ops
+          # More robust Docker cleanup
+          echo "Cleaning up Docker resources..."
+          docker container prune -f || true
+          docker image prune -f || true
+          docker system df
+
+      - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Build image
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+
+      - name: Log in to Docker Hub
+        if: env.WORKFLOW_PUSH_TO_HUB == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: intelgpu
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .ci/docker
+          file: .ci/docker/ubuntu/Dockerfile
+          push: ${{ env.WORKFLOW_PUSH_TO_HUB == 'true' }}
+          tags: |
+            ${{ env.WORKFLOW_TAG }}
+            ${{ env.WORKFLOW_TAG != 'intelgpu/ubuntu-24.04-lts2:2523.40' && format('intelgpu/ubuntu-{0}-{1}:latest', env.WORKFLOW_UBUNTU, env.WORKFLOW_DRIVER) || 'intelgpu/ubuntu-24.04-lts2:latest' }}
+          build-args: |
+            UBUNTU_VERSION=${{ env.WORKFLOW_UBUNTU }}
+            XPU_DRIVER_TYPE=${{ env.WORKFLOW_DRIVER }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify and list images
         run: |
-          cd .ci/docker
-          docker build . -t ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }} \
-            --build-arg UBUNTU_VERSION=${{ inputs.ubuntu != '' && inputs.ubuntu || '22.04' }} \
-            --build-arg XPU_DRIVER_TYPE=${{ inputs.driver != '' && inputs.driver || 'lts2' }} \
-            -f ubuntu/Dockerfile
           docker images
-      - name: Push image
-        if: ${{ inputs.push_to_hub }}
+          echo "Built image: ${{ env.WORKFLOW_TAG }}"
+
+      - name: Test the built image
         run: |
-          echo "$DOCKER_REGISTRY_AUTH_TOKEN" | docker login -u intelgpu --password-stdin
-          docker push ${{ inputs.tag != '' && inputs.tag || 'intelgpu/ubuntu-22.04-lts2:latest' }}
+          # Run a simple test to ensure the image works
+          docker run --rm ${{ env.WORKFLOW_TAG }} echo "Image test successful"
