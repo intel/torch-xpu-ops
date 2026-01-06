@@ -53,10 +53,23 @@ jobs:
     steps:
       - name: Check env
         run: |
+          set -xe
           sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
           clinfo --list
           id
           ip a
+          . /etc/os-release
+          sudo rm -rf /etc/apt/sources.list.d/intel-*
+          sudo apt-get autoremove -y && \
+          sudo apt-get clean && \
+          sudo rm -rf \
+              /var/lib/apt/lists/* \
+              /tmp/* \
+              /var/tmp/* \
+              /usr/share/doc/* \
+              /usr/share/man/*
+
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}/lts/2523 unified" |sudo tee /etc/apt/sources.list.d/intel-gpu-${VERSION_CODENAME}.list
           uname -r
           dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
           sudo apt update
@@ -64,4 +77,13 @@ jobs:
           sudo apt autoremove -y
           uname -r
           dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
+
+          sudo apt-get autoremove -y && \
+          sudo apt-get clean && \
+          sudo rm -rf \
+              /var/lib/apt/lists/* \
+              /tmp/* \
+              /var/tmp/* \
+              /usr/share/doc/* \
+              /usr/share/man/*
           sudo reboot
