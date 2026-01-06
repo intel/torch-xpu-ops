@@ -223,10 +223,10 @@ Tensor& bmm_out_sparse_xpu(
   int64_t dim_j = self.size(2);
   int64_t dim_k = mat2.size(2);
 
-  result.resize_({num_matrices, dim_k, dim_i});
+  result.resize_({num_matrices, dim_i, dim_k});
 
   if ((self._nnz() == 0) || (dim_j == 0) || (dim_k == 0)) {
-    result.zero_().transpose_(1, 2);
+    result.zero_();
     return result;
   }
 
@@ -240,7 +240,7 @@ Tensor& bmm_out_sparse_xpu(
     need_copy_result = false;
   } else {
     tmp_result = at::empty(
-        {num_matrices, dim_k, dim_i},
+        {num_matrices, dim_i, dim_k},
         result.options(),
         at::MemoryFormat::Contiguous);
     need_copy_result = true;
@@ -249,14 +249,13 @@ Tensor& bmm_out_sparse_xpu(
   at::bmm_out(tmp_result, mat1_dense, mat2);
   if (need_copy_result) {
     result.copy_(tmp_result);
-    result.transpose_(1, 2);
   }
   return result;
 }
 
 Tensor bmm_sparse_xpu(const SparseTensor& self, const Tensor& mat2) {
   Tensor result = at::empty(
-      {self.size(0), mat2.size(2), self.size(1)},
+      {self.size(0), self.size(1), mat2.size(2)},
       mat2.options(),
       at::MemoryFormat::Contiguous);
   return bmm_out_sparse_xpu(self, mat2, result);
