@@ -686,7 +686,7 @@ struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     g_shared_[tid_y + item.get_local_range(0)][tid_x] = dg_sum2;
     b_shared_[tid_y][tid_x] = db_sum1;
     b_shared_[tid_y + item.get_local_range(0)][tid_x] = db_sum2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // Do subgroup reduce for the 1st 16 cols in the tile.
     T_ACC sum1 = g_shared_[tid_x][tid_y];
@@ -1232,7 +1232,7 @@ struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     g_shared_[tid_y + group_size_y][tid_x] = dg_sum2;
     b_shared_[tid_y][tid_x] = db_sum1;
     b_shared_[tid_y + group_size_y][tid_x] = db_sum2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // Do subgroup reduce for the 1st 16 cols in the tile.
     T_ACC sum1 = g_shared_[tid_x][tid_y];

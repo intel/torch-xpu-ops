@@ -290,7 +290,7 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     // Here using slm instead. If using ugm, need fence w/
     // order:acq_rel & scope:workgroup & space:global_mem.
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (id.glb_batch < cfg_.problem_batch_) {
       for (int pi_ = pi; pi_ < cfg_.problem_; pi_ += cfg_.problem_wg_range_) {
@@ -766,7 +766,7 @@ struct WeightNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (id.glb_batch < cfg_.problem_batch_ && id.chunk_off == 0) {
       shared_[n_slid] = value;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (id.glb_batch < cfg_.problem_batch_) {
       for (int pi_ = pi; pi_ < cfg_.problem_; pi_ += cfg_.problem_wg_range_) {
