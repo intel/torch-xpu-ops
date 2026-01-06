@@ -134,7 +134,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
+      runner: bmg-test
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       triton: ${{ needs.Conditions-Filter.outputs.triton }}
@@ -152,7 +152,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: bmg-test
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -169,7 +169,7 @@ jobs:
         suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: pvc_rolling
+      runner: bmg-test
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -199,7 +199,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: pvc_rolling
+      runner: bmg-test
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
