@@ -5,46 +5,38 @@ namespace at {
 
 static bool DEBUG_XPU_FALLBACK = false;
 
-static std::optional<std::pair<c10::DeviceType, c10::DeviceType>> find_inconsistent_devices(const torch::jit::Stack* stack) {
-  std::optional<c10::DeviceType> first_device;
+static void check_device_consistency(const torch::jit::Stack* stack, const c10::OperatorHandle& op) {
+  std::optional<c10::DeviceType> target_device;
 
-  auto check_tensor = [&](const at::Tensor& t) -> std::optional<std::pair<c10::DeviceType, c10::DeviceType>> {
-    if (!t.defined()) return std::nullopt;
-    auto current_device = t.device().type();
-    if (!first_device.has_value()) {
-      first_device = current_device;
-    } else if (first_device.value() != current_device) {
-      return std::make_pair(first_device.value(), current_device);
+  auto check_tensor = [&](const at::Tensor& t) {
+    if (!t.defined()) return;
+    auto cur_device = t.device().type();
+
+    if (!target_device.has_value()) {
+      target_device = cur_device;
+      return;
     }
-    return std::nullopt;
+
+    TORCH_CHECK(*target_device == cur_device,
+      "Expected all tensors to be on the same device, but found at least two devices, ",
+      *target_device, " and ", cur_device, 
+      "! (Operator ", op.schema().operator_name().name, ")");
   };
 
   for (const auto& iv : *stack) {
     if (iv.isTensor()) {
-      auto result = check_tensor(iv.toTensor());
-      if (result.has_value()) return result;
+      check_tensor(iv.toTensor());
     } else if (iv.isTensorList()) {
-      for (const auto& t : iv.toTensorList()) {
-        auto result = check_tensor(t);
-        if (result.has_value()) return result;
-      }
+      for (const auto& t : iv.toTensorList()) check_tensor(t);
     }
   }
-  return std::nullopt;
 }
 
 static void xpu_fallback_impl(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
 
-  auto device_inconsistency = find_inconsistent_devices(stack);
-  if (device_inconsistency.has_value()) {
-     auto [device1, device2] = device_inconsistency.value();
-     std::string msg = "Expected all tensors to be on the same device, but found at least two devices, " +
-                        std::string(c10::DeviceTypeName(device1)) + " and " + std::string(c10::DeviceTypeName(device2)) + "! (Operator " +
-                        op.schema().operator_name().name + ")";
-     TORCH_CHECK(false, msg);
-  }
+  check_device_consistency(stack, op);
 
   if (!DEBUG_XPU_FALLBACK) {
     TORCH_WARN_ONCE(
