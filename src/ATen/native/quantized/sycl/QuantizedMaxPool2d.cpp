@@ -334,4 +334,3 @@ Tensor quantized_max_pool2d_kernel(
 #ifdef _MSC_VER
   #pragma warning(pop)
 #endif
-
