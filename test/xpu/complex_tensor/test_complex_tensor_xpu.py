@@ -190,7 +190,9 @@ if dist.is_available():
         def test_distributed(self, device, dtype, op: OpInfo):
             self.check_consistency(device, dtype, op, Variant.Distributed)
 
-    instantiate_device_type_tests(TestComplexDistributed, globals())
+    instantiate_device_type_tests(
+        TestComplexDistributed, globals(), only_for="xpu", allow_xpu=True
+    )
 
 if __name__ == "__main__":
     run_tests()
