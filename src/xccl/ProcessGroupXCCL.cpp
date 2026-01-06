@@ -34,6 +34,21 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   return true;
 }
 
+bool shouldEmulateAvg(const ReduceOp& reduceOp) {
+  // oneCCL AVG isn't supported on all scheduler paths; emulate via SUM + div.
+  return reduceOp == ReduceOp::AVG;
+}
+
+ReduceOp toXcclReduceOp(const ReduceOp& reduceOp, const at::Tensor& input) {
+  if (reduceOp == ReduceOp::AVG) {
+    TORCH_CHECK(
+        input.scalar_type() != at::kBool,
+        "Cannot use ReduceOp.AVG with boolean inputs");
+    return ReduceOp::SUM;
+  }
+  return reduceOp;
+}
+
 void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
@@ -1198,17 +1213,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
+            input, output, comm, reduceOp, xcclStream, stream);
+        if (shouldEmulateAvg(opts.reduceOp)) {
           auto divisor = getSize();
           c10::StreamGuard guard(stream);
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
-#endif
         return;
       },
       OpType::ALLREDUCE,
@@ -1287,17 +1301,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
+            input, output, comm, reduceOp, xcclStream, stream);
+        if (shouldEmulateAvg(opts.reduceOp)) {
           auto divisor = getSize();
           c10::StreamGuard guard(stream);
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
-#endif
         return;
       },
       OpType::COALESCED,
@@ -1426,17 +1439,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
         const int root = opts.rootRank + opts.rootTensor;
+        auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
-            input, output, comm, opts.reduceOp, root, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
+            input, output, comm, reduceOp, root, xcclStream, stream);
+        if (shouldEmulateAvg(opts.reduceOp) && getRank() == root) {
           auto divisor = getSize();
           c10::StreamGuard guard(stream);
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
-#endif
         return;
       },
       OpType::REDUCE,
@@ -1461,17 +1473,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_oop(
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
         const int root = opts.rootRank + opts.rootTensor;
+        auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduce(
-            input, output, comm, opts.reduceOp, root, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG && getRank() == root) {
+            input, output, comm, reduceOp, root, xcclStream, stream);
+        if (shouldEmulateAvg(opts.reduceOp) && getRank() == root) {
           auto divisor = getSize();
           c10::StreamGuard guard(stream);
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
-#endif
         return;
       },
       OpType::REDUCE,
@@ -1691,17 +1702,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
+          auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
           xccl::onecclReduceScatter(
-              input, output, comm, opts.reduceOp, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-          if (opts.reduceOp == ReduceOp::AVG) {
+              input, output, comm, reduceOp, xcclStream, stream);
+          if (shouldEmulateAvg(opts.reduceOp)) {
             auto divisor = getSize();
             c10::StreamGuard guard(stream);
             c10::xpu::XPUCachingAllocator::recordStream(
                 output.storage().data_ptr(), stream);
             output.div_(divisor);
           }
-#endif
           return;
         },
         [&](at::xpu::XPUStream& Stream,
@@ -1778,17 +1788,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
+            input, output, comm, reduceOp, xcclStream, stream);
+        if (shouldEmulateAvg(opts.reduceOp)) {
           auto divisor = getSize();
           c10::StreamGuard guard(stream);
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
-#endif
         return;
       },
       OpType::_REDUCE_SCATTER_BASE,
@@ -1829,17 +1838,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto reduceOp = toXcclReduceOp(opts.reduceOp, input);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
-#if !defined(XCCL_HAS_AVG)
-        if (opts.reduceOp == ReduceOp::AVG) {
+            input, output, comm, reduceOp, xcclStream, stream);
+        if (shouldEmulateAvg(opts.reduceOp)) {
           auto divisor = getSize();
           c10::StreamGuard guard(stream);
           c10::xpu::XPUCachingAllocator::recordStream(
               output.storage().data_ptr(), stream);
           output.div_(divisor);
         }
-#endif
         return;
       },
       OpType::COALESCED,
