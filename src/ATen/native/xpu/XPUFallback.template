@@ -10,8 +10,8 @@ static void check_device_consistency(const torch::jit::Stack* stack, const c10::
 
   auto check_tensor = [&](const at::Tensor& t) {
     if (!t.defined()) return;
-    auto cur_device = t.device().type();
 
+    auto cur_device = t.device().type();
     if (!target_device) {
       target_device = cur_device;
       return;
@@ -19,7 +19,7 @@ static void check_device_consistency(const torch::jit::Stack* stack, const c10::
 
     TORCH_CHECK(*target_device == cur_device,
       "Expected all tensors to be on the same device, but found at least two devices, ",
-      *target_device, " and ", cur_device, 
+      *target_device, " and ", cur_device,
       "! (Operator ", op.schema().operator_name().name, ")");
   };
 
