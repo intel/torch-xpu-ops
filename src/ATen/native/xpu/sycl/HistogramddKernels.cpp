@@ -560,4 +560,3 @@ void histogram_select_outer_bin_edges_kernel(
 #ifdef _MSC_VER
   #pragma warning(pop)
 #endif
-

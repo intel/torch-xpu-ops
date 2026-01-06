@@ -353,4 +353,3 @@ void upsample_bicubic2d_backward_kernel(
 #ifdef _MSC_VER
   #pragma warning(pop)
 #endif
-

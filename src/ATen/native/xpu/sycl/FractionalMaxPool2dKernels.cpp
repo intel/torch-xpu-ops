@@ -307,4 +307,3 @@ void fractional_max_pool2d_backward_kernel(
 #ifdef _MSC_VER
   #pragma warning(pop)
 #endif
-

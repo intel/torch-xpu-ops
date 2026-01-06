@@ -1311,4 +1311,3 @@ Tensor ctc_loss_backward_kernel(
 #ifdef _MSC_VER
   #pragma warning(pop)
 #endif
-

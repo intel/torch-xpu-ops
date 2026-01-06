@@ -871,4 +871,3 @@ void scatter_scalar_reduce_kernel(
 #ifdef _MSC_VER
   #pragma warning(pop)
 #endif
-
