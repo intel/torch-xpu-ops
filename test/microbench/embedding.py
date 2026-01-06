@@ -63,7 +63,7 @@ def benchmark(args):
 
             # go
             print(
-                "shape:", (shape), "; datatype:", shape, dtype, "; backward:", backward
+                "shape:", (shape), "; datatype:", dtype, "; backward:", backward
             )
             if not args.e2e_only:
                 run_profile(input, grad, emb, args.device, args.num_iter)

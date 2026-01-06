@@ -56,7 +56,7 @@ def benchmark(args):
     for shape in shape_list:
         for dtype in [torch.bfloat16, torch.float16, torch.float32]:
             input = torch.randn(
-                shape, dtype=dtype, device=args.device, requires_grad=backward
+                shape, dtype=dtype, device=args.device, requires_grad=True
             )
             # warmup
             Im2col(input, kernel_size, backward, args.device)
