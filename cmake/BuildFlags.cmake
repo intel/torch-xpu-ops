@@ -40,14 +40,9 @@ macro(set_build_flags)
     set(SYCL_OFFLINE_COMPILER_CG_OPTIONS)
     set(SYCL_OFFLINE_COMPILER_FLAGS)
 
-    if(REPLACE_FLAGS_FOR_SYCLTLA)
-      set(CPP_STD c++20)
-    else()
-      set(CPP_STD c++17)
-    endif()
     # # -- Host flags (SYCL_CXX_FLAGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
+      list(APPEND SYCL_HOST_FLAGS /std:c++20)
       list(APPEND SYCL_HOST_FLAGS /MD)
       list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
       # SYCL headers warnings
@@ -55,7 +50,7 @@ macro(set_build_flags)
       list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       list(APPEND SYCL_HOST_FLAGS -fPIC)
-      list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+      list(APPEND SYCL_HOST_FLAGS -std=c++20)
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
