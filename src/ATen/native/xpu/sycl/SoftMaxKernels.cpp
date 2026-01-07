@@ -71,7 +71,7 @@ static inline void softmax_group_reduce(
   if (sg_local_id == 0) {
     local_data[lid_row][idx] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // use one subgroup to reduce WGroupSize/subGroupSize elements
   // into the final result
@@ -97,7 +97,7 @@ static inline void softmax_group_reduce(
     }
   }
 
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   val = local_data[lid_row][0];
 }
 
@@ -120,7 +120,7 @@ static inline void softmax_group_reduce_spatial(
   for (int j = 0; j < vec_size; ++j) {
     local_data[local_row_id][local_col_id][j] = input[j];
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   int k = 1;
   while (k < block_row) {
@@ -132,7 +132,7 @@ static inline void softmax_group_reduce_spatial(
             local_data[local_row_id + k][local_col_id][j]);
       }
     k *= 2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
   }
 }
 
@@ -748,7 +748,7 @@ struct SpatialSoftmaxForwardKernelFunctor
       for (int j = 0; j < vec_size; ++j) {
         max_value[j] = local_data_[0][local_col_id][j];
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     // get sum value
