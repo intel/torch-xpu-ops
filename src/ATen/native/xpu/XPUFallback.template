@@ -35,7 +35,7 @@ static void check_device_consistency(
     if (iv.isTensor()) {
       check_tensor(iv.toTensor());
     } else if (iv.isTensorList()) {
-      for (const auto& t : iv.toTensorList()) 
+      for (const auto& t : iv.toTensorList())
         check_tensor(t);
     }
   }
