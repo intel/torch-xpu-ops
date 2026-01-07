@@ -36,16 +36,31 @@ runs:
         sudo apt update
         sudo apt install -y jq numactl
         rm -rf Torch-XPU-Wheel-*
-    - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python }}
+    - name: Install uv
+      shell: bash -xe {0}
+      run: |
+        # Install uv package manager
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+    - name: Setup Python with uv
+      shell: bash -xe {0}
+      run: |
+        # Install Python using uv
+        uv python install ${{ inputs.python }}
+        uv venv .venv --python ${{ inputs.python }} --clear
+        source .venv/bin/activate
+        # Ensure uv is in PATH for subsequent steps
+        echo "$(pwd)/.venv/bin" >> $GITHUB_PATH
+        # Verify installation
+        which python && python -V
+        which pip && pip --version
+        uv --version
+        uv pip install -U pip wheel setuptools
     - name: Check python
       shell: bash -xe {0}
       run: |
         which python && python -V
         which pip && pip list
-        pip install -U pip wheel setuptools
     - name: Checkout torch-xpu-ops
       uses: actions/checkout@v4
       with:
