@@ -87,7 +87,7 @@ if(USE_SYCLTLA)
 
     # Set Compile options for sycltla kernels
     target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
-    target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+    target_include_directories(${sycl_lib} SYSTEM PRIVATE ${SYCLTLA_INCLUDE_DIRS})
   endforeach()
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
