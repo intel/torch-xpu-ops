@@ -1,3 +1,12 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
@@ -9,27 +18,26 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 struct IgammaFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return calc_igamma<scalar_t>(a, b);
-  }
-};
-
-template <typename scalar_t>
-struct IgammacFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return calc_igammac<scalar_t>(a, b);
+  IgammaFunctor(bool calc_igammac) : calc_igammac_(calc_igammac) {}
+  bool calc_igammac_;
+  [[clang::optnone]] scalar_t operator()(scalar_t a, scalar_t b) const {
+    if (calc_igammac_) {
+      return calc_igammac<scalar_t>(a, b);
+    } else {
+      return calc_igamma<scalar_t>(a, b);
+    }
   }
 };
 
 void igamma_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "igamma_xpu", [&]() {
-    gpu_kernel(iter, IgammaFunctor<scalar_t>());
+    gpu_kernel(iter, IgammaFunctor<scalar_t>(false));
   });
 }
 
 void igammac_kernel(TensorIteratorBase& iter) {
   AT_DISPATCH_FLOATING_TYPES(iter.common_dtype(), "igammac_xpu", [&]() {
-    gpu_kernel(iter, IgammacFunctor<scalar_t>());
+    gpu_kernel(iter, IgammaFunctor<scalar_t>(true));
   });
 }
 

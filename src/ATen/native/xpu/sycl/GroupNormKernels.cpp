@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
@@ -676,7 +686,7 @@ struct GammaBeta1dBackwardLargeKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
     g_shared_[tid_y + item.get_local_range(0)][tid_x] = dg_sum2;
     b_shared_[tid_y][tid_x] = db_sum1;
     b_shared_[tid_y + item.get_local_range(0)][tid_x] = db_sum2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // Do subgroup reduce for the 1st 16 cols in the tile.
     T_ACC sum1 = g_shared_[tid_x][tid_y];
@@ -1222,7 +1232,7 @@ struct GammaBetaBackwardFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     g_shared_[tid_y + group_size_y][tid_x] = dg_sum2;
     b_shared_[tid_y][tid_x] = db_sum1;
     b_shared_[tid_y + group_size_y][tid_x] = db_sum2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // Do subgroup reduce for the 1st 16 cols in the tile.
     T_ACC sum1 = g_shared_[tid_x][tid_y];

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/EmbeddingBackwardKernel.h>
@@ -118,7 +128,7 @@ struct RenormKernelFunctor {
     if (tid == 0) {
       smem_[0] = std::pow(v, static_cast<accscalar_t>(1.0 / norm_type_));
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (smem_[0] > max_norm_) {
       auto factor = static_cast<scalar_t>(

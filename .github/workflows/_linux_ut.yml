@@ -52,6 +52,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Get runner
         id: runner-info
+        with:
+          ut_name: ${{ inputs.ut }}
         uses: ./.github/actions/get-runner
 
   test-in-container:
@@ -59,7 +61,7 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
-      image: intelgpu/ubuntu-22.04-lts2:2523.31
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
@@ -104,7 +106,8 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread --max-worker-restart 1000000
+                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -164,7 +167,7 @@ jobs:
           # get distributed known issues
           gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
           # get skipped known issues
-          count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" --jq 'length')
+          count=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
           if [ "$count" -gt 0 ]; then
             echo -e "$count issues with skipped label found"
             gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \

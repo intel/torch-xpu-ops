@@ -1,6 +1,15 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+#include <ATen/native/xpu/sycl/ForeachCopyKernels.h>
 #include <ATen/native/xpu/sycl/ForeachFunctors.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
-#include <ATen/native/xpu/sycl/ForeachCopyKernels.h>
 
 namespace at::native::xpu {
 
@@ -10,6 +19,24 @@ template <typename dst_t>
 constexpr bool is_complex_dtype() {
   return std::is_same_v<dst_t, c10::complex<float>> ||
       std::is_same_v<dst_t, c10::complex<double>>;
+}
+
+template <typename dst_t, typename src_t>
+constexpr int64_t compute_kILP() {
+  constexpr size_t src_size = sizeof(src_t);
+  constexpr size_t dst_size = sizeof(dst_t);
+  constexpr size_t max_size = std::max(src_size, dst_size);
+
+  // Adjust ILP based on data size to maintain good memory bandwidth
+  if (max_size <= 2) {
+    return kILP * 2;
+  } else if (max_size <= 4) {
+    return kILP;
+  } else if (max_size <= 8) {
+    return kILP / 2;
+  } else {
+    return 1;
+  }
 }
 
 template <typename dst_t, typename src_t>
@@ -30,6 +57,8 @@ template <
     int r_args_depth,
     int res_arg_index>
 struct CopyFunctor {
+  static constexpr int64_t kILP = compute_kILP<dst_t, src_t>();
+
   static_assert(
       depth == 2 && r_args_depth == 1 && res_arg_index == 1,
       "CopyFunctor only supports depth=2, r_args_depth=1, res_arg_index=1");
@@ -47,48 +76,44 @@ struct CopyFunctor {
     const size_t tensor_loc = tlWGMeta[group_idx].wg_to_tensor;
     const size_t chunk_idx = tlWGMeta[group_idx].wg_to_chunk;
     const size_t chunk_offset = chunk_idx * chunk_size;
-    const size_t n =
-        tlAddress[tensor_loc].numel_to_tensor - chunk_offset;
+    const size_t n = tlAddress[tensor_loc].numel_to_tensor - chunk_offset;
 
-    src_t* src_ptr = static_cast<src_t*>(tlAddress[tensor_loc].addresses[0]);
-    src_ptr += chunk_offset;
-    dst_t* dst_ptr = static_cast<dst_t*>(tlAddress[tensor_loc].addresses[1]);
-    dst_ptr += chunk_offset;
+    const size_t updated_chunk_size =
+        std::min(static_cast<size_t>(chunk_size), n);
+
+    src_t* src_ptr =
+        static_cast<src_t*>(tlAddress[tensor_loc].addresses[0]) + chunk_offset;
+    dst_t* dst_ptr =
+        static_cast<dst_t*>(tlAddress[tensor_loc].addresses[1]) + chunk_offset;
 
     const bool all_aligned = is_aligned(src_ptr) && is_aligned(dst_ptr);
+    constexpr bool same_sized_dtypes = sizeof(src_t) == sizeof(dst_t);
 
-    static constexpr size_t kILP2 = 256;
+    src_t src_args[kILP];
+    dst_t r_args[kILP];
 
-    src_t src_args[kILP2];
-    dst_t r_args[kILP2];
-    
     // vec path
-    if (n % kILP2 == 0 && chunk_size % kILP2 == 0 && all_aligned) {
-      for (size_t i = item_idx; i * kILP2 < n && i * kILP2 < chunk_size;
+    if (same_sized_dtypes && updated_chunk_size % kILP == 0 && all_aligned) {
+      for (size_t i = item_idx; i * kILP < updated_chunk_size;
            i += item_range) {
-        load_store(src_args, src_ptr, 0, i);
+        load_store<src_t, kILP>(src_args, src_ptr, 0, i);
 #pragma unroll
-        for (size_t ii = 0; ii < kILP2; ++ii) {
+        for (size_t ii = 0; ii < kILP; ++ii) {
           r_args[ii] = op(src_args[ii]);
         }
-        load_store(dst_ptr, r_args, i, 0);
+        load_store<dst_t, kILP>(dst_ptr, r_args, i, 0);
       }
       // non-vec path
     } else {
-      for (size_t i = 0; i < n && i < chunk_size; i += item_range * kILP2) {
+      for (size_t i = 0; i < updated_chunk_size; i += item_range * kILP) {
+        const size_t base_idx = i + item_idx;
 #pragma unroll
-        for (size_t ii = 0; ii < kILP2; ++ii) {
-          const size_t i_start = i + item_idx + ii * item_range;
-          src_args[ii] = src_t{};
-          if (i_start < n && i_start < chunk_size) {
-            src_args[ii] = src_ptr[i_start];
+        for (size_t ii = 0; ii < kILP; ++ii) {
+          const size_t i_start = base_idx + ii * item_range;
+          if (i_start < updated_chunk_size) {
+            dst_ptr[i_start] = op(src_ptr[i_start]);
           }
         }
-#pragma unroll
-        for (size_t ii = 0; ii < kILP2; ++ii) {
-          r_args[ii] = op(src_args[ii]);
-        }
-        store_args(dst_ptr, r_args, i, chunk_size, n, item_idx, item_range);
       }
     }
   }

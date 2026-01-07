@@ -31,7 +31,7 @@ on:
       xpu_version:
         required: false
         type: string
-        default: '2025.2'
+        default: '2025.3'
         description: Python version
       src_changed:
         required: true
@@ -49,32 +49,30 @@ permissions: read-all
 env: 
     USE_XPU: 1
     PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
-      intel-cmplr-lib-rt==2025.2.1 |
-      intel-cmplr-lib-ur==2025.2.1 |
-      intel-cmplr-lic-rt==2025.2.1 |
-      intel-sycl-rt==2025.2.1 |
-      oneccl-devel==2021.16.1; platform_system == 'Linux' and platform_machine == 'x86_64' |
-      oneccl==2021.16.1; platform_system == 'Linux' and platform_machine == 'x86_64' |
-      impi-rt==2021.16.1; platform_system == 'Linux' and platform_machine == 'x86_64' |
-      onemkl-sycl-blas==2025.2.0 |
-      onemkl-sycl-dft==2025.2.0 |
-      onemkl-sycl-lapack==2025.2.0 |
-      onemkl-sycl-rng==2025.2.0 |
-      onemkl-sycl-sparse==2025.2.0 |
-      dpcpp-cpp-rt==2025.2.1 |
-      intel-opencl-rt==2025.2.1 |
-      mkl==2025.2.0 |
-      intel-openmp==2025.2.1 |
-      tbb==2022.2.0 |
-      tcmlib==1.4.0 |
-      umf==0.11.0 |
-      intel-pti==0.13.1
+      intel-cmplr-lib-rt==2025.3.1 | 
+      intel-cmplr-lib-ur==2025.3.1 | 
+      intel-cmplr-lic-rt==2025.3.1 | 
+      intel-sycl-rt==2025.3.1 | 
+      onemkl-license==2025.3.0 | 
+      onemkl-sycl-blas==2025.3.0 | 
+      onemkl-sycl-dft==2025.3.0 | 
+      onemkl-sycl-lapack==2025.3.0 | 
+      onemkl-sycl-rng==2025.3.0 | 
+      onemkl-sycl-sparse==2025.3.0 | 
+      dpcpp-cpp-rt==2025.3.1 | 
+      intel-opencl-rt==2025.3.1 | 
+      mkl==2025.3.0 | 
+      intel-openmp==2025.3.1 | 
+      tbb==2022.3.0 | 
+      tcmlib==1.4.1 | 
+      umf==1.0.2 | 
+      intel-pti==0.15.0
 
 jobs:
   ut_test:
     runs-on: ${{ inputs.runner }}
     if: ${{ inputs.src_changed == 'true' || inputs.has_label == 'true' }}
-    timeout-minutes: 900
+    timeout-minutes: 1000
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -90,6 +88,7 @@ jobs:
           echo "C:\ProgramData\miniforge3\Scripts" >> "$GITHUB_PATH"
           echo "C:\ProgramData\miniforge3\Library\bin" >> "$GITHUB_PATH"
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ci"
           call conda clean -ay
           call conda remove --all -y -n windows_ci
           call conda create -n windows_ci python=${{ inputs.python }} cmake ninja -y
@@ -263,45 +262,21 @@ jobs:
 
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
           copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
-      - name: UT Test Results Summary
+      - name: Run OP UT
+        if: contains(inputs.ut, 'op_ut_windows') || github.event_name == 'schedule'
         shell: cmd
+        continue-on-error: true
         run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           call conda activate windows_ci
-          pip install junitparser
-          echo "GITHUB_WORKSPACE: %GITHUB_WORKSPACE%"
-          for %%i in ("%GITHUB_WORKSPACE%\ut_log\*.xml") do (
-            python .\.github\scripts\check-ut.py -n windows -i "%%i" >> "%GITHUB_STEP_SUMMARY%"
-          )
-          @echo off
-
-          REM Check the failure logs
-          if exist "%GITHUB_WORKSPACE%\failures*.log" (
-            echo Exist Failure logs
-            echo Found Failure logs as below: 
-            for %%f in ("%GITHUB_WORKSPACE%\failures*.log") do (
-              echo   - %%f
-              copy "%%f" "%GITHUB_WORKSPACE%\ut_log\"
-            )
-            echo Failure logs Copied
-          ) else (
-            echo No Failure logs
-          )
-
-          REM Copied the passed logs
-          if exist "passed*.log" (
-            copy "passed*.log" "%GITHUB_WORKSPACE%\ut_log\"
-            echo Passed logs Copied
-          ) else (
-            echo No Passed logs
-          )
-
-          REM Copied the Summary logs
-          if exist "category*.log" (
-            copy "category*.log" "%GITHUB_WORKSPACE%\ut_log\"
-            echo Category logs Copied
-          ) else (
-            echo No Category logs
-          )
+          set PYTORCH_TEST_WITH_SLOW=1
+          set PYTORCH_ENABLE_XPU_FALLBACK=1
+          set PYTEST_ADDOPTS=-v --timeout 600 --timeout_method=thread --max-worker-restart 1000000 -n 1
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
+          python run_test_with_windows_nighltly.py
+          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
+          for /r . %%f in (test*.xml op_ut_windows_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -312,6 +287,64 @@ jobs:
 
   summary:
     needs: [ut_test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
+          path: ${{ github.workspace }}/ut_log
+      - name: UT Test Results Summary
+        shell: bash
+        run: |
+          pip install junitparser
+          find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
+          python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          # Check the failure logs
+          if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
+            echo -e "Exist Failure logs"
+            echo "Found Failure logs as below: "
+            for file in ${{ github.workspace }}/failures*.log; do
+              echo "  - $file"
+              cp "$file" ${{ github.workspace }}/ut_log
+            done
+            echo -e "Failure logs Copied"
+          else
+            echo -e "No Failure logs"
+          fi
+          # Copied the passed logs
+          if ls passed*.log 1> /dev/null 2>&1; then
+            cp passed*.log ${{ github.workspace }}/ut_log
+            echo -e "Passed logs Copied"
+          else
+            echo -e "No Passed logs"
+          fi
+          # Copied the Summary logs
+          if ls category*.log 1> /dev/null 2>&1; then
+            cp category*.log ${{ github.workspace }}/ut_log
+            echo -e "Category logs Copied"
+          else
+            echo -e "No Category logs"
+          fi
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log
+          overwrite: true
+
+  summary_check:
+    needs: [summary]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -331,6 +364,11 @@ jobs:
           cd ${{ github.workspace }}/ut_log
           latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*" |sort -V |tail -n 1)
           cd "${latest_dir}"
+          find "${{ github.workspace }}/ut_log" -type f \
+              \( -name "failures_*.log" -o \
+                -name "passed_*.log" -o \
+                -name "category_*.log" \) \
+              -exec mv {} ./ \; || true
 
           # get skipped known issues
           count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')

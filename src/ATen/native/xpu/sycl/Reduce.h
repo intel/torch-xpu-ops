@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/OpMathType.h>
@@ -59,7 +69,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   if (sg_lid == 0) {
     shared_[sg_gid] = value;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   if (sg_range <= sg_size) {
     // sub-group reduce
@@ -92,7 +102,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
         }
         shared_[l_x] = value;
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
   }
   return value;
@@ -116,7 +126,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
     int base = l_x + l_y * g_x;
     shared_[base] = value;
     for (int offset = dim_x / 2; offset >= sg_size; offset >>= 1) {
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       if (l_x < offset && l_x + offset < g_x) {
         vec_t other = shared_[base + offset];
 #pragma unroll(out_vec_sz)
@@ -158,7 +168,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_y_reduce(
 
   shared_[slm_off(0)] = value;
   for (int offset = dim_y / 2; offset > 0; offset >>= 1) {
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (l_y < offset && l_y + offset < dim_y) {
       vec_t other = shared_[slm_off(offset)];
 #pragma unroll(out_vec_sz)
@@ -258,8 +268,11 @@ struct ReduceConfig {
     group_width = std::min(dim0_pow2, int(max_num_items / group_height));
     num_items = group_width * group_height;
 
-    if (num_items < max_sg_sz)
+    if (num_items < max_sg_sz) {
       group_width = max_sg_sz;
+      num_items = group_width * group_height;
+      TORCH_INTERNAL_ASSERT(num_items <= max_num_items);
+    }
   }
 
   int split_input(int parallelism) {
@@ -825,7 +838,7 @@ struct ReduceOp {
   // In/out from slm pointers
   void mark_group_finished(sycl::nd_item<2> pos, sycl_local_ptr<bool> finished)
       const {
-    pos.barrier(sycl_local_fence);
+    sycl::group_barrier(pos.get_group());
 
     if (pos.get_local_linear_id() == 0) {
       sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores[pos.get_group(1)]);
@@ -834,7 +847,7 @@ struct ReduceOp {
           /* , default memory scope is device */);
       finished[0] = (prev_groups_finished == (int)(pos.get_group_range(0) - 1));
     }
-    pos.barrier(sycl_local_fence);
+    sycl::group_barrier(pos.get_group());
   }
 
   template <int output_vec_size, bool can_acc>
@@ -1151,8 +1164,24 @@ inline void gpu_reduce_kernel(
 
   using traits = function_traits<decltype(&ops_t::reduce)>;
   using arg_t = typename traits::template arg<0>::type;
+
+  // at::Half/at::ComplexHalf overflows easily as it's range is very small.
+  // So when scalar_t and out_scalar_t are at::Half/at::ComplexHalf, we
+  // set can_accumulate_in_output to False.
+  static constexpr bool is_inp_out_type_half_or_chalf =
+      (std::is_same_v<at::Half, scalar_t> &&
+       std::is_same_v<at::Half, out_scalar_t>) ||
+      (std::is_same_v<c10::complex<Half>, scalar_t> &&
+       std::is_same_v<c10::complex<Half>, out_scalar_t>);
+  // at::BFloat16 has lower precision and can lead to rounding errors.
+  // So when scalar_t and out_scalar_t are at::BFloat16, we
+  // set can_accumulate_in_output to False.
+  static constexpr bool is_inp_out_type_bfloat16 =
+      (std::is_same_v<at::BFloat16, scalar_t> &&
+       std::is_same_v<at::BFloat16, out_scalar_t>);
   static constexpr bool can_accumulate_in_output =
-      std::is_convertible<arg_t, out_scalar_t>::value;
+      std::is_convertible_v<arg_t, out_scalar_t> &&
+      !(is_inp_out_type_half_or_chalf || is_inp_out_type_bfloat16);
 
   bool can_use_32bit_indexing = iter.can_use_32bit_indexing();
   std::unique_ptr<AccumulationBuffer> owned_buf_ptr;
