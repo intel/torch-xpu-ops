@@ -71,8 +71,6 @@ endif()
 if(USE_SYCLTLA)
   set(REPLACE_FLAGS_FOR_SYCLTLA TRUE)
   set_build_flags()
-  set(CMAKE_CXX_FLAGS_BK "${CMAKE_CXX_FLAGS}")
-  string(REPLACE "-Werror=unused-variable" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
   foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
@@ -94,7 +92,6 @@ if(USE_SYCLTLA)
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
   set_build_flags()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BK}")
 endif()
 
 set(SYCL_LINK_LIBRARIES_KEYWORD)
