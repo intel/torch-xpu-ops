@@ -5,21 +5,29 @@ namespace at {
 
 static bool DEBUG_XPU_FALLBACK = false;
 
-static void check_device_consistency(const torch::jit::Stack* stack, const c10::OperatorHandle& op) {
-  std::optional<c10::DeviceType> target_device;
+/*
+ * Verifies that all input tensors reside on the same device type.
+ * The first defined tensor establishes the reference device;
+ * all subsequent tensors must match it.
+ * Raises an error if a mismatch (e.g., CPU vs. XPU) is detected.
+ */
+static void check_device_consistency(
+    const torch::jit::Stack* stack,
+    const c10::OperatorHandle& op) {
+  std::optional<c10::DeviceType> first_device;
 
   auto check_tensor = [&](const at::Tensor& t) {
     if (!t.defined()) return;
 
     auto cur_device = t.device().type();
-    if (!target_device) {
-      target_device = cur_device;
+    if (!first_device) {
+      first_device = cur_device;
       return;
     }
 
-    TORCH_CHECK(*target_device == cur_device,
+    TORCH_CHECK(*first_device == cur_device,
       "Expected all tensors to be on the same device, but found at least two devices, ",
-      *target_device, " and ", cur_device,
+      *first_device, " and ", cur_device,
       "! (Operator ", op.schema().operator_name().name, ")");
   };
 
@@ -27,7 +35,8 @@ static void check_device_consistency(const torch::jit::Stack* stack, const c10::
     if (iv.isTensor()) {
       check_tensor(iv.toTensor());
     } else if (iv.isTensorList()) {
-      for (const auto& t : iv.toTensorList()) check_tensor(t);
+      for (const auto& t : iv.toTensorList()) 
+        check_tensor(t);
     }
   }
 }
