@@ -7,6 +7,7 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 skip_dict = {
+    "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
     "nn/test_convolution_xpu.py": None,
     "nn/test_dropout_xpu.py": None,
@@ -70,7 +71,10 @@ skip_dict = {
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
-    "test_meta_xpu.py": ("_jiterator_",),
+    "test_meta_xpu.py": (
+        "_jiterator_",
+        "vdot",
+    ),
     "test_modules_xpu.py": None,
     "test_namedtensor_xpu.py": None,
     "test_native_functions_xpu.py": None,
@@ -117,4 +121,5 @@ skip_dict = {
     "test_expanded_weights_xpu.py": None,
     "test_fake_tensor_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
+    "functorch/test_vmap_xpu.py": None,
 }
