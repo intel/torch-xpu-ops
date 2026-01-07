@@ -8,12 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -377,11 +371,8 @@ void index_add_kernel(
     result.copy_(self);
   }
 
-  auto numel = index.numel();
-  if (result.dim() > 1) {
-    if (numel == 0 || self.numel() == 0) {
-      return;
-    }
+  if (index.numel() == 0 || self.numel() == 0) {
+    return;
   }
 
   // Scalars are treated as 1-d tensor
@@ -2189,6 +2180,3 @@ Tensor index_select_sparse_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

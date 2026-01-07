@@ -12,11 +12,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -98,7 +93,7 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       cached_roi_[3] = current_roi[3] * spatial_scale_ - offset;
       cached_roi_[4] = current_roi[4] * spatial_scale_ - offset;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_index_on_batch_n < items_per_roi_) {
       int pw = output_index_on_batch_n % pooled_width_;
@@ -566,6 +561,3 @@ Tensor roi_align_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
