@@ -69,7 +69,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
   if (sg_lid == 0) {
     shared_[sg_gid] = value;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   if (sg_range <= sg_size) {
     // sub-group reduce
@@ -102,7 +102,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_reduce(
         }
         shared_[l_x] = value;
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
   }
   return value;
@@ -126,7 +126,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_x_reduce(
     int base = l_x + l_y * g_x;
     shared_[base] = value;
     for (int offset = dim_x / 2; offset >= sg_size; offset >>= 1) {
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       if (l_x < offset && l_x + offset < g_x) {
         vec_t other = shared_[base + offset];
 #pragma unroll(out_vec_sz)
@@ -168,7 +168,7 @@ inline at::detail::Array<arg_t, out_vec_sz> group_y_reduce(
 
   shared_[slm_off(0)] = value;
   for (int offset = dim_y / 2; offset > 0; offset >>= 1) {
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (l_y < offset && l_y + offset < dim_y) {
       vec_t other = shared_[slm_off(offset)];
 #pragma unroll(out_vec_sz)
@@ -268,8 +268,11 @@ struct ReduceConfig {
     group_width = std::min(dim0_pow2, int(max_num_items / group_height));
     num_items = group_width * group_height;
 
-    if (num_items < max_sg_sz)
+    if (num_items < max_sg_sz) {
       group_width = max_sg_sz;
+      num_items = group_width * group_height;
+      TORCH_INTERNAL_ASSERT(num_items <= max_num_items);
+    }
   }
 
   int split_input(int parallelism) {
@@ -835,7 +838,7 @@ struct ReduceOp {
   // In/out from slm pointers
   void mark_group_finished(sycl::nd_item<2> pos, sycl_local_ptr<bool> finished)
       const {
-    pos.barrier(sycl_local_fence);
+    sycl::group_barrier(pos.get_group());
 
     if (pos.get_local_linear_id() == 0) {
       sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores[pos.get_group(1)]);
@@ -844,7 +847,7 @@ struct ReduceOp {
           /* , default memory scope is device */);
       finished[0] = (prev_groups_finished == (int)(pos.get_group_range(0) - 1));
     }
-    pos.barrier(sycl_local_fence);
+    sycl::group_barrier(pos.get_group());
   }
 
   template <int output_vec_size, bool can_acc>

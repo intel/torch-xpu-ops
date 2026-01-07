@@ -20,12 +20,6 @@
  * Graves et al call the probabilities y, we use log_probs (also calling them inputs)
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -137,7 +131,7 @@ struct CTCLossLogAlphaKernelFunctor {
         have_three = false;
       }
       for (int64_t t = 1; t < max_input_length_; t++) {
-        item.barrier(sycl_global_and_local_fence);
+        sycl::group_barrier(item.get_group());
         if (valid && (t < input_length) && (s < 2 * target_length + 1)) {
           // only for valid t, s. This is equation (6) and (7), la1, la2, la3
           // are the three summands, lamax is the maximum for the logsumexp
@@ -187,7 +181,7 @@ struct CTCLossLogAlphaKernelFunctor {
         }
       }
     }
-    item.barrier(sycl_global_and_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (!valid)
       return;
@@ -524,7 +518,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
       // now go backward in t. Note that we need to skip the last timestep that
       // we did above.
       for (int64_t t = max_input_length_ - 2; t >= 0; t--) {
-        item.barrier(sycl_global_and_local_fence);
+        sycl::group_barrier(item.get_group());
         if (valid && (t < input_length - 1) && (s < 2 * target_length + 1)) {
           scalar_t lb1 = log_beta_data_
               [lb_batch_offset + lb_input_stride_ * (t + 1) +
@@ -1301,6 +1295,3 @@ Tensor ctc_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

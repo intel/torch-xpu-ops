@@ -8,12 +8,6 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-
 #include <ATen/AccumulateType.h>
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
@@ -330,6 +324,3 @@ Tensor quantized_max_pool2d_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

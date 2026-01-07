@@ -84,14 +84,14 @@ void _mkl_dft(
     desc.set_value(config_param::FWD_DISTANCE, idist);
     desc.set_value(config_param::BWD_DISTANCE, odist);
 
-    desc.set_value(config_param::FWD_STRIDES, input_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, output_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, input_strides);
+    desc.set_value(config_param::BWD_STRIDES, output_strides);
   } else {
     desc.set_value(config_param::FWD_DISTANCE, odist);
     desc.set_value(config_param::BWD_DISTANCE, idist);
 
-    desc.set_value(config_param::FWD_STRIDES, output_strides.data());
-    desc.set_value(config_param::BWD_STRIDES, input_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, output_strides);
+    desc.set_value(config_param::BWD_STRIDES, input_strides);
   }
 
   if (!complex_input || !complex_output) {
@@ -104,7 +104,7 @@ void _mkl_dft(
   desc.commit(queue);
 
   // Obtain the size of workspace required after commit.
-  size_t workspaceSizeBytes = 0;
+  int64_t workspaceSizeBytes = 0;
   desc.get_value(
       oneapi::mkl::dft::config_param::WORKSPACE_BYTES, &workspaceSizeBytes);
 
@@ -323,16 +323,27 @@ const Tensor& _fft_apply_normalization(
   return (scale == 1.0) ? self : self.mul_(scale);
 }
 
+// TODO: Remove this work-around in future.
+Tensor promote_fft_input(const Tensor& input) {
+  if (input.scalar_type() == ScalarType::Half)
+    return input.to(ScalarType::Float);
+  if (input.scalar_type() == ScalarType::ComplexHalf)
+    return input.to(ScalarType::ComplexFloat);
+  return input;
+}
+
 } // namespace impl
 
 Tensor _fft_c2c_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
+
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto sorted_dims = impl::_sort_dims(self, dim);
   auto out_sizes = self.sizes();
@@ -370,7 +381,11 @@ Tensor _fft_c2c_mkl(
     }
   }
 
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
+    return out.to(ScalarType::ComplexHalf);
+  return out;
 }
 
 Tensor& _fft_c2c_mkl_out(
@@ -406,13 +421,15 @@ void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
 }
 
 Tensor _fft_c2r_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
+
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto input = self;
 
@@ -445,7 +462,11 @@ Tensor _fft_c2r_mkl(
       /*onesided=*/true,
       /*forward=*/false);
 
-  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+  impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
+    return out.to(ScalarType::Half);
+  return out;
 }
 
 Tensor& _fft_c2r_mkl_out(
@@ -465,13 +486,15 @@ REGISTER_XPU_DISPATCH(
     &_fft_fill_with_conjugate_symmetry_xpu);
 
 Tensor _fft_r2c_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
+
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto input_sizes = self.sizes();
   DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
@@ -531,6 +554,8 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
+  if (orig_self.scalar_type() == ScalarType::Half)
+    return out.to(ScalarType::ComplexHalf);
   return out;
 }
 
