@@ -85,8 +85,8 @@ jobs:
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
           rm -rf ~/intel ~/.intel ${HOME}/intel
-          if [ "${{ inputs.oneapi }}" == "2025.1" ];then
-            ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/3435dc45-055e-4f7a-86b1-779931772404/intel-deep-learning-essentials-2025.1.3.7_offline.sh"
+          if [ "${{ inputs.oneapi }}" == "2025.3" ];then
+            ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/9065c156-58ab-41b0-bbee-9b0e229ffca5/intel-deep-learning-essentials-2025.3.1.15_offline.sh"
             echo "XPU_MKL_VERSION=2025.1.0" >> ${GITHUB_ENV}
           elif [ "${{ inputs.oneapi }}" == "2025.2" ];then
             ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/de3686c4-d3e1-41da-bf3b-bf5908da075c/intel-deep-learning-essentials-2025.2.1.24_offline.sh"
