@@ -1,3 +1,0 @@
-{"op":"adaptive_avg_pool2d","case":{"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":true,"output_size":[7,7],"backward":true},"op_name":"adaptive_avg_pool2d"}
-{"op":"adaptive_avg_pool2d","case":{"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false},"op_name":"adaptive_avg_pool2d"}
-{"op":"adaptive_avg_pool3d","case":{"dtype":"torch.bfloat16","shape":[8,512,32,32],"channels_last":false,"output_size":[7,7],"backward":false},"op_name":"adaptive_avg_pool3d"}
