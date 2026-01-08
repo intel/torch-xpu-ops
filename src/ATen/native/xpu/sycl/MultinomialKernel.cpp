@@ -1,8 +1,12 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
@@ -46,7 +50,7 @@ inline void renormRowsL1(
     if (thread_idx == 0) {
       smem[0] = sum;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     sum = smem[0];
     if (sum > zero) {
@@ -153,7 +157,7 @@ inline int binarySearchForMultinomial(
 template <typename scalar_t, typename item_t>
 inline void sampleMultinomialWithReplacement(
     item_t& item,
-    PhiloxState philox_args,
+    PhiloxXpuState philox_args,
     int totalSamples,
     int64_t* dest,
     int64_t distributions,
@@ -171,7 +175,7 @@ inline void sampleMultinomialWithReplacement(
   // search due to divergence. It seems possible to compute multiple
   // values and limit divergence though later on.
 
-  auto seeds = philox_unpack(philox_args);
+  auto seeds = at::xpu::philox::unpack(philox_args);
 
   // global index formula for 2D grid of 1D group
   int idx = group_idx_y * group_range_x * thread_range +
@@ -217,7 +221,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
         normDist_ptr);
   }
   MultinomialWithReplacementKernelImplFunctor(
-      PhiloxState rng_engine_inputs_,
+      PhiloxXpuState rng_engine_inputs_,
       const int64_t n_sample_,
       int64_t* result_ptr_,
       int64_t numDist_,
@@ -233,7 +237,7 @@ struct MultinomialWithReplacementKernelImplFunctor {
         normDist_ptr(normDist_ptr_) {}
 
  private:
-  PhiloxState rng_engine_inputs;
+  PhiloxXpuState rng_engine_inputs;
   const int64_t n_sample;
   int64_t* result_ptr;
   int64_t numDist;
@@ -278,11 +282,11 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         smem[0] = sum;
         smem[1] = sampled_[curDist];
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       sum = smem[0];
       scalar_t sample = static_cast<scalar_t>(smem[1]);
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       if (sum == accZero) {
         // Choose the first element
@@ -308,7 +312,7 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             : accZero;
 
         smem[local_id] = dist_val;
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
 
         // Perform an inclusive prefix sum of the shared memory contents
         for (int offset = 1; offset < local_range; offset *= 2) {
@@ -318,11 +322,11 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             val = smem[local_id - offset] + smem[local_id];
           }
 
-          item.barrier(sycl_local_fence);
+          sycl::group_barrier(item.get_group());
           if (local_id >= offset) {
             smem[local_id] = val;
           }
-          item.barrier(sycl_local_fence);
+          sycl::group_barrier(item.get_group());
         }
 
         // Each thread will check to see if the sample falls in its
@@ -352,7 +356,7 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         // Store the previous scan's high value for future use
         prevHighProb = prevHighProb + smem[local_range - 1];
 
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
       }
 
       if (local_id == 0) {
@@ -509,16 +513,13 @@ void multinomial_kernel(
           int group_range_y = numDist;
           int group_range_x = (n_sample - 1) / group_size + 1;
 
-          std::pair<uint64_t, uint64_t> rng_engine_inputs_;
+          PhiloxXpuState rng_engine_inputs;
           {
             // See Note [Acquire lock when using random generators]
             std::lock_guard<std::mutex> lock(gen->mutex_);
             auto offset = ((numDist - 1) / group_range_y + 1) * 4;
-            rng_engine_inputs_ = gen->philox_engine_inputs(offset);
+            rng_engine_inputs = gen->philox_xpu_state(offset);
           }
-          auto rng_engine_inputs = PhiloxState(
-              std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_));
-          // Sample with replacement
 
           auto result_ptr = result.data_ptr<int64_t>();
           auto prefixSum_ptr = prefixSum.data_ptr<scalar_t>();
@@ -546,5 +547,3 @@ void multinomial_kernel(
 }
 
 } // namespace at::native::xpu
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

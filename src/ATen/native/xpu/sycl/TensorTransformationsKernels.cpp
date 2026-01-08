@@ -1,5 +1,16 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 // #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/WrapDimUtilsMulti.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
@@ -129,16 +140,20 @@ void flip_kernel(TensorIterator& iter, bool quantized) {
   if (quantized) {
     TORCH_CHECK(false, "XPU current does not flip for quantized tensor");
   }
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND3(
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
-      at::ScalarType::BFloat16,
+  AT_DISPATCH_V2(
       iter.dtype(),
       "flip_xpu",
-      [&] {
+      AT_WRAP([&] {
         using dtype = OpaqueType<sizeof(scalar_t)>;
         flip_kernel_impl<dtype>(iter);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
+      kComplexHalf,
+      kHalf,
+      kBool,
+      kBFloat16);
 }
 
 template <typename scalar_t>

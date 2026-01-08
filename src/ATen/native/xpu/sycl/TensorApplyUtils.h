@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -136,12 +146,12 @@ struct ApplyOp2 {
       Offsets... bOffsets) {
     // Convert `linearIndex` into an offset of `a`
     const IndexType aOffset = static_cast<int64_t>(sizeof...(Offsets)) < n
-        ? IndexToOffset<scalar1, IndexType>::get(linearIndex, a)
+        ? IndexToOffset<scalar1, IndexType, -1>::get(linearIndex, a)
         : 0;
 
     // Convert `linearIndex` into an offset of `b`
     const IndexType bOffset = static_cast<int64_t>(sizeof...(Offsets)) < n
-        ? IndexToOffset<scalar2, IndexType>::get(linearIndex, b)
+        ? IndexToOffset<scalar2, IndexType, -1>::get(linearIndex, b)
         : 0;
 
     ApplyOp2<

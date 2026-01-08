@@ -1,8 +1,17 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from Torchvision
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/KernelUtils.h>
@@ -84,7 +93,7 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       cached_roi_[3] = current_roi[3] * spatial_scale_ - offset;
       cached_roi_[4] = current_roi[4] * spatial_scale_ - offset;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_index_on_batch_n < items_per_roi_) {
       int pw = output_index_on_batch_n % pooled_width_;
@@ -440,7 +449,6 @@ Tensor roi_align_kernel(
 
   at::Tensor output = at::zeros(
       {num_rois, channels, pooled_height, pooled_width}, input.options());
-  auto output_size = num_rois * pooled_height * pooled_width * channels;
 
   if (output.numel() == 0) {
     return output;
@@ -553,6 +561,3 @@ Tensor roi_align_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

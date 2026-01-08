@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -95,7 +95,7 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","xpu_profiling","xpu_distributed"]'
+            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             triton=''
             python='3.10'
@@ -111,7 +111,7 @@ jobs:
             else
               test_type="build-ondemand"
             fi
-            ut="$(echo ${{ inputs.ut }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
             suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
@@ -145,6 +145,7 @@ jobs:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -209,8 +210,10 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: 'op_extended,test_xpu'
+      ut: 'op_extended,test_xpu,op_ut_windows'
       python: ${{ needs.Conditions-Filter.outputs.python }}
       src_changed: false
       has_label: true
       runner: Windows_CI
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}

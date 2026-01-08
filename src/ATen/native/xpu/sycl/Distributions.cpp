@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/native/Distributions.h>
 #include <ATen/native/TensorIterator.h>
@@ -17,7 +27,7 @@ struct PoissonTensorApplyFunctor {
     SYCL_KERNEL_ASSERT(
         lambda >= 0 &&
         "invalid Poisson rate, expected rate to be non-negative");
-    auto seeds = philox_unpack(philox_args_);
+    auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
     rand_init(
         std::get<0>(seeds),
@@ -26,20 +36,18 @@ struct PoissonTensorApplyFunctor {
         &state);
     ret_val = static_cast<scalar_t>(rand_poisson(&state, lambda));
   }
-  PoissonTensorApplyFunctor(std::pair<uint64_t, uint64_t> rng_engine_inputs)
-      : philox_args_(
-            std::get<0>(rng_engine_inputs),
-            std::get<1>(rng_engine_inputs)) {}
+  PoissonTensorApplyFunctor(PhiloxXpuState rng_engine_inputs)
+      : philox_args_(rng_engine_inputs) {}
 
  private:
-  PhiloxState philox_args_;
+  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
 void poisson_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& lambda,
-    std::pair<uint64_t, uint64_t> rng_engine_inputs) {
+    PhiloxXpuState rng_engine_inputs) {
   auto functor = PoissonTensorApplyFunctor<scalar_t>(rng_engine_inputs);
   at::native::xpu::tensor_apply2<
       scalar_t,
@@ -55,11 +63,11 @@ void launch_poisson_kernel(
     const TensorBase& ret,
     const TensorBase& lambda,
     at::XPUGeneratorImpl* gen) {
-  std::pair<uint64_t, uint64_t> rng_engine_inputs;
+  PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs = gen->philox_engine_inputs(20);
+    rng_engine_inputs = gen->philox_xpu_state(20);
   }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
@@ -101,21 +109,19 @@ struct BinomialFunctor {
 };
 
 template <typename scalar_t>
-void binomial_kernel(TensorIteratorBase& iter, PhiloxState philox_args) {
+void binomial_kernel(TensorIteratorBase& iter, PhiloxXpuState philox_args) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   BinomialFunctor<scalar_t, accscalar_t> f;
   at::native::xpu::distribution_binary_kernel(iter, philox_args, f);
 }
 
 void launch_binomial_kernel(TensorIteratorBase& iter, XPUGeneratorImpl* gen) {
-  std::pair<uint64_t, uint64_t> engine_inputs;
+  PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    engine_inputs = gen->philox_engine_inputs(42);
+    rng_engine_inputs = gen->philox_xpu_state(42);
   }
-  PhiloxState rng_engine_inputs(
-      std::get<0>(engine_inputs), std::get<1>(engine_inputs));
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -130,7 +136,7 @@ struct GammaTensorApplyFunctor {
       sycl::nd_item<1> item,
       scalar_t& ret_val,
       const scalar_t& alpha) const {
-    auto seeds = philox_unpack(philox_args_);
+    auto seeds = at::xpu::philox::unpack(philox_args_);
     randStatePhilox4_32_10_t state;
     rand_init(
         std::get<0>(seeds),
@@ -155,18 +161,18 @@ struct GammaTensorApplyFunctor {
     ret_val = (min_value > sample) ? min_value : sample;
   }
 
-  GammaTensorApplyFunctor(PhiloxState philox_args)
+  GammaTensorApplyFunctor(PhiloxXpuState philox_args)
       : philox_args_(philox_args) {}
 
  private:
-  PhiloxState philox_args_;
+  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t>
 void gamma_kernel(
     const at::TensorBase& ret,
     const at::TensorBase& alpha,
-    PhiloxState philox_args) {
+    PhiloxXpuState philox_args) {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   GammaTensorApplyFunctor<scalar_t, accscalar_t> functor(philox_args);
   at::native::xpu::tensor_apply2<
@@ -183,7 +189,7 @@ void launch_gamma_kernel(
     Tensor& ret,
     const Tensor& alpha,
     XPUGeneratorImpl* gen) {
-  std::pair<uint64_t, uint64_t> engine_inputs;
+  PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
@@ -191,10 +197,9 @@ void launch_gamma_kernel(
     // This seed was chosen to ensure consistent random number generation
     // behavior for this specific kernel. Modify with caution as it affects
     // reproducibility of results.
-    engine_inputs = gen->philox_engine_inputs(10);
+    rng_engine_inputs = gen->philox_xpu_state(10);
   }
-  PhiloxState rng_engine_inputs(
-      std::get<0>(engine_inputs), std::get<1>(engine_inputs));
+
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,

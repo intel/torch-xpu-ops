@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Activation.h>
@@ -40,7 +50,7 @@ struct FusedDropoutVecFunctor {
     using LoadT = memory::aligned_vector<scalar_t, VecSize>;
     using MaskLoadT = memory::aligned_vector<mask_t, VecSize>;
 
-    auto seeds = philox_unpack(philox_args_);
+    auto seeds = at::xpu::philox::unpack(philox_args_);
     IndexType idx = item.get_global_linear_id();
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
@@ -112,7 +122,7 @@ struct FusedDropoutVecFunctor {
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
       accscalar_t p,
-      PhiloxState philox_args)
+      PhiloxXpuState philox_args)
       : a_(a),
         b_(b),
         c_(c),
@@ -126,7 +136,7 @@ struct FusedDropoutVecFunctor {
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
   accscalar_t p_;
-  PhiloxState philox_args_;
+  PhiloxXpuState philox_args_;
 };
 
 template <
@@ -139,7 +149,7 @@ template <
 struct FusedDropoutUnrollFunctor {
   void operator()(sycl::nd_item<1> item) const {
     constexpr int UNROLL = 4;
-    auto seeds = philox_unpack(philox_args_);
+    auto seeds = at::xpu::philox::unpack(philox_args_);
     IndexType idx = item.get_global_linear_id();
     randStatePhilox4_32_10_t state;
     rand_init(std::get<0>(seeds), idx, std::get<1>(seeds), &state);
@@ -165,7 +175,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `a`
           const IndexType aOffset =
-              IndexToOffset<const scalar_t, IndexType>::get(li, a_);
+              IndexToOffset<const scalar_t, IndexType, ADims>::get(li, a_);
           src[ii] = a_.data[aOffset];
         }
       }
@@ -174,7 +184,7 @@ struct FusedDropoutUnrollFunctor {
         if (li < total_elements_) {
           // Convert `linearIndex` into an offset of `b`
           const IndexType bOffset =
-              IndexToOffset<scalar_t, IndexType>::get(li, b_);
+              IndexToOffset<scalar_t, IndexType, BDims>::get(li, b_);
           b_.data[bOffset] = src[ii] * (&rand.x)[ii] * scale;
           c_.data[bOffset] = (mask_t)(&rand.x)[ii];
         }
@@ -187,7 +197,7 @@ struct FusedDropoutUnrollFunctor {
       TensorInfo<mask_t, IndexType> c,
       IndexType total_elements,
       accscalar_t p,
-      PhiloxState philox_args)
+      PhiloxXpuState philox_args)
       : a_(a),
         b_(b),
         c_(c),
@@ -201,7 +211,7 @@ struct FusedDropoutUnrollFunctor {
   TensorInfo<mask_t, IndexType> c_;
   IndexType total_elements_;
   accscalar_t p_;
-  PhiloxState philox_args_;
+  PhiloxXpuState philox_args_;
 };
 
 template <typename scalar_t, typename accscalar_t, typename mask_t>
@@ -267,7 +277,7 @@ inline void launcher(
     Tensor& mask,
     double p,
     const int64_t nelem,
-    const PhiloxState rng_engine_inputs,
+    const PhiloxXpuState rng_engine_inputs,
     uint32_t num_groups,
     uint32_t group_size) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
@@ -390,14 +400,12 @@ std::tuple<Tensor, Tensor> dropout(
   std::tie(counter_offset, num_groups, group_size) =
       calc_execution_policy(nelem);
 
-  std::pair<uint64_t, uint64_t> rng_engine_inputs_;
+  PhiloxXpuState rng_engine_inputs;
   {
     // See Note [Acquire lock when using random generators]
     std::lock_guard<std::mutex> lock(gen->mutex_);
-    rng_engine_inputs_ = gen->philox_engine_inputs(counter_offset);
+    rng_engine_inputs = gen->philox_xpu_state(counter_offset);
   }
-  PhiloxState rng_engine_inputs(
-      std::get<0>(rng_engine_inputs_), std::get<1>(rng_engine_inputs_));
 
   if (canUse32BitIndexMath(self)) {
     launcher<unsigned int, mask_t>(

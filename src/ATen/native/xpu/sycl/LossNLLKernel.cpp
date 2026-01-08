@@ -1,644 +1,384 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
+#include <ATen/Dispatch.h>
 #include <ATen/Functions.h>
 #include <ATen/TensorUtils.h>
 #include <ATen/core/Reduction.h>
+#include <ATen/core/Tensor.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
 
+#include <ATen/native/Resize.h>
+#include <ATen/native/TensorIterator.h>
+#include <ATen/native/xpu/sycl/KernelUtils.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/LossNLLKernel.h>
+
+#include <comm/SYCLContext.h>
+#include <comm/TensorInfo.h>
 
 namespace at::native::xpu {
 
+#define CHECK_INDEX_IN_CLASS(INDEX, N_CLASSES)           \
+  if constexpr (std::is_unsigned_v<decltype(INDEX)>) {   \
+    SYCL_KERNEL_ASSERT(INDEX < N_CLASSES);               \
+  } else {                                               \
+    SYCL_KERNEL_ASSERT(INDEX >= 0 && INDEX < N_CLASSES); \
+  }
+
+int nll_loss_threads(int64_t nframe) {
+  return std::clamp(
+      1 << static_cast<int64_t>(std::round(std::log2(nframe / 16))), 32, 1024);
+}
+
 using namespace at::xpu;
+
 template <typename scalar_t, typename index_t>
 struct NllLossForwardNoReduceKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto input_ptr = input_data;
-    auto target_ptr = target_data;
-    auto weight_ptr = has_weight ? weight_data : NULL;
-    auto output_ptr = output_data;
-    auto local_item_id = item_id.get_id(0);
-    for (int i = local_item_id; i < batch_size; i += local_size) {
-      int cur_target = target_ptr[i * target_stride];
+  void operator()(sycl::nd_item<1> item) const {
+    XPU_KERNEL_LOOP(item, index, batch_size) {
+      index_t cur_target = target[index];
       if (cur_target == ignore_index) {
-        output_ptr[i * output_stride_0] = 0.0f;
+        output[index] = static_cast<scalar_t>(0);
         continue;
       }
-      scalar_t cur_weight =
-          has_weight ? weight_ptr[cur_target] : static_cast<scalar_t>(1.0f);
-      output_ptr[i * output_stride_0] =
-          -static_cast<scalar_t>(
-              input_ptr[i * input_stride_0 + cur_target * input_stride_1]) *
-          cur_weight;
+      CHECK_INDEX_IN_CLASS(cur_target, n_classes);
+      auto cur_weight =
+          weights != nullptr ? weights[cur_target] : static_cast<scalar_t>(1);
+      output[index] = -cur_weight * input[index][cur_target];
     }
   }
+
   NllLossForwardNoReduceKernelFunctor(
-      scalar_t* input_data_,
-      index_t* target_data_,
-      scalar_t* weight_data_,
-      scalar_t* output_data_,
-      bool has_weight_,
-      int64_t batch_size_,
-      int64_t local_size_,
-      int64_t target_stride_,
-      int n_classes_,
-      int64_t ignore_index_,
-      int64_t output_stride_0_,
-      int64_t input_stride_0_,
-      int64_t input_stride_1_)
-      : input_data(input_data_),
-        target_data(target_data_),
-        weight_data(weight_data_),
-        output_data(output_data_),
-        has_weight(has_weight_),
-        batch_size(batch_size_),
-        local_size(local_size_),
-        target_stride(target_stride_),
-        n_classes(n_classes_),
-        ignore_index(ignore_index_),
-        output_stride_0(output_stride_0_),
-        input_stride_0(input_stride_0_),
-        input_stride_1(input_stride_1_) {}
+      int64_t batch_size,
+      PackedTensorAccessor64<scalar_t, 2> input,
+      const index_t* target,
+      scalar_t* output,
+      const scalar_t* weights,
+      int64_t n_classes,
+      int64_t ignore_index)
+      : batch_size(batch_size),
+        input(input),
+        target(target),
+        output(output),
+        weights(weights),
+        n_classes(n_classes),
+        ignore_index(ignore_index) {}
 
  private:
-  scalar_t* input_data;
-  index_t* target_data;
-  scalar_t* weight_data;
-  scalar_t* output_data;
-  bool has_weight;
   int64_t batch_size;
-  int64_t local_size;
-  int64_t target_stride;
-  int n_classes;
+  PackedTensorAccessor64<scalar_t, 2> input;
+  const index_t* target;
+  scalar_t* output;
+  const scalar_t* weights;
+  int64_t n_classes;
   int64_t ignore_index;
-  int64_t output_stride_0;
-  int64_t input_stride_0;
-  int64_t input_stride_1;
 };
 
 template <typename scalar_t, typename index_t>
 struct NllLossForwardReduce1DKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto input_ptr = input_data;
-    auto target_ptr = target_data;
-    auto weight_ptr = has_weight ? weight_data : NULL;
-    auto total_weight_ptr = total_weight_data;
-    auto output_ptr = output_data;
-    int cur_target = target_ptr[0];
-    total_weight_ptr[0] =
-        has_weight ? weight_ptr[cur_target] : static_cast<scalar_t>(1.0f);
-    if (cur_target != ignore_index) {
-      output_ptr[0] = -static_cast<scalar_t>(input_ptr[cur_target]) *
-          static_cast<scalar_t>(total_weight_ptr[0]);
+  void operator()(sycl::nd_item<1> item) const {
+    SYCL_KERNEL_ASSERT(item.get_local_id(0) == 0 && item.get_group(0) == 0);
+
+    const index_t t = *target;
+    if (t != ignore_index) {
+      CHECK_INDEX_IN_CLASS(t, n_classes);
+      const auto cur_weight = weights != nullptr ? weights[t] : scalar_t{1};
+      *total_weight = cur_weight;
+
+      if (size_average) {
+        // If we try to normalize a zero then we return a NaN
+        if (cur_weight == 0) {
+          *output = std::numeric_limits<scalar_t>::quiet_NaN();
+        } else {
+          *output = -input[t];
+        }
+      } else {
+        *output = -cur_weight * input[t];
+      }
     } else {
-      output_ptr[0] = static_cast<scalar_t>(0.f);
-      total_weight_ptr[0] = static_cast<scalar_t>(0.f);
-    }
-    if (reduction == at::Reduction::Mean) {
-      output_ptr[0] /= total_weight_ptr[0];
+      *output = scalar_t{0};
+      *total_weight = scalar_t{0};
     }
   }
+
   NllLossForwardReduce1DKernelFunctor(
-      scalar_t* input_data_,
-      index_t* target_data_,
-      scalar_t* weight_data_,
-      scalar_t* output_data_,
-      scalar_t* total_weight_data_,
-      bool has_weight_,
-      int64_t ignore_index_,
-      int64_t reduction_)
-      : input_data(input_data_),
-        target_data(target_data_),
-        weight_data(weight_data_),
-        output_data(output_data_),
-        total_weight_data(total_weight_data_),
-        has_weight(has_weight_),
-        ignore_index(ignore_index_),
-        reduction(reduction_) {}
+      scalar_t* output,
+      scalar_t* total_weight,
+      const scalar_t* input,
+      const index_t* target,
+      const scalar_t* weights,
+      bool size_average,
+      int64_t n_classes,
+      int64_t ignore_index)
+      : output(output),
+        total_weight(total_weight),
+        input(input),
+        target(target),
+        weights(weights),
+        size_average(size_average),
+        n_classes(n_classes),
+        ignore_index(ignore_index) {}
 
  private:
-  scalar_t* input_data;
-  index_t* target_data;
-  scalar_t* weight_data;
-  scalar_t* output_data;
-  scalar_t* total_weight_data;
-  bool has_weight;
+  scalar_t* output;
+  scalar_t* total_weight;
+  const scalar_t* input;
+  const index_t* target;
+  const scalar_t* weights;
+  bool size_average;
+  int64_t n_classes;
   int64_t ignore_index;
-  int64_t reduction;
 };
 
 template <typename scalar_t, typename index_t, typename accscalar_t>
 struct NllLossForwardReduce2DKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto input_ptr = input_data;
-    auto target_ptr = target_data;
-    auto weight_ptr = has_weight ? weight_data : NULL;
-    auto total_weight_ptr = total_weight_data;
-    auto output_ptr = output_data;
-    int64_t local_id = item_id.get_local_id(0);
-    local_output_acc[local_id] = accscalar_t(0);
-    local_total_weight_acc[local_id] = accscalar_t(0);
-    for (int i = local_id; i < batch_size; i += local_size) {
-      int cur_target = target_ptr[i];
-      if (cur_target != ignore_index) {
+  void operator()(sycl::nd_item<1> item) const {
+    auto local_id = item.get_local_id(0);
+    auto local_range = item.get_local_range(0);
+
+    sh_inputs[local_id] = static_cast<accscalar_t>(0);
+    acc_weight[local_id] = static_cast<accscalar_t>(0);
+
+    for (int i = local_id; i < nframe; i += local_range) {
+      index_t t = target[i];
+      if (t != ignore_index) {
+        CHECK_INDEX_IN_CLASS(t, n_classes);
         scalar_t cur_weight =
-            has_weight ? weight_ptr[cur_target] : static_cast<scalar_t>(1.0f);
-        local_total_weight_acc[local_id] +=
-            static_cast<accscalar_t>(cur_weight);
-        local_output_acc[local_id] -=
-            static_cast<accscalar_t>(input_ptr[i * n_target + cur_target]) *
-            static_cast<accscalar_t>(cur_weight);
+            weights != nullptr ? weights[t] : static_cast<scalar_t>(1);
+        sh_inputs[local_id] -= input[i * ndim + t] * cur_weight;
+        acc_weight[local_id] += cur_weight;
       }
     }
 
-    // reduce
-    for (int64_t i = (local_size >> 1); i > 0; i >>= 1) {
-      item_id.barrier(sycl_global_and_local_fence);
-      if (local_id < i) {
-        local_total_weight_acc[local_id] +=
-            local_total_weight_acc[local_id + i];
-        local_output_acc[local_id] += local_output_acc[local_id + i];
+    sycl::group_barrier(item.get_group());
+
+    for (int stride = local_range / 2; stride > 0; stride >>= 1) {
+      if (local_id < stride) {
+        sh_inputs[local_id] += sh_inputs[local_id + stride];
+        acc_weight[local_id] += acc_weight[local_id + stride];
+      }
+      sycl::group_barrier(item.get_group());
+    }
+
+    if (local_id == 0) {
+      *total_weight = static_cast<scalar_t>(acc_weight[0]);
+      if (size_average) {
+        *output = static_cast<scalar_t>(sh_inputs[0] / acc_weight[0]);
+      } else {
+        *output = static_cast<scalar_t>(sh_inputs[0]);
       }
     }
-    item_id.barrier(sycl_global_and_local_fence);
-
-    if (reduction == at::Reduction::Mean) {
-      output_ptr[0] = static_cast<scalar_t>(
-          local_output_acc[0] / local_total_weight_acc[0]);
-    } else {
-      output_ptr[0] = static_cast<scalar_t>(local_output_acc[0]);
-    }
-    total_weight_ptr[0] = static_cast<scalar_t>(local_total_weight_acc[0]);
   }
+
   NllLossForwardReduce2DKernelFunctor(
-      scalar_t* input_data_,
-      index_t* target_data_,
-      scalar_t* weight_data_,
-      scalar_t* output_data_,
-      scalar_t* total_weight_data_,
-      bool has_weight_,
-      int64_t batch_size_,
-      int64_t local_size_,
-      int64_t ignore_index_,
-      int n_target_,
-      int64_t reduction_)
-      : input_data(input_data_),
-        target_data(target_data_),
-        weight_data(weight_data_),
-        output_data(output_data_),
-        total_weight_data(total_weight_data_),
-        has_weight(has_weight_),
-        batch_size(batch_size_),
-        local_size(local_size_),
-        ignore_index(ignore_index_),
-        n_target(n_target_),
-        reduction(reduction_) {}
+      scalar_t* output,
+      scalar_t* total_weight,
+      const scalar_t* input,
+      const index_t* target,
+      const scalar_t* weights,
+      bool size_average,
+      int64_t nframe,
+      int64_t ndim,
+      int64_t n_classes,
+      int64_t ignore_index,
+      int64_t smem_size)
+      : output(output),
+        total_weight(total_weight),
+        input(input),
+        target(target),
+        weights(weights),
+        size_average(size_average),
+        nframe(nframe),
+        ndim(ndim),
+        n_classes(n_classes),
+        ignore_index(ignore_index),
+        smem_size(smem_size) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_output_acc = sycl_local_acc_t<accscalar_t>(local_size, cgh);
-    local_total_weight_acc = sycl_local_acc_t<accscalar_t>(local_size, cgh);
+    sh_inputs = sycl_local_acc_t<accscalar_t>(smem_size, cgh);
+    acc_weight = sycl_local_acc_t<accscalar_t>(smem_size, cgh);
   }
 
  private:
-  scalar_t* input_data;
-  index_t* target_data;
-  scalar_t* weight_data;
-  scalar_t* output_data;
-  scalar_t* total_weight_data;
-  bool has_weight;
-  int64_t batch_size;
-  int64_t local_size;
+  scalar_t* output;
+  scalar_t* total_weight;
+  const scalar_t* input;
+  const index_t* target;
+  const scalar_t* weights;
+  bool size_average;
+  int64_t nframe;
+  int64_t ndim;
+  int64_t n_classes;
   int64_t ignore_index;
-  int n_target;
-  sycl_local_acc_t<accscalar_t> local_output_acc;
-  sycl_local_acc_t<accscalar_t> local_total_weight_acc;
-  int64_t reduction;
+  int64_t smem_size;
+  sycl_local_acc_t<accscalar_t> sh_inputs;
+  sycl_local_acc_t<accscalar_t> acc_weight;
 };
 
 template <typename scalar_t, typename index_t>
-void nll_loss_forward_template(
-    const Tensor& input,
-    const Tensor& target,
-    const Tensor& output,
-    const Tensor& weight,
-    const Tensor& total_weight,
-    int64_t reduction,
-    int64_t ignore_index) {
-  int n_dims = input.dim();
-  int n_classes = input.size(-1);
-  ignore_index -= 0;
-
-  int64_t batch_size = input.size(0);
-
-  if (reduction == at::Reduction::None && n_dims == 2) {
-    using NllLossForwardNoReduceKernel =
-        NllLossForwardNoReduceKernelFunctor<scalar_t, index_t>;
-
-    output.resize_({batch_size});
-    total_weight.zero_();
-    int64_t target_stride = target.stride(0);
-
-    auto weight_cont = weight.defined() ? weight.contiguous() : weight;
-
-    auto& queue = getCurrentSYCLQueue();
-    int64_t local_size = syclMaxWorkGroupSize<NllLossForwardNoReduceKernel>();
-    bool has_weight = weight.defined()
-        ? true
-        : false; // sycl kernel can not accept host pointer
-
-    auto output_stride_0 = output.stride(0);
-    auto input_stride_0 = input.stride(0);
-    auto input_stride_1 = input.stride(1);
-
-    auto input_data = input.data_ptr<scalar_t>();
-    auto target_data = target.data_ptr<index_t>();
-    auto weight_data = has_weight
-        ? weight_cont.data_ptr<scalar_t>()
-        : input_data; // use the input as the dummy data.
-    auto output_data = output.data_ptr<scalar_t>();
-    NllLossForwardNoReduceKernel kfn(
-        input_data,
-        target_data,
-        weight_data,
-        output_data,
-        has_weight,
-        batch_size,
-        local_size,
-        target_stride,
-        n_classes,
-        ignore_index,
-        output_stride_0,
-        input_stride_0,
-        input_stride_1);
-
-    sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
-    return;
-  }
-
-  output.resize_({});
-  total_weight.resize_({});
-
-  auto input_cont = input.contiguous();
-  auto weight_cont = weight.defined() ? weight.contiguous() : weight;
-  auto target_cont = target.contiguous();
-
-  scalar_t* _input_data = input_cont.data_ptr<scalar_t>();
-  scalar_t* _weight_data =
-      weight.defined() ? weight_cont.data_ptr<scalar_t>() : NULL;
-  index_t* _target_data = target_cont.data_ptr<index_t>();
-  scalar_t* _output_data = output.data_ptr<scalar_t>();
-  scalar_t* _total_weight_data = total_weight.data_ptr<scalar_t>();
-  bool has_weight = _weight_data != NULL ? true : false;
-  auto& queue = getCurrentSYCLQueue();
-
-  if (input_cont.dim() == 1 || input_cont.dim() == 0) {
-    int64_t local_size = 1;
-    auto input_data = _input_data;
-    auto weight_data = has_weight
-        ? _weight_data
-        : input_data; // use the input as the dummy data.
-    auto target_data = _target_data;
-    auto total_weight_data = _total_weight_data;
-    auto output_data = _output_data;
-    NllLossForwardReduce1DKernelFunctor<scalar_t, index_t> kfn(
-        input_data,
-        target_data,
-        weight_data,
-        output_data,
-        total_weight_data,
-        has_weight,
-        ignore_index,
-        reduction);
-
-    sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
-  } else if (input_cont.dim() == 2) {
-    using accscalar_t = at::acc_type<scalar_t, true>;
-    using NllLossForwardReduce2DKernel =
-        NllLossForwardReduce2DKernelFunctor<scalar_t, index_t, accscalar_t>;
-
-    int64_t batch_size = input.size(0);
-    int n_target = input.size(1);
-    int64_t local_size = syclMaxWorkGroupSize<NllLossForwardReduce2DKernel>();
-    auto input_data = _input_data;
-    auto weight_data = has_weight
-        ? _weight_data
-        : input_data; // use the input as the dummy data.
-    auto target_data = _target_data;
-    auto total_weight_data = _total_weight_data;
-    auto output_data = _output_data;
-    NllLossForwardReduce2DKernelFunctor<scalar_t, index_t, accscalar_t> kfn(
-        input_data,
-        target_data,
-        weight_data,
-        output_data,
-        total_weight_data,
-        has_weight,
-        batch_size,
-        local_size,
-        ignore_index,
-        n_target,
-        reduction);
-
-    sycl_kernel_submit(
-        sycl::range<1>(local_size), sycl::range<1>(local_size), queue, kfn);
-  }
-}
-
-template <typename scalar_t, typename index_t>
 struct NllLossBackwardNoReduceKernelFunctor {
-  void operator()(sycl::nd_item<1> item_id) const {
-    auto target_ptr = target_data;
-    auto gradOutput_ptr = gradOutput_data;
-    auto weights_ptr = has_weights ? weights_data : NULL;
-    auto gradInput_ptr = gradInput_data;
-
-    auto local_id = item_id.get_local_id(0);
-    auto group_id = item_id.get_group(0);
-
-    for (int i = group_id * local_size + local_id; i < batch_size;
-         i += item_id.get_global_range(0)) {
-      int cur_target = target_ptr[i * target_stride];
+  void operator()(sycl::nd_item<1> item) const {
+    XPU_KERNEL_LOOP(item, index, batch_size) {
+      index_t cur_target = target[index];
       if (cur_target == ignore_index) {
         continue;
       }
-      scalar_t cur_weight =
-          has_weights ? weights_ptr[cur_target] : static_cast<scalar_t>(1.0f);
-      gradInput_ptr[i * gradInput_stride_0 + cur_target * gradInput_stride_1] =
-          -cur_weight *
-          static_cast<scalar_t>(gradOutput_ptr[i * gradOutput_stride_0]);
+      CHECK_INDEX_IN_CLASS(cur_target, n_classes);
+      scalar_t weight =
+          weights != nullptr ? weights[cur_target] : static_cast<scalar_t>(1);
+      auto grad_input_ = grad_input;
+      grad_input_[index][cur_target] = -weight * grad_output[index];
     }
   }
+
   NllLossBackwardNoReduceKernelFunctor(
-      index_t* target_data_,
-      scalar_t* gradOutput_data_,
-      scalar_t* weights_data_,
-      scalar_t* gradInput_data_,
-      bool has_weights_,
-      int64_t local_size_,
-      int64_t batch_size_,
-      int64_t target_stride_,
-      int64_t ignore_index_,
-      int64_t gradInput_stride_0_,
-      int64_t gradInput_stride_1_,
-      int64_t gradOutput_stride_0_)
-      : target_data(target_data_),
-        gradOutput_data(gradOutput_data_),
-        weights_data(weights_data_),
-        gradInput_data(gradInput_data_),
-        has_weights(has_weights_),
-        local_size(local_size_),
-        batch_size(batch_size_),
-        target_stride(target_stride_),
-        ignore_index(ignore_index_),
-        gradInput_stride_0(gradInput_stride_0_),
-        gradInput_stride_1(gradInput_stride_1_),
-        gradOutput_stride_0(gradOutput_stride_0_) {}
+      int batch_size,
+      const index_t* target,
+      PackedTensorAccessor64<const scalar_t, 1> grad_output,
+      PackedTensorAccessor64<scalar_t, 2> grad_input,
+      const scalar_t* weights,
+      int64_t n_classes,
+      int64_t ignore_index)
+      : batch_size(batch_size),
+        target(target),
+        grad_output(grad_output),
+        grad_input(grad_input),
+        weights(weights),
+        n_classes(n_classes),
+        ignore_index(ignore_index) {}
 
  private:
-  index_t* target_data;
-  scalar_t* gradOutput_data;
-  scalar_t* weights_data;
-  scalar_t* gradInput_data;
-  bool has_weights;
-  int64_t local_size;
-  int64_t batch_size;
-  int64_t target_stride;
+  int batch_size;
+  const index_t* target;
+  PackedTensorAccessor64<const scalar_t, 1> grad_output;
+  PackedTensorAccessor64<scalar_t, 2> grad_input;
+  const scalar_t* weights;
+  int64_t n_classes;
   int64_t ignore_index;
-  int64_t gradInput_stride_0;
-  int64_t gradInput_stride_1;
-  int64_t gradOutput_stride_0;
 };
 
 template <typename scalar_t, typename index_t>
 struct NllLossBackwardReduce1DKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto gradOutput_ptr = gradOutput_data;
-    auto weights_ptr = has_weights ? weights_data : NULL;
-    auto gradInput_ptr = gradInput_data;
-    auto target_ptr = target_data;
-    auto total_weight_ptr = total_weight_data;
-
-    int t = (int)*target_ptr;
-    if (t != (int)ignore_index) {
-      scalar_t grad =
-          -((reduction == at::Reduction::Mean)
-                ? static_cast<scalar_t>(gradOutput_ptr[0]) /
-                    static_cast<scalar_t>(*total_weight_ptr)
-                : static_cast<scalar_t>(gradOutput_ptr[0]));
-      gradInput_ptr[t] = has_weights ? weights_ptr[t] * grad : grad;
+  void operator()(sycl::nd_item<1> item) const {
+    SYCL_KERNEL_ASSERT(item.get_local_id(0) == 0 && item.get_group(0) == 0);
+    const index_t t = *target;
+    if (t != ignore_index) {
+      CHECK_INDEX_IN_CLASS(t, n_classes);
+      const auto grad =
+          -(size_average ? *grad_output / *total_weight : *grad_output);
+      grad_input[t] = weights != nullptr ? weights[t] * grad : grad;
     }
   }
+
   NllLossBackwardReduce1DKernelFunctor(
-      index_t* target_data_,
-      scalar_t* gradOutput_data_,
-      scalar_t* weights_data_,
-      scalar_t* gradInput_data_,
-      scalar_t* total_weight_data_,
-      bool has_weights_,
-      int64_t ignore_index_,
-      int64_t reduction_)
-      : target_data(target_data_),
-        gradOutput_data(gradOutput_data_),
-        weights_data(weights_data_),
-        gradInput_data(gradInput_data_),
-        total_weight_data(total_weight_data_),
-        has_weights(has_weights_),
-        ignore_index(ignore_index_),
-        reduction(reduction_) {}
+      scalar_t* grad_input,
+      const scalar_t* grad_output,
+      const scalar_t* weights,
+      const index_t* target,
+      const scalar_t* total_weight,
+      bool size_average,
+      int64_t n_classes,
+      int64_t ignore_index)
+      : grad_input(grad_input),
+        grad_output(grad_output),
+        weights(weights),
+        target(target),
+        total_weight(total_weight),
+        size_average(size_average),
+        n_classes(n_classes),
+        ignore_index(ignore_index) {}
 
  private:
-  index_t* target_data;
-  scalar_t* gradOutput_data;
-  scalar_t* weights_data;
-  scalar_t* gradInput_data;
-  scalar_t* total_weight_data;
-  bool has_weights;
+  scalar_t* grad_input;
+  const scalar_t* grad_output;
+  const scalar_t* weights;
+  const index_t* target;
+  const scalar_t* total_weight;
+  bool size_average;
+  int64_t n_classes;
   int64_t ignore_index;
-  int64_t reduction;
+};
+
+template <typename T>
+struct bwd_index_type {
+  using type = T;
+};
+template <>
+struct bwd_index_type<uint8_t> {
+  using type = int;
+};
+template <>
+struct bwd_index_type<int64_t> {
+  using type = uint64_t;
 };
 
 template <typename scalar_t, typename index_t>
 struct NllLossBackwardReduce2DKernelFunctor {
-  void operator()(sycl::item<1> item_id) const {
-    auto gradOutput_ptr = gradOutput_data;
-    auto weights_ptr = has_weights ? weights_data : NULL;
-    auto gradInput_ptr = gradInput_data;
-    auto target_ptr = target_data;
-    auto total_weight_ptr = total_weight_data;
+  void operator()(sycl::nd_item<1> item) const {
+    auto local_id = item.get_local_id(0);
+    auto local_range = item.get_local_range(0);
+    using bwd_index_t = typename bwd_index_type<index_t>::type;
+    const auto grad =
+        -(size_average ? *grad_output / *total_weight : *grad_output);
 
-    auto local_item_id = item_id.get_id(0);
-
-    int i, t;
-
-    scalar_t grad =
-        -((reduction == at::Reduction::Mean)
-              ? static_cast<scalar_t>(gradOutput_ptr[0]) /
-                  static_cast<scalar_t>(*total_weight_ptr)
-              : static_cast<scalar_t>(gradOutput_ptr[0]));
-    for (i = local_item_id; i < nframe; i += local_size) {
-      t = (int)target_ptr[i];
-      if (t != (int)ignore_index) {
-        gradInput_ptr[i * ndim + t] =
-            has_weights ? weights_ptr[t] * grad : grad;
+    for (int i = local_id; i < nframe; i += local_range) {
+      const index_t t = target[i];
+      if (t != ignore_index) {
+        CHECK_INDEX_IN_CLASS(t, n_classes);
+        const bwd_index_t index = static_cast<bwd_index_t>(i) * ndim + t;
+        if constexpr (!std::is_unsigned_v<decltype(index)>) {
+          SYCL_KERNEL_ASSERT(index >= 0);
+        }
+        grad_input[index] = weights != nullptr ? weights[t] * grad : grad;
       }
     }
   }
+
   NllLossBackwardReduce2DKernelFunctor(
-      index_t* target_data_,
-      scalar_t* gradOutput_data_,
-      scalar_t* weights_data_,
-      scalar_t* gradInput_data_,
-      scalar_t* total_weight_data_,
-      bool has_weights_,
-      int64_t ignore_index_,
-      int64_t reduction_,
-      int ndim_,
-      int64_t local_size_,
-      int nframe_)
-      : target_data(target_data_),
-        gradOutput_data(gradOutput_data_),
-        weights_data(weights_data_),
-        gradInput_data(gradInput_data_),
-        total_weight_data(total_weight_data_),
-        has_weights(has_weights_),
-        ignore_index(ignore_index_),
-        reduction(reduction_),
-        ndim(ndim_),
-        local_size(local_size_),
-        nframe(nframe_) {}
+      scalar_t* grad_input,
+      const scalar_t* grad_output,
+      const index_t* target,
+      const scalar_t* weights,
+      const scalar_t* total_weight,
+      bool size_average,
+      int nframe,
+      int ndim,
+      int64_t n_classes,
+      int64_t ignore_index)
+      : grad_input(grad_input),
+        grad_output(grad_output),
+        target(target),
+        weights(weights),
+        total_weight(total_weight),
+        size_average(size_average),
+        nframe(nframe),
+        ndim(ndim),
+        n_classes(n_classes),
+        ignore_index(ignore_index) {}
 
  private:
-  index_t* target_data;
-  scalar_t* gradOutput_data;
-  scalar_t* weights_data;
-  scalar_t* gradInput_data;
-  scalar_t* total_weight_data;
-  bool has_weights;
-  int64_t ignore_index;
-  int64_t reduction;
-  int ndim;
-  int64_t local_size;
+  scalar_t* grad_input;
+  const scalar_t* grad_output;
+  const index_t* target;
+  const scalar_t* weights;
+  const scalar_t* total_weight;
+  bool size_average;
   int nframe;
+  int ndim;
+  int64_t n_classes;
+  int64_t ignore_index;
 };
-
-template <typename scalar_t, typename index_t>
-static inline void nll_loss_backward_template(
-    const Tensor& input,
-    const Tensor& target,
-    const Tensor& gradOutput,
-    const Tensor& gradInput,
-    int64_t reduction,
-    const Tensor& weight,
-    const Tensor& total_weight,
-    int64_t ignore_index) {
-  int n_dims = input.dim();
-
-  gradInput.resize_as_(input);
-  gradInput.zero_();
-
-  int64_t batch_size = input.size(0);
-
-  if (reduction == at::Reduction::None && n_dims == 2) {
-    using NllLossBackwardNoReduceKernel =
-        NllLossBackwardNoReduceKernelFunctor<scalar_t, index_t>;
-
-    int64_t target_stride = target.stride(0);
-    check_dim_size(gradOutput, 1, 0, batch_size);
-    auto weight_cont = weight.defined() ? weight.contiguous() : weight;
-
-    auto& queue = getCurrentSYCLQueue();
-    int64_t local_size = syclMaxWorkGroupSize<NllLossBackwardNoReduceKernel>();
-    int64_t global_size =
-        ((batch_size + local_size - 1) / local_size) * local_size;
-    bool has_weight = weight.defined() ? true : false;
-
-    auto gradInput_stride_0 = gradInput.stride(0);
-    auto gradInput_stride_1 = gradInput.stride(1);
-    auto gradOutput_stride_0 = gradOutput.stride(0);
-
-    auto target_data = target.data_ptr<index_t>();
-    auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
-    auto weight_data = has_weight
-        ? weight_cont.data_ptr<scalar_t>()
-        : gradOutput_data; // Use gradOutput handler as dummy weight
-    auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    NllLossBackwardNoReduceKernel kfn(
-        target_data,
-        gradOutput_data,
-        weight_data,
-        gradInput_data,
-        has_weight,
-        local_size,
-        batch_size,
-        target_stride,
-        ignore_index,
-        gradInput_stride_0,
-        gradInput_stride_1,
-        gradOutput_stride_0);
-
-    sycl_kernel_submit(
-        sycl::range<1>(global_size), sycl::range<1>(local_size), queue, kfn);
-    return;
-  }
-
-  auto weight_cont = weight.defined() ? weight.contiguous() : weight;
-  auto target_cont = target.contiguous();
-  bool has_weight = weight.defined() ? true : false;
-
-  TORCH_CHECK(
-      gradOutput.dim() <= 1 && gradOutput.numel() == 1,
-      "Expected a single element grad_output tensor, but got: ",
-      gradOutput.sizes());
-
-  auto& queue = getCurrentSYCLQueue();
-  if (n_dims == 1) {
-    auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
-    auto weight_data = has_weight
-        ? weight_cont.data_ptr<scalar_t>()
-        : gradOutput_data; // Use gradOutput handler as dummy weight
-    auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    auto target_data = target_cont.data_ptr<index_t>();
-    auto total_weight_data = total_weight.data_ptr<scalar_t>();
-    NllLossBackwardReduce1DKernelFunctor<scalar_t, index_t> kfn(
-        target_data,
-        gradOutput_data,
-        weight_data,
-        gradInput_data,
-        total_weight_data,
-        has_weight,
-        ignore_index,
-        reduction);
-
-    sycl_kernel_submit(sycl::range<1>(1), queue, kfn);
-  } else {
-    int nframe = input.size(0);
-    int ndim = input.size(1);
-    int64_t local_size = 32;
-
-    auto gradOutput_data = gradOutput.data_ptr<scalar_t>();
-    auto weight_data = has_weight
-        ? weight_cont.data_ptr<scalar_t>()
-        : gradOutput_data; // use the gradOutput handler as dummy weight
-    auto gradInput_data = gradInput.data_ptr<scalar_t>();
-    auto target_data = target_cont.data_ptr<index_t>();
-    auto total_weight_data = total_weight.data_ptr<scalar_t>();
-    NllLossBackwardReduce2DKernelFunctor<scalar_t, index_t> kfn(
-        target_data,
-        gradOutput_data,
-        weight_data,
-        gradInput_data,
-        total_weight_data,
-        has_weight,
-        ignore_index,
-        reduction,
-        ndim,
-        local_size,
-        nframe);
-
-    sycl_kernel_submit(sycl::range<1>(local_size), queue, kfn);
-  }
-}
 
 #define AT_DISPATCH_NLL_LOSS_INDEX_TYPES(TYPE, NAME, ...) \
   AT_DISPATCH_SWITCH(                                     \
@@ -650,66 +390,258 @@ static inline void nll_loss_backward_template(
               at::ScalarType::Long, index_t, __VA_ARGS__))
 
 void nll_loss_forward_kernel(
-    const Tensor& self,
-    const Tensor& target,
-    const OptionalTensorRef weight_opt,
-    int64_t reduction,
-    int64_t ignore_index,
     const Tensor& output,
-    const Tensor& total_weight) {
-  const Tensor& weight = weight_opt.getTensorRef();
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      self.scalar_type(),
-      "nll_loss_forward_out_kernel",
-      [&]() {
-        AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
-            target.scalar_type(), "nll_loss_forward_out_kernel_index", [&]() {
-              nll_loss_forward_template<scalar_t, index_t>(
-                  self,
-                  target,
-                  output,
-                  weight,
-                  total_weight,
-                  reduction,
-                  ignore_index);
-            });
-      });
+    const Tensor& total_weight,
+    const Tensor& input_,
+    const Tensor& target_,
+    const Tensor& weight,
+    int64_t reduction,
+    int64_t ignore_index) {
+  auto input = *input_.expect_contiguous();
+  auto target = *target_.expect_contiguous();
 
-  // return std::tuple<Tensor&, Tensor&>(output, total_weight);
+  int64_t n_classes = input.size(-1);
+  int64_t n_dims = input.dim();
+  int64_t batch_size = n_dims == 1 ? 1 : input.size(0);
+
+  auto weight_ = weight.defined() ? weight.contiguous() : weight;
+
+  if (reduction == at::Reduction::None && n_dims == 2) {
+    at::native::resize_output(output, {batch_size});
+    total_weight.zero_();
+    if (batch_size == 0) {
+      // This guards from unnecessary operations and launching SYCL kernel with
+      // 0 blocks.
+      return;
+    }
+
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "nll_loss_forward_no_reduce_xpu_kernel",
+        [&] {
+          AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+              target.scalar_type(),
+              "nll_loss_forward_no_reduce_xpu_kernel_index",
+              [&] {
+                auto kfn =
+                    NllLossForwardNoReduceKernelFunctor<scalar_t, index_t>(
+                        batch_size,
+                        input.packed_accessor64<scalar_t, 2>(),
+                        target.const_data_ptr<index_t>(),
+                        output.mutable_data_ptr<scalar_t>(),
+                        weight_.defined() ? weight_.const_data_ptr<scalar_t>()
+                                          : nullptr,
+                        n_classes,
+                        ignore_index);
+                sycl_kernel_submit(
+                    GET_GROUPS(batch_size) * SYCL_NUM_THREADS,
+                    SYCL_NUM_THREADS,
+                    getCurrentSYCLQueue(),
+                    kfn);
+              });
+        });
+    return;
+  }
+
+  // produce scalar outputs for the reduction case
+  at::native::resize_output(output, {});
+  total_weight.resize_({});
+
+  if (target.numel() == 0) {
+    if (reduction == at::Reduction::Mean) {
+      output.fill_(std::numeric_limits<double>::quiet_NaN());
+    } else {
+      output.zero_();
+    }
+    total_weight.zero_();
+    return;
+  }
+
+  if (n_dims == 1) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "nll_loss_forward_reduce_xpu_kernel_1d",
+        [&] {
+          AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+              target.scalar_type(),
+              "nll_loss_forward_reduce_xpu_kernel_1d_index",
+              [&] {
+                auto kfn =
+                    NllLossForwardReduce1DKernelFunctor<scalar_t, index_t>(
+                        output.mutable_data_ptr<scalar_t>(),
+                        total_weight.mutable_data_ptr<scalar_t>(),
+                        input.const_data_ptr<scalar_t>(),
+                        target.const_data_ptr<index_t>(),
+                        weight_.defined() ? weight_.const_data_ptr<scalar_t>()
+                                          : nullptr,
+                        reduction == at::Reduction::Mean,
+                        n_classes,
+                        ignore_index);
+                sycl_kernel_submit(1, 1, getCurrentSYCLQueue(), kfn);
+              });
+        });
+
+  } else if (n_dims == 2) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "nll_loss_forward_reduce_xpu_kernel_2d",
+        [&] {
+          AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+              target.scalar_type(),
+              "nll_loss_forward_reduce_xpu_kernel_2d_index",
+              [&] {
+                using accscalar_t = at::acc_type<scalar_t, true>;
+                int nthreads = nll_loss_threads(input.size(0));
+                using NllLossForwardReduce2DKernel =
+                    NllLossForwardReduce2DKernelFunctor<
+                        scalar_t,
+                        index_t,
+                        accscalar_t>;
+                NllLossForwardReduce2DKernel kfn(
+                    output.mutable_data_ptr<scalar_t>(),
+                    total_weight.mutable_data_ptr<scalar_t>(),
+                    input.const_data_ptr<scalar_t>(),
+                    target.const_data_ptr<index_t>(),
+                    weight_.defined() ? weight_.const_data_ptr<scalar_t>()
+                                      : nullptr,
+                    reduction == at::Reduction::Mean,
+                    input.size(0),
+                    input.size(1),
+                    n_classes,
+                    ignore_index,
+                    nthreads);
+                sycl_kernel_submit(
+                    sycl::range<1>(nthreads),
+                    sycl::range<1>(nthreads),
+                    getCurrentSYCLQueue(),
+                    kfn);
+              });
+        });
+  }
 }
 
 void nll_loss_backward_kernel(
-    const Tensor& grad_output,
-    const Tensor& self,
-    const Tensor& target,
-    const OptionalTensorRef weight_opt,
-    int64_t reduction,
-    int64_t ignore_index,
+    const Tensor& grad_input_,
+    const Tensor& grad_output_,
+    const Tensor& input_,
+    const Tensor& target_,
     const Tensor& total_weight,
-    const Tensor& grad_input) {
-  const Tensor& weight = weight_opt.getTensorRef();
-  AT_DISPATCH_ALL_TYPES_AND2(
-      at::ScalarType::Half,
-      at::ScalarType::BFloat16,
-      self.scalar_type(),
-      "nll_loss_backward_out_kernel",
-      [&]() {
-        AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
-            target.scalar_type(), "nll_loss_backward_out_kernel_index", [&]() {
-              nll_loss_backward_template<scalar_t, index_t>(
-                  self,
-                  target,
-                  grad_output,
-                  grad_input,
-                  reduction,
-                  weight,
-                  total_weight,
-                  ignore_index);
-            });
-      });
-  // return grad_input;
+    const Tensor& weight,
+    int64_t reduction,
+    int64_t ignore_index) {
+  auto target = *target_.expect_contiguous();
+  auto input = *input_.expect_contiguous();
+  auto grad_input = *grad_input_.expect_contiguous();
+  auto grad_output = *grad_output_.expect_contiguous();
+
+  int64_t n_dims = input.dim();
+  int64_t n_classes = input.size(-1);
+  int64_t batch_size = n_dims == 1 ? 1 : input.size(0);
+
+  auto weight_ = weight.defined() ? weight.contiguous() : weight;
+
+  if (reduction == at::Reduction::None && n_dims == 2) {
+    if (batch_size == 0) {
+      return;
+    }
+
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "nll_loss_backward_no_reduce_xpu_kernel",
+        [&] {
+          AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+              target.scalar_type(),
+              "nll_loss_backward_no_reduce_xpu_kernel_index",
+              [&] {
+                auto kfn =
+                    NllLossBackwardNoReduceKernelFunctor<scalar_t, index_t>(
+                        batch_size,
+                        target.const_data_ptr<index_t>(),
+                        grad_output.packed_accessor64<const scalar_t, 1>(),
+                        grad_input.packed_accessor64<scalar_t, 2>(),
+                        weight.defined() ? weight_.const_data_ptr<scalar_t>()
+                                         : nullptr,
+                        n_classes,
+                        ignore_index);
+                sycl_kernel_submit(
+                    GET_GROUPS(batch_size) * SYCL_NUM_THREADS,
+                    SYCL_NUM_THREADS,
+                    getCurrentSYCLQueue(),
+                    kfn);
+              });
+        });
+    return;
+  }
+
+  if (n_dims == 1) {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "nll_loss_backward_reduce_xpu_kernel_1d",
+        [&] {
+          AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+              target.scalar_type(),
+              "nll_loss_backward_reduce_xpu_kernel_1d_index",
+              [&] {
+                auto kfn =
+                    NllLossBackwardReduce1DKernelFunctor<scalar_t, index_t>(
+                        grad_input.mutable_data_ptr<scalar_t>(),
+                        grad_output.const_data_ptr<scalar_t>(),
+                        weight.defined() ? weight_.const_data_ptr<scalar_t>()
+                                         : nullptr,
+                        target.const_data_ptr<index_t>(),
+                        total_weight.const_data_ptr<scalar_t>(),
+                        reduction == at::Reduction::Mean,
+                        n_classes,
+                        ignore_index);
+                sycl_kernel_submit(
+                    sycl::range<1>(1),
+                    sycl::range<1>(1),
+                    getCurrentSYCLQueue(),
+                    kfn);
+              });
+        });
+  } else {
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        input.scalar_type(),
+        "nll_loss_backward_reduce_xpu_kernel_2d",
+        [&] {
+          AT_DISPATCH_NLL_LOSS_INDEX_TYPES(
+              target.scalar_type(),
+              "nll_loss_backward_reduce_xpu_kernel_2d_index",
+              [&] {
+                auto kfn =
+                    NllLossBackwardReduce2DKernelFunctor<scalar_t, index_t>(
+                        grad_input.mutable_data_ptr<scalar_t>(),
+                        grad_output.const_data_ptr<scalar_t>(),
+                        target.const_data_ptr<index_t>(),
+                        weight.defined() ? weight_.const_data_ptr<scalar_t>()
+                                         : nullptr,
+                        total_weight.const_data_ptr<scalar_t>(),
+                        reduction == at::Reduction::Mean,
+                        input.size(0),
+                        input.size(1),
+                        n_classes,
+                        ignore_index);
+                sycl_kernel_submit(
+                    nll_loss_threads(input.size(0)),
+                    nll_loss_threads(input.size(0)),
+                    getCurrentSYCLQueue(),
+                    kfn);
+              });
+        });
+  }
 }
 
 #undef AT_DISPATCH_NLL_LOSS_INDEX_TYPES

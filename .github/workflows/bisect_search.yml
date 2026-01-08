@@ -40,12 +40,17 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+  HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   biisect-search:
     runs-on: ${{ inputs.runner }}
     container:
-      image: intelgpu/ubuntu-22.04-lts2:2523.31
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
@@ -59,10 +64,6 @@ jobs:
         TORCH_XPU_ARCH_LIST: pvc
         USE_XCCL: 0
         USE_KINETO: 0
-    env:
-       GH_TOKEN: ${{ github.token }}
-       HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -77,12 +87,13 @@ void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
   collapseDims(infos...);
 }
 
-#define DEVICE_LINEAR_GET(D_TENSOR, INDEX) \
-  D_TENSOR.data[IndexToOffset<scalar_t, index_type>::get(INDEX, D_TENSOR)]
+#define DEVICE_LINEAR_GET(D_TENSOR, INDEX)                               \
+  D_TENSOR.data[IndexToOffset<scalar_t, index_type, indexing_kind>::get( \
+      INDEX, D_TENSOR)]
 
 // Biases are always 1D
 #define DEVICE_BIAS_GET(D_TENSOR, INDEX) \
-  D_TENSOR.data[IndexToOffset<scalar_t, index_type>::get(INDEX, D_TENSOR)]
+  D_TENSOR.data[IndexToOffset<scalar_t, index_type, 1>::get(INDEX, D_TENSOR)]
 
 #define H2F(input) static_cast<accscalar_t>(input)
 #define F2H(input) static_cast<scalar_t>(input)
@@ -93,7 +104,11 @@ inline T sigmoid(T in) {
   return one / (one + std::exp(-in));
 }
 
-template <typename scalar_t, typename accscalar_t, typename index_type>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
 struct LstmCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     bool has_bias = bias1_.data != nullptr;
@@ -205,7 +220,11 @@ struct LstmCellForwardFunctor {
   index_type totalElements_;
 };
 
-template <typename scalar_t, typename accscalar_t, typename index_type>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
 struct LstmCellBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     bool has_gradoutput = gradoutput_.data != nullptr;
@@ -296,7 +315,11 @@ struct LstmCellBackwardFunctor {
   index_type totalElements_;
 };
 
-template <typename scalar_t, typename accscalar_t, typename index_type>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
 struct GruCellForwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     bool has_bias = Bias1_.data != nullptr;
@@ -387,7 +410,11 @@ struct GruCellForwardFunctor {
   const index_type totalElements_;
 };
 
-template <typename scalar_t, typename accscalar_t, typename index_type>
+template <
+    typename scalar_t,
+    typename accscalar_t,
+    typename index_type,
+    int indexing_kind>
 struct GruCellBackwardFunctor {
   void operator()(sycl::nd_item<1> item) const {
     for (index_type linearIndex = item.get_global_id(0);
@@ -469,12 +496,6 @@ void lstm_forward_impl(
   if (numel == 0)
     return;
 
-  using KernelT = LstmCellForwardFunctor<scalar_t, accscalar_t, index_type>;
-  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
-  auto config = rnn_get_launch_config(max_wg_size, numel);
-  auto nwg = std::get<0>(config);
-  auto local_range = std::get<1>(config);
-
   auto input_gatesI = getTensorInfo<scalar_t, index_type>(input_gates);
   auto hidden_gatesI = getTensorInfo<scalar_t, index_type>(hidden_gates);
   auto input_biasI = tryGetTensorInfo<scalar_t, index_type>(input_bias);
@@ -503,6 +524,12 @@ void lstm_forward_impl(
         hyI,
         cyI,
         workspaceI);
+    using KernelT =
+        LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 1>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         input_gatesI,
         hidden_gatesI,
@@ -517,6 +544,12 @@ void lstm_forward_impl(
     sycl_kernel_submit(
         nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
+    using KernelT =
+        LstmCellForwardFunctor<scalar_t, accscalar_t, index_type, 2>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         input_gatesI,
         hidden_gatesI,
@@ -548,12 +581,6 @@ void lstm_backward_impl(
   if (numel == 0)
     return;
 
-  using KernelT = LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type>;
-  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
-  auto config = rnn_get_launch_config(max_wg_size, numel);
-  auto nwg = std::get<0>(config);
-  auto local_range = std::get<1>(config);
-
   auto grad_hyI = tryGetTensorInfo<scalar_t, index_type>(grad_hy);
   auto grad_cyI = tryGetTensorInfo<scalar_t, index_type>(grad_cy);
   auto cxI = getTensorInfo<scalar_t, index_type>(cx);
@@ -567,6 +594,12 @@ void lstm_backward_impl(
           {grad_hy, grad_cy, cx, cy, workspace, grad_gates, grad_cx})) {
     collapseDims(
         grad_hyI, grad_cyI, cxI, cyI, workspaceI, grad_gatesI, grad_cxI);
+    using KernelT =
+        LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         workspaceI,
         grad_gatesI,
@@ -580,6 +613,12 @@ void lstm_backward_impl(
     sycl_kernel_submit(
         nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
+    using KernelT =
+        LstmCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         workspaceI,
         grad_gatesI,
@@ -610,12 +649,6 @@ void gru_forward_impl(
   if (numel == 0)
     return;
 
-  using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type>;
-  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
-  auto config = rnn_get_launch_config(max_wg_size, numel);
-  auto nwg = std::get<0>(config);
-  auto local_range = std::get<1>(config);
-
   auto input_gatesI = getTensorInfo<scalar_t, index_type>(input_gates);
   auto hidden_gatesI = getTensorInfo<scalar_t, index_type>(hidden_gates);
   auto input_biasI = tryGetTensorInfo<scalar_t, index_type>(input_bias);
@@ -641,6 +674,11 @@ void gru_forward_impl(
         hxI,
         hyI,
         workspaceI);
+    using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 1>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         input_gatesI,
         hidden_gatesI,
@@ -654,6 +692,11 @@ void gru_forward_impl(
     sycl_kernel_submit(
         nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
+    using KernelT = GruCellForwardFunctor<scalar_t, accscalar_t, index_type, 2>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         input_gatesI,
         hidden_gatesI,
@@ -682,12 +725,6 @@ void gru_backward_impl(
   if (numel == 0)
     return;
 
-  using KernelT = GruCellBackwardFunctor<scalar_t, accscalar_t, index_type>;
-  auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
-  auto config = rnn_get_launch_config(max_wg_size, numel);
-  auto nwg = std::get<0>(config);
-  auto local_range = std::get<1>(config);
-
   auto grad_hyI = getTensorInfo<scalar_t, index_type>(grad_hy);
   auto workspaceI = getTensorInfo<scalar_t, index_type>(workspace);
   auto grad_input_gatesI =
@@ -701,6 +738,12 @@ void gru_backward_impl(
           {grad_hy, workspace, grad_input_gates, grad_hidden_gates, grad_hx})) {
     collapseDims(
         grad_hyI, workspaceI, grad_input_gatesI, grad_hidden_gatesI, grad_hxI);
+    using KernelT =
+        GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 1>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         grad_input_gatesI,
         grad_hidden_gatesI,
@@ -712,6 +755,12 @@ void gru_backward_impl(
     sycl_kernel_submit(
         nwg * local_range, local_range, getCurrentSYCLQueue(), kfn);
   } else {
+    using KernelT =
+        GruCellBackwardFunctor<scalar_t, accscalar_t, index_type, 2>;
+    auto max_wg_size = syclMaxWorkGroupSize<KernelT>();
+    auto config = rnn_get_launch_config(max_wg_size, numel);
+    auto nwg = std::get<0>(config);
+    auto local_range = std::get<1>(config);
     KernelT kfn(
         grad_input_gatesI,
         grad_hidden_gatesI,

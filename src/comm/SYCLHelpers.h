@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <comm/Scalar.h>
@@ -10,13 +20,6 @@ static constexpr auto sycl_local_space =
     sycl::access::address_space::local_space;
 static constexpr auto sycl_global_space =
     sycl::access::address_space::global_space;
-
-// sycl access fence space
-static constexpr auto sycl_local_fence = sycl::access::fence_space::local_space;
-static constexpr auto sycl_global_fence =
-    sycl::access::fence_space::global_space;
-static constexpr auto sycl_global_and_local_fence =
-    sycl::access::fence_space::global_and_local;
 
 // sycl memory ordering
 static constexpr auto sycl_mem_odr_rlx = sycl::memory_order::relaxed;
@@ -139,8 +142,13 @@ sycl_kernel_submit(
   q.submit(cgf);
 }
 
-#define SYCL_KERNEL_STRING(var, str) \
-  static const __attribute__((opencl_constant)) char var[] = str;
+#ifdef __SYCL_DEVICE_ONLY__
+  #define SYCL_KERNEL_STRING(var, str) \
+    static const __attribute__((opencl_constant)) char var[] = str
+#else
+  #define SYCL_KERNEL_STRING(var, str) \
+    static const char var[] = str
+#endif
 #define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
 
 #define SYCL_PRINT(fmt_str, ...)                \

@@ -1,8 +1,12 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -41,6 +45,7 @@ template <
     typename input_t,
     typename IndexType,
     int ADims,
+    int BDims,
     bool has_weight,
     typename Op>
 struct Histogram1DKernelFunctor {
@@ -52,14 +57,14 @@ struct Histogram1DKernelFunctor {
     auto linear_index = item_id.get_id(0);
     // Convert `linear_index` into an offset of `b`
     const IndexType b_offset =
-        IndexToOffset<const input_t, IndexType>::get(linear_index, b_);
+        IndexToOffset<const input_t, IndexType, BDims>::get(linear_index, b_);
     const auto b_val = in_ptr[b_offset];
     if (b_val >= min_value_ && b_val <= max_value_) {
       // Use value at `b` as an offset of `a`
       const IndexType bin =
           get_bin<input_t, IndexType>(b_val, min_value_, max_value_, nbins_);
       const IndexType a_offset =
-          IndexToOffset<output_t, IndexType>::get(bin, a_);
+          IndexToOffset<output_t, IndexType, ADims>::get(bin, a_);
       atomicAdd(
           (sycl_global_ptr<output_t>)&out_ptr[a_offset],
           get_op_(weight_ptr, linear_index));
@@ -102,6 +107,7 @@ template <
     typename input_t,
     typename IndexType,
     int ADims,
+    int BDims,
     bool has_weight,
     typename Op>
 void histogram_1d_kernel(
@@ -115,28 +121,35 @@ void histogram_1d_kernel(
     Op get_op) {
   auto& sycl_queue = at::xpu::getCurrentSYCLQueue();
 
-  Histogram1DKernelFunctor<output_t, input_t, IndexType, ADims, has_weight, Op>
+  Histogram1DKernelFunctor<
+      output_t,
+      input_t,
+      IndexType,
+      ADims,
+      BDims,
+      has_weight,
+      Op>
       kfn(a, b, c, nbins, min_value, max_value, total_elements, get_op);
 
   sycl_kernel_submit(::sycl::range<1>(total_elements), sycl_queue, kfn);
 }
 
-#define HANDLE_CASE(WEIGHTS_OP, WITH_WEIGHT)                         \
-  histogram_1d_kernel<output_t, input_t, IndexType, 1, WITH_WEIGHT>( \
-      a_info,                                                        \
-      b_info,                                                        \
-      c_info,                                                        \
-      nbins,                                                         \
-      min_value,                                                     \
-      max_value,                                                     \
-      total_elements,                                                \
+#define HANDLE_CASE(WEIGHTS_OP, WITH_WEIGHT)                             \
+  histogram_1d_kernel<output_t, input_t, IndexType, 1, -1, WITH_WEIGHT>( \
+      a_info,                                                            \
+      b_info,                                                            \
+      c_info,                                                            \
+      nbins,                                                             \
+      min_value,                                                         \
+      max_value,                                                         \
+      total_elements,                                                    \
       WEIGHTS_OP);
 
 template <typename output_t, typename index_type, typename info_t>
 struct IndexingFunctor {
   auto operator()(output_t* c_ptr, index_type c_index) const {
     const index_type c_offset =
-        IndexToOffset<output_t, index_type>::get(c_index, c_info);
+        IndexToOffset<output_t, index_type, -1>::get(c_index, c_info);
     return c_ptr[c_offset];
   }
 
@@ -312,6 +325,3 @@ Tensor bincount_kernel(
   });
 }
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

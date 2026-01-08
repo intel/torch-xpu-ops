@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/Math.h>
@@ -71,32 +81,24 @@ T inline group_x_scan_by_uds_for_loop_scan(
     glb_str_off_1 = glb1;
   } else {
     glb_ldr_logical_off_0 = glb0;
-    glb_ldr_off_0 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_0,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_0 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_0, cfg.input_);
 
     glb_ldr_logical_off_1 = glb1;
-    glb_ldr_off_1 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_1,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_1 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_1, cfg.input_);
 
     glb_str_logical_off_0 = glb0;
-    glb_str_off_0 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_0,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_0 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_0, cfg.output_);
 
     glb_str_logical_off_1 = glb1;
-    glb_str_off_1 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_1,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_1 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_1, cfg.output_);
   }
   // TODO: opti for bank conflict elemination
   // Read data from global memory to shared local memory
@@ -122,7 +124,7 @@ T inline group_x_scan_by_uds_for_loop_scan(
           cfg.func_(slm[liy * rx * 2 + lix], pre_max_carr);
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   // Parallel reduction (Up-sweep)
   for (uint32_t s = rx, d = 1; s >= 1; s >>= 1, d <<= 1) {
@@ -131,7 +133,7 @@ T inline group_x_scan_by_uds_for_loop_scan(
       slm[offset + d] = cfg.func_(slm[offset], slm[offset + d]);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -142,7 +144,7 @@ T inline group_x_scan_by_uds_for_loop_scan(
       slm[offset + d] = cfg.func_(slm[offset], slm[offset + d]);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -204,44 +206,32 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
     glb_idx_off_1 = glb1;
   } else {
     glb_ldr_logical_off_0 = glb0;
-    glb_ldr_off_0 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_0,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_0 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_0, cfg.input_);
 
     glb_ldr_logical_off_1 = glb1;
-    glb_ldr_off_1 = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-        glb_ldr_logical_off_1,
-        cfg.input_,
-        IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_ldr_off_1 =
+        IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+            glb_ldr_logical_off_1, cfg.input_);
 
     glb_str_logical_off_0 = glb0;
-    glb_str_off_0 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_0,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_0 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_0, cfg.output_);
 
     glb_str_logical_off_1 = glb1;
-    glb_str_off_1 = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-        glb_str_logical_off_1,
-        cfg.output_,
-        IndexToOffset<typename OutputInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_str_off_1 =
+        IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+            glb_str_logical_off_1, cfg.output_);
 
-    glb_idx_off_0 = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-        glb0,
-        cfg.indices_,
-        IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_idx_off_0 =
+        IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+            glb0, cfg.indices_);
 
-    glb_idx_off_1 = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-        glb1,
-        cfg.indices_,
-        IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    glb_idx_off_1 =
+        IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+            glb1, cfg.indices_);
   }
   // TODO: opti for bank conflict elemination
   // Read data from global memory to shared local memory
@@ -269,7 +259,7 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
           pre_max_carr, slm[offset], pre_idx_carr, slm_idx[offset], cfg.func_);
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   // Parallel reduction (Up-sweep)
   for (uint32_t s = rx, d = 1; s >= 1; s >>= 1, d <<= 1) {
@@ -283,7 +273,7 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
           cfg.func_);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -299,7 +289,7 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
           cfg.func_);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -575,10 +565,10 @@ T group_x_scan(
 
   slm[liy * rx + lix] = value;
   for (size_t offset = 1; offset < rx; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (lix >= offset)
       value = func(slm[liy * rx + (lix - offset)], slm[liy * rx + lix]);
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (lix >= offset)
       slm[liy * rx + lix] = value;
@@ -603,7 +593,7 @@ void group_x_scan_with_indices(
   slm[liy * rx + lix] = value;
   slm_idx[liy * rx + lix] = idx;
   for (int offset = 1; offset < rx; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (lix >= offset) {
       binary_op_update(
           slm[liy * rx + (lix - offset)],
@@ -612,7 +602,7 @@ void group_x_scan_with_indices(
           idx,
           func);
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (lix >= offset) {
       slm[liy * rx + lix] = value;
@@ -634,10 +624,10 @@ T group_y_scan(
 
   temp[liy * rx + lix] = value;
   for (size_t offset = 1; offset < ry; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (liy >= offset)
       value = func(temp[(liy - offset) * rx + lix], temp[liy * rx + lix]);
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (liy >= offset)
       temp[liy * rx + lix] = value;
@@ -662,7 +652,7 @@ void group_y_scan_with_indices(
   temp[liy * rx + lix] = value;
   temp_idx[liy * rx + lix] = idx;
   for (int offset = 1; offset < ry; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (liy >= offset) {
       binary_op_update(
           temp[(liy - offset) * rx + lix],
@@ -671,7 +661,7 @@ void group_y_scan_with_indices(
           idx,
           func);
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (liy >= offset) {
       temp[liy * rx + lix] = value;
@@ -828,22 +818,15 @@ class SegmentScanKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       glb_str_off = glb_str_logical_off;
       glb_str_off_0 = glb_ldr_logical_off;
     } else {
-      glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-          glb_ldr_logical_off,
-          cfg_.iinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
-      glb_str_off = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-          glb_str_logical_off,
-          cfg_.oinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+      glb_ldr_off =
+          IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.iinfo_);
+      glb_str_off =
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_str_logical_off, cfg_.oinfo_);
       glb_str_off_0 =
-          IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-              glb_ldr_logical_off,
-              cfg_.oinfo_,
-              IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-                  NON_STRICT_CONTIGUOUS);
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.oinfo_);
     }
     T value = cfg_.init_;
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -941,33 +924,21 @@ class SegmentScanWithIndicesKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       glb_idx_off = glb_idx_logical_off;
       glb_idx_off_0 = glb_ldr_logical_off;
     } else {
-      glb_ldr_off = IndexToOffset<typename InputInfo::scalar_t, int64_t>::get(
-          glb_ldr_logical_off,
-          cfg_.iinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
-      glb_str_off = IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-          glb_str_logical_off,
-          cfg_.oinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+      glb_ldr_off =
+          IndexToOffset<typename InputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.iinfo_);
+      glb_str_off =
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_str_logical_off, cfg_.oinfo_);
       glb_str_off_0 =
-          IndexToOffset<typename OutputInfo::scalar_t, int64_t>::get(
-              glb_ldr_logical_off,
-              cfg_.oinfo_,
-              IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-                  NON_STRICT_CONTIGUOUS);
-      glb_idx_off = IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-          glb_idx_logical_off,
-          cfg_.idxinfo_,
-          IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+          IndexToOffset<typename OutputInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.oinfo_);
+      glb_idx_off =
+          IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+              glb_idx_logical_off, cfg_.idxinfo_);
       glb_idx_off_0 =
-          IndexToOffset<typename IndicesInfo::scalar_t, int64_t>::get(
-              glb_ldr_logical_off,
-              cfg_.oinfo_,
-              IndexToOffset<typename InputInfo::scalar_t, int64_t>::
-                  NON_STRICT_CONTIGUOUS);
+          IndexToOffset<typename IndicesInfo::scalar_t, int64_t, -1>::get(
+              glb_ldr_logical_off, cfg_.oinfo_);
     }
     T value = cfg_.init_;
     IndicesT idx = pi;

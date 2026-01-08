@@ -1,25 +1,35 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 #include <ATen/native/TensorIterator.h>
 
 namespace at::native::xpu {
 
 TORCH_XPU_API void nll_loss_forward_kernel(
-    const Tensor& self,
-    const Tensor& target,
-    const OptionalTensorRef weight_opt,
-    int64_t reduction,
-    int64_t ignore_index,
     const Tensor& output,
-    const Tensor& total_weight);
+    const Tensor& total_weight,
+    const Tensor& input_,
+    const Tensor& target_,
+    const Tensor& weight,
+    int64_t reduction,
+    int64_t ignore_index);
 
 TORCH_XPU_API void nll_loss_backward_kernel(
-    const Tensor& grad_output,
-    const Tensor& self,
-    const Tensor& target,
-    const OptionalTensorRef weight_opt,
-    int64_t reduction,
-    int64_t ignore_index,
+    const Tensor& grad_input_,
+    const Tensor& grad_output_,
+    const Tensor& input_,
+    const Tensor& target_,
     const Tensor& total_weight,
-    const Tensor& grad_input);
+    const Tensor& weight,
+    int64_t reduction,
+    int64_t ignore_index);
 
 } // namespace at::native::xpu

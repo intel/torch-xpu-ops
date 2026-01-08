@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <ATen/native/Resize.h>
 #include <ATen/native/SpectralOpsUtils.h>
 #include <ATen/native/xpu/mkl/SpectralOps.h>
@@ -56,18 +70,11 @@ void _mkl_dft(
   int64_t idist = istrides[0];
   int64_t odist = ostrides[0];
 
-  std::vector<int64_t> fwd_strides(1 + signal_ndim, 0),
-      bwd_strides(1 + signal_ndim, 0);
-
-  for (int64_t i = 1; i <= signal_ndim; i++) {
-    if (!inverse) {
-      fwd_strides[i] = istrides[i];
-      bwd_strides[i] = ostrides[i];
-    } else {
-      fwd_strides[i] = ostrides[i];
-      bwd_strides[i] = istrides[i];
-    }
-  }
+  std::vector<int64_t> input_strides(
+      istrides.cbegin(), istrides.cbegin() + signal_ndim + 1),
+      output_strides(ostrides.cbegin(), ostrides.cbegin() + signal_ndim + 1);
+  input_strides[0] = 0;
+  output_strides[0] = 0;
 
   auto desc = descriptor<prec, signal_type>(mkl_signal_sizes);
   desc.set_value(config_param::PLACEMENT, config_value::NOT_INPLACE);
@@ -76,16 +83,15 @@ void _mkl_dft(
   if (!inverse) {
     desc.set_value(config_param::FWD_DISTANCE, idist);
     desc.set_value(config_param::BWD_DISTANCE, odist);
+
+    desc.set_value(config_param::FWD_STRIDES, input_strides);
+    desc.set_value(config_param::BWD_STRIDES, output_strides);
   } else {
     desc.set_value(config_param::FWD_DISTANCE, odist);
     desc.set_value(config_param::BWD_DISTANCE, idist);
-  }
 
-  if (!fwd_strides.empty()) {
-    desc.set_value(config_param::FWD_STRIDES, fwd_strides.data());
-  }
-  if (!bwd_strides.empty()) {
-    desc.set_value(config_param::BWD_STRIDES, bwd_strides.data());
+    desc.set_value(config_param::FWD_STRIDES, output_strides);
+    desc.set_value(config_param::BWD_STRIDES, input_strides);
   }
 
   if (!complex_input || !complex_output) {
@@ -98,7 +104,7 @@ void _mkl_dft(
   desc.commit(queue);
 
   // Obtain the size of workspace required after commit.
-  size_t workspaceSizeBytes = 0;
+  int64_t workspaceSizeBytes = 0;
   desc.get_value(
       oneapi::mkl::dft::config_param::WORKSPACE_BYTES, &workspaceSizeBytes);
 
@@ -134,10 +140,10 @@ void _fft_with_size(
   // real/imag dimension must aligned when viewed as of complex type
 
   if (complex_input) {
-    bool need_contiguous = input_.stride(-1) != 1;
-
+    const auto strides = input_.strides();
+    bool need_contiguous = strides.back() != 1;
     for (int64_t i = 0; !need_contiguous && i <= signal_ndim; i++) {
-      need_contiguous |= input_.stride(i) % 2 != 0;
+      need_contiguous |= strides[i] % 2;
     }
 
     if (need_contiguous) {
@@ -228,12 +234,13 @@ Tensor& _exec_fft(
       batched_sizes.begin() + 1);
   input = input.reshape(batched_sizes);
 
-  const auto batch_size = input.sizes()[0];
+  const auto in_sizes = input.sizes();
+  const auto batch_size = in_sizes[0];
   DimVector signal_size(signal_ndim + 1);
   signal_size[0] = batch_size;
 
   for (const auto i : c10::irange(signal_ndim)) {
-    auto in_size = input.sizes()[i + 1];
+    auto in_size = in_sizes[i + 1];
     auto out_size = out_sizes[dim[i]];
     signal_size[i + 1] = std::max(in_size, out_size);
     TORCH_INTERNAL_ASSERT(
@@ -270,12 +277,12 @@ Tensor& _exec_fft(
   int64_t batch_numel = 1;
 
   for (int64_t i = batch_dims - 1; i >= 0; --i) {
-    out_strides[dim_permute[i]] = batch_numel * out.strides()[0];
+    out_strides[dim_permute[i]] = batch_numel * out.stride(0);
     batch_numel *= out_sizes[dim_permute[i]];
   }
 
   for (const auto i : c10::irange(batch_dims, ndim)) {
-    out_strides[dim_permute[i]] = out.strides()[1 + (i - batch_dims)];
+    out_strides[dim_permute[i]] = out.stride(1 + (i - batch_dims));
   }
 
   out.as_strided_(out_sizes, out_strides, out.storage_offset());
@@ -285,8 +292,7 @@ Tensor& _exec_fft(
 
 double _dft_scale(
     IntArrayRef dim,
-    IntArrayRef input_sizes,
-    IntArrayRef out_sizes,
+    IntArrayRef norm_sizes,
     int64_t normalization) {
   const auto norm = static_cast<fft_norm_mode>(normalization);
   double double_scale = 1.0;
@@ -295,21 +301,10 @@ double _dft_scale(
     return double_scale;
   }
 
-  const int64_t signal_ndim = dim.size();
   int64_t signal_numel = 1;
-
-  for (int64_t i = 0; i < signal_ndim; ++i) {
-    auto in_size = input_sizes[dim[i]];
-    auto out_size = out_sizes[dim[i]];
-    auto signal_size = std::max(in_size, out_size);
-
-    signal_numel *= signal_size;
-    TORCH_INTERNAL_ASSERT(
-        in_size == signal_size || in_size == (signal_size / 2) + 1);
-    TORCH_INTERNAL_ASSERT(
-        out_size == signal_size || out_size == (signal_size / 2) + 1);
+  for (const int64_t& d : dim) {
+    signal_numel *= norm_sizes[d];
   }
-
   if (norm == fft_norm_mode::by_root_n) {
     double_scale = 1.0 / std::sqrt(signal_numel);
   } else {
@@ -322,32 +317,33 @@ double _dft_scale(
 const Tensor& _fft_apply_normalization(
     const Tensor& self,
     int64_t normalization,
-    IntArrayRef sizes,
+    IntArrayRef norm_sizes,
     IntArrayRef dims) {
-  auto scale = _dft_scale(dims, sizes, self.sizes(), normalization);
+  auto scale = _dft_scale(dims, norm_sizes, normalization);
   return (scale == 1.0) ? self : self.mul_(scale);
 }
 
-Tensor& _fft_apply_normalization_out(
-    Tensor& out,
-    const Tensor& self,
-    int64_t normalization,
-    IntArrayRef sizes,
-    IntArrayRef dims) {
-  auto scale = _dft_scale(dims, sizes, self.sizes(), normalization);
-  return at::mul_out(out, self, c10::scalar_to_tensor(scale));
+// TODO: Remove this work-around in future.
+Tensor promote_fft_input(const Tensor& input) {
+  if (input.scalar_type() == ScalarType::Half)
+    return input.to(ScalarType::Float);
+  if (input.scalar_type() == ScalarType::ComplexHalf)
+    return input.to(ScalarType::ComplexFloat);
+  return input;
 }
 
 } // namespace impl
 
 Tensor _fft_c2c_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
+
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto sorted_dims = impl::_sort_dims(self, dim);
   auto out_sizes = self.sizes();
@@ -385,7 +381,11 @@ Tensor _fft_c2c_mkl(
     }
   }
 
-  return impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+  impl::_fft_apply_normalization(out, normalization, input_sizes, dim);
+
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
+    return out.to(ScalarType::ComplexHalf);
+  return out;
 }
 
 Tensor& _fft_c2c_mkl_out(
@@ -394,11 +394,10 @@ Tensor& _fft_c2c_mkl_out(
     int64_t normalization,
     bool forward,
     Tensor& out) {
-  auto result = _fft_c2c_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), forward);
+  auto result = _fft_c2c_mkl(self, dim, normalization, forward);
   at::native::resize_output(out, result.sizes());
-  return impl::_fft_apply_normalization_out(
-      out, result, normalization, result.sizes(), dim);
+  out.copy_(result);
+  return out;
 }
 
 void HermitSymmImpl(Tensor& input, int64_t dim, int pos) {
@@ -422,13 +421,15 @@ void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
 }
 
 Tensor _fft_c2r_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
+
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto input = self;
 
@@ -461,7 +462,11 @@ Tensor _fft_c2r_mkl(
       /*onesided=*/true,
       /*forward=*/false);
 
-  return impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+  impl::_fft_apply_normalization(out, normalization, out_sizes, dim);
+
+  if (orig_self.scalar_type() == ScalarType::ComplexHalf)
+    return out.to(ScalarType::Half);
+  return out;
 }
 
 Tensor& _fft_c2r_mkl_out(
@@ -470,11 +475,10 @@ Tensor& _fft_c2r_mkl_out(
     int64_t normalization,
     int64_t last_dim_size,
     Tensor& out) {
-  auto result = _fft_c2r_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), last_dim_size);
+  auto result = _fft_c2r_mkl(self, dim, normalization, last_dim_size);
   at::native::resize_output(out, result.sizes());
-  return impl::_fft_apply_normalization_out(
-      out, result, normalization, result.sizes(), dim);
+  out.copy_(result);
+  return out;
 }
 
 REGISTER_XPU_DISPATCH(
@@ -482,13 +486,15 @@ REGISTER_XPU_DISPATCH(
     &_fft_fill_with_conjugate_symmetry_xpu);
 
 Tensor _fft_r2c_mkl(
-    const Tensor& self,
+    const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
+
   if (dim.empty()) {
-    return self.clone();
+    return orig_self.clone();
   }
+  auto self = impl::promote_fft_input(orig_self);
 
   auto input_sizes = self.sizes();
   DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
@@ -548,6 +554,8 @@ Tensor _fft_r2c_mkl(
     at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
   }
 
+  if (orig_self.scalar_type() == ScalarType::Half)
+    return out.to(ScalarType::ComplexHalf);
   return out;
 }
 
@@ -557,23 +565,10 @@ Tensor& _fft_r2c_mkl_out(
     int64_t normalization,
     bool onesided,
     Tensor& out) {
-  auto result = _fft_r2c_mkl(
-      self, dim, static_cast<int64_t>(fft_norm_mode::none), /*onesided=*/true);
+  auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
 
-  if (onesided) {
-    return impl::_fft_apply_normalization_out(
-        out, result, normalization, self.sizes(), dim);
-  }
-
-  at::native::resize_output(out, self.sizes());
-
-  auto last_dim = dim.back();
-  auto last_dim_halfsize = result.sizes()[last_dim];
-  auto out_slice = out.slice(last_dim, 0, last_dim_halfsize);
-
-  impl::_fft_apply_normalization_out(
-      out_slice, result, normalization, self.sizes(), dim);
-  at::native::_fft_fill_with_conjugate_symmetry_(out, dim);
+  at::native::resize_output(out, result.sizes());
+  out.copy_(result);
   return out;
 }
 

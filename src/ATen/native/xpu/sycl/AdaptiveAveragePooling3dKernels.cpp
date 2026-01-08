@@ -1,8 +1,12 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
@@ -43,12 +47,13 @@ struct AdaptiveAvgPool3dKernelFunctor {
     ot = o_plane % osizeT_;
     int d = o_plane / osizeT_;
 
+    // Decompose d into batch and channel indices
+    int batch_idx = d / sizeD_;
+    int channel_idx = d % sizeD_;
+
     int istartT = start_index(ot, osizeT_, isizeT_);
     int iendT = end_index(ot, osizeT_, isizeT_);
     int kT = iendT - istartT;
-
-    const scalar_t* input_dt =
-        input_data_ + d * istrideD_ + istartT * istrideT_;
 
     scalar_t* output_dt = output_data_ + o_plane * osizeH_ * osizeW_;
 
@@ -63,9 +68,6 @@ struct AdaptiveAvgPool3dKernelFunctor {
         int iendW = end_index(ow, osizeW_, isizeW_);
         int kW = iendW - istartW;
 
-        // Compute the average pooling from corresponding input pixels
-        const scalar_t* ptr_input =
-            input_dt + istartH * istrideH_ + istartW * istrideW_;
         scalar_t* ptr_output = output_dt + oh * osizeW_ + ow;
         accscalar_t sum = static_cast<accscalar_t>(0);
 
@@ -73,11 +75,13 @@ struct AdaptiveAvgPool3dKernelFunctor {
         for (it = 0; it < kT; ++it) {
           for (ih = 0; ih < kH; ++ih) {
             for (iw = 0; iw < kW; ++iw) {
-              scalar_t val = ptr_input[ih * istrideH_ + iw * istrideW_];
+              int64_t input_offset = batch_idx * istrideB_ +
+                  channel_idx * istrideD_ + (istartT + it) * istrideT_ +
+                  (istartH + ih) * istrideH_ + (istartW + iw) * istrideW_;
+              scalar_t val = input_data_[input_offset];
               sum += static_cast<accscalar_t>(val);
             }
           }
-          ptr_input += istrideT_; // next input frame
         }
         // Update output
         const accscalar_t divide_factor =
@@ -96,6 +100,8 @@ struct AdaptiveAvgPool3dKernelFunctor {
       int osizeT,
       int osizeH,
       int osizeW,
+      int64_t sizeD,
+      int64_t istrideB,
       int64_t istrideD,
       int64_t istrideT,
       int64_t istrideH,
@@ -109,6 +115,8 @@ struct AdaptiveAvgPool3dKernelFunctor {
         osizeT_(osizeT),
         osizeH_(osizeH),
         osizeW_(osizeW),
+        sizeD_(sizeD),
+        istrideB_(istrideB),
         istrideD_(istrideD),
         istrideT_(istrideT),
         istrideH_(istrideH),
@@ -124,6 +132,8 @@ struct AdaptiveAvgPool3dKernelFunctor {
   int osizeT_;
   int osizeH_;
   int osizeW_;
+  int64_t sizeD_;
+  int64_t istrideB_;
   int64_t istrideD_;
   int64_t istrideT_;
   int64_t istrideH_;
@@ -142,6 +152,8 @@ void adaptive_avg_pool3d_template(
     int osizeT,
     int osizeH,
     int osizeW,
+    int64_t sizeD,
+    int64_t istrideB,
     int64_t istrideD,
     int64_t istrideT,
     int64_t istrideH,
@@ -161,6 +173,8 @@ void adaptive_avg_pool3d_template(
         osizeT,
         osizeH,
         osizeW,
+        sizeD,
+        istrideB,
         istrideD,
         istrideT,
         istrideH,
@@ -213,7 +227,7 @@ void adaptive_avg_pool3d_kernel(
   int64_t osizeW = output_size[2];
 
   int64_t sizeD, isizeT, isizeH, isizeW;
-  int64_t istrideD, istrideT, istrideH, istrideW;
+  int64_t istrideB, istrideD, istrideT, istrideH, istrideW;
   int64_t totalZ;
 
   const Tensor& input = input_.ndimension() == 4 ? input_ : input_.contiguous();
@@ -224,6 +238,7 @@ void adaptive_avg_pool3d_kernel(
     isizeH = input.size(2);
     isizeW = input.size(3);
 
+    istrideB = 0;
     istrideD = input.stride(0);
     istrideT = input.stride(1);
     istrideH = input.stride(2);
@@ -239,6 +254,7 @@ void adaptive_avg_pool3d_kernel(
     isizeH = input.size(3);
     isizeW = input.size(4);
 
+    istrideB = input.stride(0);
     istrideD = input.stride(1);
     istrideT = input.stride(2);
     istrideH = input.stride(3);
@@ -269,6 +285,8 @@ void adaptive_avg_pool3d_kernel(
             osizeT,
             osizeH,
             osizeW,
+            sizeD,
+            istrideB,
             istrideD,
             istrideT,
             istrideH,
@@ -667,6 +685,3 @@ void adaptive_avg_pool3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

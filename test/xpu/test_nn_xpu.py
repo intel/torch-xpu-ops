@@ -1,3 +1,15 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: intel"]
 
 import contextlib
@@ -3727,6 +3739,19 @@ def upsamplingBiMode2d(self, device, antialias, align_corners, mode, memory_form
 
 
 TestNNDeviceType.test_upsamplingBiMode2d = upsamplingBiMode2d
+
+
+@dtypes(torch.half, torch.bfloat16)
+def _test_cudnn_rnn(self, dtype):
+    rnn = nn.RNN(10, 20, num_layers=2, device="xpu", dtype=dtype)
+    input = torch.randn(5, 4, 10, device="xpu", dtype=dtype)
+    hx = torch.randn(2, 4, 20, device="xpu", dtype=dtype)
+    output = rnn(input, hx)
+    output_ref = rnn.cpu()(input.cpu(), hx.cpu())
+    self.assertEqual(tuple([i.xpu() for i in output_ref]), output, atol=5e-3, rtol=1e-3)
+
+
+TestNNDeviceType.test_cudnn_rnn = _test_cudnn_rnn
 
 
 @dtypes(torch.float16, torch.float32)

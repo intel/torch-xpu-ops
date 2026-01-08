@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +20,8 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path
 from tokenize import generate_tokens, TokenInfo
-from typing import Any, Iterator, Sequence
+from typing import Any
+from collections.abc import Iterator, Sequence
 from typing_extensions import Never
 
 

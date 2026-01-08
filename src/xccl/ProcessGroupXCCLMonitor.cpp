@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #ifdef USE_C10D_XCCL
 
 #include <c10/util/thread_name.h>
@@ -39,7 +49,7 @@ void HeartbeatMonitorXCCL::runLoop() {
   // We only need to dump once per PG, so we use local_id_ == 0 for the first PG
   if (pg_->local_id_ == 0) {
     // DumpPipe is one per-trainer process
-    dumpPipe.emplace(pg_->getRank());
+    dumpPipe.emplace(pg_->globalRank());
     while (true) {
       std::unique_lock<std::mutex> lock(monitorMutex_);
       if (monitorWakeUpCV_.wait_for(

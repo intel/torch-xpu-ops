@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -211,10 +221,8 @@ class IndexKernel {
     if constexpr (TrivialOffCal) {
       idx_off = idx_logical_off;
     } else {
-      idx_off = IndexToOffset<IdxType, int64_t>::get(
-          idx_logical_off,
-          cfg_.iinfo_,
-          IndexToOffset<IdxType, int64_t>::NON_STRICT_CONTIGUOUS);
+      idx_off = IndexToOffset<IdxType, int64_t, -1>::get(
+          idx_logical_off, cfg_.iinfo_);
     }
     glb_batch_group = id.glb_batch / cfg_.index_num_;
     glb_batch_group_loc_off = cfg_.iinfo_.data[idx_off];
@@ -322,26 +330,18 @@ class IndexKernel {
     } else {
       if (cfg_.indexing_dst_) {
         // index_copy, index_add, index_fill
-        dst_off = IndexToOffset<ValType, int64_t>::get(
-            glb_indexing_logical_off,
-            cfg_.dinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
+            glb_indexing_logical_off, cfg_.dinfo_);
         if (cfg_.sinfo_.data != nullptr) {
-          src_off = IndexToOffset<const ValType, int64_t>::get(
-              glb_fixing_logical_off,
-              cfg_.sinfo_,
-              IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+          src_off = IndexToOffset<const ValType, int64_t, -1>::get(
+              glb_fixing_logical_off, cfg_.sinfo_);
         }
       } else {
         // index_select
-        src_off = IndexToOffset<const ValType, int64_t>::get(
-            glb_indexing_logical_off,
-            cfg_.sinfo_,
-            IndexToOffset<const ValType, int64_t>::NON_STRICT_CONTIGUOUS);
-        dst_off = IndexToOffset<ValType, int64_t>::get(
-            glb_fixing_logical_off,
-            cfg_.dinfo_,
-            IndexToOffset<ValType, int64_t>::NON_STRICT_CONTIGUOUS);
+        src_off = IndexToOffset<const ValType, int64_t, -1>::get(
+            glb_indexing_logical_off, cfg_.sinfo_);
+        dst_off = IndexToOffset<ValType, int64_t, -1>::get(
+            glb_fixing_logical_off, cfg_.dinfo_);
       }
     }
     cfg_.func_(
@@ -416,7 +416,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     auto out_ptr = out_data_;
     auto in_ptr = in_data_;
-    item_id.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item_id.get_group());
 
     // compute the in/out/indices offsets and perform memory copy
     for (int64_t local_index = local_id; local_index < group_numel_range;

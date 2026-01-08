@@ -1,8 +1,19 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/core/Tensor.h>
 #include <ATen/native/Copy.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/xpu/CachingHostAllocator.h>
+#include <ATen/xpu/PeerToPeerAccess.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
 #include <ATen/xpu/detail/XPUHooks.h>
@@ -56,12 +67,7 @@ static bool maybe_enable_p2p_access(Device dst_device, Device src_device) {
     return false;
   }
 
-  auto dst_queue = getCurrentXPUStream(dst_device.index()).queue();
-  auto src_queue = getCurrentXPUStream(src_device.index()).queue();
-  auto dst_dev = dst_queue.get_device();
-  auto src_dev = src_queue.get_device();
-  return src_dev.ext_oneapi_can_access_peer(
-      dst_dev, sycl::ext::oneapi::peer_access::access_supported);
+  return at::xpu::get_p2p_access(src_device.index(), dst_device.index());
 }
 
 void memcpyAsync(

@@ -1,3 +1,15 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 import argparse
 import concurrent.futures
 import json
@@ -6,7 +18,7 @@ import os
 import sys
 from enum import Enum
 from pathlib import Path
-from typing import Any, List, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional
 
 from ufmt.core import ufmt_string
 from ufmt.util import make_black_config
@@ -59,7 +71,7 @@ def format_error_message(filename: str, err: Exception) -> LintMessage:
 
 def check_file(
     filename: str,
-) -> List[LintMessage]:
+) -> list[LintMessage]:
     with open(filename, "rb") as f:
         original = f.read().decode("utf-8")
 

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Array.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -33,18 +43,14 @@ struct WeightNormReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int64_t str_pi = id.chunk;
     int64_t ldr_lid =
         si + ldr_pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
-    int64_t ldr_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        ldr_lid,
-        iinfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t ldr_off =
+        at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+            ldr_lid, iinfo_);
     int64_t str_lid =
         si + str_pi * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
-    int64_t str_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        str_lid,
-        oinfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t str_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            str_lid, oinfo_);
 
     accscalar_t value = 0;
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -170,29 +176,15 @@ struct SegmentWeightNormKernelFunctor {
     int64_t w_lid = si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
     int64_t n_lid = id.glb_batch;
 
-    int64_t v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        w_lid,
-        vinfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
-
-    int64_t w_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        w_lid,
-        winfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
-
-    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        n_lid,
-        ginfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
-
-    int64_t n_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        n_lid,
-        ninfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        w_lid, vinfo_);
+    int64_t w_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        w_lid, winfo_);
+    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        n_lid, ginfo_);
+    int64_t n_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            n_lid, ninfo_);
 
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
       winfo_.data[w_off] =
@@ -257,17 +249,12 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     auto id = cfg_.get_item_desc(item);
     int64_t n_lid = id.glb_batch;
 
-    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        n_lid,
-        ginfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        n_lid, ginfo_);
 
-    int64_t n_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        n_lid,
-        ninfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t n_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            n_lid, ninfo_);
 
     int64_t si = id.glb_batch % cfg_.stride_;
     int64_t bi = id.glb_batch / cfg_.stride_;
@@ -278,11 +265,9 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (id.glb_batch < cfg_.problem_batch_) {
       for (int pi_ = pi; pi_ < cfg_.problem_; pi_ += cfg_.problem_wg_range_) {
         int64_t v_lid = bi + pi_ * cfg_.stride_;
-        int64_t v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            vinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        int64_t v_off =
+            at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+                v_lid, vinfo_);
 
         accscalar_t v = (accscalar_t)vinfo_.data[v_off];
         value += v * v;
@@ -305,21 +290,17 @@ struct WeightNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     // Here using slm instead. If using ugm, need fence w/
     // order:acq_rel & scope:workgroup & space:global_mem.
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (id.glb_batch < cfg_.problem_batch_) {
       for (int pi_ = pi; pi_ < cfg_.problem_; pi_ += cfg_.problem_wg_range_) {
         int64_t v_lid = bi + pi_ * cfg_.stride_;
-        int64_t v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            vinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
-        int64_t w_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            winfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        int64_t v_off =
+            at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+                v_lid, vinfo_);
+        int64_t w_off =
+            at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+                v_lid, winfo_);
 
         winfo_.data[w_off] =
             (1.f / shared_[n_slid]) * vinfo_.data[v_off] * ginfo_.data[g_off];
@@ -468,26 +449,19 @@ struct WeightNormBackwardReduceKernelFunctor
 
     int64_t i_lid =
         si + i_pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
-    int64_t i1_off = at::xpu::detail::IndexToOffset<scalar1_t, int64_t>::get(
-        i_lid,
-        i1info_,
-        at::xpu::detail::IndexToOffset<scalar1_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t i1_off =
+        at::xpu::detail::IndexToOffset<scalar1_t, int64_t, -1>::get(
+            i_lid, i1info_);
     int64_t i2_off;
     if (is_first) {
-      i2_off = at::xpu::detail::IndexToOffset<scalar2_t, int64_t>::get(
-          i_lid,
-          i2info_,
-          at::xpu::detail::IndexToOffset<scalar2_t, int64_t>::
-              NON_STRICT_CONTIGUOUS);
+      i2_off = at::xpu::detail::IndexToOffset<scalar2_t, int64_t, -1>::get(
+          i_lid, i2info_);
     }
 
     int64_t o_lid = si + o_pi * cfg_.stride_ + bi * id.chunk_num * cfg_.stride_;
-    int64_t o_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        o_lid,
-        oinfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t o_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            o_lid, oinfo_);
 
     accscalar_t value = 0;
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
@@ -637,47 +611,28 @@ struct SegmentWeightNormBackwardKernelFunctor {
     int64_t gv_lid = si + pi * cfg_.stride_ + bi * cfg_.problem_ * cfg_.stride_;
     int64_t gg_lid = id.glb_batch;
 
-    int64_t v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        gv_lid,
-        vinfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        gv_lid, vinfo_);
 
-    int64_t gw_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        gv_lid,
-        gwinfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t gw_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        gv_lid, gwinfo_);
 
-    int64_t gv_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        gv_lid,
-        gvinfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t gv_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        gv_lid, gvinfo_);
 
-    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        gg_lid,
-        ginfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        gg_lid, ginfo_);
 
-    int64_t n_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        gg_lid,
-        ninfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t n_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            gg_lid, ninfo_);
 
-    int64_t r_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        gg_lid,
-        rinfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t r_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            gg_lid, rinfo_);
 
-    int64_t gg_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        gg_lid,
-        gginfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t gg_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        gg_lid, gginfo_);
 
     if (id.glb_problem < cfg_.problem_ && id.glb_batch < cfg_.problem_batch_) {
       accscalar_t g = ginfo_.data[g_off];
@@ -769,21 +724,13 @@ struct WeightNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<2> item) const {
     auto id = cfg_.get_item_desc(item);
     int64_t n_lid = id.glb_batch;
-    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        n_lid,
-        ginfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
-    int64_t gg_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-        n_lid,
-        gginfo_,
-        at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
-    int64_t n_off = at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::get(
-        n_lid,
-        ninfo_,
-        at::xpu::detail::IndexToOffset<accscalar_t, int64_t>::
-            NON_STRICT_CONTIGUOUS);
+    int64_t g_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        n_lid, ginfo_);
+    int64_t gg_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+        n_lid, gginfo_);
+    int64_t n_off =
+        at::xpu::detail::IndexToOffset<accscalar_t, int64_t, -1>::get(
+            n_lid, ninfo_);
     int64_t si = id.glb_batch % cfg_.stride_;
     int64_t bi = id.glb_batch / cfg_.stride_;
     int64_t pi = id.chunk_off;
@@ -795,17 +742,11 @@ struct WeightNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         int64_t v_lid, v_off, gw_off;
         v_lid = bi + pi_ * cfg_.stride_;
 
-        v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            vinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+            v_lid, vinfo_);
 
-        gw_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            gwinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        gw_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+            v_lid, gwinfo_);
 
         accscalar_t v = (accscalar_t)vinfo_.data[v_off];
         accscalar_t gw = (accscalar_t)gwinfo_.data[gw_off];
@@ -825,30 +766,21 @@ struct WeightNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (id.glb_batch < cfg_.problem_batch_ && id.chunk_off == 0) {
       shared_[n_slid] = value;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (id.glb_batch < cfg_.problem_batch_) {
       for (int pi_ = pi; pi_ < cfg_.problem_; pi_ += cfg_.problem_wg_range_) {
         int64_t v_lid, v_off, gw_off, gv_off;
         v_lid = bi + pi_ * cfg_.stride_;
 
-        v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            vinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        v_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+            v_lid, vinfo_);
 
-        gw_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            gwinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        gw_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+            v_lid, gwinfo_);
 
-        gv_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t>::get(
-            v_lid,
-            gvinfo_,
-            at::xpu::detail::IndexToOffset<scalar_t, int64_t>::
-                NON_STRICT_CONTIGUOUS);
+        gv_off = at::xpu::detail::IndexToOffset<scalar_t, int64_t, -1>::get(
+            v_lid, gvinfo_);
 
         accscalar_t g = ginfo_.data[g_off];
         accscalar_t gw = gwinfo_.data[gw_off];

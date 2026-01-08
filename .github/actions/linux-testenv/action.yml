@@ -33,6 +33,9 @@ runs:
         if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
           rm -rf ${AGENT_TOOLSDIRECTORY}
         fi
+        sudo apt update
+        sudo apt install -y jq numactl
+        rm -rf Torch-XPU-Wheel-*
     - name: Setup python-${{ inputs.python }}
       uses: actions/setup-python@v5
       with:
@@ -63,7 +66,8 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           pip install torch==2.9.0.dev20250811 torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
-          pip install --force-reinstall $(find ${{ github.workspace }}/ -name "*torch*.whl")
+          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
+          pip install --force-reinstall $(find ${latest_dir} -name "*torch*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
@@ -76,11 +80,7 @@ runs:
         git checkout ${TORCH_COMMIT_ID}
         # apply extra PRs for stock pytorch
         pip install requests
-        if [ "${{ github.event_name }}" == "pull_request" ];then
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py -e https://github.com/pytorch/pytorch/pull/152940
-        else
-          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-        fi
+        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
@@ -115,6 +115,8 @@ runs:
         pip install pandas psutil scipy pyyaml
         cd pytorch
         if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
+          # for new LLM models
+          pip install accelerate
           pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
           TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
         elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
@@ -130,16 +132,17 @@ runs:
           sed -i 's/^ *pynvml.*//' requirements.txt
           pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            while read line
-            do
+            while read line; do
               python install.py $(echo $line |awk -F, '{printf $1}')
             done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
           else
             python install.py --continue_on_fail
           fi
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          pip uninstall -y fbgemm_gpu_nightly-cpu
           # for soft_actor_critic, temp fix
           pip install git+https://github.com/nocoding03/gym@fix-np
           cd ../pytorch
@@ -159,10 +162,11 @@ runs:
           # for dlrm
           pip install pyre-extensions
           curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
+          pip uninstall -y fbgemm_gpu_nightly-cpu
           cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
-          pip install -U pytest pytest-timeout pytest-xdist
+          pip install pytest pytest-timeout pytest-xdist
         fi
         # install the corresponding torchao
         pip uninstall -y torchao
@@ -193,5 +197,5 @@ runs:
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
           echo "Torch is re-installed when installing deps, please check"
-          exit
+          exit 1
         fi

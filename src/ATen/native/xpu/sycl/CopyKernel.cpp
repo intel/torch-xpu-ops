@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <comm/xpu_aten.h>
 
 #include <ATen/Dispatch.h>
@@ -22,6 +32,17 @@ template <typename in_scalar_t, typename out_scalar_t>
 struct CastScalarFunc {
   out_scalar_t operator()(in_scalar_t src_val) const {
     return (out_scalar_t)src_val;
+  }
+};
+
+// TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
+// from incorrectly converting -0.0 to NaN. This temporary fix should
+// be removed once the compiler/driver error is resolved.
+template <typename Float8DataType>
+struct CastScalarFunc<Half, Float8DataType> {
+  Float8DataType operator()(Half src_val) const {
+    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
+    return Float8DataType(val);
   }
 };
 
@@ -88,11 +109,36 @@ void float8_copy_kernel_xpu(TensorIteratorBase& iter) {
         gpu_kernel(iter, CopyScalarFunc<Float8_e5m2fnuz>());
         break;
     }
+  } else if (dtype == kFloat8_e8m0fnu) {
+    switch (other_dtype) {
+      case kFloat:
+        gpu_kernel_nocast(iter, CastScalarFunc<float, Float8_e8m0fnu>());
+        break;
+      case kHalf:
+        gpu_kernel_nocast(iter, CastScalarFunc<Half, Float8_e8m0fnu>());
+        break;
+      case kBFloat16:
+        gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Float8_e8m0fnu>());
+        break;
+      default:
+        gpu_kernel(iter, CopyScalarFunc<Float8_e8m0fnu>());
+        break;
+    }
   } else {
     TORCH_CHECK(
         false,
         "This input type is not Float8 type or has not been supported by copy.",
         dtype);
+  }
+}
+
+void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType src_dtype = iter.dtype(1);
+
+  if (src_dtype == kFloat4_e2m1fn_x2) {
+    gpu_kernel_nocast(iter, CopyScalarFunc<Float4_e2m1fn_x2>());
+  } else {
+    TORCH_CHECK(false, "Copy from ", src_dtype, " to Float4_e2m1fn_x2 has not been supported.");
   }
 }
 
@@ -104,6 +150,8 @@ void copy_kernel(TensorIteratorBase& iter) {
     });
   } else if (isFloat8Type(iter.dtype(0))) {
     float8_copy_kernel_xpu(iter);
+  } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
+    float4_copy_kernel_xpu(iter);
   } else {
     AT_DISPATCH_V2(
         dtype,
@@ -114,11 +162,8 @@ void copy_kernel(TensorIteratorBase& iter) {
         kBool,
         kBFloat16,
         kComplexHalf,
-        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
-        kFloat8_e4m3fn,
-        kFloat8_e5m2,
-        kFloat8_e4m3fnuz,
-        kFloat8_e5m2fnuz);
+        AT_EXPAND(AT_FLOAT8_TYPES),
+        AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
   }
 }
 

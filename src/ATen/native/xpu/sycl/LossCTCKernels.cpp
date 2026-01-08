@@ -1,8 +1,24 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Copyright (c) 2018 MathInf GmbH, Thomas Viehmann
+ * Licensed under the BSD-3-Clause license
+ * This is the CPU implementation of the Connectionist Temporal Loss.
+ * We mostly follow Graves.
+ * 1. Graves et al: http://www.cs.toronto.edu/~graves/icml_2006.pdf
+ * We use the equations from above link, but note that [1] has 1-based indexing and we (of course) use 0-based.
+ * Graves et al call the probabilities y, we use log_probs (also calling them inputs)
+ */
 
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
@@ -115,7 +131,7 @@ struct CTCLossLogAlphaKernelFunctor {
         have_three = false;
       }
       for (int64_t t = 1; t < max_input_length_; t++) {
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
         if (valid && (t < input_length) && (s < 2 * target_length + 1)) {
           // only for valid t, s. This is equation (6) and (7), la1, la2, la3
           // are the three summands, lamax is the maximum for the logsumexp
@@ -165,7 +181,7 @@ struct CTCLossLogAlphaKernelFunctor {
         }
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (!valid)
       return;
@@ -502,7 +518,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
       // now go backward in t. Note that we need to skip the last timestep that
       // we did above.
       for (int64_t t = max_input_length_ - 2; t >= 0; t--) {
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
         if (valid && (t < input_length - 1) && (s < 2 * target_length + 1)) {
           scalar_t lb1 = log_beta_data_
               [lb_batch_offset + lb_input_stride_ * (t + 1) +
@@ -1279,6 +1295,3 @@ Tensor ctc_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

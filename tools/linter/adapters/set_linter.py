@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 from __future__ import annotations
 
 import dataclasses as dc
@@ -5,7 +13,8 @@ import sys
 import token
 from functools import cached_property
 from pathlib import Path
-from typing import Iterator, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING
+from collections.abc import Iterator, Sequence
 
 
 _PARENT = Path(__file__).parent.absolute()

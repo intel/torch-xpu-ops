@@ -107,6 +107,7 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -122,13 +123,14 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: distributed
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -145,14 +147,17 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
+      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
     name: linux-e2e-summary
-    needs: [linux-e2e]
+    needs: [conditions-filter, linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
     permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
 
   windows:
     name: windows
@@ -165,3 +170,4 @@ jobs:
       runner: Windows_CI
       src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
       has_label: ${{ needs.conditions-filter.outputs.has_label }}
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}

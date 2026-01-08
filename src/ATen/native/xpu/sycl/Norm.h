@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/AccumulateType.h>
@@ -58,7 +68,7 @@ static inline void norm_group_reduce(
     local_data1[sg_id] = sum1;
     local_data2[sg_id] = sum2;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // use one subgroup to reduce WGroupSize/subGroupSize elements
   // into the final result
@@ -89,7 +99,7 @@ static inline void norm_group_reduce(
       local_data2[0] = sum2;
     }
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   sum1 = local_data1[0];
   sum2 = local_data2[0];
@@ -117,7 +127,7 @@ static inline void norm_group_reduce_row(
     local_data1[local_row_id][local_col_id][j] = input1[j];
     local_data2[local_row_id][local_col_id][j] = input2[j];
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   int k = 1;
   while (k < block_row) {
@@ -133,7 +143,7 @@ static inline void norm_group_reduce_row(
       }
     }
     k *= 2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
   }
 }
 
@@ -172,14 +182,14 @@ static void norm_global_reduce(
       scratchpad_ptr[workgroup_num_foreach + idx] = sum2;
     }
   }
-  item.barrier(sycl_global_fence);
+  sycl::group_barrier(item.get_group());
 
   if (local_id == 0) {
     sycl_atomic_ref_rlx_dev_global_t<int> count(semaphores_ptr[group_id]);
     int prev_groups_finished = count.fetch_add(1);
     last_workgroup[0] = (prev_groups_finished == workgroup_num_foreach - 1);
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // use the last workgroup for reduction
   if (last_workgroup[0]) {
@@ -269,8 +279,7 @@ class NormConfig {
   }
 
   void get_max_vec_size() {
-    auto dev_id = getDeviceIndexOfCurrentQueue();
-    int total_resource = syclMaxWorkItemsPerTile(dev_id);
+    int64_t total_resource = syclMaxWorkItemsPerTile();
 
     constexpr int float4_size = sizeof(float) * 4;
     max_vec_size = float4_size / element_size_bytes;

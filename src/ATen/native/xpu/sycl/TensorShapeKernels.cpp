@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
@@ -669,8 +679,7 @@ void split_with_sizes_copy_out_xpu_contiguous_no_cast(
     num_groups += div_up(split_chunk_size, GROUP_SIZE * BYTES_PER_THREAD);
   }
 
-  auto dev_id = getDeviceIndexOfCurrentQueue();
-  int64_t tile_size = syclMaxWorkItemsPerTile(dev_id);
+  int64_t tile_size = syclMaxWorkItemsPerTile();
   const int64_t max_groups = tile_size / GROUP_SIZE * 2.0;
 
   // Make each thread process BYTES_PER_THREAD * iter_factor bytes to regulate

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/Activation.h>
@@ -35,9 +45,9 @@ struct HardswishBackwardFunctor {
     const opmath_t one_half(0.5f);
     opmath_t grad_val = static_cast<opmath_t>(grad_val_);
     opmath_t self_val = static_cast<opmath_t>(self_val_);
-    if (self_val < neg_three) {
+    if (self_val <= neg_three) {
       return zero;
-    } else if (self_val <= three) {
+    } else if (self_val < three) {
       return grad_val * ((self_val / three) + one_half);
     } else {
       return grad_val;

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 // Porting from ipex
 // will upstream to pytorch when in tree
 #pragma once
@@ -151,42 +161,41 @@ IndexType TensorInfo<T, IndexType>::outerSize(const int exclusive) {
 }
 
 // Translate a linear index for the apply to a T* offset;
-template <typename T, typename IndexType, bool Trivial = false>
+template <typename T, typename IndexType, int Dims>
 struct IndexToOffset {
-  static constexpr bool STRICT_CONTIGUOUS = true;
-  static constexpr bool NON_STRICT_CONTIGUOUS = false;
-  static inline IndexType get(
+  static IndexType get(
       IndexType linearId,
-      const TensorInfo<T, IndexType>& info,
-      bool strict_contiguous = true) {
+      const TensorInfo<T, IndexType>& info) {
     IndexType offset = 0;
 
-    if (info.isContiguousCheckStrict(strict_contiguous)) {
-      return linearId;
+    // Uses static dims
+    for (int i = Dims - 1; i > 0; --i) {
+      IndexType curDimIndex = linearId % info.sizes[i];
+      IndexType curDimOffset = curDimIndex * info.strides[i];
+      offset += curDimOffset;
+      linearId /= info.sizes[i];
     }
 
-    for (int dim = info.dims - 1; dim > 0; --dim) {
-      IndexType curDimIndex = linearId % info.sizes[dim];
-      IndexType curDimOffset = curDimIndex * info.strides[dim];
-      offset += curDimOffset;
-      linearId /= info.sizes[dim];
-    }
     return offset + linearId * info.strides[0];
   }
 };
 
-// To isolate unnecessary code, even the code is not involved in
-// contiguouse case. Additional unnecessary code impacts efficiency of
-// generated code.
+// Uses dynamic (runtime) instead of static (compiletime) dims
 template <typename T, typename IndexType>
-struct IndexToOffset<T, IndexType, true> {
-  static constexpr bool STRICT_CONTIGUOUS = true;
-  static constexpr bool NON_STRICT_CONTIGUOUS = false;
+struct IndexToOffset<T, IndexType, -1> {
   static inline IndexType get(
       IndexType linearId,
-      const TensorInfo<T, IndexType>& info,
-      bool strict_contiguous = true) {
-    return linearId;
+      const TensorInfo<T, IndexType>& info) {
+    IndexType offset = 0;
+
+    for (int i = info.dims - 1; i > 0; --i) {
+      IndexType curDimIndex = linearId % info.sizes[i];
+      IndexType curDimOffset = curDimIndex * info.strides[i];
+      offset += curDimOffset;
+      linearId /= info.sizes[i];
+    }
+
+    return offset + linearId * info.strides[0];
   }
 };
 

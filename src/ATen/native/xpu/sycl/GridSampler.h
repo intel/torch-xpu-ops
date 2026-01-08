@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #pragma once
 #include <ATen/native/GridSampler.h>
 
@@ -49,9 +63,10 @@ static inline scalar_t safe_downgrade_to_int_range(scalar_t x) {
   // -100.0 does not have special meaning. This is just to make sure
   // it's not within_bounds_2d or within_bounds_3d, and does not cause
   // undefined behavior.
+  // We avoid using double here because some platforms may not support it.
   if (static_cast<int64_t>(x) > INT_MAX - 1 || x < INT_MIN ||
-      !std::isfinite(static_cast<double>(x)))
-    return static_cast<scalar_t>(-100.0);
+      !std::isfinite(x))
+    return static_cast<scalar_t>(-100.0f);
   return x;
 }
 
