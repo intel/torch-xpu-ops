@@ -9476,3 +9476,11 @@
   variants: function, method
 
 - func: inverse.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+
+- func: dot(Tensor self, Tensor tensor) -> Tensor
+  dispatch:
+    XPU: dot_xpu
+
+- func: vdot(Tensor self, Tensor other) -> Tensor
+  dispatch:
+    XPU: vdot_xpu
