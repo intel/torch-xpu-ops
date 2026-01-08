@@ -68,11 +68,12 @@ jobs:
       - name: Run Torch XPU Op Benchmark on ${{ needs.runner.outputs.hostname }}
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
+          filename=$(find -- test/microbench/ops/*.py)
+          ops=$(for f in $filename; do basename "$f" .py; done | paste -sd ' ')
           cd test/microbench
-          filename=$(find -- *.py)
-          for i in $filename
+          for i in $ops
           do
-            python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
+            python run.py --op ${i%.*} > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
           pip install pandas openpyxl
           # Summary forward op time
