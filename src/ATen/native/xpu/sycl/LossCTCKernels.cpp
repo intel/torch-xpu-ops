@@ -20,6 +20,11 @@
  * Graves et al call the probabilities y, we use log_probs (also calling them inputs)
  */
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -1295,3 +1300,7 @@ Tensor ctc_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
