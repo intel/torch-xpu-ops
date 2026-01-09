@@ -54,11 +54,13 @@ def get_default_cases():
     cases = []
     for input_shape, output_size in base_cases:
         for dtype in dtypes:
-            cases.append({
-                "input_shape": input_shape,
-                "output_size": output_size,
-                "datatype": dtype,
-                "kernel_size": [7, 7],
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "input_shape": input_shape,
+                    "output_size": output_size,
+                    "datatype": dtype,
+                    "kernel_size": [7, 7],
+                    "backward": True,
+                }
+            )
     return cases

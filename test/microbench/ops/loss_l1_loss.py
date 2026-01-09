@@ -48,10 +48,12 @@ def get_default_cases():
     for reduce in reduces:
         for shape in base_shapes:
             for dtype in dtypes:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "reduce": reduce,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "reduce": reduce,
+                        "backward": True,
+                    }
+                )
     return cases

@@ -40,7 +40,7 @@ def run_op(config, device):
     if backward:
         Wout = output_size[0]
         Hout = output_size[1]
-        grad = torch.randn([N, C, Hout, Wout], device=device, dtype=dtype)  
+        grad = torch.randn([N, C, Hout, Wout], device=device, dtype=dtype)
         output[0].backward(grad)
 
 
@@ -51,16 +51,18 @@ def get_default_cases():
         ([8, 256, 56, 56], [14, 14]),
     ]
     dtypes = [torch.bfloat16, torch.float16, torch.float32]
-    
+
     cases = []
     for shape, out_size in base_cases:
         for dtype in dtypes:
             for channels_last in [False, True]:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "output_size": out_size,
-                    "channels_last": channels_last,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "output_size": out_size,
+                        "channels_last": channels_last,
+                        "backward": True,
+                    }
+                )
     return cases

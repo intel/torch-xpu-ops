@@ -51,20 +51,24 @@ def get_default_cases():
     # Forward-only cases (no grad needed)
     for shape in forward_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": False,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": False,
+                }
+            )
 
     # Backward cases (require 2D input: [N, D])
     for shape in backward_shapes:
         if len(shape) != 2:
             continue
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": True,
+                }
+            )
     return cases

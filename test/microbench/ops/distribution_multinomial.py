@@ -41,11 +41,13 @@ def get_default_cases():
         for dtype in dtypes:
             for replacement in replacement_vals:
                 for num_samples in num_samples_vals:
-                    cases.append({
-                        "input_shape": shape,
-                        "datatype": dtype,
-                        "replacement": replacement,
-                        "num_samples": num_samples,
-                        "backward": False,
-                    })
+                    cases.append(
+                        {
+                            "input_shape": shape,
+                            "datatype": dtype,
+                            "replacement": replacement,
+                            "num_samples": num_samples,
+                            "backward": False,
+                        }
+                    )
     return cases

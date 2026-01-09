@@ -27,8 +27,11 @@ def run_op(config, device):
     if backward:
         Wout = output_size[0]
         Hout = output_size[1]
-        grad = torch.rand([C, Hout, Wout], device=device, dtype=dtype, requires_grad=True)
+        grad = torch.rand(
+            [C, Hout, Wout], device=device, dtype=dtype, requires_grad=True
+        )
         output[0].backward(grad)
+
 
 def get_default_cases():
     base_shapes = [
@@ -40,11 +43,13 @@ def get_default_cases():
     for shape, out in base_shapes:
         for dtype in dtypes:
             for channels_last in [False, True]:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "channels_last": channels_last,
-                    "output_size": out,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "channels_last": channels_last,
+                        "output_size": out,
+                        "backward": True,
+                    }
+                )
     return cases

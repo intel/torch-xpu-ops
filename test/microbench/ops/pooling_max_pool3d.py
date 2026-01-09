@@ -25,7 +25,7 @@ def run_op(config, device):
     input = torch.randn(N, C, H, W, D, device=device, dtype=dtype, requires_grad=True)
 
     if channels_last:
-        input = input.to(memory_format=torch.channels_last_3d)        
+        input = input.to(memory_format=torch.channels_last_3d)
 
     # MaxPool3d
     fmp = torch.nn.MaxPool3d(2, return_indices=True)
@@ -51,10 +51,12 @@ def get_default_cases():
     for shape in base_cases:
         for dtype in dtypes:
             for channels_last in [False, True]:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "channels_last": channels_last,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "channels_last": channels_last,
+                        "backward": True,
+                    }
+                )
     return cases
