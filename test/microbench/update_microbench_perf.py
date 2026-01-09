@@ -7,12 +7,12 @@
 # http://www.apache.org/licenses/LICENSE-2.0
 
 import argparse
-
 import os
 import shutil
 import sys
 
 import pandas as pd
+
 
 def replace_time_columns_inplace(main_file, source_file, backup=True):
     """
@@ -84,7 +84,8 @@ def replace_time_columns_inplace(main_file, source_file, backup=True):
         duplicated_keys = 0
         for idx, row in df_source.iterrows():
             key = tuple(
-                row[col].strip() if isinstance(row[col], str) else row[col] for col in key_columns
+                row[col].strip() if isinstance(row[col], str) else row[col]
+                for col in key_columns
             )
             time_val = row["time(us)"]
             e2e_val = row["E2E total time(us)"]
@@ -105,9 +106,11 @@ def replace_time_columns_inplace(main_file, source_file, backup=True):
         replaced_count = 0
         for idx in range(len(df_main)):
             key = tuple(
-                df_main.iloc[idx][col].strip()
-                if isinstance(df_main.iloc[idx][col], str)
-                else df_main.iloc[idx][col]
+                (
+                    df_main.iloc[idx][col].strip()
+                    if isinstance(df_main.iloc[idx][col], str)
+                    else df_main.iloc[idx][col]
+                )
                 for col in key_columns
             )
             if key in source_dict:
@@ -156,7 +159,7 @@ def replace_time_columns_inplace(main_file, source_file, backup=True):
 def main():
     parser = argparse.ArgumentParser(
         description='Replace "time(us)" and "E2E total time(us)" in main CSV using exact match on all other columns.\n'
-                    "Files must be semicolon-separated (;)."
+        "Files must be semicolon-separated (;)."
     )
     parser.add_argument("main_file", help="Main CSV file to update (modified in place)")
     parser.add_argument(
