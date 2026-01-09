@@ -51,11 +51,13 @@ def get_default_cases():
     cases = []
     for shape, scale in base_cases:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "scale_factor": scale,
-                "mode": "bicubic",
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "scale_factor": scale,
+                    "mode": "bicubic",
+                    "backward": True,
+                }
+            )
     return cases

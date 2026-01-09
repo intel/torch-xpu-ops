@@ -24,9 +24,7 @@ def run_op(config, device):
     num_iter = 20
 
     # Embedding module
-    emb = torch.nn.Embedding(
-        dict_len, vect_len, dtype=dtype, device=device
-    )
+    emb = torch.nn.Embedding(dict_len, vect_len, dtype=dtype, device=device)
     input = torch.randint(0, dict_len, shape, device=device)
 
     # Forward
@@ -47,9 +45,11 @@ def get_default_cases():
     cases = []
     for shape in base_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": True,
+                }
+            )
     return cases
