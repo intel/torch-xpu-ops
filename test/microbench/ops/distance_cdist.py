@@ -60,11 +60,13 @@ def get_default_cases():
         for p in p_values:
             for mode in compute_modes:
                 for dtype in dtypes:
-                    cases.append({
-                        "shape": [shape1, shape2],
-                        "datatype": dtype,
-                        "p": p,
-                        "mode": mode,
-                        "backward": True,
-                    })
+                    cases.append(
+                        {
+                            "shape": [shape1, shape2],
+                            "datatype": dtype,
+                            "p": p,
+                            "mode": mode,
+                            "backward": True,
+                        }
+                    )
     return cases

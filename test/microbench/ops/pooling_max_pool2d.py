@@ -64,12 +64,14 @@ def get_default_cases():
     for shape, k, s in base_cases:
         for dtype in dtypes:
             for channels_last in [False, True]:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "kernel_size": k,
-                    "stride": s,
-                    "channels_last": channels_last,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "kernel_size": k,
+                        "stride": s,
+                        "channels_last": channels_last,
+                        "backward": True,
+                    }
+                )
     return cases

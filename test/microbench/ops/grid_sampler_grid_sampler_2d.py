@@ -63,12 +63,14 @@ def get_default_cases():
             for mode in modes:
                 for padding_mode in padding_modes:
                     for align_corners in align_corners_opts:
-                        cases.append({
-                            "shape": shape,
-                            "datatype": dtype,
-                            "mode": mode,
-                            "padding_mode": padding_mode,
-                            "align_corners": align_corners,
-                            "backward": True,
-                        })
+                        cases.append(
+                            {
+                                "shape": shape,
+                                "datatype": dtype,
+                                "mode": mode,
+                                "padding_mode": padding_mode,
+                                "align_corners": align_corners,
+                                "backward": True,
+                            }
+                        )
     return cases
