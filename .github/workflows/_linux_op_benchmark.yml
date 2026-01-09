@@ -50,7 +50,7 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 900
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
@@ -68,11 +68,12 @@ jobs:
       - name: Run Torch XPU Op Benchmark on ${{ needs.runner.outputs.hostname }}
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
+          filename=$(find -- test/microbench/ops/*.py)
+          ops=$(for f in $filename; do basename "$f" .py; done | paste -sd ' ')
           cd test/microbench
-          filename=$(find -- *.py)
-          for i in $filename
+          for i in $ops
           do
-            python ${i%.*}.py > ${{ github.workspace }}/op_benchmark/${i%.*}.log
+            python run.py --op ${i%.*} > ${{ github.workspace }}/op_benchmark/${i%.*}.log
           done
           pip install pandas openpyxl
           # Summary forward op time
@@ -86,8 +87,138 @@ jobs:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
 
-  op_benchmark_test_results_check:
+  result_analysis_with_rerun_plan:
     needs: op_benchmark
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    outputs:
+      has_regression: ${{ steps.detect_regression.outputs.has_regression }}
+    steps:
+      - name: Install gh-cli
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh rsync ca-certificates -y
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Setup python-${{ inputs.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
+          path: ${{ github.workspace }}/op_benchmark
+      - name: Download OP Baseline
+        continue-on-error: true
+        id: reference_id
+        run: |
+          # latest dir
+          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
+          mv ${{ github.workspace }}/op_benchmark/${latest_dir} ${{ github.workspace }}/op_benchmark
+          # baseline
+          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
+            --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
+          rm -rf ${{ github.workspace }}/reference
+          mkdir -p ${{ github.workspace }}/reference
+          mkdir -p ${{ github.workspace }}/baseline
+          if [[ -n "${REFERENCE_RUN_ID}" ]]; then
+            echo "Using reference run ID: ${REFERENCE_RUN_ID}"
+            gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
+            mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
+
+            if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
+              cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
+              cp ${{ github.workspace }}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
+            else
+              cp ${{ github.workspace }}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+              cp ${{ github.workspace }}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+            fi
+          else
+            echo "No reference run ID found, using local op_benchmark as baseline"
+            cp ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+            cp ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+          fi
+          cp -r ${{ github.workspace }}/baseline ${{ github.workspace }}/op_benchmark
+      - name: Check the OP Regression
+        id: detect_regression
+        run: |
+          pip install tabulate pandas
+          mkdir ${{ github.workspace }}/op_benchmark/rerun_plan
+          # Compare forward op
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv --output-json ${{ github.workspace }}/op_benchmark/rerun_plan/regression_forward_op.json --hide-regression-in-summary
+          # Compare backward op
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv --output-json ${{ github.workspace }}/op_benchmark/rerun_plan/regression_backward_op.json --hide-regression-in-summary
+          
+          #Count lines (each line = 1 regressed op)
+          fwd_count=$(wc -l < ${{ github.workspace }}/op_benchmark/rerun_plan/regression_forward_op.json 2>/dev/null || echo 0)
+          bwd_count=$(wc -l < ${{ github.workspace }}/op_benchmark/rerun_plan/regression_backward_op.json 2>/dev/null || echo 0)
+
+          n=$((fwd_count + bwd_count))
+          echo "ops_count=$n" >> $GITHUB_OUTPUT
+          echo "has_regression=$( [ "$n" -gt 0 ] && echo true || echo false )" >> $GITHUB_OUTPUT
+      - name: Upload Inductor XPU OP benchmark rerun cases
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/op_benchmark
+          overwrite: true
+
+  op_benchmark_rerun:
+    needs: [runner, result_analysis_with_rerun_plan]
+    if: needs.result_analysis_with_rerun_plan.outputs.has_regression == 'true'
+    runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 600
+    container:
+      image: intelgpu/ubuntu-22.04-lts2:2523.31
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+      env:
+        AGENT_TOOLSDIRECTORY: /opt/xpu-tool
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare test env
+        uses: ./.github/actions/linux-testenv
+        with:
+          pytorch: ${{ inputs.pytorch }}
+          python: ${{ inputs.python }}
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
+          path: ${{ github.workspace }}/op_benchmark
+      - name: Rerun regressed ops
+        run: |
+          cd test/microbench
+          mkdir -p ${{ github.workspace }}/op_benchmark/rerun_forward_op_logs
+          mkdir -p ${{ github.workspace }}/op_benchmark/rerun_backward_op_logs
+          python run_guilt_cases.py ${{ github.workspace }}/op_benchmark/rerun_plan/regression_forward_op.json 3 rerun_forward_op_logs
+          python run_guilt_cases.py ${{ github.workspace }}/op_benchmark/rerun_plan/regression_backward_op.json 3 rerun_backward_op_logs
+
+          pip install pandas openpyxl
+          # Summary forward op time
+          python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark/rerun_forward_op_logs ${{ github.workspace }}/op_benchmark/rerun_forward_op_summary.csv
+          # Summary backward op time
+          python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark/rerun_backward_op_logs ${{ github.workspace }}/op_benchmark/rerun_backward_op_summary.csv --backward
+
+          # Get the best perf of rerun
+          python extract_best_perf.py -i ${{ github.workspace }}/op_benchmark/rerun_forward_op_summary.csv -o ${{ github.workspace }}/op_benchmark/rerun_forward_op_summary_filtered.csv
+          python extract_best_perf.py -i ${{ github.workspace }}/op_benchmark/rerun_backward_op_summary.csv -o ${{ github.workspace }}/op_benchmark/rerun_backward_op_summary_filtered.csv
+      - name: Upload Inductor XPU OP benchmark Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/op_benchmark
+          overwrite: true
+
+  op_benchmark_final_test_results_check:
+    needs: [result_analysis_with_rerun_plan, op_benchmark_rerun]
     runs-on: ubuntu-24.04
     permissions:
       issues: write
@@ -106,40 +237,22 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
-          path: ${{ github.workspace }}/op_benchmark_tmp
-      - name: Download OP Baseline
-        continue-on-error: true
-        id: reference_id
-        run: |
-          # latest dir
-          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
-          mv ${{ github.workspace }}/op_benchmark_tmp/${latest_dir} ${{ github.workspace }}/op_benchmark
-          # baseline
-          REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
-            --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
-          gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
-          rm -rf ${{ github.workspace }}/reference
-          mkdir -p ${{ github.workspace }}/reference
-          mv -f Inductor-XPU-OP-Benchmark-Data-*-Updated/* ${{ github.workspace }}/reference
-
-          mkdir -p ${{ github.workspace }}/baseline
-          if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
-            cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
-            cp ${{ github.workspace }}/reference/new_baseline/baseline_backward_op_summary.csv ${{ github.workspace }}/baseline
-          else
-            cp ${{ github.workspace }}/reference/forward_op_summary.csv ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
-            cp ${{ github.workspace }}/reference/backward_op_summary.csv ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
-          fi
+          path: ${{ github.workspace }}/op_benchmark
       - name: Check the OP Regression
         run: |
           pip install tabulate pandas
+          # update rerun results
+          python ${{ github.workspace }}/test/microbench/update_microbench_perf.py ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/op_benchmark/rerun_forward_op_summary_filtered.csv
+          python ${{ github.workspace }}/test/microbench/update_microbench_perf.py ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/op_benchmark/rerun_backward_op_summary_filtered.csv
+
           # Compare forward op
-          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_forward_op_summary.csv
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/op_benchmark/baseline/baseline_forward_op_summary.csv --output-json ${{ github.workspace }}/op_benchmark/regression_forward_op_final.json
           # Compare backward op
-          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/baseline/baseline_backward_op_summary.csv
+          python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --baseline_file ${{ github.workspace }}/op_benchmark/baseline/baseline_backward_op_summary.csv --output-json ${{ github.workspace }}/op_benchmark/regression_backward_op_final.json
       - name: Update OP Baseline
         run: |
-          mkdir ${{ github.workspace }}/new_baseline
+          pip install tabulate pandas
+          mkdir -p ${{ github.workspace }}/new_baseline
           cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
           # Update forward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
