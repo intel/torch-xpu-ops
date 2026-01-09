@@ -123,7 +123,7 @@ def build_runpy_case_config(record, is_backward_from_filename=None):
         elif col in {'shape', 'out', 'kernel_size', 'stride', 'shifts', 'output_size'}:
             try:
                 if isinstance(val, str):
-                    if val.startswith('[') or val.startswith('('):
+                    if val.startswith(('[', '(')):
                         parsed = literal_eval(val)
                     else:
                         parsed = [int(x.strip()) for x in val.split(',') if x.strip()]
