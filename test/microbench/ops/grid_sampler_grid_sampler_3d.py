@@ -27,12 +27,8 @@ def run_op(config, device):
     backward = config.get("backward", True)
 
     N, C, D, H, W = shape
-    input = torch.randn(
-        N, C, D, H, W, dtype=dtype, device=device, requires_grad=True
-    )
-    grid = torch.randn(
-        N, D, H, W, 3, dtype=dtype, device=device, requires_grad=True
-    )
+    input = torch.randn(N, C, D, H, W, dtype=dtype, device=device, requires_grad=True)
+    grid = torch.randn(N, D, H, W, 3, dtype=dtype, device=device, requires_grad=True)
 
     # Forward
     output = torch.nn.functional.grid_sample(
@@ -64,12 +60,14 @@ def get_default_cases():
             for mode in modes:
                 for padding_mode in padding_modes:
                     for align_corners in align_corners_opts:
-                        cases.append({
-                            "shape": shape,
-                            "datatype": dtype,
-                            "mode": mode,
-                            "padding_mode": padding_mode,
-                            "align_corners": align_corners,
-                            "backward": True,
-                        })
+                        cases.append(
+                            {
+                                "shape": shape,
+                                "datatype": dtype,
+                                "mode": mode,
+                                "padding_mode": padding_mode,
+                                "align_corners": align_corners,
+                                "backward": True,
+                            }
+                        )
     return cases

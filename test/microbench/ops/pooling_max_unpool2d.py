@@ -77,11 +77,13 @@ def get_default_cases():
     for shape in base_shapes:
         for dtype in dtypes:
             for channels_last in [False, True]:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "kernel_size": kernel_size,
-                    "channels_last": channels_last,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "kernel_size": kernel_size,
+                        "channels_last": channels_last,
+                        "backward": True,
+                    }
+                )
     return cases

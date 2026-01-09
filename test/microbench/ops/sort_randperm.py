@@ -24,15 +24,19 @@ def run_op(config, device):
 
 
 def get_default_cases():
-    base_shapes = [8193,]
+    base_shapes = [
+        8193,
+    ]
     dtypes = [torch.float32]
 
     cases = []
     for shape in base_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": False,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": False,
+                }
+            )
     return cases

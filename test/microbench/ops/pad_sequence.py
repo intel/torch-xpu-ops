@@ -51,11 +51,13 @@ def get_default_cases():
         for dtype in dtypes:
             for batch_first in batch_first_opts:
                 for pad_val in padding_vals:
-                    cases.append({
-                        "shape": shape,
-                        "datatype": dtype,
-                        "batch_first": batch_first,
-                        "padding_value": pad_val,
-                        "backward": False,
-                    })
+                    cases.append(
+                        {
+                            "shape": shape,
+                            "datatype": dtype,
+                            "batch_first": batch_first,
+                            "padding_value": pad_val,
+                            "backward": False,
+                        }
+                    )
     return cases

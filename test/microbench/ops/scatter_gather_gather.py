@@ -31,9 +31,7 @@ def run_op(config, device):
     input = torch.randn(shape, device=device, dtype=dtype)
 
     # Index tensor: values in [0, shape[dim])
-    index = torch.randint(
-        1, shape[dim], kernel_size, device=device, generator=g_xpu
-    )
+    index = torch.randint(1, shape[dim], kernel_size, device=device, generator=g_xpu)
 
     # Forward
     output = torch.gather(input, dim=dim, index=index)
@@ -58,11 +56,13 @@ def get_default_cases():
     cases = []
     for shape, kernel_size, dim in base_cases:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "kernel_size": kernel_size,
-                "dim": dim,
-                "backward": False,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "kernel_size": kernel_size,
+                    "dim": dim,
+                    "backward": False,
+                }
+            )
     return cases

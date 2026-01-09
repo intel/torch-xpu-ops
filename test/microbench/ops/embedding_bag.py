@@ -6,8 +6,9 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
-import torch
 import random
+
+import torch
 from core.runner import normalize_dtype
 
 
@@ -36,7 +37,7 @@ def run_op(config, device):
 
     for i in range(batch):
         bag[i] = i
- 
+
     # Forward
     output = emb(input, bag)
 
@@ -54,10 +55,12 @@ def get_default_cases():
     cases = []
     for dtype in dtypes:
         for reduce in modes:
-            cases.append({
-                "shape": batch,
-                "datatype": dtype,
-                "reduce": reduce,
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "shape": batch,
+                    "datatype": dtype,
+                    "reduce": reduce,
+                    "backward": True,
+                }
+            )
     return cases

@@ -39,7 +39,9 @@ def run_op(config, device):
         else:
             Wout = (W - kernel_size[1]) / stride[1] + 1
             Hout = (H - kernel_size[0]) / stride[0] + 1
-        grad = torch.rand([C, int(Hout), int(Wout)], device=device, dtype=dtype, requires_grad=True)
+        grad = torch.rand(
+            [C, int(Hout), int(Wout)], device=device, dtype=dtype, requires_grad=True
+        )
 
     AVG2d = torch.nn.AvgPool2d(kernel_size=kernel_size, stride=stride)
     output = AVG2d(input)
@@ -60,12 +62,14 @@ def get_default_cases():
     for shape, k, s in base_cases:
         for dtype in dtypes:
             for channels_last in [False, True]:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "kernel_size": k,
-                    "stride": s,
-                    "channels_last": channels_last,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "kernel_size": k,
+                        "stride": s,
+                        "channels_last": channels_last,
+                        "backward": True,
+                    }
+                )
     return cases

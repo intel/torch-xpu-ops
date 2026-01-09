@@ -22,9 +22,7 @@ def run_op(config, device):
 
     input = torch.zeros(shape, dtype=dtype, device=device)
     masks_ = torch.zeros((8192), dtype=dtype, device=device)
-    indices = torch.linspace(0, 8190, steps=4096, device=device).to(
-        torch.long
-    )
+    indices = torch.linspace(0, 8190, steps=4096, device=device).to(torch.long)
     masks_.index_fill_(0, indices, True)
     masks = masks_.to(torch.bool)
 
@@ -41,9 +39,11 @@ def get_default_cases():
     cases = []
     for shape in base_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": False,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": False,
+                }
+            )
     return cases

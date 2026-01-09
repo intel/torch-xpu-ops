@@ -35,6 +35,7 @@ def run_op(config, device):
     if backward:
         output.backward(torch.ones_like(output, dtype=dtype, device=device))
 
+
 def get_default_cases():
     base_shapes = [
         [8732, 8732],
@@ -47,10 +48,12 @@ def get_default_cases():
     for shape in base_shapes:
         for dtype in dtypes:
             for reduce in reduces:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "reduce": reduce,
-                    "backward": True,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "reduce": reduce,
+                        "backward": True,
+                    }
+                )
     return cases

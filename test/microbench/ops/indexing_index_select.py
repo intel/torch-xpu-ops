@@ -20,11 +20,9 @@ def run_op(config, device):
     dtype = normalize_dtype(config.get("datatype", torch.float32))
     main_size = shape[0]
     step = int(main_size / 2)
-    
+
     input = torch.randn(shape, dtype=dtype, device=device)
-    indices = torch.linspace(
-        0, shape[0] - 2, steps=step, device=device
-    ).to(torch.long)
+    indices = torch.linspace(0, shape[0] - 2, steps=step, device=device).to(torch.long)
 
     # Forward: out = torch.index_select(input, dim, indices)
     output = torch.index_select(input, 0, indices)
@@ -40,9 +38,11 @@ def get_default_cases():
     cases = []
     for shape in base_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": False,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": False,
+                }
+            )
     return cases

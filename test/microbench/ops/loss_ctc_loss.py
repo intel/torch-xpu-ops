@@ -32,9 +32,7 @@ def run_op(config, device):
     )
     targets = torch.randint(1, N, (N, S), dtype=torch.long, device=device)
     input_lengths = torch.full((N,), T, dtype=torch.long, device=device)
-    target_lengths = torch.randint(
-        1, S, (N,), dtype=torch.long, device=device
-    )
+    target_lengths = torch.randint(1, S, (N,), dtype=torch.long, device=device)
 
     # Forward
     loss_dpcpp = torch.nn.functional.ctc_loss(
@@ -57,9 +55,11 @@ def get_default_cases():
     cases = []
     for shape in base_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": True,
+                }
+            )
     return cases

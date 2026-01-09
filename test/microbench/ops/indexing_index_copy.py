@@ -23,9 +23,7 @@ def run_op(config, device):
     backward = config.get("backward", False)
 
     input = torch.zeros(shape, dtype=dtype, device=device)
-    indices = torch.linspace(0, 1022, steps=512, device=device).to(
-        torch.long
-    )
+    indices = torch.linspace(0, 1022, steps=512, device=device).to(torch.long)
     y_0 = torch.ones((512, 1024), dtype=dtype, device=device)
     y_1 = torch.randn((1024, 512), dtype=dtype, device=device)
 
@@ -47,10 +45,12 @@ def get_default_cases():
     for shape in base_shapes:
         for dtype in dtypes:
             for dim in dims:
-                cases.append({
-                    "shape": shape,
-                    "datatype": dtype,
-                    "dim": dim,
-                    "backward": False,
-                })
+                cases.append(
+                    {
+                        "shape": shape,
+                        "datatype": dtype,
+                        "dim": dim,
+                        "backward": False,
+                    }
+                )
     return cases

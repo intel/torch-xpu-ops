@@ -22,7 +22,7 @@ def run_op(config, device):
 
     m1 = torch.rand(2, m, k, dtype=dtype, device=device, requires_grad=True)
     m2 = torch.rand(k, n, dtype=dtype, device=device, requires_grad=True)
-    
+
     # Forward: matmul
     output = torch.matmul(m1, m2)
 
@@ -50,9 +50,11 @@ def get_default_cases():
     cases = []
     for shape in base_shapes:
         for dtype in dtypes:
-            cases.append({
-                "shape": shape,
-                "datatype": dtype,
-                "backward": True,
-            })
+            cases.append(
+                {
+                    "shape": shape,
+                    "datatype": dtype,
+                    "backward": True,
+                }
+            )
     return cases

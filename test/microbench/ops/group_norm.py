@@ -28,18 +28,13 @@ def run_op(config, device):
     shape_input = (shape[1], shape[2], shape[3], shape[4])
     C = shape[2]
     memory_format = (
-        torch.channels_last_3d
-        if len(shape_input) == 5
-        else torch.channels_last
+        torch.channels_last_3d if len(shape_input) == 5 else torch.channels_last
     )
     input = torch.randn(shape_input, device=device, dtype=dtype, requires_grad=True)
     if channels_last:
         input = input.to(memory_format=memory_format)
 
-        
-    gn = torch.nn.GroupNorm(
-        num_groups, C, affine=affine, dtype=dtype
-    ).to(device)
+    gn = torch.nn.GroupNorm(num_groups, C, affine=affine, dtype=dtype).to(device)
 
     # Forward
     output = gn(input)
@@ -66,11 +61,13 @@ def get_default_cases():
         for dtype in dtypes:
             for channels_last in [False, True]:
                 for affine in affine_opts:
-                    cases.append({
-                        "shape": shape,
-                        "datatype": dtype,
-                        "channels_last": channels_last,
-                        "affine": affine,
-                        "backward": True,
-                    })
+                    cases.append(
+                        {
+                            "shape": shape,
+                            "datatype": dtype,
+                            "channels_last": channels_last,
+                            "affine": affine,
+                            "backward": True,
+                        }
+                    )
     return cases
