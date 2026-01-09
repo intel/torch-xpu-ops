@@ -8,8 +8,9 @@
 
 import json
 import sys
-import torch
+
 from pathlib import Path
+import torch
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
 import core.cli as cli
@@ -21,14 +22,19 @@ def resolve_dtype_in_config(config):
     if "dtype" in config and isinstance(config["dtype"], str):
         name = config["dtype"].replace("torch.", "")
         mapping = {
-            "float32": torch.float32, "fp32": torch.float32,
-            "float16": torch.float16, "fp16": torch.float16,
-            "bfloat16": torch.bfloat16, "bf16": torch.bfloat16,
+            "float32": torch.float32,
+            "fp32": torch.float32,
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
         }
         if name in mapping:
             config["dtype"] = mapping[name]
         else:
-            raise ValueError(f"Unknown dtype: {config['dtype']}. Use torch.float32 etc.")
+            raise ValueError(
+                f"Unknown dtype: {config['dtype']}. Use torch.float32 etc."
+            )
     return config
 
 def main():
