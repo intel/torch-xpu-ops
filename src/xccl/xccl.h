@@ -32,27 +32,6 @@
 #define ENABLE_XCCL_PREMUL_SUM_SUPPORT
 #endif // oneCCL version >= 2021.17
 
-namespace c10d {
-
-struct XCCLPreMulSumSupplement : _SupplementBase {
-  double double_factor{0.0};
-  at::Tensor tensor_factor;
-  XCCLPreMulSumSupplement(double f) : double_factor{f} {}
-  XCCLPreMulSumSupplement(at::Tensor t) : tensor_factor{std::move(t)} {
-    TORCH_CHECK_EQ(tensor_factor.numel(), 1);
-  }
-};
-
-template <typename T>
-ReduceOp makeXCCLPreMulSum(const T& factor) {
-  ReduceOp rop;
-  rop.op_ = ReduceOp::PREMUL_SUM;
-  rop.supplement_ = c10::make_intrusive<XCCLPreMulSumSupplement>(factor);
-  return rop;
-}
-
-} // namespace c10d
-
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {
     case c10d::ReduceOp::SUM:
@@ -258,7 +237,7 @@ inline xcclRedOpRAIIV1 unpackPreMulSumV1(
     const ReduceOp& reduceOp,
     const ccl::communicator& comm) {
   const auto* preMulSupplement =
-      reinterpret_cast<XCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
   ccl::reduction preMulSum{};
   bool has_tensor = preMulSupplement->tensor_factor.defined();
   auto residence = has_tensor
@@ -282,7 +261,7 @@ inline xcclRedOpRAIIV2 unpackPreMulSumV2(
     const ReduceOp& reduceOp,
     onecclComm_t comm) {
   const auto* preMulSupplement =
-      reinterpret_cast<XCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
   onecclRedOp_t preMulSum{};
   bool has_tensor = preMulSupplement->tensor_factor.defined();
   auto residence = has_tensor
