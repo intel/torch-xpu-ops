@@ -11,6 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 def main(jsonl_path, repeats=3, log_dir="logs_by_op"):
     log_dir = Path(log_dir)
     log_dir.mkdir(exist_ok=True)
@@ -75,7 +76,7 @@ def main(jsonl_path, repeats=3, log_dir="logs_by_op"):
                     op = obj.get("op", "UNKNOWN")
                 except Exception:
                     op = "UNKNOWN"
-                with open(log_dir / f"{op}_ERRORS.log", 'a') as ef:
+                with open(log_dir / f"{op}_ERRORS.log", "a") as ef:
                     ef.write(error_msg + "\n")
 
     print(
