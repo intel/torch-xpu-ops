@@ -16,11 +16,11 @@ def main(jsonl_path, repeats=3, log_dir="logs_by_op"):
     log_dir.mkdir(exist_ok=True)
     print(f"📝 Logs will be saved per-op in: {log_dir.resolve()}")
 
-    with open(jsonl_path, encoding='utf-8') as f:
+    with open(jsonl_path, encoding="utf-8") as f:
         total_cases = sum(1 for line in f if line.strip())
 
     case_idx = 0
-    with open(jsonl_path, encoding='utf-8') as f:
+    with open(jsonl_path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -40,7 +40,7 @@ def main(jsonl_path, repeats=3, log_dir="logs_by_op"):
                 for run_idx in range(1, repeats + 1):
                     cmd = [sys.executable, "run.py", "--op", op, "--case", case_str]
 
-                    with open(log_path, 'a', encoding='utf-8') as log_file:
+                    with open(log_path, "a", encoding="utf-8") as log_file:
                         log_file.write("\n" + "=" * 80 + "\n")
                         log_file.write(f"# CASE {case_idx} | RUN {run_idx}/{repeats}\n")
                         log_file.write(f"# Command: {' '.join(cmd)}\n")
@@ -81,6 +81,7 @@ def main(jsonl_path, repeats=3, log_dir="logs_by_op"):
     print(
         f"\n🎉 Finished {case_idx} cases ({repeats} runs). Logs in: {log_dir.resolve()}"
     )
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
