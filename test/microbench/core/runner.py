@@ -29,7 +29,9 @@ def run_profile(op_run, config, device, num_iter):
     activity = (
         ProfilerActivity.XPU
         if device == "xpu"
-        else ProfilerActivity.CUDA if device == "cuda" else ProfilerActivity.CPU
+        else ProfilerActivity.CUDA
+        if device == "cuda"
+        else ProfilerActivity.CPU
     )
     with profile(
         activities=[ProfilerActivity.CPU, activity], record_shapes=True
@@ -43,7 +45,9 @@ def run_e2e(op_run, config, device, num_iter):
     sync = (
         torch.xpu.synchronize
         if device == "xpu"
-        else torch.cuda.synchronize if device == "cuda" else lambda: None
+        else torch.cuda.synchronize
+        if device == "cuda"
+        else lambda: None
     )
     sync()
     t0 = time.time()
