@@ -10,7 +10,9 @@ import json
 import sys
 
 from pathlib import Path
+
 import torch
+
 sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
 import core.cli as cli
@@ -37,6 +39,7 @@ def resolve_dtype_in_config(config):
             )
     return config
 
+
 def main():
     args = cli.parse_args()
     op_mod = cli.load_op_module(args.op)
@@ -58,6 +61,7 @@ def main():
             cfg = resolve_dtype_in_config(cfg.copy())
             print(f"config: {cfg}")
             runner.run_case(op_mod.run_op, cfg, args)
+
 
 if __name__ == "__main__":
     main()

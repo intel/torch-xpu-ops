@@ -30,7 +30,7 @@ def replace_time_columns_inplace(main_file, source_file, backup=True):
             backup_file = os.path.splitext(main_file)[0] + "_backup.csv"
             shutil.copy2(main_file, backup_file)
             print(f"✅ Created backup: {backup_file}")
-        
+
         # Read CSV files with semicolon delimiter
         df_main = pd.read_csv(
             main_file, sep=";", dtype=str
@@ -114,7 +114,7 @@ def replace_time_columns_inplace(main_file, source_file, backup=True):
                 old_time = df_main.at[idx, "time(us)"]
                 old_e2e = df_main.at[idx, "E2E total time(us)"]
                 new_time, new_e2e = source_dict[key]
-                
+
                 df_main.at[idx, "time(us)"] = new_time
                 df_main.at[idx, "E2E total time(us)"] = new_e2e
                 replaced_count += 1
