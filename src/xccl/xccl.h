@@ -26,6 +26,12 @@
 #define XCCL_HAS_AVG 1
 #endif // oneCCL version >= 2021.15
 
+#if defined(CCL_MAJOR_VERSION) &&  \
+    ((CCL_MAJOR_VERSION > 2021) || \
+     (CCL_MAJOR_VERSION == 2021) && (CCL_MINOR_VERSION >= 17))
+#define ENABLE_XCCL_PREMUL_SUM_SUPPORT
+#endif // oneCCL version >= 2021.17
+
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {
     case c10d::ReduceOp::SUM:
@@ -164,6 +170,117 @@ inline const std::map<at::ScalarType, ccl::datatype> xcclDatatypesV1 = {
 
 namespace {
 
+struct XCCLTraitsV1 {
+  using OpType = ccl::reduction;
+  using CommType = const ccl::communicator*;
+
+#if defined(ENABLE_XCCL_PREMUL_SUM_SUPPORT)
+  static void destroyOp(OpType op, CommType comm) {
+    ccl::reduction_destroy(op, *comm);
+  }
+#endif
+};
+
+struct XCCLTraitsV2 {
+  using OpType = onecclRedOp_t;
+  using CommType = onecclComm_t;
+
+#if defined(ENABLE_XCCL_PREMUL_SUM_SUPPORT)
+  static void destroyOp(OpType op, CommType comm) {
+    onecclRedOpDestroy(op, comm);
+  }
+#endif
+};
+
+template <typename Traits>
+struct xcclRedOpRAII {
+  using OpType = typename Traits::OpType;
+  using CommType = typename Traits::CommType;
+
+  xcclRedOpRAII() = default;
+  xcclRedOpRAII(OpType op) : op_(op) {}
+  xcclRedOpRAII(OpType op, CommType comm)
+      : op_(op), comm_(comm), premul_sum_(true) {}
+
+  xcclRedOpRAII(const xcclRedOpRAII&) = delete;
+  xcclRedOpRAII& operator=(const xcclRedOpRAII&) = delete;
+
+  xcclRedOpRAII(xcclRedOpRAII&& tmp) noexcept : xcclRedOpRAII() {
+    std::swap(tmp.op_, this->op_);
+    std::swap(tmp.comm_, this->comm_);
+    std::swap(tmp.premul_sum_, this->premul_sum_);
+  }
+
+#if defined(ENABLE_XCCL_PREMUL_SUM_SUPPORT)
+  ~xcclRedOpRAII() {
+    if (premul_sum_ && comm_) {
+      Traits::destroyOp(op_, comm_);
+    }
+  }
+#endif
+
+  operator OpType() const {
+    return op_;
+  }
+
+  OpType op_{};
+  CommType comm_{};
+  bool premul_sum_ = false;
+};
+
+using xcclRedOpRAIIV1 = xcclRedOpRAII<XCCLTraitsV1>;
+using xcclRedOpRAIIV2 = xcclRedOpRAII<XCCLTraitsV2>;
+
+#ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
+template <typename T, ccl::datatype dataType>
+inline xcclRedOpRAIIV1 unpackPreMulSumV1(
+    const ReduceOp& reduceOp,
+    const ccl::communicator& comm) {
+  const auto* preMulSupplement =
+      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+  ccl::reduction preMulSum{};
+  bool has_tensor = preMulSupplement->tensor_factor.defined();
+  auto residence = has_tensor
+      ? ccl::scalar_residence_type::scalar_device
+      : ccl::scalar_residence_type::scalar_host_immediate;
+  const T* ptr_factor = has_tensor
+      ? preMulSupplement->tensor_factor.const_data_ptr<T>()
+      : nullptr;
+  T scalar_factor = T(preMulSupplement->double_factor);
+  ccl::reduction_create_pre_mul_sum(
+      &preMulSum,
+      /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
+      dataType,
+      residence,
+      comm);
+  return xcclRedOpRAIIV1(preMulSum, &comm);
+}
+
+template <typename T, onecclDataType_t dataType>
+inline xcclRedOpRAIIV2 unpackPreMulSumV2(
+    const ReduceOp& reduceOp,
+    onecclComm_t comm) {
+  const auto* preMulSupplement =
+      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+  onecclRedOp_t preMulSum{};
+  bool has_tensor = preMulSupplement->tensor_factor.defined();
+  auto residence = has_tensor
+      ? onecclScalarResidence_t::onecclScalarDevice
+      : onecclScalarResidence_t::onecclScalarHostImmediate;
+  const T* ptr_factor = has_tensor
+      ? preMulSupplement->tensor_factor.const_data_ptr<T>()
+      : nullptr;
+  T scalar_factor = T(preMulSupplement->double_factor);
+  onecclRedOpCreatePreMulSum(
+      &preMulSum,
+      /*scalar=*/has_tensor ? const_cast<T*>(ptr_factor) : &scalar_factor,
+      dataType,
+      residence,
+      comm);
+  return xcclRedOpRAIIV2(preMulSum, comm);
+}
+#endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
+
 inline ccl::datatype getXcclDataTypeV1(
     at::ScalarType type,
     bool is_reduction_op = false) {
@@ -181,7 +298,6 @@ inline ccl::datatype getXcclDataTypeV1(
   return it->second;
 }
 
-// V2 specific function to avoid variant overhead
 inline onecclDataType_t getXcclDataTypeV2(
     at::ScalarType type,
     bool is_reduction_op = false) {
@@ -199,13 +315,15 @@ inline onecclDataType_t getXcclDataTypeV2(
   return it->second;
 }
 
-inline ccl::reduction getXcclReduceOpV1(
+inline xcclRedOpRAIIV1 getXcclReduceOpV1(
     const ReduceOp& reduceOp,
-    at::Tensor& input) {
+    at::Tensor& input,
+    const ccl::datatype& dataType,
+    const ccl::communicator& comm) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
-        return ccl::reduction::max;
+        return xcclRedOpRAIIV1(ccl::reduction::max);
       }
 #ifdef XCCL_HAS_AVG
       if (reduceOp == ReduceOp::AVG) {
@@ -217,10 +335,34 @@ inline ccl::reduction getXcclReduceOpV1(
 #if !defined(XCCL_HAS_AVG)
     if (reduceOp == ReduceOp::AVG) {
       LOG(INFO) << "[Reduce] Use sum emulation for avg";
-      return ccl::reduction::sum;
+      return xcclRedOpRAIIV1(ccl::reduction::sum);
     }
 #endif
-    return xcclOpsV1.at(reduceOp);
+    if (reduceOp == ReduceOp::PREMUL_SUM) {
+#ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
+      switch (dataType) {
+        case ccl::datatype::float16:
+          return unpackPreMulSumV1<at::Half, ccl::datatype::float16>(
+              reduceOp, comm);
+        case ccl::datatype::float32:
+          return unpackPreMulSumV1<float, ccl::datatype::float32>(
+              reduceOp, comm);
+        case ccl::datatype::bfloat16:
+          return unpackPreMulSumV1<float, ccl::datatype::bfloat16>(
+              reduceOp, comm);
+        case ccl::datatype::float64:
+          return unpackPreMulSumV1<double, ccl::datatype::float64>(
+              reduceOp, comm);
+        default:
+          C10_THROW_ERROR(
+              TypeError,
+              "PreMulSum Data type must be half, float, bfloat16 or double");
+      }
+#else
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+#endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
+    }
+    return xcclRedOpRAIIV1(xcclOpsV1.at(reduceOp));
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
         ValueError,
@@ -228,20 +370,46 @@ inline ccl::reduction getXcclReduceOpV1(
   }
 }
 
-inline onecclRedOp_t getXcclReduceOpV2(
+inline xcclRedOpRAIIV2 getXcclReduceOpV2(
     const ReduceOp& reduceOp,
-    at::Tensor& input) {
+    at::Tensor& input,
+    const onecclDataType_t& dataType,
+    onecclComm_t comm) {
   try {
     if (input.scalar_type() == at::kBool) {
       if (reduceOp == ReduceOp::SUM) {
-        return onecclRedOp_t::onecclMax;
+        return xcclRedOpRAIIV2(onecclRedOp_t::onecclMax);
       }
       if (reduceOp == ReduceOp::AVG) {
         C10_THROW_ERROR(
             TypeError, "Cannot use ReduceOp.AVG with boolean inputs");
       }
     }
-    return xcclOpsV2.at(reduceOp);
+    if (reduceOp == ReduceOp::PREMUL_SUM) {
+#ifdef ENABLE_XCCL_PREMUL_SUM_SUPPORT
+      switch (dataType) {
+        case onecclDataType_t::onecclFloat16:
+          return unpackPreMulSumV2<at::Half, onecclDataType_t::onecclFloat16>(
+              reduceOp, comm);
+        case onecclDataType_t::onecclFloat32:
+          return unpackPreMulSumV2<float, onecclDataType_t::onecclFloat32>(
+              reduceOp, comm);
+        case onecclDataType_t::onecclBfloat16:
+          return unpackPreMulSumV2<float, onecclDataType_t::onecclBfloat16>(
+              reduceOp, comm);
+        case onecclDataType_t::onecclFloat64:
+          return unpackPreMulSumV2<double, onecclDataType_t::onecclFloat64>(
+              reduceOp, comm);
+        default:
+          C10_THROW_ERROR(
+              TypeError,
+              "PreMulSum Data type must be half, float, bfloat16 or double");
+      }
+#else
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+#endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
+    }
+    return xcclRedOpRAIIV2(xcclOpsV2.at(reduceOp));
   } catch (const std::out_of_range&) {
     C10_THROW_ERROR(
         ValueError,
