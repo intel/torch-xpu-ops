@@ -12,7 +12,7 @@ import pandas as pd
 import argparse
 import os
 import json
-import re
+
 from ast import literal_eval
 from tabulate import tabulate
 
