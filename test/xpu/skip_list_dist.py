@@ -44,10 +44,7 @@ skip_dict = {
     "../../../../test/distributed/_composable/test_checkpoint.py": None,
     "../../../../test/distributed/_composable/test_contract.py": None,
     "distributed/test_c10d_xccl.py": None,
-    "distributed/test_c10d_ops_xccl.py": (
-        # hang issue
-        "test_batch_isend_irecv",
-    ),
+    "distributed/test_c10d_ops_xccl.py": None,
     "../../../../test/distributed/test_c10d_functional_native.py": None,
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_mem_tracker.py": None,
