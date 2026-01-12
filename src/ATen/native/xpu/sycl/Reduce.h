@@ -269,7 +269,7 @@ struct ReduceConfig {
     num_items = group_width * group_height;
 
     if (num_items < max_sg_sz) {
-      // Hardware always allocates full sub-group regradless of work-group size.
+      // Hardware always allocates full sub-group regardless of work-group size.
       // Enforce group_width to align with sub-group size.
       group_width = max_sg_sz;
       // Ensure num_items <= max_num_items
