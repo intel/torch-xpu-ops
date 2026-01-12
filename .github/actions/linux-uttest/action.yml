@@ -158,6 +158,8 @@ runs:
         export PATH="${CCL_ROOT}/bin/libfabric:${PATH}"
         export LD_LIBRARY_PATH="${CCL_ROOT}/lib:${LD_LIBRARY_PATH}"
         export TEMP_DIR=/tmp
+        export BACKEND="xccl"
+        export WORLD_SIZE=4
         export USE_CCL_V2=1
         pip install transformers
         sudo rm -rf /tmp/torchinductor_jenkins/
