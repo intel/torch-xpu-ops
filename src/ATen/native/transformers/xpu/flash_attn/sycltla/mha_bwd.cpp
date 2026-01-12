@@ -42,7 +42,9 @@ void compute_o_dot_do(
   auto bofst = Boffset(param);
 
   const index_t o_offset = bofst.o_offset(bidb, bidh, m_block * kBlockM);
-  const index_t dq_offset = bofst.dq_offset(bidb, bidh, m_block * kBlockM);
+  const index_t do_offset = bofst.do_offset(bidb, bidh, m_block * kBlockM);
+  const index_t dqaccum_offset =
+      bofst.dqaccum_offset(bidb, bidh, m_block * kBlockM);
   const index_t dpsum_offset = bofst.lse_offset(bidb, bidh, m_block * kBlockM);
 
   using ShapeO =
@@ -60,16 +62,16 @@ void compute_o_dot_do(
   auto dQ_shape = make_shape(Int<kBlockM>{}, Int<kHeadDim>{});
 
   Tensor mdO = make_tensor(
-      make_gmem_ptr(param.do_ptr + o_offset),
-      make_layout(O_shape, make_stride(param.o_r_stride, _1{})));
+      make_gmem_ptr(param.do_ptr + do_offset),
+      make_layout(O_shape, make_stride(param.do_r_stride, _1{})));
   Tensor mO = make_tensor(
       make_gmem_ptr(param.o_ptr + o_offset),
       make_layout(O_shape, make_stride(param.o_r_stride, _1{})));
   Tensor mdQaccum = make_tensor(
-      make_gmem_ptr(param.dqaccum_ptr + dq_offset),
+      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
       make_layout(
           make_shape(Int<kBlockM>{}, Int<kHeadDim>{}),
-          make_stride(param.dq_r_stride, _1{})));
+          make_stride(param.head_dim, _1{})));
   Tensor mdPsum = make_tensor(
       make_gmem_ptr(param.odo_ptr + dpsum_offset),
       make_layout(dP_shape, Stride<_1>{}));
@@ -103,8 +105,10 @@ void compute_o_dot_do(
       make_tensor(rdO.data(), convert_layout_2d_layout(rdO.layout()));
   Tensor rO_2d = make_tensor(rO.data(), convert_layout_2d_layout(rO.layout()));
   if constexpr (Is_even_M) {
-    copy(tileload_odo, thr_tile_do_S, rdO);
-    copy(tileload_odo, thr_tile_o_S, rO);
+    for (int mi = 0; mi < size<0>(rdO_2d); ++mi) {
+      copy(tileload_odo, thr_tile_do_S(_, mi, _), rdO(_, mi, _));
+      copy(tileload_odo, thr_tile_o_S(_, mi, _), rO(_, mi, _));
+    }
     CUTLASS_PRAGMA_UNROLL
     for (int mi = 0; mi < size<0>(rdO_2d); ++mi) {
       float accum = 0.0f;
@@ -737,8 +741,8 @@ void dq_dk_dv_1colblock(
   const index_t v_offset = bofst.v_offset(bidb, bidhkv, n_block * kBlockN);
   const index_t dk_offset = bofst.dk_offset(bidb, bidh, n_block * kBlockN);
   const index_t dv_offset = bofst.dv_offset(bidb, bidh, n_block * kBlockN);
-  const index_t o_offset = bofst.o_offset(bidb, bidh, 0);
-  const index_t dq_offset = bofst.dq_offset(bidb, bidh, 0);
+  const index_t do_offset = bofst.do_offset(bidb, bidh, 0);
+  const index_t dqaccum_offset = bofst.dqaccum_offset(bidb, bidh, 0);
   const index_t lse_offset = bofst.lse_offset(bidb, bidh, 0);
   // buff offset
   const index_t pb_offset =
@@ -784,8 +788,8 @@ void dq_dk_dv_1colblock(
       make_gmem_ptr(param.v_ptr + v_offset),
       make_layout(shapeKtV, make_stride(param.v_r_stride, _1{}, _1{})));
   Tensor mdO = make_tensor(
-      make_gmem_ptr(param.do_ptr + o_offset),
-      make_layout(shapeO, make_stride(param.o_r_stride, _1{}, _1{})));
+      make_gmem_ptr(param.do_ptr + do_offset),
+      make_layout(shapeO, make_stride(param.do_r_stride, _1{}, _1{})));
   // intermediate buffer
   Tensor mP = make_tensor(
       make_gmem_ptr(param.pb_ptr + pb_offset),
@@ -794,8 +798,8 @@ void dq_dk_dv_1colblock(
       make_gmem_ptr(param.pb_ptr + pb_offset),
       make_layout(shapePt, make_stride(_1{}, block_n_dim, _1{})));
   Tensor mdOt = make_tensor(
-      make_gmem_ptr(param.do_ptr + o_offset),
-      make_layout(shapeQtOt, make_stride(_1{}, param.o_r_stride, _1{})));
+      make_gmem_ptr(param.do_ptr + do_offset),
+      make_layout(shapeQtOt, make_stride(_1{}, param.do_r_stride, _1{})));
   Tensor mK = make_tensor(
       make_gmem_ptr(param.k_ptr + k_offset),
       make_layout(shapeK, make_stride(_1{}, param.k_r_stride, _1{})));
@@ -820,8 +824,8 @@ void dq_dk_dv_1colblock(
       make_gmem_ptr(param.pb_ptr + dsb_offset),
       make_layout(shapeSP, make_stride(block_n_dim, _1{}, _1{})));
   Tensor mdQaccum = make_tensor(
-      make_gmem_ptr(param.dqaccum_ptr + dq_offset),
-      make_layout(shapedQ, make_stride(param.dq_r_stride, _1{}, _1{})));
+      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
+      make_layout(shapedQ, make_stride(param.head_dim, _1{}, _1{})));
   Tensor mdK = make_tensor(
       make_gmem_ptr(param.dk_ptr + dk_offset),
       make_layout(shapeKtV, make_stride(param.dk_r_stride, _1{}, _1{})));
@@ -944,15 +948,15 @@ void dq_dk_dv_1colblock(
           make_gmem_ptr(mdO.data()),
           make_layout(
               make_shape(tail_m, Int<kHeadDim>{}, _1{}),
-              make_stride(param.o_r_stride, _1{}, _1{})));
+              make_stride(param.do_r_stride, _1{}, _1{})));
       mdOt = make_tensor(
           make_gmem_ptr(mdOt.data()),
           make_layout(
               make_shape(Int<kHeadDim>{}, tail_m, _1{}),
-              make_stride(_1{}, param.o_r_stride, _1{})));
+              make_stride(_1{}, param.do_r_stride, _1{})));
       mdQaccum = make_tensor(
           make_gmem_ptr(mdQaccum.data()),
-          make_layout(shapedQ, make_stride(param.dq_r_stride, _1{}, _1{})));
+          make_layout(shapedQ, make_stride(param.head_dim, _1{}, _1{})));
       mQt = make_tensor(
           make_gmem_ptr(mQt.data()),
           make_layout(
@@ -1074,9 +1078,9 @@ void dq_dk_dv_1colblock(
         tileloadQt);
     // update ptr/atom copy
     mQ.data() = mQ.data() + int(kBlockM * param.q_r_stride);
-    mdO.data() = mdO.data() + int(kBlockM * param.o_r_stride);
-    mdOt.data() = mdOt.data() + int(kBlockM * param.o_r_stride);
-    mdQaccum.data() = mdQaccum.data() + int(kBlockM * param.dq_r_stride);
+    mdO.data() = mdO.data() + int(kBlockM * param.do_r_stride);
+    mdOt.data() = mdOt.data() + int(kBlockM * param.do_r_stride);
+    mdQaccum.data() = mdQaccum.data() + int(kBlockM * param.head_dim);
     mQt.data() = mQt.data() + int(kBlockM * param.q_r_stride);
     mLSE.data() = mLSE.data() + int(kBlockM);
     mdPsum.data() = mdPsum.data() + int(kBlockM);
@@ -1139,8 +1143,9 @@ void convert_dq(
   auto first_thread_in_sg_idx = sg.get_group_linear_id() * trait.SubgroupSize;
 
   auto bofst = Boffset(param);
+  const index_t dqaccum_offset =
+      bofst.dqaccum_offset(bidb, bidh, m_block * kBlockM);
   const index_t dq_offset = bofst.dq_offset(bidb, bidh, m_block * kBlockM);
-  const index_t q_offset = bofst.q_offset(bidb, bidh, m_block * kBlockM);
   using ShapeQ = Shape<
       std::conditional_t<Is_even_M, Int<kBlockM>, int>,
       Int<kHeadDim>,
@@ -1153,13 +1158,13 @@ void convert_dq(
   }
 
   Tensor mdQaccum = make_tensor(
-      make_gmem_ptr(param.dqaccum_ptr + dq_offset),
+      make_gmem_ptr(param.dqaccum_ptr + dqaccum_offset),
       make_layout(
           Shape<Int<kBlockM>, Int<kHeadDim>>{},
-          make_stride(param.dq_r_stride, _1{}, _1{})));
+          make_stride(param.head_dim, _1{}, _1{})));
   Tensor mdQ = make_tensor(
-      make_gmem_ptr(param.dq_ptr + q_offset),
-      make_layout(shapeQ, make_stride(param.q_r_stride, _1{}, _1{})));
+      make_gmem_ptr(param.dq_ptr + dq_offset),
+      make_layout(shapeQ, make_stride(param.dq_r_stride, _1{}, _1{})));
 
   auto tile_dq = typename T::TileShapedQ{};
 
@@ -1225,7 +1230,6 @@ class MhdConvertDqName;
 
 template <
     typename T,
-    typename ProblemShape,
     int kBlockM,
     int kBlockN,
     int kHeadDim,
@@ -1233,26 +1237,10 @@ template <
     int AtomLayoutMSdP,
     int AtomLayoutNdKV,
     int AtomLayoutMdQ,
-    bool is_causal,
-    bool is_bhsd>
+    bool is_causal>
 void run_mha_bwd_specialized(
     sycl::queue& queue,
-    ProblemShape& problem_shape,
-    const T* do_d,
-    const T* o_d,
-    const T* q_d,
-    const T* k_d,
-    const T* v_d,
-    const float* lse_d,
-    float* odo_d,
-    float* dqaccum_d,
-    T* dq_d,
-    T* dk_d,
-    T* dv_d,
-    T* pbuff,
-    int seq_len_q_pad,
-    int seq_len_kv_pad,
-    float scale) {
+    FLASH_BWD_params& flash_bwd_params) {
   auto trait = FAKernel<
       T,
       kHeadDim,
@@ -1264,29 +1252,29 @@ void run_mha_bwd_specialized(
       AtomLayoutMdQ,
       is_causal>{};
 
-  const int BATCH = get<0>(problem_shape);
-  const int NUM_HEAD_Q = get<1>(problem_shape);
-  const int NUM_HEAD_KV = get<2>(problem_shape);
-  const int SEQ_LEN_Q = get<3>(problem_shape);
-  const int SEQ_LEN_KV = get<4>(problem_shape);
+  const int BATCH = flash_bwd_params.batch_size;
+  const int NUM_HEAD_Q = flash_bwd_params.num_heads_qo;
+  const int NUM_HEAD_KV = flash_bwd_params.num_heads_kv;
+  const int SEQ_LEN_Q = flash_bwd_params.seqlen_qo;
+  const int SEQ_LEN_KV = flash_bwd_params.seqlen_kv;
   const int N_BLOCK = ceil_div(SEQ_LEN_KV, kBlockN);
   const int tail_n = SEQ_LEN_KV % kBlockN;
   const int M_BLOCK = ceil_div(SEQ_LEN_Q, kBlockM);
   const int tail_m = SEQ_LEN_Q % kBlockM;
   auto param = Param<T>(
-      do_d,
-      o_d,
-      q_d,
-      k_d,
-      v_d,
-      lse_d,
-      odo_d,
-      dqaccum_d,
-      dq_d,
-      dk_d,
-      dv_d,
-      pbuff,
-      scale);
+      static_cast<const T*>(flash_bwd_params.do_ptr),
+      static_cast<const T*>(flash_bwd_params.o_ptr),
+      static_cast<const T*>(flash_bwd_params.q_ptr),
+      static_cast<const T*>(flash_bwd_params.k_ptr),
+      static_cast<const T*>(flash_bwd_params.v_ptr),
+      static_cast<const float*>(flash_bwd_params.lse_ptr),
+      static_cast<float*>(flash_bwd_params.odo_ptr),
+      static_cast<float*>(flash_bwd_params.dqaccum_ptr),
+      static_cast<T*>(flash_bwd_params.dq_ptr),
+      static_cast<T*>(flash_bwd_params.dk_ptr),
+      static_cast<T*>(flash_bwd_params.dv_ptr),
+      static_cast<T*>(flash_bwd_params.pb_ptr),
+      flash_bwd_params.scale);
   param.batch = BATCH;
   param.num_head_q = NUM_HEAD_Q;
   param.num_head_kv = NUM_HEAD_KV;
@@ -1301,13 +1289,11 @@ void run_mha_bwd_specialized(
   param.tail_n = tail_n;
   param.m_block = M_BLOCK;
   param.tail_m = tail_m;
-  param.seq_len_kv_pad = seq_len_kv_pad;
-  param.seq_len_q_pad = seq_len_q_pad;
-  if constexpr (is_bhsd) {
-    setup_bhsd_stride(param);
-  } else {
-    setup_bshd_stride(param);
-  }
+  param.seq_len_kv_pad = flash_bwd_params.seqlen_kv_pad;
+  param.seq_len_q_pad = flash_bwd_params.seqlen_qo_pad;
+
+  setup_stride(param, flash_bwd_params);
+
   auto dimGrid0 =
       compat::dim3(size(M_BLOCK), size(param.num_head_q), size(param.batch));
   auto dimBlock0 =
@@ -1352,36 +1338,12 @@ void run_mha_bwd_specialized(
       MhdConvertDqName<decltype(trait)>>(policy2, queue, trait, param);
 }
 
-template <
-    typename T,
-    typename ProblemShape,
-    int kMPad,
-    int kNPad,
-    bool is_causal,
-    bool is_bhsd>
-void run_mha_bwd_(
-    sycl::queue& queue,
-    ProblemShape& problem_shape,
-    const T* do_d,
-    const T* o_d,
-    const T* q_d,
-    const T* k_d,
-    const T* v_d,
-    const float* lse_d,
-    float* odo_d,
-    float* dqaccum_d,
-    T* dq_d,
-    T* dk_d,
-    T* dv_d,
-    T* pbuff,
-    int seq_len_q_pad,
-    int seq_len_kv_pad,
-    float scale) {
-  const int headdim = get<5>(problem_shape);
+template <typename T, int kMPad, int kNPad, bool is_causal>
+void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params) {
+  const int headdim = params.head_size_vo;
 #define RUN_MHA_BWD_SPECIALIZED() \
   run_mha_bwd_specialized<        \
       T,                          \
-      ProblemShape,               \
       kBlockM,                    \
       kBlockN,                    \
       kHeadDim,                   \
@@ -1389,25 +1351,7 @@ void run_mha_bwd_(
       AtomLayoutMSdP,             \
       AtomLayoutNdKV,             \
       AtomLayoutMdQ,              \
-      is_causal,                  \
-      is_bhsd>(                   \
-      queue,                      \
-      problem_shape,              \
-      do_d,                       \
-      o_d,                        \
-      q_d,                        \
-      k_d,                        \
-      v_d,                        \
-      lse_d,                      \
-      odo_d,                      \
-      dqaccum_d,                  \
-      dq_d,                       \
-      dk_d,                       \
-      dv_d,                       \
-      pbuff,                      \
-      seq_len_q_pad,              \
-      seq_len_kv_pad,             \
-      scale);
+      is_causal>(queue, params);
 
   if (headdim == 64) {
     constexpr int kBlockM = 64;
@@ -1483,51 +1427,11 @@ void run_mha_bwd_(
 #undef RUN_MHA_BWD_SPECIALIZED
 }
 
-template <typename ProblemShape, int kMPad, int kNPad>
-void run_mha_bwd(
-    sycl::queue& queue,
-    ProblemShape& problem_shape,
-    const void* grad_out,
-    const void* out,
-    const void* query,
-    const void* key,
-    const void* value,
-    const void* logsumexp,
-    void* odo,
-    void* dqaccum,
-    void* grad_query,
-    void* grad_key,
-    void* grad_value,
-    void* pbuff,
-    int seqlen_qo_pad,
-    int seqlen_kv_pad,
-    bool is_causal,
-    float scale,
-    at::ScalarType dtype,
-    sycltla::ATTN_TENSOR_LAYOUT layout) {
-  const bool is_bhsd = (layout == sycltla::ATTN_TENSOR_LAYOUT::BHSD);
-  FP16_SWITCH(dtype == at::kHalf, [&] {
-    BOOL_SWITCH(is_bhsd, IS_BSHD, [&] {
-      BOOL_SWITCH(is_causal, IS_CAUSAL, [&] {
-        run_mha_bwd_<elem_type, ProblemShape, kMPad, kNPad, IS_CAUSAL, IS_BSHD>(
-            queue,
-            problem_shape,
-            static_cast<const elem_type*>(grad_out),
-            static_cast<const elem_type*>(out),
-            static_cast<const elem_type*>(query),
-            static_cast<const elem_type*>(key),
-            static_cast<const elem_type*>(value),
-            static_cast<const float*>(logsumexp),
-            static_cast<float*>(odo),
-            static_cast<float*>(dqaccum),
-            static_cast<elem_type*>(grad_query),
-            static_cast<elem_type*>(grad_key),
-            static_cast<elem_type*>(grad_value),
-            static_cast<elem_type*>(pbuff),
-            seqlen_qo_pad,
-            seqlen_kv_pad,
-            scale);
-      });
+template <int kMPad, int kNPad>
+void run_mha_bwd(sycl::queue& queue, FLASH_BWD_params& params) {
+  FP16_SWITCH(params.is_fp16, [&] {
+    BOOL_SWITCH(params.is_causal, IS_CAUSAL, [&] {
+      run_mha_bwd_<elem_type, kMPad, kNPad, IS_CAUSAL>(queue, params);
     });
   });
 }
@@ -1556,11 +1460,12 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
       dropout == 0.0,
       "FlashAttentionBackwardXPU does not only support dropout > 0.0 yet");
 
+  at::Tensor contiguous_grad_out = grad_out.contiguous();
   CHECK_DEVICE(query);
   CHECK_DEVICE(key);
   CHECK_DEVICE(value);
   CHECK_DEVICE(out);
-  CHECK_DEVICE(grad_out);
+  CHECK_DEVICE(contiguous_grad_out);
   CHECK_DEVICE(logsumexp);
 
   TORCH_CHECK(
@@ -1584,10 +1489,14 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
   TORCH_CHECK(
       out.scalar_type() == dtype,
       "FlashAttentionBackwardXPU: query and out must have the same dtype");
+  TORCH_CHECK(
+      contiguous_grad_out.scalar_type() == dtype,
+      "FlashAttentionBackwardXPU: query and grad_out must have the same dtype");
 
   TORCH_CHECK(
       query.dim() == 4 && key.dim() == 4 && value.dim() == 4 &&
-          out.dim() == 4 && grad_out.dim() == 4 && logsumexp.dim() == 3,
+          out.dim() == 4 && contiguous_grad_out.dim() == 4 &&
+          logsumexp.dim() == 3,
       "FlashAttentionBackwardXPU requires query, key, value, out, grad_out to be 4 dimensional and logsumexp to be 3 dimensional");
 
   const int batch_size = query.sizes()[0];
@@ -1601,7 +1510,8 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
   CHECK_SHAPE(key, batch_size, numhead_kv, seqlen_kv, headsize_qk);
   CHECK_SHAPE(value, batch_size, numhead_kv, seqlen_kv, headsize_vo);
   CHECK_SHAPE(out, batch_size, numhead_qo, seqlen_qo, headsize_vo);
-  CHECK_SHAPE(grad_out, batch_size, numhead_qo, seqlen_qo, headsize_vo);
+  CHECK_SHAPE(
+      contiguous_grad_out, batch_size, numhead_qo, seqlen_qo, headsize_vo);
   CHECK_SHAPE(logsumexp, batch_size, numhead_qo, seqlen_qo);
   TORCH_CHECK(
       numhead_qo % numhead_kv == 0,
@@ -1623,41 +1533,15 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
       out.stride(-1) == 1,
       "FlashAttentionBackwardXPU: out tensor must have contiguous last dimension");
   TORCH_CHECK(
-      grad_out.stride(-1) == 1,
+      contiguous_grad_out.stride(-1) == 1,
       "FlashAttentionBackwardXPU: dout tensor must have contiguous last dimension");
   TORCH_CHECK(
       logsumexp.stride(-1) == 1,
       "FlashAttentionBackwardXPU: logsumexp tensor must have contiguous last dimension");
 
-  ATTN_TENSOR_LAYOUT layout = get_attn_tensor_layout(query);
-  if (layout == ATTN_TENSOR_LAYOUT::UNSUPPORTED) {
-    TORCH_CHECK(
-        false,
-        "FlashAttentionBackwardXPU: only support BHSD or BSHD layout, got query with shape ",
-        query.sizes(),
-        ", stride ",
-        query.strides());
-  }
-  layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(key));
   TORCH_CHECK(
-      ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionBackwardXPU: query and key must have the same layout, got query with layout ",
-      to_string(layout),
-      ", key with layout ",
-      to_string(get_attn_tensor_layout(key)));
-  layout = fuse_attn_tensor_layout(layout, get_attn_tensor_layout(value));
-  TORCH_CHECK(
-      ATTN_TENSOR_LAYOUT::UNSUPPORTED != layout,
-      "FlashAttentionBackwardXPU: query and value must have the same layout, got query with layout ",
-      to_string(layout),
-      ", value with layout ",
-      to_string(get_attn_tensor_layout(value)));
-  if (layout == ATTN_TENSOR_LAYOUT::BXD) {
-    layout = ATTN_TENSOR_LAYOUT::BHSD;
-  }
-  TORCH_CHECK(logsumexp.is_contiguous(), "logsumexp must have BHS layout");
-  // grad_out is created by autograd, may not have standard layout
-  auto grad_out_ = attn_tensor_to_layout(grad_out, layout);
+      logsumexp.is_contiguous(),
+      "FlashAttentionBackwardXPU: logsumexp must be contiguous in [batch_size, numhead_qo, seqlen_qo]");
 
   auto sycl_queue = at::xpu::getCurrentXPUStream().queue();
   auto device_architecture =
@@ -1686,19 +1570,10 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
 
   at::Tensor grad_key_expanded, grad_value_expanded;
   if (numhead_kv != numhead_qo) { // MQA / GQA
-    if (layout == ATTN_TENSOR_LAYOUT::BHSD) { // BHSD
-      grad_key_expanded =
-          at::empty({batch_size, numhead_qo, seqlen_kv, headsize_qk}, opts);
-      grad_value_expanded =
-          at::empty({batch_size, numhead_qo, seqlen_kv, headsize_vo}, opts);
-    } else { // BSHD
-      grad_key_expanded =
-          at::empty({batch_size, seqlen_kv, numhead_qo, headsize_qk}, opts)
-              .transpose(1, 2);
-      grad_value_expanded =
-          at::empty({batch_size, seqlen_kv, numhead_qo, headsize_vo}, opts)
-              .transpose(1, 2);
-    }
+    grad_key_expanded =
+        at::empty({batch_size, numhead_qo, seqlen_kv, headsize_qk}, opts);
+    grad_value_expanded =
+        at::empty({batch_size, numhead_qo, seqlen_kv, headsize_vo}, opts);
   } else {
     grad_key_expanded = grad_key;
     grad_value_expanded = grad_value;
@@ -1715,36 +1590,34 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
   auto tensor_pbuff =
       at::empty({batch_size, numhead_qo, seqlen_kv_pad, 2 * kMPad}, opts);
 
-  auto problem_shape = ProblemShapeRegular(
+  FLASH_BWD_params params;
+  set_params_dgrad(
+      params,
       batch_size,
       numhead_qo,
       numhead_kv,
       seqlen_qo,
       seqlen_kv,
       headsize_qk,
-      headsize_vo);
-
-  cute::run_mha_bwd<decltype(problem_shape), kMPad, kNPad>(
-      sycl_queue,
-      problem_shape,
-      grad_out_.data_ptr(),
-      out.data_ptr(),
-      query.data_ptr(),
-      key.data_ptr(),
-      value.data_ptr(),
-      logsumexp.data_ptr(),
-      tensor_odo.data_ptr(),
-      tensor_dqaccum.data_ptr(),
-      grad_query.data_ptr(),
-      grad_key_expanded.data_ptr(),
-      grad_value_expanded.data_ptr(),
-      tensor_pbuff.data_ptr(),
+      headsize_vo,
       seqlen_qo_pad,
       seqlen_kv_pad,
-      is_causal,
+      query,
+      key,
+      value,
+      out,
+      contiguous_grad_out,
+      logsumexp,
+      grad_query,
+      grad_key_expanded,
+      grad_value_expanded,
+      tensor_odo,
+      tensor_dqaccum,
+      tensor_pbuff,
       scale,
-      dtype,
-      layout);
+      is_causal);
+
+  cute::run_mha_bwd<kMPad, kNPad>(sycl_queue, params);
 
   if (numhead_kv != numhead_qo) {
     at::sum_out(
