@@ -48,9 +48,6 @@ skip_dict = {
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_memory_tracker.py": None,
-    "../../../../test/distributed/tensor/test_random_ops.py": (
-        # not upstream yet
-        "test_hsdp_tp_model_meta_init",
-    ),
+    "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_math_ops.py": None,
 }
