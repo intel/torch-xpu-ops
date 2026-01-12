@@ -4,7 +4,7 @@ beit_base_patch16_224,pass,pass,pass,pass,pass
 botnet26t_256,pass,pass,pass,pass,pass
 cait_m36_384,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1766
-coat_lite_mini,pass,pass,pass,fail_accuracy,fail_accuracy
+coat_lite_mini,pass,pass,pass,pass,pass
 convit_base,pass,pass,pass,pass,pass
 convmixer_768_32,pass,pass,pass,pass,pass
 convnext_base,pass,pass,pass,pass,pass
