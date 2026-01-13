@@ -37,6 +37,7 @@
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>
 #include <ATen/native/xpu/sycl/UnarySignKernels.h>
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
+#include <ATen/native/xpu/sycl/KaiserWindowKernel.h>
 
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
@@ -101,6 +102,7 @@ REGISTER_XPU_DISPATCH(special_ndtri_stub, &xpu::ndtri_kernel);
 REGISTER_XPU_DISPATCH(special_log_ndtr_stub, &xpu::log_ndtr_kernel);
 REGISTER_XPU_DISPATCH(special_erfcx_stub, &xpu::erfcx_kernel);
 REGISTER_XPU_DISPATCH(special_entr_stub, &xpu::entr_kernel);
+REGISTER_XPU_DISPATCH(kaiser_window_stub, &xpu::kaiser_window_kernel);
 
 } // namespace native
 } // namespace at
