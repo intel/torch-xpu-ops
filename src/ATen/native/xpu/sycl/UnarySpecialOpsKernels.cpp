@@ -340,13 +340,13 @@ void sinc_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct KaiserWindowFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
-  
+
   scalar_t operator()(scalar_t a) const {
     opmath_t norm = static_cast<opmath_t>(a) * inv_alpha_ - 1;
     opmath_t sqrt_term = std::max<opmath_t>(0, 1 - norm * norm);
     return calc_i0(beta_ * std::sqrt(sqrt_term)) * inv_i0_beta_;
   }
-  
+
   KaiserWindowFunctor(opmath_t beta, opmath_t inv_alpha, opmath_t inv_i0_beta)
       : beta_(beta), inv_alpha_(inv_alpha), inv_i0_beta_(inv_i0_beta) {}
 
