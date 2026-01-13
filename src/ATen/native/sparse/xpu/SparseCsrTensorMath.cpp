@@ -12,6 +12,7 @@
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
+#include <ATen/native/sparse/xpu/SparseCsrTensorMath.h>
 
 namespace at::native {
 
@@ -51,6 +52,221 @@ Tensor _sparse_csr_prod_xpu(
     std::optional<ScalarType> dtype) {
   return xpu::_sparse_csr_prod_xpu_kernel(
       input, dims_to_reduce, keepdim, dtype);
+}
+
+// result = beta * self + alpha * (mat1 @ mat2)
+Tensor& addmm_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  sparse::impl::_check_is_xpu(self, "self");
+  sparse::impl::_check_is_xpu(mat1, "mat1");
+  sparse::impl::_check_is_xpu(mat2, "mat2");
+  sparse::impl::_check_is_xpu(result, "result");
+
+  // Same checks as in TORCH_META_FUNC(addmm) at
+  // aten/src/ATen/native/LinearAlgebra.cpp
+  sparse::impl::_check_dim(mat1, 2, "mat1");
+  sparse::impl::_check_dim(mat2, 2, "mat2");
+
+  TORCH_CHECK(
+      mat1.size(1) == mat2.size(0), "mat1 and mat2 shapes cannot be multiplied (",
+      mat1.size(0), "x", mat1.size(1), " and ", mat2.sizes()[0], "x", mat2.sizes()[1], ")");
+
+  // From addmm_out_cuda_impl at ATen/native/cuda/Blas.cpp
+  // TODO: remove code duplication and unify code
+  // There were undefined symbol problems,
+  // when using the same function for CUDA and SparseCsrCUDA dispatch keys
+  // Also structured kernels do not support sparse output
+  c10::MaybeOwned<at::Tensor> self_;
+  // Don't expand self if this is an in-place operation
+  if (&result == &self) {
+     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
+  } else {
+     self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+  }
+
+  sparse::impl::_check_dim(*self_, 2, "self");
+  TORCH_CHECK(((self_->dim() == 2) &&
+               (self_->size(0) == mat1.size(0)) &&
+               (self_->size(1) == mat2.size(1))),
+              "The input tensor must be a matrix with size ",
+              mat1.size(0),
+              "x",
+              mat2.size(1),
+              ", but got a ",
+              self_->dim(),
+              "-D tensor with size ",
+              self_->size(0),
+              "x",
+              self_->size(1));
+
+  if (!result.is_same(self)) {
+    if (result.layout() == kStrided) {
+      at::native::resize_output(result, self_->sizes());
+    } else {
+      result.resize_as_sparse_(*self_);
+    }
+  }
+
+  if (result.numel() == 0) {
+    return result;
+  }
+
+  if (sparse::impl::_is_sparse_and_zero(mat1) || sparse::impl::_is_sparse_and_zero(mat2)) {
+    // According to docs, when beta==0 values in self should be ignored.
+    // nans and infs should not propagate
+    const auto beta_val = beta.toComplexDouble();
+    if (beta_val == 0.) {
+      result.zero_();
+    } else {
+      if (!result.is_same(self)) {
+        result.copy_(*self_);
+      }
+      if (beta_val != 1.) {
+        result.mul_(beta);
+      }
+    }
+    return result;
+  }
+
+  addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+void addmm_out_sparse_csr(
+    const Tensor& input,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    const Tensor& result) {
+  TORCH_INTERNAL_ASSERT(
+      !((mat1.layout() == kStrided) && (mat2.layout() == kStrided) &&
+        (result.layout() == kStrided)),
+      "Expected at least one sparse input");
+
+  // Layout checks are nested mat1, mat2, result
+  // Conditions are ordered strided, csr, csc, bsr, bsc.
+  // Valid combinations terminate in a return
+  // Invalid combinations are omitted and will fall though to the TORCH check
+  // generating an informative error message
+
+  // mm functions that copy input to result when needed (e.g. mm
+  // triton kernels do not require result being initialized with
+  // input):
+  if (mat1.layout() == kSparseBsr) {
+    if (mat2.layout() == kStrided) {
+      if (result.layout() == kStrided)
+         { block_sparse_mm(input, mat1, mat2, beta, alpha, result); return;
+}
+    }
+  }
+
+  if (mat1.layout() == kStrided) {
+    if (mat2.layout() == kSparseBsc) {
+      if (result.layout() == kStrided) {
+        auto result_t = result.transpose(-2, -1);
+        auto input_t = (result.is_same(input) ? result_t : input.transpose(-2, -1));
+        block_sparse_mm(
+            input_t,
+            mat2.transpose(-2, -1),
+            mat1.transpose(-2, -1),
+            beta,
+            alpha,
+            result_t); return;
+      }
+    }
+  }
+
+  // copy input to result:
+  if (beta.toComplexDouble() != 0. && !result.is_same(input)) {
+    result.copy_(input);
+  }
+
+  // mm functions that assume that result contains input:
+  if (mat1.layout() == kStrided) {
+    if (mat2.layout() == kSparseCsr) {
+      if (result.layout() == kStrided) {
+        // TODO: Add native CSC support via cuSPARSE if supported.
+        spmm(
+            mat2.transpose(0, 1).to_sparse_csr(),
+            mat1.transpose(0, 1),
+            beta,
+            alpha,
+            result.transpose(0, 1)); return;
+      }
+    }
+    if (mat2.layout() == kSparseCsc) {
+      if (result.layout() == kStrided) {
+        spmm(
+            mat2.transpose(-2, -1),
+            mat1.transpose(-2, -1),
+            beta,
+            alpha,
+            result.transpose(-2, -1)); return;
+      }
+    }
+  }
+  if (mat1.layout() == kSparseCsr) {
+    if (mat2.layout() == kStrided) {
+      if (result.layout() == kStrided) {
+        spmm(mat1, mat2, beta, alpha, result); return;
+      }
+    }
+    if (mat2.layout() == kSparseCsr) {
+      if (result.layout() == kSparseCsr) {
+        spgemm(mat1, mat2, beta, alpha, result); return;
+      }
+    }
+    if (mat2.layout() == kSparseCsc) {
+      if (result.layout() == kSparseCsr) {
+        // TODO: Add native CSC support via cuSPARSE if supported.
+        // CSR @ CSC kernel would be very fast due to format alignment
+        spgemm(mat1, mat2.to_sparse_csr(), beta, alpha, result); return;
+      }
+    }
+  }
+  if (mat1.layout() == kSparseCsc) {
+    if (mat2.layout() == kStrided) {
+      if (result.layout() == kStrided) {
+        // TODO: Add native CSC support via cuSPARSE if supported.
+        spmm(mat1.to_sparse_csr(), mat2, beta, alpha, result); return;
+      }
+    }
+    if (mat2.layout() == kSparseCsr) {
+      if (result.layout() == kSparseCsr)
+        // TODO: Add native CSC support via cuSPARSE if supported.
+         { spgemm(mat1.to_sparse_csr(), mat2, beta, alpha, result); return;
+}
+    }
+    if (mat2.layout() == kSparseCsc) {
+      if (result.layout() == kSparseCsr) {
+        // TODO: Add native CSC support via cuSPARSE if supported.
+        spgemm(
+            mat1.to_sparse_csr(), mat2.to_sparse_csr(), beta, alpha, result); return;
+      }
+      if (result.layout() == kSparseCsc) {
+        spgemm(
+            mat2.transpose(-2, -1),
+            mat1.transpose(-2, -1),
+            beta,
+            alpha,
+            result.transpose(-2, -1)); return;
+      }
+    }
+  }
+  TORCH_CHECK(
+      false,
+      "addmm: computation on CUDA is not implemented for ",
+      result.layout(),
+      " + ",
+      mat1.layout(),
+      " @ ",
+      mat2.layout());
 }
 
 } // namespace at::native
