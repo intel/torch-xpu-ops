@@ -10,8 +10,8 @@ template <typename scalar_t>
 struct KaiserWindowFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
-    opmath_t x = static_cast<opmath_t>(a) * inv_alpha_ - opmath_t(1);
-    opmath_t y = std::max(opmath_t(0), opmath_t(1) - x * x);
+    opmath_t normalized_position = static_cast<opmath_t>(a) * inv_alpha_ - opmath_t(1);
+    opmath_t y = std::max(opmath_t(0), opmath_t(1) - normalized_position * normalized_position);
     return calc_i0(static_cast<opmath_t>(beta_) * std::sqrt(y)) * inv_i0_beta_;
   }
   KaiserWindowFunctor(double beta, double inv_alpha, double inv_i0_beta)
