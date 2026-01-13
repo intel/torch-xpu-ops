@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -xeuo pipefail
 # Script used in CI and CD pipeline for Intel GPU driver installation
 
 # Intel® software for general purpose GPU capabilities.
