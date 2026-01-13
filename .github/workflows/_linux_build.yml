@@ -96,6 +96,12 @@ jobs:
         run: |
           export USE_XCCL=1
           export IS_XPU_CI=1
+          # install oneapi
+          export ONEAPI_URL="https://registrationcenter-download.intel.com/akdlm/IRC_NAS/9065c156-58ab-41b0-bbee-9b0e229ffca5/intel-deep-learning-essentials-2025.3.1.15_offline.sh"
+          export XPU_MKL_VERSION=2025.3.0
+          wget -q -O oneapi.sh "${ONEAPI_URL}"
+          bash oneapi.sh -a -s --eula accept --action install --install-dir ${HOME}/intel/oneapi
+          export XPU_ONEAPI_PATH=${HOME}/intel/oneapi
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
