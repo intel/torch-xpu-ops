@@ -168,10 +168,10 @@ jobs:
             --event schedule \
             --repo intel/torch-xpu-ops \
             --limit 50 \
-            --json databaseId,displayTitle 2>/dev/null)
+            --json databaseId,displayTitle,status 2>/dev/null)
           get_run_id() {
             local title="$1"
-            echo "$json" | jq -r --arg t "$title" '.[] | select(.displayTitle == $t) | .databaseId' | head -n1
+            echo "$json" | jq -r --arg t "$title" '.[] | select(.displayTitle == $t) | select(.status == "completed") | .databaseId' | head -n1
           }
           case "${artifact_type}" in
             "build-nightly")   REFERENCE_RUN_ID="$(get_run_id "Nightly / Build-from-source")" ;;
