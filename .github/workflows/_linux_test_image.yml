@@ -34,6 +34,7 @@ on:
         options:
           - '22.04'
           - '24.04'
+          - '25.04'
       tag:
         type: string
         required: true
