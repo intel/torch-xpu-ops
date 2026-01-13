@@ -17,6 +17,7 @@ on:
         options:
           - ubuntu-24.04
           - ubuntu-22.04
+          - build
       driver:
         type: choice
         required: true
@@ -26,6 +27,7 @@ on:
           - lts
           - lts2
           - rolling
+          - rolling-client
       ubuntu:
         type: choice
         required: true
