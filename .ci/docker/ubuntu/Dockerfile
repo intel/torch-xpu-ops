@@ -10,6 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC
 
 # Install XPU driver - moved earlier to leverage Docker cache
+ARG GCC_VERSION
+ENV GCC_VERSION=${GCC_VERSION}
 ARG XPU_DRIVER_TYPE
 ENV XPU_DRIVER_TYPE=${XPU_DRIVER_TYPE}
 
@@ -21,6 +23,10 @@ RUN bash /tmp/install_xpu.sh && \
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
     apt-get upgrade -y --no-install-recommends && \
+    if [ "${UBUNTU_VERSION}" == "22.04" ];then \
+        apt-get install -y software-properties-common && \
+        add-apt-repository ppa:ubuntu-toolchain-r/test -y ;\
+    fi && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         gnupg \
@@ -46,6 +52,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
         jq \
         # Build tools
         gcc g++ \
+        gcc-${GCC_VERSION} g++-${GCC_VERSION} \
         cmake \
         ninja-build \
         pkg-config \
@@ -63,6 +70,11 @@ RUN --mount=type=cache,target=/var/cache/apt \
         python3-dev \
         python3-venv \
         python3-pip && \
+    # Setup gcc 13 as default
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 13 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 13 && \
+    update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-13 13 && \
+    gcc -v && g++ -v && gcov -v && \
     # Cleanup
     apt-get autoremove -y && \
     apt-get clean && \
