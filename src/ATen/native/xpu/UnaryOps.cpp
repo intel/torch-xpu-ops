@@ -37,7 +37,6 @@
 #include <ATen/native/xpu/sycl/UnaryLogKernels.h>
 #include <ATen/native/xpu/sycl/UnarySignKernels.h>
 #include <ATen/native/xpu/sycl/UnarySpecialOpsKernels.h>
-#include <ATen/native/xpu/sycl/KaiserWindowKernel.h>
 
 #include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
