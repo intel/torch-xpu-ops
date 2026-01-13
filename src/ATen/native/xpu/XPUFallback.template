@@ -232,6 +232,8 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "dot",
     "_efficient_attention_forward",
     "_flash_attention_forward",
+    "_fused_rms_norm",
+    "_fused_rms_norm_backward",
     "geqrf",
     "geqrf.a",
     "hash_tensor.out",
