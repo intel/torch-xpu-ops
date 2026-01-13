@@ -59,8 +59,9 @@ RUN --mount=type=cache,target=/var/cache/apt \
         zlib1g-dev \
         # Python and pip
         python3 \
+        python3-dev \
         python3-venv \
-        python3-dev && \
+        python3-pip && \
     # Cleanup
     apt-get autoremove -y && \
     apt-get clean && \
