@@ -91,7 +91,7 @@ RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |tee /etc/sudoers.d/nopasswd && \
 RUN sudo visudo -c
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /workspace
+RUN mkdir -p /workspace && chmod 777 -R /opt /workspace
 # Set working directory
 WORKDIR /workspace
 
