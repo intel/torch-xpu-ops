@@ -32,7 +32,7 @@ def get_default_cases():
         [8192, 8192],
     ]
     dtypes = [torch.bfloat16, torch.float16, torch.float32]
-    p_values = [0.5, torch.tensor(0.5)]
+    p_values = [0.5]
 
     cases = []
     for shape in base_shapes:
