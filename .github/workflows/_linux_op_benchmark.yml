@@ -87,7 +87,7 @@ jobs:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
 
-  result_analysis_with_rerun_plan:
+  result_analysis:
     needs: op_benchmark
     runs-on: ubuntu-24.04
     permissions:
@@ -116,7 +116,7 @@ jobs:
         run: |
           # latest dir
           latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
-          mv ${{ github.workspace }}/op_benchmark/${latest_dir} ${{ github.workspace }}/op_benchmark
+          find "${latest_dir}" -type f -name "*.csv" -exec mv {} ${{ github.workspace }}/op_benchmark/ \; || true
           # baseline
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
@@ -167,8 +167,8 @@ jobs:
           overwrite: true
 
   op_benchmark_rerun:
-    needs: [runner, result_analysis_with_rerun_plan]
-    if: needs.result_analysis_with_rerun_plan.outputs.has_regression == 'true'
+    needs: [runner, result_analysis]
+    if: needs.result_analysis.outputs.has_regression == 'true'
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 600
     container:
@@ -218,7 +218,7 @@ jobs:
           overwrite: true
 
   op_benchmark_final_test_results_check:
-    needs: [result_analysis_with_rerun_plan, op_benchmark_rerun]
+    needs: [result_analysis, op_benchmark_rerun]
     runs-on: ubuntu-24.04
     permissions:
       issues: write
@@ -240,10 +240,18 @@ jobs:
           path: ${{ github.workspace }}/op_benchmark
       - name: Check the OP Regression
         run: |
+          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
+          find "${latest_dir}" -type f -name "*.csv" -exec mv {} ${{ github.workspace }}/op_benchmark/ \; || true
+          mkdir -p ${{ github.workspace }}/op_benchmark/baseline
+          find "${latest_dir}" -type f -name "baseline*.csv" -exec mv {} ${{ github.workspace }}/op_benchmark/baseline/ \; || true
+
           pip install tabulate pandas
           # update rerun results
-          python ${{ github.workspace }}/test/microbench/update_microbench_perf.py ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/op_benchmark/rerun_forward_op_summary_filtered.csv
-          python ${{ github.workspace }}/test/microbench/update_microbench_perf.py ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/op_benchmark/rerun_backward_op_summary_filtered.csv
+          if [[ needs.result_analysis.outputs.has_regression == 'true' ]]; then
+            python ${{ github.workspace }}/test/microbench/update_microbench_perf.py ${{ github.workspace }}/op_benchmark/forward_op_summary.csv ${{ github.workspace }}/op_benchmark/rerun_forward_op_summary_filtered.csv
+            python ${{ github.workspace }}/test/microbench/update_microbench_perf.py ${{ github.workspace }}/op_benchmark/backward_op_summary.csv ${{ github.workspace }}/op_benchmark/rerun_backward_op_summary_filtered.csv
+            echo "Updated rerun results"
+          fi
 
           # Compare forward op
           python ${{ github.workspace }}/.github/scripts/op_perf_comparison.py --xpu_file ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline_file ${{ github.workspace }}/op_benchmark/baseline/baseline_forward_op_summary.csv --output-json ${{ github.workspace }}/op_benchmark/regression_forward_op_final.json
@@ -253,7 +261,7 @@ jobs:
         run: |
           pip install tabulate pandas
           mkdir -p ${{ github.workspace }}/new_baseline
-          cp ${{ github.workspace }}/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
+          cp ${{ github.workspace }}/op_benchmark/baseline/baseline*.csv ${{ github.workspace }}/new_baseline
           # Update forward op
           python ${{ github.workspace }}/.github/scripts/op_calculate_best_perf.py --xpu ${{ github.workspace }}/op_benchmark/forward_op_summary.csv --baseline ${{ github.workspace }}/new_baseline/baseline_forward_op_summary.csv -r
           # Update backward op
