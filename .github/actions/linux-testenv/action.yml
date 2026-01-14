@@ -77,7 +77,7 @@ runs:
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
-        git checkout c27eca275daf8601d760c5862cdec932b02bd4b1
+        git checkout $TORCH_COMMIT_ID
         # apply extra PRs for stock pytorch
         pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
@@ -91,7 +91,7 @@ runs:
         #   cp torch/_inductor/utils.py "`dirname $(which python)`/../lib/python3.10/site-packages/torch/_inductor/utils.py"
         # fi
         git status && git diff && git show -s
-        echo "TORCH_COMMIT_ID=38fa35594d68cd3439a7002429b31ee038a160b7" >> ${GITHUB_ENV}
+        echo "TORCH_COMMIT_ID=$TORCH_COMMIT_ID" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}
       run: |
@@ -192,22 +192,6 @@ runs:
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
         fi
-    - name: Download Pytorch wheel
-      if: ${{ inputs.pytorch == 'test_wheel' }}
-      uses: actions/download-artifact@v4
-      with:
-        name: manywheel-py3_10-xpu
-        github-token: ${{ github.token }}
-        repository: pytorch/pytorch
-        run-id: 20518902036
-        path: ${{ github.workspace }}/wheels
-    - name: Install test target
-      if: ${{ inputs.pytorch == 'test_wheel' }}
-      shell: bash -xe {0}
-      run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install --no-deps ${{ github.workspace }}/wheels/torch-*.whl
-        pip list |grep -E 'intel|torch|triton'
     - name: Torch Config
       shell: bash -xe {0}
       run: |
