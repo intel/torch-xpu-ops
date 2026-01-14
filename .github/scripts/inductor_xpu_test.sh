@@ -50,8 +50,10 @@ elif [[ "$DT" == "amp_fp16" ]]; then
     Real_DT=amp
     DT_extra="--amp-dtype float16 "
 fi
-if [ "${SUITE}" == "torchbench" ];then
-    DT_extra+=" --batch-size 4 "
+if [ "${SUITE}" == "timm_models" ] || [ "${SUITE}" == "torchbench" ];then
+    if [ "${SCENARIO}" == "performance" ];then
+        DT_extra+=" --batch-size 4 "
+    fi
 fi
 
 Shape_extra=""
