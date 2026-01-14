@@ -219,6 +219,7 @@ jobs:
 
   op_benchmark_final_test_results_check:
     needs: [result_analysis, op_benchmark_rerun]
+    if: always()
     runs-on: ubuntu-24.04
     permissions:
       issues: write
