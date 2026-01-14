@@ -242,8 +242,8 @@ jobs:
       - name: Check the OP Regression
         run: |
           latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
-          find . -type f -name "*.csv" -exec mv {} ${{ github.workspace }}/op_benchmark/ \; || true
           mkdir -p ${{ github.workspace }}/op_benchmark/baseline
+          find . -type f -name "*.csv" -exec mv {} ${{ github.workspace }}/op_benchmark/ \; || true
           find . -type f -name "baseline*.csv" -exec mv {} ${{ github.workspace }}/op_benchmark/baseline/ \; || true
 
           pip install tabulate pandas
