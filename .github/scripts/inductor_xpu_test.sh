@@ -15,6 +15,8 @@ declare -A DEFAULTS=(
     ["NUM_SHARDS"]=""           # num test shards
     ["SHARD_ID"]=""             # shard id
     ["MODEL_ONLY"]=""           # GoogleFnet / T5Small / ...
+    ["WORKSPACE"]=""            # Workspace directory
+    ["LOG_DIR"]=""              # Log directory
     ["REFERENCE_DIR"]=""        # Reference result dir
     ["REGRESSION_CHECK"]="false" # Enable regression checking
     ["PERF_RERUN_THRESHOLD"]="0.9" # Threshold for performance rerun (0.9 = 90% of reference)
@@ -154,10 +156,14 @@ done
 parse_args "$@"
 
 # Set defaults if not provided via command line
-WORKSPACE="${WORKSPACE:-$(pwd)}"
+if [[ -z "${WORKSPACE}" ]]; then
+    WORKSPACE=$(pwd)
+fi
 
 # Configure log directory
-LOG_DIR="${LOG_DIR:-${WORKSPACE}/inductor_log/${SUITE}/${DTYPE}}"
+if [[ -z "${LOG_DIR}" ]]; then
+    LOG_DIR="${WORKSPACE}/inductor_log/${SUITE}/${DTYPE}"
+fi
 
 # Create log directory with verbose output
 echo "Creating log directory: ${LOG_DIR}"
@@ -223,99 +229,131 @@ fi
 
 # Function to extract unique test cases from CSV files
 extract_test_cases() {
-    local dir=$1
-    local output_file=$2
+    local dir="$1"
+    local output_file="$2"
 
     echo "Extracting test cases from $dir..."
 
-    # Find all CSV files and concatenate, removing header from all but first
-    for csv in $(find $dir -type f -name "*.summary.csv"); do
-        if [ -f "$csv" ]; then
-            tail -n +2 "$csv" >> "$output_file"
-        fi
-    done
+    # Clear output file
+    > "$output_file"
 
-    if [ ! -f "$output_file" ] || [ ! -s "$output_file" ]; then
-        echo "ERROR: No CSV files found in $dir"
-        exit 1
+    # Find all CSV files and concatenate, removing header from all but first
+    local first_file=true
+    while IFS= read -r -d '' csv; do
+        if [[ -f "$csv" ]]; then
+            if [[ "$first_file" == true ]]; then
+                # Copy entire first file including header
+                cat "$csv" > "$output_file"
+                first_file=false
+            else
+                # Append without header
+                tail -n +2 "$csv" >> "$output_file"
+            fi
+        fi
+    done < <(find "$dir" -type f -name "*.summary.csv" -print0)
+
+    if [[ ! -s "$output_file" ]]; then
+        echo "ERROR: No CSV files found in $dir or files are empty"
+        return 1
     fi
 
-    echo "Extracted $(wc -l < "$output_file") lines from $dir"
+    local line_count=$(wc -l < "$output_file")
+    echo "Extracted $((line_count-1)) test cases from $dir"
 }
 
 # Function to find performance regression test cases
 find_perf_reg_cases() {
-    local new_file=$1
-    local ref_file=$2
-    local output_file=$3
+    local new_file="$1"
+    local ref_file="$2"
+    local output_file="$3"
 
     echo "Finding matching test cases..."
 
-    # Create a combined view with both results
-    # Using awk to match on Suite,Dtype,Mode,Scenario,Model,BS
-    awk -F',' '
-    BEGIN {
-        OFS=","
-    }
-    NR==FNR {
-        # Read new results
+    # Create temporary files for processing
+    local temp_new="${output_file}.temp_new"
+    local temp_ref="${output_file}.temp_ref"
+
+    # Create key-value files with comma escaping
+    awk -F',' 'NR>1 {
+        gsub(/"/, "", $0)
         key = $1 "," $2 "," $3 "," $4 "," $5 "," $6
-        new_eager = $8
-        new_inductor = $9
-        new_data[key] = new_eager "," new_inductor
-        next
-    }
+        print key "," $7 "," $8 "," $9
+    }' "$new_file" | sort > "$temp_new"
+
+    awk -F',' 'NR>1 {
+        gsub(/"/, "", $0)
+        key = $1 "," $2 "," $3 "," $4 "," $5 "," $6
+        print key "," $7 "," $8 "," $9
+    }' "$ref_file" | sort > "$temp_ref"
+
+    # Join files and calculate ratios
+    join -t',' -j1 "$temp_ref" "$temp_new" > "${output_file}.joined"
+
+    # Process joined data
+    echo "Suite,Dtype,Mode,Scenario,Model,BS,Acc,Ref_Eager,Ref_Inductor,New_Eager,New_Inductor,Eager_Ratio,Inductor_Ratio,Regression_type,Regression" > "$output_file"
+
+    awk -F',' -v threshold="0.9" '
     {
-        # Read reference results
-        key = $1 "," $2 "," $3 "," $4 "," $5 "," $6
-        ref_eager = $8
-        ref_inductor = $9
+        split($0, fields, ",")
 
-        if (key in new_data) {
-            split(new_data[key], new_vals, ",")
-            new_eager_val = new_vals[1]
-            new_inductor_val = new_vals[2]
+        # Extract values
+        key = fields[1]
+        ref_acc = fields[7]
+        ref_eager = fields[8]
+        ref_inductor = fields[9]
+        new_acc = fields[10]
+        new_eager = fields[11]
+        new_inductor = fields[12]
 
-            # Calculate ratios
-            if (new_eager_val + 0 != 0) {
-                eager_ratio = ref_eager / new_eager_val
-            } else {
-                eager_ratio = 0
-            }
-
-            if (new_inductor_val + 0 != 0) {
-                inductor_ratio = ref_inductor / new_inductor_val
-            } else {
-                inductor_ratio = 0
-            }
-
-            # Check for regression
-            regression = "NO"
-            regression_type = ""
-            if (eager_ratio < 0.9) {
-                regression = "YES"
-                regression_type = "Eager"
-            }
-            if (inductor_ratio < 0.9) {
-                regression = "YES"
-                regression_type = "Inductor"
-            }
-
-            print $0, new_eager_val, new_inductor_val, eager_ratio, inductor_ratio, regression_type, regression
+        # Calculate ratios (higher is better - new should be faster)
+        if (new_eager > 0) {
+            eager_ratio = ref_eager / new_eager
+        } else {
+            eager_ratio = 0
         }
-    }' "$new_file" "$ref_file" > "$output_file"
 
-    # Add header to the combined file
-    header="Suite,Dtype,Mode,Scenario,Model,BS,Acc,Ref_Eager,Ref_Inductor,New_Eager,New_Inductor,Eager_Ratio,Inductor_Ratio,Regression_type,Regression"
-    sed -i "1s/^/$header\n/" "$output_file"
+        if (new_inductor > 0) {
+            inductor_ratio = ref_inductor / new_inductor
+        } else {
+            inductor_ratio = 0
+        }
+
+        # Check for regression
+        regression = "NO"
+        regression_type = ""
+        if (eager_ratio < threshold) {
+            regression = "YES"
+            regression_type = "Eager"
+        }
+        if (inductor_ratio < threshold) {
+            regression = "YES"
+            if (regression_type != "") {
+                regression_type = regression_type "/"
+            }
+            regression_type = regression_type "Inductor"
+        }
+
+        # Split key back into components
+        split(key, key_parts, ",")
+
+        print key_parts[1] "," key_parts[2] "," key_parts[3] "," \
+              key_parts[4] "," key_parts[5] "," key_parts[6] "," \
+              ref_acc "," ref_eager "," ref_inductor "," \
+              new_eager "," new_inductor "," \
+              eager_ratio "," inductor_ratio "," \
+              regression_type "," regression
+    }' "${output_file}.joined" >> "$output_file"
+
+    # Clean up temp files
+    rm -f "$temp_new" "$temp_ref" "${output_file}.joined"
 
     echo "Generated combined comparison file: $output_file"
 }
 
 # Function to run performance tests for specific models
 run_performance_tests() {
-    local models_file=$1
-    local rerun_count=$2
+    local models_file="$1"
+    local rerun_count="$2"
     local base_log_dir="${LOG_DIR}/rerun"
 
     mkdir -p "${base_log_dir}"
@@ -323,10 +361,15 @@ run_performance_tests() {
     # Parse models that need rerun
     local models_to_rerun=()
     while IFS=',' read -r suite dtype mode scenario model batch_size accuracy ref_eager ref_inductor new_eager new_inductor eager_ratio inductor_ratio regression_type regression; do
-        if [[ "$regression" == "YES" ]] && [[ "$scenario" == "performance" ]]; then
-            models_to_rerun+=("$model,$batch_size,$regression_type")
-        fi
-    done < <(tail -n +2 "$models_file")  # Skip header
+        # Skip header and non-regression cases
+        [[ "$suite" == "Suite" ]] && continue
+        [[ "$regression" != "YES" ]] && continue
+        [[ "$scenario" != "performance" ]] && continue
+
+        # Clean up model name (remove quotes if present)
+        model=$(echo "$model" | sed 's/^"//;s/"$//')
+        models_to_rerun+=("$model,$batch_size,$regression_type")
+    done < "$models_file"
 
     if [[ ${#models_to_rerun[@]} -eq 0 ]]; then
         echo "No performance regression cases found for rerun."
@@ -344,15 +387,16 @@ run_performance_tests() {
     for ((run=1; run<=rerun_count; run++)); do
         echo "=== Performance Rerun $run/$rerun_count ==="
 
-        for var in "${unique_models[@]}"; do
-            model="${var%%,*}"
-            batch_size="${var%,*}"
-            batch_size="${batch_size#*,}"
-            regression_type="${var##*,}"
-            echo "Rerunning performance test for model: $model with $model (run $run)"
+        local run_log_dir="${base_log_dir}/run_${run}"
+        mkdir -p "${run_log_dir}"
 
-            local run_log_dir="${base_log_dir}/run_${run}"
-            mkdir -p "${run_log_dir}"
+        # Clear summary file for this run
+        > "${run_log_dir}/rerun_summary.csv"
+
+        for var in "${unique_models[@]}"; do
+            IFS=',' read -r model batch_size regression_type <<< "$var"
+
+            echo "Rerunning performance test for model: $model with BS=$batch_size (run $run)"
 
             # Build command for this specific model
             local rerun_cmd=(
@@ -371,27 +415,40 @@ run_performance_tests() {
                 "--cold-start-latency"
                 "--timeout=3600"
                 "--disable-cudagraphs"
-                "--output=${run_log_dir}/rerun_${run}_${model//\//_}.csv"
+                "--output=${run_log_dir}/rerun_${run}_$(echo "${model}" | tr '/' '_').csv"
             )
 
             # Execute the rerun
-            echo "Running: ${rerun_cmd[@]}"
-            ZE_AFFINITY_MASK="${CARD}" \
-                "${rerun_cmd[@]}" 2>&1 | tee "${run_log_dir}/rerun_${run}_${model//\//_}.log"
+            echo "Running: ${rerun_cmd[*]}"
+
+            local log_file="${run_log_dir}/rerun_${run}_$(echo "${model}" | tr '/' '_').log"
+            if ! ZE_AFFINITY_MASK="${CARD}" \
+                "${rerun_cmd[@]}" 2>&1 | tee "$log_file"; then
+                echo "Warning: Rerun failed for model $model"
+                continue
+            fi
 
             # Process the rerun results
-            if [[ -f "${run_log_dir}/rerun_${run}_${model//\//_}.csv" ]]; then
-                awk -F, -v suite="${SUITE}" -v dtype="${DTYPE}" -v mode="${MODE}" -v scenario="performance" -v regression_type="${regression_type}" '
-                {
-                    if ($1 != "dev") {
-                        model = $2
-                        batch_size = $3
-                        inductor = $5
-                        eager = $4 * $5
-                        printf("%s,%s,%s,%s,%s,%s,-1,%s,%s,%s\n",
-                            suite, dtype, mode, scenario, model, batch_size, eager, inductor, regression_type)
+            local csv_file="${run_log_dir}/rerun_${run}_$(echo "${model}" | tr '/' '_').csv"
+            if [[ -f "$csv_file" ]]; then
+                awk -F, -v suite="${SUITE}" -v dtype="${DTYPE}" -v mode="${MODE}" -v scenario="performance" \
+                    -v model="$model" -v batch_size="$batch_size" -v regression_type="$regression_type" '
+                $1 != "dev" && $2 == model && $3 == batch_size {
+                    eager_time = $4
+                    inductor_time = $5
+                    accuracy = $6
+
+                    # Calculate eager time (assuming column 4 is ratio, column 5 is inductor time)
+                    if (eager_time ~ /[0-9]+\.[0-9]+/) {
+                        eager_actual = eager_time * inductor_time
+                    } else {
+                        eager_actual = eager_time
                     }
-                }' "${run_log_dir}/rerun_${run}_${model//\//_}.csv" >> "${run_log_dir}/rerun_summary.csv"
+
+                    printf("%s,%s,%s,%s,%s,%s,%s,%.4f,%.4f,%s\n",
+                        suite, dtype, mode, scenario, model, batch_size, accuracy,
+                        eager_actual, inductor_time, regression_type)
+                }' "$csv_file" >> "${run_log_dir}/rerun_summary.csv"
             fi
         done
     done
@@ -402,98 +459,109 @@ run_performance_tests() {
 
 # Function to analyze rerun results
 analyze_rerun_results() {
-    local base_log_dir=$1
-    local regression_file=$2
+    local base_log_dir="$1"
+    local regression_file="$2"
     local output_file="${LOG_DIR}/regression_analysis.csv"
 
     echo "=== Analyzing Rerun Results ==="
 
     # Collect all rerun data
     local all_rerun_data="${base_log_dir}/all_reruns.csv"
-    echo "Suite,Dtype,Mode,Scenario,Model,BS,Eager,Inductor,Run" > "$all_rerun_data"
+    echo "Suite,Dtype,Mode,Scenario,Model,BS,Accuracy,Eager,Inductor,Run,Type" > "$all_rerun_data"
 
     for run_dir in "${base_log_dir}"/run_*; do
-        if [[ -f "${run_dir}/rerun_summary.csv" ]]; then
-            awk -F, -v run="${run_dir##*/run_}" '{print $0 "," run}' "${run_dir}/rerun_summary.csv" >> "$all_rerun_data"
+        if [[ -d "$run_dir" ]] && [[ -f "${run_dir}/rerun_summary.csv" ]]; then
+            local run_num="${run_dir##*/run_}"
+            awk -F, -v run="$run_num" '{print $0 "," run}' "${run_dir}/rerun_summary.csv" >> "$all_rerun_data"
         fi
     done
 
+    # Process reference data
+    declare -A ref_eager
+    declare -A ref_inductor
+    declare -A ref_type
+
+    while IFS=',' read -r suite dtype mode scenario model bs acc eager inductor type reg; do
+        # Skip header
+        [[ "$suite" == "Suite" ]] && continue
+        [[ "$scenario" != "performance" ]] && continue
+
+        key="${model},${bs}"
+        ref_eager["$key"]="$eager"
+        ref_inductor["$key"]="$inductor"
+        ref_type["$key"]="$type"
+    done < "$regression_file"
+
     # Calculate averages and compare with reference
-    awk -F',' -v threshold="$PERF_RERUN_THRESHOLD" '
-    BEGIN {
-        OFS=","
-        print "Model,BS,Ref_Latency,Avg,Min,Max,StdDev,Ratio,Status,Type"
-    }
-    NR==FNR && FNR>1 {
-        # Read regression data to get reference values
-        key = $5 "," $6  # Model,BS
-        ref_eager[key] = $8
-        ref_inductor[key] = $9
-        next
-    }
-    NR!=FNR && FNR>1 {
-        # Process rerun data
-        key = $5 "," $6  # Model,BS
-        if ($10 == "Eager") {
-            run = $8
-        }else {
-            run = $9
+    {
+        echo "Model,BS,Type,Ref_Latency,Avg,Min,Max,StdDev,Ratio,Status"
+
+        # Group by model,bs,type
+        awk -F',' '
+        NR>1 {
+            key = $5 "," $6 "," $10  # Model,BS,Type
+            inductor = $9 + 0
+
+            # Initialize arrays
+            if (!(key in count)) {
+                count[key] = 0
+                sum[key] = 0
+                min[key] = 999999
+                max[key] = 0
+                values[key] = ""
+            }
+
+            count[key]++
+            sum[key] += inductor
+            if (inductor < min[key]) min[key] = inductor
+            if (inductor > max[key]) max[key] = inductor
+            values[key] = values[key] (values[key] == "" ? "" : " ") inductor
         }
-        type = $10
+        END {
+            for (key in count) {
+                avg = sum[key] / count[key]
 
-        if (!(key in data_count)) {
-            data_count[key] = 0
-            total_inductor[key] = 0
-            min_inductor[key] = 999999
-            max_inductor[key] = 0
-            values[key] = ""  # Store values for stddev calculation
+                # Calculate standard deviation
+                n = split(values[key], arr, " ")
+                sum_sq = 0
+                for (i=1; i<=n; i++) {
+                    diff = arr[i] - avg
+                    sum_sq += diff * diff
+                }
+                stddev = sqrt(sum_sq / n)
+
+                print key "," avg "," min[key] "," max[key] "," stddev
+            }
         }
+        ' "$all_rerun_data" | while IFS=',' read -r model bs type avg min max stddev; do
+            key="${model},${bs}"
 
-        inductor_val = $8 + 0
-        total_inductor[key] += inductor_val
-        data_count[key]++
+            # Get reference value based on type
+            if [[ "$type" == *"Eager"* ]] && [[ "$type" != *"Inductor"* ]]; then
+                ref_latency="${ref_eager[$key]:-0}"
+            elif [[ "$type" == *"Inductor"* ]]; then
+                ref_latency="${ref_inductor[$key]:-0}"
+            else
+                ref_latency="0"
+            fi
 
-        if (inductor_val < min_inductor[key]) min_inductor[key] = inductor_val
-        if (inductor_val > max_inductor[key]) max_inductor[key] = inductor_val
-
-        # Store value for stddev calculation
-        values[key] = values[key] (values[key] == "" ? "" : " ") inductor_val
-    }
-    END {
-        for (key in data_count) {
-            avg_inductor = total_inductor[key] / data_count[key]
-
-            # Calculate standard deviation
-            split(values[key], arr, " ")
-            sum_sq = 0
-            for (i in arr) {
-                diff = arr[i] - avg_inductor
-                sum_sq += diff * diff
-            }
-            stddev = sqrt(sum_sq / data_count[key])
-
-            # Calculate ratio against reference
-            ratio = 0
-            if (type == "Eager") {
-                ref_latency = ref_eager
-            }else {
-                ref_latency = ref_inductor
-            }
-            if (key in ref_latency && ref_latency[key] > 0) {
-                ratio = avg_inductor / ref_latency[key]
-            }
+            # Calculate ratio
+            ratio="0"
+            if [[ "$ref_latency" != "0" ]] && [[ "$ref_latency" != "" ]]; then
+                ratio=$(echo "$avg / $ref_latency" | bc -l 2>/dev/null || echo "0")
+            fi
 
             # Determine status
-            status = "PASS"
-            if (ratio < threshold) {
-                status = "REGRESSION"
-            } else if (ratio >= 1.1) {
-                status = "IMPROVEMENT"
-            }
+            status="PASS"
+            if [[ $(echo "$ratio < $PERF_RERUN_THRESHOLD" | bc -l 2>/dev/null) -eq 1 ]]; then
+                status="REGRESSION"
+            elif [[ $(echo "$ratio > 1.1" | bc -l 2>/dev/null) -eq 1 ]]; then
+                status="IMPROVEMENT"
+            fi
 
-            print key, ref_latency[key], avg_inductor, min_inductor[key], max_inductor[key], stddev, ratio, status, type
-        }
-    }' "$regression_file" "$all_rerun_data" | sort > "$output_file"
+            echo "${model},${bs},${type},${ref_latency},${avg},${min},${max},${stddev},${ratio},${status}"
+        done
+    } > "$output_file"
 
     echo "Regression analysis saved to: $output_file"
 
@@ -503,10 +571,8 @@ analyze_rerun_results() {
     local regress_count=0
     local improve_count=0
 
-    while IFS=',' read -r model_bs ref avg min max stddev ratio status; do
-        if [[ "$model_bs" == "Model,BS" ]]; then
-            continue
-        fi
+    while IFS=',' read -r model bs type ref avg min max stddev ratio status; do
+        [[ "$model" == "Model" ]] && continue
         total_count=$((total_count + 1))
         case "$status" in
             "PASS") pass_count=$((pass_count + 1)) ;;
@@ -523,33 +589,22 @@ analyze_rerun_results() {
     echo "=============================="
 }
 
-# Build ModelOnly extra parameter
-MODEL_ONLY_EXTRA=""
-if [[ -n "${MODEL_ONLY}" ]]; then
-    echo "Testing model/pattern: ${MODEL_ONLY}"
-    if [[ "${MODEL_ONLY}" == *"-k "* ]]; then
-        MODEL_ONLY_EXTRA=" ${MODEL_ONLY} "
-    else
-        MODEL_ONLY_EXTRA="--only ${MODEL_ONLY}"
-    fi
-fi
-
 # Build Mode extra parameter based on torch version
 MODE_EXTRA=""
 TORCH_VERSION=$(python3 -c "import torch; print(torch.__version__.split('+')[0])" 2>/dev/null || echo "0.0.0")
 
 # Compare versions
-if printf "%s\n2.0.2\n%s" "${TORCH_VERSION}" | sort -nr | head -1 | grep -q "^2.0.2$"; then
+if printf "%s\n2.0.2\n%s" "${TORCH_VERSION}" "${TORCH_VERSION}" | sort -V | head -1 | grep -q "2.0.2"; then
     # Version <= 2.0.2
     MODE_EXTRA=""
 else
     # Version >= 2.1.0
-    MODE_EXTRA="--inference "
+    MODE_EXTRA="--inference"
 fi
 # Override for training mode
 if [[ "${MODE}" == "training" ]]; then
     echo "Testing with training mode."
-    MODE_EXTRA="--training "
+    MODE_EXTRA="--training"
 fi
 
 # Build DTYPE extra parameters
@@ -558,11 +613,11 @@ DTYPE_EXTRA=''
 case "${DTYPE}" in
     amp_bf16)
         REAL_DTYPE="amp"
-        DTYPE_EXTRA="--amp-dtype bfloat16 "
+        DTYPE_EXTRA="--amp-dtype bfloat16"
         ;;
     amp_fp16|amp)
         REAL_DTYPE="amp"
-        DTYPE_EXTRA="--amp-dtype float16 "
+        DTYPE_EXTRA="--amp-dtype float16"
         ;;
 esac
 
@@ -570,7 +625,7 @@ esac
 SHAPE_EXTRA=""
 if [[ "${SHAPE}" == "dynamic" ]]; then
     echo "Testing with dynamic shapes."
-    SHAPE_EXTRA="--dynamic-shapes --dynamic-batch-only "
+    SHAPE_EXTRA="--dynamic-shapes --dynamic-batch-only"
 fi
 
 # Build partition flags
@@ -580,8 +635,21 @@ if [[ -n "${NUM_SHARDS}" && -n "${SHARD_ID}" ]] && [[ "${NUM_SHARDS}" -gt 1 ]]; 
         echo "Error: Shard ID (${SHARD_ID}) must be less than total shards (${NUM_SHARDS})"
         exit 1
     fi
-    PARTITION_FLAGS="--total-partitions ${NUM_SHARDS} --partition-id ${SHARD_ID} "
+    PARTITION_FLAGS="--total-partitions ${NUM_SHARDS} --partition-id ${SHARD_ID}"
     echo "Running shard ${SHARD_ID} of ${NUM_SHARDS}"
+fi
+
+# Build ModelOnly extra parameter
+MODEL_ONLY_EXTRA=()
+if [[ -n "${MODEL_ONLY}" ]]; then
+    echo "Testing model/pattern: ${MODEL_ONLY}"
+    if [[ "${MODEL_ONLY}" == *"-k "* ]]; then
+        # Split the -k pattern
+        IFS=' ' read -ra PATTERN_PARTS <<< "${MODEL_ONLY}"
+        MODEL_ONLY_EXTRA=("${PATTERN_PARTS[@]}")
+    else
+        MODEL_ONLY_EXTRA=("--only" "${MODEL_ONLY}")
+    fi
 fi
 
 # Build full command
@@ -591,11 +659,17 @@ CMD=(
     "--${REAL_DTYPE}"
     "-d" "${DEVICE}"
     "-n10"
-    ${DTYPE_EXTRA}
-    ${MODE_EXTRA}
-    ${SHAPE_EXTRA}
-    ${PARTITION_FLAGS}
-    ${MODEL_ONLY_EXTRA}
+)
+
+# Add optional parameters if they're not empty
+[[ -n "${DTYPE_EXTRA}" ]] && CMD+=("${DTYPE_EXTRA}")
+[[ -n "${MODE_EXTRA}" ]] && CMD+=("${MODE_EXTRA}")
+[[ -n "${SHAPE_EXTRA}" ]] && CMD+=(${SHAPE_EXTRA})
+[[ -n "${PARTITION_FLAGS}" ]] && CMD+=(${PARTITION_FLAGS})
+[[ ${#MODEL_ONLY_EXTRA[@]} -gt 0 ]] && CMD+=("${MODEL_ONLY_EXTRA[@]}")
+
+# Add fixed parameters
+CMD+=(
     "--backend=inductor"
     "--cold-start-latency"
     "--timeout=10800"
@@ -604,7 +678,8 @@ CMD=(
 )
 
 echo "Command to execute:"
-echo "${CMD[@]}"
+printf "'%s' " "${CMD[@]}"
+echo
 echo
 
 # Execute the command with environment variable
@@ -613,7 +688,7 @@ echo "Full logs will be saved to: ${LOG_DIR}/${LOG_NAME}_card${CARD}.log"
 echo
 
 # Set ulimit if needed
-# ulimit -n 1048576
+ulimit -n 1048576 2>/dev/null || true
 
 # Execute with tee for both file and console output
 ZE_AFFINITY_MASK="${CARD}" \
@@ -635,22 +710,38 @@ echo "Suite,Dtype,Mode,Scenario,Model,BS,Accuracy,Eager,Inductor" > "${RESULT_FI
 
 if [[ -f "${LOG_DIR}/${LOG_NAME}.csv" ]]; then
     awk -F, -v suite="${SUITE}" -v dtype="${DTYPE}" -v mode="${MODE}" -v scenario="${SCENARIO}" '
-    {
-        if ($1 != "dev") {
-            model = $2
-            batch_size = $3
+    BEGIN {
+        OFS=","
+    }
+    $1 != "dev" {
+        model = $2
+        batch_size = $3
 
-            if (scenario == "performance") {
-                inductor = $5
-                eager = $4 * $5
-                result = "-1," eager "," inductor
+        if (scenario == "performance") {
+            # Column 4 is eager/inductor ratio, column 5 is inductor time
+            inductor_time = $5 + 0
+            ratio = $4 + 0
+
+            if (ratio > 0) {
+                eager_time = inductor_time * ratio
             } else {
-                result = $4 ",-1,-1"
+                eager_time = inductor_time  # Fallback
             }
 
-            printf("%s,%s,%s,%s,%s,%s,%s\n",
-                suite, dtype, mode, scenario, model, batch_size, result)
+            accuracy = "-1"
+            eager = sprintf("%.4f", eager_time)
+            inductor = sprintf("%.4f", inductor_time)
+        } else {
+            # accuracy mode
+            accuracy = $4
+            eager = "-1"
+            inductor = "-1"
         }
+
+        # Clean model name (remove quotes)
+        gsub(/"/, "", model)
+
+        print suite, dtype, mode, scenario, model, batch_size, accuracy, eager, inductor
     }' "${LOG_DIR}/${LOG_NAME}.csv" | tee -a "${RESULT_FILE}"
 
     echo "Results saved to: ${RESULT_FILE}"
@@ -663,14 +754,20 @@ if [[ "${REGRESSION_CHECK}" == "true" ]]; then
     echo "=== Performing Regression Check ==="
 
     # Create temporary directory for regression analysis
-    REGRESSION_TEMP_DIR="/tmp/regression_${SUITE}_${DTYPE}_${MODE}"
+    REGRESSION_TEMP_DIR="/tmp/regression_${SUITE}_${DTYPE}_${MODE}_${SCENARIO}_$$"
     mkdir -p "${REGRESSION_TEMP_DIR}"
 
     # Extract test cases from current run
-    extract_test_cases "${LOG_DIR}" "${REGRESSION_TEMP_DIR}/new.summary.csv"
+    if ! extract_test_cases "${LOG_DIR}" "${REGRESSION_TEMP_DIR}/new.summary.csv"; then
+        echo "Error: Failed to extract test cases from current run"
+        exit 1
+    fi
 
     # Extract test cases from reference
-    extract_test_cases "${REFERENCE_DIR}" "${REGRESSION_TEMP_DIR}/reference.summary.csv"
+    if ! extract_test_cases "${REFERENCE_DIR}" "${REGRESSION_TEMP_DIR}/reference.summary.csv"; then
+        echo "Error: Failed to extract test cases from reference directory"
+        exit 1
+    fi
 
     # Find performance regression cases
     find_perf_reg_cases \
@@ -683,8 +780,13 @@ if [[ "${REGRESSION_CHECK}" == "true" ]]; then
     echo "Regression analysis saved to: ${REGRESSION_TEMP_DIR}/regression.summary.csv"
 
     # Count regressions
-    reg_count=$(tail -n +2 "${REGRESSION_TEMP_DIR}/regression.summary.csv" | grep -c ",YES$" || true)
-    total_count=$(tail -n +2 "${REGRESSION_TEMP_DIR}/regression.summary.csv" | wc -l || true)
+    local reg_count=0
+    local total_count=0
+
+    if [[ -f "${REGRESSION_TEMP_DIR}/regression.summary.csv" ]]; then
+        reg_count=$(tail -n +2 "${REGRESSION_TEMP_DIR}/regression.summary.csv" | awk -F',' '{if ($15 == "YES") count++} END {print count+0}')
+        total_count=$(tail -n +2 "${REGRESSION_TEMP_DIR}/regression.summary.csv" | wc -l)
+    fi
 
     echo "Total comparable tests: ${total_count}"
     echo "Performance regressions detected: ${reg_count}"
@@ -712,6 +814,9 @@ if [[ "${REGRESSION_CHECK}" == "true" ]]; then
         echo "Rerun Analysis: ${LOG_DIR}/regression_analysis.csv"
     fi
 
+    # Clean up temp directory
+    rm -rf "${REGRESSION_TEMP_DIR}"
+
     # Exit with error if regressions found and strict mode
     if [[ ${reg_count} -gt 0 ]]; then
         echo "WARNING: Performance regressions detected!"
@@ -722,5 +827,5 @@ if [[ "${REGRESSION_CHECK}" == "true" ]]; then
     fi
 fi
 
-echo "Script completed."
+echo "Script completed with exit code: ${EXIT_CODE}"
 exit ${EXIT_CODE}
