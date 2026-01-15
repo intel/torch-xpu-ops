@@ -3274,6 +3274,14 @@
   autogen: native_layer_norm_backward.out
   tags: core
 
+- func: _fused_rms_norm(Tensor input, int[] normalized_shape, Tensor? weight, float? eps) -> (Tensor, Tensor)
+  dispatch:
+    XPU: _fused_rms_norm_xpu
+
+- func: _fused_rms_norm_backward(Tensor grad_out, Tensor input, int[] normalized_shape, Tensor rstd, Tensor? weight, bool[2] output_mask) -> (Tensor, Tensor)
+  dispatch:
+    XPU: _fused_rms_norm_backward_xpu
+
 - func: tril.out(Tensor self, int diagonal=0, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   dispatch:
