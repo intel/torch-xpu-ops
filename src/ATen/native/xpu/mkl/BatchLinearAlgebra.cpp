@@ -54,16 +54,6 @@ void error_handle(
   auto errs = be.exceptions();
   auto ids = be.ids();
 
-  if (!errs.size()) {
-    TORCH_WARN(
-        "Caught lapack exception:\nWhat: ", be.what(), "\nInfo: ", be.info());
-    for (auto& i : ids) {
-      TORCH_WARN("Error in matrix #", i);
-      info_cpu[i] = 1;
-    }
-    return;
-  }
-
   for (size_t i = 0; i < errs.size(); ++i) {
     try {
       std::rethrow_exception(errs[i]);
@@ -75,10 +65,10 @@ void error_handle(
           e.info(),
           "\nDetail: ",
           e.detail());
-      info_cpu[i] = e.info();
+      info_cpu[ids[i]] = e.info();
     } catch (const sycl::exception& e) {
       TORCH_WARN("Caught SYCL exception:\nWhat: ", e.what(), "\nInfo: -1");
-      info_cpu[i] = -1;
+      info_cpu[ids[i]] = -1;
     }
   }
 }
