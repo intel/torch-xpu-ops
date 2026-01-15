@@ -149,7 +149,7 @@ Tensor& max_unpooling2d_forward_kernel(
   output.zero_();
 
   auto count = self.numel();
-  if (count!= 0 && oheight != 0 && owidth != 0) {
+  if (count != 0 && oheight != 0 && owidth != 0) {
     AT_DISPATCH_ALL_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
