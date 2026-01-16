@@ -35,7 +35,7 @@ runs:
         fi
         sudo apt update
         sudo apt install -y jq numactl
-        rm -rf Torch-XPU-Wheel-*
+        rm -rf target_wheels baseline_wheels
     - name: Setup python-${{ inputs.python }}
       uses: actions/setup-python@v5
       with:
@@ -54,7 +54,23 @@ runs:
       if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
-        pattern: Torch-XPU-Wheel-*
+        pattern: target_wheels/Torch-XPU-Wheel-*
+    - name: Download Baseline Artifact
+      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+      shell: bash -xe {0}
+      run: |
+        mkdir baseline_wheels/
+        cd baseline_wheels/
+        if [[ "${{ inputs.test_type }}" != *"ly" ]];then
+          artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-nightly"
+        else
+          artifact_type="${{ inputs.test_type }}"
+        fi
+        gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
+        REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+        if [ "${REFERENCE_RUN_ID}" != "" ];then
+          gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Torch-XPU-Wheel-*"
+        fi
     - name: Prepare Stock Pytorch
       shell: bash -xe {0}
       run: |
@@ -66,7 +82,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
+          latest_dir="$(find target_wheels/ -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           pip install --force-reinstall $(find ${latest_dir} -name "*torch*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
