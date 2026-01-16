@@ -210,27 +210,27 @@ setup_environment() {
             LOG_DIR="${LOG_DIR}_shard${SHARD_ID}"
         fi
     fi
-    
+
     # Create log directory
     if ! mkdir -p "${LOG_DIR}"; then
         log_error "Failed to create log directory: ${LOG_DIR}"
         exit 1
     fi
-    
+
     # Set output CSV file
     if [[ -z "${OUTPUT_CSV}" ]]; then
         OUTPUT_CSV="${LOG_DIR}/results.csv"
     fi
-    
+
     # Set summary file
     SUMMARY_FILE="${LOG_DIR}/summary.csv"
-    
+
     # Main log file
     MAIN_LOG="${LOG_DIR}/run.log"
-    
+
     # Config file
     CONFIG_FILE="${LOG_DIR}/config.txt"
-    
+
     log_info "Log directory: ${LOG_DIR}"
     log_info "Output CSV: ${OUTPUT_CSV}"
     log_info "Summary file: ${SUMMARY_FILE}"
@@ -255,20 +255,20 @@ print_configuration() {
     echo "Iterations:     ${ITERATIONS}"
     echo "Cold Start:     ${COLD_START}"
     echo "Cudagraphs:     ${CUDAGRAPHS}"
-    
+
     if [[ -n "${BATCH_SIZE}" ]]; then
         echo "Batch Size:     ${BATCH_SIZE}"
     fi
-    
+
     if [[ -n "${NUM_SHARDS}" && -n "${SHARD_ID}" ]]; then
         echo "Shards:         ${SHARD_ID}/${NUM_SHARDS}"
     fi
-    
+
     if [[ -n "${MODEL_ONLY}" ]]; then
         echo "Model Filter:   ${MODEL_ONLY}"
     fi
     echo "========================================"
-    
+
     # Save configuration to file
     {
         echo "Benchmark Configuration"
@@ -289,43 +289,51 @@ print_configuration() {
         echo "Iterations: ${ITERATIONS}"
         echo "Cold Start: ${COLD_START}"
         echo "Cudagraphs: ${CUDAGRAPHS}"
-        [[ -n "${BATCH_SIZE}" ]] && echo "Batch Size: ${BATCH_SIZE}"
-        [[ -n "${NUM_SHARDS}" ]] && echo "Num Shards: ${NUM_SHARDS}"
-        [[ -n "${SHARD_ID}" ]] && echo "Shard ID: ${SHARD_ID}"
-        [[ -n "${MODEL_ONLY}" ]] && echo "Model Filter: ${MODEL_ONLY}"
+        if [[ -n "${BATCH_SIZE}" ]];then
+            echo "Batch Size: ${BATCH_SIZE}"
+        fi
+        if [[ -n "${NUM_SHARDS}" ]];then
+            echo "Num Shards: ${NUM_SHARDS}"
+        fi
+        if [[ -n "${SHARD_ID}" ]];then
+            echo "Shard ID: ${SHARD_ID}"
+        fi
+        if [[ -n "${MODEL_ONLY}" ]];
+            echo "Model Filter: ${MODEL_ONLY}"
+        fi
     } > "${CONFIG_FILE}"
 }
 
 # Build command line arguments
 build_command() {
     local cmd=()
-    
+
     # Basic command
     cmd+=("python" "benchmarks/dynamo/${SUITE}.py")
     cmd+=("--${SCENARIO}")
     cmd+=("--${REAL_DTYPE}")
     cmd+=("-d" "${DEVICE}")
     cmd+=("-n${ITERATIONS}")
-    
+
     # Add optional parameters
     [[ -n "${DTYPE_EXTRA}" ]] && cmd+=("${DTYPE_EXTRA}")
     [[ -n "${MODE_EXTRA}" ]] && cmd+=("${MODE_EXTRA}")
     [[ -n "${SHAPE_EXTRA}" ]] && IFS=' ' read -ra SHAPE_PARTS <<< "${SHAPE_EXTRA}" && cmd+=("${SHAPE_PARTS[@]}")
     [[ -n "${PARTITION_FLAGS}" ]] && IFS=' ' read -ra PARTITION_PARTS <<< "${PARTITION_FLAGS}" && cmd+=("${PARTITION_PARTS[@]}")
     [[ ${#MODEL_ONLY_EXTRA[@]} -gt 0 ]] && cmd+=("${MODEL_ONLY_EXTRA[@]}")
-    
+
     # Batch size if specified
     [[ -n "${BATCH_SIZE}" ]] && cmd+=("--batch-size" "${BATCH_SIZE}")
-    
+
     # Backend and performance options
     cmd+=("--backend=inductor")
     [[ "${COLD_START}" == "true" ]] && cmd+=("--cold-start-latency")
     cmd+=("--timeout=${TIMEOUT}")
     [[ "${CUDAGRAPHS}" == "false" ]] && cmd+=("--disable-cudagraphs")
-    
+
     # Output file
     cmd+=("--output=${OUTPUT_CSV}")
-    
+
     echo "${cmd[@]}"
 }
 
@@ -333,9 +341,9 @@ build_command() {
 process_performance_csv() {
     local input_csv="$1"
     local output_summary="$2"
-    
+
     log_info "Processing performance CSV: $(basename "$input_csv")"
-    
+
     awk -F, -v suite="${SUITE}" -v dtype="${DTYPE}" -v mode="${MODE}" -v scenario="${SCENARIO}" '
     BEGIN {
         OFS=","
@@ -346,16 +354,16 @@ process_performance_csv() {
         batch_size = $3
         speedup = $4 + 0
         abs_latency = $5 + 0
-        
+
         # Clean model name
         gsub(/"/, "", model)
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", model)
-        
+
         if (abs_latency > 0) {
             eager_latency = speedup * abs_latency
             inductor_latency = abs_latency
             accuracy = "-1"
-            
+
             print suite, dtype, mode, scenario, model, batch_size, accuracy, \
                   eager_latency, inductor_latency, speedup
         } else {
@@ -369,9 +377,9 @@ process_performance_csv() {
 process_accuracy_csv() {
     local input_csv="$1"
     local output_summary="$2"
-    
+
     log_info "Processing accuracy CSV: $(basename "$input_csv")"
-    
+
     awk -F, -v suite="${SUITE}" -v dtype="${DTYPE}" -v mode="${MODE}" -v scenario="${SCENARIO}" '
     BEGIN {
         OFS=","
@@ -381,11 +389,11 @@ process_accuracy_csv() {
         model = $2
         batch_size = $3
         accuracy = $4
-        
+
         # Clean model name
         gsub(/"/, "", model)
         gsub(/^[[:space:]]+|[[:space:]]+$/, "", model)
-        
+
         # Check if accuracy passed
         if (accuracy ~ /pass/) {
             accuracy_status = "PASS"
@@ -396,8 +404,8 @@ process_accuracy_csv() {
         } else {
             accuracy_status = accuracy
         }
-        
-        print suite, dtype, mode, scenario, model, batch_size, accuracy_status, \
+
+        print suite, dtype, mode, scenario, model, batch_size, accuracy, \
               "-1", "-1", "-1"
     }' "${input_csv}" > "${output_summary}"
 }
@@ -406,23 +414,23 @@ process_accuracy_csv() {
 generate_statistics() {
     local summary_file="$1"
     local stats_file="$2"
-    
+
     {
         echo "Benchmark Statistics"
         echo "===================="
         echo "Generated: $(date)"
         echo "Summary file: $(basename "$summary_file")"
         echo ""
-        
+
         # Count total tests
         local total_tests=$(awk 'NR>1 && $5 != "" {count++} END {print count}' "$summary_file")
         echo "Total tests: ${total_tests}"
-        
+
         if [[ "${SCENARIO}" == "performance" ]]; then
             echo ""
             echo "Performance Statistics:"
             echo "----------------------"
-            
+
             awk -F',' '
             BEGIN {
                 count=0
@@ -431,7 +439,7 @@ generate_statistics() {
                 max_speedup=0
                 total_eager=0
                 total_inductor=0
-                
+
                 speedup_buckets[0]=0  # < 0.5x
                 speedup_buckets[1]=0  # 0.5-0.8x
                 speedup_buckets[2]=0  # 0.8-1.0x
@@ -444,14 +452,14 @@ generate_statistics() {
                 speedup = $10 + 0
                 eager_latency = $8 + 0
                 inductor_latency = $9 + 0
-                
+
                 total_speedup += speedup
                 total_eager += eager_latency
                 total_inductor += inductor_latency
-                
+
                 if (speedup < min_speedup) min_speedup = speedup
                 if (speedup > max_speedup) max_speedup = speedup
-                
+
                 if (speedup < 0.5) speedup_buckets[0]++
                 else if (speedup < 0.8) speedup_buckets[1]++
                 else if (speedup < 1.0) speedup_buckets[2]++
@@ -477,12 +485,12 @@ generate_statistics() {
                 }
             }
             ' "${summary_file}"
-            
+
         elif [[ "${SCENARIO}" == "accuracy" ]]; then
             echo ""
             echo "Accuracy Statistics:"
             echo "-------------------"
-            
+
             awk -F',' '
             BEGIN {
                 pass=0
@@ -507,12 +515,12 @@ generate_statistics() {
             }
             ' "${summary_file}"
         fi
-        
+
         echo ""
         echo "Detailed results in: $(basename "$summary_file")"
-        
+
     } > "${stats_file}"
-    
+
     if [[ "${VERBOSE}" == "true" ]]; then
         cat "${stats_file}"
     fi
@@ -521,10 +529,10 @@ generate_statistics() {
 # Main execution function
 main() {
     log_info "Starting benchmark execution"
-    
+
     # Setup environment
     setup_environment
-    
+
     # Build parameters
     REAL_DTYPE="${DTYPE}"
     DTYPE_EXTRA=''
@@ -538,7 +546,7 @@ main() {
             DTYPE_EXTRA="--amp-dtype float16"
             ;;
     esac
-    
+
     # Mode extra parameter
     MODE_EXTRA=""
     if [[ "${MODE}" == "training" ]]; then
@@ -546,13 +554,13 @@ main() {
     elif [[ "${MODE}" == "inference" ]]; then
         MODE_EXTRA="--inference"
     fi
-    
+
     # Shape extra parameter
     SHAPE_EXTRA=""
     if [[ "${SHAPE}" == "dynamic" ]]; then
         SHAPE_EXTRA="--dynamic-shapes --dynamic-batch-only"
     fi
-    
+
     # Partition flags
     PARTITION_FLAGS=""
     if [[ -n "${NUM_SHARDS}" && -n "${SHARD_ID}" ]] && [[ "${NUM_SHARDS}" -gt 1 ]]; then
@@ -563,7 +571,7 @@ main() {
         PARTITION_FLAGS="--total-partitions ${NUM_SHARDS} --partition-id ${SHARD_ID}"
         log_info "Running shard ${SHARD_ID} of ${NUM_SHARDS}"
     fi
-    
+
     # Model only extra parameter
     MODEL_ONLY_EXTRA=()
     if [[ -n "${MODEL_ONLY}" ]]; then
@@ -574,18 +582,18 @@ main() {
         fi
         log_info "Model filter: ${MODEL_ONLY}"
     fi
-    
+
     # Display configuration
     print_configuration
-    
+
     # Build command
     CMD=$(build_command)
-    
+
     echo ""
     log_info "Command to execute:"
     echo "${CMD}"
     echo ""
-    
+
     # Dry run check
     if [[ "${DRY_RUN}" == "true" ]]; then
         log_info "Dry run mode - command would be executed as:"
@@ -594,14 +602,14 @@ main() {
         log_info "To actually run, remove --dry-run flag"
         exit 0
     fi
-    
+
     # Execute command
     log_info "Starting benchmark execution at $(date)"
     log_info "Full logs: ${MAIN_LOG}"
-    
+
     # Set ulimit
     ulimit -n 1048576 2>/dev/null || true
-    
+
     # Execute with logging
     {
         echo "========================================"
@@ -613,10 +621,10 @@ main() {
         echo "========================================"
         echo ""
     } > "${MAIN_LOG}"
-    
+
     # Execute command
     start_time=$(date +%s)
-    
+
     log_info "Executing benchmark..."
     if ZE_AFFINITY_MASK="${CARD}" \
         ${CMD} 2>&1 | tee -a "${MAIN_LOG}"; then
@@ -626,10 +634,10 @@ main() {
         EXIT_CODE=${PIPESTATUS[0]}
         log_error "Benchmark execution failed with exit code: ${EXIT_CODE}"
     fi
-    
+
     end_time=$(date +%s)
     duration=$((end_time - start_time))
-    
+
     # Log completion
     {
         echo ""
@@ -639,24 +647,24 @@ main() {
         echo "Exit code: ${EXIT_CODE}"
         echo "========================================"
     } >> "${MAIN_LOG}"
-    
+
     # Process results if successful
     if [[ ${EXIT_CODE} -eq 0 ]] && [[ -f "${OUTPUT_CSV}" ]]; then
         log_info "Processing results..."
-        
+
         if [[ "${SCENARIO}" == "performance" ]]; then
             process_performance_csv "${OUTPUT_CSV}" "${SUMMARY_FILE}"
         else
             process_accuracy_csv "${OUTPUT_CSV}" "${SUMMARY_FILE}"
         fi
-        
+
         # Generate statistics
         generate_statistics "${SUMMARY_FILE}" "${LOG_DIR}/statistics.txt"
-        
+
         log_success "Results processed successfully"
         log_info "Summary file: ${SUMMARY_FILE}"
         log_info "Statistics: ${LOG_DIR}/statistics.txt"
-        
+
         # Show quick summary
         echo ""
         echo "Quick Summary:"
@@ -683,20 +691,20 @@ main() {
                 printf("  PASS: %d (%.1f%%)\n", pass, (pass/total)*100)
             }' "${SUMMARY_FILE}"
         fi
-        
+
     else
         log_warning "No results to process or execution failed"
         if [[ ! -f "${OUTPUT_CSV}" ]]; then
             log_error "Output CSV file not found: ${OUTPUT_CSV}"
         fi
     fi
-    
+
     echo ""
     log_info "Benchmark completed"
     log_info "Duration: ${duration} seconds"
     log_info "Log directory: ${LOG_DIR}"
     log_info "Exit code: ${EXIT_CODE}"
-    
+
     return ${EXIT_CODE}
 }
 

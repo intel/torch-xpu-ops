@@ -132,34 +132,34 @@ validate_arguments() {
         show_usage
         exit 1
     fi
-    
+
     if [[ -z "${REFERENCE_DIR}" ]]; then
         log_error "Reference directory not specified"
         show_usage
         exit 1
     fi
-    
+
     if [[ ! -d "${NEW_RESULTS_DIR}" ]]; then
         log_error "New results directory does not exist: ${NEW_RESULTS_DIR}"
         exit 1
     fi
-    
+
     if [[ ! -d "${REFERENCE_DIR}" ]]; then
         log_error "Reference directory does not exist: ${REFERENCE_DIR}"
         exit 1
     fi
-    
+
     # Set output directory if not specified
     if [[ -z "${OUTPUT_DIR}" ]]; then
         OUTPUT_DIR="${NEW_RESULTS_DIR}/regression_analysis_$(date +%Y%m%d_%H%M%S)"
     fi
-    
+
     # Create output directory
     mkdir -p "${OUTPUT_DIR}" || {
         log_error "Failed to create output directory: ${OUTPUT_DIR}"
         exit 1
     }
-    
+
     log_info "New results directory: ${NEW_RESULTS_DIR}"
     log_info "Reference directory: ${REFERENCE_DIR}"
     log_info "Output directory: ${OUTPUT_DIR}"
@@ -171,14 +171,14 @@ validate_arguments() {
 extract_configuration() {
     local dir="$1"
     local config_file="${dir}/config.txt"
-    
+
     if [[ -f "${config_file}" ]]; then
         # Extract key configuration parameters
         local suite=$(grep "^Suite:" "${config_file}" | cut -d: -f2- | sed 's/^[[:space:]]*//')
         local dtype=$(grep "^Data Type:" "${config_file}" | cut -d: -f2- | sed 's/^[[:space:]]*//')
         local mode=$(grep "^Mode:" "${config_file}" | cut -d: -f2- | sed 's/^[[:space:]]*//')
         local device=$(grep "^Device:" "${config_file}" | cut -d: -f2- | sed 's/^[[:space:]]*//')
-        
+
         echo "${suite}|${dtype}|${mode}|${device}"
     else
         # Try to infer from directory structure
@@ -191,7 +191,7 @@ extract_configuration() {
 find_summary_files() {
     local dir="$1"
     local pattern="*.summary.csv"
-    
+
     find "${dir}" -type f -name "${pattern}" | head -1
 }
 
@@ -199,12 +199,12 @@ find_summary_files() {
 process_summary_file() {
     local summary_file="$1"
     local output_file="$2"
-    
+
     if [[ ! -f "${summary_file}" ]]; then
         log_error "Summary file not found: ${summary_file}"
         return 1
     fi
-    
+
     # Check if it's a performance or accuracy summary
     local first_line=$(head -1 "${summary_file}")
     if [[ "${first_line}" == *"Eager_Latency"* ]] && [[ "${first_line}" == *"Inductor_Latency"* ]]; then
@@ -232,18 +232,18 @@ process_summary_file() {
                 accuracy = $7
                 eager = $8 + 0
                 inductor = $9 + 0
-                
+
                 if (eager > 0 && inductor > 0) {
                     speedup = eager / inductor
                 } else {
                     speedup = -1
                 }
-                
+
                 print suite, dtype, mode, scenario, model, bs, accuracy, eager, inductor, speedup
             }
         }' "${summary_file}" > "${output_file}"
     fi
-    
+
     return 0
 }
 
@@ -252,9 +252,9 @@ analyze_performance_regression() {
     local new_summary="$1"
     local ref_summary="$2"
     local output_file="$3"
-    
+
     log_info "Analyzing performance regression..."
-    
+
     awk -F',' -v threshold="${REGRESSION_THRESHOLD}" '
     BEGIN {
         OFS=","
@@ -274,12 +274,12 @@ analyze_performance_regression() {
         new_eager = $8 + 0
         new_inductor = $9 + 0
         key = model "," bs
-        
+
         # Check if we have reference data
         if (key in ref_eager) {
             ref_e = ref_eager[key]
             ref_i = ref_inductor[key]
-            
+
             # Calculate ratios (new/ref, higher is better)
             eager_ratio = 0
             inductor_ratio = 0
@@ -287,7 +287,7 @@ analyze_performance_regression() {
             inductor_reg = "NO"
             reg_type = ""
             notes = ""
-            
+
             if (ref_e > 0 && new_eager > 0) {
                 eager_ratio = new_eager / ref_e
                 if (eager_ratio < threshold) {
@@ -299,7 +299,7 @@ analyze_performance_regression() {
                 if (new_eager <= 0) notes = "Missing new eager latency"
                 if (ref_e <= 0) notes = notes (notes ? "; " : "") "Missing reference eager latency"
             }
-            
+
             if (ref_i > 0 && new_inductor > 0) {
                 inductor_ratio = new_inductor / ref_i
                 if (inductor_ratio < threshold) {
@@ -311,17 +311,17 @@ analyze_performance_regression() {
                 if (new_inductor <= 0) notes = notes (notes ? "; " : "") "Missing new inductor latency"
                 if (ref_i <= 0) notes = notes (notes ? "; " : "") "Missing reference inductor latency"
             }
-            
+
             # Determine overall regression
             overall_reg = "NO"
             if (eager_reg == "YES" || inductor_reg == "YES") {
                 overall_reg = "YES"
             }
-            
+
             print model, bs, ref_e, ref_i, new_eager, new_inductor, \
                   eager_ratio, inductor_ratio, eager_reg, inductor_reg, \
                   reg_type, notes
-            
+
         } else {
             # No reference data found
             print model, bs, "N/A", "N/A", new_eager, new_inductor, \
@@ -329,19 +329,19 @@ analyze_performance_regression() {
         }
     }
     ' "${ref_summary}" "${new_summary}" > "${output_file}"
-    
+
     # Count regressions
     local total=$(awk 'NR>1 {count++} END {print count}' "${output_file}")
     local regressions=$(awk -F',' 'NR>1 && ($9 == "YES" || $10 == "YES") {count++} END {print count}' "${output_file}")
     local eager_reg=$(awk -F',' 'NR>1 && $9 == "YES" {count++} END {print count}' "${output_file}")
     local inductor_reg=$(awk -F',' 'NR>1 && $10 == "YES" {count++} END {print count}' "${output_file}")
-    
+
     log_info "Performance regression analysis:"
     log_info "  Total comparable tests: ${total}"
     log_info "  Eager regressions: ${eager_reg}"
     log_info "  Inductor regressions: ${inductor_reg}"
     log_info "  Total regressions: ${regressions}"
-    
+
     echo "${regressions}"
 }
 
@@ -350,54 +350,54 @@ run_performance_rerun() {
     local regression_file="$1"
     local run_type="$2"  # "target" or "baseline"
     local rerun_dir="$3"
-    
+
     log_info "Running performance rerun for ${run_type}..."
-    
+
     # Extract models with regression
     local models_to_rerun=()
     while IFS=',' read -r model bs ref_e ref_i new_e eager_reg inductor_reg reg_type notes; do
         # Skip header
         [[ "$model" == "Model" ]] && continue
-        
+
         # Only rerun if there's a regression
         if [[ "$eager_reg" == "YES" || "$inductor_reg" == "YES" ]]; then
             models_to_rerun+=("${model}|${bs}")
         fi
     done < <(awk -F',' 'NR>1 {print $1 "," $2 "," $3 "," $4 "," $5 "," $6 "," $9 "," $10 "," $11}' "${regression_file}")
-    
+
     if [[ ${#models_to_rerun[@]} -eq 0 ]]; then
         log_info "No models to rerun"
         return 0
     fi
-    
+
     # Remove duplicates
     IFS=$'\n' unique_models=($(sort -u <<<"${models_to_rerun[*]}"))
     unset IFS
-    
+
     log_info "Found ${#unique_models[@]} models for rerun"
-    
+
     # Read configuration from regression file
     local config_line=$(head -2 "${regression_file}" | tail -1)
     IFS=',' read -r model bs ref_e ref_i new_e new_i eager_ratio inductor_ratio eager_reg inductor_reg reg_type notes <<< "$config_line"
-    
+
     # Try to get suite and dtype from file
     local suite="huggingface"
     local dtype="float32"
     local mode="inference"
     local scenario="performance"
     local device="xpu"
-    
+
     # Run rerun for each model multiple times
     for ((run=1; run<=RERUN_COUNT; run++)); do
         log_info "Rerun ${run}/${RERUN_COUNT} for ${run_type}"
         local run_dir="${rerun_dir}/run_${run}"
         mkdir -p "${run_dir}"
-        
+
         for model_info in "${unique_models[@]}"; do
             IFS='|' read -r model_name batch_size <<< "$model_info"
-            
+
             log_info "  Running ${model_name} with BS=${batch_size}"
-            
+
             # Build command for rerun
             local cmd=()
             cmd+=("python" "benchmarks/dynamo/${suite}.py")
@@ -411,20 +411,20 @@ run_performance_rerun() {
             cmd+=("--cold-start-latency")
             cmd+=("--timeout=3600")
             cmd+=("--disable-cudagraphs")
-            
+
             local output_csv="${run_dir}/${model_name}_bs${batch_size}.csv"
             cmd+=("--output=${output_csv}")
-            
+
             # Execute rerun
             if [[ "${VERBOSE}" == "true" ]]; then
                 log_info "Command: ${cmd[*]}"
             fi
-            
+
             if ! "${cmd[@]}" > "${run_dir}/${model_name}.log" 2>&1; then
                 log_warning "Rerun failed for ${model_name}"
                 continue
             fi
-            
+
             # Process rerun results
             if [[ -f "${output_csv}" ]]; then
                 # Extract latency from CSV
@@ -442,7 +442,7 @@ run_performance_rerun() {
             fi
         done
     done
-    
+
     # Calculate averages from all reruns
     if [[ -f "${rerun_dir}/run_1/rerun_results.csv" ]]; then
         awk -F',' '
@@ -466,7 +466,7 @@ run_performance_rerun() {
             }
         }' "${rerun_dir}"/run_*/rerun_results.csv 2>/dev/null > "${rerun_dir}/averages.csv"
     fi
-    
+
     log_success "Performance rerun completed for ${run_type}"
 }
 
@@ -475,13 +475,13 @@ compare_rerun_results() {
     local target_rerun_dir="$1"
     local baseline_rerun_dir="$2"
     local comparison_file="$3"
-    
+
     log_info "Comparing rerun results..."
-    
+
     # Read target averages
     declare -A target_eager
     declare -A target_inductor
-    
+
     if [[ -f "${target_rerun_dir}/averages.csv" ]]; then
         while IFS=',' read -r model bs eager inductor; do
             key="${model}|${bs}"
@@ -489,11 +489,11 @@ compare_rerun_results() {
             target_inductor["${key}"]="${inductor}"
         done < "${target_rerun_dir}/averages.csv"
     fi
-    
+
     # Read baseline averages
     declare -A baseline_eager
     declare -A baseline_inductor
-    
+
     if [[ -f "${baseline_rerun_dir}/averages.csv" ]]; then
         while IFS=',' read -r model bs eager inductor; do
             key="${model}|${bs}"
@@ -501,40 +501,40 @@ compare_rerun_results() {
             baseline_inductor["${key}"]="${inductor}"
         done < "${baseline_rerun_dir}/averages.csv"
     fi
-    
+
     # Create comparison
     {
         echo "Model,BS,Target_Eager,Target_Inductor,Baseline_Eager,Baseline_Inductor,Eager_Ratio,Inductor_Ratio,Eager_Reg,Inductor_Reg"
-        
+
         for key in "${!target_eager[@]}"; do
             if [[ -n "${baseline_eager[$key]}" ]]; then
                 IFS='|' read -r model bs <<< "$key"
-                
+
                 local t_eager="${target_eager[$key]}"
                 local t_inductor="${target_inductor[$key]}"
                 local b_eager="${baseline_eager[$key]}"
                 local b_inductor="${baseline_inductor[$key]}"
-                
+
                 # Calculate ratios (target/baseline, higher is better)
                 local eager_ratio=0
                 local inductor_ratio=0
                 local eager_reg="NO"
                 local inductor_reg="NO"
-                
+
                 if (( $(echo "${b_eager} > 0" | bc -l) )) && (( $(echo "${t_eager} > 0" | bc -l) )); then
                     eager_ratio=$(echo "${t_eager} / ${b_eager}" | bc -l)
                     if (( $(echo "${eager_ratio} < ${REGRESSION_THRESHOLD}" | bc -l) )); then
                         eager_reg="YES"
                     fi
                 fi
-                
+
                 if (( $(echo "${b_inductor} > 0" | bc -l) )) && (( $(echo "${t_inductor} > 0" | bc -l) )); then
                     inductor_ratio=$(echo "${t_inductor} / ${b_inductor}" | bc -l)
                     if (( $(echo "${inductor_ratio} < ${REGRESSION_THRESHOLD}" | bc -l) )); then
                         inductor_reg="YES"
                     fi
                 fi
-                
+
                 printf "%s,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%s,%s\n" \
                     "${model}" "${bs}" "${t_eager}" "${t_inductor}" \
                     "${b_eager}" "${b_inductor}" "${eager_ratio}" "${inductor_ratio}" \
@@ -542,15 +542,15 @@ compare_rerun_results() {
             fi
         done
     } > "${comparison_file}"
-    
+
     # Count regressions in rerun comparison
     local total_rerun=$(awk 'NR>1 {count++} END {print count}' "${comparison_file}")
     local rerun_regressions=$(awk -F',' 'NR>1 && ($9 == "YES" || $10 == "YES") {count++} END {print count}' "${comparison_file}")
-    
+
     log_info "Rerun comparison results:"
     log_info "  Total models compared: ${total_rerun}"
     log_info "  Regressions after rerun: ${rerun_regressions}"
-    
+
     echo "${rerun_regressions}"
 }
 
@@ -559,9 +559,9 @@ generate_final_report() {
     local output_dir="$1"
     local perf_regressions="$2"
     local rerun_regressions="$3"
-    
+
     local report_file="${output_dir}/final_report.txt"
-    
+
     {
         echo "Regression Analysis Report"
         echo "=========================="
@@ -583,13 +583,13 @@ generate_final_report() {
         echo "  This report: ${report_file}"
         echo ""
         echo "Analysis:"
-        
+
         if [[ "${perf_regressions}" -eq 0 ]]; then
             echo "  ✅ No performance regressions detected."
             echo "  All tests passed the regression threshold."
         else
             echo "  ⚠️  ${perf_regressions} performance regression(s) detected."
-            
+
             if [[ "${rerun_regressions}" -eq 0 ]]; then
                 echo "  ✅ After rerun, no regressions confirmed."
                 echo "  Initial regressions may have been measurement noise."
@@ -598,7 +598,7 @@ generate_final_report() {
                 echo "  These are consistent performance degradations."
             fi
         fi
-        
+
         echo ""
         echo "Next Steps:"
         if [[ "${perf_regressions}" -gt 0 ]] && [[ "${rerun_regressions}" -gt 0 ]]; then
@@ -613,7 +613,7 @@ generate_final_report() {
             echo "  1. All tests passed - no action required"
             echo "  2. Consider lowering threshold for stricter checks"
         fi
-        
+
         echo ""
         echo "Regression Threshold Explanation:"
         echo "  Threshold: ${REGRESSION_THRESHOLD} (e.g., 0.9 = 90%)"
@@ -621,11 +621,11 @@ generate_final_report() {
         echo "  Example: New takes 95ms, reference took 100ms"
         echo "           Ratio = 95/100 = 0.95 (PASS if threshold=0.9)"
         echo "           Ratio = 95/100 = 0.95 (FAIL if threshold=0.96)"
-        
+
     } > "${report_file}"
-    
+
     log_success "Final report generated: ${report_file}"
-    
+
     # Display summary
     echo ""
     echo "========================================"
@@ -633,7 +633,7 @@ generate_final_report() {
     echo "========================================"
     echo "Performance regressions detected: ${perf_regressions}"
     echo "Regressions confirmed after rerun: ${rerun_regressions}"
-    
+
     if [[ "${perf_regressions}" -eq 0 ]]; then
         echo "✅ STATUS: PASS - No performance regressions"
         return 0
@@ -649,90 +649,90 @@ generate_final_report() {
 # Main execution function
 main() {
     log_info "Starting regression analysis"
-    
+
     # Validate arguments
     validate_arguments
-    
+
     # Extract configuration
     local new_config=$(extract_configuration "${NEW_RESULTS_DIR}")
     local ref_config=$(extract_configuration "${REFERENCE_DIR}")
-    
+
     log_info "New run config: ${new_config}"
     log_info "Reference config: ${ref_config}"
-    
+
     # Find summary files
     local new_summary_file=$(find_summary_files "${NEW_RESULTS_DIR}")
     local ref_summary_file=$(find_summary_files "${REFERENCE_DIR}")
-    
+
     if [[ -z "${new_summary_file}" ]]; then
         log_error "No summary file found in new results directory"
         exit 1
     fi
-    
+
     if [[ -z "${ref_summary_file}" ]]; then
         log_error "No summary file found in reference directory"
         exit 1
     fi
-    
+
     log_info "New summary file: $(basename "${new_summary_file}")"
     log_info "Reference summary file: $(basename "${ref_summary_file}")"
-    
+
     # Process summary files
     local processed_new="${OUTPUT_DIR}/new_processed.csv"
     local processed_ref="${OUTPUT_DIR}/reference_processed.csv"
-    
+
     process_summary_file "${new_summary_file}" "${processed_new}"
     process_summary_file "${ref_summary_file}" "${processed_ref}"
-    
+
     # Analyze performance regression
     local perf_regression_file="${OUTPUT_DIR}/performance_regression.csv"
     local perf_regressions=$(analyze_performance_regression "${processed_new}" "${processed_ref}" "${perf_regression_file}")
-    
+
     # Run performance rerun if regressions found
     local rerun_regressions=0
     if [[ "${perf_regressions}" -gt 0 ]]; then
         log_info "Performance regressions found, running reruns..."
-        
+
         # Create rerun directories
         local target_rerun_dir="${OUTPUT_DIR}/target_rerun"
         local baseline_rerun_dir="${OUTPUT_DIR}/baseline_rerun"
         mkdir -p "${target_rerun_dir}" "${baseline_rerun_dir}"
-        
+
         # Run target rerun (current environment)
         run_performance_rerun "${perf_regression_file}" "target" "${target_rerun_dir}"
-        
+
         # Note: Baseline rerun would require environment setup
         # For now, we'll skip baseline rerun or assume it's already set up
         log_info "Skipping baseline rerun (environment setup required)"
-        
+
         # Compare rerun results if both available
         if [[ -f "${target_rerun_dir}/averages.csv" ]]; then
             local comparison_file="${OUTPUT_DIR}/rerun_comparison.csv"
-            
+
             # Since we're not running baseline rerun, compare target rerun with original reference
             # For now, just copy the original regression analysis
             cp "${perf_regression_file}" "${comparison_file}"
             rerun_regressions="${perf_regressions}"
-            
+
             log_info "Rerun analysis saved to: ${comparison_file}"
         fi
     else
         log_success "No performance regressions found"
     fi
-    
+
     # Generate final report
     generate_final_report "${OUTPUT_DIR}" "${perf_regressions}" "${rerun_regressions}"
     local report_status=$?
-    
+
     # Exit based on regression status
     if [[ "${FAIL_ON_REGRESSION}" == "true" ]] && [[ "${report_status}" -eq 1 ]]; then
         log_error "Regression check failed - confirmed performance regressions found"
         exit 1
     fi
-    
+
     log_success "Regression analysis completed"
     log_info "Results saved to: ${OUTPUT_DIR}"
-    
+
     return 0
 }
 
