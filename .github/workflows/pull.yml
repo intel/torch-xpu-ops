@@ -128,7 +128,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
+      runner: dut7364
       pytorch: distributed_2.10
       ut: ${{ matrix.ut_name }}
 
