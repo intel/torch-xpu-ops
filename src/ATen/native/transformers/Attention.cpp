@@ -1,15 +1,31 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/NestedTensorImpl.h>
+#include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
+#include <ATen/native/xpu/sycl/DropoutKernels.h>
+#include <ATen/ops/_scaled_dot_product_attention_math.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
+#include <ATen/ops/_scaled_dot_product_efficient_attention_native.h>
 #include <ATen/ops/empty_like.h>
+#include <ATen/ops/full.h>
 #include <ATen/ops/linear.h>
+#include <ATen/ops/scalar_tensor.h>
 #include <ATen/ops/scaled_dot_product_attention.h>
 #include <ATen/ops/split_native.h>
 #endif
@@ -292,6 +308,77 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
     qkt /= num_head;
   }
   return std::make_tuple(std::move(proj), std::move(qkt));
+}
+
+/**
+ * Get the mask for dropout. only used for testing, not much
+ * attention is paid to performance
+ */
+at::Tensor& _fill_mem_eff_dropout_mask_(
+    Tensor& self,
+    double dropout_p,
+    const int64_t seed,
+    const int64_t offset) {
+  auto mask = std::get<1>(xpu::dropout_kernel(self, dropout_p, true));
+  self.copy_(mask);
+  return self;
+}
+
+/**
+ * Fall back implementation of efficient attention
+ */
+std::tuple<Tensor, Tensor, Tensor, Tensor>
+_scaled_dot_product_efficient_attention_xpu(
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
+    const std::optional<at::Tensor>& attn_bias,
+    bool compute_log_sumexp,
+    double dropout_p,
+    bool is_causal,
+    std::optional<double> scale) {
+  // Used for tracking usage statistics
+  C10_LOG_API_USAGE_ONCE("torch.sdpa.mem_efficient_attention");
+  constexpr int64_t MAX_BATCH_SIZE = (1LL << 16) - 1;
+  int64_t batch_size = query.size(0);
+
+  if (batch_size > MAX_BATCH_SIZE) {
+    TORCH_CHECK(
+        dropout_p == 0.0,
+        "Efficient attention cannot produce valid seed and offset outputs when "
+        "the batch size exceeds (",
+        MAX_BATCH_SIZE,
+        ").");
+  }
+  auto res = at::_scaled_dot_product_attention_math(
+      query,
+      key,
+      value,
+      attn_bias,
+      dropout_p,
+      is_causal,
+      std::nullopt, /*dropout_mask*/
+      scale,
+      true);
+  auto attention = std::get<0>(res);
+  // logsumexp is padded along the query dimension to kAlignLSE
+  // so that backward kernels can perform vectorized loads safely.
+  // This matches the contract expected by memory-efficient attention kernels.
+  // Align with CUDA: kAlignLSE = 32.
+  constexpr int64_t kAlignLSE = 32;
+  int64_t B = query.size(0);
+  int64_t H = query.size(1);
+  int64_t L = query.size(2);
+  Tensor out =
+      attention.permute({0, 2, 1, 3}).contiguous().permute({0, 2, 1, 3});
+  return std::make_tuple(
+      out,
+      at::full(
+          {B, H, (compute_log_sumexp ? ceil_div(L, kAlignLSE) * kAlignLSE : 0)},
+          0.0,
+          attention.options()),
+      at::scalar_tensor(1, query.options()),
+      at::scalar_tensor(1, query.options()));
 }
 
 } // namespace native

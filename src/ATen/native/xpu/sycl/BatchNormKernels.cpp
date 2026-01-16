@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/TensorAccessor.h>
@@ -276,7 +286,7 @@ static inline void group_reduce(
     if (lane_id == 0) {
       local_data[0] = val;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     val = local_data[0];
 
     return;
@@ -287,7 +297,7 @@ static inline void group_reduce(
   if (lane_id == 0) {
     local_data[sg_id] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // use one subgroup to reduce WGroupSize/subGroupSize elements
   // into the final result
@@ -314,7 +324,7 @@ static inline void group_reduce(
     }
   }
 
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   val = local_data[0];
 }
 
@@ -352,7 +362,7 @@ scalar_t plane_reduce(
   if (item.get_local_linear_id() == 0) {
     shared[0] = sum_value;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   // Everyone picks it up, should be broadcast into the whole grad_input
   return shared[0];
 }
@@ -473,7 +483,7 @@ struct BatchNormCollectStatisticsKernelFunctor
       shared_avg_var_[sg_id * 2] = avg;
       shared_avg_var_[sg_id * 2 + 1] = var_n;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     // now have a second subgroupSum to reduce the intermediate values
     // from shared memory to a single number. The very first
     // thread writes it to shared memory.
@@ -665,7 +675,7 @@ inline void welford_merge_group_vertical(
       shmem_m2n[address_base] = m2n;
       shmem_count[address_base] = count;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (item.get_local_id(0) < offset &&
         item.get_local_id(0) + offset < item.get_local_range(0)) {
       auto address = address_base + offset * item.get_local_range(1);
@@ -772,7 +782,7 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
         staging_count[address_base] = count_th;
       }
 
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       // mark group done
       if (item.get_local_linear_id() == 0) {
@@ -784,7 +794,7 @@ struct BatchNormCollectStatisticsChannelsLastKernelFunctor
         is_last_group_done_[0] = (old == (item.get_group_range(0) - 1));
       }
 
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       // check that all data is now available in global memory
       if (is_last_group_done_[0]) {
@@ -2136,7 +2146,7 @@ inline void merge_group_vertical_backward(
       shmem_sum_dy[address_base] = sum_dy;
       shmem_sum_dy_xmu[address_base] = sum_dy_xmu;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (local_id_y < offset && local_id_y + offset < item.get_local_range(0)) {
       auto address = address_base + offset * item.get_local_range(1);
 
@@ -2234,7 +2244,7 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
         staging_sum_dy_xmu[address_base] = sum_dy_xmu_th;
       }
 
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       // mark group done
       if (item.get_local_linear_id() == 0) {
@@ -2246,7 +2256,7 @@ struct BatchNormBackwardReduceChannelsLastKernelFunctor
         is_last_group_done_[0] = (old == (nwg_y - 1));
       }
 
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       // check that all data is now available in global memory
       if (is_last_group_done_[0]) {

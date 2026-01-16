@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -104,7 +118,7 @@ inline void bitonicSortKeys(
   for (unsigned int size = 2; size < Power2SortSize; size *= 2) {
     bool flag = ((tx & (size / 2)) != 0);
     for (unsigned int stride = size / 2; stride > 0; stride /= 2) {
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       unsigned int pos = 2 * tx - (tx & (stride - 1));
       bitonicSwapKeys<Comparator, K>(
           keys[pos],
@@ -117,7 +131,7 @@ inline void bitonicSortKeys(
   }
 #pragma unroll
   for (unsigned int stride = Power2SortSize / 2; stride > 0; stride /= 2) {
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     unsigned int pos = 2 * tx - (tx & (stride - 1));
     bitonicSwapKeys<Comparator, K>(
         keys[pos],
@@ -127,7 +141,7 @@ inline void bitonicSortKeys(
         false,
         comp);
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 }
 
 template <typename T>
@@ -183,7 +197,7 @@ inline void inclusivePrefixScan(
     if (index < Power2ScanSize) {
       smem[index] = binop(smem[index], smem[index - stride]);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
   }
 
   // Post-reduce step ("downsweep")
@@ -193,7 +207,7 @@ inline void inclusivePrefixScan(
     if ((index + stride) < Power2ScanSize) {
       smem[index + stride] = binop(smem[index + stride], smem[index]);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
   }
 }
 
@@ -269,14 +283,14 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // valid components in the smem buffer
     bmem[tidx] = tidx < sliceSize_;
     bmem[stidx] = stidx < sliceSize_;
-    item.barrier(sycl_local_fence); // barrier for smem, bmem initialization
+    sycl::group_barrier(item.get_group()); // barrier for smem, bmem initialization
 
     // First, sort the input slice in ascending order. smem contains the input
     // elements, and bmem marks the valid indices
     bitonicSortKeys<T, unsigned int, Power2Size>(
         item, smem, bmem, BitonicSortFn<T>());
-    item.barrier(
-        sycl_local_fence); // make no assumptions that the sort syncs at end
+    sycl::group_barrier(
+        item.get_group()); // make no assumptions that the sort syncs at end
 
     // The next step of our algorithm is performing a group-wide comparison of
     // neighboring elements. In particular, given an sorted input slice A, we
@@ -318,7 +332,7 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           smem[((tidx + 1) * 2) - 1] != smem[(tidx + 1) * 2];
       ubpmem[(tidx + 1) * 2].val = !ubpmem[(tidx + 1) * 2].flag;
     }
-    item.barrier(sycl_local_fence); // barrier for ubpmem initialization
+    sycl::group_barrier(item.get_group()); // barrier for ubpmem initialization
 
     // Next, we perform a segmented prefix sum on the neighboring elements,
     // where
@@ -369,7 +383,7 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     uup[0].val = ubpmem[tidx * 2].val;
     uup[1].index = tidx * 2 + 1;
     uup[1].val = ubpmem[tidx * 2 + 1].val;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     struct ModeUnsignedPair max = {0, 0};
 
@@ -388,7 +402,7 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     if (tidx == 0) {
       mode_[0] = smem[max.index];
     }
-    item.barrier(sycl_local_fence); // broadcast mode
+    sycl::group_barrier(item.get_group()); // broadcast mode
 
     // Finally, we need to find "an" index of the mode in the input
     // Tensor. The API does not constrain which index we pick, but here

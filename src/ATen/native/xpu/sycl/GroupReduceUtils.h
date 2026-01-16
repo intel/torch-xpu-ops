@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/AccumulateType.h>
@@ -53,7 +63,7 @@ inline T& GroupReduceSumWithoutBroadcast(
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceSumWithoutBroadcast<T, SIMD, DIM>(item, val);
-  item.barrier(sycl_local_fence); // prevent races when GroupReduceSum are
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum are
                                   // called in a row.
   if (n_sg == 1) {
     return val;
@@ -61,7 +71,7 @@ inline T& GroupReduceSumWithoutBroadcast(
   if (sg_tid == 0) {
     shared[sg_id] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   val = 0;
   if (sg_id == 0) {
     for (int i = sg_tid; i < n_sg; i += SIMD) {
@@ -96,7 +106,7 @@ inline T& GroupReduceMaxWithoutBroadcast(
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceMaxWithoutBroadcast<T, SIMD, DIM>(item, val);
-  item.barrier(sycl_local_fence); // prevent races when GroupReduceSum are
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduceSum are
                                   // called in a row.
   if (n_sg == 1) {
     return val;
@@ -104,7 +114,7 @@ inline T& GroupReduceMaxWithoutBroadcast(
   if (sg_tid == 0) {
     shared[sg_id] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   if (sg_id == 0) {
     for (int i = 1; i < n_sg; i++) {
       val = max_impl(val, shared[i]);
@@ -141,7 +151,7 @@ inline T& GroupReduceWithoutBroadcast(
   int sg_id = sg.get_group_linear_id();
   int n_sg = get_local_linear_range<DIM>(item) / SIMD;
   val = SubgroupReduceWithoutBroadcast<T, ReduceOp, SIMD, DIM>(item, val, op);
-  item.barrier(sycl_local_fence); // prevent races when GroupReduce
+  sycl::group_barrier(item.get_group()); // prevent races when GroupReduce
                                   // are called in a row.
   if (n_sg == 1) {
     return val;
@@ -149,7 +159,7 @@ inline T& GroupReduceWithoutBroadcast(
   if (sg_tid == 0) {
     shared[sg_id] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   if (sg_id == 0) {
     for (int i = 1; i < n_sg; i++) {
       val = op.combine(val, shared[i]);

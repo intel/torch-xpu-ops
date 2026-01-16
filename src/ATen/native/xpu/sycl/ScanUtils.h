@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/Math.h>
@@ -114,7 +124,7 @@ T inline group_x_scan_by_uds_for_loop_scan(
           cfg.func_(slm[liy * rx * 2 + lix], pre_max_carr);
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   // Parallel reduction (Up-sweep)
   for (uint32_t s = rx, d = 1; s >= 1; s >>= 1, d <<= 1) {
@@ -123,7 +133,7 @@ T inline group_x_scan_by_uds_for_loop_scan(
       slm[offset + d] = cfg.func_(slm[offset], slm[offset + d]);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -134,7 +144,7 @@ T inline group_x_scan_by_uds_for_loop_scan(
       slm[offset + d] = cfg.func_(slm[offset], slm[offset + d]);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -249,7 +259,7 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
           pre_max_carr, slm[offset], pre_idx_carr, slm_idx[offset], cfg.func_);
     }
   }
-  item.barrier(sycl::access::fence_space::local_space);
+  sycl::group_barrier(item.get_group());
 
   // Parallel reduction (Up-sweep)
   for (uint32_t s = rx, d = 1; s >= 1; s >>= 1, d <<= 1) {
@@ -263,7 +273,7 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
           cfg.func_);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -279,7 +289,7 @@ void inline group_x_scan_by_uds_for_loop_scan_with_indices(
           cfg.func_);
     }
     if (sub_group_size != cfg.wg_range_x_) {
-      item.barrier(sycl::access::fence_space::local_space);
+      sycl::group_barrier(item.get_group());
     }
   }
 
@@ -555,10 +565,10 @@ T group_x_scan(
 
   slm[liy * rx + lix] = value;
   for (size_t offset = 1; offset < rx; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (lix >= offset)
       value = func(slm[liy * rx + (lix - offset)], slm[liy * rx + lix]);
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (lix >= offset)
       slm[liy * rx + lix] = value;
@@ -583,7 +593,7 @@ void group_x_scan_with_indices(
   slm[liy * rx + lix] = value;
   slm_idx[liy * rx + lix] = idx;
   for (int offset = 1; offset < rx; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (lix >= offset) {
       binary_op_update(
           slm[liy * rx + (lix - offset)],
@@ -592,7 +602,7 @@ void group_x_scan_with_indices(
           idx,
           func);
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (lix >= offset) {
       slm[liy * rx + lix] = value;
@@ -614,10 +624,10 @@ T group_y_scan(
 
   temp[liy * rx + lix] = value;
   for (size_t offset = 1; offset < ry; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (liy >= offset)
       value = func(temp[(liy - offset) * rx + lix], temp[liy * rx + lix]);
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (liy >= offset)
       temp[liy * rx + lix] = value;
@@ -642,7 +652,7 @@ void group_y_scan_with_indices(
   temp[liy * rx + lix] = value;
   temp_idx[liy * rx + lix] = idx;
   for (int offset = 1; offset < ry; offset <<= 1) {
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
     if (liy >= offset) {
       binary_op_update(
           temp[(liy - offset) * rx + lix],
@@ -651,7 +661,7 @@ void group_y_scan_with_indices(
           idx,
           func);
     }
-    item.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item.get_group());
 
     if (liy >= offset) {
       temp[liy * rx + lix] = value;

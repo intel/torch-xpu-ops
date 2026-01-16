@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/Resize.h>
@@ -73,7 +83,7 @@ inline void welford_vertical_merge(
       shmem_m2n[address_base] = m2n;
       shmem_count[address_base] = count;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (item.get_local_id(0) < offset &&
         item.get_local_id(0) + offset < item.get_local_range(0)) {
       auto address = address_base + offset * item.get_local_range(1);
@@ -154,7 +164,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
         *reinterpret_cast<acc_vec_t*>(&staging_m2n[address_vec_base]) = m2n;
         *reinterpret_cast<int_vec_t*>(&staging_count[address_vec_base]) = count;
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       // mark group done
       if (item.get_local_linear_id() == 0) {
@@ -164,7 +174,7 @@ struct WelfordBatchNormStatChannelsLastVecKernelFunctor
             /* , default memory scope is device */);
         is_last_group_done_[0] = (old == (num_cooperative_groups - 1));
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       // check that all data is now available in global memory
       if (is_last_group_done_[0]) {

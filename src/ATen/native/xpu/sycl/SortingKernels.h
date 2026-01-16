@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -471,13 +481,13 @@ struct SegmentedGroupRadixSelectPairsFunctor
     int num_start = method_t::PROCESSING_LENGTH;
     while (num_start < nelements_) {
       method.topk(KeyTraits<key_t>::endbit(), 0, k_, keys_temp, values_temp);
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       method.topk_append_keys(
           keys_in_seg, keys_temp, nelements_, num_start, k_);
       method.topk_append_values(
           values_in_seg, values_temp, nelements_, num_start, k_);
       num_start += method_t::PROCESSING_LENGTH - k_;
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     method.topk(

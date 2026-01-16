@@ -1,8 +1,12 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -1143,7 +1147,7 @@ struct UpsampleGen2dAaKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_x < output_width_ && output_y < output_height_) {
       const scalar_t* buffer1;
@@ -1282,7 +1286,7 @@ struct UpsampleGen2dAaBackwardKernelFunctor
       }
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (output_x < output_width_ && output_y < output_height_) {
       // Parallelized across batch/channels
@@ -1694,6 +1698,3 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
 }
 
 } // namespace at::native::xpu
-
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
