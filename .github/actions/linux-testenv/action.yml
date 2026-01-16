@@ -83,8 +83,9 @@ runs:
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find target_wheels/ -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-          pip install --force-reinstall $(find ${latest_dir} -name "*torch*.whl")
+          pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
         fi
+        TORCH_VERSION_TXT="$(python -c 'import torch; print(torch.__version__)')"
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
@@ -98,6 +99,7 @@ runs:
         pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         git status && git diff && git show -s
+        echo "TORCH_VERSION_TXT=${TORCH_VERSION_TXT}" >> ${GITHUB_ENV}
         echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
     - name: Prepare Torch-xpu-ops
       shell: bash -xe {0}

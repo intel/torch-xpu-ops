@@ -83,6 +83,7 @@ jobs:
         numactl_args: ${{ needs.runner.outputs.numactl_args }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        TEST_TYPE: ${{ inputs.test_type }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4

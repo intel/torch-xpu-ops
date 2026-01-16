@@ -9,7 +9,7 @@ declare -A DEFAULTS=(
     ["DTYPE"]="float32"         # float32 / float16 / amp (amp_bf16) / amp_fp16
     ["MODE"]="inference"        # inference / training
     ["SCENARIO"]="accuracy"     # accuracy / performance
-    ["DEVICE"]="xpu"            # xpu / cuda
+    ["DEVICE"]="xpu"            # xpu / cuda / cpu
     ["CARD"]="0"                # 0 / 1 / 2 / 3 ...
     ["SHAPE"]="static"          # static / dynamic
     ["NUM_SHARDS"]=""           # num test shards
@@ -22,6 +22,9 @@ declare -A DEFAULTS=(
     ["PERF_RERUN_THRESHOLD"]="0.9" # Threshold for performance rerun (0.9 = 90% of reference)
     ["PERF_RERUN_COUNT"]="3"    # Number of times to rerun performance tests
     ["SKIP_ACCURACY"]="false"   # Skip accuracy tests in rerun mode
+    ["BASELINE_TYPE"]="current" # current / nightly / test / release / custom
+    ["BASELINE_DIR"]=""         # Custom baseline wheel directory
+    ["TORCH_VERSION"]=""        # Specific torch version for baseline
 )
 
 # Function to display usage
@@ -36,7 +39,7 @@ Options:
   -d, --dtype DTYPE          Data type: float32, float16, amp, amp_bf16, amp_fp16 (default: ${DEFAULTS[DTYPE]})
   -m, --mode MODE            Mode: inference, training (default: ${DEFAULTS[MODE]})
   -c, --scenario SCENARIO    Scenario: accuracy, performance (default: ${DEFAULTS[SCENARIO]})
-  -e, --device DEVICE        Device: xpu, cuda (default: ${DEFAULTS[DEVICE]})
+  -e, --device DEVICE        Device: xpu, cuda, cpu (default: ${DEFAULTS[DEVICE]})
   -a, --card CARD            Device card index (default: ${DEFAULTS[CARD]})
   -p, --shape SHAPE          Shape: static, dynamic (default: ${DEFAULTS[SHAPE]})
   -n, --num-shards NUM       Number of shards for parallel execution
@@ -49,6 +52,9 @@ Options:
   --perf-rerun-threshold VAL Performance rerun threshold (default: ${DEFAULTS[PERF_RERUN_THRESHOLD]})
   --perf-rerun-count NUM     Number of performance reruns (default: ${DEFAULTS[PERF_RERUN_COUNT]})
   --skip-accuracy            Skip accuracy tests in rerun mode
+  --baseline-type TYPE       Baseline type: current, nightly, test, release, custom (default: ${DEFAULTS[BASELINE_TYPE]})
+  --baseline-dir DIR         Custom baseline wheel directory
+  --torch-version VER        Specific torch version for baseline
   -h, --help                 Show this help message
 
 Examples:
@@ -58,6 +64,7 @@ Examples:
   $(basename "$0") --num-shards 4 --shard-id 2 --model-only "-k T5"
   $(basename "$0") --regression-check --reference-dir /path/to/reference
   $(basename "$0") --regression-check --perf-rerun-threshold 0.8 --perf-rerun-count 5
+  $(basename "$0") --regression-check --baseline-type nightly --torch-version 2.4.0
 
 EOF
 }
@@ -134,6 +141,18 @@ parse_args() {
                 SKIP_ACCURACY="true"
                 shift
                 ;;
+            --baseline-type)
+                BASELINE_TYPE="$2"
+                shift 2
+                ;;
+            --baseline-dir)
+                BASELINE_DIR="$2"
+                shift 2
+                ;;
+            --torch-version)
+                TORCH_VERSION="$2"
+                shift 2
+                ;;
             -h|--help)
                 show_usage
                 exit 0
@@ -158,6 +177,11 @@ parse_args "$@"
 # Set defaults if not provided via command line
 if [[ -z "${WORKSPACE}" ]]; then
     WORKSPACE=$(pwd)
+fi
+
+# Get current torch version if not specified
+if [[ -z "${TORCH_VERSION}" ]]; then
+    TORCH_VERSION=$(python3 -c "import torch; print(torch.__version__.split('+')[0])" 2>/dev/null || echo "2.0.0")
 fi
 
 # Configure log directory
@@ -194,6 +218,8 @@ print_configuration() {
     echo "Perf Rerun Threshold: ${PERF_RERUN_THRESHOLD}"
     echo "Perf Rerun Count: ${PERF_RERUN_COUNT}"
     echo "Skip Accuracy: ${SKIP_ACCURACY}"
+    echo "Baseline Type: ${BASELINE_TYPE}"
+    echo "Torch Version: ${TORCH_VERSION}"
 
     if [[ -n "${NUM_SHARDS}" && -n "${SHARD_ID}" ]]; then
         echo "Shards:         ${SHARD_ID}/${NUM_SHARDS}"
@@ -206,10 +232,236 @@ print_configuration() {
     if [[ -n "${REFERENCE_DIR}" ]]; then
         echo "Reference Dir:  ${REFERENCE_DIR}"
     fi
+
+    if [[ -n "${BASELINE_DIR}" ]]; then
+        echo "Baseline Dir:   ${BASELINE_DIR}"
+    fi
     echo "========================================"
 }
 
 print_configuration
+
+# Function to setup baseline environment
+setup_baseline_environment() {
+    local baseline_type="$1"
+    local torch_version="$2"
+    local baseline_dir="$3"
+
+    echo "=== Setting up Baseline Environment ==="
+    echo "Type: $baseline_type"
+    echo "Torch Version: $torch_version"
+
+    # Save current environment info
+    python3 -m pip freeze > "${LOG_DIR}/current_environment.txt" 2>/dev/null || true
+
+    # Uninstall current torch packages
+    echo "Uninstalling current torch packages..."
+    pip uninstall -y torch torchvision torchaudio triton triton-xpu 2>/dev/null || true
+
+    # Install baseline based on type
+    case "$baseline_type" in
+        "current")
+            echo "Using current environment (no change)"
+            ;;
+        "release")
+            echo "Installing release wheel for $torch_version..."
+            if [[ "${DEVICE}" == "xpu" ]]; then
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+            elif [[ "${DEVICE}" == "cuda" ]]; then
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+            else
+                pip install torch==${torch_version} torchvision torchaudio
+            fi
+            ;;
+        "test")
+            echo "Installing test wheel for $torch_version..."
+            if [[ "${DEVICE}" == "xpu" ]]; then
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/test/xpu
+            elif [[ "${DEVICE}" == "cuda" ]]; then
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/test/cu118
+            else
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/test
+            fi
+            ;;
+        "nightly")
+            echo "Installing nightly wheel for $torch_version..."
+            if [[ "${DEVICE}" == "xpu" ]]; then
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
+            elif [[ "${DEVICE}" == "cuda" ]]; then
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu118
+            else
+                pip install torch==${torch_version} torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly
+            fi
+            ;;
+        "custom")
+            if [[ -z "$baseline_dir" ]] || [[ ! -d "$baseline_dir" ]]; then
+                echo "ERROR: Custom baseline directory not specified or doesn't exist: $baseline_dir"
+                return 1
+            fi
+            echo "Installing from custom directory: $baseline_dir"
+
+            # Find the latest wheel directory
+            local latest_dir=""
+            if [[ -d "${baseline_dir}/Torch-XPU-Wheel-" ]]; then
+                latest_dir="$(find "${baseline_dir}" -type d -name "Torch-XPU-Wheel-*" 2>/dev/null | sort -V | tail -n 1)"
+            elif [[ -d "${baseline_dir}/Torch-CUDA-Wheel-" ]]; then
+                latest_dir="$(find "${baseline_dir}" -type d -name "Torch-CUDA-Wheel-*" 2>/dev/null | sort -V | tail -n 1)"
+            fi
+
+            if [[ -z "$latest_dir" ]] || [[ ! -d "$latest_dir" ]]; then
+                echo "WARNING: Could not find wheel directory in $baseline_dir"
+                echo "Looking for any .whl files..."
+                local whl_files=$(find "$baseline_dir" -name "*.whl" 2>/dev/null | head -5)
+                if [[ -n "$whl_files" ]]; then
+                    echo "Found wheel files:"
+                    echo "$whl_files"
+                    pip install --force-reinstall $whl_files
+                else
+                    echo "ERROR: No wheel files found in $baseline_dir"
+                    return 1
+                fi
+            else
+                echo "Found wheel directory: $latest_dir"
+                pip install --force-reinstall $(find "${latest_dir}" -name "*.whl" 2>/dev/null)
+            fi
+            ;;
+        *)
+            echo "ERROR: Unknown baseline type: $baseline_type"
+            return 1
+            ;;
+    esac
+
+    # Verify installation
+    echo "=== Verification ==="
+    python3 -c "import torch; print(f'Torch version: {torch.__version__}'); print(f'Device available: {torch.xpu.is_available() if hasattr(torch, \"xpu\") else torch.cuda.is_available()}')" 2>/dev/null || echo "Failed to import torch"
+
+    # Save baseline environment info
+    python3 -m pip freeze > "${LOG_DIR}/baseline_environment.txt" 2>/dev/null || true
+
+    echo "Baseline environment setup completed"
+    return 0
+}
+
+# Function to restore original environment
+restore_original_environment() {
+    echo "=== Restoring Original Environment ==="
+
+    # Note: In production, you might want to implement a more sophisticated
+    # environment restoration mechanism using virtual environments
+
+    echo "Original environment restored (note: manual pip install may be needed)"
+}
+
+# Function to compare target vs baseline results
+compare_target_baseline() {
+    local target_dir="$1"
+    local baseline_dir="$2"
+    local output_file="$3"
+
+    echo "=== Comparing Target vs Baseline Results ==="
+
+    # Find summary files
+    local target_summary=$(find "$target_dir" -name "*summary.csv" | head -1)
+    local baseline_summary=$(find "$baseline_dir" -name "*summary.csv" | head -1)
+
+    if [[ -z "$target_summary" ]] || [[ -z "$baseline_summary" ]]; then
+        echo "ERROR: Could not find summary files for comparison"
+        return 1
+    fi
+
+    echo "Target summary: $target_summary"
+    echo "Baseline summary: $baseline_summary"
+
+    # Create comparison CSV
+    {
+        echo "Model,BS,Target_Avg,Target_Min,Target_Max,Baseline_Avg,Baseline_Min,Baseline_Max,Ratio,Status"
+
+        # Parse and compare results
+        awk -F',' '
+        BEGIN {
+            OFS=","
+            # Read target data
+            while ((getline < "'"$target_summary"'") > 0) {
+                if (NR>1 && $1 != "Suite") {
+                    key = $5 "," $6
+                    target_avg[key] = $8
+                    target_min[key] = $9
+                    target_max[key] = $10
+                }
+            }
+            close("'"$target_summary"'")
+
+            # Read baseline data
+            while ((getline < "'"$baseline_summary"'") > 0) {
+                if (NR>1 && $1 != "Suite") {
+                    key = $5 "," $6
+                    baseline_avg[key] = $8
+                    baseline_min[key] = $9
+                    baseline_max[key] = $10
+                }
+            }
+            close("'"$baseline_summary"'")
+
+            # Compare
+            for (key in target_avg) {
+                if (key in baseline_avg) {
+                    t_avg = target_avg[key] + 0
+                    b_avg = baseline_avg[key] + 0
+
+                    t_min = target_min[key] + 0
+                    t_max = target_max[key] + 0
+                    b_min = baseline_min[key] + 0
+                    b_max = baseline_max[key] + 0
+
+                    ratio = 0
+                    status = "N/A"
+
+                    if (b_avg > 0 && t_avg > 0) {
+                        ratio = t_avg / b_avg
+                        if (ratio > 1.1) {
+                            status = "REGRESSION"
+                        } else if (ratio < 0.9) {
+                            status = "IMPROVEMENT"
+                        } else {
+                            status = "PASS"
+                        }
+                    }
+
+                    split(key, parts, ",")
+                    model = parts[1]
+                    bs = parts[2]
+
+                    print model, bs, t_avg, t_min, t_max, b_avg, b_min, b_max, ratio, status
+                }
+            }
+        }
+        '
+    } > "$output_file"
+
+    echo "Comparison saved to: $output_file"
+
+    # Generate summary
+    local total=0
+    local pass=0
+    local regress=0
+    local improve=0
+
+    while IFS=',' read -r model bs t_avg t_min t_max b_avg b_min b_max ratio status; do
+        [[ "$model" == "Model" ]] && continue
+        total=$((total + 1))
+        case "$status" in
+            "PASS") pass=$((pass + 1)) ;;
+            "REGRESSION") regress=$((regress + 1)) ;;
+            "IMPROVEMENT") improve=$((improve + 1)) ;;
+        esac
+    done < "$output_file"
+
+    echo "=== Comparison Summary ==="
+    echo "Total comparisons: $total"
+    echo "Pass: $pass"
+    echo "Regression (target slower): $regress"
+    echo "Improvement (target faster): $improve"
+}
 
 # Validate regression check configuration
 if [[ "${REGRESSION_CHECK}" == "true" ]]; then
@@ -398,7 +650,8 @@ find_perf_reg_cases() {
 run_performance_tests() {
     local models_file="$1"
     local rerun_count="$2"
-    local base_log_dir="${LOG_DIR}/rerun"
+    local rerun_type="$3"
+    local base_log_dir="${LOG_DIR}/${rerun_type}_rerun"
 
     mkdir -p "${base_log_dir}"
 
@@ -430,7 +683,7 @@ run_performance_tests() {
 
     # Run performance tests for each model multiple times
     for ((run=1; run<=rerun_count; run++)); do
-        echo "=== Performance Rerun $run/$rerun_count ==="
+        echo "=== ${rerun_type^^} Performance Rerun $run/$rerun_count ==="
 
         local run_log_dir="${base_log_dir}/run_${run}"
         mkdir -p "${run_log_dir}"
@@ -641,7 +894,7 @@ analyze_rerun_results() {
             # Calculate ratio (lower is better - new should be faster)
             ratio="0"
             if [[ "$ref_latency" != "0" ]] && [[ "$ref_latency" != "" ]] && [[ "$avg" != "0" ]]; then
-                # Use bc for floating point calculation
+                # Use awk for floating point calculation
                 ratio=$(echo "$ref_latency / $avg" | awk '{printf("%.4f", $1 / $NF)}' 2>/dev/null || echo "0")
             fi
 
@@ -649,10 +902,10 @@ analyze_rerun_results() {
             status="PASS"
 
             if [[ "$ratio" != "0" ]] && [[ "$ratio" != "" ]]; then
-                # Compare using bc for accurate floating point comparison
-                if [[ $(echo "$ratio < $PERF_RERUN_THRESHOLD" | bc 2>/dev/null) -eq 1 ]]; then
+                # Compare using awk for accurate floating point comparison
+                if (( $(echo "$ratio < $PERF_RERUN_THRESHOLD" | awk '{print ($1 < $2)}') )); then
                     status="REGRESSION"
-                elif [[ $(echo "$ratio > 1.05" | bc 2>/dev/null) -eq 1 ]]; then
+                elif (( $(echo "$ratio > 1.05" | awk '{print ($1 > $2)}') )); then
                     status="IMPROVEMENT"
                 fi
             fi
@@ -689,12 +942,12 @@ analyze_rerun_results() {
 
 # Build Mode extra parameter based on torch version
 MODE_EXTRA=""
-TORCH_VERSION=$(python3 -c "import torch; print(torch.__version__.split('+')[0])" 2>/dev/null || echo "0.0.0")
+TORCH_VERSION_DETECTED=$(python3 -c "import torch; print(torch.__version__.split('+')[0])" 2>/dev/null || echo "0.0.0")
 
-echo "Detected PyTorch version: ${TORCH_VERSION}"
+echo "Detected PyTorch version: ${TORCH_VERSION_DETECTED}"
 
 # Compare versions
-if printf "%s\n%s\n2.0.2" "${TORCH_VERSION}" "${TORCH_VERSION}" | sort -nr | head -1 | grep -q "2.0.2"; then
+if printf "%s\n%s\n2.0.2" "${TORCH_VERSION_DETECTED}" "${TORCH_VERSION_DETECTED}" | sort -nr | head -1 | grep -q "2.0.2"; then
     # Version >= 2.0.2 (newer API)
     if [[ "${MODE}" == "inference" ]]; then
         MODE_EXTRA="--inference"
@@ -855,6 +1108,7 @@ if [[ -f "${LOG_DIR}/${LOG_NAME}.csv" ]]; then
                 } else {
                     eager = "-1"
                     inductor = "-1"
+                    accuracy = "-1"
                 }
             } else {
                 eager = "-1"
@@ -932,38 +1186,116 @@ if [[ "${REGRESSION_CHECK}" == "true" ]]; then
     # Run performance rerun if regressions found and not skipping
     if [[ ${reg_count} -gt 0 ]] && [[ "${SKIP_ACCURACY}" != "true" ]]; then
         echo "=== Running Performance Rerun for Regressed Models ==="
+
+        # Save current environment info before baseline run
+        CURRENT_LOG_DIR="${LOG_DIR}/target"
+        mkdir -p "${CURRENT_LOG_DIR}"
+        python3 -m pip freeze > "${CURRENT_LOG_DIR}/environment.txt" 2>/dev/null || true
+
+        # Run target tests (current environment)
+        echo "--- Running Target Tests (Current Environment) ---"
+        TARGET_LOG_DIR="${LOG_DIR}/target_rerun"
         if ! run_performance_tests \
             "${REGRESSION_TEMP_DIR}/regression.summary.csv" \
-            "${PERF_RERUN_COUNT}"; then
-            echo "Warning: Performance rerun encountered issues"
+            "${PERF_RERUN_COUNT}" "target"; then
+            echo "Warning: Target performance rerun encountered issues"
         fi
+
+        # Setup and run baseline tests
+        echo "--- Setting up Baseline Environment ---"
+        BASELINE_LOG_DIR="${LOG_DIR}/baseline_rerun"
+
+        if setup_baseline_environment "${BASELINE_TYPE}" "${TORCH_VERSION}" "${BASELINE_DIR}"; then
+            echo "--- Running Baseline Tests ---"
+            if ! run_performance_tests \
+                "${REGRESSION_TEMP_DIR}/regression.summary.csv" \
+                "${PERF_RERUN_COUNT}" "baseline"; then
+                echo "Warning: Baseline performance rerun encountered issues"
+            fi
+
+            # Restore original environment
+            restore_original_environment
+        else
+            echo "ERROR: Failed to setup baseline environment"
+        fi
+
+        # Compare target vs baseline results
+        echo "=== Comparing Target vs Baseline Results ==="
+        if [[ -d "${TARGET_LOG_DIR}" ]] && [[ -d "${BASELINE_LOG_DIR}" ]]; then
+            compare_target_baseline "${TARGET_LOG_DIR}" "${BASELINE_LOG_DIR}" "${LOG_DIR}/comparison.csv"
+        fi
+
     elif [[ "${SKIP_ACCURACY}" == "true" ]]; then
         echo "Skipping accuracy tests as requested."
     fi
 
     # Generate final report
-    echo "=== Final Regression Report ==="
-    echo "Reference Directory: ${REFERENCE_DIR}"
-    echo "Current Run Directory: ${LOG_DIR}"
-    echo "Regression Analysis: ${LOG_DIR}/regression_summary.csv"
+    generate_final_report() {
+        local report_file="${LOG_DIR}/final_regression_report.txt"
 
-    if [[ -f "${LOG_DIR}/regression_analysis.csv" ]]; then
-        echo "Rerun Analysis: ${LOG_DIR}/regression_analysis.csv"
-    fi
+        echo "=== Final Regression Report ===" | tee "${report_file}"
+        echo "Date: $(date)" | tee -a "${report_file}"
+        echo "Reference Directory: ${REFERENCE_DIR}" | tee -a "${report_file}"
+        echo "Current Run Directory: ${LOG_DIR}" | tee -a "${report_file}"
+        echo "Regression Analysis: ${LOG_DIR}/regression_summary.csv" | tee -a "${report_file}"
+        echo "Total Tests: ${total_count}" | tee -a "${report_file}"
+        echo "Regressions Detected: ${reg_count}" | tee -a "${report_file}"
+
+        if [[ -f "${LOG_DIR}/regression_analysis.csv" ]]; then
+            echo "Rerun Analysis: ${LOG_DIR}/regression_analysis.csv" | tee -a "${report_file}"
+
+            # Summarize rerun results
+            if [[ -f "${LOG_DIR}/regression_analysis.csv" ]]; then
+                echo "" | tee -a "${report_file}"
+                echo "Rerun Analysis Summary:" | tee -a "${report_file}"
+                awk -F',' '
+                BEGIN {
+                    total=0; pass=0; regress=0; improve=0;
+                }
+                NR>1 {
+                    total++
+                    if ($10 == "PASS") pass++
+                    else if ($10 == "REGRESSION") regress++
+                    else if ($10 == "IMPROVEMENT") improve++
+                }
+                END {
+                    printf("  Total reruns: %d\n", total)
+                    printf("  Pass: %d\n", pass)
+                    printf("  Regressions: %d\n", regress)
+                    printf("  Improvements: %d\n", improve)
+                }' "${LOG_DIR}/regression_analysis.csv" | tee -a "${report_file}"
+            fi
+        fi
+
+        # Check if comparison file exists
+        if [[ -f "${LOG_DIR}/comparison.csv" ]]; then
+            echo "" | tee -a "${report_file}"
+            echo "Target vs Baseline Comparison:" | tee -a "${report_file}"
+            cat "${LOG_DIR}/comparison.csv" | tee -a "${report_file}"
+        fi
+
+        echo "" | tee -a "${report_file}"
+        echo "=== Report End ===" | tee -a "${report_file}"
+
+        echo "Final report saved to: ${report_file}"
+    }
+
+    generate_final_report
 
     # Clean up temp directory
     rm -rf "${REGRESSION_TEMP_DIR}"
     echo "Cleaned up temporary directory"
 
-    # Exit with error if regressions found and strict mode
+    # Exit with error if regressions found
     if [[ ${reg_count} -gt 0 ]]; then
         echo "WARNING: Performance regressions detected!"
-        # You might want to exit with non-zero code here if needed
-        # exit 1
+        echo "Exit code: 1"
+        exit 1
     else
         echo "SUCCESS: No performance regressions detected."
+        echo "Exit code: 0"
     fi
 fi
 
-echo "Script completed with exit code: ${EXIT_CODE}"
+echo "Script completed"
 exit ${EXIT_CODE}
