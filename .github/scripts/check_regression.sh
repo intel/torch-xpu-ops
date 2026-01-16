@@ -190,7 +190,7 @@ extract_configuration() {
 # Find summary files in directory
 find_summary_files() {
     local dir="$1"
-    local pattern="*.summary.csv"
+    local pattern="*summary.csv"
 
     find "${dir}" -type f -name "${pattern}" | head -1
 }
