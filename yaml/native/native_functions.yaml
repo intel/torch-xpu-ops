@@ -4442,12 +4442,12 @@
   device_check: NoCheck   # TensorIterator
   python_module: nn
 
-- func: linalg_vector_norm(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor
+- func: linalg_vector_norm(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None, bool skip_root=False) -> Tensor
   python_module: linalg
   variants: function
   structured_delegate: linalg_vector_norm.out
 
-- func: linalg_vector_norm.out(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!)
+- func: linalg_vector_norm.out(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None, bool skip_root=False, Tensor(a!) out) -> Tensor(a!)
   python_module: linalg
   structured: True
   dispatch:
