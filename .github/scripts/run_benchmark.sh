@@ -298,7 +298,7 @@ print_configuration() {
         if [[ -n "${SHARD_ID}" ]];then
             echo "Shard ID: ${SHARD_ID}"
         fi
-        if [[ -n "${MODEL_ONLY}" ]];
+        if [[ -n "${MODEL_ONLY}" ]];then
             echo "Model Filter: ${MODEL_ONLY}"
         fi
     } > "${CONFIG_FILE}"
