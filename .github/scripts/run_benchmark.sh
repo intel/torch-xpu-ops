@@ -218,9 +218,7 @@ setup_environment() {
     fi
 
     # Set output CSV file
-    if [[ -z "${OUTPUT_CSV}" ]]; then
-        OUTPUT_CSV="${LOG_DIR}/results.csv"
-    fi
+    OUTPUT_CSV="${LOG_DIR}/results.csv"
 
     # Set summary file
     SUMMARY_FILE="${LOG_DIR}/summary.csv"
