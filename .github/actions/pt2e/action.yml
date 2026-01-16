@@ -44,6 +44,12 @@ runs:
         pt2e_logs_dir="${{ github.workspace }}/pytorch/inductor_log/pt2e"
         rm -rf "${pt2e_logs_dir}" && mkdir -p "${pt2e_logs_dir}"
         echo "Mode,Model,Dtype,Result" |tee ${pt2e_logs_dir}/summary.csv
+        if [ -f ${GITHUB_WORKSPACE}/test-env.txt ];then
+          cp ${GITHUB_WORKSPACE}/test-env.txt ${pt2e_logs_dir}/
+        else
+          python pytorch/torch/utils/collect_env.py 2>&1 |tee ${pt2e_logs_dir}/test-env.txt
+          printenv 2>&1 |tee ${pt2e_logs_dir}/test-env.txt
+        fi
         if [[ "${{ inputs.scenario }}" == *"accuracy"* ]];then
           models="alexnet,mnasnet1_0,mobilenet_v2,mobilenet_v3_large,resnet152,resnet18,resnet50,resnext50_32x4d,shufflenet_v2_x1_0,squeezenet1_1,vgg16"
           cmd_line=" python pt2e-accuracy/scripts/modelbench/quant/inductor_quant_acc.py --device xpu --dataset_dir ${dataset_dir} "

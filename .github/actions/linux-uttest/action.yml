@@ -166,6 +166,12 @@ runs:
     - name: UT Test Results Summary
       shell: timeout 180 bash -xe {0}
       run: |
+        if [ -f ${GITHUB_WORKSPACE}/test-env.txt ];then
+          cp ${GITHUB_WORKSPACE}/test-env.txt ${GITHUB_WORKSPACE}/ut_log/
+        else
+          python pytorch/torch/utils/collect_env.py 2>&1 |tee ${GITHUB_WORKSPACE}/ut_log/test-env.txt
+          printenv 2>&1 |tee ${GITHUB_WORKSPACE}/ut_log/test-env.txt
+        fi
         pip install junitparser
         python ./.github/scripts/check-ut.py -n ${{ inputs.ut_name }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
         # Check the failure logs

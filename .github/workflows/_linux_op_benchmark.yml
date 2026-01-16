@@ -68,6 +68,12 @@ jobs:
       - name: Run Torch XPU Op Benchmark on ${{ needs.runner.outputs.hostname }}
         run: |
           mkdir -p ${{ github.workspace }}/op_benchmark
+          if [ -f ${GITHUB_WORKSPACE}/test-env.txt ];then
+            cp ${GITHUB_WORKSPACE}/test-env.txt ${{ github.workspace }}/op_benchmark
+          else
+            python pytorch/torch/utils/collect_env.py 2>&1 |tee ${{ github.workspace }}/op_benchmark/test-env.txt
+            printenv 2>&1 |tee ${{ github.workspace }}/op_benchmark/test-env.txt
+          fi
           cd test/microbench
           filename=$(find -- *.py)
           for i in $filename

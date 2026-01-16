@@ -115,6 +115,12 @@ runs:
       shell: bash -xe {0}
       run: |
         cd ./pytorch
+        if [ -f ${GITHUB_WORKSPACE}/test-env.txt ];then
+          cp ${GITHUB_WORKSPACE}/test-env.txt inductor_log/
+        else
+          python pytorch/torch/utils/collect_env.py 2>&1 |tee inductor_log/test-env.txt
+          printenv 2>&1 |tee inductor_log/test-env.txt
+        fi
         rm -f inductor_log/summary_accuracy.csv
         for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
         do

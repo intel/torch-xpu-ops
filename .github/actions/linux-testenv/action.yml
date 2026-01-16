@@ -192,7 +192,8 @@ runs:
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
-        python pytorch/torch/utils/collect_env.py
+        python pytorch/torch/utils/collect_env.py 2>&1 |tee ${GITHUB_WORKSPACE}/test-env.txt
+        printenv 2>&1 |tee ${GITHUB_WORKSPACE}/test-env.txt
         pip list |grep -E 'torch|intel'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
