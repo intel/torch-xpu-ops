@@ -253,8 +253,6 @@ analyze_performance_regression() {
     local ref_summary="$2"
     local output_file="$3"
 
-    log_info "Analyzing performance regression..."
-
     awk -F',' -v threshold="${REGRESSION_THRESHOLD}" '
     BEGIN {
         OFS=","
@@ -289,7 +287,7 @@ analyze_performance_regression() {
             notes = ""
 
             if (ref_e > 0 && new_eager > 0) {
-                eager_ratio = new_eager / ref_e
+                eager_ratio = ref_e / new_eager
                 if (eager_ratio < threshold) {
                     eager_reg = "YES"
                     reg_type = (reg_type ? reg_type "|" : "") "Eager"
@@ -301,7 +299,7 @@ analyze_performance_regression() {
             }
 
             if (ref_i > 0 && new_inductor > 0) {
-                inductor_ratio = new_inductor / ref_i
+                inductor_ratio = ref_i / new_inductor
                 if (inductor_ratio < threshold) {
                     inductor_reg = "YES"
                     reg_type = (reg_type ? reg_type "|" : "") "Inductor"
@@ -335,12 +333,6 @@ analyze_performance_regression() {
     local regressions=$(awk -F',' 'NR>1 && ($9 == "YES" || $10 == "YES") {count++} END {print count}' "${output_file}")
     local eager_reg=$(awk -F',' 'NR>1 && $9 == "YES" {count++} END {print count}' "${output_file}")
     local inductor_reg=$(awk -F',' 'NR>1 && $10 == "YES" {count++} END {print count}' "${output_file}")
-
-    log_info "Performance regression analysis:"
-    log_info "  Total comparable tests: ${total}"
-    log_info "  Eager regressions: ${eager_reg}"
-    log_info "  Inductor regressions: ${inductor_reg}"
-    log_info "  Total regressions: ${regressions}"
 
     echo "${regressions}"
 }
