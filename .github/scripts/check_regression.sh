@@ -170,7 +170,7 @@ validate_arguments() {
 # Extract configuration from results directories
 extract_configuration() {
     local dir="$1"
-    local config_file="${dir}/config.txt"
+    local config_file="$(find $dir -type f -name "config.txt")"
 
     if [[ -f "${config_file}" ]]; then
         # Extract key configuration parameters
