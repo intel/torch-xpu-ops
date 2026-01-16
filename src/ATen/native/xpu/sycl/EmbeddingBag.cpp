@@ -8,6 +8,12 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <comm/xpu_aten.h>
@@ -966,3 +972,7 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif

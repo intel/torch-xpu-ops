@@ -72,6 +72,10 @@
  *  https://github.com/open-mmlab/mmdetection/blob/master/mmdet/ops/dcn/src/deform_conv_cuda.cpp
  */
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/DistributionTemplates.h>
@@ -1492,3 +1496,7 @@ deform_conv2d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
