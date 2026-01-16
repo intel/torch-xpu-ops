@@ -160,8 +160,9 @@ void addmm_out_sparse_csr(
   // input):
   if (mat1.layout() == kSparseBsr) {
     if (mat2.layout() == kStrided) {
-      if (result.layout() == kStrided)
-         { block_sparse_mm(input, mat1, mat2, beta, alpha, result); return;
+      if (result.layout() == kStrided) {
+        result = input * beta + mat1.to_dense().mm(mat2) * alpha;
+        return;
 }
     }
   }
@@ -169,15 +170,8 @@ void addmm_out_sparse_csr(
   if (mat1.layout() == kStrided) {
     if (mat2.layout() == kSparseBsc) {
       if (result.layout() == kStrided) {
-        auto result_t = result.transpose(-2, -1);
-        auto input_t = (result.is_same(input) ? result_t : input.transpose(-2, -1));
-        block_sparse_mm(
-            input_t,
-            mat2.transpose(-2, -1),
-            mat1.transpose(-2, -1),
-            beta,
-            alpha,
-            result_t); return;
+        result = input * beta + mat1.mm(mat2.to_dense()) * alpha;
+        return;
       }
     }
   }
@@ -191,42 +185,38 @@ void addmm_out_sparse_csr(
   if (mat1.layout() == kStrided) {
     if (mat2.layout() == kSparseCsr) {
       if (result.layout() == kStrided) {
-        // TODO: Add native CSC support via cuSPARSE if supported.
-        spmm(
-            mat2.transpose(0, 1).to_sparse_csr(),
-            mat1.transpose(0, 1),
-            beta,
-            alpha,
-            result.transpose(0, 1)); return;
+        result = input * beta + mat1.mm(mat2.to_dense()) * alpha;
+        return;
       }
     }
     if (mat2.layout() == kSparseCsc) {
       if (result.layout() == kStrided) {
-        spmm(
-            mat2.transpose(-2, -1),
-            mat1.transpose(-2, -1),
-            beta,
-            alpha,
-            result.transpose(-2, -1)); return;
+        result = input * beta + mat1.mm(mat2.to_dense()) * alpha;
+        return;
       }
     }
   }
   if (mat1.layout() == kSparseCsr) {
     if (mat2.layout() == kStrided) {
       if (result.layout() == kStrided) {
-        spmm(mat1, mat2, beta, alpha, result); return;
+        result = input * beta + mat1.to_dense().mm(mat2) * alpha;
+        return;
       }
     }
     if (mat2.layout() == kSparseCsr) {
       if (result.layout() == kSparseCsr) {
-        spgemm(mat1, mat2, beta, alpha, result); return;
+        Tensor result_dense = input * beta + mat1.to_dense().mm(mat2.to_dense()) * alpha;
+        result = result_dense.to_sparse_csr();
+        return;
       }
     }
     if (mat2.layout() == kSparseCsc) {
       if (result.layout() == kSparseCsr) {
         // TODO: Add native CSC support via cuSPARSE if supported.
         // CSR @ CSC kernel would be very fast due to format alignment
-        spgemm(mat1, mat2.to_sparse_csr(), beta, alpha, result); return;
+        Tensor result_dense = input * beta + mat1.to_dense().mm(mat2.to_dense()) * alpha;
+        result = result_dense.to_sparse_csr();
+        return;
       }
     }
   }
@@ -234,34 +224,35 @@ void addmm_out_sparse_csr(
     if (mat2.layout() == kStrided) {
       if (result.layout() == kStrided) {
         // TODO: Add native CSC support via cuSPARSE if supported.
-        spmm(mat1.to_sparse_csr(), mat2, beta, alpha, result); return;
+        result = input * beta + mat1.to_dense().mm(mat2) * alpha;
+        return;
       }
     }
     if (mat2.layout() == kSparseCsr) {
-      if (result.layout() == kSparseCsr)
+      if (result.layout() == kSparseCsr) {
         // TODO: Add native CSC support via cuSPARSE if supported.
-         { spgemm(mat1.to_sparse_csr(), mat2, beta, alpha, result); return;
-}
+        Tensor result_dense = input * beta + mat1.to_dense().mm(mat2.to_dense()) * alpha;
+        result = result_dense.to_sparse_csr();
+        return;
+      }
     }
     if (mat2.layout() == kSparseCsc) {
       if (result.layout() == kSparseCsr) {
         // TODO: Add native CSC support via cuSPARSE if supported.
-        spgemm(
-            mat1.to_sparse_csr(), mat2.to_sparse_csr(), beta, alpha, result); return;
+        Tensor result_dense = input * beta + mat1.to_dense().mm(mat2.to_dense()) * alpha;
+        result = result_dense.to_sparse_csr();
+        return;
       }
       if (result.layout() == kSparseCsc) {
-        spgemm(
-            mat2.transpose(-2, -1),
-            mat1.transpose(-2, -1),
-            beta,
-            alpha,
-            result.transpose(-2, -1)); return;
+        Tensor result_dense = input * beta + mat1.to_dense().mm(mat2.to_dense()) * alpha;
+        result = result_dense.to_sparse_csc();
+        return;
       }
     }
   }
   TORCH_CHECK(
       false,
-      "addmm: computation on CUDA is not implemented for ",
+      "addmm: computation on XPU is not implemented for ",
       result.layout(),
       " + ",
       mat1.layout(),
