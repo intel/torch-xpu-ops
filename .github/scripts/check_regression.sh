@@ -347,7 +347,7 @@ run_performance_rerun() {
 
     # Extract models with regression
     local models_to_rerun=()
-    while IFS=',' read -r model bs ref_e ref_i new_e eager_reg inductor_reg reg_type notes; do
+    while IFS=',' read -r model bs ref_e ref_i new_e new_i eager_reg inductor_reg reg_type; do
         # Skip header
         [[ "$model" == "Model" ]] && continue
 
