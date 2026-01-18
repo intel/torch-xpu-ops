@@ -37,6 +37,7 @@ jobs:
       - name: Run lint check with Clang
         run: |
           sudo apt update && sudo apt install -y libomp-dev
+          pip install pyyaml
           rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && cp -r ../torch-xpu-ops third_party/
