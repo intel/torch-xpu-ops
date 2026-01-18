@@ -94,7 +94,8 @@ runs:
           }
         }')"
         if [ "${{ inputs.ut_name }}" == "xpu_distributed" ];then
-          pytest_extra_args="$(python ${{ github.workspace }}/.github/scripts/check-topology.py)"
+          xpu-smi topology -m
+          # pytest_extra_args="$(python ${{ github.workspace }}/.github/scripts/check-topology.py)"
         else
           pytest_extra_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
             split(z, xpu_list, ",");
