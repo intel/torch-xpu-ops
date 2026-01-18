@@ -93,7 +93,7 @@ jobs:
 
   linux-build:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') }}
-    needs: [conditions-filter, preci-lint-check]
+    needs: [conditions-filter]
     secrets: inherit
     strategy:
       fail-fast: false
