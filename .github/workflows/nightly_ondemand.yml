@@ -58,8 +58,14 @@ jobs:
           clinfo --list
           id
           ip a
-          exit 0
+
+          export DEBIAN_FRONTEND=noninteractive
+          export LANG=C.UTF-8
+          export LC_ALL=C.UTF-8
+          export TZ=UTC
+          export GCC_VERSION=13
           . /etc/os-release
+
           sudo rm -rf /etc/apt/sources.list.d/intel-*
           sudo apt-get autoremove -y && \
           sudo apt-get clean && \
@@ -69,15 +75,63 @@ jobs:
               /var/tmp/* \
               /usr/share/doc/* \
               /usr/share/man/*
-
           echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}/lts/2523 unified" |sudo tee /etc/apt/sources.list.d/intel-gpu-${VERSION_CODENAME}.list
-          uname -r
+
+          sudo apt-get update
+          sudo apt-get upgrade -y --no-install-recommends
+          if [ "${VERSION_ID}" == "22.04" ];then
+              sudo apt-get install -y software-properties-common
+              sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          fi
+          sudo apt-get install -y --no-install-recommends \
+              ca-certificates \
+              gnupg \
+              software-properties-common \
+              apt-transport-https \
+              lsb-release && \
+          sudo rm -rf /var/lib/apt/lists/*
+
+          sudo apt-get update && \
+          sudo apt-get install -y --no-install-recommends \
+              wget \
+              curl \
+              sudo \
+              git \
+              unzip \
+              zip \
+              gh \
+              numactl \
+              rsync \
+              jq \
+              gcc g++ \
+              gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+              cmake \
+              ninja-build \
+              pkg-config \
+              autoconf \
+              automake \
+              libtool \
+              libgl1 \
+              libglib2.0-0 \
+              libglib2.0-dev \
+              zlib1g \
+              zlib1g-dev \
+              python3 \
+              python3-dev \
+              python3-venv \
+              python3-pip && \
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
+          gcc -v && g++ -v && gcov -v && \
+          sudo pip3 install --no-cache-dir --upgrade \
+            pip \
+            setuptools \
+            wheel
+
+          uname -a
           dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
-          sudo apt update
-          echo yes |sudo apt upgrade
-          sudo apt autoremove -y
-          uname -r
-          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
+          clinfo --list
 
           sudo apt-get autoremove -y && \
           sudo apt-get clean && \
