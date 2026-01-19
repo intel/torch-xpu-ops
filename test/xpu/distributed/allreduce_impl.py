@@ -72,7 +72,7 @@ def allreduce_with_symm_mem(
     workspace_size_bytes = chunk_size * world_size * tensor.element_size()
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
-    # No need to zero the buffer - symm[rank] will be written before reduce
+    # Barrier to ensure previous allreduce is complete before writing
     workspace.barrier()
 
     # Step 1: Scatter - Send chunk[r] to rank r's symm[self]

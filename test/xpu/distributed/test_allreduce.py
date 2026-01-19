@@ -12,12 +12,17 @@ import time
 import torch
 import torch.distributed as dist
 from torch.profiler import profile, ProfilerActivity
+import os
 
 from allreduce_impl import allreduce_with_symm_mem
 
 
 def init_distributed():
     """Initialize distributed environment."""
+    os.environ['RANK'] = str(os.environ.get('PMI_RANK', 0))
+    os.environ['WORLD_SIZE'] = str(os.environ.get('PMI_SIZE', 1))
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '29513'
     if not dist.is_initialized():
         dist.init_process_group(backend="xccl")
 
@@ -198,11 +203,14 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     end = time.perf_counter()
     results["symm_mem"] = (end - start) / num_iters * 1000
 
-    # Verify correctness
+    # Verify correctness - use same seed across ranks for same initial data
+    torch.manual_seed(42)
     tensor_ref = torch.randn(tensor_size, device=device, dtype=dtype)
     tensor_test = tensor_ref.clone()
+
     dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
     allreduce_with_symm_mem(tensor_test, op="sum")
+
     is_correct = torch.allclose(tensor_ref, tensor_test, rtol=1e-3, atol=1e-3)  # BF16 tolerance
 
     return results, is_correct
