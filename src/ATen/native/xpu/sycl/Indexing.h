@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/xpu/sycl/BatchKernel.h>
@@ -406,7 +416,7 @@ struct SmallIndexKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     auto out_ptr = out_data_;
     auto in_ptr = in_data_;
-    item_id.barrier(sycl::access::fence_space::local_space);
+    sycl::group_barrier(item_id.get_group());
 
     // compute the in/out/indices offsets and perform memory copy
     for (int64_t local_index = local_id; local_index < group_numel_range;

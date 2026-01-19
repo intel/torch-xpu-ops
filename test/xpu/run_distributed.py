@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 import os
 import subprocess
 import sys
@@ -9,6 +17,7 @@ res = 0
 res2 = 0
 fail_test = []
 
+os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
 if ret == 0:
@@ -55,13 +64,6 @@ def run(test_command):
         fail_test.append(" ".join(test_command))
     return result.returncode
 
-
-test_command = ["python", "distributed/test_c10d_ops_xccl.py"]
-res += run(test_command)
-test_command = ["python", "../../../../test/distributed/pipelining/test_backward.py"]
-res += run(test_command)
-test_command = ["python", "../../../../test/distributed/pipelining/test_microbatch.py"]
-res += run(test_command)
 
 # run pytest with skiplist
 for key in skip_dict:

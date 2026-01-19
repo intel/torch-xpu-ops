@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # Define archive static library target - torch_xpu_ops
 include(${TORCH_XPU_OPS_ROOT}/cmake/Codegen.cmake)
 
@@ -5,6 +13,7 @@ set(ATen_XPU_CPP_SRCS)
 set(ATen_XPU_MKL_SRCS)
 set(ATen_XPU_NATIVE_CPP_SRCS)
 set(ATen_XPU_SYCL_SRCS)
+set(ATen_XPU_SYCLTLA_SRCS)
 set(ATen_XPU_XCCL_SRCS)
 
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src CACHE STRING "ATen XPU Include directory")

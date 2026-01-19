@@ -1,0 +1,51 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
+#pragma once
+
+#include <ATen/ATen.h>
+
+namespace sycltla {
+
+std::tuple<
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    at::Tensor,
+    c10::SymInt,
+    c10::SymInt,
+    at::Tensor,
+    at::Tensor>
+flash_attention_forward_sycltla(
+    const at::Tensor& query,
+    const at::Tensor& key,
+    const at::Tensor& value,
+    const double dropout,
+    const bool is_causal,
+    const float scale);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward_sycltla(
+    const at::Tensor& grad_out,
+    const at::Tensor& query,
+    const at::Tensor& key,
+    const at::Tensor& value,
+    const at::Tensor& out,
+    const at::Tensor& logsumexp,
+    const at::Tensor& cumulative_sequence_length_q,
+    const at::Tensor& cumulative_sequence_length_k,
+    const int64_t max_seqlen_batch_q,
+    const int64_t max_seqlen_batch_k,
+    const double dropout,
+    const bool is_causal,
+    const at::Tensor& philox_seed,
+    const at::Tensor& philox_offset,
+    const float scale);
+
+} // namespace sycltla

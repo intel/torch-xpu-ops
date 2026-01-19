@@ -1,3 +1,15 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["oncall: distributed"]
 # This test file contains positive tests for c10d with XCCL backend.
 # During the test, it is expected that ProcessGroup will not be aborted, destroyed or incur fatal error.
@@ -918,7 +930,8 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         out = torch.zeros(self.world_size, 2, dtype=send.dtype).to(device)
         dist.all_to_all_single(out, send)
         self.assertEqual(
-            out.tolist(), list(zip(range(self.world_size), range(self.world_size)))
+            out.tolist(),
+            list(zip(range(self.world_size), range(self.world_size))),
         )
 
 

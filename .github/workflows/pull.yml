@@ -107,6 +107,7 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -122,13 +123,14 @@ jobs:
     needs: [conditions-filter, linux-build]
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
     secrets: inherit
+    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: distributed
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}

@@ -1,7 +1,20 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: intel"]
 
 
 import copy
+import logging
 import os
 import sys
 import unittest
@@ -19,6 +32,8 @@ from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
 from torch.testing._internal.common_utils import set_default_dtype
 from torch.testing._internal.opinfo.core import DecorateInfo
+
+log = logging.getLogger(__name__)
 
 _xpu_computation_op_list = [
     "empty",
@@ -320,6 +335,7 @@ _ops_without_cuda_support = [
 
 _ops_dtype_different_cuda_support = {
     "histc": {"forward": {torch.bfloat16, torch.float16}},
+    "stft": {"forward": {torch.float16}, "backward": {torch.float16}},
 }
 
 # some case fail in cuda becasue of cuda's bug, so cuda set xfail in opdb
@@ -833,6 +849,123 @@ def _skipXPU(obj):
     return obj
 
 
+def get_dtypesIf_mock(src_device_type: str):
+    """
+    Factory that returns a patched `common_device_type.dtypes`-based decorator class
+    used during XPU test import to avoid `dtypes` redefinition assertions.
+
+    Why this exists
+    ---------------
+    Many upstream tests are decorated with CUDA-specific dtype decorators
+    (e.g. `@dtypesIfCUDA(...)`) and, increasingly, also with XPU-specific ones
+    (e.g. `@dtypesIfXPU(...)`). For torch-xpu-ops we import those upstream tests
+    but remap CUDA-only coverage onto XPU by monkey-patching
+    `common_device_type.dtypesIfCUDA` to behave like an XPU decorator.
+
+    The upstream `common_device_type.dtypes` decorator stores dtype variants on
+    the function object as `fn.dtypes[device_type] = ...` and asserts that each
+    `device_type` key is only defined once per function. After remapping
+    `dtypesIfCUDA -> XPU`, a function decorated by both `dtypesIfCUDA` and
+    `dtypesIfXPU` would attempt to set `fn.dtypes["xpu"]` twice and fail with:
+        AssertionError: dtypes redefinition for xpu
+
+    This patched decorator preserves upstream semantics while enforcing the
+    desired precedence rules for XPU.
+
+    Behavior
+    --------
+    The returned class always writes to the `"xpu"` key, and uses a per-function
+    marker (`__xpu_dtypes_source__`) to track whether the current `"xpu"` dtypes
+    came from:
+      - the mocked CUDA decorator (source == "cuda"), or
+      - an explicit XPU decorator (source == "xpu").
+
+    Scenarios:
+      (A) Only `@dtypesIfCUDA(...)` (mocked):
+          Sets `fn.dtypes["xpu"]` and marks the source as "cuda".
+
+      (B) `@dtypesIfCUDA(...)` then `@dtypesIfXPU(...)`:
+          The explicit XPU decorator overwrites the CUDA-derived `"xpu"` dtypes,
+          logs that an overwrite occurred, and flips the source marker to "xpu".
+
+      (C) `@dtypesIfXPU(...)` then `@dtypesIfCUDA(...)` (mocked):
+          The mocked CUDA decorator becomes a no-op (with debug logging) and does
+          not override the explicit XPU dtype specification.
+
+    Additional details:
+      - Applying `dtypesIfXPU` more than once to the same function is treated as a
+        redefinition error (even if the args are identical), matching upstream.
+      - The only allowed overwrite is (B): an explicit XPU decorator overriding an
+        `"xpu"` dtype entry that was created by the mocked CUDA decorator.
+    """
+    _XPU_KEY = "xpu"
+    _XPU_DTYPES_SOURCE_ATTR = "__xpu_dtypes_source__"
+    _SRC_CUDA = "cuda"
+    _SRC_XPU = "xpu"
+
+    class dtypesIfXPUMock(common_device_type.dtypes):
+        def __init__(self, *args):
+            super().__init__(*args, device_type=_XPU_KEY)
+
+        def __call__(self, fn):
+            d = getattr(fn, "dtypes", {})
+            existing = d.get(_XPU_KEY, None)
+            existing_src = getattr(fn, _XPU_DTYPES_SOURCE_ATTR, None)
+
+            if src_device_type == "cuda":
+                # (A) Only mocked CUDA: sets xpu dtypes
+                # (C) If XPU already set, do nothing (but log)
+                if existing is None:
+                    d[_XPU_KEY] = self.args
+                    setattr(fn, _XPU_DTYPES_SOURCE_ATTR, _SRC_CUDA)
+                else:
+                    log.debug(
+                        "dtypesIfCUDA->XPU no-op: '%s' already set (src=%r, existing=%r, new=%r) for %s",
+                        _XPU_KEY,
+                        existing_src,
+                        existing,
+                        self.args,
+                        getattr(fn, "__qualname__", getattr(fn, "__name__", "<fn>")),
+                    )
+                fn.dtypes = d
+                return fn
+
+            if src_device_type == "xpu":
+                # Explicit XPU always has priority, but must preserve upstream behavior:
+                # applying dtypesIfXPU twice (even with identical args) is still an error,
+                # unless we're overriding a CUDA-derived mocked value.
+                if existing is None:
+                    d[_XPU_KEY] = self.args
+                    setattr(fn, _XPU_DTYPES_SOURCE_ATTR, _SRC_XPU)
+                    fn.dtypes = d
+                    return fn
+
+                # (B) Override only if the existing value came from mocked CUDA
+                if existing_src == _SRC_CUDA:
+                    log.debug(
+                        "dtypesIfXPU overwriting mocked CUDA-derived '%s' dtypes for %s: existing=%r -> new=%r",
+                        _XPU_KEY,
+                        getattr(fn, "__qualname__", getattr(fn, "__name__", "<fn>")),
+                        existing,
+                        self.args,
+                    )
+                    d[_XPU_KEY] = self.args
+
+                    # IMPORTANT: flip marker
+                    setattr(fn, _XPU_DTYPES_SOURCE_ATTR, _SRC_XPU)
+
+                    fn.dtypes = d
+                    return fn
+
+                # Preserve upstream behavior for *any* explicit redefinition of XPU dtypes,
+                # even if the args are identical.
+                raise AssertionError(f"dtypes redefinition for {_XPU_KEY}")
+
+            raise AssertionError(f"Unknown source device type: {src_device_type}")
+
+    return dtypesIfXPUMock
+
+
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
         test_dir = os.path.join(
@@ -849,6 +982,7 @@ class XPUPatchForImport:
         self.test_case_cls = common_utils.TestCase
         self.only_cuda_fn = common_device_type.onlyCUDA
         self.dtypes_if_cuda_fn = common_device_type.dtypesIfCUDA
+        self.dtypes_if_xpu_fn = common_device_type.dtypesIfXPU
         self.only_native_device_types_fn = common_device_type.onlyNativeDeviceTypes
         self.instantiate_device_type_tests_fn = (
             common_device_type.instantiate_device_type_tests
@@ -921,6 +1055,12 @@ class XPUPatchForImport:
                     opinfo.dtypesIfXPU.update(
                         _ops_dtype_different_cuda_support[opinfo.name]["forward"]
                     )
+                if "backward" in _ops_dtype_different_cuda_support[opinfo.name]:
+                    backward_dtypes = set(opinfo.backward_dtypes)
+                    backward_dtypes.update(
+                        _ops_dtype_different_cuda_support[opinfo.name]["backward"]
+                    )
+                    opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
                 fp64_dtypes = [
@@ -990,12 +1130,10 @@ class XPUPatchForImport:
 
         common_device_type.onlyCUDA = common_device_type.onlyXPU
 
-        class dtypesIfXPU(common_device_type.dtypes):
-            def __init__(self, *args):
-                super().__init__(*args, device_type="xpu")
-
         common_device_type.skipXPU = _skipXPU
-        common_device_type.dtypesIfCUDA = dtypesIfXPU
+        common_device_type.dtypesIfCUDA = get_dtypesIf_mock("cuda")
+        common_device_type.dtypesIfXPU = get_dtypesIf_mock("xpu")
+
         common_device_type.onlyNativeDeviceTypes = common_device_type.onlyXPU
         if self.patch_test_case:
             common_utils.TestCase = common_utils.NoTest
@@ -1034,6 +1172,7 @@ class XPUPatchForImport:
         sys.path = self.original_path
         common_device_type.onlyCUDA = self.only_cuda_fn
         common_device_type.dtypesIfCUDA = self.dtypes_if_cuda_fn
+        common_device_type.dtypesIfXPU = self.dtypes_if_xpu_fn
         common_device_type.onlyNativeDeviceTypes = self.only_native_device_types_fn
         common_device_type.instantiate_device_type_tests = (
             self.instantiate_device_type_tests_fn
@@ -1091,30 +1230,30 @@ def copy_tests(
 
 
 def launch_test(test_case, skip_list=None, exe_list=None):
-    os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
     os.environ["PYTORCH_TEST_WITH_SLOW"] = "1"
-    if skip_list is not None:
+    module_name = test_case.replace(".py", "").replace("/", ".").replace("\\", ".")
+    if skip_list is not None and len(skip_list) > 0:
         skip_options = ' -k "not ' + skip_list[0]
         for skip_case in skip_list[1:]:
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
         )
         test_command += skip_options
-    elif exe_list is not None:
+    elif exe_list is not None and len(exe_list) > 0:
         exe_options = ' -k "' + exe_list[0]
         for exe_case in exe_list[1:]:
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += '"'
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
         )
         test_command += exe_options
     else:
         test_command = (
-            f"pytest --junit-xml=./op_ut_with_all_{test_case}.xml " + test_case
+            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
         )
     return os.system(test_command)

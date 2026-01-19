@@ -2,13 +2,16 @@
 set -ex
 
 # Creat a venv for lint check
-python3 -m venv lint
+if ! uv --help > /dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$PATH:$HOME/.local/bin"
+fi
+uv venv lint --python 3.12 --clear
 source lint/bin/activate
-python3 -m pip install -U pip setuptools wheel
+uv pip install -U pip setuptools wheel pyyaml typing-extensions
 
 # Use uv to speed up lintrunner init
-python3 -m pip install uv==0.1.45
-python3 -m pip install ruamel.yaml
+uv pip install ruamel.yaml
 
 CACHE_DIRECTORY="/tmp/.lintbin"
 # Try to recover the cached binaries
@@ -20,11 +23,11 @@ fi
 
 # if lintrunner is not installed, install it
 if ! command -v lintrunner &> /dev/null; then
-    python3 -m pip install lintrunner==0.12.7
+    uv pip install lintrunner
 fi
 
 # Ignoring errors in one specific run
-export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046 -e SC2076 -e SC2034"
+export SHELLCHECK_OPTS="-e SC2154 -e SC2086 -e SC1091 -e SC2046 -e SC2076 -e SC2034 -e SC2190"
 
 # This has already been cached in the docker image
 lintrunner init 2> /dev/null
@@ -37,8 +40,8 @@ if [[ "${CLANG}" == "1" ]]; then
         echo "Please run the checker under pytorch source code folder"
     fi
 fi
-#python3 -m tools.generate_torch_version --is_debug=false
-#python3 -m tools.pyi.gen_pyi \
+#uv tools.generate_torch_version --is_debug=false
+#uv tools.pyi.gen_pyi \
 #    --native-functions-path aten/src/ATen/native/native_functions.yaml \
 #    --tags-path aten/src/ATen/native/tags.yaml \
 #    --deprecated-functions-path "tools/autograd/deprecated.yaml"

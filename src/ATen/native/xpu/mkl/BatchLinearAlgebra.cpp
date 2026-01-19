@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ExpandUtils.h>
@@ -44,16 +54,6 @@ void error_handle(
   auto errs = be.exceptions();
   auto ids = be.ids();
 
-  if (!errs.size()) {
-    TORCH_WARN(
-        "Caught lapack exception:\nWhat: ", be.what(), "\nInfo: ", be.info());
-    for (auto& i : ids) {
-      TORCH_WARN("Error in matrix #", i);
-      info_cpu[i] = 1;
-    }
-    return;
-  }
-
   for (size_t i = 0; i < errs.size(); ++i) {
     try {
       std::rethrow_exception(errs[i]);
@@ -65,10 +65,10 @@ void error_handle(
           e.info(),
           "\nDetail: ",
           e.detail());
-      info_cpu[i] = e.info();
+      info_cpu[ids[i]] = e.info();
     } catch (const sycl::exception& e) {
       TORCH_WARN("Caught SYCL exception:\nWhat: ", e.what(), "\nInfo: -1");
-      info_cpu[i] = -1;
+      info_cpu[ids[i]] = -1;
     }
   }
 }
@@ -487,7 +487,7 @@ static void apply_lu_solve_xpu_(
               batch_size,
               scratchpad_at.data_ptr<scalar_t>(),
               scratchpad_size);
-        } catch (oneapi::mkl::lapack::batch_error be) {
+        } catch (const oneapi::mkl::lapack::batch_error& be) {
           error_handle(info_data, be);
         }
       };

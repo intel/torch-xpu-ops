@@ -1,3 +1,15 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: intel"]
 
 from itertools import product
@@ -270,7 +282,7 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
             if torch.cuda.device_count() >= 2:
                 # === test cross-GPU transfer works
                 def _to_device1(objs):
-                    if isinstance(objs, (tuple, list)):
+                    if isinstance(objs, tuple | list):
                         return type(objs)(_to_device1(item) for item in objs)
                     elif isinstance(objs, dict):
                         return {name: _to_device1(item) for name, item in objs.items()}

@@ -50,7 +50,7 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 900
     container:
-      image: intelgpu/ubuntu-22.04-lts2:2523.31
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
@@ -83,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
 
   op_benchmark_test_results_check:
@@ -96,7 +96,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
-          find ./ |grep -v "^\./$" |xargs rm -rf
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Setup python-${{ inputs.python }}
@@ -106,12 +105,16 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}
-          path: ${{ github.workspace }}/op_benchmark
+          pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
+          path: ${{ github.workspace }}/op_benchmark_tmp
       - name: Download OP Baseline
         continue-on-error: true
         id: reference_id
         run: |
+          # latest dir
+          latest_dir=$(find . -type d -name "Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*" |sort -V |tail -n 1)
+          mv ${{ github.workspace }}/op_benchmark_tmp/${latest_dir} ${{ github.workspace }}/op_benchmark
+          # baseline
           REFERENCE_RUN_ID="$(gh --repo ${GITHUB_REPOSITORY} issue view ${reference_issue} \
             --json body -q .body |grep "Inductor-XPU-OP-Benchmark-Data" |sed 's/.*: *//')"
           gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
@@ -147,7 +150,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated
+          name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
       - name: Upload Reference Run ID
         run: |

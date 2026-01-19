@@ -1,3 +1,11 @@
+# Copyright 2020-2025 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # torch-xpu-ops: XPU implementation for PyTorch ATen
 
 # inputs:
@@ -28,7 +36,7 @@ if(NOT WIN32)
   endif()
 endif()
 
-project(torch-xpu-ops VERSION 2.10.0 LANGUAGES C CXX)
+project(torch-xpu-ops VERSION 2.11.0 LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
@@ -38,6 +46,8 @@ list(APPEND CMAKE_MODULE_PATH ${TORCH_XPU_OPS_ROOT}/cmake/Modules)
 include(${TORCH_XPU_OPS_ROOT}/cmake/SYCL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/ONEMKL.cmake)
 include(${TORCH_XPU_OPS_ROOT}/cmake/BuildFlags.cmake)
+
+set_build_flags()
 
 # -- [ Re-generate the macros file for https://github.com/pytorch/pytorch/pull/147161
 macro(update_caffe2_macros_file)
@@ -54,6 +64,16 @@ if(USE_XCCL)
     caffe2_update_option(USE_C10D_XCCL OFF)
     update_caffe2_macros_file()
   endif()
+endif()
+
+set(USE_SYCLTLA ON)
+if(WIN32 OR NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_VERSION} VERSION_LESS 13.0)
+  set(USE_SYCLTLA OFF)
+  message(WARNING "SYCL-TLA is not build as it only supports GCC >= 13.0 as CXX Compiler on Linux Platform!")
+endif()
+
+if(USE_SYCLTLA)
+  include(${TORCH_XPU_OPS_ROOT}/cmake/SYCLTLA.cmake)
 endif()
 
 if(BUILD_TEST)

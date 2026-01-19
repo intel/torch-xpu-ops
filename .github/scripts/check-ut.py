@@ -247,7 +247,9 @@ def determine_category(ut):
         return 'op_transformers'
     elif ut == 'test_xpu':
         return 'test_xpu'
-    elif 'op_ut' in ut:
+    elif 'op_ut_windows' in ut:
+        return 'op_ut_windows'
+    elif 'op_ut' in ut and 'windows' not in ut:
         return 'op_ut'
     else:
         return 'unknown'
@@ -262,8 +264,10 @@ def process_log_file(log_file):
 def process_xml_file(xml_file):
     try:
         xml = JUnitXml.fromfile(xml_file)
-        ut = os.path.basename(xml_file).split('.')[0]
-        category = determine_category(ut)
+        parts = os.path.basename(xml_file).rsplit('.', 1)
+        ut = parts[0]
+        parts_category = os.path.basename(xml_file).split('.')[0]
+        category = determine_category(parts_category)
 
         for suite in xml:
             suite_summary = {

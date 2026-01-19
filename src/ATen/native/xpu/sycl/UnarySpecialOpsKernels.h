@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/TensorIterator.h>
@@ -35,5 +45,10 @@ TORCH_XPU_API void entr_kernel(TensorIteratorBase& iter);
 TORCH_XPU_API void erfcx_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void sinc_kernel(TensorIteratorBase& iter);
+
+TORCH_XPU_API void kaiser_window_kernel(
+    TensorIteratorBase& iter,
+    int64_t window_length,
+    double beta);
 
 } // namespace at::native::xpu
