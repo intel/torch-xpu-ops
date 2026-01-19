@@ -349,7 +349,7 @@ mark_passed_issue() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu|op_ut_windows)
+    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu|op_ut_windows|xpu_profiling)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
@@ -357,9 +357,6 @@ case "$ut_suite" in
         ;;
     skipped_ut)
         check_skipped_ut
-        ;;
-    xpu_profiling)
-        echo "💡 Not check the test suite results: ${ut_suite}" >&2
         ;;
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2

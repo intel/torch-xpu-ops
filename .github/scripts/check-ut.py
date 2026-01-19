@@ -247,6 +247,8 @@ def determine_category(ut):
         return 'op_transformers'
     elif ut == 'test_xpu':
         return 'test_xpu'
+    elif 'xpu_profiling' in ut:
+        return 'xpu_profiling'
     elif 'op_ut_windows' in ut:
         return 'op_ut_windows'
     elif 'op_ut' in ut and 'windows' not in ut:
