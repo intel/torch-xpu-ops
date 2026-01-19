@@ -139,24 +139,31 @@ void exp2_kernel(TensorIteratorBase& iter) {
 }
 
 template <typename scalar_t>
-struct LogitFunctor {
+struct Logit0Functor {
+  using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
-    return std::log(x / (1 - x));
+    const T_ACC x_acc = static_cast<T_ACC>(x);
+    // suppress compiler optimization on data type promotion.
+    volatile T_ACC res = std::log(x_acc / (T_ACC(1) - x_acc));
+    return res;
   }
 };
 
 template <typename scalar_t>
-struct LogitEpsFunctor {
+struct Logit1Functor {
   using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
   scalar_t operator()(scalar_t x) const {
-    scalar_t x_clamped = x < low_ ? low_ : (x > high_ ? high_ : x);
-    return std::log(x_clamped / (1 - x_clamped));
+    const T_ACC x_acc = static_cast<T_ACC>(x);
+    T_ACC z = x_acc < lo_ ? lo_ : (x_acc > hi_ ? hi_ : x_acc);
+    // suppress compiler optimization on data type promotion.
+    volatile T_ACC res = std::log(z / (T_ACC(1) - z));
+    return res;
   }
-  LogitEpsFunctor(const T_ACC low, const T_ACC high) : low_(low), high_(high) {}
+  Logit1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
 
  private:
-  scalar_t low_;
-  scalar_t high_;
+  T_ACC lo_;
+  T_ACC hi_;
 };
 
 void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
@@ -169,11 +176,11 @@ void logit_kernel(TensorIteratorBase& iter, const Scalar& eps_scalar) {
         using T_ACC = acc_type_device<scalar_t, c10::DeviceType::XPU>;
         const T_ACC eps = eps_scalar.to<T_ACC>();
         if (eps < T_ACC(0)) {
-          gpu_kernel(iter, LogitFunctor<scalar_t>());
+          gpu_kernel(iter, Logit0Functor<scalar_t>());
         } else {
-          const T_ACC low = eps;
-          const T_ACC high = T_ACC(1) - eps;
-          gpu_kernel(iter, LogitEpsFunctor<scalar_t>(low, high));
+          const T_ACC lo = eps;
+          const T_ACC hi = T_ACC(1) - eps;
+          gpu_kernel(iter, Logit1Functor<scalar_t>(lo, hi));
         }
       });
 }
