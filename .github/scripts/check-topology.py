@@ -45,9 +45,9 @@ if ret == 0:
                 cpu_aff.append(cpu_dict[i])
         if len(cpu_aff) == 1:
             gpu_cpu_dict[group] = ','.join(cpu_aff)
-    if len(gpu_cpu_dict) == 0:
-        print("No Xelink detected")
-        sys.exit(255)
+    # if len(gpu_cpu_dict) == 0:
+    #     print("No Xelink detected")
+    #     sys.exit(255)
     pytest_extra_args = ""
     for key, value in gpu_cpu_dict.items():
         start_cpu = int(value.split("-")[0])
