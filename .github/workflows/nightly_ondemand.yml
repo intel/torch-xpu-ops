@@ -58,6 +58,7 @@ jobs:
           clinfo --list
           id
           ip a
+          exit 0
           . /etc/os-release
           sudo rm -rf /etc/apt/sources.list.d/intel-*
           sudo apt-get autoremove -y && \
