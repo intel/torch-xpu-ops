@@ -17,6 +17,7 @@ res = 0
 res2 = 0
 fail_test = []
 
+os.environ["PYTHONPATH"] = "$PYTHONPATH:../../../../test/distributed/pipelining"
 # Get the xelink group card affinity
 ret = os.system("xpu-smi topology -m 2>&1|tee topology.log")
 if ret == 0:
@@ -63,11 +64,6 @@ def run(test_command):
         fail_test.append(" ".join(test_command))
     return result.returncode
 
-
-test_command = ["python", "../../../../test/distributed/pipelining/test_backward.py"]
-res += run(test_command)
-test_command = ["python", "../../../../test/distributed/pipelining/test_microbatch.py"]
-res += run(test_command)
 
 # run pytest with skiplist
 for key in skip_dict:

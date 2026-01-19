@@ -50,4 +50,6 @@ skip_dict = {
     "../../../../test/distributed/_tools/test_memory_tracker.py": None,
     "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_math_ops.py": None,
+    "../../../../test/distributed/pipelining/test_backward.py": None,
+    "../../../../test/distributed/pipelining/test_microbatch.py": None,
 }
