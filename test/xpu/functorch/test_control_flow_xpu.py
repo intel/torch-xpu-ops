@@ -443,7 +443,9 @@ class ReduceMod(torch.nn.Module):
     def forward(self, *operands):
         return self._reduce(*operands)
 
-DEVICE_TYPE= acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
+
+DEVICE_TYPE = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
+
 
 @unittest.skipIf(IS_WINDOWS, "Windows not supported for this test")
 @skipIfNoDynamoSupport
