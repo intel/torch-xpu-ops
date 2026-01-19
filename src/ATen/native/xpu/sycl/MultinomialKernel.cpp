@@ -1,8 +1,12 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
@@ -46,7 +50,7 @@ inline void renormRowsL1(
     if (thread_idx == 0) {
       smem[0] = sum;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     sum = smem[0];
     if (sum > zero) {
@@ -278,11 +282,11 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         smem[0] = sum;
         smem[1] = sampled_[curDist];
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       sum = smem[0];
       scalar_t sample = static_cast<scalar_t>(smem[1]);
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       if (sum == accZero) {
         // Choose the first element
@@ -308,7 +312,7 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             : accZero;
 
         smem[local_id] = dist_val;
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
 
         // Perform an inclusive prefix sum of the shared memory contents
         for (int offset = 1; offset < local_range; offset *= 2) {
@@ -318,11 +322,11 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             val = smem[local_id - offset] + smem[local_id];
           }
 
-          item.barrier(sycl_local_fence);
+          sycl::group_barrier(item.get_group());
           if (local_id >= offset) {
             smem[local_id] = val;
           }
-          item.barrier(sycl_local_fence);
+          sycl::group_barrier(item.get_group());
         }
 
         // Each thread will check to see if the sample falls in its
@@ -352,7 +356,7 @@ struct SampleMultinomialOnceFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         // Store the previous scan's high value for future use
         prevHighProb = prevHighProb + smem[local_range - 1];
 
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
       }
 
       if (local_id == 0) {
@@ -543,5 +547,3 @@ void multinomial_kernel(
 }
 
 } // namespace at::native::xpu
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop

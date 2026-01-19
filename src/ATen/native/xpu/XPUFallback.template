@@ -5,9 +5,48 @@ namespace at {
 
 static bool DEBUG_XPU_FALLBACK = false;
 
+/*
+ * Verifies that all input tensors reside on the same device type.
+ * The first defined tensor establishes the reference device;
+ * all subsequent tensors must match it.
+ * Raises an error if a mismatch (e.g., CPU vs. XPU) is detected.
+ */
+static void check_device_consistency(
+    const torch::jit::Stack* stack,
+    const c10::OperatorHandle& op) {
+  std::optional<c10::DeviceType> reference_device;
+
+  auto check_tensor = [&](const at::Tensor& t) {
+    if (!t.defined()) return;
+
+    auto cur_device = t.device().type();
+    if (!reference_device) {
+      reference_device = cur_device;
+      return;
+    }
+
+    TORCH_CHECK(*reference_device == cur_device,
+      "Expected all tensors to be on the same device, but found at least two devices, ",
+      *reference_device, " and ", cur_device,
+      "! (Operator ", op.schema().operator_name().name, ")");
+  };
+
+  for (const auto& iv : *stack) {
+    if (iv.isTensor()) {
+      check_tensor(iv.toTensor());
+    } else if (iv.isTensorList()) {
+      for (const auto& t : iv.toTensorList())
+        check_tensor(t);
+    }
+  }
+}
+
 static void xpu_fallback_impl(
     const c10::OperatorHandle& op,
     torch::jit::Stack* stack) {
+
+  check_device_consistency(stack, op);
+
   if (!DEBUG_XPU_FALLBACK) {
     TORCH_WARN_ONCE(
         "Aten Op fallback from XPU to CPU happends.",
