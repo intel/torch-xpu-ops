@@ -424,6 +424,7 @@ run_benchmark() {
         local cmd=(
             "${PYTHON_EXECUTABLE}" "${BENCHMARK_SCRIPT}"
             "--inference"
+            "--performance"
             "--float32"
             "-d" "xpu"
             "-n10"
