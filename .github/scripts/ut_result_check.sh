@@ -235,7 +235,6 @@ categorize_failures() {
     ref_torch_xpu_ops_commit=${ref_torch_xpu_ops_commit:-"unknown"}
     curr_pytorch_commit=${curr_pytorch_commit:-"unknown"}
     curr_torch_xpu_ops_commit=${curr_torch_xpu_ops_commit:-"unknown"}
-    
 
     echo ""
     echo "🔍 Source Commit Information:"
