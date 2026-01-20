@@ -164,56 +164,56 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream();
+//  auto stream = at::xpu::getCurrentXPUStream();
 
-  barrier_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-      channel,
-      rank_,
-      world_size_,
-      timeout_ms,
-      stream);
-  // // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
-  // // implementation.
-  // auto group = c10d::resolve_process_group(group_name_);
-  // if (group == nullptr) {
-  //   TORCH_WARN(
-  //       "Process group '",
-  //       group_name_,
-  //       "' not found, please init process group first before calling
-  //       SymmetricMemory");
-  //   throw std::runtime_error("Process group not found");
-  // }
-  // auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
-  //     group->getBackend(c10::DeviceType::XPU).get());
+//  barrier_impl_xpu(
+//      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+//      channel,
+//      rank_,
+//      world_size_,
+//      timeout_ms,
+//      stream);
+   // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
+   // implementation.
+   auto group = c10d::resolve_process_group(group_name_);
+   if (group == nullptr) {
+     TORCH_WARN(
+         "Process group '",
+         group_name_,
+         "' not found, please init process group first before calling
+         SymmetricMemory");
+     throw std::runtime_error("Process group not found");
+   }
+   auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
+       group->getBackend(c10::DeviceType::XPU).get());
 
-  // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  // c10::DeviceGuard guard(local_device);
+   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+   c10::DeviceGuard guard(local_device);
 
-  // static thread_local at::Tensor barrier_tensor;
-  // if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
-  //   barrier_tensor = at::zeros(
-  //       {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
-  // } else {
-  //   barrier_tensor.zero_();
-  // }
+   static thread_local at::Tensor barrier_tensor;
+   if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
+     barrier_tensor = at::zeros(
+         {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
+   } else {
+     barrier_tensor.zero_();
+   }
 
-  // c10d::AllreduceOptions arOpts;
-  // arOpts.asyncOp = false;
-  // auto work =
-  //     xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier",
-  //     arOpts);
+   c10d::AllreduceOptions arOpts;
+   arOpts.asyncOp = false;
+   auto work =
+       xcclPg->allreduce_impl(barrier_tensor, "xccl:symm_mem_barrier",
+       arOpts);
 
-  // if (work) {
-  //   bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-  //   TORCH_CHECK(
-  //       success,
-  //       "Barrier timeout after ",
-  //       timeout_ms,
-  //       " ms for group '",
-  //       group_name_,
-  //       "'");
-  // }
+   if (work) {
+     bool success = work->wait(std::chrono::milliseconds(timeout_ms));
+     TORCH_CHECK(
+         success,
+         "Barrier timeout after ",
+         timeout_ms,
+         " ms for group '",
+         group_name_,
+         "'");
+   }
 }
 
 void XPUSymmetricMemory::put_signal(
