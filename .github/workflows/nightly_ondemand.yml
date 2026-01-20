@@ -7,10 +7,6 @@ on:
         type: string
         default: ''
         description: 'PVC-7362,PVC-7363,PVC-7364,PVC-7365,PVC-7900,PVC-03004,PVC-03006'
-      setup_xpu:
-        type: string
-        default: ''
-        description: 'yes or not, not by default'
 
 permissions: read-all
 
@@ -26,26 +22,10 @@ jobs:
           set -xe
           node_node="$(echo ${{ inputs.node_name }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
           echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
-
-  setup-xpu:
-    if: ${{ inputs.setup_xpu == 'yes' && (! cancelled()) }}
-    needs: get-params
-    runs-on: ${{ matrix.node_name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        node_name: ${{ fromJSON(needs.get-params.outputs.node_name) }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Install XPU
-        run: |
-          sudo bash -xe install_xpu.sh lts2
-
   check-nodes:
     runs-on: ${{ matrix.node_name }}
-    if: ${{ ! (endsWith(needs.get-params.result, 'ed') && cancelled()) }}
-    needs: [get-params, setup-xpu]
+    if: ${{ ! cancelled() }}
+    needs: [get-params]
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +70,20 @@ jobs:
               apt-transport-https \
               lsb-release && \
           sudo rm -rf /var/lib/apt/lists/*
+
+          sudo apt install -y \
+              linux-headers-$(uname -r) \
+              linux-modules-extra-$(uname -r) \
+              flex bison \
+              intel-fw-gpu intel-i915-dkms xpu-smi
+          sudo apt install -y \
+              intel-opencl-icd libze-intel-gpu1 libze1 \
+              intel-media-va-driver-non-free libmfx-gen1 libvpl2 \
+              libegl-mesa0 libegl1-mesa libegl1-mesa-dev libgbm1 libgl1-mesa-dev libgl1-mesa-dri \
+              libglapi-mesa libglx-mesa0 libigdgmm12 libxatracker2 mesa-va-drivers \
+              mesa-vdpau-drivers mesa-vulkan-drivers va-driver-all vainfo hwinfo clinfo intel-ocloc
+          sudo apt install -y \
+              libigc-dev intel-igc-cm libigdfcl-dev libigfxcmrt-dev libze-dev libgomp1 pciutils
 
           sudo apt-get update && \
           sudo apt-get install -y --no-install-recommends \
