@@ -365,12 +365,6 @@ analyze_performance_regression() {
     local eager_reg=$(awk -F',' 'NR>1 && $9 == "YES" {count++} END {print count}' "${output_file}")
     local inductor_reg=$(awk -F',' 'NR>1 && $10 == "YES" {count++} END {print count}' "${output_file}")
 
-    log_info "Performance analysis complete:"
-    log_info "  Total models: ${total}"
-    log_info "  Regressions found: ${regressions}"
-    log_info "  Eager regressions: ${eager_reg}"
-    log_info "  Inductor regressions: ${inductor_reg}"
-
     echo "${regressions}"
 }
 
