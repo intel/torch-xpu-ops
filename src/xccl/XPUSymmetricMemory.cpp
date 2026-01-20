@@ -162,17 +162,17 @@ void check_channel(int channel, int world_size) {
 void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
   check_channel(channel, world_size_);
 
-  c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  c10::DeviceGuard guard(local_device);
-//  auto stream = at::xpu::getCurrentXPUStream();
+  // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
+  // c10::DeviceGuard guard(local_device);
+  //  auto stream = at::xpu::getCurrentXPUStream();
 
-//  barrier_impl_xpu(
-//      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-//      channel,
-//      rank_,
-//      world_size_,
-//      timeout_ms,
-//      stream);
+  //  barrier_impl_xpu(
+  //      reinterpret_cast<uint32_t**>(signal_pads_dev_),
+  //      channel,
+  //      rank_,
+  //      world_size_,
+  //      timeout_ms,
+  //      stream);
    // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
    // implementation.
    auto group = c10d::resolve_process_group(group_name_);
@@ -180,8 +180,8 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
      TORCH_WARN(
          "Process group '",
          group_name_,
-         "' not found, please init process group first before calling
-         SymmetricMemory");
+         "' not found, please init process group first before calling "
+         "SymmetricMemory");
      throw std::runtime_error("Process group not found");
    }
    auto* xcclPg = dynamic_cast<c10d::ProcessGroupXCCL*>(
