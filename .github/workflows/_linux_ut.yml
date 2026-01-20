@@ -201,8 +201,15 @@ jobs:
                 -name "passed_*.log" -o \
                 -name "category_*.log" -o \
                 -name "all_cases_*.log" -o \
-                -name "reproduce_*.log" \) \
+                -name "reproduce_*.log" -o \
+                -name "test*info.log" \) \
               -exec mv {} ./ \; || true
+          find "${{ github.workspace }}/baseline" -type f -name "test*info.log" \
+            -exec sh -c 'for file; do
+                filename=$(basename "$file")
+                newname="${filename%.log}_reference.log"
+                mv "$file" "./$newname"
+              done' _ {} + 2>/dev/null || true
           
           if find "${{ github.workspace }}/baseline" -type f -name "all_cases_*.log" | grep -q .; then
             echo -e "All cases log collect"

@@ -222,6 +222,31 @@ categorize_failures() {
     echo "Output directory: $output_dir"
     echo ""
 
+    # --- Read commit information ---
+    local ref_pytorch_commit ref_torch_xpu_ops_commit
+    local curr_pytorch_commit curr_torch_xpu_ops_commit
+
+    ref_pytorch_commit=$(sed -n 's/^PyTorch version: \([^[:space:]]*\).*/\1/p' test-env-info_reference.txt)
+    ref_torch_xpu_ops_commit=$(sed -n 's/^TORCH_XPU_OPS_COMMIT=\([^[:space:]]*\).*/\1/p' test-torch-xpu-ops-info_reference.txt 2>/dev/null)
+    curr_pytorch_commit=$(sed -n 's/^PyTorch version: \([^[:space:]]*\).*/\1/p' test-env-info.txt)
+    curr_torch_xpu_ops_commit=$(sed -n 's/^TORCH_XPU_OPS_COMMIT=\([^[:space:]]*\).*/\1/p' test-torch-xpu-ops-info.txt 2>/dev/null)
+
+    ref_pytorch_commit=${ref_pytorch_commit:-"unknown"}
+    ref_torch_xpu_ops_commit=${ref_torch_xpu_ops_commit:-"unknown"}
+    curr_pytorch_commit=${curr_pytorch_commit:-"unknown"}
+    curr_torch_xpu_ops_commit=${curr_torch_xpu_ops_commit:-"unknown"}
+    
+
+    echo ""
+    echo "🔍 Source Commit Information:"
+    echo "  Reference (All UT log):"
+    echo "    - PyTorch:       ${ref_pytorch_commit}"
+    echo "    - torch-xpu-ops: ${ref_torch_xpu_ops_commit}"
+    echo "  Current (Failures log):"
+    echo "    - PyTorch:       ${curr_pytorch_commit}"
+    echo "    - torch-xpu-ops: ${curr_torch_xpu_ops_commit}"
+    echo ""
+
     # Process failures log line by line
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip empty lines
@@ -289,6 +314,16 @@ Failed UT Categorization Report
 Generated: $timestamp
 Failures log file: $(basename "$failures_log")
 All UT log file: $(basename "$all_ut_log")
+
+Source Commits:
+---------------
+Reference (All UT log):
+  - PyTorch:       ${ref_pytorch_commit}
+  - torch-xpu-ops: ${ref_torch_xpu_ops_commit}
+
+Current (Failures log):
+  - PyTorch:       ${curr_pytorch_commit}
+  - torch-xpu-ops: ${curr_torch_xpu_ops_commit}
 
 Statistics:
 -----------
