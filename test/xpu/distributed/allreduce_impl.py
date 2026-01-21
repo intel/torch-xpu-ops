@@ -75,19 +75,20 @@ def allreduce_with_symm_mem(
     # Barrier to ensure previous allreduce is complete before writing
     workspace.barrier()
 
-    # Step 1: Scatter - Send chunk[r] to rank r's symm[self]
-    for r in range(world_size):
-        if r != rank:
-            # Send my chunk[r] to rank r's symm[rank] position
-            remote_buffer = workspace.get_buffer(
-                r,
-                (chunk_size,),
-                tensor.dtype,
-                storage_offset=rank * chunk_size
-            )
-            remote_buffer.copy_(tensor_flat[r * chunk_size:(r + 1) * chunk_size])
+    # Step 1: Ring Scatter - Each rank pushes to remote ranks in ring fashion
+    # Reference: PyTorch _low_contention_reduce_scatter_with_workspace implementation
+    # Each rank pushes chunk[remote_rank] to remote_rank's symm buffer
+    for step in range(world_size):
+        remote_rank = (rank - step) % world_size
+        remote_buffer = workspace.get_buffer(
+            remote_rank,
+            (chunk_size,),
+            tensor.dtype,
+            storage_offset=rank * chunk_size
+        )
+        remote_buffer.copy_(tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size])
 
-    # Barrier after all scatter writes
+    # Barrier after each ring step to ensure data is received before next push
     workspace.barrier()
 
     # Step 2: Reduce - Single kernel reduction
@@ -113,15 +114,18 @@ def allreduce_with_symm_mem(
 
     workspace.barrier()
 
-    # Step 3: Allgather - Read all reduced chunks directly into tensor
-    for r in range(world_size):
+    # Step 3: Ring Allgather - Each rank pulls from remote ranks in ring fashion
+    # Reference: PyTorch _low_contention_all_gather implementation
+    # Each rank pulls chunk[remote_rank] from remote_rank's symm buffer
+    for step in range(world_size):
+        remote_rank = (rank - step) % world_size
         remote_buffer = workspace.get_buffer(
-            r,
+            remote_rank,
             (chunk_size,),
             tensor.dtype,
-            storage_offset=r * chunk_size
+            storage_offset=remote_rank * chunk_size
         )
-        tensor_flat[r * chunk_size:(r + 1) * chunk_size].copy_(remote_buffer)
+        tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size].copy_(remote_buffer)
 
     workspace.barrier()
 
