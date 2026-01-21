@@ -8,11 +8,24 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/TensorOperators.h>
 #include <ATen/native/sparse/SparseStubs.h>
+#include <ATen/ExpandUtils.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
 #include <ATen/native/sparse/xpu/SparseCsrTensorMath.h>
+
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/copy_native.h>
+#include <ATen/ops/mul.h>
+#include <ATen/ops/scalar_tensor_native.h>
+#include <ATen/ops/addmv.h>
+#endif
 
 namespace at::native {
 
@@ -54,96 +67,13 @@ Tensor _sparse_csr_prod_xpu(
       input, dims_to_reduce, keepdim, dtype);
 }
 
-// result = beta * self + alpha * (mat1 @ mat2)
-Tensor& addmm_out_sparse_compressed_xpu(
-    const Tensor& self,
-    const Tensor& mat1,
-    const Tensor& mat2,
-    const Scalar& beta,
-    const Scalar& alpha,
-    Tensor& result) {
-  sparse::impl::_check_is_xpu(self, "self");
-  sparse::impl::_check_is_xpu(mat1, "mat1");
-  sparse::impl::_check_is_xpu(mat2, "mat2");
-  sparse::impl::_check_is_xpu(result, "result");
-
-  // Same checks as in TORCH_META_FUNC(addmm) at
-  // aten/src/ATen/native/LinearAlgebra.cpp
-  sparse::impl::_check_dim(mat1, 2, "mat1");
-  sparse::impl::_check_dim(mat2, 2, "mat2");
-
-  TORCH_CHECK(
-      mat1.size(1) == mat2.size(0), "mat1 and mat2 shapes cannot be multiplied (",
-      mat1.size(0), "x", mat1.size(1), " and ", mat2.sizes()[0], "x", mat2.sizes()[1], ")");
-
-  // From addmm_out_cuda_impl at ATen/native/cuda/Blas.cpp
-  // TODO: remove code duplication and unify code
-  // There were undefined symbol problems,
-  // when using the same function for CUDA and SparseCsrCUDA dispatch keys
-  // Also structured kernels do not support sparse output
-  c10::MaybeOwned<at::Tensor> self_;
-  // Don't expand self if this is an in-place operation
-  if (&result == &self) {
-     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
-  } else {
-     self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
-  }
-
-  sparse::impl::_check_dim(*self_, 2, "self");
-  TORCH_CHECK(((self_->dim() == 2) &&
-               (self_->size(0) == mat1.size(0)) &&
-               (self_->size(1) == mat2.size(1))),
-              "The input tensor must be a matrix with size ",
-              mat1.size(0),
-              "x",
-              mat2.size(1),
-              ", but got a ",
-              self_->dim(),
-              "-D tensor with size ",
-              self_->size(0),
-              "x",
-              self_->size(1));
-
-  if (!result.is_same(self)) {
-    if (result.layout() == kStrided) {
-      at::native::resize_output(result, self_->sizes());
-    } else {
-      result.resize_as_sparse_(*self_);
-    }
-  }
-
-  if (result.numel() == 0) {
-    return result;
-  }
-
-  if (sparse::impl::_is_sparse_and_zero(mat1) || sparse::impl::_is_sparse_and_zero(mat2)) {
-    // According to docs, when beta==0 values in self should be ignored.
-    // nans and infs should not propagate
-    const auto beta_val = beta.toComplexDouble();
-    if (beta_val == 0.) {
-      result.zero_();
-    } else {
-      if (!result.is_same(self)) {
-        result.copy_(*self_);
-      }
-      if (beta_val != 1.) {
-        result.mul_(beta);
-      }
-    }
-    return result;
-  }
-
-  addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
-  return result;
-}
-
 void addmm_out_sparse_csr(
     const Tensor& input,
     const Tensor& mat1,
     const Tensor& mat2,
     const Scalar& beta,
     const Scalar& alpha,
-    const Tensor& result) {
+    Tensor& result) {
   TORCH_INTERNAL_ASSERT(
       !((mat1.layout() == kStrided) && (mat2.layout() == kStrided) &&
         (result.layout() == kStrided)),
@@ -258,6 +188,145 @@ void addmm_out_sparse_csr(
       mat1.layout(),
       " @ ",
       mat2.layout());
+}
+
+// result = beta * self + alpha * (mat1 @ mat2)
+Tensor& addmm_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  sparse::impl::_check_is_xpu(self, "self");
+  sparse::impl::_check_is_xpu(mat1, "mat1");
+  sparse::impl::_check_is_xpu(mat2, "mat2");
+  sparse::impl::_check_is_xpu(result, "result");
+
+  // Same checks as in TORCH_META_FUNC(addmm) at
+  // aten/src/ATen/native/LinearAlgebra.cpp
+  sparse::impl::_check_dim(mat1, 2, "mat1");
+  sparse::impl::_check_dim(mat2, 2, "mat2");
+
+  TORCH_CHECK(
+      mat1.size(1) == mat2.size(0), "mat1 and mat2 shapes cannot be multiplied (",
+      mat1.size(0), "x", mat1.size(1), " and ", mat2.sizes()[0], "x", mat2.sizes()[1], ")");
+
+  // From addmm_out_cuda_impl at ATen/native/cuda/Blas.cpp
+  // TODO: remove code duplication and unify code
+  // There were undefined symbol problems,
+  // when using the same function for CUDA and SparseCsrCUDA dispatch keys
+  // Also structured kernels do not support sparse output
+  c10::MaybeOwned<at::Tensor> self_;
+  // Don't expand self if this is an in-place operation
+  if (&result == &self) {
+     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
+  } else {
+     self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+  }
+
+  sparse::impl::_check_dim(*self_, 2, "self");
+  TORCH_CHECK(((self_->dim() == 2) &&
+               (self_->size(0) == mat1.size(0)) &&
+               (self_->size(1) == mat2.size(1))),
+              "The input tensor must be a matrix with size ",
+              mat1.size(0),
+              "x",
+              mat2.size(1),
+              ", but got a ",
+              self_->dim(),
+              "-D tensor with size ",
+              self_->size(0),
+              "x",
+              self_->size(1));
+
+  if (!result.is_same(self)) {
+    if (result.layout() == kStrided) {
+      at::native::resize_output(result, self_->sizes());
+    } else {
+      result.resize_as_sparse_(*self_);
+    }
+  }
+
+  if (result.numel() == 0) {
+    return result;
+  }
+
+  if (sparse::impl::_is_sparse_and_zero(mat1) || sparse::impl::_is_sparse_and_zero(mat2)) {
+    // According to docs, when beta==0 values in self should be ignored.
+    // nans and infs should not propagate
+    const auto beta_val = beta.toComplexDouble();
+    if (beta_val == 0.) {
+      result.zero_();
+    } else {
+      if (!result.is_same(self)) {
+        result.copy_(*self_);
+      }
+      if (beta_val != 1.) {
+        result.mul_(beta);
+      }
+    }
+    return result;
+  }
+
+  addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+Tensor& addmv_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat,
+    const Tensor& vec,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+
+  if (mat.layout() == kSparseCsc) {
+    return addmv_out_sparse_compressed_xpu(self, mat.to_sparse_csr(), vec,
+        beta, alpha, result);
+  }
+  TORCH_CHECK(mat.layout() != kSparseBsc, "addmm_out_sparse_csr_cuda currently does not support layout SparseBsc for input mat.");
+
+  TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
+  TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
+
+  // Preprocessing code is copied from TORCH_IMPL_FUNC(addmv_out_cuda) at
+  // aten/src/ATen/native/cuda/Blas.cpp
+  // It would be nice to have it unified but there were undefined symbol
+  // problems, when using the same function for CUDA and SparseCsrCUDA dispatch
+  // keys and structured kernel
+  c10::MaybeOwned<Tensor> self_ = expand_size(self, {mat.size(0)});
+  auto betaval = beta.toComplexDouble();
+
+  if (&result != &self) {
+    at::native::resize_output(result, self_->sizes());
+    if (betaval != 0.0) {
+      at::native::copy_(result, *self_);
+    }
+  }
+
+  if (mat._nnz() == 0) {
+    // shortcut for an empty matrix
+    // By definition, when beta==0, values in self should be ignored. nans and
+    // infs should not propagate
+    if (betaval == 0.0) {
+      return result.zero_();
+    } else {
+      return at::mul_out(
+          result,
+          self,
+          at::native::scalar_tensor(
+              beta,
+              self.scalar_type(),
+              std::nullopt /* layout */,
+              at::kCPU,
+              std::nullopt /* pin_memory */));
+    }
+  }
+
+  at::addmv_out(result, self, mat.to_dense(), vec, beta, alpha);
+
+  return result;
 }
 
 } // namespace at::native
