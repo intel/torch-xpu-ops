@@ -131,6 +131,9 @@ function(SYCL_CMPLR_TEST_BUILD error TEST_SRC_FILE TEST_EXE)
   # Verify if test case build properly.
   if(result)
     message("SYCL: feature test compile failed!!")
+    message("SYCL_COMPILER SYCL_CXX_FLAGS_LIST TEST_SRC_FILE!!")
+    message("${SYCL_COMPILER} ${SYCL_CXX_FLAGS_LIST} ${TEST_SRC_FILE} !!")
+    message("OUTPUT_FILE ${SYCL_CMPLR_TEST_DIR}/Compile.log ")
     message("compile output is: ${output}")
   endif()
 
