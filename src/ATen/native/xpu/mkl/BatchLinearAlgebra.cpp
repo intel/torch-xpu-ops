@@ -530,7 +530,10 @@ void lu_solve_mkl(
     TransposeType trans) {
   // NaN check: if LU or B contains NaN, fill B with NaN and return
   if (at::isnan(LU).any().item<bool>() || at::isnan(B).any().item<bool>()) {
-    B.fill_(std::numeric_limits<double>::quiet_NaN());
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+        B.scalar_type(), "lu_solve_mkl_nan_fill", [&] {
+          B.fill_(std::numeric_limits<scalar_t>::quiet_NaN());
+        });
     return;
   }
 
@@ -560,10 +563,12 @@ void lu_factor_mkl(
     int64_t min_mn = std::min(LU.size(-2), LU.size(-1));
     auto default_pivots = at::arange(
         1, min_mn + 1, pivots.options().dtype(at::kInt));
-    // Expand to batch dimensions and copy
     pivots.copy_(default_pivots.expand_as(pivots));
     // Fill LU with NaN
-    LU.fill_(std::numeric_limits<double>::quiet_NaN());
+    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+        LU.scalar_type(), "lu_factor_mkl_nan_fill", [&] {
+          LU.fill_(std::numeric_limits<scalar_t>::quiet_NaN());
+        });
     return;
   }
 
