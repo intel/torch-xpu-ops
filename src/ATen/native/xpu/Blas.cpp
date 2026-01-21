@@ -135,4 +135,97 @@ Tensor& baddbmm_complex_out_xpu(
 #endif // USE_ONEMKL_XPU
 }
 
+namespace {
+
+inline void dot_check(const Tensor& self, const Tensor& other) {
+  TORCH_CHECK(
+      self.dim() == 1 && other.dim() == 1,
+      "1D tensors expected, but got ",
+      self.dim(),
+      "D and ",
+      other.dim(),
+      "D tensors");
+  TORCH_CHECK(
+      self.scalar_type() == other.scalar_type(),
+      "dot : expected both vectors to have same dtype, but found ",
+      self.scalar_type(),
+      " and ",
+      other.scalar_type());
+  TORCH_CHECK(
+      self.numel() == other.numel(),
+      "inconsistent tensor size, expected tensor [",
+      self.numel(),
+      "] and src [",
+      other.numel(),
+      "] to have the same number of elements, but got ",
+      self.numel(),
+      " and ",
+      other.numel(),
+      " elements respectively");
+}
+
+} // anonymous namespace
+
+Tensor dot_xpu(const Tensor& self, const Tensor& other) {
+  if (self.is_complex()) {
+    if (self.is_conj()) {
+      if (other.is_conj()) {
+        return (dot_xpu(self.conj(), other.conj())).conj();
+      } else {
+        return vdot_xpu(self.conj(), other);
+      }
+    } else if (other.is_conj()) {
+      return vdot_xpu(other.conj(), self);
+    }
+  }
+
+  at::NoNamesGuard guard;
+  dot_check(self, other);
+
+  if (self._is_zerotensor() || other._is_zerotensor()) {
+    return at::_efficientzerotensor({}, self.options());
+  }
+
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::dot_xpu_mkl(self, other);
+#else
+  TORCH_CHECK(
+      false,
+      "dot_xpu requires oneMKL. Please include oneMKL library in compilation.");
+  return Tensor{};
+#endif // USE_ONEMKL_XPU
+}
+
+Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
+  if (!self.is_complex()) {
+    return dot_xpu(self, other);
+  }
+
+  if (self.is_conj()) {
+    if (other.is_conj()) {
+      return vdot_xpu(other.conj(), self.conj());
+    } else {
+      return dot_xpu(self.conj(), other);
+    }
+  } else if (other.is_conj()) {
+    return (dot_xpu(self, other.conj())).conj();
+  }
+
+  at::NoNamesGuard guard;
+  dot_check(self, other);
+
+  if (self._is_zerotensor() || other._is_zerotensor()) {
+    return at::_efficientzerotensor({}, self.options());
+  }
+
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::vdot_xpu_mkl(self, other);
+#else
+  TORCH_CHECK(
+      false,
+      "vdot_xpu requires oneMKL. Please include oneMKL library in compilation.");
+  return Tensor{};
+#endif // USE_ONEMKL_XPU
+}
+
 } // namespace at::native
