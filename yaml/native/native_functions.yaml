@@ -9087,6 +9087,10 @@
   # autogen: _weight_int4pack_mm.out
   # tags: core
 
+- func: _weight_int8pack_mm(Tensor self, Tensor mat2, Tensor scales) -> Tensor
+  dispatch:
+    XPU: _weight_int8pack_mm_xpu
+
 - func: _nested_compute_contiguous_strides_offsets(Tensor nested_size) -> (Tensor, Tensor)
   variants: function
   device_check: NoCheck
