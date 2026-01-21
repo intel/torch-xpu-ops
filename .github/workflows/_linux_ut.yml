@@ -202,9 +202,9 @@ jobs:
                 -name "category_*.log" -o \
                 -name "all_cases_*.log" -o \
                 -name "reproduce_*.log" -o \
-                -name "test*info.log" \) \
+                -name "test-*.log" \) \
               -exec mv {} ./ \; || true
-          find "${{ github.workspace }}/baseline" -type f -name "test*info.log" \
+          find "${{ github.workspace }}/baseline" -type f -name "test-*.log" \
             -exec sh -c 'for file; do
                 filename=$(basename "$file")
                 newname="${filename%.log}_reference.log"
