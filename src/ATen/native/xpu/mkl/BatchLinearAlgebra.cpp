@@ -19,8 +19,10 @@
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #include <ATen/ops/_linalg_check_errors.h>
 #include <ATen/ops/_linalg_check_errors_native.h>
+#include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/from_blob.h>
+#include <ATen/ops/isnan.h>
 #include <ATen/ops/zeros_like.h>
 
 #include <comm/SYCLContext.h>
@@ -526,6 +528,12 @@ void lu_solve_mkl(
     const Tensor& pivots,
     const Tensor& B,
     TransposeType trans) {
+  // NaN check: if LU or B contains NaN, fill B with NaN and return
+  if (at::isnan(LU).any().item<bool>() || at::isnan(B).any().item<bool>()) {
+    B.fill_(std::numeric_limits<double>::quiet_NaN());
+    return;
+  }
+
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
     apply_lu_solve_xpu_<scalar_t>(LU, pivots, B, trans);
   });
@@ -544,6 +552,20 @@ void lu_factor_mkl(
   TORCH_CHECK(
       pivot,
       "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
+
+  // NaN check: if input contains NaN, return NaN output with valid pivots
+  if (at::isnan(LU).any().item<bool>()) {
+    info.zero_();
+    // Fill pivots with default sequence [1, 2, 3, ..., min(m, n)]
+    int64_t min_mn = std::min(LU.size(-2), LU.size(-1));
+    auto default_pivots = at::arange(
+        1, min_mn + 1, pivots.options().dtype(at::kInt));
+    // Expand to batch dimensions and copy
+    pivots.copy_(default_pivots.expand_as(pivots));
+    // Fill LU with NaN
+    LU.fill_(std::numeric_limits<double>::quiet_NaN());
+    return;
+  }
 
   // handle the info
   Tensor info_ = at::zeros_like(info, Device(at::kCPU));
