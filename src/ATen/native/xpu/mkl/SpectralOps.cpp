@@ -94,10 +94,6 @@ void _mkl_dft(
     desc.set_value(config_param::BWD_STRIDES, input_strides);
   }
 
-  if (!complex_input || !complex_output) {
-    desc.set_value(config_param::CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX);
-  }
-
   desc.set_value(
       oneapi::mkl::dft::config_param::WORKSPACE,
       oneapi::mkl::dft::config_value::WORKSPACE_EXTERNAL);
@@ -143,7 +139,7 @@ void _fft_with_size(
     const auto strides = input_.strides();
     bool need_contiguous = strides.back() != 1;
     for (int64_t i = 0; !need_contiguous && i <= signal_ndim; i++) {
-      need_contiguous |= strides[i] % 2;
+      need_contiguous |= (strides[i] % 2 != 0);
     }
 
     if (need_contiguous) {

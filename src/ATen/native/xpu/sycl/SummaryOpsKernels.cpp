@@ -8,6 +8,12 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/Runtime.h>
@@ -325,3 +331,7 @@ Tensor bincount_kernel(
   });
 }
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif

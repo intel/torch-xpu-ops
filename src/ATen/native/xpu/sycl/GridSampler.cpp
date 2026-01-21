@@ -12,6 +12,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/OpMathType.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
 #include <ATen/native/GridSamplerUtils.h>
@@ -1806,3 +1812,7 @@ void grid_sampler_3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif

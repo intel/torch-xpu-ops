@@ -12,6 +12,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pool.h>
@@ -1419,3 +1424,7 @@ void max_pool2d_with_indices_backward_kernel(
 
 } // namespace at::native::xpu
 #undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif

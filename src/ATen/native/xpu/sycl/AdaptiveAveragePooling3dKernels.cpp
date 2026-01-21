@@ -7,6 +7,11 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  */
+
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/NumericUtils.h>
@@ -685,3 +690,6 @@ void adaptive_avg_pool3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
