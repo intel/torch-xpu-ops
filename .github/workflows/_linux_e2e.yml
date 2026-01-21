@@ -148,7 +148,7 @@ jobs:
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          dt: float32,int8
+          dt: float32,int8,float16
           scenario: accuracy,performance
 
       # Weekly launch
@@ -180,7 +180,7 @@ jobs:
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
-          dt: float32,int8
+          dt: float32,int8,float16
           scenario: accuracy,performance
 
       # On-demand launch
