@@ -76,16 +76,14 @@ void memcpyAsync(
     bool p2p_enabled) {
   Device dst_device = iter.device(0);
   Device src_device = iter.device(1);
-  if (dst_device == src_device) {
-    copy_kernel(iter);
-  } else {
+  if (dst_device != src_device) {
     TORCH_INTERNAL_ASSERT(p2p_enabled == true);
-    auto dst = (char*)iter.data_ptr(0);
-    auto src = (char*)iter.data_ptr(1);
-    size_t size = iter.numel() * iter.element_size(0);
-    auto q = copy_stream.queue();
-    q.copy(src, dst, size);
   }
+  auto dst = (char*)iter.data_ptr(0);
+  auto src = (char*)iter.data_ptr(1);
+  size_t size = iter.numel() * iter.element_size(0);
+  auto q = copy_stream.queue();
+  q.copy(src, dst, size);
 }
 
 void copy_device_to_device(
@@ -130,9 +128,6 @@ void copy_device_to_device(
   }
 
   if (memcpy_eligible) {
-    // SYCL queue.memcpy performance is worse than SYCL copy kernel
-    // implementation. JIRA:
-    // https://jira.devtools.intel.com/browse/CMPLRLLVM-41292
     memcpyAsync(iter, copy_stream, p2p_enabled);
   } else {
     if (same_neg) {
