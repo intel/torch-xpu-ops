@@ -105,7 +105,7 @@ def run_profiler(dtype=torch.bfloat16):
     num_iters = 10
 
     if rank == 0:
-        print(f"Profiling both implementations (size={tensor_size}, dtype={dtype}, world_size={world_size})")
+        print(f"Profiling both implementations (size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
 
     # Warmup both implementations
     for _ in range(5):
@@ -116,49 +116,37 @@ def run_profiler(dtype=torch.bfloat16):
     torch.xpu.synchronize()
 
     # Pre-allocate tensors outside profiling loop
-    tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
-    tensor_symm = torch.randn(tensor_size, device=device, dtype=dtype)
+    tensor_dist_list = []
+    tensor_symm_list = []
+    for i in range(num_iters):
+        tensor_dist_list.append(torch.randn(tensor_size, device=device, dtype=dtype))
+        tensor_symm_list.append(torch.randn(tensor_size, device=device, dtype=dtype))
 
+    torch.xpu.synchronize()
     # Only rank 0 profiles and exports JSON
     if rank == 0:
         import os
         os.makedirs("./profiler_traces", exist_ok=True)
-        trace_file = "./profiler_traces/allreduce_comparison_trace.json"
+        trace_file = "./profiler_traces/allreduce_trace_" + str(rank) + ".json"
 
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
-            record_shapes=True,
-            with_stack=True,
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU]) as prof:
             # Profile dist.all_reduce
-            for _ in range(num_iters):
-                dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
+            for m in range(num_iters):
+                dist.all_reduce(tensor_dist_list[m], op=dist.ReduceOp.SUM)
             torch.xpu.synchronize()
             dist.barrier()
 
             # Profile allreduce_with_symm_mem
-            for _ in range(num_iters):
-                allreduce_with_symm_mem(tensor_symm, op="sum")
+            for n in range(num_iters):
+                allreduce_with_symm_mem(tensor_symm_list[n], op="sum")
             torch.xpu.synchronize()
             dist.barrier()
 
         # Export to JSON (Chrome trace format)
         prof.export_chrome_trace(trace_file)
 
-        print(f"\nProfiler trace saved to: {trace_file}")
-        print("Open with: chrome://tracing or https://ui.perfetto.dev/")
-    else:
-        # Other ranks run without profiling
-        for _ in range(num_iters):
-            dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
-        torch.xpu.synchronize()
-        dist.barrier()
-
-        for _ in range(num_iters):
-            allreduce_with_symm_mem(tensor_symm, op="sum")
-        torch.xpu.synchronize()
-        dist.barrier()
-
+        print(f"\nProfiler trace saved to: {trace_file}", flush=True)
+        print("Open with: chrome://tracing or https://ui.perfetto.dev/", flush=True)
     # Barrier to sync all ranks
     dist.barrier()
 
