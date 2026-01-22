@@ -14,7 +14,7 @@ import torch.distributed as dist
 from torch.profiler import profile, ProfilerActivity
 import os
 
-from allreduce_impl import allreduce_with_symm_mem
+from allreduce_impl import allreduce_with_symm_mem,hierarchical_allreduce_with_symm_mem
 
 
 def init_distributed():
@@ -49,6 +49,7 @@ def check_accuracy(tensor_size, rank, device, dtype=torch.bfloat16):
     # Test: our implementation
     allreduce_with_symm_mem(tensor_test, op="sum")
 
+    torch.xpu.synchronize()
     # Compute metrics
     abs_diff = torch.abs(tensor_ref - tensor_test)
     max_abs_diff = abs_diff.max().item()
@@ -105,7 +106,7 @@ def run_profiler(dtype=torch.bfloat16):
     num_iters = 10
 
     if rank == 0:
-        print(f"Profiling both implementations (size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
+        print(f"Profiling both implementations (size={tensor_size}, dtype={dtype}, world_size={world_size})")
 
     # Warmup both implementations
     for _ in range(5):
@@ -116,37 +117,45 @@ def run_profiler(dtype=torch.bfloat16):
     torch.xpu.synchronize()
 
     # Pre-allocate tensors outside profiling loop
-    tensor_dist_list = []
-    tensor_symm_list = []
-    for i in range(num_iters):
-        tensor_dist_list.append(torch.randn(tensor_size, device=device, dtype=dtype))
-        tensor_symm_list.append(torch.randn(tensor_size, device=device, dtype=dtype))
+    tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
+    tensor_symm = torch.randn(tensor_size, device=device, dtype=dtype)
 
-    torch.xpu.synchronize()
     # Only rank 0 profiles and exports JSON
     if rank == 0:
         import os
         os.makedirs("./profiler_traces", exist_ok=True)
-        trace_file = "./profiler_traces/allreduce_trace_" + str(rank) + ".json"
+        trace_file = "./profiler_traces/allreduce_comparison_trace.json"
 
         with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU]) as prof:
             # Profile dist.all_reduce
-            for m in range(num_iters):
-                dist.all_reduce(tensor_dist_list[m], op=dist.ReduceOp.SUM)
+            for _ in range(num_iters):
+                dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
             torch.xpu.synchronize()
             dist.barrier()
 
             # Profile allreduce_with_symm_mem
-            for n in range(num_iters):
-                allreduce_with_symm_mem(tensor_symm_list[n], op="sum")
+            for _ in range(num_iters):
+                allreduce_with_symm_mem(tensor_symm, op="sum")
             torch.xpu.synchronize()
             dist.barrier()
 
         # Export to JSON (Chrome trace format)
         prof.export_chrome_trace(trace_file)
 
-        print(f"\nProfiler trace saved to: {trace_file}", flush=True)
-        print("Open with: chrome://tracing or https://ui.perfetto.dev/", flush=True)
+        print(f"\nProfiler trace saved to: {trace_file}")
+        print("Open with: chrome://tracing or https://ui.perfetto.dev/")
+    else:
+        # Other ranks run without profiling
+        for _ in range(num_iters):
+            dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
+        torch.xpu.synchronize()
+        dist.barrier()
+
+        for _ in range(num_iters):
+            allreduce_with_symm_mem(tensor_symm, op="sum")
+        torch.xpu.synchronize()
+        dist.barrier()
+
     # Barrier to sync all ranks
     dist.barrier()
 
@@ -162,13 +171,15 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     # Benchmark torch.distributed.all_reduce
     tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
-        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
+        t = tensor_dist.clone()
+        dist.all_reduce(t, op=dist.ReduceOp.SUM)
     torch.xpu.synchronize()
 
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
-        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
+        t = tensor_dist.clone()
+        dist.all_reduce(t, op=dist.ReduceOp.SUM)
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["dist.all_reduce"] = (end - start) / num_iters * 1000
@@ -176,13 +187,15 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     # Benchmark allreduce_with_symm_mem
     tensor_symm = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
-        allreduce_with_symm_mem(tensor_symm, op="sum")
+        t = tensor_symm.clone()
+        hierarchical_allreduce_with_symm_mem(t, op="sum")
     torch.xpu.synchronize()
 
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
-        allreduce_with_symm_mem(tensor_symm, op="sum")
+        t = tensor_symm.clone()
+        hierarchical_allreduce_with_symm_mem(t, op="sum")
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["symm_mem"] = (end - start) / num_iters * 1000
@@ -193,7 +206,7 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     tensor_test = tensor_ref.clone()
 
     dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
-    allreduce_with_symm_mem(tensor_test, op="sum")
+    hierarchical_allreduce_with_symm_mem(tensor_test, op="sum")
 
     is_correct = torch.allclose(tensor_ref, tensor_test, rtol=1e-3, atol=1e-3)  # BF16 tolerance
 
