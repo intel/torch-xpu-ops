@@ -117,17 +117,28 @@ def allreduce_with_symm_mem(
     # Step 3: Ring Allgather - Each rank pulls from remote ranks in ring fashion
     # Reference: PyTorch _low_contention_all_gather implementation
     # Each rank pulls chunk[remote_rank] from remote_rank's symm buffer
+    # for step in range(world_size - 1):
+    #     remote_rank = (rank - step - 1) % world_size
+    #     remote_buffer = workspace.get_buffer(
+    #         remote_rank,
+    #         (chunk_size,),
+    #         tensor.dtype,
+    #         storage_offset=remote_rank * chunk_size
+    #     )
+    #     tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size].copy_(remote_buffer)
+    # Using push instead of pull
     for step in range(world_size - 1):
         remote_rank = (rank - step - 1) % world_size
         remote_buffer = workspace.get_buffer(
             remote_rank,
             (chunk_size,),
             tensor.dtype,
-            storage_offset=remote_rank * chunk_size
+            storage_offset=rank * chunk_size
         )
-        tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size].copy_(remote_buffer)
+        remote_buffer.copy_(tensor_flat[chunk_start:chunk_end])
 
     workspace.barrier()
+    tensor.copy_(my_symm_2d.view(-1))
 
     return tensor
 
