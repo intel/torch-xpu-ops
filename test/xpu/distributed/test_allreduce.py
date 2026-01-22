@@ -162,15 +162,13 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     # Benchmark torch.distributed.all_reduce
     tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
-        t = tensor_dist.clone()
-        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
     torch.xpu.synchronize()
 
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
-        t = tensor_dist.clone()
-        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["dist.all_reduce"] = (end - start) / num_iters * 1000
@@ -178,15 +176,13 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     # Benchmark allreduce_with_symm_mem
     tensor_symm = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
-        t = tensor_symm.clone()
-        allreduce_with_symm_mem(t, op="sum")
+        allreduce_with_symm_mem(tensor_symm, op="sum")
     torch.xpu.synchronize()
 
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
-        t = tensor_symm.clone()
-        allreduce_with_symm_mem(t, op="sum")
+        allreduce_with_symm_mem(tensor_symm, op="sum")
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["symm_mem"] = (end - start) / num_iters * 1000

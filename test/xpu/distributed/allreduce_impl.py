@@ -78,8 +78,8 @@ def allreduce_with_symm_mem(
     # Step 1: Ring Scatter - Each rank pushes to remote ranks in ring fashion
     # Reference: PyTorch _low_contention_reduce_scatter_with_workspace implementation
     # Each rank pushes chunk[remote_rank] to remote_rank's symm buffer
-    for step in range(world_size):
-        remote_rank = (rank - step) % world_size
+    for step in range(world_size - 1):
+        remote_rank = (rank - step - 1) % world_size
         remote_buffer = workspace.get_buffer(
             remote_rank,
             (chunk_size,),
@@ -117,8 +117,8 @@ def allreduce_with_symm_mem(
     # Step 3: Ring Allgather - Each rank pulls from remote ranks in ring fashion
     # Reference: PyTorch _low_contention_all_gather implementation
     # Each rank pulls chunk[remote_rank] from remote_rank's symm buffer
-    for step in range(world_size):
-        remote_rank = (rank - step) % world_size
+    for step in range(world_size - 1):
+        remote_rank = (rank - step - 1) % world_size
         remote_buffer = workspace.get_buffer(
             remote_rank,
             (chunk_size,),
