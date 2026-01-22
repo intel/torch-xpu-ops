@@ -14,7 +14,7 @@ runs:
       run: |
         which python && python -V
         which pip && pip list
-        if [ "${{ github.event_name }}" != "pull_request" ]
+        if [ "${{ github.event_name }}" != "pull_request" ];then
           cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
         fi
     - name: op_regression
