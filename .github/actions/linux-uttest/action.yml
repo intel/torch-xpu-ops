@@ -14,7 +14,9 @@ runs:
       run: |
         which python && python -V
         which pip && pip list
-        cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
+        if [ "${{ github.event_name }}" != "pull_request" ]
+          cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
+        fi
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
