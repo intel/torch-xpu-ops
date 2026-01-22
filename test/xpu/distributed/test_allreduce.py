@@ -14,7 +14,7 @@ import torch.distributed as dist
 from torch.profiler import profile, ProfilerActivity
 import os
 
-from allreduce_impl import allreduce_with_symm_mem,hierarchical_allreduce_with_symm_mem
+from allreduce_impl import allreduce_with_symm_mem,hierarchical_allreduce_with_symm_mem,allreduce_cross_switch
 
 
 def init_distributed():
@@ -188,14 +188,14 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     tensor_symm = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
         t = tensor_symm.clone()
-        hierarchical_allreduce_with_symm_mem(t, op="sum")
+        allreduce_cross_switch(t, op="sum")
     torch.xpu.synchronize()
 
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
         t = tensor_symm.clone()
-        hierarchical_allreduce_with_symm_mem(t, op="sum")
+        allreduce_cross_switch(t, op="sum")
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["symm_mem"] = (end - start) / num_iters * 1000
@@ -206,7 +206,7 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     tensor_test = tensor_ref.clone()
 
     dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
-    hierarchical_allreduce_with_symm_mem(tensor_test, op="sum")
+    allreduce_cross_switch(tensor_test, op="sum")
 
     is_correct = torch.allclose(tensor_ref, tensor_test, rtol=1e-3, atol=1e-3)  # BF16 tolerance
 
