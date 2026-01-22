@@ -405,7 +405,7 @@ def pytest_runtest_logreport(report):
         return
     if not report.failed:
         return
-    if not _current_worker_id in _worker_states:
+    if _current_worker_id not in _worker_states:
         return
 
     # Check for fatal device errors
