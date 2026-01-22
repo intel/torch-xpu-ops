@@ -33,7 +33,7 @@ def init_distributed():
     return rank, world_size
 
 
-def check_accuracy(tensor_size, rank, device, dtype=torch.bfloat16):
+def check_accuracy(tensor_size, rank, device, dtype=torch.float32):
     """Detailed accuracy check for allreduce_with_symm_mem."""
     world_size = dist.get_world_size()
     tensor_size = (tensor_size // world_size) * world_size
@@ -75,7 +75,7 @@ def run_accuracy_check():
     rank, world_size = init_distributed()
     device = f"xpu:{rank}"
 
-    sizes = [1048576, 4194304, 8388608]
+    sizes = [1048576, 4194304, 8388608,33554432,67108864]
 
     if rank == 0:
         print("=" * 80)
@@ -178,8 +178,7 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
-        t = tensor_dist.clone()
-        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["dist.all_reduce"] = (end - start) / num_iters * 1000
@@ -194,19 +193,20 @@ def benchmark_allreduce(tensor_size, num_warmup=10, num_iters=100, dtype=torch.b
     dist.barrier()
     start = time.perf_counter()
     for _ in range(num_iters):
-        t = tensor_symm.clone()
-        allreduce_cross_switch(t, op="sum")
+        allreduce_cross_switch(tensor_symm, op="sum")
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["symm_mem"] = (end - start) / num_iters * 1000
 
     # Verify correctness - use same seed across ranks for same initial data
-    torch.manual_seed(42)
-    tensor_ref = torch.randn(tensor_size, device=device, dtype=dtype)
+    torch.manual_seed(42 + rank)
+    tensor_ref = torch.randn(tensor_size, device=device, dtype=torch.float32)
     tensor_test = tensor_ref.clone()
 
     dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
     allreduce_cross_switch(tensor_test, op="sum")
+
+    torch.xpu.synchronize()
 
     is_correct = torch.allclose(tensor_ref, tensor_test, rtol=1e-3, atol=1e-3)  # BF16 tolerance
 
@@ -222,6 +222,9 @@ def run_benchmark(dtype=torch.bfloat16):
         4194304,   # 8MB = 4M elements * 2 bytes
         8388608,   # 16MB = 8M elements * 2 bytes
         16777216,  # 32MB = 16M elements * 2 bytes
+        33554432,  # 64MB = 32M elements * 2 bytes
+        67108864,  # 128MB = 64M elements * 2 bytes
+        134217728, # 256MB = 128M elements * 2 bytes
     ]
 
     if rank == 0:

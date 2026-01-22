@@ -116,7 +116,26 @@ def allreduce_cross_switch(
     group: dist.ProcessGroup | None = None,
 ) -> torch.Tensor:
     """
-    Perform allreduce using symmetric memory with ring reduce-scatter + allgather.
+    Perform allreduce using symmetric memory optimized for 4-GPU single socket
+    PCIe switch topology.
+
+    Topology (4 GPUs, 1 Socket, 2 Switches):
+        Switch 0: GPU 0, 1 (fastest P2P)
+        Switch 1: GPU 2, 3 (fastest P2P)
+        Cross-switch peers: 0↔2, 1↔3
+
+    Algorithm (from Rank 0's perspective):
+        Reduce-Scatter:
+            Phase 1a: R0 push chunk[1] to R1, receive chunk[0] from R1, reduce
+            Phase 1b: R0 push chunk[3] to R1, receive chunk[2] from R1, reduce
+            Phase 2:  R0 push partial_chunk[2] to R2, receive partial_chunk[0] from R2, reduce
+            => R0 now has fully reduced chunk[0]
+
+        Allgather (all push):
+            Phase 1: R0 push chunk[0] to R1
+            Phase 2: R0 push chunk[0],chunk[1] to R2,R3
+
+    This minimizes cross-switch traffic by pre-aggregating within switch first.
 
     Args:
         tensor: Input tensor to reduce (must be on XPU device)
@@ -137,11 +156,16 @@ def allreduce_cross_switch(
     rank = dist.get_rank(group)
     world_size = dist.get_world_size(group)
 
+    if world_size != GPUS_PER_SOCKET:
+        raise ValueError(
+            f"World size ({world_size}) must be {GPUS_PER_SOCKET} for single socket topology"
+        )
+
     # Work with flattened view
     tensor_flat = tensor.view(-1)
     numel = tensor_flat.numel()
 
-    # Check divisibility
+    # Check divisibility by world_size
     if numel % world_size != 0:
         raise ValueError(
             f"Tensor size ({numel}) must be divisible by world_size ({world_size})"
@@ -150,97 +174,161 @@ def allreduce_cross_switch(
     chunk_size = numel // world_size
 
     # Get symmetric memory workspace
-    workspace_size_bytes = chunk_size * world_size * tensor.element_size()
+    workspace_size_bytes = numel * tensor.element_size()
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
     # Barrier to ensure previous allreduce is complete before writing
     workspace.barrier()
 
-    # Step 1: Ring Scatter - Each rank pushes to remote ranks in ring fashion
-    # Reference: PyTorch _low_contention_reduce_scatter_with_workspace implementation
-    # Each rank pushes chunk[remote_rank] to remote_rank's symm buffer
-    if rank == 0:
-        peer_remote = 1
-        switch_remote = 2
-    elif rank == 1:
-        peer_remote = 0
-        switch_remote = 3
-    elif rank == 2:
-        peer_remote = 3
-        switch_remote = 0
-    elif rank == 3:
-        peer_remote = 2
-        switch_remote = 1
+    # Topology info
+    # Same switch peer: 0↔1, 2↔3
+    switch_peer = rank ^ 1
+    # Cross switch peer: 0↔2, 1↔3
+    cross_switch_peer = rank ^ 2
+    # Switch peer's cross switch peer: 0→3, 1→2, 2→1, 3→0
+    switch_peer_cross = rank ^ 3
 
-    # copy from peer remote, copy local index
+    # Chunk positions
+    my_chunk_start = rank * chunk_size
+    my_chunk_end = my_chunk_start + chunk_size
+    cross_chunk_start = cross_switch_peer * chunk_size
+    cross_chunk_end = cross_chunk_start + chunk_size
+
+    # ==========================================================================
+    # Reduce-Scatter Phase 1a: Intra-switch push chunk[switch_peer]
+    # R0 push chunk[1] to R1, R1 push chunk[0] to R0, etc.
+    # ==========================================================================
     remote_buffer = workspace.get_buffer(
-        peer_remote,
-        (chunk_size,),
-        tensor.dtype,
+        switch_peer, (chunk_size,), tensor.dtype,
+        storage_offset=rank * chunk_size  # I write to slot 'rank' in switch_peer's buffer
+    )
+    remote_buffer.copy_(tensor_flat[switch_peer * chunk_size:(switch_peer + 1) * chunk_size])
+
+    workspace.barrier()
+
+    # Read chunk[rank] from switch_peer and reduce
+    received_chunk = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype,
+        storage_offset=switch_peer * chunk_size
+    )
+    tensor_flat[my_chunk_start:my_chunk_end] += received_chunk
+
+    workspace.barrier()
+
+    # ==========================================================================
+    # Reduce-Scatter Phase 1b: Intra-switch push chunk[switch_peer_cross]
+    # R0 push chunk[3] to R1, R1 push chunk[2] to R0, etc.
+    # ==========================================================================
+    remote_buffer = workspace.get_buffer(
+        switch_peer, (chunk_size,), tensor.dtype,
         storage_offset=rank * chunk_size
     )
-    remote_buffer.copy_(tensor_flat[peer_remote * chunk_size:(peer_remote + 1) * chunk_size])
-    # copy from peer remote, copy cross switch index
-    remote_buffer = workspace.get_buffer(
-        peer_remote,
-        (chunk_size,),
-        tensor.dtype,
-        storage_offset=switch_remote * chunk_size
+    remote_buffer.copy_(tensor_flat[switch_peer_cross * chunk_size:(switch_peer_cross + 1) * chunk_size])
+
+    workspace.barrier()
+
+    # Read chunk[cross_switch_peer] from switch_peer and reduce
+    received_chunk = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype,
+        storage_offset=switch_peer * chunk_size
     )
-    remote_buffer.copy_(tensor_flat[switch_remote * chunk_size:(switch_remote + 1) * chunk_size])
-    workspace.barrier()
-    # local reduction
-    chunk_start_local = rank * chunk_size
-    chunk_end_local = (rank + 1) * chunk_size
-    chunk_start_switch = rank * chunk_size
-    chunk_end_switch = (rank + 1) * chunk_size
+    tensor_flat[cross_chunk_start:cross_chunk_end] += received_chunk
 
-    my_local_slot = workspace.get_buffer(rank, (chunk_size,), tensor.dtype, storage_offset=rank * chunk_size)
-    my_switch_slot = workspace.get_buffer(rank, (chunk_size,), tensor.dtype, storage_offset=switch_remote * chunk_size)
-
-    tensor_flat[chunk_start_local : chunk_end_local] += my_local_slot
-    tensor_flat[chunk_start_switch : chunk_end_switch] += my_switch_slot
     workspace.barrier()
 
-   # local reduction done and then push cross-switch data to switch remote
-    switch_buffer = workspace.get_buffer(
-        switch_remote,
-        (chunk_size,),
-        tensor.dtype,
+    # Now:
+    # tensor_flat[my_chunk] = my_chunk[rank] + switch_peer's chunk[rank]
+    # tensor_flat[cross_chunk] = my_chunk[cross_switch_peer] + switch_peer's chunk[cross_switch_peer]
+
+    # ==========================================================================
+    # Reduce-Scatter Phase 2: Cross-switch push partial_cross_chunk
+    # R0 push partial_chunk[2] to R2, R2 push partial_chunk[0] to R0, etc.
+    # ==========================================================================
+    remote_buffer = workspace.get_buffer(
+        cross_switch_peer, (chunk_size,), tensor.dtype,
         storage_offset=rank * chunk_size
     )
-    switch_buffer.copy_(tensor_flat[chunk_start_switch:chunk_end_switch])
-    workspace.barrier()
-    # local reduction fot its self data
-    my_local_slot = workspace.get_buffer(rank, (chunk_size,), tensor.dtype, storage_offset=switch_remote * chunk_size)
-    tensor_flat[chunk_start_local : chunk_end_local] += my_local_slot
-    # push data back to its switch remote
-    switch_buffer = workspace.get_buffer(
-        switch_remote,
-        (chunk_size,),
-        tensor.dtype,
-        storage_offset=rank * chunk_size
-    )
-    switch_buffer.copy_(tensor_flat[chunk_start_switch:chunk_end_switch])
+    remote_buffer.copy_(tensor_flat[cross_chunk_start:cross_chunk_end])
+
     workspace.barrier()
 
-    # push data back to its peer remote
-    remote_buffer = workspace.get_buffer(
-        peer_remote,
-        (chunk_size,),
-        tensor.dtype,
-        storage_offset=rank * chunk_size
+    # Receive from cross_switch_peer and do final reduction
+    received_chunk = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype,
+        storage_offset=cross_switch_peer * chunk_size
     )
-    remote_buffer.copy_(tensor_flat[peer_remote * chunk_size:(peer_remote + 1) * chunk_size])
-    # copy from peer remote, copy cross switch index
-    remote_buffer = workspace.get_buffer(
-        peer_remote,
-        (chunk_size,),
-        tensor.dtype,
-        storage_offset=switch_remote * chunk_size
-    )
-    remote_buffer.copy_(tensor_flat[switch_remote * chunk_size:(switch_remote + 1) * chunk_size])
+    tensor_flat[my_chunk_start:my_chunk_end] += received_chunk
+
     workspace.barrier()
+
+    # Now tensor_flat[my_chunk] contains the fully reduced chunk for this rank
+
+    # ==========================================================================
+    # Allgather Phase 1: Intra-switch push (fast path: 0↔1, 2↔3)
+    # ==========================================================================
+    # First write my chunk to my own buffer
+    my_slot = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype,
+        storage_offset=my_chunk_start
+    )
+    my_slot.copy_(tensor_flat[my_chunk_start:my_chunk_end])
+
+    # Push my chunk to switch_peer
+    remote_buffer = workspace.get_buffer(
+        switch_peer, (chunk_size,), tensor.dtype,
+        storage_offset=my_chunk_start
+    )
+    remote_buffer.copy_(tensor_flat[my_chunk_start:my_chunk_end])
+
+    workspace.barrier()
+
+    # Now my buffer has: chunk[rank] (mine) and chunk[switch_peer] (from switch_peer)
+    switch_peer_slot = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype,
+        storage_offset=switch_peer * chunk_size
+    )
+
+    # ==========================================================================
+    # Allgather Phase 2: Cross-switch push (slower path)
+    # Push both my chunk and switch_peer's chunk to cross_switch_peer and switch_peer_cross
+    # ==========================================================================
+    # Push chunk[rank] to cross_switch_peer
+    remote_buffer = workspace.get_buffer(
+        cross_switch_peer, (chunk_size,), tensor.dtype,
+        storage_offset=my_chunk_start
+    )
+    remote_buffer.copy_(my_slot)
+
+    # Push chunk[switch_peer] to cross_switch_peer
+    remote_buffer = workspace.get_buffer(
+        cross_switch_peer, (chunk_size,), tensor.dtype,
+        storage_offset=switch_peer * chunk_size
+    )
+    remote_buffer.copy_(switch_peer_slot)
+
+    # Push chunk[rank] to switch_peer_cross
+    remote_buffer = workspace.get_buffer(
+        switch_peer_cross, (chunk_size,), tensor.dtype,
+        storage_offset=my_chunk_start
+    )
+    remote_buffer.copy_(my_slot)
+
+    # Push chunk[switch_peer] to switch_peer_cross
+    remote_buffer = workspace.get_buffer(
+        switch_peer_cross, (chunk_size,), tensor.dtype,
+        storage_offset=switch_peer * chunk_size
+    )
+    remote_buffer.copy_(switch_peer_slot)
+
+    workspace.barrier()
+
+    # Read all 4 chunks from my own buffer
+    my_buffer_2d = workspace.get_buffer(
+        rank, (world_size, chunk_size), tensor.dtype, storage_offset=0
+    )
+    tensor_flat.copy_(my_buffer_2d.view(-1))
+
+    return tensor
 
 
 def allreduce_with_symm_mem(

@@ -40,7 +40,8 @@ def check_accuracy(tensor_size, rank, device, dtype=torch.float32):
 
     # Use same seed across ranks for reproducibility, but different data
     torch.manual_seed(42 + rank)
-    tensor_ref = torch.ones(tensor_size, device=device) * rank
+    tensor_ref = torch.randn(tensor_size, device=device, dtype=dtype)
+    # tensor_ref = torch.ones(tensor_size, device=device) * rank
     tensor_test = tensor_ref.clone()
 
     # Reference: torch.distributed.all_reduce
@@ -51,7 +52,7 @@ def check_accuracy(tensor_size, rank, device, dtype=torch.float32):
 
     torch.xpu.synchronize()
 
-    print(f"dist allreduce = {tensor_ref} symm_mem allreduce = {tensor_test} \n", flush=True)
+    # print(f"dist allreduce = {tensor_ref} symm_mem allreduce = {tensor_test} \n", flush=True)
 
     # Compute metrics
     abs_diff = torch.abs(tensor_ref - tensor_test)
@@ -78,7 +79,14 @@ def run_accuracy_check():
     rank, world_size = init_distributed()
     device = f"xpu:{rank}"
 
-    sizes = [1048576, 4194304, 8388608]
+    sizes = [
+        4194304,   # 8MB = 4M elements * 2 bytes
+        8388608,   # 16MB = 8M elements * 2 bytes
+        16777216,  # 32MB = 16M elements * 2 bytes
+        # 33554432,  # 64MB = 32M elements * 2 bytes
+        # 67108864,  # 128MB = 64M elements * 2 bytes
+        # 134217728, # 256MB = 128M elements * 2 bytes
+    ]
 
     if rank == 0:
         print("=" * 80)
