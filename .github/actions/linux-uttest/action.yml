@@ -14,6 +14,15 @@ runs:
       run: |
         which python && python -V
         which pip && pip list
+    - name: Setup pytest config
+      shell: timeout 60 bash -xeu -o pipefail {0}
+      if: ${{ inputs.ut_name != 'xpu_distributed' }}
+      run: |
+        cp .github/scripts/conftest.py pytorch/
+        cp .github/scripts/conftest.py pytorch/test/profiler/
+        cp .github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/test/xpu/
+        cp .github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/test/xpu/extended/
+        cp .github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/test/regressions/
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
