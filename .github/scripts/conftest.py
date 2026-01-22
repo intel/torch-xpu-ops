@@ -8,6 +8,7 @@ import atexit
 from typing import Optional, Dict, Any, Tuple
 import threading
 import logging
+import torch
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -15,7 +16,6 @@ logger = logging.getLogger(__name__)
 # ==================== Configuration ====================
 # Use environment variables for configuration to avoid recursion
 _ENABLE_XPU_MEMORY_CLEARING = os.environ.get('ENABLE_XPU_MEMORY_CLEARING', '1') == '1'
-_ENABLE_MEMORY_MONITORING = os.environ.get('ENABLE_MEMORY_MONITORING', '0') == '1'
 _ENABLE_TEST_RERUN = os.environ.get('ENABLE_TEST_RERUN', '1') == '1'
 _WORKER_RESTART_EXIT_CODE = 101
 
@@ -88,45 +88,9 @@ class XPUMemoryManager:
     def has_xpu() -> bool:
         """Check if XPU is available"""
         try:
-            import torch
             return hasattr(torch, 'xpu') and callable(getattr(torch, 'xpu', None)) and torch.xpu.is_available()
         except (ImportError, AttributeError, RuntimeError):
             return False
-
-    @staticmethod
-    def clear_xpu_memory(verbose: bool = False) -> None:
-        """Clear XPU memory cache and garbage collect"""
-        if not _ENABLE_XPU_MEMORY_CLEARING:
-            return
-
-        with XPUMemoryManager._lock:
-            try:
-                import torch
-
-                # Force Python garbage collection first
-                collected = gc.collect()
-                if verbose and collected > 0:
-                    SafeLogger.info(f"[Memory] GC collected {collected} objects")
-
-                # Clear XPU memory if available
-                if XPUMemoryManager.has_xpu():
-                    try:
-                        torch.xpu.synchronize()
-                        memory_before = torch.xpu.memory_allocated()
-                        torch.xpu.empty_cache()
-                        memory_after = torch.xpu.memory_allocated()
-
-                        if verbose and memory_before > 0:
-                            SafeLogger.info(f"[Memory] XPU: {memory_before / 1024**2:.1f}MB -> {memory_after / 1024**2:.1f}MB")
-                    except Exception as e:
-                        if verbose:
-                            SafeLogger.info(f"[Memory] XPU clear failed: {e}")
-
-            except ImportError:
-                pass  # torch not installed
-            except Exception as e:
-                if verbose:
-                    SafeLogger.info(f"[Memory] Error clearing memory: {e}")
 
     @staticmethod
     def silent_clear_xpu_memory() -> None:
@@ -136,8 +100,6 @@ class XPUMemoryManager:
 
         with XPUMemoryManager._lock:
             try:
-                import torch
-
                 # Force Python garbage collection first
                 gc.collect()
 
@@ -154,25 +116,6 @@ class XPUMemoryManager:
             except Exception:
                 pass  # Silent cleanup
 
-    @staticmethod
-    def get_xpu_memory_info() -> Dict[str, float]:
-        """Get current XPU memory usage"""
-        memory_info = {
-            'allocated_mb': 0.0,
-            'reserved_mb': 0.0,
-            'max_allocated_mb': 0.0
-        }
-
-        try:
-            import torch
-            if XPUMemoryManager.has_xpu():
-                memory_info['allocated_mb'] = torch.xpu.memory_allocated() / 1024**2
-                memory_info['reserved_mb'] = torch.xpu.memory_reserved() / 1024**2
-                memory_info['max_allocated_mb'] = torch.xpu.max_memory_allocated() / 1024**2
-        except Exception:
-            pass
-
-        return memory_info
 
 # ==================== Test Rerun Manager ====================
 class TestRerunManager:
@@ -269,6 +212,7 @@ class TestRerunManager:
             if test_id in _test_rerun_tracker:
                 del _test_rerun_tracker[test_id]
 
+
 # ==================== Utility Functions ====================
 def get_worker_id(config) -> Optional[str]:
     """Get worker ID from config"""
@@ -351,14 +295,13 @@ def _pytest_configure_impl(config):
             SafeLogger.info(f"\n{'='*60}")
             SafeLogger.info(f"🚀 WORKER {_current_worker_id} INITIALIZED")
             SafeLogger.info(f"   XPU memory clearing: {_ENABLE_XPU_MEMORY_CLEARING}")
-            SafeLogger.info(f"   Memory monitoring: {_ENABLE_MEMORY_MONITORING}")
             SafeLogger.info(f"   Test rerun enabled: {_ENABLE_TEST_RERUN}")
             if XPUMemoryManager.has_xpu():
                 SafeLogger.info("   XPU available: Yes")
             SafeLogger.info(f"{'='*60}\n")
 
             # Initial memory clearing
-            XPUMemoryManager.clear_xpu_memory(verbose=True)
+            XPUMemoryManager.silent_clear_xpu_memory()
 
             # Register cleanup handler
             CleanupManager.register_cleanup()
@@ -373,7 +316,6 @@ def pytest_configure(config):
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_protocol(item, nextitem):
     """Handle test execution with rerun capability"""
-    test_id = TestRerunManager.get_test_id(item)
 
     # Clear previous tracking if this is a fresh run
     if not hasattr(item, '_already_rerun'):
@@ -405,7 +347,7 @@ def pytest_runtest_protocol(item, nextitem):
                 SafeLogger.info(f"{'='*60}")
 
                 # Clear memory before rerun
-                XPUMemoryManager.clear_xpu_memory(verbose=True)
+                XPUMemoryManager.silent_clear_xpu_memory()
 
                 # Add delay before rerun
                 time.sleep(1)
@@ -432,12 +374,7 @@ def pytest_runtest_protocol(item, nextitem):
 def pytest_runtest_setup(item):
     """Clear XPU memory before each test"""
     if _current_worker_id and _ENABLE_XPU_MEMORY_CLEARING:
-        XPUMemoryManager.clear_xpu_memory(verbose=_ENABLE_MEMORY_MONITORING)
-
-        if _ENABLE_MEMORY_MONITORING and XPUMemoryManager.has_xpu():
-            mem_info = XPUMemoryManager.get_xpu_memory_info()
-            if mem_info['allocated_mb'] > 0:
-                SafeLogger.info(f"[Pre-test] {item.name}: {mem_info['allocated_mb']:.1f}MB allocated")
+        XPUMemoryManager.silent_clear_xpu_memory()
 
     yield  # Run the actual test setup
 
@@ -447,7 +384,7 @@ def pytest_runtest_call(item):
     yield  # Run the actual test
 
     if _current_worker_id and _ENABLE_XPU_MEMORY_CLEARING:
-        XPUMemoryManager.clear_xpu_memory(verbose=_ENABLE_MEMORY_MONITORING)
+        XPUMemoryManager.silent_clear_xpu_memory()
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_teardown(item, nextitem):
@@ -455,7 +392,7 @@ def pytest_runtest_teardown(item, nextitem):
     yield  # Run the actual teardown
 
     if _current_worker_id and _ENABLE_XPU_MEMORY_CLEARING:
-        XPUMemoryManager.clear_xpu_memory(verbose=_ENABLE_MEMORY_MONITORING)
+        XPUMemoryManager.silent_clear_xpu_memory()
 
         if _current_worker_id in _worker_states:
             _worker_states[_current_worker_id]['memory_clears'] += 1
@@ -466,39 +403,34 @@ def pytest_runtest_logreport(report):
 
     if not _current_worker_id:
         return
+    if not report.failed:
+        return
+    if not _current_worker_id in _worker_states:
+        return
 
-    # Update worker stats
-    if _current_worker_id in _worker_states:
-        if report.failed:
-            # Check for fatal device errors
-            fatal_error = False
-            fatal_pattern = None
+    # Check for fatal device errors
+    fatal_error = False
+    fatal_pattern = None
 
-            if report.longrepr:
-                error_msg = str(report.longrepr).lower()
+    if report.longrepr:
+        error_msg = str(report.longrepr).lower()
 
-                # Check patterns for fatal errors (max_retries == 0)
-                for pattern_lower, pattern_name, max_retries in _RERUN_PATTERNS:
-                    if max_retries == 0 and pattern_lower in error_msg:
-                        fatal_error = True
-                        fatal_pattern = pattern_name
-                        break
+        # Check patterns for fatal errors (max_retries == 0)
+        for pattern_lower, pattern_name, max_retries in _RERUN_PATTERNS:
+            if max_retries == 0 and pattern_lower in error_msg:
+                fatal_error = True
+                fatal_pattern = pattern_name
+                break
 
-            # Show memory info if available
-            if XPUMemoryManager.has_xpu() and _ENABLE_MEMORY_MONITORING:
-                mem_info = XPUMemoryManager.get_xpu_memory_info()
-                if mem_info['allocated_mb'] > 0:
-                    SafeLogger.info(f"   🧠 Memory: {mem_info['allocated_mb']:.1f}MB allocated")
+    # Check if we need to restart
+    if fatal_error:
+        reason = fatal_pattern
 
-            # Check if we need to restart
-            if fatal_error:
-                reason = fatal_pattern
+        # Clear memory before restart
+        XPUMemoryManager.silent_clear_xpu_memory()
 
-                # Clear memory before restart
-                XPUMemoryManager.silent_clear_xpu_memory()
-
-                # Restart worker
-                restart_worker(_current_worker_id, reason)
+        # Restart worker
+        restart_worker(_current_worker_id, reason)
 
 @pytest.hookimpl
 def pytest_sessionfinish(session, exitstatus):
@@ -523,11 +455,6 @@ def pytest_sessionfinish(session, exitstatus):
             SafeLogger.info(f"   Successful reruns: {rerun_summary['successful_reruns']}")
             SafeLogger.info(f"   Failed after retry:{rerun_summary['failed_after_rerun']}")
 
-        if XPUMemoryManager.has_xpu():
-            mem_info = XPUMemoryManager.get_xpu_memory_info()
-            SafeLogger.info(f"\n   Final XPU memory:  {mem_info['allocated_mb']:.1f}MB allocated")
-            SafeLogger.info(f"   Max XPU memory:    {mem_info['max_allocated_mb']:.1f}MB")
-
         SafeLogger.info(f"{'='*60}")
 
 @pytest.hookimpl
@@ -546,21 +473,14 @@ def auto_clear_memory():
     """Automatically clear XPU memory after each test"""
     yield
     if _ENABLE_XPU_MEMORY_CLEARING and _current_worker_id:
-        XPUMemoryManager.clear_xpu_memory(verbose=_ENABLE_MEMORY_MONITORING)
+        XPUMemoryManager.silent_clear_xpu_memory()
 
 @pytest.fixture(scope="function")
-def clear_xpu_memory():
+def silent_clear_xpu_memory():
     """Fixture to manually clear XPU memory"""
-    def clear(verbose: bool = False):
-        XPUMemoryManager.clear_xpu_memory(verbose=verbose)
+    def clear():
+        XPUMemoryManager.silent_clear_xpu_memory()
     return clear
-
-@pytest.fixture(scope="function")
-def xpu_memory_info():
-    """Fixture to get XPU memory information"""
-    def get_info():
-        return XPUMemoryManager.get_xpu_memory_info()
-    return get_info
 
 @pytest.fixture(scope="function")
 def rerun_on_error():
