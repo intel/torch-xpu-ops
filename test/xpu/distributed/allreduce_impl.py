@@ -226,330 +226,180 @@ def allreduce_with_symm_mem(
 
 
 # =============================================================================
-# Three-Level Hierarchical Allreduce Implementation
-# Level 1: Intra-Switch (fastest P2P)
-# Level 2: Intra-Socket cross-Switch (medium speed)
-# Level 3: Cross-Socket (slowest, minimized)
+# Two-Level Hierarchical Allreduce Implementation
+# Level 1: Intra-Socket (all GPUs within socket treated as equal bandwidth)
+# Level 2: Cross-Socket (slowest, minimized to N/4 of original data)
 # =============================================================================
 
-def _intra_switch_reduce(
+
+def _intra_socket_reduce_scatter(
     tensor: torch.Tensor,
-    workspace,
-    rank: int,
-) -> torch.Tensor:
-    """
-    Level 1: Reduce within PCIe switch (fastest).
-    GPU pairs: 0↔1, 2↔3, 4↔5, 6↔7
-
-    Each GPU exchanges half of its data with its switch peer and reduces.
-    After this step, each GPU has reduced data from both GPUs in the switch.
-    """
-    peer_rank = get_same_switch_peer(rank)
-    numel = tensor.numel()
-    half_size = numel // 2
-
-    # Determine which half this rank is responsible for
-    # Lower rank in switch handles first half, higher rank handles second half
-    switch_ranks = get_switch_ranks(rank)
-    is_lower_rank = (rank == switch_ranks[0])
-    local_pos = 0 if is_lower_rank else 1  # Position within switch pair (0 or 1)
-    peer_local_pos = 1 if is_lower_rank else 0
-
-    my_half_start = 0 if is_lower_rank else half_size
-
-    # Push my responsible half to peer's workspace
-    # Use local_pos as slot identifier (0 or 1), multiplied by half_size
-    remote_buffer = workspace.get_buffer(
-        peer_rank,
-        (half_size,),
-        tensor.dtype,
-        storage_offset=local_pos * half_size
-    )
-    remote_buffer.copy_(tensor[my_half_start:my_half_start + half_size])
-
-    workspace.barrier()
-
-    # Read peer's contribution and reduce
-    peer_buffer = workspace.get_buffer(
-        rank,
-        (half_size,),
-        tensor.dtype,
-        storage_offset=peer_local_pos * half_size
-    )
-
-    # Reduce: my_half = my_data + peer_data
-    result = tensor[my_half_start:my_half_start + half_size] + peer_buffer
-
-    return result, my_half_start
-
-
-def _intra_socket_cross_switch_reduce(
-    local_chunk: torch.Tensor,
-    chunk_offset: int,
     workspace,
     rank: int,
 ) -> tuple[torch.Tensor, int]:
     """
-    Level 2: Reduce across switches within socket (medium speed).
-    Switch pairs: (0,1)↔(2,3) in Socket 0, (4,5)↔(6,7) in Socket 1
+    Level 1: Reduce-scatter within socket.
+    Socket 0: GPUs 0,1,2,3
+    Socket 1: GPUs 4,5,6,7
 
-    After switch-level reduce, we now reduce across switches in the same socket.
+    Each GPU ends up with 1/4 of the reduced data from its socket.
+    Uses ring reduce-scatter pattern.
     """
-    socket_id = get_socket_id(rank)
-    switch_id = get_switch_id(rank)
-    chunk_size = local_chunk.numel()
-    half_size = chunk_size // 2
+    socket_ranks = get_socket_ranks(rank)
+    local_size = len(socket_ranks)  # 4
+    local_rank = socket_ranks.index(rank)
+    numel = tensor.numel()
+    chunk_size = numel // local_size  # N/4
 
-    # Determine peer switch within same socket
-    # Socket 0: Switch 0 ↔ Switch 1, Socket 1: Switch 2 ↔ Switch 3
-    if socket_id == 0:
-        peer_switch = 1 if switch_id == 0 else 0
-    else:
-        peer_switch = 3 if switch_id == 2 else 2
+    # Working buffer
+    data = tensor.clone()
 
-    # Get corresponding rank in peer switch (same position within switch)
-    switch_ranks = get_switch_ranks(rank)
-    local_pos_in_switch = switch_ranks.index(rank)
-    peer_switch_ranks = SWITCH_RANKS[peer_switch]
-    peer_rank = peer_switch_ranks[local_pos_in_switch]
+    # Ring reduce-scatter: (local_size - 1) steps
+    for step in range(local_size - 1):
+        # Ring neighbors within socket
+        send_to_local = (local_rank + 1) % local_size
+        recv_from_local = (local_rank - 1 + local_size) % local_size
+        send_to_rank = socket_ranks[send_to_local]
 
-    # Determine which half this switch handles
-    is_lower_switch = (switch_id < peer_switch)
-    my_half_start = 0 if is_lower_switch else half_size
+        # Which chunk to send this step
+        send_chunk_idx = (local_rank - step + local_size) % local_size
+        send_start = send_chunk_idx * chunk_size
 
-    # Use socket-local slot: 0,1 for lower switch ranks, 2,3 for higher switch ranks
-    # Each rank in socket gets a unique slot: 0,1,2,3
-    socket_local_rank = rank % GPUS_PER_SOCKET  # 0-3 for each socket
-    peer_socket_local_rank = peer_rank % GPUS_PER_SOCKET
+        # Push chunk to next rank in ring
+        remote_buffer = workspace.get_buffer(
+            send_to_rank,
+            (chunk_size,),
+            tensor.dtype,
+            storage_offset=local_rank * chunk_size
+        )
+        remote_buffer.copy_(data[send_start:send_start + chunk_size])
 
-    # Push my half to peer
-    remote_buffer = workspace.get_buffer(
-        peer_rank,
-        (half_size,),
-        local_chunk.dtype,
-        storage_offset=socket_local_rank * half_size
-    )
-    remote_buffer.copy_(local_chunk[my_half_start:my_half_start + half_size])
+        workspace.barrier()
 
-    workspace.barrier()
+        # Receive chunk from prev rank and accumulate
+        recv_chunk_idx = (local_rank - step - 1 + local_size) % local_size
+        recv_start = recv_chunk_idx * chunk_size
 
-    # Read and reduce
-    peer_buffer = workspace.get_buffer(
-        rank,
-        (half_size,),
-        local_chunk.dtype,
-        storage_offset=peer_socket_local_rank * half_size
-    )
+        peer_buffer = workspace.get_buffer(
+            rank,
+            (chunk_size,),
+            tensor.dtype,
+            storage_offset=recv_from_local * chunk_size
+        )
 
-    result = local_chunk[my_half_start:my_half_start + half_size] + peer_buffer
-    new_offset = chunk_offset + my_half_start
+        # Accumulate
+        data[recv_start:recv_start + chunk_size] += peer_buffer
 
-    return result, new_offset
+        workspace.barrier()
+
+    # Each rank now owns reduced chunk at index (local_rank + 1) % local_size
+    my_chunk_idx = (local_rank + 1) % local_size
+    my_start = my_chunk_idx * chunk_size
+    reduced_chunk = data[my_start:my_start + chunk_size].clone()
+
+    return reduced_chunk, my_chunk_idx
 
 
 def _cross_socket_reduce(
     local_chunk: torch.Tensor,
-    chunk_offset: int,
     workspace,
     rank: int,
-) -> tuple[torch.Tensor, int]:
+) -> torch.Tensor:
     """
-    Level 3: Reduce across sockets (slowest - minimized data!).
+    Level 2: Reduce across sockets.
     Pairs: 0↔4, 1↔5, 2↔6, 3↔7
 
-    At this point, each GPU only has 1/4 of the original data to exchange.
+    Each GPU exchanges its chunk with corresponding peer in other socket and reduces.
+    After this, each chunk contains the sum from all 8 GPUs.
     """
     peer_rank = get_cross_socket_peer(rank)
     chunk_size = local_chunk.numel()
-    half_size = chunk_size // 2
 
-    socket_id = get_socket_id(rank)
-    is_lower_socket = (socket_id == 0)
-    my_half_start = 0 if is_lower_socket else half_size
-
-    # Use socket-local rank as slot identifier (0-3)
+    # Use socket-local rank as slot (0-3)
     socket_local_rank = rank % GPUS_PER_SOCKET
     peer_socket_local_rank = peer_rank % GPUS_PER_SOCKET
 
-    # Push my half to peer
+    # Push to peer
     remote_buffer = workspace.get_buffer(
         peer_rank,
-        (half_size,),
+        (chunk_size,),
         local_chunk.dtype,
-        storage_offset=socket_local_rank * half_size
+        storage_offset=socket_local_rank * chunk_size
     )
-    remote_buffer.copy_(local_chunk[my_half_start:my_half_start + half_size])
+    remote_buffer.copy_(local_chunk)
 
     workspace.barrier()
 
     # Read and reduce
     peer_buffer = workspace.get_buffer(
         rank,
-        (half_size,),
+        (chunk_size,),
         local_chunk.dtype,
-        storage_offset=peer_socket_local_rank * half_size
-    )
-
-    result = local_chunk[my_half_start:my_half_start + half_size] + peer_buffer
-    new_offset = chunk_offset + my_half_start
-
-    return result, new_offset
-
-
-def _cross_socket_allgather(
-    reduced_chunk: torch.Tensor,
-    workspace,
-    rank: int,
-) -> torch.Tensor:
-    """
-    Level 3 Allgather: Broadcast back across sockets.
-    """
-    peer_rank = get_cross_socket_peer(rank)
-    chunk_size = reduced_chunk.numel()
-
-    # Use socket-local rank as slot identifier (0-3)
-    socket_local_rank = rank % GPUS_PER_SOCKET
-    peer_socket_local_rank = peer_rank % GPUS_PER_SOCKET
-
-    # Push to peer
-    remote_buffer = workspace.get_buffer(
-        peer_rank,
-        (chunk_size,),
-        reduced_chunk.dtype,
-        storage_offset=socket_local_rank * chunk_size
-    )
-    remote_buffer.copy_(reduced_chunk)
-
-    workspace.barrier()
-
-    # Read peer's data
-    peer_buffer = workspace.get_buffer(
-        rank,
-        (chunk_size,),
-        reduced_chunk.dtype,
         storage_offset=peer_socket_local_rank * chunk_size
     )
 
-    # Combine: create tensor with both halves
-    socket_id = get_socket_id(rank)
-    is_lower_socket = (socket_id == 0)
-
-    combined = torch.empty(chunk_size * 2, dtype=reduced_chunk.dtype, device=reduced_chunk.device)
-    if is_lower_socket:
-        combined[:chunk_size] = reduced_chunk
-        combined[chunk_size:] = peer_buffer
-    else:
-        combined[:chunk_size] = peer_buffer
-        combined[chunk_size:] = reduced_chunk
-
-    return combined
+    result = local_chunk + peer_buffer
+    return result
 
 
-def _intra_socket_cross_switch_allgather(
-    chunk: torch.Tensor,
+def _intra_socket_allgather(
+    my_chunk: torch.Tensor,
+    my_chunk_idx: int,
     workspace,
     rank: int,
 ) -> torch.Tensor:
     """
-    Level 2 Allgather: Broadcast back across switches within socket.
+    Level 1: Allgather within socket.
+    Each GPU has 1 fully-reduced chunk, gather all 4 chunks from socket peers.
+    Returns tensor with all 4 chunks (N elements).
     """
-    socket_id = get_socket_id(rank)
-    switch_id = get_switch_id(rank)
-    chunk_size = chunk.numel()
+    socket_ranks = get_socket_ranks(rank)
+    local_size = len(socket_ranks)  # 4
+    local_rank = socket_ranks.index(rank)
+    chunk_size = my_chunk.numel()
+    total_size = chunk_size * local_size  # N
 
-    # Determine peer switch
-    if socket_id == 0:
-        peer_switch = 1 if switch_id == 0 else 0
-    else:
-        peer_switch = 3 if switch_id == 2 else 2
+    # Initialize result
+    result = torch.zeros(total_size, dtype=my_chunk.dtype, device=my_chunk.device)
 
-    switch_ranks = get_switch_ranks(rank)
-    local_pos = switch_ranks.index(rank)
-    peer_switch_ranks = SWITCH_RANKS[peer_switch]
-    peer_rank = peer_switch_ranks[local_pos]
+    # Place my chunk
+    my_start = my_chunk_idx * chunk_size
+    result[my_start:my_start + chunk_size] = my_chunk
 
-    # Use socket-local rank as slot identifier (0-3)
-    socket_local_rank = rank % GPUS_PER_SOCKET
-    peer_socket_local_rank = peer_rank % GPUS_PER_SOCKET
+    # Broadcast my chunk to all socket peers
+    for target_local in range(local_size):
+        if target_local == local_rank:
+            continue
+        target_rank = socket_ranks[target_local]
 
-    # Push to peer
-    remote_buffer = workspace.get_buffer(
-        peer_rank,
-        (chunk_size,),
-        chunk.dtype,
-        storage_offset=socket_local_rank * chunk_size
-    )
-    remote_buffer.copy_(chunk)
+        remote_buffer = workspace.get_buffer(
+            target_rank,
+            (chunk_size,),
+            my_chunk.dtype,
+            storage_offset=local_rank * chunk_size
+        )
+        remote_buffer.copy_(my_chunk)
 
     workspace.barrier()
 
-    # Read peer's data
-    peer_buffer = workspace.get_buffer(
-        rank,
-        (chunk_size,),
-        chunk.dtype,
-        storage_offset=peer_socket_local_rank * chunk_size
-    )
+    # Receive chunks from all socket peers
+    for sender_local in range(local_size):
+        if sender_local == local_rank:
+            continue
 
-    # Combine
-    is_lower_switch = (switch_id < peer_switch)
-    combined = torch.empty(chunk_size * 2, dtype=chunk.dtype, device=chunk.device)
-    if is_lower_switch:
-        combined[:chunk_size] = chunk
-        combined[chunk_size:] = peer_buffer
-    else:
-        combined[:chunk_size] = peer_buffer
-        combined[chunk_size:] = chunk
+        # Get sender's chunk index
+        sender_chunk_idx = (sender_local + 1) % local_size
+        sender_start = sender_chunk_idx * chunk_size
 
-    return combined
+        peer_buffer = workspace.get_buffer(
+            rank,
+            (chunk_size,),
+            my_chunk.dtype,
+            storage_offset=sender_local * chunk_size
+        )
+        result[sender_start:sender_start + chunk_size] = peer_buffer
 
-
-def _intra_switch_allgather(
-    chunk: torch.Tensor,
-    workspace,
-    rank: int,
-) -> torch.Tensor:
-    """
-    Level 1 Allgather: Broadcast back within PCIe switch.
-    """
-    peer_rank = get_same_switch_peer(rank)
-    chunk_size = chunk.numel()
-
-    # Use switch-local position as slot (0 or 1)
-    switch_ranks = get_switch_ranks(rank)
-    is_lower_rank = (rank == switch_ranks[0])
-    local_pos = 0 if is_lower_rank else 1
-    peer_local_pos = 1 if is_lower_rank else 0
-
-    # Push to peer
-    remote_buffer = workspace.get_buffer(
-        peer_rank,
-        (chunk_size,),
-        chunk.dtype,
-        storage_offset=local_pos * chunk_size
-    )
-    remote_buffer.copy_(chunk)
-
-    workspace.barrier()
-
-    # Read peer's data
-    peer_buffer = workspace.get_buffer(
-        rank,
-        (chunk_size,),
-        chunk.dtype,
-        storage_offset=peer_local_pos * chunk_size
-    )
-
-    # Combine
-    combined = torch.empty(chunk_size * 2, dtype=chunk.dtype, device=chunk.device)
-    if is_lower_rank:
-        combined[:chunk_size] = chunk
-        combined[chunk_size:] = peer_buffer
-    else:
-        combined[:chunk_size] = peer_buffer
-        combined[chunk_size:] = chunk
-
-    return combined
+    return result
 
 
 def hierarchical_allreduce_with_symm_mem(
@@ -558,23 +408,20 @@ def hierarchical_allreduce_with_symm_mem(
     group: dist.ProcessGroup | None = None,
 ) -> torch.Tensor:
     """
-    Perform 3-level hierarchical allreduce optimized for 8-GPU dual-socket topology.
+    Perform 2-level hierarchical allreduce optimized for 8-GPU dual-socket topology.
 
     Topology (hardcoded):
-        Socket 0: Switch 0 (GPU 0,1), Switch 1 (GPU 2,3)
-        Socket 1: Switch 2 (GPU 4,5), Switch 3 (GPU 6,7)
+        Socket 0: GPU 0, 1, 2, 3 (equal bandwidth within socket)
+        Socket 1: GPU 4, 5, 6, 7 (equal bandwidth within socket)
 
-    Algorithm (Reduce phase):
-        1. Intra-Switch reduce: 0↔1, 2↔3, 4↔5, 6↔7 (fastest P2P)
-        2. Intra-Socket cross-Switch reduce: SW0↔SW1, SW2↔SW3 (medium)
-        3. Cross-Socket reduce: Socket0↔Socket1 (slowest, only 1/4 data!)
+    Algorithm:
+        1. Intra-socket reduce-scatter: Each GPU gets 1/4 of socket-reduced data
+        2. Cross-socket reduce: Exchange & reduce with peer (0↔4, 1↔5, 2↔6, 3↔7)
+           - After this, each chunk is FULLY reduced (sum of all 8 GPUs)
+           - Both sockets now have the same 4 chunks (no exchange needed!)
+        3. Intra-socket allgather: Gather all 4 chunks within socket
 
-    Algorithm (Allgather phase):
-        4. Cross-Socket allgather: Socket0↔Socket1
-        5. Intra-Socket cross-Switch allgather: SW0↔SW1, SW2↔SW3
-        6. Intra-Switch allgather: 0↔1, 2↔3, 4↔5, 6↔7
-
-    Cross-socket data transfer is reduced to 1/4 of original!
+    Cross-socket data transfer is reduced to N/4 (only 1 chunk per GPU)!
 
     Args:
         tensor: Input tensor to reduce (must be on XPU device)
@@ -587,7 +434,6 @@ def hierarchical_allreduce_with_symm_mem(
     if op != "sum":
         raise ValueError(f"Only 'sum' operation is supported, got '{op}'")
 
-    # Get group info
     if group is None:
         group = dist.group.WORLD
 
@@ -595,76 +441,53 @@ def hierarchical_allreduce_with_symm_mem(
     rank = dist.get_rank(group)
     world_size = dist.get_world_size(group)
 
-    # Validate world size matches hardcoded topology
     if world_size != WORLD_SIZE:
         raise ValueError(
             f"World size ({world_size}) must be {WORLD_SIZE} for this topology"
         )
 
-    # Work with flattened view
     tensor_flat = tensor.view(-1)
     numel = tensor_flat.numel()
 
-    # Check divisibility by world_size (for reduce-scatter/allgather)
-    if numel % world_size != 0:
+    # Must be divisible by GPUS_PER_SOCKET (4) for reduce-scatter
+    if numel % GPUS_PER_SOCKET != 0:
         raise ValueError(
-            f"Tensor size ({numel}) must be divisible by world_size ({world_size})"
+            f"Tensor size ({numel}) must be divisible by {GPUS_PER_SOCKET}"
         )
 
     # Get symmetric memory workspace
     workspace_size_bytes = numel * tensor.element_size()
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
-    # Initial barrier
     workspace.barrier()
 
     # =========================================================================
-    # REDUCE PHASE: Bottom-up (Switch → Socket → Cross-Socket)
+    # Step 1: Intra-socket reduce-scatter
+    # Data: N → N/4 per GPU (reduced within socket)
     # =========================================================================
-
-    # Step 1: Intra-Switch reduce (fastest - same PCIe switch)
-    # Data size: N → N/2 per GPU
-    switch_reduced, offset1 = _intra_switch_reduce(tensor_flat, workspace, rank)
-
-    workspace.barrier()
-
-    # Step 2: Intra-Socket cross-Switch reduce (medium speed)
-    # Data size: N/2 → N/4 per GPU
-    socket_reduced, offset2 = _intra_socket_cross_switch_reduce(
-        switch_reduced, offset1, workspace, rank
-    )
-
-    workspace.barrier()
-
-    # Step 3: Cross-Socket reduce (slowest - only N/4 data transferred!)
-    # Data size: N/4 → N/8 per GPU (final reduced chunk)
-    final_reduced, _ = _cross_socket_reduce(
-        socket_reduced, offset2, workspace, rank
-    )
+    my_chunk, my_chunk_idx = _intra_socket_reduce_scatter(tensor_flat, workspace, rank)
 
     workspace.barrier()
 
     # =========================================================================
-    # ALLGATHER PHASE: Top-down (Cross-Socket → Socket → Switch)
+    # Step 2: Cross-socket reduce (MINIMIZED - only N/4 data!)
+    # Data: N/4 per GPU, now fully reduced across all 8 GPUs
     # =========================================================================
-
-    # Step 4: Cross-Socket allgather
-    # Data size: N/8 → N/4 per GPU
-    cross_gathered = _cross_socket_allgather(final_reduced, workspace, rank)
+    fully_reduced = _cross_socket_reduce(my_chunk, workspace, rank)
 
     workspace.barrier()
 
-    # Step 5: Intra-Socket cross-Switch allgather
-    # Data size: N/4 → N/2 per GPU
-    socket_gathered = _intra_socket_cross_switch_allgather(cross_gathered, workspace, rank)
+    # =========================================================================
+    # Step 3: Intra-socket allgather
+    # Each socket has 4 GPUs with 4 different fully-reduced chunks
+    # Gather all 4 chunks within socket → N elements
+    # No cross-socket exchange needed! Both sockets have same 4 chunks.
+    # =========================================================================
+    result = _intra_socket_allgather(fully_reduced, my_chunk_idx, workspace, rank)
 
     workspace.barrier()
-
-    # Step 6: Intra-Switch allgather (fastest)
-    # Data size: N/2 → N per GPU
-    full_result = _intra_switch_allgather(socket_gathered, workspace, rank)
 
     # Copy result back to original tensor
-    tensor.copy_(full_result.view(tensor.shape))
+    tensor.copy_(result.view(tensor.shape))
 
     return tensor
