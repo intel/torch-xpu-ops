@@ -36,7 +36,7 @@ if(NOT WIN32)
   endif()
 endif()
 
-project(torch-xpu-ops VERSION 2.11.0 LANGUAGES C CXX)
+project(torch-xpu-ops VERSION 2.10.0 LANGUAGES C CXX)
 
 set(TORCH_XPU_OPS_FOUND FALSE)
 
