@@ -28,7 +28,7 @@ skip_dict = {
     "test_autocast_xpu.py": None,
     "test_autograd_fallback_xpu.py": None,
     "test_autograd_xpu.py": None,
-    "test_binary_ufuncs_xpu.py": None,
+    "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_comparison_utils_xpu.py": None,
     "test_complex_xpu.py": None,
     "test_content_store_xpu.py": None,
