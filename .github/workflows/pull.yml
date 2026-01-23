@@ -37,7 +37,6 @@ jobs:
       - name: Run lint check with Clang
         run: |
           sudo apt update && sudo apt install -y libomp-dev
-          pip install pyyaml
           rm -rf pytorch
           git clone https://github.com/pytorch/pytorch pytorch
           cd pytorch && cp -r ../torch-xpu-ops third_party/
@@ -93,7 +92,7 @@ jobs:
 
   linux-build:
     if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') }}
-    needs: [conditions-filter]
+    needs: [conditions-filter, preci-lint-check]
     secrets: inherit
     strategy:
       fail-fast: false
