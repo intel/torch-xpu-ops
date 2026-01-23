@@ -100,6 +100,10 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
     bool isCompleted() override;
 
+    void blockCurrentStream() override {
+      synchronize();
+    }
+
     void abort() override {
       TORCH_CHECK(false, "ProcessGroupXCCL::WorkXCCL::abort not implemented");
     }

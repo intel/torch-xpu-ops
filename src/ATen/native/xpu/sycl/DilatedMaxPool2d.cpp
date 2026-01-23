@@ -12,6 +12,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pool.h>
@@ -1419,3 +1425,5 @@ void max_pool2d_with_indices_backward_kernel(
 
 } // namespace at::native::xpu
 #undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
