@@ -21,6 +21,7 @@ with XPUPatchForImport(False):
         TestCommon,
         TestCompositeCompliance,
         TestFakeTensor,
+        TestForwardADWithScalars,
         TestMathBits,
     )
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
@@ -33,6 +34,9 @@ instantiate_device_type_tests(
 # instantiate_device_type_tests(TestRefsOpsInfo, globals(), only_for="xpu", allow_xpu=True)
 # not important
 instantiate_device_type_tests(TestFakeTensor, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestForwardADWithScalars, globals(), only_for="xpu", allow_xpu=True
+)
 # instantiate_device_type_tests(TestTags, globals(), only_for="xpu", allow_xpu=True)
 
 
