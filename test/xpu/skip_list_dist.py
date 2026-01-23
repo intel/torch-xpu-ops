@@ -33,7 +33,6 @@ skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_uneven.py": None,
     "../../../../test/distributed/fsdp/test_utils.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_comm.py": None,
-    "../../../../test/distributed/_composable/fsdp/test_fully_shard_compile.py": None,
     "../../../../test/distributed/_composable/fsdp/test_fully_shard_state_dict.py": (
         "test_cached_state_dict",
         "test_dp_state_dict_cpu_offload",
@@ -44,14 +43,13 @@ skip_dict = {
     "../../../../test/distributed/_composable/test_checkpoint.py": None,
     "../../../../test/distributed/_composable/test_contract.py": None,
     "distributed/test_c10d_xccl.py": None,
-    "distributed/test_c10d_ops_xccl.py": (
-        # hang issue
-        "test_batch_isend_irecv",
-    ),
+    "distributed/test_c10d_ops_xccl.py": None,
     "../../../../test/distributed/test_c10d_functional_native.py": None,
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_memory_tracker.py": None,
     "../../../../test/distributed/tensor/test_random_ops.py": None,
     "../../../../test/distributed/tensor/test_math_ops.py": None,
+    "../../../../test/distributed/pipelining/test_backward.py": None,
+    "../../../../test/distributed/pipelining/test_microbatch.py": None,
 }

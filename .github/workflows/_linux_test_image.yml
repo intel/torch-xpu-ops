@@ -17,6 +17,7 @@ on:
         options:
           - ubuntu-24.04
           - ubuntu-22.04
+          - build
       driver:
         type: choice
         required: true
@@ -26,6 +27,7 @@ on:
           - lts
           - lts2
           - rolling
+          - rolling-client
       ubuntu:
         type: choice
         required: true
@@ -34,6 +36,15 @@ on:
         options:
           - '22.04'
           - '24.04'
+          - '25.04'
+      gcc:
+        type: choice
+        required: true
+        default: '13'
+        description: 'Gcc version, 11 or 13'
+        options:
+          - '11'
+          - '13'
       tag:
         type: string
         required: true
@@ -56,6 +67,7 @@ env:
   # Set default values for PR-triggered builds
   WORKFLOW_DRIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.driver || 'lts2' }}
   WORKFLOW_UBUNTU: ${{ github.event_name == 'workflow_dispatch' && inputs.ubuntu || '24.04' }}
+  WORKFLOW_GCC: ${{ github.event_name == 'workflow_dispatch' && inputs.gcc || '13' }}
   WORKFLOW_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'intelgpu/ubuntu-24.04-lts2:2523.40' }}
   WORKFLOW_PUSH_TO_HUB: ${{ github.event_name == 'workflow_dispatch' && inputs.push_to_hub || false }}
 
@@ -101,6 +113,7 @@ jobs:
             ${{ env.WORKFLOW_TAG != 'intelgpu/ubuntu-24.04-lts2:2523.40' && format('intelgpu/ubuntu-{0}-{1}:latest', env.WORKFLOW_UBUNTU, env.WORKFLOW_DRIVER) || 'intelgpu/ubuntu-24.04-lts2:latest' }}
           build-args: |
             UBUNTU_VERSION=${{ env.WORKFLOW_UBUNTU }}
+            GCC_VERSION=${{ env.WORKFLOW_GCC }}
             XPU_DRIVER_TYPE=${{ env.WORKFLOW_DRIVER }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

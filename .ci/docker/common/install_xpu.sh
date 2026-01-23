@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -xeuo pipefail
 # Script used in CI and CD pipeline for Intel GPU driver installation
 
 # Intel® software for general purpose GPU capabilities.
@@ -47,7 +47,7 @@ validate_environment() {
     export XPU_DRIVER_TYPE="${XPU_DRIVER_TYPE,,}"
 
     case "${XPU_DRIVER_TYPE}" in
-        lts|lts2|rolling)
+        lts|lts2|rolling*)
             # Valid driver types
             ;;
         *)
@@ -64,7 +64,7 @@ validate_environment() {
         lts2)
             export XPU_DRIVER_VERSION="/lts/2523"
             ;;
-        rolling)
+        rolling*)
             export XPU_DRIVER_VERSION=""
             ;;
     esac
@@ -121,7 +121,7 @@ function install_ubuntu() {
     apt-get update -y
 
     # Install prerequisites
-    install_packages "ubuntu" gpg gpg-agent wget ca-certificates
+    install_packages "ubuntu" gpg gpg-agent wget curl ca-certificates
 
     # Add Intel GPU repository key
     local -r key_url="https://repositories.intel.com/gpu/intel-graphics.key"
@@ -139,7 +139,7 @@ function install_ubuntu() {
         | tee "${repo_list}"
 
     # Update repository index
-    apt-get update
+    apt-get update -y
 
     # Install xpu-smi and dependencies
     install_packages "ubuntu" flex bison xpu-smi
@@ -182,6 +182,51 @@ function install_ubuntu() {
     log_info "Ubuntu installation completed successfully"
 }
 
+function install_ubuntu_client() {
+    . /etc/os-release
+
+    local -r supported_lts_versions=("plucky")
+    local -r supported_rolling_versions=("noble" "plucky")
+
+    if [ "${XPU_DRIVER_TYPE}" == "lts" ]; then
+        log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
+        exit 1
+    else
+        if [[ ! " ${supported_rolling_versions[*]} " =~ " ${VERSION_CODENAME} " ]]; then
+            log_error "Ubuntu version ${VERSION_CODENAME} with ${XPU_DRIVER_TYPE} not supported"
+            log_error "Supported versions: ${supported_rolling_versions[*]}"
+            exit 1
+        fi
+    fi
+
+    log_info "Installing Intel GPU drivers for Ubuntu ${VERSION_CODENAME} (${XPU_DRIVER_TYPE})"
+
+    # Update package list
+    apt-get update -y
+
+    # Install prerequisites
+    install_packages "ubuntu" gpg gpg-agent wget curl ca-certificates
+
+    # Add Intel GPU repository key
+    apt-get install -y software-properties-common
+    add-apt-repository -y ppa:kobuk-team/intel-graphics
+
+    # Update repository index
+    apt-get update -y
+
+    # Install runtime packages based on driver type
+    local -r base_packages=(
+        libze-intel-gpu1 libze1 intel-metrics-discovery intel-opencl-icd clinfo intel-gsc
+        intel-media-va-driver-non-free libmfx-gen1 libvpl2 libvpl-tools libva-glx2 va-driver-all vainfo
+    )
+    install_packages "ubuntu" "${base_packages[@]}"
+
+    # Development packages
+    install_packages "ubuntu" libze-dev intel-ocloc xpu-smi libgomp1 pciutils
+
+    log_info "Ubuntu installation completed successfully"
+}
+
 function install_rhel() {
     . /etc/os-release
 
@@ -200,7 +245,7 @@ function install_rhel() {
             lts)
                 version_id="8.8"
                 ;;
-            lts2|rolling)
+            lts2|rolling*)
                 version_id="8.10"
                 ;;
         esac
@@ -330,7 +375,11 @@ main() {
     # Install based on OS
     case "${os_id}" in
         ubuntu)
-            install_ubuntu
+            if [ "${XPU_DRIVER_TYPE}" == "rolling-client" ];then
+                install_ubuntu_client
+            else
+                install_ubuntu
+            fi
             ;;
         rhel|almalinux)
             install_rhel
