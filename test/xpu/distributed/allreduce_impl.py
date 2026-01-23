@@ -186,7 +186,7 @@ def allreduce_cross_switch(
     # Cross switch peer: 0↔2, 1↔3
     cross_switch_peer = rank ^ 2
     # Switch peer's cross switch peer: 0→3, 1→2, 2→1, 3→0
-    switch_peer_cross = rank ^ 3
+    switch_peer_cross = switch_peer ^ 2
 
     # Chunk positions
     my_chunk_start = rank * chunk_size
@@ -195,130 +195,107 @@ def allreduce_cross_switch(
     cross_chunk_end = cross_chunk_start + chunk_size
 
     # ==========================================================================
-    # Reduce-Scatter Phase 1a: Intra-switch push chunk[switch_peer]
-    # R0 push chunk[1] to R1, R1 push chunk[0] to R0, etc.
+    # Reduce-Scatter Phase 1: Intra-switch push (0↔1, 2↔3)
+    # R0 push chunk[1],chunk[3] to R1; R1 push chunk[0],chunk[2] to R0
+    # Use chunk index as slot offset
     # ==========================================================================
+    # Push chunk[switch_peer] to switch_peer's buffer[slot=switch_peer]
     remote_buffer = workspace.get_buffer(
         switch_peer, (chunk_size,), tensor.dtype,
-        storage_offset=rank * chunk_size  # I write to slot 'rank' in switch_peer's buffer
+        storage_offset=switch_peer * chunk_size
     )
     remote_buffer.copy_(tensor_flat[switch_peer * chunk_size:(switch_peer + 1) * chunk_size])
 
-    workspace.barrier()
-
-    # Read chunk[rank] from switch_peer and reduce
-    received_chunk = workspace.get_buffer(
-        rank, (chunk_size,), tensor.dtype,
-        storage_offset=switch_peer * chunk_size
-    )
-    tensor_flat[my_chunk_start:my_chunk_end] += received_chunk
-
-    workspace.barrier()
-
-    # ==========================================================================
-    # Reduce-Scatter Phase 1b: Intra-switch push chunk[switch_peer_cross]
-    # R0 push chunk[3] to R1, R1 push chunk[2] to R0, etc.
-    # ==========================================================================
+    # Push chunk[switch_peer_cross] to switch_peer's buffer[slot=switch_peer_cross]
     remote_buffer = workspace.get_buffer(
         switch_peer, (chunk_size,), tensor.dtype,
-        storage_offset=rank * chunk_size
+        storage_offset=switch_peer_cross * chunk_size
     )
     remote_buffer.copy_(tensor_flat[switch_peer_cross * chunk_size:(switch_peer_cross + 1) * chunk_size])
 
     workspace.barrier()
 
-    # Read chunk[cross_switch_peer] from switch_peer and reduce
-    received_chunk = workspace.get_buffer(
+    # Read chunk[rank] from my buffer[slot=rank] and reduce
+    received_my_chunk = workspace.get_buffer(
         rank, (chunk_size,), tensor.dtype,
-        storage_offset=switch_peer * chunk_size
+        storage_offset=my_chunk_start
     )
-    tensor_flat[cross_chunk_start:cross_chunk_end] += received_chunk
+    tensor_flat[my_chunk_start:my_chunk_end] += received_my_chunk
 
-    workspace.barrier()
-
-    # Now:
-    # tensor_flat[my_chunk] = my_chunk[rank] + switch_peer's chunk[rank]
-    # tensor_flat[cross_chunk] = my_chunk[cross_switch_peer] + switch_peer's chunk[cross_switch_peer]
+    # Read chunk[cross_switch_peer] from my buffer[slot=cross_switch_peer] and reduce
+    received_cross_chunk = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype,
+        storage_offset=cross_chunk_start
+    )
+    tensor_flat[cross_chunk_start:cross_chunk_end] += received_cross_chunk
 
     # ==========================================================================
-    # Reduce-Scatter Phase 2: Cross-switch push partial_cross_chunk
-    # R0 push partial_chunk[2] to R2, R2 push partial_chunk[0] to R0, etc.
+    # Reduce-Scatter Phase 2: Cross-switch push (0↔2, 1↔3)
+    # R0 push partial_chunk[2] to R2; R2 push partial_chunk[0] to R0
+    # Use switch_peer's slot to avoid conflict with Phase 1 read slots (rank, cross_switch_peer)
     # ==========================================================================
     remote_buffer = workspace.get_buffer(
         cross_switch_peer, (chunk_size,), tensor.dtype,
-        storage_offset=rank * chunk_size
+        storage_offset=switch_peer * chunk_size  # Write to slot[switch_peer] to avoid conflict
     )
     remote_buffer.copy_(tensor_flat[cross_chunk_start:cross_chunk_end])
 
     workspace.barrier()
 
-    # Receive from cross_switch_peer and do final reduction
+    # Receive from cross_switch_peer: they wrote to my buffer[slot=their switch_peer]
+    # cross_switch_peer's switch_peer = cross_switch_peer ^ 1 = switch_peer_cross
     received_chunk = workspace.get_buffer(
         rank, (chunk_size,), tensor.dtype,
-        storage_offset=cross_switch_peer * chunk_size
+        storage_offset=switch_peer_cross * chunk_size  # Read from slot[switch_peer_cross]
     )
     tensor_flat[my_chunk_start:my_chunk_end] += received_chunk
 
-    workspace.barrier()
-
-    # Now tensor_flat[my_chunk] contains the fully reduced chunk for this rank
-
     # ==========================================================================
-    # Allgather Phase 1: Intra-switch push (fast path: 0↔1, 2↔3)
+    # Allgather Phase 1: Cross-switch push (0↔2, 1↔3)
+    # Each rank pushes its own chunk to cross_switch_peer
+    # Use switch_peer_cross's slot to avoid conflict with Phase 2 read slot (switch_peer_cross)
     # ==========================================================================
-    # First write my chunk to my own buffer
+    # Write my reduced chunk to my own buffer first
     my_slot = workspace.get_buffer(
         rank, (chunk_size,), tensor.dtype,
         storage_offset=my_chunk_start
     )
     my_slot.copy_(tensor_flat[my_chunk_start:my_chunk_end])
 
-    # Push my chunk to switch_peer
+    # Push my chunk to cross_switch_peer's buffer[slot=switch_peer]
+    # cross_switch_peer will read from slot[their switch_peer_cross] = slot[rank]
     remote_buffer = workspace.get_buffer(
-        switch_peer, (chunk_size,), tensor.dtype,
-        storage_offset=my_chunk_start
+        cross_switch_peer, (chunk_size,), tensor.dtype,
+        storage_offset=switch_peer * chunk_size  # Write to slot[switch_peer] to avoid conflict
     )
     remote_buffer.copy_(tensor_flat[my_chunk_start:my_chunk_end])
 
     workspace.barrier()
 
-    # Now my buffer has: chunk[rank] (mine) and chunk[switch_peer] (from switch_peer)
-    switch_peer_slot = workspace.get_buffer(
+    # Read cross_switch_peer's chunk: they wrote to my buffer[slot=their switch_peer]
+    # cross_switch_peer's switch_peer = switch_peer_cross
+    cross_peer_slot = workspace.get_buffer(
         rank, (chunk_size,), tensor.dtype,
-        storage_offset=switch_peer * chunk_size
+        storage_offset=switch_peer_cross * chunk_size  # Read from slot[switch_peer_cross]
     )
 
     # ==========================================================================
-    # Allgather Phase 2: Cross-switch push (slower path)
-    # Push both my chunk and switch_peer's chunk to cross_switch_peer and switch_peer_cross
+    # Allgather Phase 2: Intra-switch push (0↔1, 2↔3)
+    # Each rank pushes both chunks to switch_peer
     # ==========================================================================
-    # Push chunk[rank] to cross_switch_peer
+    # Push chunk[rank] to switch_peer
     remote_buffer = workspace.get_buffer(
-        cross_switch_peer, (chunk_size,), tensor.dtype,
+        switch_peer, (chunk_size,), tensor.dtype,
         storage_offset=my_chunk_start
     )
     remote_buffer.copy_(my_slot)
 
-    # Push chunk[switch_peer] to cross_switch_peer
+    # Push chunk[cross_switch_peer] to switch_peer
     remote_buffer = workspace.get_buffer(
-        cross_switch_peer, (chunk_size,), tensor.dtype,
-        storage_offset=switch_peer * chunk_size
+        switch_peer, (chunk_size,), tensor.dtype,
+        storage_offset=cross_chunk_start
     )
-    remote_buffer.copy_(switch_peer_slot)
-
-    # Push chunk[rank] to switch_peer_cross
-    remote_buffer = workspace.get_buffer(
-        switch_peer_cross, (chunk_size,), tensor.dtype,
-        storage_offset=my_chunk_start
-    )
-    remote_buffer.copy_(my_slot)
-
-    # Push chunk[switch_peer] to switch_peer_cross
-    remote_buffer = workspace.get_buffer(
-        switch_peer_cross, (chunk_size,), tensor.dtype,
-        storage_offset=switch_peer * chunk_size
-    )
-    remote_buffer.copy_(switch_peer_slot)
+    remote_buffer.copy_(cross_peer_slot)
 
     workspace.barrier()
 
