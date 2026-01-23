@@ -12,6 +12,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
@@ -980,3 +986,5 @@ void avg_pool3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
