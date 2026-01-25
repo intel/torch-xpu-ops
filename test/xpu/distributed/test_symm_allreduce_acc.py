@@ -14,7 +14,7 @@ import torch.distributed as dist
 from torch.profiler import profile, ProfilerActivity
 import os
 
-from allreduce_impl import allreduce_with_symm_mem
+from allreduce_impl import allreduce_with_symm_mem,allreduce_cross_switch
 
 
 def init_distributed():
@@ -48,7 +48,7 @@ def check_accuracy(tensor_size, rank, device, dtype=torch.float32):
     dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
 
     # Test: our implementation
-    allreduce_with_symm_mem(tensor_test, op="sum")
+    allreduce_cross_switch(tensor_test, op="sum")
 
     torch.xpu.synchronize()
 
