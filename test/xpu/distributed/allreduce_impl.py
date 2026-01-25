@@ -114,6 +114,7 @@ def allreduce_cross_switch(
     tensor: torch.Tensor,
     op: str = "sum",
     group: dist.ProcessGroup | None = None,
+    debug: bool = False,
 ) -> torch.Tensor:
     """
     Perform allreduce using symmetric memory optimized for 8-GPU dual-switch topology.
@@ -128,27 +129,41 @@ def allreduce_cross_switch(
         - Cross-switch write: 22 GB/s (prefer write/push for cross-switch)
         - Cross-switch read:  17 GB/s
 
-    Algorithm optimized for bandwidth:
-        Reduce-Scatter:
-            Phase 1: Intra-switch ring reduce-scatter using pull (28 GB/s read)
-                     Each rank pulls chunks from 3 peers within same switch
-            Phase 2: Cross-switch exchange using push (22 GB/s write)
-                     Rank 0↔4, 1↔5, 2↔6, 3↔7 exchange partial results
+    Algorithm using RING pattern to avoid bandwidth congestion:
+        Phase 1: Ring reduce-scatter within each switch (3 steps)
+                 - Uses push (22 GB/s write) in ring pattern: 0→1→2→3→0
+                 - Each step: push 1 chunk to next rank, reduce 1 chunk from prev rank
+                 - Result: each rank has partial sum of its chunk from 4 ranks in switch
 
-        Allgather:
-            Phase 1: Cross-switch exchange using push (22 GB/s write)
-                     Rank 0↔4, 1↔5, 2↔6, 3↔7 exchange reduced chunks
-            Phase 2: Intra-switch ring allgather using pull (28 GB/s read)
-                     Each rank pulls chunks from 3 peers within same switch
+        Phase 2: Cross-switch exchange (1 step)
+                 - Uses push (22 GB/s write) to exchange partial sums
+                 - Rank i ↔ Rank i+4 exchange their chunks
+                 - Result: each rank has fully reduced chunk (sum from all 8 ranks)
+
+        Phase 3: Ring allgather within switch + cross-switch exchange
+                 - Push reduced chunk to cross_peer (22 GB/s write)
+                 - Ring allgather using pull (28 GB/s read): 3 steps
+                 - Result: all ranks have all 8 reduced chunks
 
     Args:
         tensor: Input tensor to reduce (must be on XPU device)
         op: Reduction operation (only "sum" is supported)
         group: Process group (default: None, uses WORLD group)
+        debug: If True, print timing information for each phase
 
     Returns:
         Reduced tensor with the same shape as input (in-place modification)
     """
+    import time
+
+    def log_time(msg, start_time, rank, do_sync=True):
+        if do_sync:
+            torch.xpu.synchronize()
+        elapsed = (time.perf_counter() - start_time) * 1000
+        if rank == 0:
+            print(f"[Rank {rank}] {msg}: {elapsed:.3f} ms")
+        return time.perf_counter()
+
     if op != "sum":
         raise ValueError(f"Only 'sum' operation is supported, got '{op}'")
 
@@ -177,140 +192,177 @@ def allreduce_cross_switch(
 
     chunk_size = numel // world_size
 
-    # Get symmetric memory workspace (need 2x for double buffering)
-    workspace_size_bytes = numel * tensor.element_size() * 2
+    # Get symmetric memory workspace
+    workspace_size_bytes = numel * tensor.element_size()
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
-    # Barrier to ensure previous allreduce is complete before writing
+    # Barrier to ensure previous allreduce is complete
     workspace.barrier()
+
+    if debug:
+        torch.xpu.synchronize()
+        t_start = time.perf_counter()
 
     # Topology info
     switch_id = rank // 4  # 0 for ranks 0-3, 1 for ranks 4-7
     cross_switch_peer = rank ^ 4  # 0↔4, 1↔5, 2↔6, 3↔7
 
-    # Intra-switch peers (other 3 ranks in same switch)
+    # Switch base rank
     switch_base = switch_id * 4
-    intra_switch_peers = [switch_base + i for i in range(4) if switch_base + i != rank]
 
     # Chunk positions
     my_chunk_start = rank * chunk_size
     my_chunk_end = my_chunk_start + chunk_size
-    cross_peer_chunk_start = cross_switch_peer * chunk_size
-    cross_peer_chunk_end = cross_peer_chunk_start + chunk_size
 
     # ==========================================================================
-    # Reduce-Scatter Phase 1: Intra-switch using PUSH
-    # Push avoids the extra copy of writing full tensor to symm buffer before pull
-    # Each rank pushes chunk[peer] to peer, and chunk[peer's cross_peer] to peer
+    # Phase 1: Ring-based reduce-scatter within each switch
+    # Use ring pattern to avoid bandwidth congestion
+    # Each step: push chunk to next rank in ring, receive from previous rank
+    # local_rank: 0,1,2,3 within each switch
+    # Ring: 0→1→2→3→0
     # ==========================================================================
-    for peer in intra_switch_peers:
-        peer_cross_peer = peer ^ 4  # peer's cross-switch peer
+    local_rank = rank % 4
 
-        # Push chunk[peer] to peer's buffer at slot[rank]
-        # peer will reduce this into their my_chunk
+    # Ring reduce-scatter: 3 steps for 4 ranks in each switch
+    for step in range(3):
+        # Ring pattern: send to (local_rank + 1) % 4, receive from (local_rank - 1) % 4
+        send_to_local = (local_rank + 1) % 4
+        send_to = switch_base + send_to_local
+
+        # Which chunk to send: in step i, send chunk that will end up at rank (local_rank - step) % 4
+        chunk_idx_local = (local_rank - step) % 4
+        chunk_idx = switch_base + chunk_idx_local
+        chunk_start = chunk_idx * chunk_size
+
+        # Push to next rank in ring
         remote_buffer = workspace.get_buffer(
-            peer, (chunk_size,), tensor.dtype,
-            storage_offset=rank * chunk_size
+            send_to, (chunk_size,), tensor.dtype,
+            storage_offset=chunk_idx * chunk_size  # store at the chunk's natural position
         )
-        remote_buffer.copy_(tensor_flat[peer * chunk_size:(peer + 1) * chunk_size])
+        remote_buffer.copy_(tensor_flat[chunk_start:chunk_start + chunk_size])
 
-        # Push chunk[peer_cross_peer] to peer's buffer at slot[cross_switch_peer]
-        # peer needs this for cross-switch exchange with peer_cross_peer
-        remote_buffer = workspace.get_buffer(
-            peer, (chunk_size,), tensor.dtype,
-            storage_offset=cross_switch_peer * chunk_size
-        )
-        remote_buffer.copy_(tensor_flat[peer_cross_peer * chunk_size:(peer_cross_peer + 1) * chunk_size])
+        if debug and step == 0:
+            t_start = log_time("Phase1: ring push step 0", t_start, rank)
 
-    workspace.barrier()
+        workspace.barrier()
 
-    # Read from my symm buffer and reduce
-    # my buffer[slot peer] contains peer's chunk[rank]
-    for peer in intra_switch_peers:
-        peer_cross_peer = peer ^ 4
+        if debug and step == 0:
+            t_start = log_time("Phase1: barrier step 0", t_start, rank)
 
-        # Reduce chunk[rank] from peer
-        received_chunk = workspace.get_buffer(
+        # Reduce received chunk into my tensor
+        recv_chunk_idx_local = (local_rank - step - 1) % 4
+        recv_chunk_idx = switch_base + recv_chunk_idx_local
+        recv_chunk_start = recv_chunk_idx * chunk_size
+
+        received = workspace.get_buffer(
             rank, (chunk_size,), tensor.dtype,
-            storage_offset=peer * chunk_size
+            storage_offset=recv_chunk_idx * chunk_size
         )
-        tensor_flat[my_chunk_start:my_chunk_end] += received_chunk
+        tensor_flat[recv_chunk_start:recv_chunk_start + chunk_size] += received
 
-        # Reduce chunk[cross_switch_peer] from peer (stored at slot[peer_cross_peer])
-        received_cross_chunk = workspace.get_buffer(
-            rank, (chunk_size,), tensor.dtype,
-            storage_offset=peer_cross_peer * chunk_size
-        )
-        tensor_flat[cross_peer_chunk_start:cross_peer_chunk_end] += received_cross_chunk
+    if debug:
+        t_start = log_time("Phase1: ring reduce-scatter (3 steps)", t_start, rank)
 
-    # Now: tensor_flat[my_chunk] = sum of chunk[rank] from ranks in my switch
-    #      tensor_flat[cross_peer_chunk] = sum of chunk[cross_peer] from ranks in my switch
+    # Now each rank has partial sum for its chunk (sum of 4 ranks in same switch)
+    # my_chunk = tensor_flat[my_chunk_start:my_chunk_end] has sum from my switch
 
     # ==========================================================================
-    # Reduce-Scatter Phase 2: Cross-switch exchange using PUSH
-    # Use PUSH because cross-switch write (22 GB/s) > read (17 GB/s)
-    # Exchange partial sums: I send my partial of cross_peer's chunk, receive my chunk's partial
+    # Phase 2: Cross-switch exchange
+    # Each rank exchanges its partial sum with cross-switch peer
+    # Use push (22 GB/s) instead of pull (17 GB/s)
     # ==========================================================================
-    cross_buffer_offset = numel  # Use second half of workspace
 
-    # Push my partial sum of chunk[cross_peer] to cross_peer
+    # Push my partial sum (my_chunk) to cross_peer
     remote_buffer = workspace.get_buffer(
         cross_switch_peer, (chunk_size,), tensor.dtype,
-        storage_offset=cross_buffer_offset + rank * chunk_size
+        storage_offset=rank * chunk_size  # store at my rank's slot
     )
-    remote_buffer.copy_(tensor_flat[cross_peer_chunk_start:cross_peer_chunk_end])
+    remote_buffer.copy_(tensor_flat[my_chunk_start:my_chunk_end])
+
+    if debug:
+        t_start = log_time("Phase2: cross-switch push", t_start, rank)
 
     workspace.barrier()
 
-    # Read what cross_peer pushed to me (their partial sum of chunk[rank])
-    received_chunk = workspace.get_buffer(
+    if debug:
+        t_start = log_time("Phase2: barrier", t_start, rank)
+
+    # Reduce received partial sum from cross_peer
+    received = workspace.get_buffer(
         rank, (chunk_size,), tensor.dtype,
-        storage_offset=cross_buffer_offset + cross_switch_peer * chunk_size
+        storage_offset=cross_switch_peer * chunk_size
     )
-    tensor_flat[my_chunk_start:my_chunk_end] += received_chunk
+    tensor_flat[my_chunk_start:my_chunk_end] += received
+
+    if debug:
+        t_start = log_time("Phase2: cross-switch reduce", t_start, rank)
 
     # Now tensor_flat[my_chunk] has the fully reduced result (sum from all 8 ranks)
 
     # ==========================================================================
-    # Allgather Phase 1: Cross-switch exchange using PUSH
-    # Use PUSH because cross-switch write (22 GB/s) > read (17 GB/s)
+    # Phase 3: Ring-based allgather within each switch + cross-switch exchange
+    # First: write my reduced chunk to my buffer and push to cross_peer
+    # Then: ring allgather within switch
     # ==========================================================================
-    # Write my reduced chunk to my symm buffer first
+
+    # Write my reduced chunk to my symm buffer
     my_slot = workspace.get_buffer(
         rank, (chunk_size,), tensor.dtype, storage_offset=my_chunk_start
     )
     my_slot.copy_(tensor_flat[my_chunk_start:my_chunk_end])
 
-    # Push my reduced chunk to cross_switch_peer
+    # Push my reduced chunk to cross_switch_peer (22 GB/s write)
     remote_buffer = workspace.get_buffer(
         cross_switch_peer, (chunk_size,), tensor.dtype,
         storage_offset=my_chunk_start
     )
     remote_buffer.copy_(tensor_flat[my_chunk_start:my_chunk_end])
 
+    if debug:
+        t_start = log_time("Phase3: write local + cross-switch push", t_start, rank)
+
     workspace.barrier()
 
-    # Read cross_peer's reduced chunk from my buffer
-    tensor_flat[cross_peer_chunk_start:cross_peer_chunk_end].copy_(
+    if debug:
+        t_start = log_time("Phase3: barrier", t_start, rank)
+
+    # Read cross_peer's chunk from my buffer (it was pushed to me)
+    cross_peer_chunk_start = cross_switch_peer * chunk_size
+    tensor_flat[cross_peer_chunk_start:cross_peer_chunk_start + chunk_size].copy_(
         workspace.get_buffer(rank, (chunk_size,), tensor.dtype, storage_offset=cross_peer_chunk_start)
     )
 
-    # ==========================================================================
-    # Allgather Phase 2: Intra-switch using PULL
-    # Use PULL because intra-switch read (28 GB/s) > write (22 GB/s)
-    # ==========================================================================
-    workspace.barrier()
+    if debug:
+        t_start = log_time("Phase3: read cross-peer from local", t_start, rank)
 
-    # Pull remaining chunks from intra-switch peers
-    for peer in intra_switch_peers:
-        peer_chunk_start = peer * chunk_size
-        peer_chunk_end = peer_chunk_start + chunk_size
+    # Ring allgather within switch: 3 steps for 4 ranks
+    # Use pull (28 GB/s read) which is faster than push (22 GB/s write)
+    for step in range(3):
+        # Ring pattern: pull from (local_rank - 1 - step) % 4
+        pull_from_local = (local_rank - 1 - step) % 4
+        pull_from = switch_base + pull_from_local
+        pull_chunk_start = pull_from * chunk_size
+
         peer_buffer = workspace.get_buffer(
-            peer, (chunk_size,), tensor.dtype, storage_offset=peer_chunk_start
+            pull_from, (chunk_size,), tensor.dtype, storage_offset=pull_chunk_start
         )
-        tensor_flat[peer_chunk_start:peer_chunk_end].copy_(peer_buffer)
+        tensor_flat[pull_chunk_start:pull_chunk_start + chunk_size].copy_(peer_buffer)
+
+        if debug and step == 0:
+            t_start = log_time("Phase3: ring pull step 0", t_start, rank)
+
+        # Need barrier between steps to ensure data is ready
+        if step < 2:
+            workspace.barrier()
+
+    if debug:
+        t_start = log_time("Phase3: ring allgather (3 steps)", t_start, rank)
 
     workspace.barrier()
+
+    if debug:
+        log_time("Phase3: final barrier", t_start, rank)
+
     return tensor
 
 def allreduce_with_pull(
