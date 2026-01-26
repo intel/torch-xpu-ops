@@ -115,6 +115,8 @@ REGISTER_XPU_DISPATCH(
     shifted_chebyshev_polynomial_w_stub,
     &xpu::shifted_chebyshev_polynomial_w_kernel);
 
+REGISTER_XPU_DISPATCH(ldexp_stub, &xpu::ldexp_kernel);
+
 TORCH_IMPL_FUNC(add_out_xpu)
 (const Tensor& self,
  const Tensor& other,

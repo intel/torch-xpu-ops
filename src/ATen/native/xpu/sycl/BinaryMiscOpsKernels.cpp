@@ -126,4 +126,20 @@ void xlog1py_kernel(TensorIteratorBase& iter) {
       [&]() { gpu_kernel_with_scalars(iter, Xlog1pyFunctor<scalar_t>()); });
 }
 
+template <typename scalar_t>
+struct LdexpFunctor {
+  scalar_t operator()(scalar_t x, int exp) const {
+    return ::ldexp(x, exp);
+  }
+};
+
+void ldexp_kernel(TensorIteratorBase& iter) {
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      iter.input_dtype(0),
+      "ldexp_xpu",
+      [&] { gpu_kernel(iter, LdexpFunctor<scalar_t>()); });
+}
+
 } // namespace at::native::xpu
