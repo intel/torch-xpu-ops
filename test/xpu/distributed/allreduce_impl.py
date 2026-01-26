@@ -220,94 +220,87 @@ def allreduce_cross_switch(
     torch.xpu.synchronize()
     cross_switch_start = time.perf_counter()
 
-    if switch_id == 0 and world_size > 4:
-        # Socket 0 rank (ranks 0-3): send back half to cross_switch_peer
-        remote_buffer = workspace.get_buffer(
-            cross_switch_peer, (half_chunk_size,), tensor.dtype,
-            storage_offset=local_rank * chunk_size  # use local_rank slot
-        )
-        remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
+    # Cross-switch exchange for 8 ranks
+    if world_size > 4:
+        # Step 2a: Exchange halves between sockets
+        # Socket 0 sends back half, Socket 1 sends front half
+        if switch_id == 0:
+            # Socket 0 rank (ranks 0-3): send back half to cross_switch_peer
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=local_rank * chunk_size  # use local_rank slot
+            )
+            remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
+        else:
+            # Socket 1 rank (ranks 4-7): send front half to cross_switch_peer
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=local_rank * chunk_size  # use local_rank slot
+            )
+            remote_buffer.copy_(tensor_flat[front_half_start:front_half_end])
 
+        # Barrier 1: ensure all initial sends are complete
         workspace.barrier()
 
-        # Step 2b: Reduction - reduce the half I own with received data
+        # Step 2b: Reduce the half I own with received data
         received = workspace.get_buffer(
             rank, (half_chunk_size,), tensor.dtype,
             storage_offset=local_rank * chunk_size
         )
 
-        # Socket 0 rank: reduce front half with received front half from peer
-        tensor_flat[front_half_start:front_half_end] += received
+        if switch_id == 0:
+            # Socket 0 rank: reduce front half with received front half from peer
+            tensor_flat[front_half_start:front_half_end] += received
 
-        # Socket 0 rank: update my own symm buffer for allgather
-        my_slot = workspace.get_buffer(
-            rank, (half_chunk_size,), tensor.dtype,
-            storage_offset=my_chunk_start  # front half position
-        )
-        my_slot.copy_(tensor_flat[front_half_start:front_half_end])
+            # Socket 0 rank: update my own symm buffer for allgather
+            my_slot = workspace.get_buffer(
+                rank, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start  # front half position
+            )
+            my_slot.copy_(tensor_flat[front_half_start:front_half_end])
 
-        # Socket 0 rank: write front half result to peer's front half position
-        remote_buffer = workspace.get_buffer(
-            cross_switch_peer, (half_chunk_size,), tensor.dtype,
-            storage_offset=my_chunk_start  # front half position in peer's buffer
-        )
-        remote_buffer.copy_(tensor_flat[front_half_start:front_half_end])
+            # Socket 0 rank: write front half result to peer's front half position
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start  # front half position in peer's buffer
+            )
+            remote_buffer.copy_(tensor_flat[front_half_start:front_half_end])
+        else:
+            # Socket 1 rank: reduce back half with received back half from peer
+            tensor_flat[back_half_start:back_half_end] += received
 
+            # Socket 1 rank: update my own symm buffer for allgather
+            my_slot = workspace.get_buffer(
+                rank, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start + half_chunk_size  # back half position
+            )
+            my_slot.copy_(tensor_flat[back_half_start:back_half_end])
+
+            # Socket 1 rank: write back half result to peer's back half position
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start + half_chunk_size  # back half position
+            )
+            remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
+
+        # Barrier 2: ensure all cross-switch writes are complete
         workspace.barrier()
 
-        # Socket 0 rank: read back half from symm buffer (written by peer)
-        received_back_half = workspace.get_buffer(
-            rank, (half_chunk_size,), tensor.dtype,
-            storage_offset=my_chunk_start + half_chunk_size  # back half position
-        )
-        tensor_flat[back_half_start:back_half_end].copy_(received_back_half)
-
-    elif switch_id == 1 and world_size > 4:
-        # Socket 1 rank (ranks 4-7): send front half to cross_switch_peer
-        remote_buffer = workspace.get_buffer(
-            cross_switch_peer, (half_chunk_size,), tensor.dtype,
-            storage_offset=local_rank * chunk_size  # use local_rank slot
-        )
-        remote_buffer.copy_(tensor_flat[front_half_start:front_half_end])
-
-        workspace.barrier()
-
-        # Step 2b: Reduction - reduce the half I own with received data
-        received = workspace.get_buffer(
-            rank, (half_chunk_size,), tensor.dtype,
-            storage_offset=local_rank * chunk_size
-        )
-
-        # Socket 1 rank: reduce back half with received back half from peer
-        tensor_flat[back_half_start:back_half_end] += received
-
-        # Socket 1 rank: update my own symm buffer for allgather
-        my_slot = workspace.get_buffer(
-            rank, (half_chunk_size,), tensor.dtype,
-            storage_offset=my_chunk_start + half_chunk_size  # back half position
-        )
-        my_slot.copy_(tensor_flat[back_half_start:back_half_end])
-
-        # Socket 1 rank: write back half result to peer's back half position
-        remote_buffer = workspace.get_buffer(
-            cross_switch_peer, (half_chunk_size,), tensor.dtype,
-            storage_offset=my_chunk_start + half_chunk_size  # back half position
-        )
-        remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
-        workspace.barrier()
-
-        # Socket 1 rank: read front half from symm buffer (written by peer)
-        received_front_half = workspace.get_buffer(
-            rank, (half_chunk_size,), tensor.dtype,
-            storage_offset=my_chunk_start  # front half position
-        )
-        tensor_flat[front_half_start:front_half_end].copy_(received_front_half)
-
-    my_total_slot = workspace.get_buffer(
-        rank, (chunk_size,), tensor.dtype, storage_offset= my_chunk_start
-    )
-    torch.xpu.synchronize()
-    print(f"zl_debug my total slot is {my_total_slot} \n", flush=True)
+        # Step 2c: Read the half written by peer
+        if switch_id == 0:
+            # Socket 0 rank: read back half from symm buffer (written by peer)
+            received_back_half = workspace.get_buffer(
+                rank, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start + half_chunk_size  # back half position
+            )
+            tensor_flat[back_half_start:back_half_end].copy_(received_back_half)
+        else:
+            # Socket 1 rank: read front half from symm buffer (written by peer)
+            received_front_half = workspace.get_buffer(
+                rank, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start  # front half position
+            )
+            tensor_flat[front_half_start:front_half_end].copy_(received_front_half)
     cross_switch_end = time.perf_counter()
     cross_switch_cost_ms = (cross_switch_end - cross_switch_start) * 1000
     if rank == 0:
