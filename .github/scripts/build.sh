@@ -50,26 +50,26 @@ python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
 export USE_STATIC_MKL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
-        intel-cmplr-lib-rt==2025.3.1 | \
-        intel-cmplr-lib-ur==2025.3.1 | \
-        intel-cmplr-lic-rt==2025.3.1 | \
-        intel-sycl-rt==2025.3.1 | \
-        oneccl-devel==2021.17.1 | \
-        oneccl==2021.17.1 | \
-        impi-rt==2021.17.0 | \
-        onemkl-sycl-blas==2025.3.0 | \
-        onemkl-sycl-dft==2025.3.0 | \
-        onemkl-sycl-lapack==2025.3.0 | \
-        onemkl-sycl-rng==2025.3.0 | \
-        onemkl-sycl-sparse==2025.3.0 | \
-        dpcpp-cpp-rt==2025.3.1 | \
-        intel-opencl-rt==2025.3.1 | \
-        mkl==2025.3.0 | \
-        intel-openmp==2025.3.1 | \
-        tbb==2022.3.0 | \
+        intel-cmplr-lib-rt==2025.3.2 | \
+        intel-cmplr-lib-ur==2025.3.2 | \
+        intel-cmplr-lic-rt==2025.3.2 | \
+        intel-sycl-rt==2025.3.2 | \
+        oneccl-devel==2021.17.2 | \
+        oneccl==2021.17.2 | \
+        impi-rt==2021.17.2 | \
+        onemkl-sycl-blas==2025.3.1 | \
+        onemkl-sycl-dft==2025.3.1 | \
+        onemkl-sycl-lapack==2025.3.1 | \
+        onemkl-sycl-rng==2025.3.1 | \
+        onemkl-sycl-sparse==2025.3.1 | \
+        dpcpp-cpp-rt==2025.3.2 | \
+        intel-opencl-rt==2025.3.2 | \
+        mkl==2025.3.1 | \
+        intel-openmp==2025.3.2 | \
+        tbb==2022.3.1 | \
         tcmlib==1.4.1 | \
-        umf==1.0.2 | \
-        intel-pti==0.15.0
+        umf==1.0.3 | \
+        intel-pti==0.16.0
     "
 fi
 
