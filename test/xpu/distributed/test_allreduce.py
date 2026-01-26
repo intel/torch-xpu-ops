@@ -6,6 +6,8 @@ Usage:
     mpirun -n 2 python test_allreduce.py --impl symm_mem
     mpirun -n 2 python test_allreduce.py --impl pull
     mpirun -n 8 python test_allreduce.py --impl cross_switch
+    mpirun -n 8 python test_allreduce.py --impl cross_switch_pipeline --num_pipelines 2
+    mpirun -n 8 python test_allreduce.py --impl cross_switch_pipeline --num_pipelines 4
     mpirun -n 2 python test_allreduce.py --profile --impl symm_mem
     mpirun -n 2 python test_allreduce.py --accuracy --impl pull
 """
@@ -17,20 +19,37 @@ import torch.distributed as dist
 from torch.profiler import profile, ProfilerActivity
 import os
 
-from allreduce_impl import allreduce_with_symm_mem, hierarchical_allreduce_with_symm_mem, allreduce_cross_switch, allreduce_with_pull
+from allreduce_impl import (
+    allreduce_with_symm_mem,
+    allreduce_with_pull,
+    allreduce_cross_switch,
+    allreduce_cross_switch_pipeline,
+)
 
 # Map implementation names to functions
 IMPL_MAP = {
     "symm_mem": allreduce_with_symm_mem,
     "pull": allreduce_with_pull,
     "cross_switch": allreduce_cross_switch,
+    "cross_switch_pipeline": allreduce_cross_switch_pipeline,
 }
 
-def get_impl_func(impl_name: str):
-    """Get the allreduce implementation function by name."""
+def get_impl_func(impl_name: str, num_pipelines: int = 2):
+    """Get the allreduce implementation function by name.
+
+    For cross_switch_pipeline, returns a wrapper with num_pipelines bound.
+    """
     if impl_name not in IMPL_MAP:
         raise ValueError(f"Unknown implementation: {impl_name}. Available: {list(IMPL_MAP.keys())}")
-    return IMPL_MAP[impl_name]
+
+    func = IMPL_MAP[impl_name]
+
+    # For pipeline implementation, wrap with num_pipelines parameter
+    if impl_name == "cross_switch_pipeline":
+        from functools import partial
+        return partial(func, num_pipelines=num_pipelines)
+
+    return func
 
 
 def init_distributed():
@@ -86,17 +105,18 @@ def check_accuracy(tensor_size, rank, device, impl_func, dtype=torch.float32):
     }
 
 
-def run_accuracy_check(impl_name: str):
+def run_accuracy_check(impl_name: str, num_pipelines: int = 2):
     """Run detailed accuracy check."""
     rank, world_size = init_distributed()
     device = f"xpu:{rank}"
-    impl_func = get_impl_func(impl_name)
+    impl_func = get_impl_func(impl_name, num_pipelines=num_pipelines)
 
     sizes = [1048576, 4194304, 8388608, 33554432]
 
     if rank == 0:
         print("=" * 80)
-        print(f"Accuracy Check: {impl_name} (world_size={world_size})")
+        pipeline_info = f", num_pipelines={num_pipelines}" if impl_name == "cross_switch_pipeline" else ""
+        print(f"Accuracy Check: {impl_name} (world_size={world_size}{pipeline_info})")
         print("=" * 80)
         print(f"{'Size (MB)':>12} | {'Pass':>6} | {'MaxAbsDiff':>12} | {'MeanAbsDiff':>12} | {'MaxRelDiff':>12}")
         print("-" * 80)
@@ -114,18 +134,19 @@ def run_accuracy_check(impl_name: str):
         print("=" * 80)
 
 
-def run_profiler(impl_name: str, dtype=torch.bfloat16):
+def run_profiler(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
     """Run with torch profiler. Only rank 0 generates JSON trace file."""
     rank, world_size = init_distributed()
     device = f"xpu:{rank}"
-    impl_func = get_impl_func(impl_name)
+    impl_func = get_impl_func(impl_name, num_pipelines=num_pipelines)
 
     tensor_size = 8388608  # 16MB with BF16 (8M elements * 2 bytes)
     tensor_size = (tensor_size // world_size) * world_size
     num_iters = 10
 
     if rank == 0:
-        print(f"Profiling {impl_name} (size={tensor_size}, dtype={dtype}, world_size={world_size})")
+        pipeline_info = f", num_pipelines={num_pipelines}" if impl_name == "cross_switch_pipeline" else ""
+        print(f"Profiling {impl_name} (size={tensor_size}, dtype={dtype}, world_size={world_size}{pipeline_info})")
 
     # Warmup both implementations
     for _ in range(5):
@@ -231,10 +252,10 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
     return results, is_correct
 
 
-def run_benchmark(impl_name: str, dtype=torch.bfloat16):
+def run_benchmark(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
     """Run performance benchmark."""
     rank, world_size = init_distributed()
-    impl_func = get_impl_func(impl_name)
+    impl_func = get_impl_func(impl_name, num_pipelines=num_pipelines)
 
     # Test tensor sizes: 8MB, 16MB, 32MB (BF16 = 2 bytes per element)
     sizes = [
@@ -251,7 +272,8 @@ def run_benchmark(impl_name: str, dtype=torch.bfloat16):
 
     if rank == 0:
         print("=" * 80)
-        print(f"AllReduce Benchmark: {impl_name} (world_size={world_size}, dtype={dtype})")
+        pipeline_info = f", num_pipelines={num_pipelines}" if impl_name == "cross_switch_pipeline" else ""
+        print(f"AllReduce Benchmark: {impl_name} (world_size={world_size}, dtype={dtype}{pipeline_info})")
         print("=" * 80)
         print(f"{'Size (MB)':>12} | {'dist.all_reduce':>15} | {impl_name:>15} | {'Speedup':>10} | {'Correct':>8}")
         print("-" * 80)
@@ -278,14 +300,16 @@ def main():
     parser.add_argument("--impl", type=str, default="symm_mem",
                         choices=list(IMPL_MAP.keys()),
                         help=f"Implementation to test: {list(IMPL_MAP.keys())}")
+    parser.add_argument("--num_pipelines", type=int, default=2,
+                        help="Number of pipeline stages for cross_switch_pipeline (default: 2)")
     args = parser.parse_args()
 
     if args.profile:
-        run_profiler(args.impl)
+        run_profiler(args.impl, num_pipelines=args.num_pipelines)
     elif args.accuracy:
-        run_accuracy_check(args.impl)
+        run_accuracy_check(args.impl, num_pipelines=args.num_pipelines)
     else:
-        run_benchmark(args.impl)
+        run_benchmark(args.impl, num_pipelines=args.num_pipelines)
 
     dist.destroy_process_group()
 

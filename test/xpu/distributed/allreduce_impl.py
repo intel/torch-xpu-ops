@@ -220,8 +220,8 @@ def allreduce_cross_switch(
     torch.xpu.synchronize()
     cross_switch_start = time.perf_counter()
 
-    if switch_id and world_size > 4:
-        # Socket 0 rank: send back half to cross_switch_peer
+    if switch_id == 0 and world_size > 4:
+        # Socket 0 rank (ranks 0-3): send back half to cross_switch_peer
         remote_buffer = workspace.get_buffer(
             cross_switch_peer, (half_chunk_size,), tensor.dtype,
             storage_offset=local_rank * chunk_size  # use local_rank slot
@@ -239,6 +239,13 @@ def allreduce_cross_switch(
         # Socket 0 rank: reduce front half with received front half from peer
         tensor_flat[front_half_start:front_half_end] += received
 
+        # Socket 0 rank: update my own symm buffer for allgather
+        my_slot = workspace.get_buffer(
+            rank, (half_chunk_size,), tensor.dtype,
+            storage_offset=my_chunk_start  # front half position
+        )
+        my_slot.copy_(tensor_flat[front_half_start:front_half_end])
+
         # Socket 0 rank: write front half result to peer's front half position
         remote_buffer = workspace.get_buffer(
             cross_switch_peer, (half_chunk_size,), tensor.dtype,
@@ -248,8 +255,15 @@ def allreduce_cross_switch(
 
         workspace.barrier()
 
-    elif world_size > 4:
-        # Socket 1 rank: send front half to cross_switch_peer
+        # Socket 0 rank: read back half from symm buffer (written by peer)
+        received_back_half = workspace.get_buffer(
+            rank, (half_chunk_size,), tensor.dtype,
+            storage_offset=my_chunk_start + half_chunk_size  # back half position
+        )
+        tensor_flat[back_half_start:back_half_end].copy_(received_back_half)
+
+    elif switch_id == 1 and world_size > 4:
+        # Socket 1 rank (ranks 4-7): send front half to cross_switch_peer
         remote_buffer = workspace.get_buffer(
             cross_switch_peer, (half_chunk_size,), tensor.dtype,
             storage_offset=local_rank * chunk_size  # use local_rank slot
@@ -267,6 +281,13 @@ def allreduce_cross_switch(
         # Socket 1 rank: reduce back half with received back half from peer
         tensor_flat[back_half_start:back_half_end] += received
 
+        # Socket 1 rank: update my own symm buffer for allgather
+        my_slot = workspace.get_buffer(
+            rank, (half_chunk_size,), tensor.dtype,
+            storage_offset=my_chunk_start + half_chunk_size  # back half position
+        )
+        my_slot.copy_(tensor_flat[back_half_start:back_half_end])
+
         # Socket 1 rank: write back half result to peer's back half position
         remote_buffer = workspace.get_buffer(
             cross_switch_peer, (half_chunk_size,), tensor.dtype,
@@ -275,7 +296,18 @@ def allreduce_cross_switch(
         remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
         workspace.barrier()
 
+        # Socket 1 rank: read front half from symm buffer (written by peer)
+        received_front_half = workspace.get_buffer(
+            rank, (half_chunk_size,), tensor.dtype,
+            storage_offset=my_chunk_start  # front half position
+        )
+        tensor_flat[front_half_start:front_half_end].copy_(received_front_half)
+
+    my_total_slot = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype, storage_offset= my_chunk_start
+    )
     torch.xpu.synchronize()
+    print(f"zl_debug my total slot is {my_total_slot} \n", flush=True)
     cross_switch_end = time.perf_counter()
     cross_switch_cost_ms = (cross_switch_end - cross_switch_start) * 1000
     if rank == 0:
@@ -296,6 +328,254 @@ def allreduce_cross_switch(
     
     workspace.barrier()
     return tensor
+
+def allreduce_cross_switch_pipeline(
+    tensor: torch.Tensor,
+    op: str = "sum",
+    group: dist.ProcessGroup | None = None,
+    num_pipelines: int = 2,
+) -> torch.Tensor:
+    """
+    Perform allreduce with pipelined cross-socket and intra-socket communication.
+
+    This implementation overlaps cross-socket communication with intra-socket
+    communication by splitting the data into multiple pipeline stages.
+
+    Pipeline design (for 2 stages, 8 ranks):
+    =========================================================================
+    Time ->
+    -------------------------------------------------------------------------
+    Pipe 0: [Scatter] -> [Reduce] -> [Cross-Socket Send] -> [Cross-Socket Recv+Reduce] -> [Allgather]
+    Pipe 1:              [Scatter] -> [Reduce] -> [Cross-Socket Send] -> [Cross-Socket Recv+Reduce] -> [Allgather]
+    -------------------------------------------------------------------------
+
+    The key insight: While Pipe 0 is doing cross-socket communication (slow),
+    Pipe 1 can do intra-socket scatter/reduce (fast). This hides cross-socket latency.
+
+    Args:
+        tensor: Input tensor to reduce (must be on XPU device)
+        op: Reduction operation (only "sum" is supported)
+        group: Process group (default: None, uses WORLD group)
+        num_pipelines: Number of pipeline stages (default: 2)
+
+    Returns:
+        Reduced tensor with the same shape as input (in-place modification)
+    """
+    if op != "sum":
+        raise ValueError(f"Only 'sum' operation is supported, got '{op}'")
+
+    # Get group info
+    if group is None:
+        group = dist.group.WORLD
+
+    group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    # Work with flattened view
+    tensor_flat = tensor.view(-1)
+    numel = tensor_flat.numel()
+
+    # Check divisibility
+    if numel % (world_size * num_pipelines) != 0:
+        raise ValueError(
+            f"Tensor size ({numel}) must be divisible by world_size * num_pipelines ({world_size * num_pipelines})"
+        )
+
+    # For 8 ranks (2 sockets): local_world_size = 4 (per socket)
+    # For 4 ranks or less: local_world_size = world_size (single socket)
+    local_world_size = world_size // 2 if world_size > 4 else world_size
+
+    # Each pipeline stage handles a portion of the data
+    pipeline_chunk_size = numel // num_pipelines
+    chunk_size = pipeline_chunk_size // local_world_size
+    half_chunk_size = chunk_size // 2
+
+    # Get symmetric memory workspace (need space for all pipeline stages)
+    workspace_size_bytes = numel * tensor.element_size()
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+    # Topology info
+    switch_id = rank // 4  # 0 for ranks 0-3, 1 for ranks 4-7
+    local_rank = rank % 4  # 0-3 within each switch
+    cross_switch_peer = rank ^ 4  # 0↔4, 1↔5, 2↔6, 3↔7
+
+    # Barrier to ensure previous allreduce is complete before writing
+    workspace.barrier()
+
+    # Helper functions for each pipeline stage operation
+    def do_scatter(pipe_idx: int):
+        """Ring scatter for a pipeline stage."""
+        pipe_offset = pipe_idx * pipeline_chunk_size
+        for step in range(local_world_size - 1):
+            remote_rank = (local_rank - step - 1) % local_world_size
+            remote_buffer = workspace.get_buffer(
+                remote_rank + switch_id * 4,
+                (chunk_size,),
+                tensor.dtype,
+                storage_offset=pipe_offset + local_rank * chunk_size
+            )
+            src_start = pipe_offset + remote_rank * chunk_size
+            remote_buffer.copy_(tensor_flat[src_start:src_start + chunk_size])
+
+    def do_local_reduce(pipe_idx: int):
+        """Local reduce for a pipeline stage."""
+        pipe_offset = pipe_idx * pipeline_chunk_size
+        chunk_start = pipe_offset + local_rank * chunk_size
+        chunk_end = chunk_start + chunk_size
+
+        # Copy local chunk to symm buffer
+        my_slot = workspace.get_buffer(
+            rank, (chunk_size,), tensor.dtype,
+            storage_offset=pipe_offset + local_rank * chunk_size
+        )
+        my_slot.copy_(tensor_flat[chunk_start:chunk_end])
+
+        # Reduce from all local ranks
+        my_symm_2d = workspace.get_buffer(
+            rank, (local_world_size, chunk_size), tensor.dtype,
+            storage_offset=pipe_offset
+        )
+        torch.sum(my_symm_2d, dim=0, out=tensor_flat[chunk_start:chunk_end])
+
+        # Write back for allgather
+        my_slot.copy_(tensor_flat[chunk_start:chunk_end])
+
+    def do_cross_socket_send(pipe_idx: int):
+        """Cross-socket send for a pipeline stage."""
+        if world_size <= 4:
+            return
+        pipe_offset = pipe_idx * pipeline_chunk_size
+        my_chunk_start = pipe_offset + local_rank * chunk_size
+        front_half_start = my_chunk_start
+        back_half_start = my_chunk_start + half_chunk_size
+
+        if switch_id:
+            # Socket 1: send front half
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=pipe_offset + local_rank * chunk_size
+            )
+            remote_buffer.copy_(tensor_flat[front_half_start:front_half_start + half_chunk_size])
+        else:
+            # Socket 0: send back half
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=pipe_offset + local_rank * chunk_size
+            )
+            remote_buffer.copy_(tensor_flat[back_half_start:back_half_start + half_chunk_size])
+
+    def do_cross_socket_recv_reduce(pipe_idx: int):
+        """Cross-socket receive and reduce for a pipeline stage."""
+        if world_size <= 4:
+            return
+        pipe_offset = pipe_idx * pipeline_chunk_size
+        my_chunk_start = pipe_offset + local_rank * chunk_size
+        front_half_start = my_chunk_start
+        back_half_start = my_chunk_start + half_chunk_size
+
+        received = workspace.get_buffer(
+            rank, (half_chunk_size,), tensor.dtype,
+            storage_offset=pipe_offset + local_rank * chunk_size
+        )
+
+        if switch_id:
+            # Socket 1: reduce back half, send to peer
+            tensor_flat[back_half_start:back_half_start + half_chunk_size] += received
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start + half_chunk_size
+            )
+            remote_buffer.copy_(tensor_flat[back_half_start:back_half_start + half_chunk_size])
+        else:
+            # Socket 0: reduce front half, send to peer
+            tensor_flat[front_half_start:front_half_start + half_chunk_size] += received
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=my_chunk_start
+            )
+            remote_buffer.copy_(tensor_flat[front_half_start:front_half_start + half_chunk_size])
+
+    def do_allgather(pipe_idx: int):
+        """Ring allgather for a pipeline stage."""
+        pipe_offset = pipe_idx * pipeline_chunk_size
+        for step in range(local_world_size - 1):
+            remote_rank = (local_rank - step - 1) % local_world_size
+            remote_buffer = workspace.get_buffer(
+                remote_rank + switch_id * 4,
+                (chunk_size,),
+                tensor.dtype,
+                storage_offset=pipe_offset + remote_rank * chunk_size
+            )
+            dst_start = pipe_offset + remote_rank * chunk_size
+            tensor_flat[dst_start:dst_start + chunk_size].copy_(remote_buffer)
+
+    # ==========================================================================
+    # Pipelined Execution with Stream Overlap
+    # ==========================================================================
+    # Create streams for each pipeline stage to enable true overlap
+    streams = [torch.xpu.Stream() for _ in range(num_pipelines)]
+    current_stream = torch.xpu.current_stream()
+
+    # Phase 1: Scatter - each pipeline on its own stream
+    for pipe_idx in range(num_pipelines):
+        streams[pipe_idx].wait_stream(current_stream)
+        with torch.xpu.stream(streams[pipe_idx]):
+            do_scatter(pipe_idx)
+
+    # Current stream waits for all pipeline streams before barrier
+    for s in streams:
+        current_stream.wait_stream(s)
+    workspace.barrier()
+
+    # Phase 2: Local reduce - each pipeline on its own stream
+    for pipe_idx in range(num_pipelines):
+        streams[pipe_idx].wait_stream(current_stream)
+        with torch.xpu.stream(streams[pipe_idx]):
+            do_local_reduce(pipe_idx)
+
+    # Current stream waits for all pipeline streams before barrier
+    for s in streams:
+        current_stream.wait_stream(s)
+    workspace.barrier()
+
+    # Phase 3: Pipelined cross-socket exchange
+    if world_size > 4:
+        # Send phase: all pipelines send on their streams (overlapped)
+        for pipe_idx in range(num_pipelines):
+            streams[pipe_idx].wait_stream(current_stream)
+            with torch.xpu.stream(streams[pipe_idx]):
+                do_cross_socket_send(pipe_idx)
+
+        # Current stream waits for all pipeline streams before barrier
+        for s in streams:
+            current_stream.wait_stream(s)
+        workspace.barrier()
+
+        # Recv+Reduce phase: all pipelines receive and reduce (overlapped)
+        for pipe_idx in range(num_pipelines):
+            streams[pipe_idx].wait_stream(current_stream)
+            with torch.xpu.stream(streams[pipe_idx]):
+                do_cross_socket_recv_reduce(pipe_idx)
+
+        # Current stream waits for all pipeline streams before barrier
+        for s in streams:
+            current_stream.wait_stream(s)
+        workspace.barrier()
+
+    # Phase 4: Allgather - each pipeline on its own stream
+    for pipe_idx in range(num_pipelines):
+        streams[pipe_idx].wait_stream(current_stream)
+        with torch.xpu.stream(streams[pipe_idx]):
+            do_allgather(pipe_idx)
+
+    # Current stream waits for all pipeline streams before final barrier
+    for s in streams:
+        current_stream.wait_stream(s)
+    workspace.barrier()
+
+    return tensor
+
 
 def allreduce_with_pull(
     tensor: torch.Tensor,
