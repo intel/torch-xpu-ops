@@ -10,8 +10,6 @@
 
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_bwd.h>
 #include <ATen/native/transformers/xpu/flash_attn/sycltla/mha_common.h>
-#include <torch/torch.h>
-#include <fstream>
 // batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
 using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
 
@@ -40,8 +38,6 @@ void compute_o_dot_do(
   using VType = typename T::VType;
 
   auto sg = compat::get_nd_item<1>().get_sub_group();
-  auto group = compat::get_nd_item<1>().get_group();
-  auto first_thread_in_sg_idx = sg.get_group_linear_id() * trait.SubgroupSize;
   auto bofst = Boffset(param);
 
   const index_t o_offset = bofst.o_offset(bidb, bidh, m_block * kBlockM);
