@@ -1118,10 +1118,6 @@ void max_pool2d_with_indices_kernel(
   }
 
   auto memory_format = input_.suggest_memory_format();
-  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-    memory_format = MemoryFormat::ChannelsLast;
-  }
-
   Tensor input = input_.contiguous(memory_format);
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
@@ -1276,9 +1272,6 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto memory_format = input_.suggest_memory_format();
-  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-    memory_format = MemoryFormat::ChannelsLast;
-  }
   Tensor input, gradOutput, indices;
 
   input = input_.contiguous(memory_format);
