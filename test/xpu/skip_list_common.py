@@ -99,4 +99,5 @@ skip_dict = {
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "test/xpu/dynamo/test_ctx_manager_xpu.py": None,
+    "functorch/test_control_flow_xpu.py": None,
 }
