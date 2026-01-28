@@ -26,9 +26,8 @@ Tensor& mm_complex_fallback(
     const Tensor& mat2,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex matrix multiplication is using fallback implementation with "
-      "real GEMM decomposition. Consider building with USE_ONEMKL_XPU=1 for "
-      "better performance.");
+      "Complex matrix multiplication is using fallback implementation with."
+      "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto self_real = at::view_as_real(self);
   auto mat2_real = at::view_as_real(mat2);
@@ -56,9 +55,8 @@ Tensor& bmm_complex_fallback(
     const Tensor& mat2,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex batch matrix multiplication is using fallback implementation "
-      "with real GEMM decomposition. Consider building with USE_ONEMKL_XPU=1 "
-      "for better performance.");
+      "Complex batch matrix multiplication is using fallback implementation."
+      "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto self_real = at::view_as_real(self);
   auto mat2_real = at::view_as_real(mat2);
@@ -87,9 +85,8 @@ Tensor& addmm_complex_fallback(
     const Scalar& alpha,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex addmm is using fallback implementation with real GEMM "
-      "decomposition. Consider building with USE_ONEMKL_XPU=1 for better "
-      "performance.");
+      "Complex addmm is using fallback implementation with real GEMM."
+      "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto beta_c = beta.toComplexDouble();
   auto alpha_c = alpha.toComplexDouble();
@@ -134,9 +131,8 @@ Tensor& baddbmm_complex_fallback(
     const Scalar& alpha,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex baddbmm is using fallback implementation with real GEMM "
-      "decomposition. Consider building with USE_ONEMKL_XPU=1 for better "
-      "performance.");
+      "Complex baddbmm is using fallback implementation with real GEMM."
+      "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto beta_c = beta.toComplexDouble();
   auto alpha_c = alpha.toComplexDouble();
