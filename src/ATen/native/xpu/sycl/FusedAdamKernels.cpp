@@ -48,7 +48,7 @@ void fused_adam_kernel(
         multi_tensor_apply_for_fused_optimizer<4>(
             tensor_lists,
             state_steps,
-            FusedAdamMathFunctor<scalar_t, 4, ADAM_MODE::ORIGINAL, false>(),
+            FusedAdamMathFunctor<scalar_t, 4, ADAM_MODE_ORIGINAL, false>(),
             lr_ptr, // unused
             lr,
             beta1,
@@ -94,7 +94,7 @@ void fused_adam_kernel(
         multi_tensor_apply_for_fused_optimizer<4>(
             tensor_lists,
             state_steps,
-            FusedAdamMathFunctor<scalar_t, 4, ADAM_MODE::ORIGINAL, false>(),
+            FusedAdamMathFunctor<scalar_t, 4, ADAM_MODE_ORIGINAL, false>(),
             lr_ptr,
             1.0f, // unused
             beta1,

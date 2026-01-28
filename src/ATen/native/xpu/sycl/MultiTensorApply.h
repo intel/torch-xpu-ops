@@ -78,48 +78,21 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
 }
 
 template <typename T, typename Y, typename U, typename... ArgTypes>
-struct MultiTensorApplyKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  void operator()(sycl::nd_item<1> item_id) const {
-    // Expand the tuple elements manually and call the callable
-    expandAndCall(item_id, std::index_sequence_for<ArgTypes...>());
-  }
-  MultiTensorApplyKernelFunctor(
-      int64_t kChunkSize_,
-      T tlAddressMeta_,
-      Y tlWGMeta_,
-      U callable_,
-      ArgTypes... args_)
-      : kChunkSize(kChunkSize_),
-        tlAddressMeta(tlAddressMeta_),
-        tlWGMeta(tlWGMeta_),
-        callable(callable_),
-        args(std::make_tuple(args_...)) {}
-
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    if constexpr (std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, U>) {
-      callable.sycl_ker_config_convention(cgh);
-    }
-  }
-
- private:
-  template <std::size_t... Indices>
-  void expandAndCall(sycl::nd_item<1> item_id, std::index_sequence<Indices...>)
-      const {
-    // Call the callable with expanded tuple elements
-    callable(
+SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
+void multiTensorApplyKernel(
+    int64_t kChunkSize,
+    T tlAddressMeta,
+    Y tlWGMeta,
+    U callable,
+    ArgTypes... args) {
+  auto item = syclext::this_work_item::get_nd_item<1>();
+  callable(
         kChunkSize,
         tlAddressMeta,
         tlWGMeta,
-        item_id,
-        std::get<Indices>(args)...);
-  }
-
-  int64_t kChunkSize;
-  T tlAddressMeta;
-  Y tlWGMeta;
-  U callable;
-  std::tuple<ArgTypes...> args;
-};
+        item,
+        args...);
+}
 
 template <
     bool fused_kernel,
@@ -143,14 +116,14 @@ void launch_multi_tensor_apply_kernel(
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-  MultiTensorApplyKernelFunctor<T, Y, U, ArgTypes...> kfn(
-      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
+  constexpr auto kfn = multiTensorApplyKernel<T, Y, U, ArgTypes...>;
 
-  sycl_kernel_submit(
+  sycl_kernel_submit<kfn>(
       sycl::range<1>(num_wg * max_wg_size),
       sycl::range<1>(max_wg_size),
       q,
-      kfn);
+      0,
+      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
 }
 
 template <int depth, typename scalar_t, typename T, typename... ArgTypes>
