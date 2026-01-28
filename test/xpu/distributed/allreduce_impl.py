@@ -118,6 +118,8 @@ def allreduce_cross_switch(
     """
     Perform allreduce using symmetric memory with ring reduce-scatter + allgather.
 
+    Optimized version: reduces copy operations by working directly on symm buffer.
+
     Args:
         tensor: Input tensor to reduce (must be on XPU device)
         op: Reduction operation (only "sum" is supported)
@@ -162,12 +164,13 @@ def allreduce_cross_switch(
     cross_switch_peer = rank ^ 4  # 0↔4, 1↔5, 2↔6, 3↔7
     half_chunk_size = chunk_size // 2
 
+    # My chunk position
+    my_chunk_start = local_rank * chunk_size
+
     # Barrier to ensure previous allreduce is complete before writing
     workspace.barrier()
 
     # Step 1: Ring Scatter - Each rank pushes to remote ranks in ring fashion
-    # Reference: PyTorch _low_contention_reduce_scatter_with_workspace implementation
-    # Each rank pushes chunk[remote_rank] to remote_rank's symm buffer
     for step in range(local_world_size - 1):
         remote_rank = (local_rank - step - 1) % local_world_size
         remote_buffer = workspace.get_buffer(
@@ -178,137 +181,101 @@ def allreduce_cross_switch(
         )
         remote_buffer.copy_(tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size])
 
-    # Barrier after each ring step to ensure data is received before next push
+    # Barrier after scatter to ensure data is received
     workspace.barrier()
 
-    # Step 2: Reduce - Single kernel reduction
-    chunk_start = local_rank * chunk_size
-    chunk_end = (local_rank + 1) * chunk_size
-
-    # First, copy local chunk to symm[rank] position (symm[rank] was 0)
+    # Step 2: Reduce
+    # Get my slot in symm buffer
     my_slot = workspace.get_buffer(
-        rank, (chunk_size,), tensor.dtype, storage_offset=local_rank * chunk_size
+        rank, (chunk_size,), tensor.dtype, storage_offset=my_chunk_start
     )
-    my_slot.copy_(tensor_flat[chunk_start:chunk_end])
 
-    # View symm as [world_size, chunk_size] and reduce with single kernel
+    # First, copy local chunk to my_slot (my_symm_2d[local_rank] was not written by scatter)
+    my_slot.copy_(tensor_flat[my_chunk_start:my_chunk_start + chunk_size])
+
+    # View symm as [local_world_size, chunk_size] and reduce with single kernel
     my_symm_2d = workspace.get_buffer(
         rank, (local_world_size, chunk_size), tensor.dtype, storage_offset=0
     )
 
-    # Single reduction kernel: sum along dim 0
-    torch.sum(my_symm_2d, dim=0, out=tensor_flat[chunk_start:chunk_end])
+    # Reduce: sum all chunks from symm buffer
+    # Use tensor_flat[my_chunk] as temp output to avoid read-write conflict
+    # (my_slot is my_symm_2d[local_rank], writing to it while reading would be unsafe)
+    my_chunk_in_tensor = tensor_flat[my_chunk_start:my_chunk_start + chunk_size]
+    torch.sum(my_symm_2d, dim=0, out=my_chunk_in_tensor)
 
-    # Write reduced result back to symm[rank] for allgather
-    my_slot.copy_(tensor_flat[chunk_start:chunk_end])
+    # Copy reduced result back to my_slot for cross-switch and allgather
+    my_slot.copy_(my_chunk_in_tensor)
 
     workspace.barrier()
 
-    my_chunk_idx = local_rank
-    my_chunk_start = my_chunk_idx * chunk_size
-    my_chunk_end = my_chunk_start + chunk_size
-
-    # Calculate offsets for front and back halves of my chunk
-    front_half_start = my_chunk_start
-    front_half_end = my_chunk_start + half_chunk_size
-    back_half_start = my_chunk_start + half_chunk_size
-    back_half_end = my_chunk_end
-
-    # Step 2a: Exchange - send the half I don't own to peer
-    # Timing for cross-socket exchange (lines 217-271)
-    import time
-    torch.xpu.synchronize()
-    cross_switch_start = time.perf_counter()
-
     # Cross-switch exchange for 8 ranks
     if world_size > 4:
-        # Step 2a: Exchange halves between sockets
+        # Step 3a: Exchange halves between sockets
         # Socket 0 sends back half, Socket 1 sends front half
-        if switch_id == 0:
-            # Socket 0 rank (ranks 0-3): send back half to cross_switch_peer
-            remote_buffer = workspace.get_buffer(
-                cross_switch_peer, (half_chunk_size,), tensor.dtype,
-                storage_offset=local_rank * chunk_size  # use local_rank slot
-            )
-            remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
-        else:
-            # Socket 1 rank (ranks 4-7): send front half to cross_switch_peer
-            remote_buffer = workspace.get_buffer(
-                cross_switch_peer, (half_chunk_size,), tensor.dtype,
-                storage_offset=local_rank * chunk_size  # use local_rank slot
-            )
-            remote_buffer.copy_(tensor_flat[front_half_start:front_half_end])
+        # Use my_slot directly (already in symm buffer)
+        my_front_half = my_slot[:half_chunk_size]
+        my_back_half = my_slot[half_chunk_size:]
 
-        # Barrier 1: ensure all initial sends are complete
+        if switch_id == 0:
+            # Socket 0: send back half to peer's temp slot
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=local_rank * chunk_size
+            )
+            remote_buffer.copy_(my_back_half)
+        else:
+            # Socket 1: send front half to peer's temp slot
+            remote_buffer = workspace.get_buffer(
+                cross_switch_peer, (half_chunk_size,), tensor.dtype,
+                storage_offset=local_rank * chunk_size
+            )
+            remote_buffer.copy_(my_front_half)
+
+        # Barrier 1: ensure all sends complete
         workspace.barrier()
 
-        # Step 2b: Reduce the half I own with received data
+        # Step 3b: Reduce with received data and write result to peer
         received = workspace.get_buffer(
             rank, (half_chunk_size,), tensor.dtype,
             storage_offset=local_rank * chunk_size
         )
 
         if switch_id == 0:
-            # Socket 0 rank: reduce front half with received front half from peer
-            tensor_flat[front_half_start:front_half_end] += received
-
-            # Socket 0 rank: update my own symm buffer for allgather
-            my_slot = workspace.get_buffer(
-                rank, (half_chunk_size,), tensor.dtype,
-                storage_offset=my_chunk_start  # front half position
-            )
-            my_slot.copy_(tensor_flat[front_half_start:front_half_end])
-
-            # Socket 0 rank: write front half result to peer's front half position
-            remote_buffer = workspace.get_buffer(
+            # Socket 0: reduce front half, write to self and peer
+            my_front_half.add_(received)
+            # Write to peer's front half position
+            peer_front_half = workspace.get_buffer(
                 cross_switch_peer, (half_chunk_size,), tensor.dtype,
-                storage_offset=my_chunk_start  # front half position in peer's buffer
+                storage_offset=my_chunk_start
             )
-            remote_buffer.copy_(tensor_flat[front_half_start:front_half_end])
+            peer_front_half.copy_(my_front_half)
         else:
-            # Socket 1 rank: reduce back half with received back half from peer
-            tensor_flat[back_half_start:back_half_end] += received
-
-            # Socket 1 rank: update my own symm buffer for allgather
-            my_slot = workspace.get_buffer(
-                rank, (half_chunk_size,), tensor.dtype,
-                storage_offset=my_chunk_start + half_chunk_size  # back half position
-            )
-            my_slot.copy_(tensor_flat[back_half_start:back_half_end])
-
-            # Socket 1 rank: write back half result to peer's back half position
-            remote_buffer = workspace.get_buffer(
+            # Socket 1: reduce back half, write to self and peer
+            my_back_half.add_(received)
+            # Write to peer's back half position
+            peer_back_half = workspace.get_buffer(
                 cross_switch_peer, (half_chunk_size,), tensor.dtype,
-                storage_offset=my_chunk_start + half_chunk_size  # back half position
+                storage_offset=my_chunk_start + half_chunk_size
             )
-            remote_buffer.copy_(tensor_flat[back_half_start:back_half_end])
+            peer_back_half.copy_(my_back_half)
 
-        # Barrier 2: ensure all cross-switch writes are complete
+        # Barrier 2: ensure all writes complete before reading
         workspace.barrier()
 
-        # Step 2c: Read the half written by peer
+        # Step 3c: Read the half written by peer (directly into my_slot)
         if switch_id == 0:
-            # Socket 0 rank: read back half from symm buffer (written by peer)
-            received_back_half = workspace.get_buffer(
-                rank, (half_chunk_size,), tensor.dtype,
-                storage_offset=my_chunk_start + half_chunk_size  # back half position
-            )
-            tensor_flat[back_half_start:back_half_end].copy_(received_back_half)
+            # Socket 0: peer wrote back half to my symm buffer
+            # my_back_half already points to the right location, just need to sync
+            pass  # Data already in my_slot[half_chunk_size:]
         else:
-            # Socket 1 rank: read front half from symm buffer (written by peer)
-            received_front_half = workspace.get_buffer(
-                rank, (half_chunk_size,), tensor.dtype,
-                storage_offset=my_chunk_start  # front half position
-            )
-            tensor_flat[front_half_start:front_half_end].copy_(received_front_half)
-    cross_switch_end = time.perf_counter()
-    cross_switch_cost_ms = (cross_switch_end - cross_switch_start) * 1000
-    if rank == 0:
-        print(f"[Rank {rank}] Cross-switch exchange cost: {cross_switch_cost_ms:.3f} ms")
+            # Socket 1: peer wrote front half to my symm buffer
+            pass  # Data already in my_slot[:half_chunk_size]
 
-    # Step 3: Ring Allgather - Each rank pulls from remote ranks in ring fashion
-    # Reference: PyTorch _low_contention_all_gather implementation
-    # Each rank pulls chunk[remote_rank] from remote_rank's symm buffer
+    # Step 4: Ring Allgather - pull from remote ranks
+    # Copy my reduced chunk from symm buffer to tensor_flat first
+    tensor_flat[my_chunk_start:my_chunk_start + chunk_size].copy_(my_slot)
+
     for step in range(local_world_size - 1):
         remote_rank = (local_rank - step - 1) % local_world_size
         remote_buffer = workspace.get_buffer(
@@ -318,7 +285,7 @@ def allreduce_cross_switch(
             storage_offset=remote_rank * chunk_size
         )
         tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size].copy_(remote_buffer)
-    
+
     workspace.barrier()
     return tensor
 
