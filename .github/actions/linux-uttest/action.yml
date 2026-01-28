@@ -124,6 +124,8 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
         python -u test/profiling/triton_xpu_ops_time.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
+        python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.py
 
         # llama case for calls number test
         pip install transformers
@@ -141,6 +143,7 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
         python -m pytest -s -vs test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
+
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
