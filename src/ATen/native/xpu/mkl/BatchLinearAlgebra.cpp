@@ -528,18 +528,21 @@ void lu_solve_mkl(
     const Tensor& pivots,
     const Tensor& B,
     TransposeType trans) {
-  // NaN check: if LU or B contains NaN, fill B with NaN and return
-  if (at::isnan(LU).any().item<bool>() || at::isnan(B).any().item<bool>()) {
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
-        B.scalar_type(), "lu_solve_mkl_nan_fill", [&] {
-          B.fill_(std::numeric_limits<scalar_t>::quiet_NaN());
-        });
-    return;
-  }
-
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
     apply_lu_solve_xpu_<scalar_t>(LU, pivots, B, trans);
   });
+}
+
+// Create NaN value that works for both real and complex types
+template <typename scalar_t>
+inline scalar_t create_quiet_nan() {
+  using real_t = typename c10::scalar_value_type<scalar_t>::type;
+  real_t nan_val = std::numeric_limits<real_t>::quiet_NaN();
+  if constexpr (c10::is_complex<scalar_t>::value) {
+    return scalar_t(nan_val, nan_val);
+  } else {
+    return nan_val;
+  }
 }
 
 void lu_factor_mkl(
@@ -556,22 +559,6 @@ void lu_factor_mkl(
       pivot,
       "linalg.lu_factor: LU without pivoting is not implemented on the XPU");
 
-  // NaN check: if input contains NaN, return NaN output with valid pivots
-  if (at::isnan(LU).any().item<bool>()) {
-    info.zero_();
-    // Fill pivots with default sequence [1, 2, 3, ..., min(m, n)]
-    int64_t min_mn = std::min(LU.size(-2), LU.size(-1));
-    auto default_pivots = at::arange(
-        1, min_mn + 1, pivots.options().dtype(at::kInt));
-    pivots.copy_(default_pivots.expand_as(pivots));
-    // Fill LU with NaN
-    AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
-        LU.scalar_type(), "lu_factor_mkl_nan_fill", [&] {
-          LU.fill_(std::numeric_limits<scalar_t>::quiet_NaN());
-        });
-    return;
-  }
-
   // handle the info
   Tensor info_ = at::zeros_like(info, Device(at::kCPU));
   int32_t* info_data = info_.data_ptr<int32_t>();
@@ -580,7 +567,32 @@ void lu_factor_mkl(
   Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
-    apply_lu_xpu_<scalar_t>(LU, pivots_, info_data);
+    if (!at::isnan(LU).any().item<bool>()) {
+      apply_lu_xpu_<scalar_t>(LU, pivots_, info_data);
+    } else {
+      // Has NaN, temporarily replace NaNs to avoid MKL crashes, run batched LU
+      // then restore NaNs for the affected batches.
+      int64_t batch_size = native::batchCount(LU);
+      int64_t m = LU.size(-2);
+      int64_t n = LU.size(-1);
+      int64_t min_mn = std::min(m, n);
+      
+      // Detect NaN per-batch
+      auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
+      
+      // Replace NaN batches with identity matrix to avoid MKL crash
+      // (All-ones matrix is singular, identity matrix is always non-singular)
+      auto identity = at::eye(m, n, LU.options()).unsqueeze(0).expand({batch_size, m, n});
+      auto nan_mask_expanded = nan_mask_batch.unsqueeze(-1).unsqueeze(-1).expand({batch_size, m, n});
+      LU.copy_(at::where(nan_mask_expanded, identity, LU));
+      
+      apply_lu_xpu_<scalar_t>(LU, pivots_, info_data);
+      
+      // Restore NaN for batches that originally had NaN
+      auto nan_mask_LU = nan_mask_batch.unsqueeze(-1).unsqueeze(-1)
+          .expand({batch_size, m, n});
+      LU.masked_fill_(nan_mask_LU, create_quiet_nan<scalar_t>());
+    }
   });
 
   // Copy to original info and pivots tensor
