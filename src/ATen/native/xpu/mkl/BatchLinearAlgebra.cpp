@@ -575,7 +575,6 @@ void lu_factor_mkl(
       int64_t batch_size = native::batchCount(LU);
       int64_t m = LU.size(-2);
       int64_t n = LU.size(-1);
-      int64_t min_mn = std::min(m, n);
       
       // Detect NaN per-batch
       auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
