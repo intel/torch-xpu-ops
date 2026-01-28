@@ -575,18 +575,18 @@ void lu_factor_mkl(
       int64_t batch_size = native::batchCount(LU);
       int64_t m = LU.size(-2);
       int64_t n = LU.size(-1);
-      
+
       // Detect NaN per-batch
       auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
-      
+
       // Replace NaN batches with identity matrix to avoid MKL crash
       // (All-ones matrix is singular, identity matrix is always non-singular)
       auto identity = at::eye(m, n, LU.options()).unsqueeze(0).expand({batch_size, m, n});
       auto nan_mask_expanded = nan_mask_batch.unsqueeze(-1).unsqueeze(-1).expand({batch_size, m, n});
       LU.copy_(at::where(nan_mask_expanded, identity, LU));
-      
+
       apply_lu_xpu_<scalar_t>(LU, pivots_, info_data);
-      
+
       // Restore NaN for batches that originally had NaN
       auto nan_mask_LU = nan_mask_batch.unsqueeze(-1).unsqueeze(-1)
           .expand({batch_size, m, n});
