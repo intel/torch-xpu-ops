@@ -69,20 +69,20 @@ runs:
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
     - name: op_ut
       shell: timeout 72000 bash -xe {0}
-      if: ${{ inputs.ut_name == 'op_ut' }}
+      if: ${{ startsWith(inputs.ut_name, 'op_ut') }} 
       run: |
         # enable shard
-        if [[ "${{ inputs.ut_name }}" == "op_ut"* ]]; then
+        if [[ "${{ inputs.ut_name }}" == "op_ut_"* ]]; then
           shard_num="$(echo ${INPUT_UT} |grep 'op_ut' |awk -F',' 'BEGIN{sum=0}{for(i=1;i<=NF;i++) if($i~/op_ut/){sum++}}END{print sum}')"
           shard_id="$(echo ${{ inputs.ut_name }} |sed 's/op_ut[^0-9]*//')"
           export PYTEST_ADDOPTS+=" --num-shards ${shard_num} --shard-id ${shard_id:-0} "
         fi
         export PYTORCH_TEST_WITH_SLOW=1
-        mkdir -p ut_log/op_ut
+        mkdir -p ut_log/${{ inputs.ut_name }}
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_test_with_skip.py \
-          2> ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/op_ut/op_ut_with_skip_test.log
+          2> ${{ github.workspace }}/ut_log/${{ inputs.ut_name }}/op_ut_with_skip_test_error.log | \
+          tee ${{ github.workspace }}/ut_log/${{ inputs.ut_name }}/op_ut_with_skip_test.log
         find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
