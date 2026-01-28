@@ -177,20 +177,23 @@ runs:
         else
           echo -e "No Failure logs"
         fi
-        # Copied the passed logs
-        if ls passed*.log 1> /dev/null 2>&1; then
-          cp passed*.log ${{ github.workspace }}/ut_log
-          echo -e "Passed logs Copied"
-        else
-          echo -e "No Passed logs"
-        fi
-        # Copied the Summary logs
-        if ls category*.log 1> /dev/null 2>&1; then
-          cp category*.log ${{ github.workspace }}/ut_log
-          echo -e "Category logs Copied"
-        else
-          echo -e "No Category logs"
-        fi
+        
+        log_dir="${{ github.workspace }}/ut_log"
+        copy_logs() {
+          local pattern=$1
+          local name=$2
+          
+          if ls ${pattern} 1> /dev/null 2>&1; then
+              cp ${pattern} "$log_dir"
+              echo -e "${name} logs Copied"
+          else
+              echo -e "No ${name} logs"
+          fi
+        }
+        copy_logs "passed*.log" "Passed"
+        copy_logs "category*.log" "Category" 
+        copy_logs "all_cases*.log" "All cases collect"
+
         if [ -e ut_failure_list.csv ];then
             cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
         fi

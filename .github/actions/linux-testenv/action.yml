@@ -108,6 +108,12 @@ runs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
         fi
         git status && git diff && git show -s
+        mkdir ${{ github.workspace }}/ut_log
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          echo "TORCH_XPU_OPS_COMMIT=${{ github.event.pull_request.number }}" 2>&1 |tee ${{ github.workspace }}/ut_log/test-torch-xpu-ops-info.txt
+        else
+          echo "TORCH_XPU_OPS_COMMIT=${TORCH_XPU_OPS_COMMIT}" 2>&1 |tee ${{ github.workspace }}/ut_log/test-torch-xpu-ops-info.txt
+        fi
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
@@ -192,7 +198,7 @@ runs:
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
-        python pytorch/torch/utils/collect_env.py
+        python pytorch/torch/utils/collect_env.py 2>&1 |tee ${{ github.workspace }}/ut_log/test-env-info.txt
         pip list |grep -E 'torch|intel'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
