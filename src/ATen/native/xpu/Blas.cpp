@@ -33,9 +33,15 @@ Tensor& mm_complex_out_xpu(
 #if defined(USE_ONEMKL_XPU)
   return at::native::xpu::mm_complex_out_xpu_mkl(self, mat2, out);
 #else
-  TORCH_CHECK(
-      false,
-      "Complex datatype matmul is not supported in oneDNN. Please include oneMKL library in compilation.");
+  // CPU fallback for complex matmul when oneMKL is not available
+  TORCH_WARN_ONCE(
+      "Complex matmul on XPU is falling back to CPU. ",
+      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
+  auto self_cpu = self.to(at::kCPU);
+  auto mat2_cpu = mat2.to(at::kCPU);
+  auto out_cpu = at::mm(self_cpu, mat2_cpu);
+  out.copy_(out_cpu);
+  return out;
 #endif // USE_ONEMKL_XPU
 }
 
@@ -55,9 +61,15 @@ Tensor& bmm_complex_out_xpu(
 #if defined(USE_ONEMKL_XPU)
   return at::native::xpu::bmm_complex_out_xpu_mkl(self, mat2, out);
 #else
-  TORCH_CHECK(
-      false,
-      "Complex datatype matmul is not supported in oneDNN. Please include oneMKL library in compilation.");
+  // CPU fallback for complex bmm when oneMKL is not available
+  TORCH_WARN_ONCE(
+      "Complex bmm on XPU is falling back to CPU. ",
+      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
+  auto self_cpu = self.to(at::kCPU);
+  auto mat2_cpu = mat2.to(at::kCPU);
+  auto out_cpu = at::bmm(self_cpu, mat2_cpu);
+  out.copy_(out_cpu);
+  return out;
 #endif // USE_ONEMKL_XPU
 }
 
@@ -92,9 +104,16 @@ Tensor& addmm_complex_out_xpu(
   return at::native::xpu::addmm_complex_out_xpu_mkl(
       self, mat1, mat2, beta, alpha, out);
 #else
-  TORCH_CHECK(
-      false,
-      "Complex datatype matmul is not supported in oneDNN. Please include oneMKL library in compilation.");
+  // CPU fallback for complex addmm when oneMKL is not available
+  TORCH_WARN_ONCE(
+      "Complex addmm on XPU is falling back to CPU. ",
+      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
+  auto self_cpu = self.to(at::kCPU);
+  auto mat1_cpu = mat1.to(at::kCPU);
+  auto mat2_cpu = mat2.to(at::kCPU);
+  auto out_cpu = at::addmm(self_cpu, mat1_cpu, mat2_cpu, beta, alpha);
+  out.copy_(out_cpu);
+  return out;
 #endif // USE_ONEMKL_XPU
 }
 
@@ -129,9 +148,16 @@ Tensor& baddbmm_complex_out_xpu(
   return at::native::xpu::baddbmm_complex_out_xpu_mkl(
       self, batch1, batch2, beta, alpha, out);
 #else
-  TORCH_CHECK(
-      false,
-      "Complex datatype matmul is not supported in oneDNN. Please include oneMKL library in compilation.");
+  // CPU fallback for complex baddbmm when oneMKL is not available
+  TORCH_WARN_ONCE(
+      "Complex baddbmm on XPU is falling back to CPU. ",
+      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
+  auto self_cpu = self.to(at::kCPU);
+  auto batch1_cpu = batch1.to(at::kCPU);
+  auto batch2_cpu = batch2.to(at::kCPU);
+  auto out_cpu = at::baddbmm(self_cpu, batch1_cpu, batch2_cpu, beta, alpha);
+  out.copy_(out_cpu);
+  return out;
 #endif // USE_ONEMKL_XPU
 }
 
