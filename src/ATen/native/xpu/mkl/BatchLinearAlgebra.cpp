@@ -580,7 +580,6 @@ void lu_factor_mkl(
       auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
 
       // Replace NaN batches with identity matrix to avoid MKL crash
-      // (All-ones matrix is singular, identity matrix is always non-singular)
       auto identity = at::eye(m, n, LU.options()).unsqueeze(0).expand({batch_size, m, n});
       auto nan_mask_expanded = nan_mask_batch.unsqueeze(-1).unsqueeze(-1).expand({batch_size, m, n});
       LU.copy_(at::where(nan_mask_expanded, identity, LU));
