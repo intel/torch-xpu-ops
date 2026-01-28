@@ -23,6 +23,9 @@ on:
         required: true
         type: string
         description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+      input_ut:
+        type: string
+        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
 
 permissions: read-all
 
@@ -58,7 +61,7 @@ jobs:
 
   test-in-container:
     needs: runner
-    timeout-minutes: 1080
+    timeout-minutes: 1440
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
@@ -70,6 +73,7 @@ jobs:
               -e ZE_AFFINITY_MASK
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        INPUT_UT: ${{ inputs.input_ut }}
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
                         --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:

@@ -166,7 +166,7 @@ runs:
           cd ../pytorch
         else
           pip install -r ./.ci/docker/requirements-ci.txt
-          pip install pytest pytest-timeout pytest-xdist
+          pip install pytest pytest-timeout pytest-xdist pytest-shard
         fi
         # install the corresponding torchao
         pip uninstall -y torchao
