@@ -20,7 +20,9 @@
 
 namespace at::native::xpu {
 
-enum class ADAM_MODE : uint8_t { ORIGINAL = 0, ADAMW = 1 };
+// WR (replace enum class) due to https://jira.devtools.intel.com/browse/CMPLRLLVM-72438
+const int ADAM_MODE_ORIGINAL = 0;
+const int ADAM_MODE_ADAMW = 1;
 
 // index in TensorList for params
 constexpr uint8_t kParamIdx = 0;
@@ -33,7 +35,7 @@ template <
     typename scalar_type,
     typename opmath_t,
     int depth,
-    ADAM_MODE adam_mode,
+    int adam_mode,
     bool amsgrad>
 inline void adam_math(
     scalar_type r_args[depth][kILP],
@@ -64,9 +66,9 @@ inline void adam_math(
     opmath_t exp_avg_sq = static_cast<opmath_t>(r_args[kExpAvgSqIdx][ii]);
     // Update param, grad, 1st and 2nd order momentum.
     if (weight_decay != 0) {
-      if constexpr (adam_mode == ADAM_MODE::ORIGINAL) {
+      if constexpr (adam_mode == ADAM_MODE_ORIGINAL) {
         grad += param * weight_decay;
-      } else if constexpr (adam_mode == ADAM_MODE::ADAMW) {
+      } else if constexpr (adam_mode == ADAM_MODE_ADAMW) {
         param -= lr * weight_decay * param;
       }
     }
@@ -95,7 +97,7 @@ inline void adam_math(
   }
 }
 
-template <typename scalar_type, int depth, ADAM_MODE adam_mode, bool amsgrad>
+template <typename scalar_type, int depth, int adam_mode, bool amsgrad>
 struct FusedAdamMathFunctor {
   static_assert(
       depth == 4 || depth == 5,
