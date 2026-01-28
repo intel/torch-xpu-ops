@@ -33,14 +33,25 @@ Tensor& mm_complex_out_xpu(
 #if defined(USE_ONEMKL_XPU)
   return at::native::xpu::mm_complex_out_xpu_mkl(self, mat2, out);
 #else
-  // CPU fallback for complex matmul when oneMKL is not available
-  TORCH_WARN_ONCE(
-      "Complex matmul on XPU is falling back to CPU. ",
-      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
-  auto self_cpu = self.to(at::kCPU);
-  auto mat2_cpu = mat2.to(at::kCPU);
-  auto out_cpu = at::mm(self_cpu, mat2_cpu);
-  out.copy_(out_cpu);
+  // Use real GEMM to implement complex GEMM on XPU
+  // Gauss-Strassen optimization: 3 GEMMs instead of 4
+  // P1 = A_r @ B_r, P2 = A_i @ B_i, P3 = (A_r + A_i) @ (B_r + B_i)
+  // out_r = P1 - P2, out_i = P3 - P1 - P2
+  auto self_real = at::view_as_real(self);
+  auto mat2_real = at::view_as_real(mat2);
+
+  auto A_r = self_real.select(-1, 0);
+  auto A_i = self_real.select(-1, 1);
+  auto B_r = mat2_real.select(-1, 0);
+  auto B_i = mat2_real.select(-1, 1);
+
+  auto P1 = at::mm(A_r, B_r);
+  auto P2 = at::mm(A_i, B_i);
+  auto P3 = at::mm(A_r + A_i, B_r + B_i);
+
+  auto out_real = at::view_as_real(out);
+  out_real.select(-1, 0).copy_(P1 - P2);        // real part
+  out_real.select(-1, 1).copy_(P3 - P1 - P2);   // imag part
   return out;
 #endif // USE_ONEMKL_XPU
 }
@@ -61,14 +72,23 @@ Tensor& bmm_complex_out_xpu(
 #if defined(USE_ONEMKL_XPU)
   return at::native::xpu::bmm_complex_out_xpu_mkl(self, mat2, out);
 #else
-  // CPU fallback for complex bmm when oneMKL is not available
-  TORCH_WARN_ONCE(
-      "Complex bmm on XPU is falling back to CPU. ",
-      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
-  auto self_cpu = self.to(at::kCPU);
-  auto mat2_cpu = mat2.to(at::kCPU);
-  auto out_cpu = at::bmm(self_cpu, mat2_cpu);
-  out.copy_(out_cpu);
+  // Use real GEMM to implement complex bmm on XPU
+  // Gauss-Strassen optimization: 3 GEMMs instead of 4
+  auto self_real = at::view_as_real(self);
+  auto mat2_real = at::view_as_real(mat2);
+
+  auto A_r = self_real.select(-1, 0);
+  auto A_i = self_real.select(-1, 1);
+  auto B_r = mat2_real.select(-1, 0);
+  auto B_i = mat2_real.select(-1, 1);
+
+  auto P1 = at::bmm(A_r, B_r);
+  auto P2 = at::bmm(A_i, B_i);
+  auto P3 = at::bmm(A_r + A_i, B_r + B_i);
+
+  auto out_real = at::view_as_real(out);
+  out_real.select(-1, 0).copy_(P1 - P2);
+  out_real.select(-1, 1).copy_(P3 - P1 - P2);
   return out;
 #endif // USE_ONEMKL_XPU
 }
@@ -104,15 +124,39 @@ Tensor& addmm_complex_out_xpu(
   return at::native::xpu::addmm_complex_out_xpu_mkl(
       self, mat1, mat2, beta, alpha, out);
 #else
-  // CPU fallback for complex addmm when oneMKL is not available
-  TORCH_WARN_ONCE(
-      "Complex addmm on XPU is falling back to CPU. ",
-      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
-  auto self_cpu = self.to(at::kCPU);
-  auto mat1_cpu = mat1.to(at::kCPU);
-  auto mat2_cpu = mat2.to(at::kCPU);
-  auto out_cpu = at::addmm(self_cpu, mat1_cpu, mat2_cpu, beta, alpha);
-  out.copy_(out_cpu);
+  // Use real GEMM to implement complex addmm on XPU
+  // out = beta * self + alpha * (mat1 @ mat2)
+  auto beta_c = beta.toComplexDouble();
+  auto alpha_c = alpha.toComplexDouble();
+  double beta_r = beta_c.real(), beta_i = beta_c.imag();
+  double alpha_r = alpha_c.real(), alpha_i = alpha_c.imag();
+
+  auto self_real = at::view_as_real(self);
+  auto mat1_real = at::view_as_real(mat1);
+  auto mat2_real = at::view_as_real(mat2);
+
+  auto C_r = self_real.select(-1, 0);
+  auto C_i = self_real.select(-1, 1);
+  auto A_r = mat1_real.select(-1, 0);
+  auto A_i = mat1_real.select(-1, 1);
+  auto B_r = mat2_real.select(-1, 0);
+  auto B_i = mat2_real.select(-1, 1);
+
+  // Gauss-Strassen: 3 GEMMs for A @ B
+  auto P1 = at::mm(A_r, B_r);
+  auto P2 = at::mm(A_i, B_i);
+  auto P3 = at::mm(A_r + A_i, B_r + B_i);
+  auto AB_r = P1 - P2;
+  auto AB_i = P3 - P1 - P2;
+
+  // Complex multiplication: alpha * AB and beta * C
+  // alpha * AB: (alpha_r + alpha_i*i) * (AB_r + AB_i*i) = (alpha_r*AB_r - alpha_i*AB_i) + (alpha_r*AB_i + alpha_i*AB_r)*i
+  // beta * C: (beta_r + beta_i*i) * (C_r + C_i*i) = (beta_r*C_r - beta_i*C_i) + (beta_r*C_i + beta_i*C_r)*i
+  auto out_real = at::view_as_real(out);
+  out_real.select(-1, 0).copy_(
+      (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i));
+  out_real.select(-1, 1).copy_(
+      (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r));
   return out;
 #endif // USE_ONEMKL_XPU
 }
@@ -148,15 +192,37 @@ Tensor& baddbmm_complex_out_xpu(
   return at::native::xpu::baddbmm_complex_out_xpu_mkl(
       self, batch1, batch2, beta, alpha, out);
 #else
-  // CPU fallback for complex baddbmm when oneMKL is not available
-  TORCH_WARN_ONCE(
-      "Complex baddbmm on XPU is falling back to CPU. ",
-      "Compile with USE_ONEMKL_XPU=1 for native XPU support.");
-  auto self_cpu = self.to(at::kCPU);
-  auto batch1_cpu = batch1.to(at::kCPU);
-  auto batch2_cpu = batch2.to(at::kCPU);
-  auto out_cpu = at::baddbmm(self_cpu, batch1_cpu, batch2_cpu, beta, alpha);
-  out.copy_(out_cpu);
+  // Use real GEMM to implement complex baddbmm on XPU
+  // Handle complex alpha and beta correctly
+  auto beta_c = beta.toComplexDouble();
+  auto alpha_c = alpha.toComplexDouble();
+  double beta_r = beta_c.real(), beta_i = beta_c.imag();
+  double alpha_r = alpha_c.real(), alpha_i = alpha_c.imag();
+
+  auto self_real = at::view_as_real(self);
+  auto batch1_real = at::view_as_real(batch1);
+  auto batch2_real = at::view_as_real(batch2);
+
+  auto C_r = self_real.select(-1, 0);
+  auto C_i = self_real.select(-1, 1);
+  auto A_r = batch1_real.select(-1, 0);
+  auto A_i = batch1_real.select(-1, 1);
+  auto B_r = batch2_real.select(-1, 0);
+  auto B_i = batch2_real.select(-1, 1);
+
+  // Gauss-Strassen: 3 GEMMs for A @ B
+  auto P1 = at::bmm(A_r, B_r);
+  auto P2 = at::bmm(A_i, B_i);
+  auto P3 = at::bmm(A_r + A_i, B_r + B_i);
+  auto AB_r = P1 - P2;
+  auto AB_i = P3 - P1 - P2;
+
+  // Complex multiplication for alpha and beta
+  auto out_real = at::view_as_real(out);
+  out_real.select(-1, 0).copy_(
+      (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i));
+  out_real.select(-1, 1).copy_(
+      (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r));
   return out;
 #endif // USE_ONEMKL_XPU
 }
