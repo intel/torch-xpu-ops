@@ -68,15 +68,9 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
     - name: op_ut
-      shell: timeout 72000 bash -xe {0}
+      shell: timeout 64800 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
-        # enable shard
-        if [[ "${{ inputs.ut_name }}" == "op_ut"* ]]; then
-          shard_num="$(echo ${INPUT_UT} |grep 'op_ut' |awk -F',' 'BEGIN{sum=0}{for(i=1;i<=NF;i++) if($i~/op_ut/){sum++}}END{print sum}')"
-          shard_id="$(echo ${{ inputs.ut_name }} |sed 's/op_ut[^0-9]*//')"
-          export PYTEST_ADDOPTS+=" --num-shards ${shard_num} --shard-id ${shard_id:-0} "
-        fi
         export PYTORCH_TEST_WITH_SLOW=1
         mkdir -p ut_log/op_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
@@ -87,7 +81,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
     - name: skipped_ut
-      shell: timeout 72000 bash -xe {0}
+      shell: timeout 64800 bash -xe {0}
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -100,7 +94,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
     - name: torch_xpu
-      shell: timeout 72000 bash -xe {0}
+      shell: timeout 64800 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
