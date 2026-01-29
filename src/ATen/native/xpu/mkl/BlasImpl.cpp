@@ -13,6 +13,7 @@
 #include <comm/Runtime.h>
 #include <oneapi/mkl/blas.hpp>
 #include <torch/library.h>
+#include <ATen/OpMathType.h>
 
 namespace at::native::xpu {
 
@@ -320,4 +321,88 @@ Tensor& baddbmm_complex_out_xpu_mkl(
 
   return out;
 }
+
+template <typename T>
+struct scalar_value_type_mkl {
+  using type = T;
+};
+
+template <typename T>
+struct scalar_value_type_mkl<c10::complex<T>> {
+  using type = std::complex<T>;
+};
+
+template <>
+struct scalar_value_type_mkl<at::BFloat16> {
+  using type = oneapi::mkl::bfloat16;
+};
+
+template <>
+struct scalar_value_type_mkl<at::Half> {
+  using type = sycl::half;
+};
+
+template <typename T>
+void vdot_kernel(Tensor& out, const Tensor& self, const Tensor& other) {
+  auto queue = c10::xpu::getCurrentXPUStream().queue();
+
+  const T* x =
+      reinterpret_cast<const T*>(self.const_data_ptr());
+  const T* y =
+      reinterpret_cast<const T*>(other.const_data_ptr());
+  T* result = reinterpret_cast<T*>(out.data_ptr());
+
+  const int64_t n = static_cast<int>(self.numel());
+  int64_t incx = static_cast<int>(self.stride(0));
+  int64_t incy = static_cast<int>(other.stride(0));
+
+  oneapi::mkl::blas::column_major::dotc(queue, n, x, incx, y, incy, result);
+}
+
+template <typename T>
+void dot_kernel(Tensor& out, const Tensor& self, const Tensor& other) {
+  auto queue = c10::xpu::getCurrentXPUStream().queue();
+
+  const T* x = reinterpret_cast<const T*>(self.const_data_ptr());
+  const T* y = reinterpret_cast<const T*>(other.const_data_ptr());
+  T* result = reinterpret_cast<T*>(out.data_ptr());
+
+  const int64_t n = static_cast<int>(self.numel());
+  int64_t incx = static_cast<int>(self.stride(0));
+  int64_t incy = static_cast<int>(other.stride(0));
+
+  if constexpr (std::is_same<T, std::complex<float>>::value ||
+      std::is_same<T, std::complex<double>>::value) {
+    oneapi::mkl::blas::column_major::dotu(queue, n, x, incx, y, incy, result);
+  }
+  else {
+    oneapi::mkl::blas::column_major::dot(queue, n, x, incx, y, incy, result);
+  }
+  
+}
+
+Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
+  Tensor result = at::empty({}, self.options());
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      self.scalar_type(), "dot_xpu_mkl", [&]() {
+    using T = scalar_value_type_mkl<scalar_t>::type;
+    dot_kernel<T>(result, self, other);
+  });
+  return result;
+}
+
+Tensor vdot_xpu_mkl(const Tensor& self, const Tensor& other) {
+  Tensor result = at::empty({}, self.options());
+
+  AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "vdot_xpu_mkl", [&]() {
+    using T = scalar_value_type_mkl<scalar_t>::type;
+    vdot_kernel<T>(result, self, other);
+  });
+
+  return result;
+}
+
 } // namespace at::native::xpu

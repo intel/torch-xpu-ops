@@ -49,7 +49,6 @@ skip_dict = {
     "test_maskedtensor_xpu.py": None,
     "test_meta_xpu.py": (
         "_jiterator_",
-        "vdot",
     ),
     "test_modules_xpu.py": None,
     "test_namedtensor_xpu.py": None,
@@ -64,8 +63,6 @@ skip_dict = {
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # not implemented
         "histogramdd",
-        "_vdot_",
-        "_dot_",
         "_flash_attention_",
         "_efficient_attention_",
     ),
