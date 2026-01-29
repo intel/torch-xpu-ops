@@ -87,6 +87,13 @@ jobs:
           which python && python -V
           which pip && pip list
           pip install -U pip wheel setuptools
+      - name: Install oneapi
+        run: |
+          rm -rf /opt/intel/oneapi
+          wget https://registrationcenter-download.intel.com/akdlm/IRC_NAS/b3e6c1bf-a6d5-4580-8b1d-80cbfd38c8af/intel-deep-learning-essentials-2025.3.2.36_offline.sh
+          sudo bash intel-deep-learning-essentials-2025.3.2.36_offline.sh -a -s --eula accept
+          source /opt/intel/oneapi/setvars.sh
+          icpx --version
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
