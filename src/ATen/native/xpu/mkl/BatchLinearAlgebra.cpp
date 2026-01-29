@@ -580,16 +580,14 @@ void lu_factor_mkl(
       auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
 
       // Replace NaN batches with identity matrix to avoid MKL crash
-      auto identity = at::eye(m, n, LU.options()).unsqueeze(0).expand({batch_size, m, n});
-      auto nan_mask_expanded = nan_mask_batch.unsqueeze(-1).unsqueeze(-1).expand({batch_size, m, n});
+      auto identity = at::eye(m, n, LU.options()).unsqueeze(0);
+      auto nan_mask_expanded = nan_mask_batch.view({batch_size, 1, 1});
       LU.copy_(at::where(nan_mask_expanded, identity, LU));
 
       apply_lu_xpu_<scalar_t>(LU, pivots_, info_data);
 
       // Restore NaN for batches that originally had NaN
-      auto nan_mask_LU = nan_mask_batch.unsqueeze(-1).unsqueeze(-1)
-          .expand({batch_size, m, n});
-      LU.masked_fill_(nan_mask_LU, create_quiet_nan<scalar_t>());
+      LU.masked_fill_(nan_mask_expanded.expand({batch_size, m, n}), create_quiet_nan<scalar_t>());
     }
   });
 

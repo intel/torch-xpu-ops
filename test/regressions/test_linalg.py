@@ -14,7 +14,7 @@ cpu_device = torch.device("cpu")
 xpu_device = torch.device("xpu")
 
 
-class TestLinalgSolveNaN(TestCase):
+class TestLinalg(TestCase):
     """Test torch.linalg.solve with NaN handling.
 
     Regression test: single NaN in matrix would crash oneMKL's iamax during pivoting.
@@ -50,7 +50,7 @@ class TestLinalgSolveNaN(TestCase):
         self._assert_results_match(A, torch.randn(4, 3))
 
     def test_solve_cayley_transform(self):
-        """Test issues 2667"""
+        """Test issue 2667"""
         data = torch.randn(4, 4, 4)
         data[0, 0, 0] = float("nan")
 
