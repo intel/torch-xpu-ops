@@ -3,7 +3,7 @@ name: Setup Test Environment
 inputs:
   pytorch:
     type: string
-    default: 'https://github.com/daisyden/pytorch.git@distributed_2.10'
+    default: 'https://github.com/daisyden/pytorch.git@release/2.11'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
