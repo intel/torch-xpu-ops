@@ -247,6 +247,7 @@ skip_dict = {
     "../../../../test/distributed/_pycute/test_typing.py": None,
     "../../../../test/distributed/tensor/test_placement_types.py": None,
     "../../../../test/distributed/test_data_parallel.py": None,
+    "../../../../test/distributed/test_debug.py": None,
 }
 
 skip_dict_python = {
