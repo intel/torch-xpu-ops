@@ -47,9 +47,7 @@ skip_dict = {
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
-    "test_meta_xpu.py": (
-        "_jiterator_",
-    ),
+    "test_meta_xpu.py": ("_jiterator_",),
     "test_modules_xpu.py": None,
     "test_namedtensor_xpu.py": None,
     "test_native_functions_xpu.py": None,

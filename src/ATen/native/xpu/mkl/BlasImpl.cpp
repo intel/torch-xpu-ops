@@ -378,7 +378,7 @@ void dot_kernel(Tensor& out, const Tensor& self, const Tensor& other) {
   else {
     oneapi::mkl::blas::column_major::dot(queue, n, x, incx, y, incy, result);
   }
-  
+
 }
 
 Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
