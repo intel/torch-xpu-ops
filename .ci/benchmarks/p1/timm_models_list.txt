@@ -13,7 +13,7 @@ mixnet_l 128
 mobilenetv3_large_100 512
 poolformer_m36 128
 regnety_002 1024
-res2net101_26w_4s
+res2net101_26w_4s 128
 rexnet_100 256
 sebotnet33ts_256 64
 swin_base_patch4_window7_224 128
