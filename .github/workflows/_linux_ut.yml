@@ -188,6 +188,10 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
+          if [ "${ut_list}" == "xpu_profiling" ];then
+            cp ${{ github.workspace }}/.github/scripts/profile_ut_result*.sh ./
+            bash profile_ut_result_check.sh
+          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
