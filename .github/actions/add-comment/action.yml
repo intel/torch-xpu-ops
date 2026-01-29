@@ -1,0 +1,67 @@
+name: CI Test Report Publisher
+description: 'Publishes detailed test reports as GitHub comments with smart updates'
+
+inputs:
+  comment-body:
+    description: 'Path to the summary report HTML file'
+    required: true
+    default: 'test-results/report.html'
+  report-title:
+    description: 'Title for the test report comment'
+    required: false
+    default: '🧪 CI Test Summary Report'
+
+runs:
+  using: composite
+  steps:
+    - name: Validate inputs
+      shell: bash
+      run: |
+        if [[ ! -f "${{ inputs.comment-body }}" ]]; then
+          echo "❌ Report file not found: ${{ inputs.comment-body }}"
+          exit 1
+        fi
+    - name: Publish or update comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          // Read the comment content from a file
+          const fs = require('fs');
+          const commentBody = fs.readFileSync('${{ inputs.comment-body }}', 'utf8');
+
+          // Helper function to find bot comments
+          const findBotComment = async () => {
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            return comments.find(comment =>
+              comment.body.includes('${{ inputs.report-title }}')
+            );
+          };
+
+          try {
+            const existingComment = await findBotComment();
+            if (existingComment) {
+              console.log('📝 Updating existing test report comment');
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: commentBody
+              });
+            } else {
+              console.log('💬 Creating new test report comment');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+            console.log('✅ Test report published successfully');
+          } catch (error) {
+            console.error('❌ Failed to publish test report:', error.message);
+            throw error;
+          }
