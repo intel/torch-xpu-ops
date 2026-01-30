@@ -3270,7 +3270,7 @@
 - func: native_layer_norm_backward(Tensor grad_out, Tensor input, SymInt[] normalized_shape, Tensor mean, Tensor rstd, Tensor? weight, Tensor? bias, bool[3] output_mask) -> (Tensor, Tensor, Tensor)
   dispatch:
     XPU: layer_norm_backward_xpu
-    NestedTensorXPU: layer_norm_backward_nested
+    NestedTensorXPU: layer_norm_backward_nested_xpu
   autogen: native_layer_norm_backward.out
   tags: core
 
