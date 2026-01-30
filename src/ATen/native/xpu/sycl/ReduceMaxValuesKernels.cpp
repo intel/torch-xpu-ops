@@ -47,6 +47,7 @@ void max_values_kernel(TensorIterator& iter) {
       AT_EXPAND(AT_ALL_TYPES),
       kBFloat16,
       kHalf,
+      kBool,
       AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
