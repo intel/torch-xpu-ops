@@ -40,9 +40,15 @@ bool can_use_fast_route_for_copy(TensorList self, TensorList src) {
             [&](const auto& t) -> bool {
               return t.dtype() == src[0].dtype();
             });
+  const bool is_all_self_same_dtype = std::all_of(
+            self.cbegin(),
+            self.cend(),
+            [&](const auto& t) -> bool {
+              return t.dtype() == self[0].dtype();
+            });
   return _check_tensors_share_device_and_dtype(
             {self, src}, /* skip_dtype_check */ true) &&
-        is_all_src_same_dtype &&
+        is_all_src_same_dtype && is_all_self_same_dtype &&
         _check_tensors_share_sizes_and_strides({self, src});
 }
 
