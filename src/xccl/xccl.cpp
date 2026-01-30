@@ -401,11 +401,43 @@ void onecclAllToAll(
     xcclComm_t& comm,
     ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  xccl::oneccl_group_start();
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
     onecclCommCount(comm.onecclComm, &numranks);
+
+#if defined(ENABLE_XCCL_ALLTOALL_SUPPORT)
+    // Check if this is a uniform alltoall (equal counts for all ranks)
+    // and contiguous displacements, in which case we can use the native
+    // onecclAllToAll API for better performance
+    bool isUniform = numranks > 0;
+    size_t uniformCount = sendcounts[0];
+    for (int r = 0; r < numranks && isUniform; ++r) {
+      if (sendcounts[r] != uniformCount || recvcounts[r] != uniformCount) {
+        isUniform = false;
+      }
+      // Check for contiguous displacements
+      if (senddispls[r] != static_cast<size_t>(r) * uniformCount ||
+          recvdispls[r] != static_cast<size_t>(r) * uniformCount) {
+        isUniform = false;
+      }
+    }
+
+    if (isUniform && uniformCount > 0) {
+      // Use native onecclAllToAll for uniform case
+      onecclAllToAll(
+          sendbuff,
+          recvbuff,
+          uniformCount,
+          xcclDataType,
+          comm.onecclComm,
+          &stream.queue());
+      return;
+    }
+#endif // ENABLE_XCCL_ALLTOALL_SUPPORT
+
+    // Fallback to send/recv based implementation for non-uniform case
+    xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         onecclSend(
@@ -426,9 +458,37 @@ void onecclAllToAll(
             &stream.queue());
       }
     }
+    xccl::oneccl_group_end();
   } else {
     auto xcclDataType = getXcclDataTypeV1(dataType, false);
     int numranks = comm.cclComm->size();
+
+#if defined(ENABLE_XCCL_ALLTOALL_SUPPORT)
+    bool isUniform = numranks > 0;
+    size_t uniformCount = sendcounts[0];
+    for (int r = 0; r < numranks && isUniform; ++r) {
+      if (sendcounts[r] != uniformCount || recvcounts[r] != uniformCount) {
+        isUniform = false;
+      }
+      if (senddispls[r] != static_cast<size_t>(r) * uniformCount ||
+          recvdispls[r] != static_cast<size_t>(r) * uniformCount) {
+        isUniform = false;
+      }
+    }
+
+    if (isUniform && uniformCount > 0) {
+      ccl::alltoall(
+          sendbuff,
+          recvbuff,
+          uniformCount,
+          xcclDataType,
+          *comm.cclComm,
+          xcclStream);
+      return;
+    }
+#endif // ENABLE_XCCL_ALLTOALL_SUPPORT
+
+    xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         ccl::send(
@@ -449,8 +509,8 @@ void onecclAllToAll(
             xcclStream);
       }
     }
+    xccl::oneccl_group_end();
   }
-  xccl::oneccl_group_end();
   return;
 }
 
