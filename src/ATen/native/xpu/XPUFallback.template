@@ -229,7 +229,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "cholesky_inverse",
     "cholesky_inverse.out",
     "_cholesky_solve_helper",
-    "dot",
     "_efficient_attention_forward",
     "_flash_attention_forward",
     "geqrf",
@@ -257,7 +256,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "ormqr.out",
     "triangular_solve.X",
     "_validate_compressed_sparse_indices",
-    "vdot",
   };
   for (auto& op_name : fallback_list) {
     m.impl(
