@@ -1,0 +1,16 @@
+basic_gnn_gcn
+BERT_pytorch
+dcgan
+densenet121
+fastNLP_Bert
+llama
+mnasnet1_0
+mobilenet_v3_large
+nanogpt
+resnet50
+shufflenet_v2_x1_0
+timm_efficientnet
+timm_vision_transformer
+vision_maskrcnn
+yolov3
+timm_regnet
