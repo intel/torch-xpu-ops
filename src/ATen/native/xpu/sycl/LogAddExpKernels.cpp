@@ -17,11 +17,10 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <c10/util/MathConstants.h>
 #include <c10/util/complex.h>
-
-#include <ATen/native/xpu/sycl/LogAddExpKernels.h>
-
 #include <cmath>
 #include <limits>
+
+#include <ATen/native/xpu/sycl/LogAddExpKernels.h>
 
 namespace at::native::xpu {
 
