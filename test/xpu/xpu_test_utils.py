@@ -466,6 +466,20 @@ _xpu_tolerance_override = {
     },
 }
 
+# Some cases are skipped on CUDA but work just fine on XPU
+_cuda_skip_xpu_run = [
+    ("_refs.sigmoid", "test_reference_numerics_extremal"),
+    ("_refs.square", "test_reference_numerics_extremal"),
+    ("sigmoid", "test_reference_numerics_extremal"),
+    ("_refs.cos", "test_reference_numerics_large"),
+    ("_refs.sigmoid", "test_reference_numerics_large"),
+    ("_refs.sin", "test_reference_numerics_large"),
+    ("cos", "test_reference_numerics_large"),
+    ("expm1", "test_reference_numerics_large"),
+    ("sigmoid", "test_reference_numerics_large"),
+    ("sin", "test_reference_numerics_large"),
+]
+
 
 def get_wrapped_fn(fn):
     if hasattr(fn, "__wrapped__"):
@@ -1010,6 +1024,10 @@ class XPUPatchForImport:
                             unittest.expectedFailure in wrapper.decorators
                             and (op_name, wrapper.test_name) in _cuda_xfail_xpu_pass
                         ):
+                            pass
+                        elif (op_name, wrapper.test_name) in _cuda_skip_xpu_run:
+                            # Cannot perform a check like `unittest.skip in wrapper.decorators`,
+                            # because `unittest.skip(...)` returns a local function object.
                             pass
                         else:
                             wrapper.device_type = "xpu"
