@@ -16,6 +16,9 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/layer_norm.h>
+#include <ATen/native/nested/NestedTensorMath.h>
+#include <ATen/native/nested/NestedTensorUtils.h>
+#include <ATen/NestedTensorImpl.h>
 #include <c10/core/SymIntArrayRef.h>
 #include <comm/xpu_aten.h>
 
@@ -191,6 +194,101 @@ namespace native {
       grad_bias,
       grad_input_mask);
 }
+
+std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_nested_xpu(
+    const Tensor& grad,
+    const Tensor& input,
+    IntArrayRef normalized_shape,
+    const Tensor& mean,
+    const Tensor& rstd,
+    const std::optional<Tensor>& weight_opt /* optional */,
+    const std::optional<Tensor>& bias_opt /*{ optional */,
+    std::array<bool, 3> grad_input_mask) {
+  TORCH_CHECK_VALUE(weight_opt.has_value() && bias_opt.has_value(), "NestedTensor layer_norm requires weight and bias");
+  // For NestedTensors weight and bias are non nested.
+  auto* nt_impl_grad = get_nested_tensor_impl(grad);
+  auto* nt_impl_input = get_nested_tensor_impl(input);
+  const auto& weight = weight_opt.value();
+  const auto& bias = bias_opt.value();
+  const auto& sizes = nt_impl_input->get_nested_sizes();
+  auto M_N = _check_nested_layer_norm_inputs(
+      *nt_impl_input, normalized_shape, weight, bias);
+  auto M = M_N.first;
+  auto N = M_N.second;
+
+  auto gamma = weight.expect_contiguous();
+  auto beta = bias.expect_contiguous();
+
+  Tensor dInput;
+  Tensor dgamma;
+  Tensor dbeta;
+  auto input_buffer = nt_impl_input->get_buffer();
+  auto grad_buffer = nt_impl_grad->get_buffer();
+  if (grad_input_mask[0]) {
+    dInput = at::native::empty_like(
+        input_buffer,
+        std::nullopt /* dtype */,
+        std::nullopt /* layout */,
+        std::nullopt /* device */,
+        std::nullopt /* pin_memory */,
+        at::MemoryFormat::Contiguous);
+  } else {
+    dInput = at::native::zeros_like(
+        input_buffer,
+        std::nullopt /* dtype */,
+        std::nullopt /* layout */,
+        std::nullopt /* device */,
+        std::nullopt /* pin_memory */,
+        at::MemoryFormat::Contiguous);
+  }
+  if (grad_input_mask[1]) {
+    dgamma = M > 0 ? at::native::empty_like(
+                         *gamma,
+                         std::nullopt /* dtype */,
+                         std::nullopt /* layout */,
+                         std::nullopt /* device */,
+                         std::nullopt /* pin_memory */,
+                         at::MemoryFormat::Contiguous)
+                   : at::native::zeros_like(
+                         *gamma,
+                         std::nullopt /* dtype */,
+                         std::nullopt /* layout */,
+                         std::nullopt /* device */,
+                         std::nullopt /* pin_memory */,
+                         at::MemoryFormat::Contiguous);
+  }
+  if (grad_input_mask[2]) {
+    dbeta = M > 0 ? at::native::empty_like(
+                        *beta,
+                        std::nullopt /* dtype */,
+                        std::nullopt /* layout */,
+                        std::nullopt /* device */,
+                        std::nullopt /* pin_memory */,
+                        at::MemoryFormat::Contiguous)
+                  : at::native::zeros_like(
+                        *beta,
+                        std::nullopt /* dtype */,
+                        std::nullopt /* layout */,
+                        std::nullopt /* device */,
+                        std::nullopt /* pin_memory */,
+                        at::MemoryFormat::Contiguous);
+  }
+  native::xpu::layer_norm_backward_kernel(
+      grad_buffer,
+      input_buffer,
+      mean,
+      rstd,
+      *gamma,
+      M,
+      N,
+      dInput,
+      dgamma,
+      dbeta,
+      grad_input_mask);
+
+    return std::make_tuple(wrap_buffer(dInput, sizes), std::move(dgamma), std::move(dbeta));
+}
+
 
 REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
 } // namespace native
