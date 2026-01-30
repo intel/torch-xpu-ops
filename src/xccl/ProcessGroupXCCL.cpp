@@ -2007,6 +2007,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         return;
       },
       OpType::ALLTOALL_BASE,
+      opts.asyncOp,
       "xccl:all_to_all");
 }
 

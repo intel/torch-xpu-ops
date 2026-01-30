@@ -1,0 +1,16 @@
+AlbertForQuestionAnswering,8
+BartForConditionalGeneration,4
+BertForMaskedLM,32
+BlenderbotSmallForCausalLM,256
+DebertaV2ForQuestionAnswering,8
+DistillGPT2,32
+GoogleFnet,32
+GPT2ForSequenceClassification,8
+MBartForConditionalGeneration,4
+MobileBertForMaskedLM,256
+MT5ForConditionalGeneration,32
+PLBartForConditionalGeneration,8
+PegasusForConditionalGeneration,64
+T5Small,8
+XLNetLMHeadModel,16
+YituTechConvBert,32
