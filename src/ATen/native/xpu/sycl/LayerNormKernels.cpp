@@ -196,7 +196,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
@@ -445,7 +445,7 @@ WelfordDataLN compute_stats(
 template <typename T, typename T_ACC>
 struct VectorizedLayerNormKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
     const T* block_row = X_ + i1 * N_;
