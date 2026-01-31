@@ -16,6 +16,7 @@
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
 #include <ATen/native/sparse/xpu/SparseCsrTensorMath.h>
+#include <ATen/SparseCsrTensorUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -25,11 +26,14 @@
 #include <ATen/ops/mul.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/addmv.h>
+#include <ATen/ops/baddbmm.h>
+#include <ATen/ops/addmm.h>
 #endif
 
 namespace at::native {
 
 using namespace at::sparse;
+using namespace at::sparse_csr;
 
 TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu)
 (const Tensor& input,
@@ -129,7 +133,8 @@ void addmm_out_sparse_csr(
   if (mat1.layout() == kSparseCsr) {
     if (mat2.layout() == kStrided) {
       if (result.layout() == kStrided) {
-        result = input * beta + mat1.to_dense().mm(mat2) * alpha;
+        // result = input * beta + mat1.to_dense().mm(mat2) * alpha;
+        at::addmm_out(result, input, mat1.to_dense(), mat2, beta, alpha);
         return;
       }
     }
@@ -327,6 +332,96 @@ Tensor& addmv_out_sparse_compressed_xpu(
   at::addmv_out(result, self, mat.to_dense(), vec, beta, alpha);
 
   return result;
+}
+
+void expand_batch_if_necessary(const Tensor& mat) {
+  auto indice_batch_ndim = sparse_csr::numBatchDimensions(mat);
+  auto [compressed_indices, plain_indices] =
+      sparse_csr::getCompressedPlainIndices(mat);
+  auto values = mat.values();
+  auto batch_diff_size = mat.sizes().vec();
+  auto real_batch_ndim = mat.sizes().size() - 2;
+  if (indice_batch_ndim < real_batch_ndim) {
+    batch_diff_size.erase(
+        batch_diff_size.begin()+ (real_batch_ndim - indice_batch_ndim),
+        batch_diff_size.end()
+       );
+    auto reshaped_compressed_indices_shape = compressed_indices.sizes().vec();
+    reshaped_compressed_indices_shape.insert(
+        std::begin(reshaped_compressed_indices_shape),
+        std::begin(batch_diff_size),
+        std::end(batch_diff_size));
+    compressed_indices = compressed_indices.expand(
+      reshaped_compressed_indices_shape);
+    auto reshaped_plain_indices_shape = plain_indices.sizes().vec();
+    reshaped_plain_indices_shape.insert(
+        reshaped_plain_indices_shape.begin(),
+        batch_diff_size.begin(),
+        batch_diff_size.end());
+    plain_indices = plain_indices.expand(reshaped_plain_indices_shape);
+    auto reshaped_values_indices_shape = values.sizes().vec();
+    reshaped_values_indices_shape.insert(
+        reshaped_values_indices_shape.begin(),
+        batch_diff_size.begin(),
+        batch_diff_size.end());
+    values = values.expand(reshaped_values_indices_shape);
+  }
+  get_sparse_csr_impl(mat)->set_member_tensors(
+    compressed_indices, plain_indices, values, mat.sizes());
+  return;
+}
+
+Tensor& baddbmm_out_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(mat1.is_sparse_csr());
+
+  TORCH_CHECK(self.layout() == kStrided, "torch.baddbmm: Expected self to be strided, but got layout ", self.layout());
+  TORCH_CHECK(mat2.layout() == kStrided, "torch.baddbmm: Expect mat2 to be strided, but got ", mat2.layout());
+  TORCH_CHECK(result.layout() == kStrided, "torch.baddbmm: Expect result to be strided, but got ", result.layout());
+
+  if (!result.is_same(self)) {
+    at::native::resize_output(result, self.sizes());
+  }
+
+  if (mat1._nnz() == 0) {
+    // According to docs, when beta==0 values in self should be ignored
+    // nans and infs should not propagate
+    if (beta.toComplexDouble() == 0.) {
+      result.zero_();
+    } else {
+      if (!result.is_same(self)) {
+        result.copy_(self);
+      }
+      if (beta.toComplexDouble() != 1.) {
+        result.mul_(beta);
+      }
+    }
+    return result;
+  }
+
+  // broadcast batch of sparse indices and values if not compatible with sizes before to_dense()
+  // to_dense issue: https://github.com/intel/torch-xpu-ops/issues/2801
+  expand_batch_if_necessary(mat1);
+
+  at::baddbmm_out(result, self, mat1.to_dense(), mat2, beta, alpha);
+  // result = self * beta + mat1.to_dense().bmm(mat2.to_dense()) * alpha;
+  return result;
+
+}
+
+Tensor& bmm_out_sparse_csr_xpu(
+    const Tensor& mat1,
+    const Tensor& mat2,
+    Tensor& result) {
+  Scalar beta(0.0);
+  Scalar alpha(1.0);
+  return at::native::baddbmm_out_sparse_csr_xpu(result, mat1, mat2, beta, alpha, result);
 }
 
 } // namespace at::native

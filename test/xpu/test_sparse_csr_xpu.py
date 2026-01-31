@@ -2161,7 +2161,6 @@ class TestSparseCSR(TestCase):
 
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_baddbmm(self, device, dtype):
         # TODO: disable the invariant checks within torch.baddbmm that
         # constructs unconventional csr tensors leading to
@@ -2236,7 +2235,6 @@ class TestSparseCSR(TestCase):
     @onlyOn(["cuda", "xpu"])
     @skipCUDAIfNoSparseGeneric
     @skipIfRocmVersionLessThan((6, 3))
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
     def test_bmm(self, device, dtype):
         def run_test(
