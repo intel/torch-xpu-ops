@@ -198,7 +198,7 @@ runs:
     - name: Get last artifacts
       uses: actions/download-artifact@v7
       with:
-        name: 'Inductor-XPU-UT-Data-schedule-*'  # Wildcard pattern
+        name: 'logs-ut-schedule-*'  # Wildcard pattern
         # GitHub token for authentication
         github-token: ${{ github.token }}
     - name: UT Test Results Summary
@@ -206,7 +206,7 @@ runs:
       run: |
         pip install aiohttp aiofiles pygithub
         current_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        previous_dir=$(find . -name "Inductor-XPU-UT-Data-schedule-*-${{ inputs.ut_name }}-*")
+        previous_dir=$(find . -name "logs-ut-schedule-*-${{ inputs.ut_name }}-*")
         if [ "${previous_dir}" != "" ]; then
           previous_args=" --previous ${previous_dir} "
         else
