@@ -406,7 +406,6 @@ void onecclAllToAll(
     int numranks = 0;
     onecclCommCount(comm.onecclComm, &numranks);
 
-#if defined(ENABLE_XCCL_ALLTOALL_SUPPORT)
     // Check if this is a uniform alltoall (equal counts for all ranks)
     // and contiguous displacements, in which case we can use the native
     // onecclAllToAll API for better performance
@@ -434,7 +433,6 @@ void onecclAllToAll(
           &stream.queue());
       return;
     }
-#endif // ENABLE_XCCL_ALLTOALL_SUPPORT
 
     // Fallback to send/recv based implementation for non-uniform case
     xccl::oneccl_group_start();
@@ -463,7 +461,9 @@ void onecclAllToAll(
     auto xcclDataType = getXcclDataTypeV1(dataType, false);
     int numranks = comm.cclComm->size();
 
-#if defined(ENABLE_XCCL_ALLTOALL_SUPPORT)
+    // Check if this is a uniform alltoall (equal counts for all ranks)
+    // and contiguous displacements, in which case we can use the native
+    // ccl::alltoall API for better performance
     bool isUniform = numranks > 0;
     size_t uniformCount = sendcounts[0];
     for (int r = 0; r < numranks && isUniform; ++r) {
@@ -486,7 +486,6 @@ void onecclAllToAll(
           xcclStream);
       return;
     }
-#endif // ENABLE_XCCL_ALLTOALL_SUPPORT
 
     xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
