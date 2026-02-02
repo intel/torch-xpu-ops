@@ -63,6 +63,8 @@ skip_dict = {
         "histogramdd",
         "_flash_attention_",
         "_efficient_attention_",
+        # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
+        "test_dtypes_linalg_multi_dot_xpu",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
