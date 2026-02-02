@@ -120,8 +120,10 @@ void compute_o_dot_do(
   clear(rdO_2d);
   clear(rO_2d);
   if constexpr (Is_even_M) {
-    copy(tileload_odo, thr_tile_do_S, rdO);
-    copy(tileload_odo, thr_tile_o_S, rO);
+    for (int mi = 0; mi < size<0>(rdO_2d); ++mi) {
+      copy(tileload_odo, thr_tile_do_S(_, mi, _), rdO(_, mi, _));
+      copy(tileload_odo, thr_tile_o_S(_, mi, _), rO(_, mi, _));
+    }
   } else {
     for (int mi = 0; mi < size<0>(rdO_2d); ++mi) {
       if (get<0>(tcO_row(mi)) < param.tail_m) {
