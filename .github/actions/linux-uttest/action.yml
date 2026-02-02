@@ -207,7 +207,12 @@ runs:
         pip install aiohttp aiofiles pygithub
         current_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
         previous_dir=$(find . -name "Inductor-XPU-UT-Data-schedule-*-${{ inputs.ut_name }}-*")
-        python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous ${previous_dir} --output ${current_dir}
+        if [ "${previous_dir}" != "" ]; then
+          previous_args=" --previous ${previous_dir} "
+        else
+          previous_args=""
+        fi
+        python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} ${previous_args} --output ${current_dir}
     - name: Rerun the crashed cases
       shell: timeout 3600 bash -xe {0}
       run: |

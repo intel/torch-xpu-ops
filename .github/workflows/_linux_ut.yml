@@ -200,7 +200,7 @@ jobs:
           pip install aiohttp aiofiles pygithub
           current_dir="${{ github.workspace }}/ut_log/"
           rm -rf previous_dir && mkdir previous_dir
-          mv Inductor-XPU-UT-Data-schedule-* previous_dir
+          mv Inductor-XPU-UT-Data-schedule-* previous_dir || true
           python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous previous_dir --output ${current_dir}/summary
           new_file=$(find ${current_dir}/summary -name "newly_passed_*.csv")
           if [ -f ${new_file} ]; then
