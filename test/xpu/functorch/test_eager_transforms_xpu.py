@@ -5086,6 +5086,10 @@ def construct_sum_pyop():
     def mysum_autograd_cuda(x, dim):
         return torch.sum(x, dim)
 
+    @mysum.py_impl(torch._C.DispatchKey.AutogradXPU)
+    def mysum_autograd_xpu(x, dim):
+        return torch.sum(x, dim)
+
     return mysum
 
 
