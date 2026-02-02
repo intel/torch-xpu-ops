@@ -45,6 +45,7 @@ ignore = [
     "F405",
     "F841",
     # these ignores are from flake8-logging-format; please fix!
+    "G004",
     "G101",
     # these ignores are from ruff NPY; please fix!
     "NPY002",

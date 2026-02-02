@@ -188,6 +188,29 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
+      - name: Get last artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: 'Inductor-XPU-UT-Data-*'  # Wildcard pattern
+          # GitHub token for authentication
+          github-token: ${{ github.token }}
+      - name: UT Test Results Summary
+        shell: timeout 600 bash -xe {0}
+        run: |
+          pip install aiohttp aiofiles pygithub
+          current_dir="${{ github.workspace }}/ut_log/"
+          rm -rf previous_dir && mkdir previous_dir
+          mv Inductor-XPU-UT-Data-* previous_dir
+          python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous previous_dir --output ${current_dir}/summary
+          new_file=$(find ${current_dir}/summary -name "newly_passed_*.csv")
+          if [ -f ${new_file} ]; then
+            cat ${new_file}
+          fi
+          new_file=$(find ${current_dir}/summary -name "newly_failed_*.csv")
+          if [ -f ${new_file} ]; then
+            cat ${new_file}
+            exit 1
+          fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
