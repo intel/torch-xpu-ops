@@ -231,6 +231,4 @@ Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
   #endif
 }
 
-
-
 } // namespace at::native
