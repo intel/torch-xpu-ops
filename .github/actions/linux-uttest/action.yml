@@ -198,7 +198,7 @@ runs:
     - name: Get last artifacts
       uses: actions/download-artifact@v7
       with:
-        name: 'Inductor-XPU-UT-Data-*'  # Wildcard pattern
+        name: 'Inductor-XPU-UT-Data-schedule-*'  # Wildcard pattern
         # GitHub token for authentication
         github-token: ${{ github.token }}
     - name: UT Test Results Summary
@@ -206,7 +206,7 @@ runs:
       run: |
         pip install aiohttp aiofiles pygithub
         current_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        previous_dir=$(find . -name "Inductor-XPU-UT-Data-*-${{ inputs.ut_name }}-*")
+        previous_dir=$(find . -name "Inductor-XPU-UT-Data-schedule-*-${{ inputs.ut_name }}-*")
         python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous ${previous_dir} --output ${current_dir}
     - name: Rerun the crashed cases
       shell: timeout 3600 bash -xe {0}
