@@ -13,7 +13,7 @@ def pytest_configure(config):
     global _worker_id
     try:
         _worker_id = config.workerinput.get('workerid')
-    except:
+    except Exception:
         pass
 
 @pytest.hookimpl
