@@ -31,9 +31,9 @@ c10::complex<scalar_t> _logaddexp_minmax(
     const c10::complex<scalar_t>& y) {
   scalar_t xr = std::real(x);
   scalar_t yr = std::real(y);
-  if (at::_isnan(yr) || (at::_isnan(std::imag(y)))) {
+  if (at::isnan(yr) || (at::isnan(std::imag(y)))) {
     return y;
-  } else if (at::_isnan(xr) || (at::_isnan(std::imag(x)))) {
+  } else if (at::isnan(xr) || (at::isnan(std::imag(x)))) {
     return x;
   } else if (min) {
     return (xr < yr) ? x : y;
