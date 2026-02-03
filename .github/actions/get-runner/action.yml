@@ -40,7 +40,7 @@ runs:
         uname -a
         dpkg -l |grep -E 'intel-opencl-icd|libze-dev|libigc-dev' || true
         # clinfo and reboot system to recover if hang
-        timeout 120 clinfo --list || sudo reboot
+        timeout 120 clinfo --list || exit 1
     - name: CPU frequency check
       shell: bash -xe {0}
       run: |
