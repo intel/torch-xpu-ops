@@ -132,16 +132,17 @@ template <typename T>
 struct LogAddExpFunctor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> a_, c10::complex<T> b_) const {
     using opmath_t = at::opmath_type<c10::complex<T>>;
-    const opmath_t a{a_};
-    const opmath_t b{b_};
-    return _log_add_exp_helper(a, b);
+    const auto a = static_cast<opmath_t>(a_);
+    const auto b = static_cast<opmath_t>(b_);
+    return static_cast<c10::complex<T>>(_log_add_exp_helper(a, b));
   }
 };
 
 void logaddexp_kernel(TensorIteratorBase& iter) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND3(
       ScalarType::BFloat16,
       ScalarType::Half,
+      ScalarType::ComplexHalf,
       iter.dtype(),
       "logaddexp_xpu",
       [&]() { gpu_kernel(iter, LogAddExpFunctor<scalar_t>()); });
