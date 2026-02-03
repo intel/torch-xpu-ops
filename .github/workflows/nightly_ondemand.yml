@@ -68,7 +68,6 @@ jobs:
       torch_xpu_ops: ${{ steps.inputs-check.outputs.torch_xpu_ops }}
       ut: ${{ steps.inputs-check.outputs.ut }}
       suite: ${{ steps.inputs-check.outputs.suite }}
-      triton: ${{ steps.inputs-check.outputs.triton }}
       python: ${{ steps.inputs-check.outputs.python }}
     steps:
       - name: Inputs check
@@ -97,7 +96,6 @@ jobs:
             fi
             ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
-            triton=''
             python='3.10'
           else
             pytorch="${{ inputs.pytorch }}"
@@ -113,7 +111,6 @@ jobs:
             fi
             ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
             suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
-            triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
           fi
           echo "test_type=${test_type}" >> ${GITHUB_OUTPUT}
@@ -121,7 +118,6 @@ jobs:
           echo "torch_xpu_ops=${torch_xpu_ops}" >> ${GITHUB_OUTPUT}
           echo "ut=${ut}" >> ${GITHUB_OUTPUT}
           echo "suite=${suite}" >> ${GITHUB_OUTPUT}
-          echo "triton=${triton}" >> ${GITHUB_OUTPUT}
           echo "python=${python}" >> ${GITHUB_OUTPUT}
 
   Linux-Nightly-Ondemand-Build:
@@ -134,10 +130,9 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: bmg-test
+      runner: ${{ inputs.triton }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
-      triton: ${{ needs.Conditions-Filter.outputs.triton }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
   Linux-Nightly-Ondemand-UT-Tests:
@@ -152,7 +147,7 @@ jobs:
         ut_name: ${{ fromJSON(needs.Conditions-Filter.outputs.ut) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: bmg-test
+      runner: ${{ inputs.triton }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -169,7 +164,7 @@ jobs:
         suite: ${{ fromJSON(needs.Conditions-Filter.outputs.suite) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: bmg-test
+      runner: ${{ inputs.triton }}
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
@@ -199,7 +194,7 @@ jobs:
         microbench: [microbench]
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
-      runner: bmg-test
+      runner: ${{ inputs.triton }}
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
 
