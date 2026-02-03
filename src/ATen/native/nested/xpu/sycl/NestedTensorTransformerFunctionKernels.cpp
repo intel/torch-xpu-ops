@@ -19,7 +19,6 @@
 // keep align with cuda, global range0 is set to output_batch_size, global_range
 // for dim1 is set to 16,
 #define GRID_DIM_Y 16
-#define BLOCK_DIM 256
 
 namespace at::native::xpu {
 
@@ -28,8 +27,9 @@ struct RemovePaddingFunctor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int offset = offsets_[batch_id];
     const int* sizes_i = output_sizes_ + batch_id * output_dim_;
     const int numel_i = sizes_i[0] * sizes_i[1] * sizes_i[2];
@@ -37,9 +37,6 @@ struct RemovePaddingFunctor {
         batch_id * input_sizes_[1] * input_sizes_[2] * input_sizes_[3];
     for (int ii = 0; ii < (numel_i / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i >= numel_i) {
-        continue;
-      }
       const int i0 = i / (sizes_i[1] * sizes_i[2]);
       const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
       const int i2 = i % sizes_i[2];
@@ -89,17 +86,15 @@ struct RemovePadding2Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int offset = offsets_[batch_id];
     const int* sizes_i = output_sizes_ + batch_id * output_dim_;
     const int numel_i = sizes_i[0] * sizes_i[1];
     int input_offset = batch_id * input_sizes_[1] * input_sizes_[2];
     for (int ii = 0; ii < (numel_i / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i >= numel_i) {
-        continue;
-      }
       const int i0 = i / sizes_i[1];
       const int i1 = i % sizes_i[1];
       const int i0_offset = i0 * input_sizes_[2];
@@ -144,8 +139,9 @@ struct RemovePaddingTransform0213Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int offset = offsets_[batch_id];
     const int* sizes_i = output_sizes_ + batch_id * output_dim_;
     const int numel_i = sizes_i[0] * sizes_i[1];
@@ -153,9 +149,6 @@ struct RemovePaddingTransform0213Functor {
         batch_id * input_sizes_[1] * input_sizes_[2] * input_sizes_[3];
     for (int ii = 0; ii < (numel_i / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i >= numel_i) {
-        continue;
-      }
       const int i2 = i / sizes_i[1];
       const int i13 = i % sizes_i[1];
       const int i1 = i13 / (sizes_i[1] / input_sizes_[1]);
@@ -348,15 +341,13 @@ struct AddPadding1Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int* sizes_i = input_sizes_ + batch_id * input_dim_;
     const int batch_output_offset = batch_id * output_sizes_1_;
     for (int ii = 0; ii < (output_sizes_1_ / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i >= output_sizes_1_) {
-        continue;
-      }
       const int output_offset = batch_output_offset + i;
       if (batch_id < batch_size_ && i < sizes_i[0]) {
         const int batch_input_offset = offsets_[batch_id];
@@ -410,16 +401,14 @@ struct AddPadding2Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int* sizes_i = input_sizes_ + batch_id * input_dim_;
     const int output_offset = batch_id * output_sizes_1_ * output_sizes_2_;
     const int output_numel = output_sizes_1_ * output_sizes_2_;
     for (int ii = 0; ii < (output_numel / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i >= output_numel) {
-        continue;
-      }
       const int i0 = i / (output_sizes_2_);
       const int i1 = i - i0 * output_sizes_2_;
       if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1]) {
@@ -480,8 +469,9 @@ struct AddPadding3Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int* sizes_i = input_sizes_ + batch_id * input_dim_;
     const int output_offset =
         batch_id * output_sizes_1_ * output_sizes_2_ * output_sizes_3_;
@@ -489,9 +479,6 @@ struct AddPadding3Functor {
         output_sizes_1_ * output_sizes_2_ * output_sizes_3_;
     for (int ii = 0; ii < (output_numel / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i >= output_numel) {
-        continue;
-      }
       const int i0 = i / (output_sizes_2_ * output_sizes_3_);
       const int i1 =
           (i % (output_sizes_2_ * output_sizes_3_)) / output_sizes_3_;
