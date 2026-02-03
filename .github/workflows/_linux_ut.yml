@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         description: Runner label
+      test_type:
+        type: string
+        default: "build-cicd"
+        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
       pytorch:
         type: string
         default: 'main'
@@ -34,6 +38,8 @@ env:
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  TEST_TYPE: ${{ inputs.test_type }}
+  REFERENCE_ISSUE_ID: 1645
   UT_SKIP_ISSUE: 1624
   NEW_PASSED_ISSUE: 2333
 
@@ -71,10 +77,13 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
                         --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+    outputs:
+      reference_id: ${{ steps.setup-env.outputs.reference_id }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare test env
+        id: setup-env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
@@ -88,8 +97,22 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: logs-ut-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-ut-${{ inputs.ut }}-${{ steps.setup-env.outputs.artifact_suffix }}
+          path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
+      - name: Upload XPU UT Failure list
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
   test-in-baremetal:
@@ -100,10 +123,13 @@ jobs:
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+    outputs:
+      reference_id: ${{ steps.setup-env.outputs.reference_id }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Prepare test env
+        id: setup-env
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
@@ -117,8 +143,22 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: logs-ut-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-ut-${{ inputs.ut }}-${{ steps.setup-env.outputs.artifact_suffix }}
+          path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
+      - name: Upload XPU UT Failure list
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           if-no-files-found: ignore
 
   summary:
@@ -134,13 +174,13 @@ jobs:
       - name: Download XPU UT Logs
         uses: actions/download-artifact@v4
         with:
-          pattern: logs-ut-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
+          pattern: logs-ut-${{ inputs.ut }}-attempt${{ github.run_attempt }}-*
           path: ${{ github.workspace }}/ut_log
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
           cd ${{ github.workspace }}/ut_log/
-          latest_dir=$(find . -type d -name "logs-ut-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
+          latest_dir=$(find . -type d -name "logs-ut-${{ inputs.ut }}-*" |sort -V |tail -n 1)
           cd "${latest_dir}/${{ inputs.ut }}"
           find "${{ github.workspace }}/ut_log" -type f \
               \( -name "failures_*.log" -o \
@@ -174,20 +214,19 @@ jobs:
             sed -i 's/[[:space:]]*$//g' Known_issue.log
             bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
-      - name: Get last artifacts
+      - name: Get reference artifacts
         uses: actions/download-artifact@v7
         with:
-          name: 'logs-ut-schedule-*'  # Wildcard pattern
-          # GitHub token for authentication
-          github-token: ${{ github.token }}
+          run_id: ${{ needs.test-in-container.outputs.reference_id || needs.test-in-baremetal.outputs.reference_id }}
+          pattern: Inductor-XPU-UT-Data-*
+          path: ${{ github.workspace }}/previous
       - name: UT Test Results Summary
         shell: timeout 600 bash -xe {0}
         run: |
           pip install aiohttp aiofiles pygithub
           current_dir="${{ github.workspace }}/ut_log/"
-          rm -rf previous_dir && mkdir previous_dir
-          mv logs-ut-schedule-* previous_dir || true
-          python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous previous_dir --output ${current_dir}/summary
+          previous_dir="${{ github.workspace }}/previous/"
+          python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous ${previous_dir} --output ${current_dir}/summary
           new_file=$(find ${current_dir}/summary -name "newly_passed_*.csv")
           if [ -f ${new_file} ]; then
             cat ${new_file}
@@ -197,6 +236,13 @@ jobs:
             cat ${new_file}
             exit 1
           fi
+      - name: Upload Inductor XPU UT Log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/ut_log
+          overwrite: true
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4

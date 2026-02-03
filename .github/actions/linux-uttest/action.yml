@@ -195,7 +195,13 @@ runs:
             cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
         fi
 
-    - name: Get last artifacts
+    - name: Get reference artifacts
+      uses: actions/download-artifact@v7
+      with:
+        run_id: ${{ steps.setup-env.outputs.reference_id }}
+        pattern: Inductor-XPU-UT-Data-*
+        path: ${{ github.workspace }}/previous
+    - name: Get reference artifacts
       uses: actions/download-artifact@v7
       with:
         name: 'logs-ut-schedule-*'  # Wildcard pattern
@@ -206,13 +212,8 @@ runs:
       run: |
         pip install aiohttp aiofiles pygithub
         current_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
-        previous_dir=$(find . -name "logs-ut-schedule-*-${{ inputs.ut_name }}-*")
-        if [ "${previous_dir}" != "" ]; then
-          previous_args=" --previous ${previous_dir} "
-        else
-          previous_args=""
-        fi
-        python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} ${previous_args} --output ${current_dir}
+        previous_dir="${{ github.workspace }}/previous"
+        python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous ${previous_dir} --output ${current_dir}
     - name: Rerun the crashed cases
       shell: timeout 3600 bash -xe {0}
       run: |
