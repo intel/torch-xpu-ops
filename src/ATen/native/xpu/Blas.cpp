@@ -197,7 +197,7 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
   #if defined(USE_ONEMKL_XPU)
     return at::native::xpu::dot_xpu_mkl(self, other);
   #else
-    return at::native::dot(self, other);
+    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
   #endif
 }
 
@@ -227,7 +227,7 @@ Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
   #if defined(USE_ONEMKL_XPU)
     return at::native::xpu::vdot_xpu_mkl(self, other);
   #else
-    return at::native::vdot(self, other);
+    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
   #endif
 }
 
