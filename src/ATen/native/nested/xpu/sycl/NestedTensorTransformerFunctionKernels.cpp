@@ -37,14 +37,15 @@ struct RemovePaddingFunctor {
         batch_id * input_sizes_[1] * input_sizes_[2] * input_sizes_[3];
     for (int ii = 0; ii < (numel_i / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i < numel_i) {
-        const int i0 = i / (sizes_i[1] * sizes_i[2]);
-        const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
-        const int i2 = i % sizes_i[2];
-        const int i0_offset = i0 * input_sizes_[2] * input_sizes_[3];
-        const int i1_offset = i1 * input_sizes_[3];
-        output_[offset + i] = input_[input_offset + i0_offset + i1_offset + i2];
+      if (i >= numel_i) {
+        continue;
       }
+      const int i0 = i / (sizes_i[1] * sizes_i[2]);
+      const int i1 = (i % (sizes_i[1] * sizes_i[2])) / sizes_i[2];
+      const int i2 = i % sizes_i[2];
+      const int i0_offset = i0 * input_sizes_[2] * input_sizes_[3];
+      const int i1_offset = i1 * input_sizes_[3];
+      output_[offset + i] = input_[input_offset + i0_offset + i1_offset + i2];
     }
     const int i = (numel_i / grainsize) * grainsize + tid;
     if (i < numel_i) {
@@ -96,12 +97,13 @@ struct RemovePadding2Functor {
     int input_offset = batch_id * input_sizes_[1] * input_sizes_[2];
     for (int ii = 0; ii < (numel_i / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i < numel_i) {
-        const int i0 = i / sizes_i[1];
-        const int i1 = i % sizes_i[1];
-        const int i0_offset = i0 * input_sizes_[2];
-        output_[offset + i] = input_[input_offset + i0_offset + i1];
+      if (i >= numel_i) {
+        continue;
       }
+      const int i0 = i / sizes_i[1];
+      const int i1 = i % sizes_i[1];
+      const int i0_offset = i0 * input_sizes_[2];
+      output_[offset + i] = input_[input_offset + i0_offset + i1];
     }
     const int i = (numel_i / grainsize) * grainsize + tid;
     if (i < numel_i) {
@@ -151,16 +153,17 @@ struct RemovePaddingTransform0213Functor {
         batch_id * input_sizes_[1] * input_sizes_[2] * input_sizes_[3];
     for (int ii = 0; ii < (numel_i / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i < numel_i) {
-        const int i2 = i / sizes_i[1];
-        const int i13 = i % sizes_i[1];
-        const int i1 = i13 / (sizes_i[1] / input_sizes_[1]);
-        const int i3 = i13 % (sizes_i[1] / input_sizes_[1]);
-
-        output_[offset + i] = input_
-            [input_offset + i1 * input_sizes_[2] * input_sizes_[3] +
-             i2 * input_sizes_[3] + i3];
+      if (i >= numel_i) {
+        continue;
       }
+      const int i2 = i / sizes_i[1];
+      const int i13 = i % sizes_i[1];
+      const int i1 = i13 / (sizes_i[1] / input_sizes_[1]);
+      const int i3 = i13 % (sizes_i[1] / input_sizes_[1]);
+
+      output_[offset + i] = input_
+          [input_offset + i1 * input_sizes_[2] * input_sizes_[3] +
+           i2 * input_sizes_[3] + i3];
     }
     const int i = (numel_i / grainsize) * grainsize + tid;
     if (i < numel_i) {
@@ -351,14 +354,15 @@ struct AddPadding1Functor {
     const int batch_output_offset = batch_id * output_sizes_1_;
     for (int ii = 0; ii < (output_sizes_1_ / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i < output_sizes_1_) {
-        const int output_offset = batch_output_offset + i;
-        if (batch_id < batch_size_ && i < sizes_i[0]) {
-          const int batch_input_offset = offsets_[batch_id];
-          output_[output_offset] = input_[batch_input_offset + i];
-        } else {
-          output_[output_offset] = padding_value_;
-        }
+      if (i >= output_sizes_1_) {
+        continue;
+      }
+      const int output_offset = batch_output_offset + i;
+      if (batch_id < batch_size_ && i < sizes_i[0]) {
+        const int batch_input_offset = offsets_[batch_id];
+        output_[output_offset] = input_[batch_input_offset + i];
+      } else {
+        output_[output_offset] = padding_value_;
       }
     }
     const int i = (output_sizes_1_ / grainsize) * grainsize + tid;
@@ -413,16 +417,17 @@ struct AddPadding2Functor {
     const int output_numel = output_sizes_1_ * output_sizes_2_;
     for (int ii = 0; ii < (output_numel / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i < output_numel) {
-        const int i0 = i / (output_sizes_2_);
-        const int i1 = i - i0 * output_sizes_2_;
-        if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1]) {
-          const int offset = offsets_[batch_id];
-          const int input_offset = offset + i0 * sizes_i[1] + i1;
-          output_[output_offset + i] = input_[input_offset];
-        } else {
-          output_[output_offset + i] = padding_value_;
-        }
+      if (i >= output_numel) {
+        continue;
+      }
+      const int i0 = i / (output_sizes_2_);
+      const int i1 = i - i0 * output_sizes_2_;
+      if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1]) {
+        const int offset = offsets_[batch_id];
+        const int input_offset = offset + i0 * sizes_i[1] + i1;
+        output_[output_offset + i] = input_[input_offset];
+      } else {
+        output_[output_offset + i] = padding_value_;
       }
     }
     const int i = (output_numel / grainsize) * grainsize + tid;
@@ -484,20 +489,21 @@ struct AddPadding3Functor {
         output_sizes_1_ * output_sizes_2_ * output_sizes_3_;
     for (int ii = 0; ii < (output_numel / grainsize); ii++) {
       const int i = ii * grainsize + tid;
-      if (i < output_numel) {
-        const int i0 = i / (output_sizes_2_ * output_sizes_3_);
-        const int i1 =
-            (i % (output_sizes_2_ * output_sizes_3_)) / output_sizes_3_;
-        const int i2 = i % output_sizes_3_;
-        if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1] &&
-            i2 < sizes_i[2]) {
-          const int offset = offsets_[batch_id];
-          const int input_offset =
-              offset + i0 * (sizes_i[1] * sizes_i[2]) + i1 * sizes_i[2] + i2;
-          output_[output_offset + i] = input_[input_offset];
-        } else {
-          output_[output_offset + i] = padding_value_;
-        }
+      if (i >= output_numel) {
+        continue;
+      }
+      const int i0 = i / (output_sizes_2_ * output_sizes_3_);
+      const int i1 =
+          (i % (output_sizes_2_ * output_sizes_3_)) / output_sizes_3_;
+      const int i2 = i % output_sizes_3_;
+      if (batch_id < batch_size_ && i0 < sizes_i[0] && i1 < sizes_i[1] &&
+          i2 < sizes_i[2]) {
+        const int offset = offsets_[batch_id];
+        const int input_offset =
+            offset + i0 * (sizes_i[1] * sizes_i[2]) + i1 * sizes_i[2] + i2;
+        output_[output_offset + i] = input_[input_offset];
+      } else {
+        output_[output_offset + i] = padding_value_;
       }
     }
     const int i = (output_numel / grainsize) * grainsize + tid;
