@@ -12,6 +12,12 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/Pool.h>
@@ -1112,10 +1118,6 @@ void max_pool2d_with_indices_kernel(
   }
 
   auto memory_format = input_.suggest_memory_format();
-  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-    memory_format = MemoryFormat::ChannelsLast;
-  }
-
   Tensor input = input_.contiguous(memory_format);
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
@@ -1270,9 +1272,6 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto memory_format = input_.suggest_memory_format();
-  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-    memory_format = MemoryFormat::ChannelsLast;
-  }
   Tensor input, gradOutput, indices;
 
   input = input_.contiguous(memory_format);
@@ -1419,3 +1418,5 @@ void max_pool2d_with_indices_backward_kernel(
 
 } // namespace at::native::xpu
 #undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
