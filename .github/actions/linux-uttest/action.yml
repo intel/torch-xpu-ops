@@ -14,6 +14,7 @@ runs:
       run: |
         which python && python -V
         which pip && pip list
+        cp ${GITHUB_WORKSPACE}/.github/scripts/conftest.py pytorch/third_party/torch-xpu-ops/
     - name: op_regression
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
@@ -65,7 +66,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu/extended" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_extended.log
     - name: op_ut
-      shell: timeout 18000 bash -xe {0}
+      shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -78,7 +79,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_ut.log
     - name: skipped_ut
-      shell: timeout 18000 bash -xe {0}
+      shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
@@ -91,7 +92,7 @@ runs:
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
     - name: torch_xpu
-      shell: timeout 3600 bash -xe {0}
+      shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1

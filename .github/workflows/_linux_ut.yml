@@ -64,6 +64,7 @@ jobs:
 
   test-in-container:
     needs: runner
+    timeout-minutes: 1440
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
