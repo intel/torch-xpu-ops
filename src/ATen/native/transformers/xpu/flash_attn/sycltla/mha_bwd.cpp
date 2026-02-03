@@ -270,6 +270,10 @@ void gemm_kernel(
   auto copy_b = make_block_2d_copy_B(mma, B);
 
   /* Slice TiledCopy/TiledMMA operations to thread (work-item) level */
+  // TODO: cute should use thread_id instead of first_thread_in_sg_idx to get
+  // thr layout Using first_thread_in_sg_idx is a workaround for accuracy issue
+  // in current sycltla version. We need to figure out why it needs this
+  // workaround.
   auto thr_mma = mma.get_slice(first_thread_in_sg_idx);
   auto thr_copy_a = copy_a.get_slice(first_thread_in_sg_idx);
   auto thr_copy_b = copy_b.get_slice(first_thread_in_sg_idx);
@@ -622,6 +626,10 @@ void dq_dk_dv_1colblock(
       2;
   const index_t dsb_offset = pb_offset + kBlockN * kBlockM;
 
+  // 2D_Load requires the width to be 4 bytes aligned. Hence bf16/fp16 needs to
+  // round to even number when processing tail_n.
+  // TODO: Remove this after reorder api supports unaligned load. See
+  // CUTLASS9-460
   const auto block_n_dim = tail_n == 0 ? Int<kBlockN>{} : ((tail_n + 1) & ~1);
   auto shapeO = make_shape(kBlockM, Int<kHeadDim>{});
   auto shapeQtOt = make_shape(Int<kHeadDim>{}, kBlockM);
@@ -716,6 +724,10 @@ void dq_dk_dv_1colblock(
   for (int m_block = 0; m_block < max_m_block; ++m_block) {
     const bool Is_even_M = not((m_block == max_m_block - 1) and (tail_m != 0));
     if (not Is_even_M) {
+      // 2D_Load requires the width to be 4 bytes aligned. Hence bf16/fp16 needs
+      // to round to even number when processing tail_n.
+      // TODO: Remove this after reorder api supports unaligned load. See
+      // CUTLASS9-460
       const int block_m_dim = ((tail_m + 1) & ~1);
       mQ = make_tensor(
           make_gmem_ptr(mQ.data()),
