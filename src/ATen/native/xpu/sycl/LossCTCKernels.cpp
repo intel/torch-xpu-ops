@@ -20,6 +20,12 @@
  * Graves et al call the probabilities y, we use log_probs (also calling them inputs)
  */
 
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
+
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -1295,3 +1301,6 @@ Tensor ctc_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
