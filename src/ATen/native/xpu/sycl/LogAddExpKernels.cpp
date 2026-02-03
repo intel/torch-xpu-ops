@@ -31,9 +31,9 @@ c10::complex<scalar_t> _logaddexp_minmax(
     const c10::complex<scalar_t>& y) {
   scalar_t xr = std::real(x);
   scalar_t yr = std::real(y);
-  if (at::isnan(yr) || (at::isnan(std::imag(y)))) {
+  if (std::isnan(yr) || (std::isnan(std::imag(y)))) {
     return y;
-  } else if (at::isnan(xr) || (at::isnan(std::imag(x)))) {
+  } else if (std::isnan(xr) || (std::isnan(std::imag(x)))) {
     return x;
   } else if (min) {
     return (xr < yr) ? x : y;
@@ -83,7 +83,7 @@ c10::complex<scalar_t> _log_add_exp_helper(
   scalar_t max_real = std::real(max);
 
   // Handle NaN propagation
-  if (at::_isnan(min_real) || at::_isnan(std::imag(min))) {
+  if (std::isnan(min_real) || std::isnan(std::imag(min))) {
     return {
         std::numeric_limits<scalar_t>::quiet_NaN(),
         std::numeric_limits<scalar_t>::quiet_NaN()};
