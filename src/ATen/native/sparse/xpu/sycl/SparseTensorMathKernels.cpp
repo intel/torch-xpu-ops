@@ -21,6 +21,7 @@
 #include <ATen/native/SparseTensorUtils.h>
 #include <ATen/native/sparse/SparseTensorMath.h>
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
+#include <ATen/xpu/XPUUtils.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
@@ -207,20 +208,6 @@ struct SparseElementwiseKernelScalarFunctor {
 
 } // namespace apply
 
-// Check if every tensor in a list of tensors matches the current
-// device.
-inline bool check_device(ArrayRef<Tensor> ts) {
-  if (ts.empty()) {
-    return true;
-  }
-  Device curDevice = Device(kXPU, c10::xpu::current_device());
-  for (const Tensor& t : ts) {
-    if (t.device() != curDevice)
-      return false;
-  }
-  return true;
-}
-
 Tensor& add_out_dense_sparse_kernel(
     Tensor& r_,
     const Tensor& dense,
@@ -235,7 +222,7 @@ Tensor& add_out_dense_sparse_kernel(
   TORCH_CHECK(
       r_.is_xpu(),
       "add: expected 'out' to be a XPU tensor, but got a CPU tensor");
-  TORCH_CHECK(check_device({sparse, r_, dense}));
+  TORCH_CHECK(at::xpu::check_device({sparse, r_, dense}));
   TORCH_CHECK(
       dense.sizes().equals(sparse.sizes()),
       "add: expected 'self' and 'other' to have same size, but self has size ",
@@ -384,7 +371,7 @@ SparseTensor& add_sparse_kernel(
   TORCH_CHECK(src.is_xpu(), "add: expected 'other' to be XPU, but got CPU");
   TORCH_CHECK(r_.is_xpu(), "add: expected 'out' to be XPU, but got CPU");
 
-  TORCH_CHECK(check_device({r_, t, src}));
+  TORCH_CHECK(at::xpu::check_device({r_, t, src}));
 
   auto commonDtype = at::result_type(t, src);
   TORCH_CHECK(
@@ -489,7 +476,7 @@ SparseTensor& mul_sparse_kernel(
 
   TORCH_CHECK(t_.is_xpu(), "mul: expected 'self' to be XPU, but got CPU");
   TORCH_CHECK(src_.is_xpu(), "mul: expected 'other' to be XPU, but got CPU");
-  TORCH_CHECK(check_device({r_, t_, src_}));
+  TORCH_CHECK(at::xpu::check_device({r_, t_, src_}));
 
   // mul(sparse, sparse)
 

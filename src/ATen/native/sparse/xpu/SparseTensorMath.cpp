@@ -10,6 +10,7 @@
 
 #include <ATen/TensorOperators.h>
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
+#include <ATen/xpu/XPUUtils.h>
 #include <c10/xpu/XPUFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -28,20 +29,6 @@
 namespace at::native {
 
 using namespace at::sparse;
-
-// Check if every tensor in a list of tensors matches the current
-// device.
-inline bool check_device(ArrayRef<Tensor> ts) {
-  if (ts.empty()) {
-    return true;
-  }
-  Device curDevice = Device(kXPU, c10::xpu::current_device());
-  for (const Tensor& t : ts) {
-    if (t.device() != curDevice)
-      return false;
-  }
-  return true;
-}
 
 SparseTensor& add_out_sparse_xpu(
     const SparseTensor& t,
@@ -85,7 +72,7 @@ Tensor& s_addmm_out_sparse_dense_xpu(
       dense.is_xpu(),
       "Expected all tensors to be on the same device. addmm: expected 'mat2' to be XPU, but got CPU");
 
-  TORCH_CHECK(check_device({sparse_, r_, t, dense}));
+  TORCH_CHECK(at::xpu::check_device({sparse_, r_, t, dense}));
 
   TORCH_CHECK(
       dense.dim() == 2,
