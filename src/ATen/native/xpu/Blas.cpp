@@ -26,7 +26,7 @@ Tensor& mm_complex_fallback(
     const Tensor& mat2,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex matrix multiplication is using fallback implementation with."
+      "Complex matrix multiplication is using fallback implementation."
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto self_real = at::view_as_real(self);
