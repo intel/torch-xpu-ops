@@ -69,7 +69,7 @@ namespace native {
       std::nullopt /* pin_memory */,
       LEGACY_CONTIGUOUS_MEMORY_FORMAT);
 
-  auto acc_type = at::toAccumulateType(input.scalar_type(), true);
+  auto acc_type = at::toAccumulateType(input.scalar_type(), kXPU);
 
   Tensor mean = at::empty({M}, X->options().dtype(acc_type));
   Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
