@@ -220,14 +220,14 @@ runs:
         fi
         artifact_suffix+="run${{ github.run_id }}"
         echo "artifact_suffix=$(artifact_suffix)" |tee -a ${GITHUB_OUTPUT}
-      - name: Get reference run_id
-        id: reference
-        run: |
-          if [[ "${TEST_TYPE}" != *"ly" ]];then
-            artifact_type="$(echo ${TEST_TYPE:-"build-nightly"} |awk -F '-' '{print $1}')-nightly"
-          else
-            artifact_type="${TEST_TYPE}"
-          fi
-          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID:-"1645"} --json body -q .body 2>&1 |tee body.txt
-          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
-          echo "reference_id=$(REFERENCE_RUN_ID)" |tee -a ${GITHUB_OUTPUT}
+    - name: Get reference run_id
+      id: reference
+      run: |
+        if [[ "${TEST_TYPE}" != *"ly" ]];then
+          artifact_type="$(echo ${TEST_TYPE:-"build-nightly"} |awk -F '-' '{print $1}')-nightly"
+        else
+          artifact_type="${TEST_TYPE}"
+        fi
+        gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID:-"1645"} --json body -q .body 2>&1 |tee body.txt
+        REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+        echo "reference_id=$(REFERENCE_RUN_ID)" |tee -a ${GITHUB_OUTPUT}
