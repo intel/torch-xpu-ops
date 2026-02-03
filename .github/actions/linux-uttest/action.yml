@@ -201,12 +201,6 @@ runs:
         run_id: ${{ steps.setup-env.outputs.reference_id }}
         pattern: Inductor-XPU-UT-Data-*
         path: ${{ github.workspace }}/previous
-    - name: Get reference artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: 'logs-ut-schedule-*'  # Wildcard pattern
-        # GitHub token for authentication
-        github-token: ${{ github.token }}
     - name: UT Test Results Summary
       shell: timeout 600 bash -xe {0}
       run: |
