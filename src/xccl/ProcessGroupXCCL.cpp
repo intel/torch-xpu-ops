@@ -891,9 +891,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   c10::xpu::XPUCachingAllocator::recordStream(
       tensor.storage().data_ptr(), stream);
 
-  ccl::group_start();
   fn(tensor, *comm, stream, cclstream, p2pTargetRank);
-  ccl::group_end();
 
   if (!coalescing_state_) {
     post(stream);
@@ -2009,6 +2007,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
         return;
       },
       OpType::ALLTOALL_BASE,
+      opts.asyncOp,
       "xccl:all_to_all");
 }
 

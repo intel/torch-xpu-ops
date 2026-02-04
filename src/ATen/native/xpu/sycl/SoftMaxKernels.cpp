@@ -674,7 +674,7 @@ void softmax_forward_kernel(
     const inscalar_t* in_data,
     outscalar_t* out_data,
     int dim_size,
-    int outer_size) {
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   using KernelClass = SoftmaxForwardKernelFunctor<
@@ -1334,7 +1334,7 @@ void softmax_backward_kernel(
     const outscalar_t* output,
     const outscalar_t* gradOutput,
     int dim_size,
-    int outer_size) {
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   using KernelClass = SoftmaxBackwardKernelFunctor<

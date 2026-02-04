@@ -996,7 +996,7 @@ std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
     const Tensor& self,
     double epsilon) {
   auto options =
-      self.options().dtype(at::toAccumulateType(self.scalar_type(), true));
+      self.options().dtype(at::toAccumulateType(self.scalar_type(), kXPU));
   auto n_channels = self.size(1);
   auto save_mean = at::empty({n_channels}, options);
   auto save_invstd = at::empty({n_channels}, options);
@@ -3889,7 +3889,7 @@ std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
       self.sizes());
 
   auto options =
-      self.options().dtype(at::toAccumulateType(self.scalar_type(), true));
+      self.options().dtype(at::toAccumulateType(self.scalar_type(), kXPU));
 
   auto save_mean = at::empty({n_input}, options);
   auto save_var = at::empty({n_input}, options);
@@ -5018,7 +5018,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
         });
   }
 
-  const auto acc_type = at::toAccumulateType(input.scalar_type(), true);
+  const auto acc_type = at::toAccumulateType(input.scalar_type(), kXPU);
   Tensor mean;
   TORCH_INTERNAL_ASSERT(
       save_mean->defined(), "save_mean should always be defined\n");

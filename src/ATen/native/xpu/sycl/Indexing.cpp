@@ -377,11 +377,8 @@ void index_add_kernel(
     result.copy_(self);
   }
 
-  auto numel = index.numel();
-  if (result.dim() > 1) {
-    if (numel == 0 || self.numel() == 0) {
-      return;
-    }
+  if (index.numel() == 0 || self.numel() == 0) {
+    return;
   }
 
   // Scalars are treated as 1-d tensor

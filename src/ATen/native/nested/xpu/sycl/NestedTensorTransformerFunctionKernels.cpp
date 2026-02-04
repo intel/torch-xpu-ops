@@ -12,6 +12,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/StridedRandomAccessor.h>
+#include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/nested/xpu/sycl/NestedTensorTransformerFunctionKernels.h>
 #include <comm/SYCLContext.h>
 
@@ -953,13 +954,14 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
       [&] {
+        scalar_t fill_value = at::native::_get_padding_value<scalar_t>(padding_value, values.is_floating_point());
         jagged_dense_elementwise_dense_template<scalar_t>(
             values_canonicalized,
             offsets.vec(),
             padded_values_view, // dummy not used in the lambda function
             padded_values_view,
             PaddingValueFuncutor<scalar_t>(),
-            static_cast<scalar_t>(padding_value));
+            fill_value);
       });
 
   return padded_values;

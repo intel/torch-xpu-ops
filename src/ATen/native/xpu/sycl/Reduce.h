@@ -268,8 +268,14 @@ struct ReduceConfig {
     group_width = std::min(dim0_pow2, int(max_num_items / group_height));
     num_items = group_width * group_height;
 
-    if (num_items < max_sg_sz)
+    if (num_items < max_sg_sz) {
+      // Hardware always allocates full sub-group regardless of work-group size.
+      // Enforce group_width to align with sub-group size.
       group_width = max_sg_sz;
+      // Ensure num_items <= max_num_items
+      group_height = std::min(group_height, max_num_items / group_width);
+      num_items = group_width * group_height;
+    }
   }
 
   int split_input(int parallelism) {

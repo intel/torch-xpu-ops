@@ -78,7 +78,11 @@ jobs:
               cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
               e2e_result=1
             fi
-            acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-acc-result.txt)
+            if [ -e /tmp/tmp-acc-result.txt ];then
+              acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-acc-result.txt)
+            else
+              acc_failed=0
+            fi
           fi
           echo "acc_failed=${acc_failed}" >> ${GITHUB_ENV}
           echo "e2e_result=${e2e_result}" >> ${GITHUB_OUTPUT}

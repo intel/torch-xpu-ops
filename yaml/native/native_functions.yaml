@@ -1496,11 +1496,13 @@
   variants: function
   dispatch:
     XPU: view_as_real
+    SparseXPU: view_as_real_sparse
 
 - func: view_as_complex(Tensor(a) self) -> Tensor(a)
   variants: function
   dispatch:
     XPU: view_as_complex
+    SparseXPU: view_as_complex_sparse
 
 - func: view_copy(Tensor self, SymInt[] size) -> Tensor
   variants: function
@@ -9480,25 +9482,41 @@
   structured_delegate: addmm.out
   variants: function, method
   dispatch:
+    SparseXPU: addmm_sparse_dense_xpu
     SparseCsrXPU: addmm_sparse_compressed_dense
 
 - func: addmm.out(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
   structured: True
   dispatch:
+    SparseXPU: addmm_out_sparse_dense_xpu
     SparseCsrXPU: addmm_out_sparse_compressed_xpu
+
+- func: addmm_(Tensor(a!) self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor(a!)
+  structured_delegate: addmm.out
+  variants: method
+  dispatch:
+    # Warning!  For whatever reason, the inplace sparse addmm is NON
+    # broadcasting
+    SparseXPU: s_addmm_sparse_dense_xpu_
 
 - func: mm(Tensor self, Tensor mat2) -> Tensor
   structured_delegate: mm.out
   variants: function, method
-  dispatch:
+  dispatch:    
+    SparseXPU: _sparse_mm
     SparseCsrXPU: _sparse_csr_mm
   tags: core
 
 - func: mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   dispatch:
+    SparseXPU: _sparse_mm_out
     SparseCsrXPU: _sparse_csr_mm_out
 
+- func: _sparse_sparse_matmul(Tensor self, Tensor other) -> Tensor
+  dispatch:
+    SparseXPU: sparse_sparse_matmul_xpu
+  autogen: _sparse_sparse_matmul.out
 
 - func: addmv(Tensor self, Tensor mat, Tensor vec, *, Scalar beta=1, Scalar alpha=1) -> Tensor
   structured_delegate: addmv.out
@@ -9512,7 +9530,6 @@
   structured: True
   dispatch:
     SparseCsrXPU: addmv_out_sparse_compressed_xpu
-
 
 - func: baddbmm(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
   variants: function, method
@@ -9531,11 +9548,13 @@
 - func: bmm(Tensor self, Tensor mat2) -> Tensor
   structured_delegate: bmm.out
   variants: function, method
+  dispatch:
+    SparseXPU: bmm_sparse_xpu
   tags: core
 
 - func: bmm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   variants: function
   dispatch:
+    SparseXPU: bmm_out_sparse_xpu
     SparseCsrXPU: bmm_out_sparse_csr_xpu
-

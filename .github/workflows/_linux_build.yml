@@ -155,14 +155,14 @@ jobs:
       - name: Build Triton
         run: |
           cd ./pytorch
-          rm -rf pytorch_triton_xpu-*.whl
+          rm -rf triton_xpu-*.whl
           if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
             TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
           built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
-                  pytorch-triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
+                  triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
             v = "None";
           }{
             for (i=1;i<=NF;i++) {if ($i ~ p) {v = $i;}};
@@ -170,7 +170,7 @@ jobs:
             printf("%s", v);
           }')"
           if [ "${built_version}" != "None" ];then
-            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre pytorch-triton-xpu==${built_version} --dest ${{ github.workspace }}/
+            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre triton-xpu==${built_version} --dest ${{ github.workspace }}/
             pip install ${{ github.workspace }}/*triton*.whl
           else
             TRITON_VERSION_NAME="$(
@@ -183,12 +183,12 @@ jobs:
             pip install cmake ninja pybind11
             python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
               2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
-            if [ $(ls |grep -c "pytorch_triton_xpu-.*.whl") -eq 0 ];then
+            if [ $(ls |grep -c "triton_xpu-.*.whl") -eq 0 ];then
               echo "Build triton got failed"
               exit 1
             fi
-            pip install pytorch_triton_xpu-*.whl
-            cp pytorch_triton_xpu-*.whl ${{ github.workspace }}
+            pip install triton_xpu-*.whl
+            cp triton_xpu-*.whl ${{ github.workspace }}
           fi
       - name: Torch Config
         run: |
