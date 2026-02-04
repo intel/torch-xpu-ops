@@ -16,8 +16,8 @@
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
-#include <ATen/ops/vdot_native.h>
 #include <ATen/ops/dot_native.h>
+#include <ATen/ops/vdot_native.h>
 #endif
 #include <torch/library.h>
 

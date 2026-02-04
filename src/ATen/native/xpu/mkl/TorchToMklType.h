@@ -8,8 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <oneapi/mkl/blas.hpp>
 #include <ATen/ATen.h>
+#include <oneapi/mkl/blas.hpp>
 
 template <typename T>
 struct get_mkl_type {
