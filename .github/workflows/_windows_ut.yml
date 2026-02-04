@@ -370,12 +370,20 @@ jobs:
                 -name "category_*.log" \) \
               -exec mv {} ./ \; || true
 
-          # get skipped known issues
-          count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
-          if [ "$count" -gt 0 ]; then
-            echo -e "$count issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+          # get skipped known issues on Linux
+          count_linux=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
+          if [ "$count_linux" -gt 0 ]; then
+            echo -e "$count_linux issues on linux with skipped label found"
+            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+          fi
+
+          # get skipped known issues only on Windows
+          count_windows_only=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped_windows+state:open" --jq '.total_count')
+          if [ "$count_windows_only" -gt 0 ]; then
+            echo -e "$count_windows_only windows only issues with skipped label found"
+            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' >> issues.log
           fi
 
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
