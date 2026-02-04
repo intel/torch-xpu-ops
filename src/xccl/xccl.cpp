@@ -389,6 +389,29 @@ void onecclScatter(
   return;
 }
 
+static std::pair<bool, size_t> checkUniformAllToAll(
+    const size_t* sendcounts,
+    const size_t* senddispls,
+    const size_t* recvcounts,
+    const size_t* recvdispls,
+    int numranks) {
+  if (numranks <= 0) {
+    return {false, 0};
+  }
+  size_t uniformCount = sendcounts[0];
+  for (int r = 0; r < numranks; ++r) {
+    if (sendcounts[r] != uniformCount || recvcounts[r] != uniformCount) {
+      return {false, 0};
+    }
+    // Check for contiguous displacements
+    if (senddispls[r] != static_cast<size_t>(r) * uniformCount ||
+        recvdispls[r] != static_cast<size_t>(r) * uniformCount) {
+      return {false, 0};
+    }
+  }
+  return {uniformCount > 0, uniformCount};
+}
+
 void onecclAllToAll(
     void* sendbuff,
     const size_t* sendcounts,
@@ -406,23 +429,10 @@ void onecclAllToAll(
     int numranks = 0;
     onecclCommCount(comm.onecclComm, &numranks);
 
-    // Check if this is a uniform alltoall (equal counts for all ranks)
-    // and contiguous displacements, in which case we can use the native
-    // onecclAllToAll API for better performance
-    bool isUniform = numranks > 0;
-    size_t uniformCount = sendcounts[0];
-    for (int r = 0; r < numranks && isUniform; ++r) {
-      if (sendcounts[r] != uniformCount || recvcounts[r] != uniformCount) {
-        isUniform = false;
-      }
-      // Check for contiguous displacements
-      if (senddispls[r] != static_cast<size_t>(r) * uniformCount ||
-          recvdispls[r] != static_cast<size_t>(r) * uniformCount) {
-        isUniform = false;
-      }
-    }
+    auto [isUniform, uniformCount] = checkUniformAllToAll(
+        sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
-    if (isUniform && uniformCount > 0) {
+    if (isUniform) {
       // Use native onecclAllToAll for uniform case
       onecclAllToAll(
           sendbuff,
@@ -461,22 +471,11 @@ void onecclAllToAll(
     auto xcclDataType = getXcclDataTypeV1(dataType, false);
     int numranks = comm.cclComm->size();
 
-    // Check if this is a uniform alltoall (equal counts for all ranks)
-    // and contiguous displacements, in which case we can use the native
-    // ccl::alltoall API for better performance
-    bool isUniform = numranks > 0;
-    size_t uniformCount = sendcounts[0];
-    for (int r = 0; r < numranks && isUniform; ++r) {
-      if (sendcounts[r] != uniformCount || recvcounts[r] != uniformCount) {
-        isUniform = false;
-      }
-      if (senddispls[r] != static_cast<size_t>(r) * uniformCount ||
-          recvdispls[r] != static_cast<size_t>(r) * uniformCount) {
-        isUniform = false;
-      }
-    }
+    auto [isUniform, uniformCount] = checkUniformAllToAll(
+        sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
-    if (isUniform && uniformCount > 0) {
+    if (isUniform) {
+      // Use native ccl::alltoall for uniform case
       ccl::alltoall(
           sendbuff,
           recvbuff,
@@ -487,6 +486,7 @@ void onecclAllToAll(
       return;
     }
 
+    // Fallback to send/recv based implementation for non-uniform case
     xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
