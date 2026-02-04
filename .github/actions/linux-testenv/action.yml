@@ -222,6 +222,7 @@ runs:
         echo "artifact_suffix=$(artifact_suffix)" |tee -a ${GITHUB_OUTPUT}
     - name: Get reference run_id
       id: reference
+      shell: bash -xe {0}
       run: |
         if [[ "${TEST_TYPE}" != *"ly" ]];then
           artifact_type="$(echo ${TEST_TYPE:-"build-nightly"} |awk -F '-' '{print $1}')-nightly"
