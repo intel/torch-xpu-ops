@@ -5323,6 +5323,58 @@ std::tuple<Tensor, Tensor> batch_norm_gather_stats_kernel(
       counts_);
 }
 
+std::tuple<Tensor, Tensor> _fused_rms_norm_xpu(
+    const Tensor& input,
+    IntArrayRef normalized_shape,
+    const std::optional<Tensor>& weight_ops,
+    std::optional<double> eps_opt) {
+
+  c10::MaybeOwned<Tensor> weight_maybe_owned =
+      at::borrow_from_optional_tensor(weight_ops);
+  const Tensor& weight = *weight_maybe_owned;
+  auto M_N = _check_layer_norm_inputs(input, normalized_shape, weight, weight);
+  auto M = M_N.first;
+  auto N = M_N.second;
+  auto X = input.expect_contiguous();
+  auto gamma = weight.expect_contiguous();
+
+  auto acc_type = at::toAccumulateType(input.scalar_type(), kXPU);
+  double eps_val;
+  if (acc_type == at::ScalarType::Float) {
+    eps_val = eps.value_or(std::numeric_limits<float>::epsilon());
+  } else {
+    eps_val = eps.value_or(std::numeric_limits<double>::epsilon());
+  }
+
+  Tensor Y = at::native::empty_like(
+      *X,
+      std::nullopt /* dtype */,
+      std::nullopt /* layout */,
+      std::nullopt /* device */,
+      std::nullopt /* pin_memory */,
+      LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
+
+  if (M > 0) {
+    ...
+  }
+
+  const auto input_shape = input.sizes();
+  const size_t axis = input.dim() - normalized_shape.size();
+
+  std::vector<int64_t> stat_shape;
+  for (const auto idx: c10::irange(axis)) {
+    stat_shape.push_back(input_shape[idx]);
+  }
+  for ([[maybe_unused]] const auto _ : c10::irange(axis, input.dim())) {
+    stat_shape.push_back(1);
+  }
+
+  rstd = rstd.view(stat_shape);
+
+  return std::make_tuple(std::move(Y), std::move(rstd));
+}
+
 } // namespace xpu
 } // namespace native
 } // namespace at
