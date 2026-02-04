@@ -1,0 +1,109 @@
+name: pull
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        type: choice
+        default: 'bmg-test'
+        description: 'Runner label'
+        options:
+          - bmg-test
+          - pvc_rolling
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
+      component:
+        type: choice
+        default: 'onednn'
+        description: 'Which component you need to change'
+        options:
+          - onednn
+          - oneapi
+          - triton
+      baseline:
+        type: string
+        default: ''
+        description: By default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch', or offline installer for oneapi
+      target:
+        type: string
+        default: ''
+        description: By default will not run, or 'commit/branch', or 'repo@commit/repo@branch', or offline installer for oneapi
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.runner }}-${{ inputs.pytorch }}-${{ inputs.component }}-${{ inputs.baseline }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+env:
+  INPUTS_COMPONENT: ${{ inputs.component }}
+  INPUTS_BASELINE: ${{ inputs.baseline }}
+  INPUTS_TARGET: ${{ inputs.target }}
+
+jobs:
+  linux-build:
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        build: [baseline, target]
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: ${{ inputs.runner }}
+      pytorch: ${{ inputs.pytorch }}
+      test_type: ${{ matrix.build }}
+
+  linux-ut:
+    secrets: inherit
+    permissions: write-all
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [op_ut, basic]
+        build: [baseline, target]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: ${{ inputs.runner }}
+      pytorch: ${{ inputs.pytorch }}
+
+  linux-distributed:
+    secrets: inherit
+    permissions: write-all
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: [xpu_distributed]
+        build: [baseline, target]
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: distributed
+      pytorch: ${{ inputs.pytorch }}
+
+  linux-e2e:
+    name: linux-e2e
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [huggingface, timm_models, torchbench]
+        build: [baseline, target]
+    uses: ./.github/workflows/_linux_e2e.yml
+    with:
+      runner: ${{ inputs.runner }}
+      pytorch: ${{ inputs.pytorch }}
+
+
+
+
+
+
+  linux-e2e-summary:
+    name: linux-e2e-summary
+    needs: [linux-e2e]
+    if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
+    permissions: write-all
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: build-nightly

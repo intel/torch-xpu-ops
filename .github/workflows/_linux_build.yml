@@ -25,6 +25,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
+      test_type:
+        type: string
+        default: "build-cicd"
+        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
 
 permissions: read-all
 
@@ -33,6 +37,7 @@ defaults:
     shell: bash -xe {0}
 env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  TEST_TYPE: ${{ inputs.test_type }}
 
 jobs:
   runner:
@@ -91,6 +96,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
+      - name: Setup component if need
+        run: |
+          ./.github/scripts/setup-component.sh
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
@@ -98,20 +106,6 @@ jobs:
           # only build pvc for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
             export TORCH_XPU_ARCH_LIST='pvc'
-          fi
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-            PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
-          else
-            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-            PYTORCH_COMMIT="${{ inputs.pytorch }}"
-          fi
-          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
-          else
-            TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
           # gcc 13
           source /opt/rh/gcc-toolset-13/enable
