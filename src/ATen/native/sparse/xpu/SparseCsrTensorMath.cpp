@@ -28,6 +28,7 @@
 #include <ATen/ops/addmv.h>
 #include <ATen/ops/baddbmm.h>
 #include <ATen/ops/addmm.h>
+#include <ATen/ops/add.h>
 #endif
 
 namespace at::native {
@@ -422,6 +423,218 @@ Tensor& bmm_out_sparse_csr_xpu(
   Scalar beta(0.0);
   Scalar alpha(1.0);
   return at::native::baddbmm_out_sparse_csr_xpu(result, mat1, mat2, beta, alpha, result);
+}
+
+// Tensor& add_out_dense_sparse_compressed_xpu(
+//     Tensor& output,
+//     const Tensor& dense,
+//     const SparseCsrTensor& src,
+//     const Scalar& alpha) {
+//   TORCH_INTERNAL_ASSERT(dense.layout() == kStrided);
+//   TORCH_INTERNAL_ASSERT(
+//       src.layout() == kSparseCsr || src.layout() == kSparseCsc);
+//   TORCH_INTERNAL_ASSERT(dense.is_cuda());
+
+//   TORCH_CHECK(
+//       output.is_contiguous(),
+//       "out argument must be contiguous, but got: ",
+//       output.suggest_memory_format());
+//   TORCH_CHECK(
+//       output.is_xpu(),
+//       "add: expected 'out' to be CUDA tensor, but got tensor on device: ",
+//       output.device());
+
+//   TORCH_CHECK(
+//       src.is_xpu(),
+//       "add: expected 'other' to be a CUDA tensor, but got tensor on device: ",
+//       src.device());
+
+//   TORCH_CHECK(
+//       dense.sizes().equals(src.sizes()),
+//       "add: expected 'self' and 'other' to have same size, but self has size ",
+//       dense.sizes(),
+//       " while other has size ",
+//       src.sizes(),
+//       " (FYI: dense-sparse addition does not currently support broadcasting)");
+
+//   auto commonDtype = promoteTypes(dense.scalar_type(), src.scalar_type());
+//   TORCH_CHECK(
+//       canCast(commonDtype, output.scalar_type()),
+//       "Can't convert result type ",
+//       commonDtype,
+//       " to output ",
+//       output.scalar_type(),
+//       " in add operation");
+
+//   Tensor src_values = src.values();
+
+//   resize_output(output, dense.sizes());
+
+//   Tensor resultBuffer = output;
+
+//   if (output.scalar_type() != commonDtype) {
+//     resultBuffer = dense.to(commonDtype);
+//   } else if (!is_same_tensor(output, dense)) {
+//     resultBuffer.copy_(dense);
+//   }
+
+//   if (src._nnz() == 0) {
+//     return output;
+//   }
+
+//   auto valuesBuffer = src_values.to(commonDtype).reshape({-1, src_values.size(-1)}).contiguous();
+//   resultBuffer = resultBuffer.view({-1, output.size(-2), output.size(-1)});
+//   Tensor src_compressed_indices;
+//   Tensor src_plain_indices;
+//   std::tie(src_compressed_indices, src_plain_indices) =
+//       at::sparse_csr::getCompressedPlainIndices(src);
+//   src_compressed_indices =
+//       src_compressed_indices.reshape({-1, src_compressed_indices.size(-1)});
+//   src_plain_indices =
+//       src_plain_indices.reshape({-1, src_plain_indices.size(-1)});
+//   auto src_layout = src.layout();
+
+//   AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
+//       kComplexHalf,
+//       kHalf,
+//       kBool,
+//       kBFloat16,
+//       commonDtype,
+//       "add_out_op2_sparse_csr",
+//       [&valuesBuffer,
+//        &resultBuffer,
+//        &alpha,
+//        &src_compressed_indices,
+//        &src_plain_indices,
+//        &src_layout]() {
+//         AT_DISPATCH_INDEX_TYPES(
+//             src_compressed_indices.scalar_type(),
+//             "csr_add_out_crow_indices",
+//             [&valuesBuffer,
+//              &resultBuffer,
+//              &alpha,
+//              &src_compressed_indices,
+//              &src_plain_indices,
+//              &src_layout]() {
+//               auto batch_count =
+//                   resultBuffer.dim() > 2 ? resultBuffer.size(-3) : 1;
+//               scalar_t* values_accessor = valuesBuffer.data_ptr<scalar_t>();
+//               scalar_t* out_ptr = resultBuffer.data_ptr<scalar_t>();
+//               scalar_t cast_value = alpha.to<scalar_t>();
+
+//               index_t* compressed_indices_accessor =
+//                   src_compressed_indices.data_ptr<index_t>();
+//               index_t* plain_indices_accessor =
+//                   src_plain_indices.data_ptr<index_t>();
+//               int64_t out_storage_offset = resultBuffer.storage_offset();
+
+//               auto out_strides = resultBuffer.strides();
+//               auto const out_stride_batch = out_strides[0];
+//               auto const out_stride_compressed =
+//                   AT_DISPATCH_ROW_SPARSE_COMPRESSED_LAYOUTS(
+//                       src_layout,
+//                       "add_out_dense_sparse_compressed_cpu",
+//                       [&out_strides] { return out_strides[1]; },
+//                       [&out_strides] { return out_strides[2]; });
+//               auto const out_stride_plain =
+//                   AT_DISPATCH_ROW_SPARSE_COMPRESSED_LAYOUTS(
+//                       src_layout,
+//                       "add_out_dense_sparse_compressed_cpu",
+//                       [&out_strides] { return out_strides[2]; },
+//                       [&out_strides] { return out_strides[1]; });
+//               auto compressed_stride0 = src_compressed_indices.stride(0);
+//               auto plain_stride0 = src_plain_indices.stride(0);
+//               auto val_stride0 = valuesBuffer.stride(0);
+
+//               cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+//               at::cuda::ThrustAllocator allocator;
+//               auto policy = thrust::cuda::par(allocator).on(stream);
+
+//               // Note that this could be wildly imbalanced if the sparsity
+//               // pattern varies a lot between slices along the compressed
+//               // dimension.
+//               thrust::for_each(
+//                   policy,
+//                   thrust::make_counting_iterator(int64_t(0)),
+//                   thrust::make_counting_iterator(
+//                       int64_t(src_compressed_indices.size(-1) - 1)),
+//                   [values_accessor,
+//                    compressed_indices_accessor,
+//                    plain_indices_accessor,
+//                    out_ptr,
+//                    cast_value,
+//                    out_stride_batch,
+//                    out_stride_compressed,
+//                    out_stride_plain,
+//                    compressed_stride0,
+//                    plain_stride0,
+//                    val_stride0,
+//                    batch_count] __device__(int64_t i_compressed) {
+//                     for (index_t batch_idx = 0; batch_idx < batch_count;
+//                          batch_idx++) {
+//                       index_t start_index = compressed_indices_accessor
+//                           [batch_idx * compressed_stride0 + i_compressed];
+//                       index_t end_index = compressed_indices_accessor
+//                           [batch_idx * compressed_stride0 + i_compressed + 1];
+
+//                       for (index_t i = start_index; i < end_index; ++i) {
+//                         auto i_plain = plain_indices_accessor
+//                             [batch_idx * plain_stride0 + i];
+//                         auto index = batch_idx * out_stride_batch +
+//                             i_compressed * out_stride_compressed +
+//                             i_plain * out_stride_plain;
+//                         out_ptr[index] += cast_value *
+//                             values_accessor[batch_idx * val_stride0 + i];
+//                       }
+//                     }
+//                   });
+//             });
+//       });
+//   if (output.scalar_type() != commonDtype) {
+//     output.copy_(resultBuffer);
+//   }
+//   return output;
+// }
+
+Tensor& add_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const SparseCsrTensor& other,
+    const Scalar& alpha,
+    SparseCsrTensor& out) {
+  if (self.layout() == kStrided) {
+    at::add_out(out, self, other.to_dense(), alpha);
+    return out;
+  } else if (other.layout() == kStrided) {
+    at::add_out(out, other, self.to_dense(), alpha);
+    return out;
+  } else {
+    TORCH_CHECK(
+        self.sizes().equals(other.sizes()),
+        "torch.add: Expected input tensors to have the same shape, but got tensor `self` with shape ",
+        self.sizes(),
+        " and tensor `other` with shape ",
+        other.sizes());
+    TORCH_CHECK(
+      self.is_xpu(),
+      "add: expected 'self' to be XPU tensor, but got tensor on device: ",
+      self.device());
+    TORCH_CHECK(
+      other.is_xpu(),
+      "add: expected 'other' to be XPU tensor, but got tensor on device: ",
+      other.device());
+    TORCH_CHECK(
+      out.is_xpu(),
+      "add: expected 'out' to be XPU tensor, but got tensor on device: ",
+      out.device());
+
+    if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
+      return out;
+    }
+
+    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
+    out = out_dense.to_sparse_csr();
+  }
+  return out;
 }
 
 } // namespace at::native
