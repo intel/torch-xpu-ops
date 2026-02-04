@@ -10,10 +10,10 @@
 
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/mkl/BlasImpl.h>
+#include <ATen/native/xpu/mkl/TorchToMklType.h>
 #include <comm/Runtime.h>
 #include <oneapi/mkl/blas.hpp>
 #include <torch/library.h>
-#include <ATen/native/xpu/mkl/TorchToMklType.h>
 
 namespace at::native::xpu {
 
