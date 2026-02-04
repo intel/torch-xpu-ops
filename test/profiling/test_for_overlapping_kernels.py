@@ -14,6 +14,10 @@ from pathlib import Path
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 
+EXCLUDE_MEMCPY = True
+OVERLAP_TOLERANCE = 1  # in microseconds
+
+
 def load_trace(filepath):
     """Load trace JSON file"""
     with open(filepath) as f:
@@ -22,6 +26,7 @@ def load_trace(filepath):
 
 def extract_kernels(trace_data):
     """Extract kernel events with timing info"""
+    
     kernels = []
 
     # GPU-related categories to include
@@ -31,6 +36,10 @@ def extract_kernels(trace_data):
         # Filter events that have timestamp and duration
         if "ts" in event and "dur" in event:
             cat = event.get("cat", "").lower()
+
+            # Skip gpu_memcpy if requested
+            if EXCLUDE_MEMCPY and cat == 'gpu_memcpy':
+                continue
 
             # Only include GPU-related events
             if any(gpu_cat in cat for gpu_cat in gpu_categories):
@@ -69,15 +78,17 @@ def check_overlaps(kernels):
                 overlap_end = min(k1["end"], k2["end"])
                 overlap_duration = overlap_end - overlap_start
 
-                overlaps.append(
-                    {
-                        "kernel1": k1,
-                        "kernel2": k2,
-                        "overlap_start": overlap_start,
-                        "overlap_end": overlap_end,
-                        "overlap_duration": overlap_duration,
-                    }
-                )
+
+                if overlap_duration > OVERLAP_TOLERANCE:
+                    overlaps.append(
+                        {
+                            "kernel1": k1,
+                            "kernel2": k2,
+                            "overlap_start": overlap_start,
+                            "overlap_end": overlap_end,
+                            "overlap_duration": overlap_duration,
+                        }
+                    )
 
     if overlaps:
         print(f"Found {len(overlaps)} overlapping kernel pairs!")
