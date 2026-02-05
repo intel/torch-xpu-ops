@@ -10,6 +10,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC
 
 # Install XPU driver - moved earlier to leverage Docker cache
+ARG GCC_VERSION
+ENV GCC_VERSION=${GCC_VERSION}
 ARG XPU_DRIVER_TYPE
 ENV XPU_DRIVER_TYPE=${XPU_DRIVER_TYPE}
 
@@ -21,6 +23,10 @@ RUN bash /tmp/install_xpu.sh && \
 RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && \
     apt-get upgrade -y --no-install-recommends && \
+    if [ "${UBUNTU_VERSION}" == "22.04" ];then \
+        apt-get install -y software-properties-common && \
+        add-apt-repository ppa:ubuntu-toolchain-r/test -y ;\
+    fi && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         gnupg \
@@ -45,6 +51,9 @@ RUN --mount=type=cache,target=/var/cache/apt \
         rsync \
         jq \
         # Build tools
+        gcc g++ \
+        gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+        build-essential \
         cmake \
         ninja-build \
         pkg-config \
@@ -59,8 +68,14 @@ RUN --mount=type=cache,target=/var/cache/apt \
         zlib1g-dev \
         # Python and pip
         python3 \
+        python3-dev \
         python3-venv \
-        python3-dev && \
+        python3-pip && \
+    # Setup gcc 13 as default
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
+    update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
+    gcc -v && g++ -v && gcov -v && \
     # Cleanup
     apt-get autoremove -y && \
     apt-get clean && \
@@ -71,16 +86,13 @@ RUN --mount=type=cache,target=/var/cache/apt \
         /usr/share/doc/* \
         /usr/share/man/*
 
-# Install Python packages
-# RUN pip3 install --no-cache-dir --upgrade \
-#     pip \
-#     setuptools \
-#     wheel && \
-#     pip3 install --no-cache-dir \
-#     numpy \
-#     pandas \
-#     scipy \
-#     psutil
+# Install Conda
+RUN wget -qO /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh && \
+    bash /tmp/Miniforge3.sh -b -p /opt/conda && \
+    rm /tmp/Miniforge3.sh && \
+    /opt/conda/bin/conda clean -all -y
+
+ENV PATH=/opt/conda/bin:$PATH
 
 # Create sudoers.d directory and add nopasswd rule
 RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |tee /etc/sudoers.d/nopasswd && \
@@ -89,7 +101,7 @@ RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |tee /etc/sudoers.d/nopasswd && \
 RUN sudo visudo -c
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /workspace
+RUN mkdir -p /workspace && chmod 777 -R /opt /workspace
 # Set working directory
 WORKDIR /workspace
 
