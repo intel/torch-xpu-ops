@@ -11,6 +11,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
+      run_type:
+        type: string
+        default: "default"
+        description: Run type, default or comparison
 
 permissions: read-all
 
@@ -41,6 +45,17 @@ jobs:
           sudo apt-get install gh rsync ca-certificates -y
           pip install pandas requests pygithub
       - name: Download Target Artifact
+        if: ${{ inputs.run_type == 'comparison' }}
+        run: |
+          mkdir target/ baseline/
+          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
+          find ../Inductor-*-XPU-E2E-*-target/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+                  while read line; do rsync -az --delete $line/ target/$(basename $line)/; done
+          find ../Inductor-*-XPU-E2E-*-baseline/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
+                  while read line; do rsync -az --delete $line/ baseline/$(basename $line)/; done
+          rm -rf Inductor-*-XPU-E2E-* || true
+      - name: Download Target Artifact
+        if: ${{ inputs.run_type != 'comparison' }}
         run: |
           mkdir target/
           cd target/
@@ -49,6 +64,7 @@ jobs:
                   while read line; do rsync -az --delete $line/ $(basename $line)/; done
           rm -rf Inductor-*-XPU-E2E-* || true
       - name: Download Baseline Artifact
+        if: ${{ inputs.run_type != 'comparison' }}
         run: |
           mkdir baseline/
           cd baseline/

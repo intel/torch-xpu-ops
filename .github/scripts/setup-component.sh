@@ -72,23 +72,23 @@ validate_inputs() {
         fi
     done
 
-    if [[ -z "${TEST_TYPE:-}" ]]; then
-        echo "INFO: TEST_TYPE is not set, defaulting to 'target'"
-        TEST_TYPE="target"
+    if [[ -z "${RUN_TYPE:-}" ]]; then
+        echo "INFO: RUN_TYPE is not set, defaulting to 'target'"
+        RUN_TYPE="target"
     fi
 
-    # Validate TEST_TYPE value
-    if [[ "${TEST_TYPE}" != "target" && "${TEST_TYPE}" != "baseline" ]]; then
-        echo "ERROR: Invalid TEST_TYPE '${TEST_TYPE}'. Must be 'target' or 'baseline'"
+    # Validate RUN_TYPE value
+    if [[ "${RUN_TYPE}" != "target" && "${RUN_TYPE}" != "baseline" ]]; then
+        echo "ERROR: Invalid RUN_TYPE '${RUN_TYPE}'. Must be 'target' or 'baseline'"
         exit 1
     fi
 }
 
 # Function to get component version
 get_component_version() {
-    local test_type="$1"
+    local run_type="$1"
 
-    if [[ "${test_type}" == "target" ]]; then
+    if [[ "${run_type}" == "target" ]]; then
         echo "${INPUTS_TARGET:-}"
     else
         echo "${INPUTS_BASELINE:-}"
@@ -123,18 +123,18 @@ main() {
     validate_inputs
 
     # Determine component version based on test type
-    COMPONENT_VERSION="$(get_component_version "${TEST_TYPE}")"
+    COMPONENT_VERSION="$(get_component_version "${RUN_TYPE}")"
 
     # Validate component version is set
     if [[ -z "${COMPONENT_VERSION}" ]]; then
-        echo "ERROR: COMPONENT_VERSION is not set for TEST_TYPE=${TEST_TYPE}"
+        echo "ERROR: COMPONENT_VERSION is not set for RUN_TYPE=${RUN_TYPE}"
         echo "Check INPUTS_TARGET or INPUTS_BASELINE environment variables"
         exit 1
     fi
 
     echo "Processing component: ${INPUTS_COMPONENT}"
     echo "Component version: ${COMPONENT_VERSION}"
-    echo "Test type: ${TEST_TYPE}"
+    echo "Test type: ${RUN_TYPE}"
 
     # Process based on component type
     case "${INPUTS_COMPONENT}" in

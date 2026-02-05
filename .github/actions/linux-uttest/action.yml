@@ -1,9 +1,9 @@
 name: Linux Unit Test
+description: Linux Unit Test
 
 inputs:
   ut_name:
     required: true
-    type: string
     description: Which ut to launch
 
 runs:
@@ -159,6 +159,110 @@ runs:
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
+
+    - name: op_p0
+      shell: timeout 72000 bash -xeu -o pipefail {0}
+      if: ${{ inputs.ut_name == 'op_p0' }}
+      run: |
+        log_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        mkdir -p ${log_dir}
+        export PYTORCH_ROOT_DIR="${{ github.workspace }}/pytorch"
+        # Inductor
+        cd ${PYTORCH_ROOT_DIR}/
+        pytest test/inductor/test_aot_inductor.py \
+          test/inductor/test_aot_inductor_package.py \
+          test/inductor/test_cutlass_backend.py \
+          test/inductor/test_kernel_benchmark.py \
+          test/inductor/test_mkldnn_pattern_matcher.py \
+          test/inductor/test_torchinductor.py \
+          test/inductor/test_torchinductor_opinfo.py \
+          test/inductor/test_triton_heuristics.py \
+          test/inductor/test_triton_kernels.py \
+          test/inductor/test_triton_syntax.py \
+          test/inductor/test_triton_wrapper.py \
+          --junit-xml=${{ github.workspace }}/ut_log/pytorch_inductor.xml \
+          2> ${log_dir}/pytorch_inductor_test_error.log |tee ${log_dir}/pytorch_inductor_test.log
+
+        # Non-inductor
+        cd ${PYTORCH_ROOT_DIR}/
+        pytest test/xpu/test_conv.py \
+          test/xpu/test_fusion.py \
+          test/xpu/test_gemm.py \
+          --junit-xml=${{ github.workspace }}/ut_log/pytorch_non-inductor.xml \
+          2> ${log_dir}/pytorch_non-inductor_test_error.log |tee ${log_dir}/pytorch_non-inductor_test.log
+        cd ${PYTORCH_ROOT_DIR}/third_party/torch-xpu-ops/
+        pytest test/xpu/test_binary_ufuncs_xpu.py \
+          test/xpu/test_masked_xpu.py \
+          test/xpu/test_ops_xpu.py \
+          test/xpu/test_optim_xpu.py \
+          test/xpu/test_shape_ops_xpu.py \
+          test/xpu/test_unary_ufuncs_xpu.py \
+          test/xpu/test_view_ops_xpu.py \
+          --junit-xml=${{ github.workspace }}/ut_log/xpu_non-inductor.xml \
+          2> ${log_dir}/xpu_non-inductor_test_error.log |tee ${log_dir}/xpu_non-inductor_test.log
+
+        # Profiling
+        cd ${PYTORCH_ROOT_DIR}/
+        pytest test/profiler/test_cpp_thread.py \
+          test/profiler/test_execution_trace.py \
+          test/profiler/test_memory_profiler.py \
+          test/profiler/test_profiler_tree.py \
+          --junit-xml=${{ github.workspace }}/ut_log/pytorch_non-profiling.xml \
+          2> ${log_dir}/pytorch_non-profiling_test_error.log |tee ${log_dir}/pytorch_non-profiling_test.log
+        cd ${PYTORCH_ROOT_DIR}/third_party/torch-xpu-ops/
+        pytest test/profiling/rn50.py \
+          test/profiling/llama.py \
+          test/profiling/correlation_id_mixed.py \
+          test/profiling/profile_partial_runtime_ops.py \
+          test/profiling/reproducer.missing.gpu.kernel.time.py \
+          test/profiling/time_precision_in_profile.py \
+          test/profiling/triton_xpu_ops_time.py \
+          --junit-xml=${{ github.workspace }}/ut_log/xpu_non-profiling.xml \
+          2> ${log_dir}/xpu_non-profiling_test_error.log |tee ${log_dir}/xpu_non-profiling_test.log
+
+        # Distributed, on PVC >= 4 with XL8 enabled
+        xpu-smi topology -m
+        export PYTEST_ADDOPTS="-v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000"
+        cd ${PYTORCH_ROOT_DIR}/
+        pytest test/distributed/_composable.fsdp/test_fully_shard_state_dict.py \
+          test/distributed/_composable/fsdp/test_fully_shard_frozen.py \
+          test/distributed/_composable/test_checkpoint.py \
+          test/distributed/_composable/test_contract.py \
+          test/distributed/_tools/test_fsdp2_mem_tracker.py \
+          test/distributed/_tools/test_mem_tracker.py \
+          test/distributed/_tools/test_memory_tracker.py \
+          test/distributed/fsdp/test_fsdp_apply.py \
+          test/distributed/fsdp/test_fsdp_checkpoint.py \
+          test/distributed/fsdp/test_fsdp_clip_grad_norm.py \
+          test/distributed/fsdp/test_fsdp_comm.py \
+          test/distributed/fsdp/test_fsdp_comm_hooks.py \
+          test/distributed/fsdp/test_fsdp_exec_order.py \
+          test/distributed/fsdp/test_fsdp_fine_tune.py \
+          test/distributed/fsdp/test_fsdp_flatten_params.py \
+          test/distributed/fsdp/test_fsdp_fx.py \
+          test/distributed/fsdp/test_fsdp_input.py \
+          test/distributed/fsdp/test_fsdp_misc.py \
+          test/distributed/fsdp/test_fsdp_multiple_forward.py \
+          test/distributed/fsdp/test_fsdp_multiple_wrapping.py \
+          test/distributed/fsdp/test_fsdp_sharded_grad_scaler.py \
+          test/distributed/fsdp/test_fsdp_uneven.py \
+          test/distributed/fsdp/test_fsdp_unshard_params.py \
+          test/distributed/fsdp/test_utils.py \
+          test/distributed/fsdp/test_wrap.py \
+          test/distributed/pipelining/test_backward.py \
+          test/distributed/pipelining/test_microbatch.py \
+          test/distributed/tensor/test_math_ops.py \
+          test/distributed/test_functional_api.py \
+          --junit-xml=${{ github.workspace }}/ut_log/pytorch_non-distributed.xml \
+          2> ${log_dir}/pytorch_non-distributed_test_error.log |tee ${log_dir}/pytorch_non-distributed_test.log
+        cd ${PYTORCH_ROOT_DIR}/third_party/torch-xpu-ops
+        pytest test/xpu/distributed/test_c10d_ops_xccl.py \
+          test/xpu/distributed/test_c10d_xccl.py \
+          --junit-xml=${{ github.workspace }}/ut_log/xpu_non-distributed.xml \
+          2> ${log_dir}/xpu_non-distributed_test_error.log |tee ${log_dir}/xpu_non-distributed_test.log
+
+        echo -e "File Path: cd ${PYTORCH_ROOT_DIR}/" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_p0.log
+        echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_op_p0.log
 
     # Summary
     - name: UT Test Results Summary

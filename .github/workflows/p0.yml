@@ -53,7 +53,7 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ inputs.pytorch }}
-      test_type: ${{ matrix.build }}
+      run_type: ${{ matrix.build }}
 
   linux-ut:
     secrets: inherit
@@ -61,25 +61,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ut_name: [op_ut, basic]
+        ut_name: [op_p0]
         build: [baseline, target]
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ inputs.pytorch }}
-
-  linux-distributed:
-    secrets: inherit
-    permissions: write-all
-    strategy:
-      fail-fast: false
-      matrix:
-        ut_name: [xpu_distributed]
-        build: [baseline, target]
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: distributed
-      pytorch: ${{ inputs.pytorch }}
+      run_type: ${{ matrix.build }}
 
   linux-e2e:
     name: linux-e2e
@@ -93,11 +81,7 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ inputs.pytorch }}
-
-
-
-
-
+      run_type: ${{ matrix.build }}
 
   linux-e2e-summary:
     name: linux-e2e-summary
@@ -107,3 +91,4 @@ jobs:
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: build-nightly
+      run_type: comparison

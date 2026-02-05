@@ -1,22 +1,22 @@
 name: Setup Test Environment
+description: Setup Test Environment
 
 inputs:
   pytorch:
-    type: string
     default: 'main'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
-    type: string
     default: 'main'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
-    type: string
     default: '3.10'
     description: Python version
   suite:
-    type: string
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+  run_type:
+    default: "target"
+    description: Run type, target or baseline
 
 runs:
   using: composite
@@ -66,7 +66,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
+          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*-${{ inputs.run_type }}" |sort -V |tail -n 1)"
           pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')

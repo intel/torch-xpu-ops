@@ -25,10 +25,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
-      test_type:
+      run_type:
         type: string
-        default: "build-cicd"
-        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
+        default: "target"
+        description: Run type, target or baseline
 
 permissions: read-all
 
@@ -37,7 +37,7 @@ defaults:
     shell: bash -xe {0}
 env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-  TEST_TYPE: ${{ inputs.test_type }}
+  RUN_TYPE: ${{ inputs.run_type }}
 
 jobs:
   runner:
@@ -155,6 +155,9 @@ jobs:
           else
             TRITON_COMMIT_ID="${{ inputs.triton }}"
           fi
+          if [ "${INPUTS_COMPONENT}" == "triton" ];then
+            TRITON_COMMIT_ID="${TRITON_COMMIT}"
+          fi
           built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
                   triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
             v = "None";
@@ -199,13 +202,13 @@ jobs:
         if: ${{ success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_type }}
           path: ${{ github.workspace }}/*.whl
       - name: Upload Build Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_type }}
           path: ${{ github.workspace }}/build_*.log
       - name: Cleanup workspace
         if: ${{ always() }}

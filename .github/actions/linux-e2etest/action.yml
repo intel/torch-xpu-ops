@@ -1,26 +1,26 @@
 name: Linux E2E Test
+description: Linux E2E Test
 
 inputs:
   suite:
     required: true
-    type: string
     default: 'huggingface'
     description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
   dt:
     required: true
-    type: string
     default: 'float32'
     description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
   mode:
     required: true
-    type: string
     default: 'inference'
     description: inference,training. Delimiter is comma
   scenario:
     required: true
-    type: string
     default: 'accuracy'
     description: accuracy,performance. Delimiter is comma
+  run_type:
+    default: "default"
+    description: Run type, target or baseline
 
 runs:
   using: composite
@@ -40,7 +40,11 @@ runs:
           # huggingface all and remove CamemBert
           # timm_models all
           # torchbench all
-          rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+          if [ "${{ inputs.run_type }}" != "default" ];then
+            rsync -avz ../.ci/benchmarks/p0 benchmarks/dynamo/
+          else
+            rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+          fi
         fi
         rm -rf inductor_log torch
         # check param

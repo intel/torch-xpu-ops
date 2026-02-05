@@ -40,6 +40,10 @@ on:
         type: string
         default: ''
         description: Model. Will only run this one mode if set
+      run_type:
+        type: string
+        default: "target"
+        description: Run type, target or baseline
 
 permissions: read-all
 
@@ -92,6 +96,7 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
+          run_type: ${{ inputs.run_type }}
 
       # CICD launch
       - name: CICD Huggingface BF16 & FP16 Training Test
@@ -102,6 +107,7 @@ jobs:
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: CICD Timm_models BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -110,6 +116,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: CICD Torchbench BF16 Training Test
         if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -118,6 +125,7 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
 
       # Nihglty launch
       - name: Nightly Huggingface Full Test
@@ -128,6 +136,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: Nightly Timm_models FP16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -136,6 +145,7 @@ jobs:
           dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: Nightly Torchbench BF16 Training Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -144,12 +154,14 @@ jobs:
           dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: Nightly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
 
       # Weekly launch
       - name: Weekly Huggingface Full Test
@@ -160,6 +172,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: Weekly Timm_models Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -168,6 +181,7 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: Weekly Torchbench Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -176,12 +190,14 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
       - name: Weekly PT2E Full Test
         if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
           scenario: accuracy,performance
+          run_type: ${{ inputs.run_type }}
 
       # On-demand launch
       - name: Get test data types
@@ -201,6 +217,7 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          run_type: ${{ inputs.run_type }}
       - name: OnDemand Test (timm_models)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
         uses: ./.github/actions/linux-e2etest
@@ -209,6 +226,7 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          run_type: ${{ inputs.run_type }}
       - name: OnDemand Test (torchbench)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
         uses: ./.github/actions/linux-e2etest
@@ -217,6 +235,7 @@ jobs:
           dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
+          run_type: ${{ inputs.run_type }}
       - name: OnDemand PT2E Test (pt2e)
         if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
         uses: ./.github/actions/pt2e
@@ -233,5 +252,5 @@ jobs:
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_type }}
           path: ${{ github.workspace }}/upload_files
