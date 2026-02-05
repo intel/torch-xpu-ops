@@ -53,6 +53,7 @@ RUN --mount=type=cache,target=/var/cache/apt \
         # Build tools
         gcc g++ \
         gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+        build-essential \
         cmake \
         ninja-build \
         pkg-config \
@@ -85,16 +86,13 @@ RUN --mount=type=cache,target=/var/cache/apt \
         /usr/share/doc/* \
         /usr/share/man/*
 
-# Install Python packages
-# RUN pip3 install --no-cache-dir --upgrade \
-#     pip \
-#     setuptools \
-#     wheel && \
-#     pip3 install --no-cache-dir \
-#     numpy \
-#     pandas \
-#     scipy \
-#     psutil
+# Install Conda
+RUN wget -qO /tmp/Miniforge3.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-$(uname -m).sh && \
+    bash /tmp/Miniforge3.sh -b -p /opt/conda && \
+    rm /tmp/Miniforge3.sh && \
+    /opt/conda/bin/conda clean -all -y
+
+ENV PATH=/opt/conda/bin:$PATH
 
 # Create sudoers.d directory and add nopasswd rule
 RUN echo "ALL ALL=(ALL:ALL) NOPASSWD: ALL" |tee /etc/sudoers.d/nopasswd && \
