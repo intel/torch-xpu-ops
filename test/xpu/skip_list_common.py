@@ -45,6 +45,8 @@ skip_dict = {
         "_tunableop_",
         "_tuning_tunableop_",
     ),
+    "test_autograd.py": None,
+    "test_tensor_creation_ops.py": None,
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
     "test_meta_xpu.py": ("_jiterator_",),
