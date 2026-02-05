@@ -126,7 +126,7 @@ runs:
         python -u test/profiling/triton_xpu_ops_time.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
         python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.py
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
         # llama case for calls number test
         pip install transformers
