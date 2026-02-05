@@ -9466,6 +9466,17 @@
 - func: linalg_solve(Tensor A, Tensor B, *, bool left=True) -> Tensor
   python_module: linalg
 
+- func: linalg_qr(Tensor A, str mode='reduced') -> (Tensor Q, Tensor R)
+  python_module: linalg
+  variants: function
+  structured_delegate: linalg_qr.out
+
+- func: linalg_qr.out(Tensor A, str mode='reduced', *, Tensor(a!) Q, Tensor(b!) R) -> (Tensor(a!) Q, Tensor(b!) R)
+  python_module: linalg
+  structured: True
+  dispatch:
+    XPU: linalg_qr_xpu_out
+
 - func: linalg_inv_ex(Tensor A, *, bool check_errors=False) -> (Tensor inverse, Tensor info)
   python_module: linalg
   structured_delegate: linalg_inv_ex.inverse

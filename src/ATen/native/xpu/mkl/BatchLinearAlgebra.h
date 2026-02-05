@@ -26,4 +26,10 @@ TORCH_XPU_API void lu_factor_mkl(
     const Tensor& info,
     bool pivot);
 
+TORCH_XPU_API void linalg_qr_kernel(
+    const at::Tensor& A,
+    std::string_view mode,
+    const at::Tensor& Q,
+    const at::Tensor& R);
+
 } // namespace at::native::xpu
