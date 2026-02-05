@@ -5215,8 +5215,6 @@ class TestSparseCompressedTritonKernels(TestCase):
 
         from torch.sparse._triton_ops import scatter_mm
 
-        if "xpu" in device and dtype in {torch.bfloat16, torch.float16}:
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2220")
         tensor = partial(make_tensor, device=device, dtype=dtype, low=0.5, high=1.5)
         sizes = [8, 16]
         for m, k, n in itertools.product(sizes, sizes, sizes):
@@ -5289,12 +5287,6 @@ class TestSparseCompressedTritonKernels(TestCase):
             blocksize = tuple(map(int, blocksize.split("x")))
         else:
             blocksize = (blocksize,) * 2
-        if (
-            "xpu" in device
-            and dtype in {torch.bfloat16, torch.float16}
-            and blocksize in [(16, 16), (32, 32), (64, 64), (16, 32)]
-        ):
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2220")
         # Note that each value in a non-zero block is in range blocksize * [low^2, high^2).
         tensor = partial(make_tensor, device=device, dtype=dtype, low=0.5, high=1.5)
 
@@ -5453,31 +5445,6 @@ class TestSparseCompressedTritonKernels(TestCase):
             optimize_bsr_dense_addmm,
         )
 
-        if op == "bsr_dense_mm" and "xpu" in device:
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2230")
-        if "xpu" in device and op == "bsr_dense_linear" and blocksize in [16, 32]:
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2211")
-        if (
-            "xpu" in device
-            and op == "bsr_dense_addmm"
-            and dtype in {torch.bfloat16, torch.float16}
-            and out_dtype == "unspecified"
-        ):
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2220")
-        if (
-            "xpu" in device
-            and op == "bsr_dense_addmm"
-            and dtype is torch.float32
-            and out_dtype == "unspecified"
-        ):
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2246")
-        if (
-            "xpu" in device
-            and op in ["bsr_dense_addmm", "_int_bsr_dense_addmm"]
-            and blocksize == 32
-            and dtype is torch.int8
-        ):
-            self.skipTest("https://github.com/intel/torch-xpu-ops/issues/2220")
         if out_dtype == "unspecified":
             out_dtype = None
         elif op == "bsr_dense_addmm":
