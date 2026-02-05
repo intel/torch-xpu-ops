@@ -12796,9 +12796,15 @@ class TestTensorDeviceOps(TestCase):
 # pytest will fail.
 add_neg_dim_tests()
 instantiate_device_type_tests(TestViewOps, globals(), allow_xpu=True, only_for="xpu")
-instantiate_device_type_tests(TestVitalSignsCuda, globals(), allow_xpu=True, only_for="xpu")
-instantiate_device_type_tests(TestTensorDeviceOps, globals(), allow_xpu=True, only_for="xpu")
-instantiate_device_type_tests(TestTorchDeviceType, globals(), allow_xpu=True, only_for="xpu")
+instantiate_device_type_tests(
+    TestVitalSignsCuda, globals(), allow_xpu=True, only_for="xpu"
+)
+instantiate_device_type_tests(
+    TestTensorDeviceOps, globals(), allow_xpu=True, only_for="xpu"
+)
+instantiate_device_type_tests(
+    TestTorchDeviceType, globals(), allow_xpu=True, only_for="xpu"
+)
 instantiate_device_type_tests(
     TestDevicePrecision, globals(), except_for="cpu", allow_xpu=True, only_for="xpu"
 )
