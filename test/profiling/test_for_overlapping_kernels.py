@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@ from pathlib import Path
 
 from torch.testing._internal.common_utils import run_tests, TestCase
 
-
 EXCLUDE_MEMCPY = True
 OVERLAP_TOLERANCE = 1  # in microseconds
 
@@ -26,7 +25,6 @@ def load_trace(filepath):
 
 def extract_kernels(trace_data):
     """Extract kernel events with timing info"""
-    
     kernels = []
 
     # GPU-related categories to include
@@ -38,7 +36,7 @@ def extract_kernels(trace_data):
             cat = event.get("cat", "").lower()
 
             # Skip gpu_memcpy if requested
-            if EXCLUDE_MEMCPY and cat == 'gpu_memcpy':
+            if EXCLUDE_MEMCPY and cat == "gpu_memcpy":
                 continue
 
             # Only include GPU-related events
@@ -77,7 +75,6 @@ def check_overlaps(kernels):
                 overlap_start = max(k1["ts"], k2["ts"])
                 overlap_end = min(k1["end"], k2["end"])
                 overlap_duration = overlap_end - overlap_start
-
 
                 if overlap_duration > OVERLAP_TOLERANCE:
                     overlaps.append(
