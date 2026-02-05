@@ -36,6 +36,12 @@ skip_dict = {
     "test_decomp_xpu.py": None,
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
+    "test_fsdp_mixed_precision.py": None,
+    "test_fsdp_optim_state.py": None,
+    "test_ctx_manager.py": None,
+    "test_functions.py": None,
+    "test_higher_order_ops.py": None,
+    "test_repros.py": None,
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
         "use_cuda_graph_True",
