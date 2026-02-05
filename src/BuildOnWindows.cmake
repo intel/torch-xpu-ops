@@ -15,21 +15,13 @@ macro(setup_common_libraries)
   add_library(
     torch_xpu_ops
     STATIC
-    ${ATen_XPU_CPP_SRCS})
-  set(PATH_TO_TORCH_XPU_OPS_ATEN_LIB \"torch_xpu_ops_aten.dll\")
-  target_compile_options(torch_xpu_ops PRIVATE -DPATH_TO_TORCH_XPU_OPS_ATEN_LIB=${PATH_TO_TORCH_XPU_OPS_ATEN_LIB})
-
-  add_library(
-    torch_xpu_ops_aten
-    SHARED
     ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS})
-  install(TARGETS torch_xpu_ops_aten DESTINATION "${TORCH_INSTALL_LIB_DIR}")
-  target_compile_definitions(torch_xpu_ops_aten PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC torch_xpu)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC torch_cpu)
-  target_link_libraries(torch_xpu_ops_aten PUBLIC c10)
+  target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
+  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
+  target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
+  target_link_libraries(torch_xpu_ops PUBLIC c10)
 endmacro()
 
 if(BUILD_SEPARATE_OPS)
@@ -41,14 +33,13 @@ if(BUILD_SEPARATE_OPS)
       ${sycl_lib}
       SHARED
       SYCL_SOURCES ${sycl_src})
-    target_link_libraries(torch_xpu_ops_aten PUBLIC ${sycl_lib})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
     list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
     # Decouple with PyTorch cmake definition.
     install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
   endforeach()
   list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops)
-  list(APPEND TORCH_XPU_OPS_LIBRARIES torch_xpu_ops_aten)
 else()
   # On Windows, it is not possible to combine all obj files into one library
   # because the obj files of kernels compiled on Windows are much larger than
@@ -58,7 +49,6 @@ else()
   add_library(
     torch_xpu_ops
     STATIC
-    ${ATen_XPU_CPP_SRCS}
     ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS})
