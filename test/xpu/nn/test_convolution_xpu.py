@@ -29,7 +29,10 @@ from torch.testing._internal.common_device_type import (
     onlyXPU,
     skipIf,
 )
-from torch.testing._internal.common_dtype import floating_and_complex_types_and
+from torch.testing._internal.common_dtype import (
+    floating_and_complex_types_and,
+    floating_types_and,
+)
 from torch.testing._internal.common_utils import (
     dtype2prec_DONTUSE,
     gradcheck,
@@ -1291,12 +1294,56 @@ with XPUPatchForImport(False):
                 rtol=0,
             )
 
+    @dtypes(*floating_types_and(torch.half, torch.bfloat16))
+    def conv2d_naive_groups(self, device, dtype):
+        # Check that grouped convolutions matches two half convolutions
+        m = nn.Conv2d(4, 4, kernel_size=3, groups=2).to(device, dtype)
+        i = torch.randn(2, 4, 6, 6, device=device, dtype=dtype, requires_grad=True)
+        output = m(i)
+        grad_output = torch.randn(2, 4, 4, 4, device=device, dtype=dtype)
+        output.backward(grad_output)
+
+        m1 = nn.Conv2d(2, 2, kernel_size=3).to(device, dtype)
+        m1.weight.data.copy_(m.weight.data[:2])
+        m1.bias.data.copy_(m.bias.data[:2])
+        i1 = i.data[:, :2].contiguous().requires_grad_(True)
+        output1 = m1(i1)
+        output1.backward(grad_output[:, :2].contiguous())
+
+        m2 = nn.Conv2d(2, 2, kernel_size=3).to(device, dtype)
+        m2.weight.data.copy_(m.weight.data[2:])
+        m2.bias.data.copy_(m.bias.data[2:])
+        i2 = i.data[:, 2:].contiguous().requires_grad_(True)
+        output2 = m2(i2)
+        output2.backward(grad_output[:, 2:].contiguous())
+
+        self.assertEqual(output, torch.cat([output1, output2], 1))
+        self.assertEqual(
+            i.grad.data,
+            torch.cat([i1.grad.data, i2.grad.data], 1),
+            atol=dtype2prec_DONTUSE[dtype],
+            rtol=0,
+        )
+        self.assertEqual(
+            m.bias.grad.data,
+            torch.cat([m1.bias.grad.data, m2.bias.grad.data], 0),
+            atol=dtype2prec_DONTUSE[dtype],
+            rtol=0,
+        )
+        self.assertEqual(
+            m.weight.grad.data,
+            torch.cat([m1.weight.grad.data, m2.weight.grad.data], 0),
+            atol=dtype2prec_DONTUSE[dtype],
+            rtol=0,
+        )
+
     @dtypes(*floating_and_complex_types_and(torch.half, torch.bfloat16))
-    def conv2d_deterministic_cudnn(self, device, dtype):
+    @parametrize_test("dilation", [1, 2, 3])
+    def conv2d_deterministic_cudnn(self, device, dtype, dilation):
         inputs = torch.randn(2, 3, 5, 5, device=device, dtype=dtype, requires_grad=True)
         with torch.backends.mkldnn.flags(enabled=False, deterministic=True):
-            conv1 = torch.nn.Conv2d(3, 3, 3).to(device, dtype)
-            conv2 = torch.nn.Conv2d(3, 3, 3).to(device, dtype)
+            conv1 = torch.nn.Conv2d(3, 3, 3, dilation=dilation).to(device, dtype)
+            conv2 = torch.nn.Conv2d(3, 3, 3, dilation=dilation).to(device, dtype)
             conv2.bias.data.copy_(conv1.bias.data)
             conv2.weight.data.copy_(conv1.weight.data)
             out1 = conv1(inputs)
@@ -1311,6 +1358,29 @@ with XPUPatchForImport(False):
             self.assertEqual(
                 conv1.weight.grad.data, conv2.weight.grad.data, atol=0.0, rtol=0
             )
+
+    @dtypes(*floating_types_and(torch.half, torch.bfloat16))
+    def conv2d_large_workspace(self, device, dtype):
+        # These sizes require huge cuDNN workspaces. Make sure we choose a
+        # reasonable algorithm that does not run out of memory
+        sizes = [
+            (1, 256, 109, 175),
+            (1, 256, 80, 128),
+            (1, 256, 120, 192),
+        ]
+
+        def run_test(benchmark):
+            with torch.backends.mkldnn.flags(enabled=False):
+                conv = torch.nn.Conv2d(256, 256, kernel_size=3, padding=1).to(
+                    device, dtype
+                )
+                for size in sizes:
+                    x = torch.randn(size, device=device, dtype=dtype)
+                    out = conv(x.detach().clone().requires_grad_())
+                    out.backward(torch.ones_like(out))
+
+        run_test(benchmark=False)
+        run_test(benchmark=True)
 
     TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = (
         conv2d_depthwise_naive_groups
@@ -1334,6 +1404,12 @@ with XPUPatchForImport(False):
     TestConvolutionNNDeviceType.test_conv_transposed_large = conv_transposed_large
     TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = (
         conv2d_deterministic_cudnn
+    )
+    TestConvolutionNNDeviceType.test_Conv2d_large_workspace = (
+        conv2d_large_workspace
+    )
+    TestConvolutionNNDeviceType.test_Conv2d_naive_groups = (
+        conv2d_naive_groups
     )
     TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = (
         conv2d_inconsistent_types_on_GPU_with_mkldnn
