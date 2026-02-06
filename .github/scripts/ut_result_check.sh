@@ -9,7 +9,7 @@ readonly REPO="intel/torch-xpu-ops"
 readonly TEST_PLATFORM_RAW="${TEST_PLATFORM:-linux}"
 _test_platform_normalized="${TEST_PLATFORM_RAW,,}"
 case "$_test_platform_normalized" in
-  linux|windows) 
+  linux|windows)
     _final_platform="$_test_platform_normalized"
     ;;
   *)
