@@ -483,14 +483,18 @@ REGISTER_XPU_DISPATCH(
     fft_fill_with_conjugate_symmetry_stub,
     &_fft_fill_with_conjugate_symmetry_xpu);
 
-Tensor _fft_r2c_mkl(
+Tensor& _fft_r2c_mkl_out(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
-    bool onesided) {
+    bool onesided,
+    Tensor& out) {
+
   if (dim.empty()) {
-    return orig_self.clone();
+    out = orig_self.clone();
+    return out;
   }
+
   auto self = impl::promote_fft_input(orig_self);
 
   auto input_sizes = self.sizes();
@@ -501,8 +505,9 @@ Tensor _fft_r2c_mkl(
 
   IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
 
-  auto out = at::empty(
-      out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+  //auto out = at::empty(
+  //    out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+  at::native::resize_output(out, out_sizes);
 
   auto working_tensor = self.contiguous();
 
@@ -552,20 +557,29 @@ Tensor _fft_r2c_mkl(
   }
 
   if (orig_self.scalar_type() == ScalarType::Half)
-    return out.to(ScalarType::ComplexHalf);
+    out = out.to(ScalarType::ComplexHalf);
   return out;
 }
 
-Tensor& _fft_r2c_mkl_out(
+Tensor _fft_r2c_mkl(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
-    bool onesided,
-    Tensor& out) {
-  auto result = _fft_r2c_mkl(self, dim, normalization, onesided);
+    bool onesided) {
+  auto input_sizes = self.sizes();
+  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
+  onesided_sizes[last_dim] = last_dim_halfsize;
 
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
+
+  auto out = at::empty(
+      out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+  _fft_r2c_mkl_out(self, dim, normalization, onesided, out);
+
+  //at::native::resize_output(out, result.sizes());
+  //out.copy_(result);
   return out;
 }
 
