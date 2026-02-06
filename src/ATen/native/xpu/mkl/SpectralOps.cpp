@@ -488,14 +488,15 @@ Tensor& _fft_r2c_mkl_out(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided,
-    Tensor& out) {
+    Tensor& orig_out) {
 
   if (dim.empty()) {
-    out = orig_self.clone();
-    return out;
+    orig_out = orig_self.clone();
+    return orig_out;
   }
 
   auto self = impl::promote_fft_input(orig_self);
+  auto out = impl::promote_fft_input(orig_out);
 
   auto input_sizes = self.sizes();
   DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
@@ -557,8 +558,8 @@ Tensor& _fft_r2c_mkl_out(
   }
 
   if (orig_self.scalar_type() == ScalarType::Half)
-    out = out.to(ScalarType::ComplexHalf);
-  return out;
+    orig_out = out.to(ScalarType::ComplexHalf);
+  return orig_out;
 }
 
 Tensor _fft_r2c_mkl(
@@ -567,15 +568,8 @@ Tensor _fft_r2c_mkl(
     int64_t normalization,
     bool onesided) {
   auto input_sizes = self.sizes();
-  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
-  auto last_dim = dim.back();
-  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
-  onesided_sizes[last_dim] = last_dim_halfsize;
-
-  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
-
   auto out = at::empty(
-      out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+      input_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
   _fft_r2c_mkl_out(self, dim, normalization, onesided, out);
 
   //at::native::resize_output(out, result.sizes());
