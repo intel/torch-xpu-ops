@@ -1,11 +1,27 @@
 #!/bin/bash
 # Test Suite Runner for Intel Torch-XPU-Ops
-# Usage: ./script.sh <test_suite>
+# Usage: TEST_PLATFORM=linux ./script.sh <test_suite>
 
-# Available suites: op_regression, op_extended, op_ut, test_xpu, op_ut_windows, xpu_distributed, skipped_ut
+# Available suites: op_regression, op_extended, op_ut, test_xpu, xpu_distributed, skipped_ut
 readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite specified
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
+readonly TEST_PLATFORM_RAW="${TEST_PLATFORM:-linux}"
+readonly TEST_PLATFORM="$(
+  case "${TEST_PLATFORM_RAW,,}" in
+    linux|windows) echo "${TEST_PLATFORM_RAW,,}" ;;
+    *) 
+      echo "⚠️  Unsupported TEST_PLATFORM='${TEST_PLATFORM_RAW}', defaulting to 'linux'" >&2
+      echo "linux"
+      ;;
+  esac
+)"
+
+# Expected test case counts for op_ut between linux and windows(Focus scope)
+declare -A OP_UT_EXPECTED=(
+    ["linux"]=178548
+    ["windows"]=105263
+)
 
 # Expected test case counts for each test suite category
 # Used to detect significant test case reductions (>5%)
@@ -14,9 +30,8 @@ declare -A EXPECTED_CASES=(
     ["op_regression"]=268
     ["op_regression_dev1"]=1
     ["op_transformers"]=262
-    ["op_ut"]=178548
+    ["op_ut"]="${OP_UT_EXPECTED[$TEST_PLATFORM]}"
     ["test_xpu"]=69
-    ["op_ut_windows"]=91741
 )
 
 # Tests that are known to randomly pass and should be ignored when detecting new passes
@@ -29,6 +44,11 @@ IGNORE_TESTS=(
     "test_python_ref__refs_log2_xpu_complex128"
     "_jiterator_"  # Pattern to match all jiterator tests
 )
+
+# Get expected number for op_ut
+get_op_ut_expected() {
+    echo "${OP_UT_EXPECTED[$TEST_PLATFORM]}"
+}
 
 # Find new failed test cases that are not in the known issues list
 # Args: UT_results_file, known_issues_file, [output_file]
@@ -100,6 +120,10 @@ check_test_cases() {
             current_category="${BASH_REMATCH[1]}"
         elif [[ "$line" =~ Test\ cases:\ ([0-9]+) ]] && [[ -n "$current_category" ]]; then
             local actual="${BASH_REMATCH[1]}" expected="${EXPECTED_CASES[$current_category]}"
+            if [[ "$current_category" == "op_ut" ]]; then
+                expected=$(get_op_ut_expected)
+                echo "op_ut expected value for ${TEST_PLATFORM} platform: ${expected}"
+            fi
             if [[ -n "$expected" ]]; then
                 # Calculate 95% threshold for acceptable reduction
                 local threshold reduction
@@ -349,7 +373,7 @@ mark_passed_issue() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu|op_ut_windows)
+    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
@@ -364,6 +388,6 @@ case "$ut_suite" in
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
         printf "💡 Available: op_regression, op_regression_dev1, op_extended, op_transformers, " >&2
-        printf "op_ut, test_xpu, xpu_distributed, skipped_ut, xpu_profiling, op_ut_windows\n" >&2
+        printf "op_ut, test_xpu, xpu_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac

@@ -187,7 +187,7 @@ jobs:
               if ( $0 ~ /Cases:/ ) { print_row = 1 };
             }' issues.log >> Known_issue.log
             sed -i 's/[[:space:]]*$//g' Known_issue.log
-            bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
+            TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
