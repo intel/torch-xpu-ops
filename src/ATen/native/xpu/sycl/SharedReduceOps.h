@@ -106,6 +106,76 @@ struct WelfordOps {
       : correction(correction), take_sqrt(take_sqrt) {}
 };
 
+template <typename scalar_t, typename index_t>
+struct SumVarData {
+  scalar_t first_elem;
+  scalar_t sum;
+  scalar_t sum_of_squares;
+  index_t n;
+  scalar_t nf;
+
+  SumVarData() : first_elem(0), sum(0), sum_of_squares(0), n(0), nf(0) {}
+
+  SumVarData(scalar_t first_elem, scalar_t sum, scalar_t sum_of_squares,
+             index_t n, scalar_t nf)
+      : first_elem(first_elem), sum(sum), sum_of_squares(sum_of_squares),
+        n(n), nf(nf) {}
+};
+
+template <
+    typename scalar_t,
+    typename acc_scalar_t,
+    typename index_t,
+    typename res_t>
+struct SumVarOps {
+  acc_scalar_t correction;
+  bool take_sqrt;
+
+ public:
+  using acc_t = SumVarData<acc_scalar_t, index_t>;
+  inline acc_t reduce(acc_t acc, scalar_t data, index_t /*idx*/) const {
+    index_t new_n = acc.n + 1;
+    acc_scalar_t new_nf = static_cast<acc_scalar_t>(new_n);
+    acc_scalar_t dif = static_cast<acc_scalar_t>(data) - acc.first_elem;
+    return {
+        acc.first_elem,
+        acc.sum + data,
+        acc.sum_of_squares + dif * dif,
+        new_n,
+        new_nf,
+    };
+  }
+  inline acc_t combine(acc_t a, acc_t b) const {
+    if (a.nf == 0) {
+      return b;
+    }
+    if (b.nf == 0) {
+      return a;
+    }
+    acc_scalar_t new_count = a.nf + b.nf;
+    return {
+        a.first_elem,
+        a.sum + b.sum,
+        a.sum_of_squares + b.sum_of_squares,
+        a.n + b.n,
+        new_count};
+  }
+  inline res_t project(acc_t acc) const __ubsan_ignore_float_divide_by_zero__ {
+    const auto mean = static_cast<scalar_t>(acc.sum / acc.nf);
+    const auto var = (acc.sum_of_squares / acc.nf) -
+        (mean - acc.first_elem) * (mean - acc.first_elem);
+    res_t results(take_sqrt ? device_sqrt(var) : var, mean);
+    return results;
+  }
+
+  static C10_DEVICE acc_t translate_idx(acc_t acc, int64_t /*base_idx*/) {
+    return acc;
+  }
+
+  SumVarOps(acc_scalar_t correction, bool take_sqrt)
+      : correction(correction), take_sqrt(take_sqrt) {}
+};
+
 template <
     typename scalar_t,
     typename acc_t = scalar_t,

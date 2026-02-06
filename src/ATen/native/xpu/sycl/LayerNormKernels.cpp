@@ -193,34 +193,34 @@ bool can_vectorize(const T* ptr, int alignment) {
 
 template <typename T, typename T_ACC>
 struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  using WelfordType = WelfordData<T_ACC, int64_t>;
-  using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  using SumVarType = SumVarData<T_ACC, int64_t>;
+  using SumVarOp = SumVarOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
   void operator()(sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
-    WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
-    WelfordType val(0, 0, 0, 0);
+    SumVarOp sumvar_op = {/*correction=*/0, /*take_sqrt=*/false};
+    SumVarType val(static_cast<T_ACC>(X_[i * N_]), 0, 0, 0, 0);
     for (int64_t j = item_id.get_local_id(0); j < N_;
          j += item_id.get_local_range(0)) {
       const int64_t index = i * N_ + j;
-      val = welford_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
+      val = sumvar_op.reduce(val, static_cast<T_ACC>(X_[index]), index);
     }
 
-    val = GroupReduceWithoutBroadcast<WelfordType, WelfordOp, SIMD>(
-        item_id, val, welford_op, shared_);
+    val = GroupReduceWithoutBroadcast<SumVarType, SumVarOp, SIMD>(
+        item_id, val, sumvar_op, shared_);
 
     if (item_id.get_local_id(0) == 0) {
       T_ACC m1;
       T_ACC m2;
-      std::tie(m2, m1) = welford_op.project(val);
+      std::tie(m2, m1) = sumvar_op.project(val);
       mean_[i] = m1;
       rstd_[i] = c10::xpu::compat::rsqrt(m2 + eps_);
     }
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    shared_ = sycl_local_acc_t<WelfordType>(SIMD, cgh);
+    shared_ = sycl_local_acc_t<SumVarType>(SIMD, cgh);
   }
 
   RowwiseMomentsFunctor(
@@ -237,7 +237,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const T* X_;
   T_ACC* mean_;
   T_ACC* rstd_;
-  sycl_local_acc_t<WelfordType> shared_;
+  sycl_local_acc_t<SumVarType> shared_;
 };
 
 template <typename T, typename T_ACC>
