@@ -17,10 +17,13 @@
 #include <ATen/native/LinearAlgebraUtils.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
+#include <ATen/native/xpu/mkl/TorchToMklType.h>
 #include <ATen/ops/_linalg_check_errors.h>
 #include <ATen/ops/_linalg_check_errors_native.h>
+#include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/from_blob.h>
+#include <ATen/ops/isnan.h>
 #include <ATen/ops/zeros_like.h>
 
 #include <comm/SYCLContext.h>
@@ -102,64 +105,6 @@ void mkl_getrf(
       scratchpadsize);
 }
 
-template <>
-void mkl_getrf<c10::complex<double>>(
-    sycl::queue& queue,
-    int64_t m,
-    int64_t n,
-    c10::complex<double>* a,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t* ipiv,
-    int64_t stride_ipiv,
-    int64_t batch_size,
-    c10::complex<double>* scratchpad,
-    int scratchpadsize) {
-  SYCL_ONEMKL_SUBMIT(
-      queue,
-      oneapi::mkl::lapack::getrf_batch,
-      queue,
-      m,
-      n,
-      reinterpret_cast<std::complex<double>*>(a),
-      lda,
-      stride_a,
-      ipiv,
-      stride_ipiv,
-      batch_size,
-      reinterpret_cast<std::complex<double>*>(scratchpad),
-      scratchpadsize);
-}
-
-template <>
-void mkl_getrf<c10::complex<float>>(
-    sycl::queue& queue,
-    int64_t m,
-    int64_t n,
-    c10::complex<float>* a,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t* ipiv,
-    int64_t stride_ipiv,
-    int64_t batch_size,
-    c10::complex<float>* scratchpad,
-    int scratchpadsize) {
-  SYCL_ONEMKL_SUBMIT(
-      queue,
-      oneapi::mkl::lapack::getrf_batch,
-      queue,
-      m,
-      n,
-      reinterpret_cast<std::complex<float>*>(a),
-      lda,
-      stride_a,
-      ipiv,
-      stride_ipiv,
-      batch_size,
-      reinterpret_cast<std::complex<float>*>(scratchpad),
-      scratchpadsize);
-}
-
 template <typename scalar_t>
 void mkl_getrs(
     sycl::queue& queue,
@@ -197,80 +142,6 @@ void mkl_getrs(
       scratchpad_size);
 }
 
-template <>
-void mkl_getrs<c10::complex<double>>(
-    sycl::queue& queue,
-    oneapi::mkl::transpose trans,
-    int64_t n,
-    int64_t nrhs,
-    c10::complex<double>* a,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t* ipiv,
-    int64_t stride_ipiv,
-    c10::complex<double>* b,
-    int64_t ldb,
-    int64_t stride_b,
-    int64_t batch_size,
-    c10::complex<double>* scratchpad,
-    int64_t scratchpad_size) {
-  SYCL_ONEMKL_SUBMIT(
-      queue,
-      oneapi::mkl::lapack::getrs_batch,
-      queue,
-      trans,
-      n,
-      nrhs,
-      reinterpret_cast<std::complex<double>*>(a),
-      lda,
-      stride_a,
-      ipiv,
-      stride_ipiv,
-      reinterpret_cast<std::complex<double>*>(b),
-      ldb,
-      stride_b,
-      batch_size,
-      reinterpret_cast<std::complex<double>*>(scratchpad),
-      scratchpad_size);
-}
-
-template <>
-void mkl_getrs<c10::complex<float>>(
-    sycl::queue& queue,
-    oneapi::mkl::transpose trans,
-    int64_t n,
-    int64_t nrhs,
-    c10::complex<float>* a,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t* ipiv,
-    int64_t stride_ipiv,
-    c10::complex<float>* b,
-    int64_t ldb,
-    int64_t stride_b,
-    int64_t batch_size,
-    c10::complex<float>* scratchpad,
-    int64_t scratchpad_size) {
-  SYCL_ONEMKL_SUBMIT(
-      queue,
-      oneapi::mkl::lapack::getrs_batch,
-      queue,
-      trans,
-      n,
-      nrhs,
-      reinterpret_cast<std::complex<float>*>(a),
-      lda,
-      stride_a,
-      ipiv,
-      stride_ipiv,
-      reinterpret_cast<std::complex<float>*>(b),
-      ldb,
-      stride_b,
-      batch_size,
-      reinterpret_cast<std::complex<float>*>(scratchpad),
-      scratchpad_size);
-}
-
 template <typename scalar_t>
 int64_t mkl_getrf_scratchpad(
     sycl::queue& queue,
@@ -281,32 +152,6 @@ int64_t mkl_getrf_scratchpad(
     int64_t stride_ipiv,
     int64_t batch_size) {
   return oneapi::mkl::lapack::getrf_batch_scratchpad_size<scalar_t>(
-      queue, m, n, lda, stride_a, stride_ipiv, batch_size);
-}
-
-template <>
-int64_t mkl_getrf_scratchpad<c10::complex<double>>(
-    sycl::queue& queue,
-    int64_t m,
-    int64_t n,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getrf_batch_scratchpad_size<std::complex<double>>(
-      queue, m, n, lda, stride_a, stride_ipiv, batch_size);
-}
-
-template <>
-int64_t mkl_getrf_scratchpad<c10::complex<float>>(
-    sycl::queue& queue,
-    int64_t m,
-    int64_t n,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getrf_batch_scratchpad_size<std::complex<float>>(
       queue, m, n, lda, stride_a, stride_ipiv, batch_size);
 }
 
@@ -335,56 +180,6 @@ int64_t mkl_getrs_scratchpad(
       batch_size);
 }
 
-template <>
-int64_t mkl_getrs_scratchpad<c10::complex<double>>(
-    sycl::queue& queue,
-    oneapi::mkl::transpose trans,
-    int64_t n,
-    int64_t nrhs,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t ldb,
-    int64_t stride_b,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getrs_batch_scratchpad_size<std::complex<double>>(
-      queue,
-      trans,
-      n,
-      nrhs,
-      lda,
-      stride_a,
-      stride_ipiv,
-      ldb,
-      stride_b,
-      batch_size);
-}
-
-template <>
-int64_t mkl_getrs_scratchpad<c10::complex<float>>(
-    sycl::queue& queue,
-    oneapi::mkl::transpose trans,
-    int64_t n,
-    int64_t nrhs,
-    int64_t lda,
-    int64_t stride_a,
-    int64_t stride_ipiv,
-    int64_t ldb,
-    int64_t stride_b,
-    int64_t batch_size) {
-  return oneapi::mkl::lapack::getrs_batch_scratchpad_size<std::complex<float>>(
-      queue,
-      trans,
-      n,
-      nrhs,
-      lda,
-      stride_a,
-      stride_ipiv,
-      ldb,
-      stride_b,
-      batch_size);
-}
-
 template <typename scalar_t>
 static void apply_lu_xpu_(
     const Tensor& self_,
@@ -401,8 +196,8 @@ static void apply_lu_xpu_(
   int64_t lda = m;
   int64_t stride_a = lda * n;
   int64_t stride_ipiv = (m < n) ? m : n;
-  scalar_t* a = (scalar_t*)(self_.data_ptr());
-  int64_t* ipiv = (int64_t*)(pivots_.data_ptr());
+  scalar_t* a = reinterpret_cast<scalar_t*>(self_.data_ptr());
+  int64_t* ipiv = pivots_.data_ptr<int64_t>();
   int64_t scratchpadsize = mkl_getrf_scratchpad<scalar_t>(
       queue, m, n, lda, stride_a, stride_ipiv, batch_size);
   Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
@@ -417,7 +212,7 @@ static void apply_lu_xpu_(
         ipiv,
         stride_ipiv,
         batch_size,
-        (scalar_t*)(scratchpad_at.data_ptr()),
+        reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
         scratchpadsize);
   } catch (const oneapi::mkl::lapack::batch_error& be) {
     error_handle(info_data, be);
@@ -446,12 +241,12 @@ static void apply_lu_solve_xpu_(
   int64_t ldb = b_.size(-2);
   int64_t stride_b = native::matrixStride(b_);
 
-  scalar_t* a = lu_.data_ptr<scalar_t>();
+  scalar_t* a = reinterpret_cast<scalar_t*>(lu_.data_ptr());
   Tensor pivots = pivots_;
   if (pivots_.scalar_type() == at::ScalarType::Int)
     pivots = pivots_.to(kLong);
   int64_t* ipiv = pivots.data_ptr<int64_t>();
-  scalar_t* b = b_.data_ptr<scalar_t>();
+  scalar_t* b = reinterpret_cast<scalar_t*>(b_.data_ptr());
 
   std::vector<int32_t> info_vec(batch_size, 0);
   int32_t* info_data = info_vec.data();
@@ -485,7 +280,7 @@ static void apply_lu_solve_xpu_(
               ldb,
               stride_b,
               batch_size,
-              scratchpad_at.data_ptr<scalar_t>(),
+              reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
               scratchpad_size);
         } catch (const oneapi::mkl::lapack::batch_error& be) {
           error_handle(info_data, be);
@@ -527,8 +322,21 @@ void lu_solve_mkl(
     const Tensor& B,
     TransposeType trans) {
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_solve_xpu", [&] {
-    apply_lu_solve_xpu_<scalar_t>(LU, pivots, B, trans);
+    using T = get_mkl_type<scalar_t>::type;
+    apply_lu_solve_xpu_<T>(LU, pivots, B, trans);
   });
+}
+
+// Create NaN value that works for both real and complex types
+template <typename scalar_t>
+inline scalar_t create_quiet_nan() {
+  using real_t = typename c10::scalar_value_type<scalar_t>::type;
+  real_t nan_val = std::numeric_limits<real_t>::quiet_NaN();
+  if constexpr (c10::is_complex<scalar_t>::value) {
+    return scalar_t(nan_val, nan_val);
+  } else {
+    return nan_val;
+  }
 }
 
 void lu_factor_mkl(
@@ -553,7 +361,29 @@ void lu_factor_mkl(
   Tensor pivots_ = at::empty(pivots.sizes(), pivots.options().dtype(kLong));
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
-    apply_lu_xpu_<scalar_t>(LU, pivots_, info_data);
+    using T = get_mkl_type<scalar_t>::type;
+    if (!at::isnan(LU).any().item<bool>()) {
+      apply_lu_xpu_<T>(LU, pivots_, info_data);
+    } else {
+      // Has NaN, temporarily replace NaNs to avoid MKL crashes, run batched LU
+      // then restore NaNs for the affected batches.
+      int64_t batch_size = native::batchCount(LU);
+      int64_t m = LU.size(-2);
+      int64_t n = LU.size(-1);
+
+      // Detect NaN per-batch
+      auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
+
+      // Replace NaN batches with identity matrix to avoid MKL crash
+      auto identity = at::eye(m, n, LU.options()).unsqueeze(0);
+      auto nan_mask_expanded = nan_mask_batch.view({batch_size, 1, 1});
+      LU.copy_(at::where(nan_mask_expanded, identity, LU));
+
+      apply_lu_xpu_<T>(LU, pivots_, info_data);
+
+      // Restore NaN for batches that originally had NaN
+      LU.masked_fill_(nan_mask_expanded.expand({batch_size, m, n}), create_quiet_nan<scalar_t>());
+    }
   });
 
   // Copy to original info and pivots tensor
