@@ -32,8 +32,8 @@ from torch.testing._internal.common_fsdp import (
     DEVICEInitMode,
     FSDPInitMode,
     FSDPTest,
-    subtest_name,
     get_devtype,
+    subtest_name,
     TransformerWithSharedParams,
 )
 from torch.testing._internal.common_utils import (
@@ -768,9 +768,9 @@ class TestFSDPMixedPrecisionSharded(TestFSDPMixedPrecision):
                 if expect_use_full_prec_in_eval:
                     assert x.dtype == torch.float32, f"Expected fp32, got {x.dtype}"
                 else:
-                    assert x.dtype == low_prec_dtype, (
-                        f"Expected {low_prec_dtype}, got {x.dtype}"
-                    )
+                    assert (
+                        x.dtype == low_prec_dtype
+                    ), f"Expected {low_prec_dtype}, got {x.dtype}"
                 return self.a(x)
 
         mp_config = MixedPrecision(

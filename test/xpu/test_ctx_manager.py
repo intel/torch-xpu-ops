@@ -342,7 +342,6 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
 
     @unittest.skipIf(not HAS_GPU, "requires GPU")
     def test_gpu_stream_compared_with_constant(self):
-
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
@@ -701,13 +700,31 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         seq_len_k = 1
         head_dim = 8
         query = torch.ones(
-            1, 8, seq_len_q, head_dim, device=device_type, dtype=dtype, requires_grad=True
+            1,
+            8,
+            seq_len_q,
+            head_dim,
+            device=device_type,
+            dtype=dtype,
+            requires_grad=True,
         )
         key = torch.ones(
-            1, 8, seq_len_k, head_dim, device=device_type, dtype=dtype, requires_grad=True
+            1,
+            8,
+            seq_len_k,
+            head_dim,
+            device=device_type,
+            dtype=dtype,
+            requires_grad=True,
         )
         value = torch.ones(
-            1, 8, seq_len_k, head_dim, device=device_type, dtype=dtype, requires_grad=True
+            1,
+            8,
+            seq_len_k,
+            head_dim,
+            device=device_type,
+            dtype=dtype,
+            requires_grad=True,
         )
 
         module = MyModule()
