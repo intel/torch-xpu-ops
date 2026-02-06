@@ -559,6 +559,9 @@ Tensor& _fft_r2c_mkl_out(
 
   if (orig_self.scalar_type() == ScalarType::Half)
     orig_out = out.to(ScalarType::ComplexHalf);
+  else
+    orig_out = out;
+
   return orig_out;
 }
 
