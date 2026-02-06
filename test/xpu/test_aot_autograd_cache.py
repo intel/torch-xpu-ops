@@ -49,7 +49,6 @@ from torch.utils.checkpoint import (
     create_selective_checkpoint_contexts,
 )
 
-
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )
@@ -1038,7 +1037,9 @@ class AOTAutogradCacheTests(InductorTestCase):
             # 3. Use the wrapped result with capture_triton
             kernel_fn = inner_kernel  # Direct assignment from global
             wrapped_kernel = identity_wrapper(kernel_fn)  # Wrapper call
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )  # noqa: E731
             capture_triton(wrapped_kernel)[grid](y, n_elements, BLOCK_SIZE=256)
             return y
 
@@ -1153,7 +1154,9 @@ class AOTAutogradCacheTests(InductorTestCase):
 
         def helper_that_calls_kernel(y, n_elements):
             """Helper function that contains the triton kernel call."""
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )  # noqa: E731
             capture_triton(nested_kernel)[grid](y, n_elements, BLOCK_SIZE=256)
 
         @torch._library.triton_op("test::recursive_func_triton_op", mutates_args=())
@@ -1215,7 +1218,9 @@ class AOTAutogradCacheTests(InductorTestCase):
             y = x.clone()
             n_elements = y.numel()
             kernel = get_kernel()
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )  # noqa: E731
             capture_triton(kernel)[grid](y, n_elements, BLOCK_SIZE=256)
             return y
 
@@ -1283,7 +1288,9 @@ class AOTAutogradCacheTests(InductorTestCase):
             y = x.clone()
             n_elements = y.numel()
             kernel = get_cached_kernel()
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )  # noqa: E731
             capture_triton(kernel)[grid](y, n_elements, BLOCK_SIZE=256)
             return y
 

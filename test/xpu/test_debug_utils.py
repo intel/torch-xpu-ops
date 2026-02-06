@@ -12,7 +12,6 @@ from torch._dynamo.test_case import TestCase
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 
-
 f32 = torch.float32
 i64 = torch.int64
 i32 = torch.int32
@@ -111,40 +110,40 @@ class TestDebugUtilsDevice(TestCase):
             primals_6: "f32[1739, 4190]",
             primals_48: "f32[6144, 4191]",
         ):
-            _tensor_constant0: "i64[4190]" = self._tensor_constant0
-            lift_fresh_copy: "i64[4190]" = torch.ops.aten.lift_fresh_copy.default(
+            _tensor_constant0: i64[4190] = self._tensor_constant0
+            lift_fresh_copy: i64[4190] = torch.ops.aten.lift_fresh_copy.default(
                 _tensor_constant0
             )
             _tensor_constant0 = None
-            index: "f32[6144, 4190]" = torch.ops.aten.index.Tensor(  # noqa: F841
+            index: f32[6144, 4190] = torch.ops.aten.index.Tensor(  # noqa: F841
                 primals_48, [None, lift_fresh_copy]
             )
             lift_fresh_copy = None
 
-            _tensor_constant1: "i64[6]" = self._tensor_constant1
-            lift_fresh_copy_1: "i64[6]" = torch.ops.aten.lift_fresh_copy.default(
+            _tensor_constant1: i64[6] = self._tensor_constant1
+            lift_fresh_copy_1: i64[6] = torch.ops.aten.lift_fresh_copy.default(
                 _tensor_constant1
             )
             _tensor_constant1 = None
-            index_1: "f32[6144, 6]" = torch.ops.aten.index.Tensor(
+            index_1: f32[6144, 6] = torch.ops.aten.index.Tensor(
                 primals_48, [None, lift_fresh_copy_1]
             )
             primals_48 = lift_fresh_copy_1 = None
-            permute: "f32[6, 1001]" = torch.ops.aten.permute.default(primals_1, [1, 0])
+            permute: f32[6, 1001] = torch.ops.aten.permute.default(primals_1, [1, 0])
             primals_1 = None
-            addmm: "f32[6144, 1001]" = torch.ops.aten.addmm.default(
+            addmm: f32[6144, 1001] = torch.ops.aten.addmm.default(
                 primals_2, index_1, permute
             )
             primals_2 = permute = None
-            amax: "f32[6144, 1]" = torch.ops.aten.amax.default(addmm, [-1], True)
-            sub: "f32[6144, 1001]" = torch.ops.aten.sub.Tensor(addmm, amax)
-            exp: "f32[6144, 1001]" = torch.ops.aten.exp.default(sub)
+            amax: f32[6144, 1] = torch.ops.aten.amax.default(addmm, [-1], True)
+            sub: f32[6144, 1001] = torch.ops.aten.sub.Tensor(addmm, amax)
+            exp: f32[6144, 1001] = torch.ops.aten.exp.default(sub)
             sub = None
-            sum_1: "f32[6144, 1]" = torch.ops.aten.sum.dim_IntList(exp, [-1], True)
-            div: "f32[6144, 1001]" = torch.ops.aten.div.Tensor(exp, sum_1)
+            sum_1: f32[6144, 1] = torch.ops.aten.sum.dim_IntList(exp, [-1], True)
+            div: f32[6144, 1001] = torch.ops.aten.div.Tensor(exp, sum_1)
             exp = None
 
-            full_default: "i32[6144, 1001]" = torch.ops.aten.full.default(
+            full_default: i32[6144, 1001] = torch.ops.aten.full.default(
                 [6144, 1001],
                 1,
                 dtype=torch.int32,
@@ -153,7 +152,7 @@ class TestDebugUtilsDevice(TestCase):
                 pin_memory=False,
             )
 
-            iota: "i32[1001]" = torch.ops.prims.iota.default(
+            iota: i32[1001] = torch.ops.prims.iota.default(
                 1001,
                 start=0,
                 step=1,
@@ -162,10 +161,10 @@ class TestDebugUtilsDevice(TestCase):
                 requires_grad=False,
             )
 
-            mul: "i32[6144, 1001]" = torch.ops.aten.mul.Tensor(full_default, iota)
+            mul: i32[6144, 1001] = torch.ops.aten.mul.Tensor(full_default, iota)
             full_default = iota = None
 
-            iota_1: "i32[6144]" = torch.ops.prims.iota.default(
+            iota_1: i32[6144] = torch.ops.prims.iota.default(
                 6144,
                 start=0,
                 step=1001,
@@ -173,9 +172,9 @@ class TestDebugUtilsDevice(TestCase):
                 device=device,
                 requires_grad=False,
             )
-            view: "i32[6150144]" = torch.ops.aten.reshape.default(mul, [-1])
+            view: i32[6150144] = torch.ops.aten.reshape.default(mul, [-1])
             mul = None
-            view_1: "f32[6150144]" = torch.ops.aten.reshape.default(div, [-1])
+            view_1: f32[6150144] = torch.ops.aten.reshape.default(div, [-1])
             div = None
             _embedding_bag = torch.ops.aten._embedding_bag.default(
                 primals_3, view, iota_1, False, 0, False, view_1
@@ -196,7 +195,7 @@ class TestDebugUtilsDevice(TestCase):
             primals_4: "f32[s1]",  # noqa: F821,
             primals_5: "Sym(s1)",  # noqa: F821,
         ):
-            _tensor_constant0: "i64[4190]" = self._tensor_constant0
+            _tensor_constant0: i64[4190] = self._tensor_constant0
 
         kwargs = aot_graph_input_parser(
             forward, device=device, sym_shapes={"s0": 10}, default_sym_shape=5

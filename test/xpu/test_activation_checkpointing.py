@@ -29,7 +29,12 @@ from torch._dynamo.testing import (
 )
 from torch._higher_order_ops.wrap import tag_activation_checkpoint
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import IS_WINDOWS, parametrize, skipIfHpu, skipIfXpu
+from torch.testing._internal.common_utils import (
+    IS_WINDOWS,
+    parametrize,
+    skipIfHpu,
+    skipIfXpu,
+)
 from torch.testing._internal.inductor_utils import HAS_GPU_AND_TRITON
 from torch.testing._internal.triton_utils import requires_gpu_and_triton
 from torch.testing._internal.two_tensor import TwoTensor
@@ -38,7 +43,6 @@ from torch.utils.checkpoint import (
     CheckpointPolicy,
     create_selective_checkpoint_contexts,
 )
-
 
 if HAS_GPU_AND_TRITON:
     import triton
@@ -113,9 +117,9 @@ def count_ops(
             for node in gm.graph.nodes:
                 if match_rng_op(node, op) or node.target == op:
                     actual_count += 1
-            assert actual_count >= freq_ge, (
-                f"In graph {gm}, expected {op} to have occurred at least {freq_ge} times in the graph, but got {actual_count}."
-            )
+            assert (
+                actual_count >= freq_ge
+            ), f"In graph {gm}, expected {op} to have occurred at least {freq_ge} times in the graph, but got {actual_count}."
     return gm
 
 
