@@ -987,4 +987,402 @@ struct TakePutKernelFunctor {
   const func_t f_;
 };
 
+
+#define SKIP_SORTED_INDICES 32
+#define SUBGROUP_SIZE 32
+
+template <typename scalar_t, int SZ>
+struct indexing_backward_kernel : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::nd_item<3> item) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    auto sg = item.get_sub_group();
+
+    int smem_offset = item.get_local_id(1) * SUBGROUP_SIZE;
+    int laneIdx = item.get_local_id(2) % SUBGROUP_SIZE;
+    int64_t grad_row = 0;
+
+    for (int64_t z = item.get_group(0); z < outer_dim;
+         z += item.get_group_range(0)) {
+      // Init duplicates every time we compute a new set of entries:
+      smem_dups_cache[smem_offset + laneIdx] = 0;
+      sycl::group_barrier(sg);
+
+      int64_t base_idx =
+          item.get_group(2) * item.get_local_range(1) * SUBGROUP_SIZE +
+          item.get_local_id(1) * SUBGROUP_SIZE;
+      int64_t idx = base_idx + laneIdx;
+
+      if (idx < numel) {
+        int64_t crnt_sorted_idx = sorted_indices[idx];
+
+        if (idx == 0 || crnt_sorted_idx != sorted_indices[idx - 1]) {
+          // Determine the number of duplicates in advance:
+          int64_t num_duplicates = 1;
+
+          // Lookahead in case there is a large number of duplicates. Once that
+          // is done, handle the tail.
+          while ((idx + num_duplicates + SKIP_SORTED_INDICES - 1) < numel) {
+            if (sorted_indices
+                    [idx + num_duplicates + SKIP_SORTED_INDICES - 1] !=
+                crnt_sorted_idx)
+              break;
+            num_duplicates += SKIP_SORTED_INDICES;
+          }
+          while (((idx + num_duplicates) < numel) &&
+                 (sorted_indices[idx + num_duplicates] == crnt_sorted_idx)) {
+            num_duplicates++;
+          }
+
+          smem_dups_cache[smem_offset + laneIdx] = num_duplicates;
+        }
+      }
+
+      sycl::group_barrier(sg);
+
+      // All lanes in the warp are still active here. Use them all to reduce
+      // duplicates when large number of duplicates are present:
+      for (int subwarp = 0; subwarp < SUBGROUP_SIZE; subwarp++) {
+        // All lanes read the shared memory entry for number of duplicates
+        int64_t new_num_duplicates = smem_dups_cache[smem_offset + subwarp];
+
+        // Check if the original sub-warp had duplicates to eliminate, if not
+        // skip.
+        if (new_num_duplicates == 0)
+          continue;
+
+        // There are duplicates that need eliminating:
+        int64_t new_idx = base_idx + subwarp;
+        int64_t new_crnt_sorted_idx = sorted_indices[new_idx];
+        const int64_t new_weight_row =
+            new_crnt_sorted_idx * stride + z * stride_before;
+
+        if (!accumulate) {
+          const int64_t grad_row =
+              ((int64_t)indices[new_idx + new_num_duplicates - 1]) * stride +
+              z * numel * stride;
+          int64_t feature_dim = item.get_group(1) * item.get_local_range(2) +
+              item.get_local_id(2);
+          while (feature_dim < stride) {
+            grad_weight[new_weight_row + feature_dim] =
+                grad_output[grad_row + feature_dim];
+            feature_dim += item.get_group_range(1) * item.get_local_range(2);
+          }
+          continue;
+        }
+
+        for (int dup = 0; dup < new_num_duplicates; dup++) {
+          const int64_t grad_row =
+              ((int64_t)indices[new_idx + dup]) * stride + z * numel * stride;
+
+          // All lanes do the same thing up to here.
+          int64_t feature_dim = item.get_group(1) * item.get_local_range(2) +
+              item.get_local_id(2);
+
+          // Each lane has a different feature_dim.
+          while (feature_dim < stride) {
+            grad_weight[new_weight_row + feature_dim] +=
+                grad_output[grad_row + feature_dim];
+            feature_dim += item.get_group_range(1) * item.get_local_range(2);
+          }
+        }
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    smem_dups_cache = sycl_local_acc_t<int64_t>(smem_size, cgh);
+  }
+
+  indexing_backward_kernel(
+      const int64_t* sorted_indices,
+      const int64_t* indices,
+      const scalar_t* grad_output,
+      scalar_t* grad_weight,
+      int64_t numel,
+      int64_t stride,
+      int64_t stride_before,
+      int64_t outer_dim,
+      bool accumulate,
+      int64_t smem_size)
+      : sorted_indices(sorted_indices),
+        indices(indices),
+        grad_output(grad_output),
+        grad_weight(grad_weight),
+        numel(numel),
+        stride(stride),
+        stride_before(stride_before),
+        outer_dim(outer_dim),
+        accumulate(accumulate),
+        smem_size(smem_size) {}
+
+ private:
+  const int64_t* sorted_indices;
+  const int64_t* indices;
+  const scalar_t* grad_output;
+  scalar_t* grad_weight;
+  int64_t numel;
+  int64_t stride;
+  int64_t stride_before;
+  int64_t outer_dim;
+  bool accumulate;
+  int64_t smem_size;
+  sycl_local_acc_t<int64_t> smem_dups_cache;
+};
+
+template <typename scalar_t>
+struct indexing_backward_kernel_stride_1
+    : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::nd_item<3> item) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+    auto sg = item.get_sub_group();
+
+    int laneIdx = item.get_local_id(2) % SUBGROUP_SIZE;
+
+    const opmath_t scale = (opmath_t)1.0;
+    int64_t grad_row = 0;
+
+    // Each warp gets a different section of the share memory allocation:
+    int smem_offset = item.get_local_id(1) * SUBGROUP_SIZE;
+
+    // Number of values processed by each thread (grain size)
+    for (int64_t z = item.get_group(0); z < outer_dim;
+         z += item.get_group_range(0)) {
+      // Init duplicates every time we compute a new set of entries:
+      smem_dups_cache[smem_offset + laneIdx] = 0;
+
+      int64_t base_idx =
+          item.get_group(2) * item.get_local_range(1) * SUBGROUP_SIZE +
+          item.get_local_id(1) * SUBGROUP_SIZE;
+      int64_t idx = base_idx + laneIdx;
+
+      // Each lane calculates the number of duplicates:
+      if (idx < numel) {
+        int64_t crnt_sorted_idx = sorted_indices[idx];
+
+        if (idx == 0 || crnt_sorted_idx != sorted_indices[idx - 1]) {
+          // Determine the number of duplicates in advance:
+          int64_t num_duplicates = 1;
+
+          // Lookahead in case there is a large number of duplicates. Once that
+          // is done, handle the tail.
+          while ((idx + num_duplicates + SKIP_SORTED_INDICES - 1) < numel) {
+            if (sorted_indices
+                    [idx + num_duplicates + SKIP_SORTED_INDICES - 1] !=
+                crnt_sorted_idx)
+              break;
+            num_duplicates += SKIP_SORTED_INDICES;
+          }
+          while (((idx + num_duplicates) < numel) &&
+                 (sorted_indices[idx + num_duplicates] == crnt_sorted_idx)) {
+            num_duplicates++;
+          }
+
+          if (!accumulate) {
+            const int64_t weight_row =
+                crnt_sorted_idx * stride + z * stride_before;
+            grad_row = ((int64_t)indices[idx + num_duplicates - 1]) * stride +
+                z * numel * stride;
+            grad_weight[weight_row] = static_cast<scalar_t>(
+                static_cast<opmath_t>(grad_output[grad_row]) * scale);
+            continue;
+          }
+
+          // Each lane sequentially handles the duplicate elimination:
+          if (num_duplicates < SUBGROUP_SIZE) {
+            opmath_t gradient = (opmath_t)0.0;
+            const int64_t weight_row =
+                crnt_sorted_idx * stride + z * stride_before;
+            for (int64_t i = 0; i < num_duplicates; ++i) {
+              grad_row =
+                  ((int64_t)indices[idx + i]) * stride + z * numel * stride;
+              gradient += static_cast<opmath_t>(grad_output[grad_row]) * scale;
+            }
+
+            grad_weight[weight_row] = static_cast<scalar_t>(
+                static_cast<opmath_t>(grad_weight[weight_row]) + gradient);
+          } else {
+            // Add duplicate to the cache:
+            smem_dups_cache[smem_offset + laneIdx] = num_duplicates;
+          }
+        }
+      }
+
+      sycl::group_barrier(sg);
+
+      // All lanes in the warp are still active here. Use them all to reduce
+      // duplicates when large number of duplicates are present:
+      for (int subwarp = 0; subwarp < SUBGROUP_SIZE; subwarp++) {
+        // All lanes read the shared memory entry for number of duplicates
+        int64_t new_num_duplicates = smem_dups_cache[smem_offset + subwarp];
+
+        // Check if the original sub-warp had duplicates to eliminate, if not
+        // skip.
+        if (new_num_duplicates == 0)
+          continue;
+
+        // There are duplicates that need eliminating:
+        int64_t new_idx = base_idx + subwarp;
+        int64_t new_crnt_sorted_idx = sorted_indices[new_idx];
+        const int64_t new_weight_row =
+            new_crnt_sorted_idx * stride + z * stride_before;
+
+        // Result of the reduction will be in this variable:
+        opmath_t gradient = (opmath_t)0.0;
+
+        int64_t num_warp_passes = new_num_duplicates / SUBGROUP_SIZE;
+        // Parallel reduction across the array of duplicates using all the lanes
+        // in the warp:
+        for (int64_t i = 0; i < num_warp_passes; ++i) {
+          grad_row = ((int64_t)indices[new_idx + i * SUBGROUP_SIZE + laneIdx]) *
+                  stride +
+              z * numel * stride;
+          gradient += static_cast<opmath_t>(grad_output[grad_row]) * scale;
+        }
+
+        // Reduce across the lanes of the warp:
+        sycl::group_barrier(sg);
+
+        for (int offset = SUBGROUP_SIZE / 2; offset > 0; offset /= 2) {
+          gradient += sycl::shift_group_left(sg, gradient, offset);
+        }
+
+        if (laneIdx == 0) {
+          for (int64_t i = num_warp_passes * SUBGROUP_SIZE;
+               i < new_num_duplicates;
+               ++i) {
+            grad_row =
+                ((int64_t)indices[new_idx + i]) * stride + z * numel * stride;
+            gradient += static_cast<opmath_t>(grad_output[grad_row]) * scale;
+          }
+
+          grad_weight[new_weight_row] = static_cast<scalar_t>(
+              static_cast<opmath_t>(grad_weight[new_weight_row]) + gradient);
+        }
+      }
+    }
+  }
+
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    smem_dups_cache = sycl_local_acc_t<int64_t>(smem_size, cgh);
+  }
+
+  indexing_backward_kernel_stride_1(
+      const int64_t* sorted_indices,
+      const int64_t* indices,
+      const scalar_t* grad_output,
+      scalar_t* grad_weight,
+      int64_t numel,
+      int64_t stride,
+      int64_t stride_before,
+      int64_t outer_dim,
+      bool accumulate,
+      int64_t smem_size)
+      : sorted_indices(sorted_indices),
+        indices(indices),
+        grad_output(grad_output),
+        grad_weight(grad_weight),
+        numel(numel),
+        stride(stride),
+        stride_before(stride_before),
+        outer_dim(outer_dim),
+        accumulate(accumulate),
+        smem_size(smem_size) {}
+
+ private:
+  const int64_t* sorted_indices;
+  const int64_t* indices;
+  const scalar_t* grad_output;
+  scalar_t* grad_weight;
+  int64_t numel;
+  int64_t stride;
+  int64_t stride_before;
+  int64_t outer_dim;
+  bool accumulate;
+  int64_t smem_size;
+  sycl_local_acc_t<int64_t> smem_dups_cache;
+};
+
+template <typename scalar_t>
+struct indexing_backward_kernel_small_stride {
+  void operator()(sycl::nd_item<3> item) const {
+    using opmath_t = at::opmath_type<scalar_t>;
+
+    // Number of values processed by each thread (grain size)
+    for (int64_t z = item.get_group(0); z < outer_dim;
+         z += item.get_group_range(0)) {
+      int64_t idx =
+          item.get_group(2) * item.get_local_range(1) + item.get_local_id(1);
+      int64_t tidx = item.get_local_id(2);
+      int64_t crnt_sorted_idx = sorted_indices[idx];
+
+      if ((idx < numel) && (tidx < stride) &&
+          (idx == 0 || crnt_sorted_idx != sorted_indices[idx - 1])) {
+        // Determine the number of duplicates in advance
+        int64_t num_duplicates = 1;
+        while (((idx + num_duplicates) < numel) &&
+               (sorted_indices[idx + num_duplicates] == crnt_sorted_idx)) {
+          num_duplicates++;
+        }
+
+        // Continue computing weights
+        const int64_t weight_row = crnt_sorted_idx * stride + z * stride_before;
+        int64_t grad_row = 0;
+        const opmath_t scale = (opmath_t)1.0;
+
+        if (!accumulate) {
+          grad_row = ((int64_t)indices[idx + num_duplicates - 1]) * stride +
+              z * numel * stride;
+          grad_weight[weight_row + tidx] = static_cast<scalar_t>(
+              static_cast<opmath_t>(grad_output[grad_row + tidx]) * scale);
+        } else {
+          opmath_t gradient = (opmath_t)0.0;
+          for (int64_t i = 0; i < num_duplicates; ++i) {
+            grad_row =
+                ((int64_t)indices[idx + i]) * stride + z * numel * stride;
+            gradient +=
+                static_cast<opmath_t>(grad_output[grad_row + tidx]) * scale;
+          }
+
+          grad_weight[weight_row + tidx] = static_cast<scalar_t>(
+              static_cast<opmath_t>(grad_weight[weight_row + tidx]) + gradient);
+        }
+      }
+    }
+  }
+
+  indexing_backward_kernel_small_stride(
+      const int64_t* sorted_indices,
+      const int64_t* indices,
+      const scalar_t* grad_output,
+      scalar_t* grad_weight,
+      int64_t numel,
+      int64_t stride,
+      int64_t stride_before,
+      int64_t outer_dim,
+      bool accumulate)
+      : sorted_indices(sorted_indices),
+        indices(indices),
+        grad_output(grad_output),
+        grad_weight(grad_weight),
+        numel(numel),
+        stride(stride),
+        stride_before(stride_before),
+        outer_dim(outer_dim),
+        accumulate(accumulate) {}
+
+ private:
+  const int64_t* sorted_indices;
+  const int64_t* indices;
+  const scalar_t* grad_output;
+  scalar_t* grad_weight;
+  int64_t numel;
+  int64_t stride;
+  int64_t stride_before;
+  int64_t outer_dim;
+  bool accumulate;
+};
+
+#undef SKIP_SORTED_INDICES
+#undef SUBGROUP_SIZE
+
 } // namespace at::native::xpu
