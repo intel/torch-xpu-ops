@@ -1,0 +1,377 @@
+name: OnDemand Test Workflow
+
+on:
+  workflow_call:
+    inputs:
+      # Basic configuration
+      test_type:
+        required: true
+        type: string
+        description: |
+          Test type:
+          - build-nightly, wheel-nightly (scheduled nightly)
+          - build-weekly, wheel-weekly (scheduled weekly)
+          - build-ondemand, wheel-ondemand (manual/on-demand)
+      pytorch:
+        required: true
+        type: string
+        description: |
+          PyTorch version:
+          - main (default for source builds)
+          - nightly_wheel, test_wheel, release_wheel (for wheel tests)
+          - commit/branch
+          - repo@commit/repo@branch
+      torch_xpu_ops:
+        required: true
+        type: string
+        description: |
+          Torch-xpu-ops version:
+          - main (default)
+          - pinned (use pytorch pin)
+          - commit/branch
+          - repo@commit/repo@branch
+      triton:
+        type: string
+        default: ''
+        description: |
+          Triton version:
+          - (empty): Use pytorch pinned version
+          - commit/branch
+          - repo@commit/repo@branch
+      python:
+        type: string
+        default: '3.10'
+        description: 'Python version'
+
+      # Test scope configuration
+      ut:
+        type: string
+        default: ''
+        description: |
+          Unit test scope (comma-separated):
+          - basic: op_regression, op_transformers, op_extended, op_regression_dev1
+          - op_regression, op_transformers, op_extended, op_regression_dev1
+          - op_ut, skipped_ut, torch_xpu, xpu_profiling, xpu_distributed
+          - microbench, windows (special flags)
+      suite:
+        type: string
+        default: ''
+        description: |
+          E2E test suite (comma-separated):
+          - huggingface, timm_models, torchbench, pt2e
+
+      # E2E test parameters
+      dt:
+        type: string
+        default: ''
+        description: |
+          Data precision for E2E tests (comma-separated):
+          - float32, bfloat16, float16, amp_bf16, amp_fp16 (for E2E)
+          - int8 (for PT2E)
+      mode:
+        type: string
+        default: ''
+        description: |
+          Test mode for E2E tests (comma-separated):
+          - inference, training
+      scenario:
+        type: string
+        default: ''
+        description: |
+          Test scenario for E2E tests (comma-separated):
+          - accuracy, performance
+      model:
+        type: string
+        default: ''
+        description: 'Specific model to test (if set, only this model runs)'
+
+      # Advanced configuration
+      runner:
+        type: string
+        default: 'pvc_rolling'
+        description: 'Runner label for Linux tests'
+      windows_runner:
+        type: string
+        default: 'Windows_CI'
+        description: 'Runner label for Windows tests'
+      is_scheduled_run:
+        type: boolean
+        default: false
+        description: 'Set to true for scheduled runs (affects build behavior)'
+
+    secrets:
+      HUGGING_FACE_HUB_TOKEN:
+        required: false
+        description: 'Hugging Face API token for model downloads'
+      DOCKER_HUB_TOKEN:
+        required: false
+        description: 'Docker Hub token for image pulls'
+
+permissions:
+  contents: read
+  checks: write
+  actions: read
+  id-token: write
+
+env:
+  WORKSPACE: ${{ github.workspace }}
+  REPOSITORY: ${{ github.repository }}
+
+jobs:
+  parse-test-inputs:
+    name: Parse Test Inputs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    outputs:
+      # Configuration outputs
+      test_type: ${{ steps.parse-config.outputs.test_type }}
+      pytorch: ${{ steps.parse-config.outputs.pytorch }}
+      torch_xpu_ops: ${{ steps.parse-config.outputs.torch_xpu_ops }}
+
+      # Test scope outputs
+      ut_list_json: ${{ steps.parse-config.outputs.ut_list_json }}
+      suite_list_json: ${{ steps.parse-config.outputs.suite_list_json }}
+
+      # Flags
+      has_ut_tests: ${{ steps.parse-config.outputs.has_ut_tests }}
+      has_e2e_tests: ${{ steps.parse-config.outputs.has_e2e_tests }}
+      has_microbench: ${{ steps.parse-config.outputs.has_microbench }}
+      has_windows: ${{ steps.parse-config.outputs.has_windows }}
+      should_build: ${{ steps.parse-config.outputs.should_build }}
+    steps:
+      - name: Parse and validate all inputs
+        id: parse-config
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Parsing Test Configuration ==="
+          echo "Test Type: ${{ inputs.test_type }}"
+          echo "PyTorch: ${{ inputs.pytorch }}"
+          echo "Torch-xpu-ops: ${{ inputs.torch_xpu_ops }}"
+
+          # Set basic configuration
+          echo "test_type=${{ inputs.test_type }}" >> "${GITHUB_OUTPUT}"
+          echo "pytorch=${{ inputs.pytorch }}" >> "${GITHUB_OUTPUT}"
+          echo "torch_xpu_ops=${{ inputs.torch_xpu_ops }}" >> "${GITHUB_OUTPUT}"
+
+          # Parse UT list
+          UT_INPUT="${{ inputs.ut }}"
+          if [ -z "${UT_INPUT}" ]; then
+            UT_LIST_JSON="[]"
+            HAS_UT_TESTS="false"
+            HAS_MICROBENCH="false"
+            HAS_WINDOWS="false"
+          else
+            # Helper function to create JSON array
+            create_json_array() {
+              local input="$1"
+              local exclude_items="$2"
+              IFS=',' read -ra ARRAY <<< "${input}"
+              local result="["
+              for item in "${ARRAY[@]}"; do
+                item_clean=$(echo "${item}" | tr -d '[:space:]')
+                # Skip if item should be excluded or is empty
+                if [ -n "${item_clean}" ]; then
+                  should_exclude=false
+                  for exclude in ${exclude_items}; do
+                    if [ "${item_clean}" = "${exclude}" ]; then
+                      should_exclude=true
+                      break
+                    fi
+                  done
+                  if [ "${should_exclude}" = "false" ]; then
+                    result="${result}\"${item_clean}\","
+                  fi
+                fi
+              done
+              if [ "${result}" != "[" ]; then
+                result="${result%,}"
+              fi
+              result="${result}]"
+              echo "${result}"
+            }
+
+            # Create JSON array excluding special flags
+            UT_LIST_JSON=$(create_json_array "${UT_INPUT}" "microbench windows")
+
+            # Check if we have any regular UT tests
+            if [ "${UT_LIST_JSON}" = "[]" ]; then
+              HAS_UT_TESTS="false"
+            else
+              HAS_UT_TESTS="true"
+            fi
+
+            # Check for special test types
+            if [[ "${UT_INPUT}" == *"microbench"* ]]; then
+              HAS_MICROBENCH="true"
+            else
+              HAS_MICROBENCH="false"
+            fi
+
+            if [[ "${UT_INPUT}" == *"windows"* ]]; then
+              HAS_WINDOWS="true"
+            else
+              HAS_WINDOWS="false"
+            fi
+          fi
+
+          echo "ut_list_json=${UT_LIST_JSON}" >> "${GITHUB_OUTPUT}"
+          echo "has_ut_tests=${HAS_UT_TESTS}" >> "${GITHUB_OUTPUT}"
+          echo "has_microbench=${HAS_MICROBENCH}" >> "${GITHUB_OUTPUT}"
+          echo "has_windows=${HAS_WINDOWS}" >> "${GITHUB_OUTPUT}"
+
+          # Parse suite list
+          SUITE_INPUT="${{ inputs.suite }}"
+          if [ -z "${SUITE_INPUT}" ]; then
+            SUITE_LIST_JSON="[]"
+            HAS_E2E_TESTS="false"
+          else
+            IFS=',' read -ra SUITE_ARRAY <<< "${SUITE_INPUT}"
+            SUITE_LIST_JSON="["
+            for item in "${SUITE_ARRAY[@]}"; do
+              item_clean=$(echo "${item}" | tr -d '[:space:]')
+              if [ -n "${item_clean}" ]; then
+                SUITE_LIST_JSON="${SUITE_LIST_JSON}\"${item_clean}\","
+              fi
+            done
+            if [ "${SUITE_LIST_JSON}" != "[" ]; then
+              SUITE_LIST_JSON="${SUITE_LIST_JSON%,}"
+            fi
+            SUITE_LIST_JSON="${SUITE_LIST_JSON}]"
+            HAS_E2E_TESTS="true"
+          fi
+
+          echo "suite_list_json=${SUITE_LIST_JSON}" >> "${GITHUB_OUTPUT}"
+          echo "has_e2e_tests=${HAS_E2E_TESTS}" >> "${GITHUB_OUTPUT}"
+
+          # Determine if we should run build
+          # Always build for source-based test types or scheduled runs
+          if [[ "${{ inputs.test_type }}" == *"build-"* ]] || [ "${{ inputs.is_scheduled_run }}" = "true" ]; then
+            SHOULD_BUILD="true"
+          else
+            SHOULD_BUILD="false"
+          fi
+
+          echo "should_build=${SHOULD_BUILD}" >> "${GITHUB_OUTPUT}"
+
+          echo "Parsed configuration:"
+          echo "  UT List: ${UT_LIST_JSON}"
+          echo "  Suite List: ${SUITE_LIST_JSON}"
+          echo "  Has UT Tests: ${HAS_UT_TESTS}"
+          echo "  Has E2E Tests: ${HAS_E2E_TESTS}"
+          echo "  Has Microbench: ${HAS_MICROBENCH}"
+          echo "  Has Windows: ${HAS_WINDOWS}"
+          echo "  Should Build: ${SHOULD_BUILD}"
+
+  linux-build:
+    name: Linux Build
+    needs: [parse-test-inputs]
+    if: ${{ needs.parse-test-inputs.outputs.should_build == 'true' }}
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: ${{ inputs.runner }}
+      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
+      triton: ${{ inputs.triton }}
+      python: ${{ inputs.python }}
+
+  linux-ut-tests:
+    name: Linux Unit Tests
+    needs:
+      - parse-test-inputs
+      - linux-build
+    if: ${{ needs.parse-test-inputs.outputs.has_ut_tests == 'true' }}
+    secrets: inherit
+    permissions:
+      contents: read
+      checks: write
+      actions: read
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        ut_name: ${{ fromJSON(needs.parse-test-inputs.outputs.ut_list_json) }}
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: ${{ inputs.runner }}
+      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
+      python: ${{ inputs.python }}
+      ut: ${{ matrix.ut_name }}
+
+  linux-e2e-tests:
+    name: Linux E2E Tests
+    needs:
+      - parse-test-inputs
+      - linux-build
+    if: ${{ needs.parse-test-inputs.outputs.has_e2e_tests == 'true' }}
+    secrets: inherit
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(needs.parse-test-inputs.outputs.suite_list_json) }}
+    uses: ./.github/workflows/_linux_e2e.yml
+    with:
+      runner: ${{ inputs.runner }}
+      test_type: ${{ needs.parse-test-inputs.outputs.test_type }}
+      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
+      python: ${{ inputs.python }}
+      suite: ${{ matrix.suite }}
+      dt: ${{ inputs.dt }}
+      mode: ${{ inputs.mode }}
+      scenario: ${{ inputs.scenario }}
+      model: ${{ inputs.model }}
+
+  linux-e2e-tests-summary:
+    name: E2E Test Summary
+    needs: [linux-e2e-tests, parse-test-inputs]
+    if: >-
+      ${{
+        needs.parse-test-inputs.outputs.has_e2e_tests == 'true' &&
+        !cancelled() &&
+        !(
+          needs.linux-e2e-tests.result == 'skipped' ||
+          needs.linux-e2e-tests.result == 'cancelled'
+        )
+      }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      checks: write
+    uses: ./.github/workflows/_linux_e2e_summary.yml
+    with:
+      test_type: ${{ needs.parse-test-inputs.outputs.test_type }}
+      python: ${{ inputs.python }}
+
+  linux-microbench-tests:
+    name: Linux Microbenchmark Tests
+    needs:
+      - parse-test-inputs
+      - linux-build
+    if: ${{ needs.parse-test-inputs.outputs.has_microbench == 'true' }}
+    permissions:
+      contents: read
+      checks: write
+      actions: read
+    secrets: inherit
+    uses: ./.github/workflows/_linux_op_benchmark.yml
+    with:
+      runner: ${{ inputs.runner }}
+      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
+      python: ${{ inputs.python }}
+
+  windows-ut-tests:
+    name: Windows Unit Tests
+    needs: [parse-test-inputs]
+    if: ${{ needs.parse-test-inputs.outputs.has_windows == 'true' }}
+    secrets: inherit
+    uses: ./.github/workflows/_windows_ut.yml
+    with:
+      ut: 'op_extended,test_xpu,op_ut_windows'
+      python: ${{ inputs.python }}
+      src_changed: false
+      has_label: true
+      runner: ${{ inputs.windows_runner }}
+      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
+      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}

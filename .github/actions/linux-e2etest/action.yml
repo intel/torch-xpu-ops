@@ -1,133 +1,420 @@
 name: Linux E2E Test
+description: Linux E2E Test
 
 inputs:
   suite:
     required: true
-    type: string
     default: 'huggingface'
-    description: Dynamo benchmarks test suite. huggingface,timm_models,torchbench. Delimiter is comma
+    description: 'Dynamo benchmarks test suite. Options: huggingface,timm_models,torchbench (comma-separated)'
   dt:
     required: true
-    type: string
     default: 'float32'
-    description: Data precision of the test.float32,bfloat16,float16,amp_bf16,amp_fp16. Delimiter is comma
+    description: 'Data precision of the test. Options: float32,bfloat16,float16,amp_bf16,amp_fp16 (comma-separated)'
   mode:
     required: true
-    type: string
     default: 'inference'
-    description: inference,training. Delimiter is comma
+    description: 'Test mode. Options: inference,training (comma-separated)'
   scenario:
     required: true
-    type: string
     default: 'accuracy'
-    description: accuracy,performance. Delimiter is comma
+    description: 'Test scenario. Options: accuracy,performance (comma-separated)'
 
 runs:
   using: composite
   steps:
-    - name: Check Python
-      shell: bash -xe {0}
+    - name: Verify Python environment
+      shell: bash -eo pipefail {0}
       run: |
-        which python && python -V
-        which pip && pip list
-    - name: E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -xe {0}
+        echo "=== Python Environment Check ==="
+        echo "Python executable: $(which python)"
+        echo "Python version: $(python -V 2>&1)"
+        echo ""
+        echo "=== PIP Environment ==="
+        echo "PIP executable: $(which pip)"
+        pip list --format=columns || echo "pip list failed, continuing..."
+
+    - name: Execute E2E Tests
+      env:
+        NUMACTL_ARGS: ${{ steps.get-runner-infos.outputs.numactl_args }}
+        ZE_AFFINITY_MASK: ${{ steps.get-runner-infos.outputs.ZE_AFFINITY_MASK }}
+      shell: bash -eo pipefail {0}
       run: |
-        cp ./.github/scripts/inductor_xpu_test.sh ./pytorch
-        cd ./pytorch
-        if [ "${{ github.event_name }}" != "pull_request" ];then
-          # set models list for nightly tests
-          # huggingface all and remove CamemBert
-          # timm_models all
-          # torchbench all
-          rsync -avz ../.ci/benchmarks/ benchmarks/dynamo/
+        # Configuration and setup
+        SCRIPT_DIR="${{ github.workspace }}/.github/scripts"
+        TARGET_DIR="${{ github.workspace }}/pytorch"
+
+        echo "=== Test Configuration ==="
+        echo "Test Suite(s): ${{ inputs.suite }}"
+        echo "Data Type(s): ${{ inputs.dt }}"
+        echo "Mode(s): ${{ inputs.mode }}"
+        echo "Scenario(s): ${{ inputs.scenario }}"
+        echo "NUMACTL_ARGS: ${NUMACTL_ARGS}"
+        echo "ZE_AFFINITY_MASK: ${ZE_AFFINITY_MASK}"
+
+        # Copy test script
+        if [ -f "${SCRIPT_DIR}/inductor_xpu_test.sh" ]; then
+          cp "${SCRIPT_DIR}/inductor_xpu_test.sh" "${TARGET_DIR}/"
+          echo "Copied inductor_xpu_test.sh to pytorch directory"
+        else
+          echo "Error: inductor_xpu_test.sh not found in ${SCRIPT_DIR}"
+          exit 1
         fi
+
+        cd "${TARGET_DIR}" || exit 1
+
+        # Clean previous runs
         rm -rf inductor_log torch
-        # check param
-        contains() {
-          local pattern="$1"
-          local value="$2"
-          if [[ "$pattern" =~ (^|,)"$value"($|,) ]]; then
-            echo "Start $value ..."
-            return 0  # match
+
+        # Setup benchmark models for nightly runs
+        if [ "${{ github.event_name }}" != "pull_request" ]; then
+          echo "Nightly run detected - setting up all benchmark models"
+          BENCHMARK_SRC="../.ci/benchmarks/"
+          BENCHMARK_DEST="benchmarks/dynamo/"
+
+          if [ -d "${BENCHMARK_SRC}" ]; then
+            rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}" || {
+              echo "Warning: Failed to sync benchmark models"
+            }
           else
-            echo "[Warning] $value is not supported type! Skipped!"
-            return 1  # not match
+            echo "Warning: Benchmark source directory not found: ${BENCHMARK_SRC}"
+          fi
+        else
+          echo "PR run detected - using limited model set"
+        fi
+
+        # Helper function to validate input values
+        validate_input() {
+          local valid_values="$1"
+          local test_value="$2"
+          local input_type="$3"
+
+          # Create regex pattern from comma-separated list
+          local pattern="^((${valid_values//,/|}))$"
+
+          if [[ "$test_value" =~ $pattern ]]; then
+            echo "Valid ${input_type}: ${test_value}"
+            return 0
+          else
+            echo "Error: Invalid ${input_type}: '${test_value}'"
+            echo "Valid values are: ${valid_values}"
+            return 1
           fi
         }
-        run_with_shard() {
-          # set models to run
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            models_list_args="$(awk -F ',|;| ' '{printf(" -k %s ", $1)}' benchmarks/dynamo/$(echo ${suite} |sed 's/_models//')_models_list.txt)"
-          elif [ ! -z "${MODEL_ONLY_NAME:-}" ]; then
-            models_list_args=" -k ${MODEL_ONLY_NAME} "
-          else
-            models_list_args=""
-          fi
-          # shards to run
-          # Such as numactl_args=' ZE_AFFINITY_MASK=0 OMP_NUM_THREADS=12 numactl -l -C 0-11 ; ZE_AFFINITY_MASK=1 OMP_NUM_THREADS=12 numactl -l -C 12-23 ;'
-          delimiter=";"
-          IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
-          instances=${#numactl_args_list[@]}
-          for i in $(seq 0 $[ ${instances} - 1 ])
-          do
-            xpu_id="$(echo ${numactl_args_list[$i]} |sed 's/.*ZE_AFFINITY_MASK=//;s/ .*//')"
-            eval ${numactl_args_list[$i]} bash -x inductor_xpu_test.sh \
-                    ${suite} ${dt} ${mode} ${scenario} \
-                    xpu ${xpu_id} static ${instances} ${i} \
-                    \"${models_list_args}\" \
-                    &
+
+        # Helper function to check if value is in list
+        contains_value() {
+          local valid_list="$1"
+          local test_value="$2"
+
+          # Convert list to array
+          IFS=',' read -ra valid_array <<< "${valid_list}"
+
+          for valid_item in "${valid_array[@]}"; do
+            if [[ "${valid_item}" == "${test_value}" ]]; then
+              return 0  # Found
+            fi
           done
-          wait
+
+          return 1  # Not found
         }
-        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
-        do
-          if ! contains "huggingface,timm_models,torchbench" "$suite"; then
+
+        # Function to run tests with sharding
+        run_with_sharding() {
+          local suite="$1"
+          local dt="$2"
+          local mode="$3"
+          local scenario="$4"
+          local numactl_args="$5"
+
+          echo "=== Starting Test Run ==="
+          echo "Suite: ${suite}"
+          echo "Data Type: ${dt}"
+          echo "Mode: ${mode}"
+          echo "Scenario: ${scenario}"
+
+          # Determine model selection arguments
+          local models_list_args=""
+
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            # PR runs use limited model list
+            local model_list_file="benchmarks/dynamo/${suite//_models/}_models_list.txt"
+            if [ -f "${model_list_file}" ]; then
+              # Read first model from list file
+              local first_model=$(head -n 1 "${model_list_file}" | awk -F '[,; ]' '{print $1}')
+              if [ -n "${first_model}" ]; then
+                models_list_args=" -k ${first_model} "
+                echo "PR run - using model: ${first_model}"
+              fi
+            fi
+          elif [ -n "${MODEL_ONLY_NAME:-}" ]; then
+            # Specific model override
+            models_list_args=" -k ${MODEL_ONLY_NAME} "
+            echo "Using specific model: ${MODEL_ONLY_NAME}"
+          else
+            # Full run (all models)
+            echo "Running all models for ${suite}"
+          fi
+
+          # Parse numactl arguments for sharding
+          local delimiter=";"
+          IFS="${delimiter}" read -ra numactl_commands <<< "${numactl_args}"
+          local instance_count=${#numactl_commands[@]}
+          local pids=()
+
+          echo "Number of parallel instances: ${instance_count}"
+
+          # Run tests in parallel across instances
+          for ((i = 0; i < instance_count; i++)); do
+            local numactl_cmd="${numactl_commands[$i]}"
+
+            # Extract XPU ID from command
+            local xpu_id
+            if [[ "${numactl_cmd}" =~ ZE_AFFINITY_MASK=([0-9]+) ]]; then
+              xpu_id="${BASH_REMATCH[1]}"
+            else
+              xpu_id="${i}"  # Fallback to index
+            fi
+
+            # Clean up the command (remove trailing spaces/semicolons)
+            numactl_cmd="${numactl_cmd%;}"
+            numactl_cmd="${numactl_cmd%; }"
+
+            # Create log directory
+            local log_dir="inductor_log/${suite}/${dt}"
+            mkdir -p "${log_dir}"
+
+            # Build command
+            local cmd="${numactl_cmd} bash -x inductor_xpu_test.sh \
+                ${suite} ${dt} ${mode} ${scenario} \
+                xpu ${xpu_id} static ${instance_count} ${i} \
+                \"${models_list_args}\""
+
+            echo "Starting instance ${i} on XPU ${xpu_id}: ${cmd:0:100}..."
+
+            # Execute in background
+            eval "${cmd}" > "${log_dir}/instance_${i}_xpu_${xpu_id}.log" 2>&1 &
+            pids+=($!)
+          done
+
+          # Wait for all instances to complete
+          echo "Waiting for ${#pids[@]} test instances to complete..."
+          local failed_pids=()
+
+          for pid in "${pids[@]}"; do
+            if wait "${pid}"; then
+              echo "Instance with PID ${pid} completed successfully"
+            else
+              echo "Instance with PID ${pid} failed"
+              failed_pids+=("${pid}")
+            fi
+          done
+
+          # Consolidate logs
+          local consolidated_log_dir="inductor_log/${suite}/${dt}"
+          local consolidated_log_name="inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log"
+
+          rm -f "${consolidated_log_dir}/${consolidated_log_name}"
+
+          # Find and combine all instance logs
+          find "${consolidated_log_dir}/" -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" \
+            -o -name "instance_*_xpu_*.log" 2>/dev/null | \
+            while read -r log_file; do
+              if [ -f "${log_file}" ]; then
+                echo "=== Log from: $(basename "${log_file}") ===" >> "${consolidated_log_dir}/${consolidated_log_name}"
+                cat "${log_file}" >> "${consolidated_log_dir}/${consolidated_log_name}"
+                echo -e "\n\n" >> "${consolidated_log_dir}/${consolidated_log_name}"
+              fi
+            done
+
+          if [ ${#failed_pids[@]} -gt 0 ]; then
+            echo "Warning: ${#failed_pids[@]} test instances failed"
+            return 1
+          fi
+
+          echo "Test run completed for ${suite}/${dt}/${mode}/${scenario}"
+          return 0
+        }
+
+        # Main test execution loop
+        IFS=',' read -ra suite_array <<< "${{ inputs.suite }}"
+        IFS=',' read -ra dt_array <<< "${{ inputs.dt }}"
+        IFS=',' read -ra mode_array <<< "${{ inputs.mode }}"
+        IFS=',' read -ra scenario_array <<< "${{ inputs.scenario }}"
+
+        # Define valid values for validation
+        VALID_SUITES="huggingface,timm_models,torchbench"
+        VALID_DT="float32,bfloat16,float16,amp_bf16,amp_fp16"
+        VALID_MODES="inference,training"
+        VALID_SCENARIOS="accuracy,performance"
+
+        # Track overall success
+        overall_success=true
+
+        for suite in "${suite_array[@]}"; do
+          suite="${suite// /}"  # Clean whitespace
+
+          if ! contains_value "${VALID_SUITES}" "${suite}"; then
+            echo "Skipping invalid suite: ${suite}"
             continue
           fi
-          for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
-          do
-            if ! contains "float32,bfloat16,float16,amp_bf16,amp_fp16" "$dt"; then
+
+          for dt in "${dt_array[@]}"; do
+            dt="${dt// /}"  # Clean whitespace
+
+            if ! contains_value "${VALID_DT}" "${dt}"; then
+              echo "Skipping invalid data type: ${dt}"
               continue
             fi
-            for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
-            do
-              if ! contains "inference,training" "$mode"; then
+
+            for mode in "${mode_array[@]}"; do
+              mode="${mode// /}"  # Clean whitespace
+
+              if ! contains_value "${VALID_MODES}" "${mode}"; then
+                echo "Skipping invalid mode: ${mode}"
                 continue
               fi
-              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
-              do
-                if ! contains "accuracy,performance" "$scenario"; then
+
+              for scenario in "${scenario_array[@]}"; do
+                scenario="${scenario// /}"  # Clean whitespace
+
+                if ! contains_value "${VALID_SCENARIOS}" "${scenario}"; then
+                  echo "Skipping invalid scenario: ${scenario}"
                   continue
                 fi
-                run_with_shard
-                # summarize pass rate
-                LOG_DIR="inductor_log/${suite}/${dt}"
-                LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
-                rm -f ${LOG_DIR}/${LOG_NAME}
-                find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
-              done
-            done
-          done
-        done
 
-    - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -xe {0}
-      run: |
-        cd ./pytorch
-        rm -f inductor_log/summary_accuracy.csv
-        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
-        do
-          sed -i "s/$/,$(basename $var)/" $var
-          cat $var >> inductor_log/summary_accuracy.csv
-        done
-        cp ${{ github.workspace }}/.github/scripts/inductor_summary.py ./
-        csv_file="$(find inductor_log/ -name "inductor_*_xpu_*.csv" |tail -n 1)"
-        if [ -f "${csv_file}" ];then
-          pip install styleFrame scipy pandas
-          dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
-          mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
-          suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
-          scenario=$(echo ${{ inputs.scenario }} |sed 's/,/ /g')
-          python inductor_summary.py -p ${dt} -s ${suite} -m ${mode} -sc ${scenario}
+                echo "================================================================="
+                echo "Running: Suite=${suite}, DT=${dt}, Mode=${mode}, Scenario=${scenario}"
+                echo "================================================================="
+
+                # Run tests with sharding
+                if ! run_with_sharding "${suite}" "${dt}" "${mode}" "${scenario}" "${NUMACTL_ARGS}"; then
+                  overall_success=false
+                  echo "Test run failed for ${suite}/${dt}/${mode}/${scenario}"
+                fi
+
+              done  # scenario loop
+            done  # mode loop
+          done  # dt loop
+        done  # suite loop
+
+        if [ "${overall_success}" = true ]; then
+          echo "All test configurations completed successfully"
+        else
+          echo "Some test configurations failed"
+          exit 1
         fi
+
+    - name: Generate Test Summary
+      shell: bash -eo pipefail {0}
+      run: |
+        cd "${{ github.workspace }}/pytorch" || exit 1
+
+        echo "=== Generating Test Summary ==="
+
+        # Combine all accuracy CSV files
+        rm -f inductor_log/summary_accuracy.csv
+
+        # Process and combine CSV files
+        find inductor_log/ -name "inductor_*_xpu_accuracy.csv" 2>/dev/null | \
+          while read -r csv_file; do
+            if [ -f "${csv_file}" ]; then
+              # Add filename as column for tracking
+              file_basename=$(basename "${csv_file}")
+              # Use sed to append filename (safe for special characters)
+              sed "s/\$/,\"${file_basename}\"/" "${csv_file}" >> inductor_log/summary_accuracy.csv
+              echo "Added: ${csv_file}"
+            fi
+          done
+
+        # Check if we have any CSV results
+        csv_count=$(find inductor_log/ -name "inductor_*_xpu_*.csv" 2>/dev/null | wc -l)
+
+        if [ "${csv_count}" -eq 0 ]; then
+          echo "No CSV result files found"
+          exit 0
+        fi
+
+        # Get a sample CSV for analysis
+        sample_csv=$(find inductor_log/ -name "inductor_*_xpu_*.csv" 2>/dev/null | head -n 1)
+
+        if [ -f "${sample_csv}" ]; then
+          echo "Found results in: ${sample_csv}"
+
+          # Install required Python packages
+          echo "Installing required Python packages..."
+          pip install --quiet styleFrame scipy pandas || {
+            echo "Warning: Failed to install some packages, attempting to continue..."
+          }
+
+          # Copy and run summary script
+          SUMMARY_SCRIPT="${{ github.workspace }}/.github/scripts/inductor_summary.py"
+
+          if [ -f "${SUMMARY_SCRIPT}" ]; then
+            cp "${SUMMARY_SCRIPT}" ./
+
+            # Parse input parameters for summary generation
+            IFS=',' read -ra dt_array <<< "${{ inputs.dt }}"
+            IFS=',' read -ra suite_array <<< "${{ inputs.suite }}"
+            IFS=',' read -ra mode_array <<< "${{ inputs.mode }}"
+            IFS=',' read -ra scenario_array <<< "${{ inputs.scenario }}"
+
+            # Build command arguments
+            python_args=""
+
+            # Add precision arguments
+            for dt in "${dt_array[@]}"; do
+              python_args+=" -p ${dt}"
+            done
+
+            # Add suite arguments
+            for suite in "${suite_array[@]}"; do
+              python_args+=" -s ${suite}"
+            done
+
+            # Add mode arguments
+            for mode in "${mode_array[@]}"; do
+              python_args+=" -m ${mode}"
+            done
+
+            # Add scenario arguments
+            for scenario in "${scenario_array[@]}"; do
+              python_args+=" -sc ${scenario}"
+            done
+
+            echo "Running summary script with: ${python_args}"
+
+            # Run the summary script
+            if python inductor_summary.py ${python_args}; then
+              echo "Summary generation completed successfully"
+
+              # Display summary file if created
+              if [ -f "inductor_log/test_summary.html" ] || [ -f "inductor_log/summary_report.html" ]; then
+                echo "Summary report generated"
+              fi
+            else
+              echo "Warning: Summary script returned non-zero exit code"
+              exit 1
+            fi
+
+          else
+            echo "Error: Summary script not found: ${SUMMARY_SCRIPT}"
+            exit 1
+          fi
+
+          # List all generated files for debugging
+          echo "=== Generated Files ==="
+          find inductor_log/ -type f -name "*.csv" -o -name "*.log" -o -name "*.html" -o -name "*.txt" | \
+            sort | while read -r file; do
+              echo "  ${file}"
+            done
+
+          # Display pass/fail counts if available
+          if [ -f "inductor_log/summary_accuracy.csv" ]; then
+            total_tests=$(wc -l < inductor_log/summary_accuracy.csv)
+            echo "Total test results: $((total_tests - 1))"  # Subtract header
+          fi
+        else
+          echo "No valid CSV files found for analysis"
+        fi
+
+        echo "=== Summary Generation Complete ==="

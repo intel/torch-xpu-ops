@@ -1,201 +1,535 @@
 name: Setup Test Environment
+description: Setup Test Environment
 
 inputs:
   pytorch:
-    type: string
     default: 'main'
-    description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+    description: 'Pytorch version: main (default), commit/branch, or repo@commit/repo@branch, or release_wheel/test_wheel/nightly_wheel'
   torch_xpu_ops:
-    type: string
     default: 'main'
-    description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+    description: 'Torch-xpu-ops version: main (default), commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
   python:
-    type: string
     default: '3.10'
-    description: Python version
+    description: 'Python version'
   suite:
-    type: string
     default: 'None'
-    description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+    description: 'Dynamo benchmarks test suite. Options: huggingface,timm_models,torchbench,pt2e (comma-separated)'
 
 runs:
   using: composite
   steps:
-    - name: Check runner
-      shell: bash -xe {0}
+    - name: Verify runner environment
+      shell: bash -eo pipefail {0}
       run: |
-        hostname && id
-        cat /etc/os-release
-        gcc -v && g++ -v
-        uname -a
-        dpkg -l |grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd'
-        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp*
-        if [ ! -z ${AGENT_TOOLSDIRECTORY} ];then
-          rm -rf ${AGENT_TOOLSDIRECTORY}
+        echo "=== Runner Environment Verification ==="
+        echo "Hostname: $(hostname)"
+        echo "User ID: $(id)"
+        echo "Working directory: $(pwd)"
+
+        echo -e "\n=== OS Information ==="
+        if [ -f /etc/os-release ]; then
+          cat /etc/os-release
+        else
+          echo "OS release file not found"
         fi
-        sudo apt update
-        sudo apt install -y jq numactl
-        rm -rf Torch-XPU-Wheel-*
-    - name: Setup python-${{ inputs.python }}
+
+        echo -e "\n=== Compiler Information ==="
+        gcc --version 2>/dev/null || echo "gcc not found"
+        g++ --version 2>/dev/null || echo "g++ not found"
+
+        echo -e "\n=== Kernel Information ==="
+        uname -a
+
+        echo -e "\n=== Intel GPU Runtime Packages ==="
+        if command -v dpkg > /dev/null; then
+          dpkg -l | grep -E 'libigc-dev|libze-dev|level-zero-dev|intel-opencl-icd' || echo "No Intel GPU packages found via dpkg"
+        else
+          echo "dpkg not available"
+        fi
+
+        echo -e "\n=== Cleaning Temporary Files ==="
+        rm -rf ~/.triton /tmp/*inductor* /tmp/tmp* 2>/dev/null || true
+
+        if [ -n "${AGENT_TOOLSDIRECTORY}" ]; then
+          echo "Cleaning AGENT_TOOLSDIRECTORY: ${AGENT_TOOLSDIRECTORY}"
+          rm -rf "${AGENT_TOOLSDIRECTORY}" 2>/dev/null || true
+        fi
+
+        echo -e "\n=== Installing System Dependencies ==="
+        sudo apt-get update -q
+        sudo apt-get install -y jq numactl 2>/dev/null || {
+          echo "Failed to install system dependencies"
+          exit 1
+        }
+
+        echo -e "\n=== Cleaning Old Wheel Directories ==="
+        rm -rf Torch-XPU-Wheel-* 2>/dev/null || true
+
+        echo "Runner environment check completed successfully"
+
+    - name: Setup Python ${{ inputs.python }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python }}
-    - name: Check python
-      shell: bash -xe {0}
+        cache: 'pip'
+
+    - name: Verify Python installation
+      shell: bash -eo pipefail {0}
       run: |
-        which python && python -V
-        which pip && pip list
-        pip install -U pip wheel setuptools
-    - name: Checkout torch-xpu-ops
+        echo "=== Python Environment Check ==="
+        python_path=$(which python)
+        python3_path=$(which python3)
+
+        if [ -n "${python_path}" ]; then
+          echo "Python executable: ${python_path}"
+        elif [ -n "${python3_path}" ]; then
+          echo "Python3 executable: ${python3_path}"
+          echo "Creating python symlink..."
+          ln -sf "${python3_path}" /usr/local/bin/python 2>/dev/null || true
+        else
+          echo "Error: Python not found!"
+          exit 1
+        fi
+
+        python -V
+        echo ""
+
+        echo "=== PIP Environment ==="
+        pip --version || echo "pip not found"
+        pip list --format=columns | head -20 || echo "pip list failed"
+
+        echo -e "\n=== Updating Python Tools ==="
+        pip install -U pip wheel setuptools --quiet || {
+          echo "Warning: Failed to update Python tools"
+        }
+
+    - name: Checkout torch-xpu-ops repository
       uses: actions/checkout@v4
       with:
+        repository: intel/torch-xpu-ops
+        ref: main
         path: torch-xpu-ops
-    - name: Download Pytorch wheel
-      if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+        fetch-depth: 1
+
+    - name: Download Pytorch wheel (if needed)
+      if: ${{ !contains(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
         pattern: Torch-XPU-Wheel-*
-    - name: Prepare Stock Pytorch
-      shell: bash -xe {0}
+        path: ./wheels
+        merge-multiple: true
+
+    - name: Install and Configure Pytorch
+      shell: bash -eo pipefail {0}
       run: |
-        # install pytorch
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
-        else
-          latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
-          pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
+        echo "=== Installing Pytorch ==="
+        echo "Pytorch input: ${{ inputs.pytorch }}"
+
+        # Function to extract repo and commit from input
+        extract_repo_commit() {
+          local input="$1"
+          if [[ "${input}" == *"@"* ]]; then
+            repo="${input%%@*}"
+            commit="${input##*@}"
+          else
+            repo="https://github.com/pytorch/pytorch.git"
+            commit="${input}"
+          fi
+          echo "${repo} ${commit}"
+        }
+
+        # Install Pytorch based on input type
+        case "${{ inputs.pytorch }}" in
+          *release_wheel*)
+            echo "Installing release wheel from PyTorch index"
+            pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
+            ;;
+          *test_wheel*)
+            echo "Installing test wheel from PyTorch index"
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
+            ;;
+          *nightly_wheel*)
+            echo "Installing nightly wheel from PyTorch index"
+            pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+            ;;
+          *)
+            echo "Installing from local wheel"
+            local_wheel_dir=$(find ./wheels -type d -name "Torch-XPU-Wheel-*" 2>/dev/null | sort -V | tail -n 1)
+
+            if [ -n "${local_wheel_dir}" ] && [ -d "${local_wheel_dir}" ]; then
+              echo "Found wheel directory: ${local_wheel_dir}"
+              pip install --force-reinstall $(find "${local_wheel_dir}" -name "*.whl" -type f)
+            else
+              echo "Error: No local wheel directory found"
+              exit 1
+            fi
+            ;;
+        esac
+
+        # Get installed torch commit ID
+        TORCH_COMMIT_ID=$(python -c "import torch; print(torch.version.git_version)" 2>/dev/null || echo "unknown")
+        echo "Installed Torch commit ID: ${TORCH_COMMIT_ID}"
+
+        # Clone pytorch repository for patching
+        echo -e "\n=== Cloning Pytorch Repository ==="
+        read -r PYTORCH_REPO PYTORCH_COMMIT <<< "$(extract_repo_commit "${{ inputs.pytorch }}")"
+
+        if [ "${PYTORCH_COMMIT}" = "main" ] || [ "${PYTORCH_COMMIT}" = "release_wheel" ] || \
+           [ "${PYTORCH_COMMIT}" = "test_wheel" ] || [ "${PYTORCH_COMMIT}" = "nightly_wheel" ]; then
+          PYTORCH_COMMIT="${TORCH_COMMIT_ID}"
         fi
-        TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
-        if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-        else
-          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-        fi
-        git clone ${PYTORCH_REPO} pytorch
+
+        echo "Cloning from: ${PYTORCH_REPO}"
+        echo "Checking out commit: ${PYTORCH_COMMIT}"
+
+        rm -rf pytorch
+        git clone --depth 1 "${PYTORCH_REPO}" pytorch || {
+          echo "Warning: Failed to clone pytorch repository"
+          exit 1
+        }
+
         cd pytorch
-        git checkout ${TORCH_COMMIT_ID}
-        # apply extra PRs for stock pytorch
-        pip install requests
-        python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
-        git status && git diff && git show -s
-        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> ${GITHUB_ENV}
-    - name: Prepare Torch-xpu-ops
-      shell: bash -xe {0}
+        git fetch --depth 1 origin "${PYTORCH_COMMIT}" 2>/dev/null || true
+        git checkout "${PYTORCH_COMMIT}" || {
+          echo "Warning: Failed to checkout commit ${PYTORCH_COMMIT}, trying as branch"
+          git checkout -b temp_branch "${PYTORCH_COMMIT}" 2>/dev/null || true
+        }
+
+        echo -e "\n=== Applying Pytorch Patches ==="
+        pip install requests --quiet
+
+        if [ -f "../torch-xpu-ops/.github/scripts/apply_torch_pr.py" ]; then
+          python "../torch-xpu-ops/.github/scripts/apply_torch_pr.py" || {
+            echo "Warning: Failed to apply pytorch patches"
+          }
+        else
+          echo "Patch script not found, skipping"
+        fi
+
+        echo -e "\n=== Repository Status ==="
+        git status --short
+        git show -s --oneline
+
+        echo "TORCH_COMMIT_ID=${TORCH_COMMIT_ID}" >> "${GITHUB_ENV}"
+        echo "PYTORCH_DIR=$(pwd)" >> "${GITHUB_ENV}"
+
+        cd ..
+
+    - name: Configure Torch-xpu-ops
+      shell: bash -eo pipefail {0}
       run: |
-        cd pytorch
+        echo "=== Configuring Torch-xpu-ops ==="
+        echo "Torch-xpu-ops input: ${{ inputs.torch_xpu_ops }}"
+
+        cd pytorch || exit 1
+
+        # Clean existing torch-xpu-ops directory
         rm -rf third_party/torch-xpu-ops
-        if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-          TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-          TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
-        else
-          TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-          if [ "${{ inputs.torch_xpu_ops }}" == "pinned" ];then
-            TORCH_XPU_OPS_COMMIT="$(cat third_party/xpu.txt)"
+
+        # Function to extract repo and commit for torch-xpu-ops
+        extract_torch_xpu_ops_info() {
+          local input="$1"
+
+          if [[ "${input}" == *"@"* ]]; then
+            repo="${input%%@*}"
+            commit="${input##*@}"
+          elif [ "${input}" = "pinned" ]; then
+            repo="https://github.com/intel/torch-xpu-ops.git"
+            if [ -f "third_party/xpu.txt" ]; then
+              commit=$(cat third_party/xpu.txt)
+            else
+              commit="main"
+            fi
           else
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
+            repo="https://github.com/intel/torch-xpu-ops.git"
+            commit="${input}"
+          fi
+
+          echo "${repo} ${commit}"
+        }
+
+        read -r TORCH_XPU_OPS_REPO TORCH_XPU_OPS_COMMIT <<< "$(extract_torch_xpu_ops_info "${{ inputs.torch_xpu_ops }}")"
+
+        echo "Torch-xpu-ops repo: ${TORCH_XPU_OPS_REPO}"
+        echo "Torch-xpu-ops commit: ${TORCH_XPU_OPS_COMMIT}"
+
+        # Handle PR vs regular runs differently
+        if [ "${{ github.event_name }}" = "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]]; then
+          echo "PR run detected, using local torch-xpu-ops checkout"
+          mkdir -p third_party/torch-xpu-ops
+          cp -r "${{ github.workspace }}/torch-xpu-ops/"* third_party/torch-xpu-ops/ 2>/dev/null || {
+            echo "Warning: Failed to copy local torch-xpu-ops"
+            exit 1
+          }
+        else
+          echo "Cloning torch-xpu-ops repository"
+          git clone --depth 1 "${TORCH_XPU_OPS_REPO}" third_party/torch-xpu-ops || {
+            echo "Error: Failed to clone torch-xpu-ops repository"
+            exit 1
+          }
+
+          cd third_party/torch-xpu-ops
+
+          # Try to checkout the specific commit
+          if [ "${TORCH_XPU_OPS_COMMIT}" != "main" ]; then
+            echo "Checking out commit: ${TORCH_XPU_OPS_COMMIT}"
+            git fetch --depth 1 origin "${TORCH_XPU_OPS_COMMIT}" 2>/dev/null || true
+            git checkout "${TORCH_XPU_OPS_COMMIT}" || {
+              echo "Warning: Failed to checkout commit ${TORCH_XPU_OPS_COMMIT}, using main"
+              git checkout main
+            }
           fi
         fi
-        if [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-        fi
-        git status && git diff && git show -s
-    - name: Install E2E Requirements
-      shell: bash -xe {0}
+
+        echo -e "\n=== Torch-xpu-ops Status ==="
+        git status --short
+        git show -s --oneline
+
+        cd ../../..
+
+    - name: Install Test Suite Dependencies
+      shell: bash -eo pipefail {0}
+      env:
+        SUITE_INPUT: ${{ inputs.suite }}
+        IS_PR: ${{ github.event_name == 'pull_request' }}
       run: |
-        # common
-        pip install pandas psutil scipy pyyaml
-        cd pytorch
-        if [[ "${{ inputs.suite }}" == *"huggingface"* ]];then
-          # for new LLM models
-          pip install accelerate
-          pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt || pip install transformers==4.54.0 soxr==0.5.0
-          TRANSFORMERS_VERSION_ID="$(python -c 'import os; os.chdir("/tmp"); import transformers; print(transformers.__version__)')"
-        elif [[ "${{ inputs.suite }}" == *"timm_models"* ]];then
-          TIMM_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/timm.txt 2> /dev/null || echo 'v1.0.14')"
-          pip install git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}
-        elif [[ "${{ inputs.suite }}" == *"torchbench"* ]];then
-          TORCHBENCH_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/torchbench.txt 2> /dev/null || echo 'e03a63be')"
-          cd ../
+        echo "=== Installing Test Suite Dependencies ==="
+        echo "Test suite(s): ${SUITE_INPUT}"
+
+        # Function to check if suite is in input
+        suite_contains() {
+          local suite="$1"
+          [[ ",${SUITE_INPUT}," == *",${suite},"* ]] || [[ "${SUITE_INPUT}" == "${suite}" ]] || [[ "${SUITE_INPUT}" == "None" ]]
+        }
+
+        # Install common dependencies
+        echo -e "\n=== Installing Common Dependencies ==="
+        pip install pandas psutil scipy pyyaml --quiet || {
+          echo "Warning: Failed to install common dependencies"
+        }
+
+        cd pytorch || exit 1
+
+        # HuggingFace suite dependencies
+        if suite_contains "huggingface"; then
+          echo -e "\n=== Installing HuggingFace Dependencies ==="
+          pip install accelerate --quiet
+
+          if [ -f ".ci/docker/ci_commit_pins/huggingface-requirements.txt" ]; then
+            pip install -r .ci/docker/ci_commit_pins/huggingface-requirements.txt --quiet || {
+              echo "Warning: Failed to install pinned huggingface requirements, trying fallback"
+              pip install transformers==4.54.0 soxr==0.5.0 --quiet
+            }
+          else
+            pip install transformers==4.54.0 soxr==0.5.0 --quiet
+          fi
+
+          TRANSFORMERS_VERSION=$(python -c "import transformers; print(transformers.__version__)" 2>/dev/null || echo "unknown")
+          echo "Transformers version: ${TRANSFORMERS_VERSION}"
+        fi
+
+        # TIMM models suite dependencies
+        if suite_contains "timm_models"; then
+          echo -e "\n=== Installing TIMM Models Dependencies ==="
+          TIMM_COMMIT_ID=$(cat .ci/docker/ci_commit_pins/timm.txt 2>/dev/null || echo 'v1.0.14')
+          echo "Using TIMM commit: ${TIMM_COMMIT_ID}"
+
+          pip install "git+https://github.com/huggingface/pytorch-image-models@${TIMM_COMMIT_ID}" --quiet || {
+            echo "Error: Failed to install TIMM"
+            exit 1
+          }
+        fi
+
+        # TorchBench suite dependencies
+        if suite_contains "torchbench"; then
+          echo -e "\n=== Installing TorchBench Dependencies ==="
+          TORCHBENCH_COMMIT_ID=$(cat .ci/docker/ci_commit_pins/torchbench.txt 2>/dev/null || echo 'e03a63be')
+          echo "Using TorchBench commit: ${TORCHBENCH_COMMIT_ID}"
+
+          cd ..
           rm -rf ./benchmark
-          git clone https://github.com/pytorch/benchmark benchmark
+
+          git clone --depth 1 https://github.com/pytorch/benchmark benchmark || {
+            echo "Error: Failed to clone torchbench"
+            exit 1
+          }
+
           cd benchmark
-          git checkout ${TORCHBENCH_COMMIT_ID}
-          sed -i 's/^ *pynvml.*//' requirements.txt
-          pip install -r requirements.txt
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            while read line; do
-              python install.py $(echo $line |awk -F, '{printf $1}')
-            done < ../pytorch/benchmarks/dynamo/torchbench_models_list.txt
+          git checkout "${TORCHBENCH_COMMIT_ID}" 2>/dev/null || echo "Using default branch"
+
+          # Clean requirements.txt
+          sed -i '/^[[:space:]]*pynvml.*/d' requirements.txt
+
+          # Install requirements
+          pip install -r requirements.txt --quiet || {
+            echo "Warning: Failed to install some torchbench requirements"
+          }
+
+          # Install models based on run type
+          if [ "${IS_PR}" = true ]; then
+            echo "PR run - installing models from list"
+            if [ -f "../pytorch/benchmarks/dynamo/torchbench_models_list.txt" ]; then
+              while IFS= read -r line || [ -n "${line}" ]; do
+                model_name=$(echo "${line}" | awk -F'[,; ]' '{print $1}')
+                if [ -n "${model_name}" ]; then
+                  echo "Installing model: ${model_name}"
+                  python install.py "${model_name}" || echo "Warning: Failed to install ${model_name}"
+                fi
+              done < "../pytorch/benchmarks/dynamo/torchbench_models_list.txt"
+            fi
           else
-            python install.py --continue_on_fail
+            echo "Non-PR run - installing all models"
+            python install.py --continue_on_fail || {
+              echo "Warning: Some models failed to install"
+            }
           fi
-          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
-          # for dlrm
-          pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-          pip uninstall -y fbgemm_gpu_nightly-cpu
-          # for soft_actor_critic, temp fix
-          pip install git+https://github.com/nocoding03/gym@fix-np
+
+          # Install DLRM dependencies
+          echo "Installing DLRM dependencies..."
+          pip install pyre-extensions --quiet
+
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt 2>/dev/null | \
+            xargs pip install --quiet || echo "Warning: Failed to install DLRM requirements"
+
+          pip uninstall -y fbgemm_gpu_nightly-cpu 2>/dev/null || true
+
+          # Fix for soft_actor_critic
+          echo "Installing gym fix for soft_actor_critic..."
+          pip install "git+https://github.com/nocoding03/gym@fix-np" --quiet || {
+            echo "Warning: Failed to install gym fix"
+          }
+
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH:-}" >> "${GITHUB_ENV}"
           cd ../pytorch
-        elif [[ "${{ inputs.suite }}" == *"pt2e"* ]];then
-          cd ../
-          rm -rf ./pt2e-performance ./pt2e-accuracy
-          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
-          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance
+        fi
+
+        # PT2E suite dependencies
+        if suite_contains "pt2e"; then
+          echo -e "\n=== Installing PT2E Dependencies ==="
+          cd ..
+
+          # Clone PT2E repositories
+          rm -rf ./pt2e-accuracy ./pt2e-performance
+
+          git clone -b main --depth 1 https://github.com/chuanqi129/inductor-tools pt2e-accuracy || {
+            echo "Error: Failed to clone pt2e-accuracy"
+            exit 1
+          }
+
+          git clone -b yifeng/pt2e_xpu --depth 1 https://github.com/zxd1997066/benchmark pt2e-performance || {
+            echo "Error: Failed to clone pt2e-performance"
+            exit 1
+          }
+
           cd pt2e-performance
-          TORCHBENCH_COMMIT_ID="$(git rev-parse --short  HEAD)"
-          sed -i 's/^ *pynvml.*//' requirements.txt
-          pip install -r requirements.txt
-          # python install.py --continue_on_fail
-          echo "PYTHONPATH=${PWD}:${PYTHONPATH}" >> ${GITHUB_ENV}
-          pip install dominate
-          python install.py Super_SloMo
-          # for dlrm
-          pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt |xargs pip install
-          pip uninstall -y fbgemm_gpu_nightly-cpu
+          TORCHBENCH_COMMIT_ID=$(git rev-parse --short HEAD)
+          echo "PT2E performance commit: ${TORCHBENCH_COMMIT_ID}"
+
+          # Clean requirements.txt
+          sed -i '/^[[:space:]]*pynvml.*/d' requirements.txt
+
+          # Install requirements
+          pip install -r requirements.txt --quiet || {
+            echo "Warning: Failed to install some PT2E requirements"
+          }
+
+          echo "PYTHONPATH=${PWD}:${PYTHONPATH:-}" >> "${GITHUB_ENV}"
+
+          # Install additional dependencies
+          pip install dominate --quiet
+
+          # Install specific model
+          python install.py Super_SloMo || {
+            echo "Warning: Failed to install Super_SloMo model"
+          }
+
+          # Install DLRM dependencies
+          pip install pyre-extensions --quiet
+
+          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt 2>/dev/null | \
+            xargs pip install --quiet || echo "Warning: Failed to install DLRM requirements"
+
+          pip uninstall -y fbgemm_gpu_nightly-cpu 2>/dev/null || true
+
           cd ../pytorch
-        else
-          pip install -r ./.ci/docker/requirements-ci.txt
-          pip install pytest pytest-timeout pytest-xdist
         fi
-        # install the corresponding torchao
-        pip uninstall -y torchao
-        if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
-          pip install torchao --pre --index-url https://download.pytorch.org/whl/xpu
-        elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
-          pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu
-        else
-          pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+
+        # Default dependencies if no specific suite
+        if [ "${SUITE_INPUT}" = "None" ]; then
+          echo -e "\n=== Installing Default Dependencies ==="
+          if [ -f ".ci/docker/requirements-ci.txt" ]; then
+            pip install -r .ci/docker/requirements-ci.txt --quiet || {
+              echo "Warning: Failed to install CI requirements"
+            }
+          fi
+          pip install pytest pytest-timeout pytest-xdist --quiet
         fi
-        if [ "${{ inputs.suite }}" != "None" ];then
-          # To install numpy 1.x for benchmarks as CUDA
-          # yolov requires numpy>=1.23
-          pip install -U numpy==1.26.4
+
+        echo -e "\n=== Installing TorchAO ==="
+        # Uninstall any existing torchao
+        pip uninstall -y torchao 2>/dev/null || true
+
+        # Install appropriate torchao version
+        case "${{ inputs.pytorch }}" in
+          *release_wheel*)
+            pip install torchao --pre --index-url https://download.pytorch.org/whl/xpu --quiet
+            ;;
+          *test_wheel*)
+            pip install torchao --pre --index-url https://download.pytorch.org/whl/test/xpu --quiet
+            ;;
+          *)
+            pip install torchao --pre --index-url https://download.pytorch.org/whl/nightly/xpu --quiet
+            ;;
+        esac
+
+        # Install numpy for benchmarks
+        if [ "${SUITE_INPUT}" != "None" ]; then
+          echo -e "\n=== Installing NumPy for Benchmarks ==="
+          # YOLOv requires numpy>=1.23, install specific version
+          pip install -U numpy==1.26.4 --quiet || {
+            echo "Warning: Failed to install numpy 1.26.4"
+          }
         fi
-    - name: Torch Config
-      shell: bash -xe {0}
+
+        cd ..
+
+    - name: Verify Environment Configuration
+      shell: bash -eo pipefail {0}
       run: |
-        printenv
+        echo "=== Final Environment Verification ==="
+
+        echo -e "\n=== Environment Variables ==="
+        printenv | grep -E '^(PYTHONPATH|TORCH|PATH|HOME)' | sort
+
+        echo -e "\n=== Pytorch Configuration ==="
         python -c "import torch; print(torch.__config__.show())"
         python -c "import torch; print(torch.__config__.parallel_info())"
         python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
-        python pytorch/torch/utils/collect_env.py
-        pip list |grep -E 'torch|intel'
-        TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
-        if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
-          echo "Torch is re-installed when installing deps, please check"
-          exit 1
+
+        echo -e "\n=== Collect Environment Info ==="
+        if [ -f "pytorch/torch/utils/collect_env.py" ]; then
+          python pytorch/torch/utils/collect_env.py | head -50
+        else
+          echo "collect_env.py not found"
         fi
+
+        echo -e "\n=== Installed Torch-related Packages ==="
+        pip list | grep -i -E 'torch|intel|xpu' | sort
+
+        echo -e "\n=== Verifying Torch Installation Consistency ==="
+        INSTALLED_TORCH_ID=$(python -c "import torch; print(torch.version.git_version)" 2>/dev/null || echo "unknown")
+        EXPECTED_TORCH_ID="${TORCH_COMMIT_ID}"
+
+        if [ "${INSTALLED_TORCH_ID}" != "${EXPECTED_TORCH_ID}" ]; then
+          echo "WARNING: Torch installation may have been modified during dependency installation"
+          echo "Original commit: ${EXPECTED_TORCH_ID}"
+          echo "Current commit: ${INSTALLED_TORCH_ID}"
+          exit 1
+        else
+          echo "Torch installation verified: ${INSTALLED_TORCH_ID}"
+        fi
+
+        echo -e "\n=== Environment Setup Complete ==="

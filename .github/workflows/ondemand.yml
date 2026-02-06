@@ -1,0 +1,83 @@
+name: OnDemand Tests (Manual Trigger)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        type: string
+        default: 'main'
+        description: 'PyTorch version'
+      torch_xpu_ops:
+        type: string
+        default: ''
+        description: 'Torch-xpu-ops version'
+      triton:
+        type: string
+        default: ''
+        description: 'Triton version'
+      python:
+        type: string
+        default: '3.10'
+        description: 'Python version'
+      ut:
+        type: string
+        default: ''
+        description: 'UT scope (comma-separated)'
+      suite:
+        type: string
+        default: ''
+        description: 'E2E test suite (comma-separated)'
+      dt:
+        type: string
+        default: ''
+        description: 'Data precision (comma-separated)'
+      mode:
+        type: string
+        default: ''
+        description: 'Test mode (comma-separated)'
+      scenario:
+        type: string
+        default: ''
+        description: 'Test scenario (comma-separated)'
+      model:
+        type: string
+        default: ''
+        description: 'Specific model to test'
+
+permissions:
+  contents: read
+  checks: write
+  actions: read
+  id-token: write
+
+run-name: OnDemand / ${{ inputs.pytorch }}
+
+jobs:
+  execute-ondemand-tests:
+    name: Execute OnDemand Tests
+    uses: ./.github/workflows/ondemand-workflow.yml
+    with:
+      # Determine test type based on pytorch input
+      test_type: >-
+        ${{
+            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
+        }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: >-
+        ${{
+            inputs.torch_xpu_ops == '' && github.ref_name || inputs.torch_xpu_ops
+        }}
+      triton: ${{ inputs.triton }}
+      python: ${{ inputs.python }}
+      ut: ${{ inputs.ut }}
+      suite: ${{ inputs.suite }}
+      dt: ${{ inputs.dt }}
+      mode: ${{ inputs.mode }}
+      scenario: ${{ inputs.scenario }}
+      model: ${{ inputs.model }}
+      runner: 'pvc_rolling'
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: false
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}

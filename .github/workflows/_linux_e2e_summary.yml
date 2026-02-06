@@ -6,17 +6,32 @@ on:
       test_type:
         type: string
         default: "build-cicd"
-        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
+        description: |
+          Test type identifier:
+          - build-cicd: Default for CI tests
+          - build-nightly, build-weekly, build-ondemand: Build-based tests
+          - wheel-nightly, wheel-weekly, wheel-ondemand: Wheel-based tests
       python:
         type: string
         default: '3.10'
-        description: Python version
+        description: 'Python version for summary processing'
 
-permissions: read-all
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  checks: write
+  actions: read
 
 defaults:
   run:
     shell: bash -xe {0}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  REFERENCE_ISSUE_ID: 1645
+  AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+  WORKSPACE: ${{ github.workspace }}
 
 jobs:
   summary:
@@ -24,111 +39,466 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
+      contents: read
     env:
       GH_TOKEN: ${{ github.token }}
       REFERENCE_ISSUE_ID: 1645
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+      WORKSPACE: ${{ github.workspace }}
     steps:
-      - name: Checkout torch-xpu-ops
+      - name: Checkout torch-xpu-ops repository
         uses: actions/checkout@v4
-      - name: Setup python-${{ inputs.python }}
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python ${{ inputs.python }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python }}
-      - name: Install gh-cli
+          cache: 'pip'
+
+      - name: Install required tools
+        shell: bash -eo pipefail {0}
         run: |
-          sudo apt-get update
-          sudo apt-get install gh rsync ca-certificates -y
-          pip install pandas requests pygithub
-      - name: Download Target Artifact
+          echo "=== Installing Required Tools ==="
+
+          sudo apt-get update -q
+
+          # Install system packages
+          echo "Installing system packages..."
+          sudo apt-get install -y \
+            gh \
+            rsync \
+            ca-certificates \
+            curl \
+            jq \
+            wget \
+            2>/dev/null || {
+            echo "Warning: Some packages failed to install"
+          }
+
+          # Install Python packages
+          echo "Installing Python packages..."
+          pip install --quiet \
+            pandas \
+            requests \
+            pygithub \
+            numpy \
+            scipy \
+            beautifulsoup4 \
+            lxml \
+            html5lib || {
+            echo "Warning: Some Python packages failed to install"
+          }
+
+          # Verify installations
+          echo "Verifying installations..."
+          gh --version | head -1
+          pip list | grep -E 'pandas|requests|pygithub'
+
+      - name: Download Target Artifacts
+        shell: bash -eo pipefail {0}
         run: |
-          mkdir target/
-          cd target/
-          gh --repo ${GITHUB_REPOSITORY} run download ${GITHUB_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-          find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                  while read line; do rsync -az --delete $line/ $(basename $line)/; done
-          rm -rf Inductor-*-XPU-E2E-* || true
-      - name: Download Baseline Artifact
-        run: |
-          mkdir baseline/
-          cd baseline/
-          if [[ "${{ inputs.test_type }}" != *"ly" ]];then
-            artifact_type="$(echo ${{ inputs.test_type }} |awk -F '-' '{print $1}')-nightly"
-          else
-            artifact_type="${{ inputs.test_type }}"
-          fi
-          gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee body.txt
-          REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
-          if [ "${REFERENCE_RUN_ID}" != "" ];then
-            gh --repo intel/torch-xpu-ops run download ${REFERENCE_RUN_ID} -p "Inductor-*-XPU-E2E-*"
-            find Inductor-*-XPU-E2E-*/ -maxdepth 1 -mindepth 1 -type d |sort -V |\
-                    while read line; do rsync -az --delete $line/ $(basename $line)/; done
-            rm -rf Inductor-*-XPU-E2E-* || true
-          fi
-      - name: Get summary
-        id: summary
-        if: ${{ ! cancelled() }}
-        run: |
-          acc_failed=0
-          e2e_result=0
-          e2e_summary_csv="$(find ./target/ -name "inductor_*.csv" |head -n 1)"
-          if [ -f "${e2e_summary_csv}" ];then
-            bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
-            if [ -e e2e-test-result.html ];then
-              cat e2e-test-result.html >> ${GITHUB_STEP_SUMMARY}
-              e2e_result=1
+          echo "=== Downloading Target Artifacts ==="
+
+          TARGET_DIR="${WORKSPACE}/target"
+          rm -rf "${TARGET_DIR}"
+          mkdir -p "${TARGET_DIR}"
+
+          echo "Downloading artifacts for run ID: ${GITHUB_RUN_ID}"
+
+          # Download artifacts using GitHub CLI
+          cd "${TARGET_DIR}"
+
+          # List available artifacts
+          echo "Available artifacts:"
+          gh run view "${GITHUB_RUN_ID}" --json artifacts --jq '.artifacts[].name' || \
+            echo "Failed to list artifacts"
+
+          # Download E2E test artifacts
+          ARTIFACT_PATTERN="Inductor-*-XPU-E2E-*"
+          echo "Downloading artifacts matching pattern: ${ARTIFACT_PATTERN}"
+
+          gh run download "${GITHUB_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "${ARTIFACT_PATTERN}" || {
+            echo "Warning: Failed to download some artifacts"
+          }
+
+          # Consolidate artifact directories
+          echo "Consolidating artifact directories..."
+          find . -maxdepth 1 -type d -name "Inductor-*-XPU-E2E-*" | sort -V | while read -r artifact_dir; do
+            if [ -d "${artifact_dir}" ]; then
+              echo "Processing: ${artifact_dir}"
+              # Copy contents to target directory
+              find "${artifact_dir}" -maxdepth 1 -mindepth 1 -type d | while read -r subdir; do
+                if [ -d "${subdir}" ]; then
+                  subdir_name=$(basename "${subdir}")
+                  echo "  Consolidating: ${subdir_name}"
+                  rsync -az --delete "${subdir}/" "${subdir_name}/"
+                fi
+              done
+              # Remove the original artifact directory
+              rm -rf "${artifact_dir}"
             fi
-            if [ -e /tmp/tmp-acc-result.txt ];then
-              acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-acc-result.txt)
+          done
+
+          echo "Target artifacts downloaded to: ${TARGET_DIR}"
+          echo "Contents:"
+          find "${TARGET_DIR}" -type f -name "*.csv" -o -name "*.log" -o -name "*.html" | \
+            sort | head -20 | while read -r file; do
+            echo "  $(basename "${file}")"
+          done
+
+      - name: Download Baseline Artifacts
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Downloading Baseline Artifacts ==="
+
+          BASELINE_DIR="${WORKSPACE}/baseline"
+          rm -rf "${BASELINE_DIR}"
+          mkdir -p "${BASELINE_DIR}"
+
+          # Determine artifact type based on test_type input
+          TEST_TYPE="${{ inputs.test_type }}"
+
+          if [[ "${TEST_TYPE}" != *"ly" ]]; then
+            # For non-nightly/weekly tests, use nightly as baseline
+            ARTIFACT_TYPE="$(echo "${TEST_TYPE}" | awk -F '-' '{print $1}')-nightly"
+          else
+            ARTIFACT_TYPE="${TEST_TYPE}"
+          fi
+
+          echo "Baseline artifact type: ${ARTIFACT_TYPE}"
+          echo "Reference issue ID: ${REFERENCE_ISSUE_ID}"
+
+          # Get reference run ID from the issue
+          echo "Fetching reference run ID from issue..."
+          cd "${BASELINE_DIR}"
+
+          # Get issue body
+          ISSUE_BODY_FILE="issue_body.txt"
+          gh issue view "${REFERENCE_ISSUE_ID}" \
+            --repo "intel/torch-xpu-ops" \
+            --json body \
+            --jq '.body' > "${ISSUE_BODY_FILE}" 2>/dev/null || {
+            echo "Warning: Failed to fetch issue body"
+            touch "${ISSUE_BODY_FILE}"
+          }
+
+          # Extract reference run ID
+          REFERENCE_RUN_ID=""
+          if [ -s "${ISSUE_BODY_FILE}" ]; then
+            REFERENCE_RUN_ID=$(grep "Inductor-${ARTIFACT_TYPE}-LTS2" "${ISSUE_BODY_FILE}" | \
+              sed -n 's/.*:[[:space:]]*//p' | head -1)
+          fi
+
+          echo "Reference run ID: ${REFERENCE_RUN_ID:-'Not found'}"
+
+          # Download baseline artifacts if reference run ID exists
+          if [ -n "${REFERENCE_RUN_ID}" ] && [[ "${REFERENCE_RUN_ID}" =~ ^[0-9]+$ ]]; then
+            echo "Downloading baseline artifacts from run ID: ${REFERENCE_RUN_ID}"
+
+            # List available artifacts
+            echo "Available baseline artifacts:"
+            gh run view "${REFERENCE_RUN_ID}" \
+              --repo "intel/torch-xpu-ops" \
+              --json artifacts \
+              --jq '.artifacts[].name' 2>/dev/null || \
+              echo "Failed to list baseline artifacts"
+
+            # Download baseline artifacts
+            ARTIFACT_PATTERN="Inductor-*-XPU-E2E-*"
+            echo "Downloading baseline artifacts matching pattern: ${ARTIFACT_PATTERN}"
+
+            gh run download "${REFERENCE_RUN_ID}" \
+              --repo "intel/torch-xpu-ops" \
+              --pattern "${ARTIFACT_PATTERN}" || {
+              echo "Warning: Failed to download baseline artifacts"
+            }
+
+            # Consolidate artifact directories
+            echo "Consolidating baseline artifact directories..."
+            find . -maxdepth 1 -type d -name "Inductor-*-XPU-E2E-*" | sort -V | while read -r artifact_dir; do
+              if [ -d "${artifact_dir}" ]; then
+                echo "Processing: ${artifact_dir}"
+                # Copy contents to baseline directory
+                find "${artifact_dir}" -maxdepth 1 -mindepth 1 -type d | while read -r subdir; do
+                  if [ -d "${subdir}" ]; then
+                    subdir_name=$(basename "${subdir}")
+                    echo "  Consolidating: ${subdir_name}"
+                    rsync -az --delete "${subdir}/" "${subdir_name}/"
+                  fi
+                done
+                # Remove the original artifact directory
+                rm -rf "${artifact_dir}"
+              fi
+            done
+          else
+            echo "No baseline artifacts available (no valid reference run ID found)"
+          fi
+
+          echo "Baseline artifacts downloaded to: ${BASELINE_DIR}"
+          echo "Contents:"
+          find "${BASELINE_DIR}" -type f -name "*.csv" -o -name "*.log" -o -name "*.html" | \
+            sort | head -20 | while read -r file; do
+            echo "  $(basename "${file}")"
+          done
+
+      - name: Generate E2E Test Summary
+        id: generate-summary
+        if: ${{ !cancelled() }}
+        shell: bash -eo pipefail {0}
+        env:
+          TARGET_DIR: ${{ github.workspace }}/target
+          BASELINE_DIR: ${{ github.workspace }}/baseline
+        run: |
+          echo "=== Generating E2E Test Summary ==="
+
+          # Initialize variables
+          ACC_FAILED=0
+          E2E_RESULT=0
+          PERFORMANCE_REGRESSION=0
+          PT2E_FAILED=0
+
+          # Find E2E summary CSV
+          E2E_SUMMARY_CSV=$(find "${TARGET_DIR}" -name "inductor_*.csv" -type f | head -n 1)
+
+          if [ -f "${E2E_SUMMARY_CSV}" ]; then
+            echo "Found E2E summary CSV: ${E2E_SUMMARY_CSV}"
+
+            # Run E2E summary script
+            SUMMARY_SCRIPT="${WORKSPACE}/.github/scripts/e2e_summary.sh"
+
+            if [ -f "${SUMMARY_SCRIPT}" ] && [ -x "${SUMMARY_SCRIPT}" ]; then
+              echo "Running E2E summary script..."
+              "${SUMMARY_SCRIPT}" "${TARGET_DIR}" "${BASELINE_DIR}" || {
+                echo "Warning: E2E summary script returned non-zero exit code"
+              }
             else
-              acc_failed=0
+              echo "Warning: E2E summary script not found or not executable"
             fi
-          fi
-          echo "acc_failed=${acc_failed}" >> ${GITHUB_ENV}
-          echo "e2e_result=${e2e_result}" >> ${GITHUB_OUTPUT}
-      - name: Upload Reference Run ID
-        if: ${{ endsWith(inputs.test_type, 'ly') && steps.summary.outputs.e2e_result == 1 }}
-        run: |
-          gh --repo ${GITHUB_REPOSITORY} issue view ${REFERENCE_ISSUE_ID} --json body -q .body 2>&1 |tee new_body.txt 2>&1
-          has_or_not="$(grep -c 'Inductor-${{ inputs.test_type }}-LTS2' new_body.txt || true)"
-          if [ ${has_or_not} -ne 0 ];then
-            sed -i "s/Inductor-${{ inputs.test_type }}-LTS2:.*/Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}/" new_body.txt
+
+            # Check for generated HTML summary
+            if [ -f "e2e-test-result.html" ]; then
+              echo "Adding E2E test results to workflow summary..."
+              cat "e2e-test-result.html" >> "${GITHUB_STEP_SUMMARY}"
+              E2E_RESULT=1
+            else
+              echo "No E2E test result HTML file generated"
+            fi
+
+            # Check for accuracy failures
+            ACC_RESULT_FILE="/tmp/tmp-acc-result.txt"
+            if [ -f "${ACC_RESULT_FILE}" ]; then
+              ACC_FAILED=$(awk 'BEGIN{sum=0} {if($2>0){sum++}} END{print sum}' "${ACC_RESULT_FILE}" 2>/dev/null || echo "0")
+              echo "Accuracy failures detected: ${ACC_FAILED}"
+            else
+              echo "No accuracy result file found"
+              ACC_FAILED=0
+            fi
+
+            # Check for performance regression
+            if [ -f "performance.regression.pr.html" ]; then
+              echo "Performance regression detected"
+              PERFORMANCE_REGRESSION=1
+            fi
           else
-            echo "Inductor-${{ inputs.test_type }}-LTS2: ${GITHUB_RUN_ID}" |tee -a new_body.txt
+            echo "No E2E summary CSV found in target directory"
           fi
-          gh --repo ${GITHUB_REPOSITORY} issue edit ${REFERENCE_ISSUE_ID} --body-file new_body.txt
-      - name: Add comment for performance outliers
-        if: ${{ github.event_name == 'pull_request' && steps.summary.outputs.performance_regression == 1 }}
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Read the comment content from a file
-            const fs = require('fs');
-            const commentBody = fs.readFileSync('./performance.regression.pr.html', 'utf8');
-            // Create comment on an issue or PR
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: commentBody
-            });
-      - name: Result check
-        if: ${{ ! cancelled() }}
+
+          # Check PT2E summary
+          PT2E_SUMMARY_CSV=$(find "${TARGET_DIR}" -name "summary.csv" -type f)
+
+          if [ -f "${PT2E_SUMMARY_CSV}" ]; then
+            echo "Found PT2E summary CSV: ${PT2E_SUMMARY_CSV}"
+            PT2E_FAILED=$(grep -c ',failed' "${PT2E_SUMMARY_CSV}" 2>/dev/null || echo "0")
+            echo "PT2E failures: ${PT2E_FAILED}"
+          fi
+
+          # Set outputs
+          echo "ACC_FAILED=${ACC_FAILED}" >> "${GITHUB_ENV}"
+          echo "E2E_RESULT=${E2E_RESULT}" >> "${GITHUB_OUTPUT}"
+          echo "PERFORMANCE_REGRESSION=${PERFORMANCE_REGRESSION}" >> "${GITHUB_OUTPUT}"
+          echo "PT2E_FAILED=${PT2E_FAILED}" >> "${GITHUB_ENV}"
+
+          echo "Summary generation completed"
+          echo "Results:"
+          echo "  - E2E result generated: ${E2E_RESULT}"
+          echo "  - Accuracy failures: ${ACC_FAILED}"
+          echo "  - Performance regression: ${PERFORMANCE_REGRESSION}"
+          echo "  - PT2E failures: ${PT2E_FAILED}"
+
+      - name: Update Reference Run ID (for periodic tests)
+        id: update-reference
+        if: ${{ contains(inputs.test_type, 'ly') && steps.generate-summary.outputs.e2e_result == 1 }}
+        shell: bash -eo pipefail {0}
         run: |
-          if [ ${acc_failed} -ne 0 ];then
-            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
-            echo "🔴 Accuracy regression, please check!"
+          echo "=== Updating Reference Run ID ==="
+          echo "Test type: ${{ inputs.test_type }}"
+          echo "Current run ID: ${GITHUB_RUN_ID}"
+
+          # Get current issue body
+          NEW_BODY_FILE="new_body.txt"
+          gh issue view "${REFERENCE_ISSUE_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json body \
+            --jq '.body' > "${NEW_BODY_FILE}" 2>/dev/null || {
+            echo "Warning: Failed to fetch current issue body"
+            # Create empty file if fetching fails
+            echo "" > "${NEW_BODY_FILE}"
+          }
+
+          # Check if reference entry exists
+          REFERENCE_PATTERN="Inductor-${{ inputs.test_type }}-LTS2"
+          HAS_REFERENCE=$(grep -c "${REFERENCE_PATTERN}" "${NEW_BODY_FILE}" 2>/dev/null || echo "0")
+
+          if [ "${HAS_REFERENCE}" -ne 0 ]; then
+            echo "Updating existing reference entry..."
+            sed -i "s/${REFERENCE_PATTERN}:.*/${REFERENCE_PATTERN}: ${GITHUB_RUN_ID}/" "${NEW_BODY_FILE}"
+          else
+            echo "Adding new reference entry..."
+            echo "${REFERENCE_PATTERN}: ${GITHUB_RUN_ID}" >> "${NEW_BODY_FILE}"
           fi
-          pt2e_summary_csv="$(find ./target/ -name "summary.csv")"
-          if [ -f "${pt2e_summary_csv}" ];then
-            pt2e_failed=$(grep -c ',failed' ${pt2e_summary_csv} || echo 0)
-            if [ ${pt2e_failed} -ne 0 ];then
-              grep 'failed' ${pt2e_summary_csv}
-              echo "🟡 PT2E has failures, please check!"
+
+          # Update the issue
+          echo "Updating issue ${REFERENCE_ISSUE_ID}..."
+          gh issue edit "${REFERENCE_ISSUE_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --body-file "${NEW_BODY_FILE}" || {
+            echo "Warning: Failed to update issue"
+          }
+
+          echo "Reference run ID updated successfully"
+
+      - name: Comment Performance Regression on PR
+        id: comment-performance
+        if: ${{ github.event_name == 'pull_request' && steps.generate-summary.outputs.performance_regression == 1 }}
+        uses: actions/github-script@v7
+        env:
+          PERFORMANCE_REGRESSION_HTML: ${{ github.workspace }}/performance.regression.pr.html
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            console.log('=== Adding Performance Regression Comment ===');
+
+            // Check if performance regression HTML file exists
+            const htmlFilePath = process.env.PERFORMANCE_REGRESSION_HTML;
+
+            if (!fs.existsSync(htmlFilePath)) {
+              console.log('Performance regression HTML file not found');
+              return;
+            }
+
+            // Read the HTML content
+            let commentBody;
+            try {
+              commentBody = fs.readFileSync(htmlFilePath, 'utf8');
+              console.log(`Read performance regression HTML (${commentBody.length} characters)`);
+            } catch (error) {
+              console.log('Failed to read performance regression HTML:', error.message);
+              return;
+            }
+
+            // Create comment on the PR
+            try {
+              const { data: comment } = await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+
+              console.log(`Performance regression comment added: ${comment.html_url}`);
+            } catch (error) {
+              console.log('Failed to create comment:', error.message);
+            }
+
+      - name: Report Test Results
+        id: report-results
+        if: ${{ !cancelled() }}
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Reporting Test Results ==="
+
+          # Display accuracy failures
+          if [ "${ACC_FAILED}" -ne 0 ]; then
+            echo "🔴 Accuracy Regression Detected"
+            echo "Accuracy failures: ${ACC_FAILED}"
+
+            # Display relevant failure information
+            echo "Failure details:"
+            grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt 2>/dev/null | \
+              grep -E "failed|passed|timeout" -B 1 || echo "No detailed failure information available"
+
+            echo ""
+            echo "Please check accuracy regression!"
+          else
+            echo "✅ No accuracy failures detected"
+          fi
+
+          # Display PT2E failures
+          if [ "${PT2E_FAILED}" -ne 0 ]; then
+            echo "🟡 PT2E Failures Detected"
+            echo "PT2E failures: ${PT2E_FAILED}"
+
+            # Display PT2E failure details
+            PT2E_SUMMARY_CSV=$(find "${WORKSPACE}/target" -name "summary.csv" -type f | head -n 1)
+            if [ -f "${PT2E_SUMMARY_CSV}" ]; then
+              echo "PT2E failure details:"
+              grep ',failed' "${PT2E_SUMMARY_CSV}" 2>/dev/null || echo "No detailed PT2E failure information"
             fi
+
+            echo ""
+            echo "Please check PT2E failures!"
+          else
+            echo "✅ No PT2E failures detected"
           fi
-          if [ -f ./performance.regression.pr.html ];then
-            echo "🟡 Performance regression, please check!"
+
+          # Display performance regression
+          if [ -f "${WORKSPACE}/performance.regression.pr.html" ]; then
+            echo "🟡 Performance Regression Detected"
+            echo "Please check performance regression!"
+
+            # Show a preview of the performance regression
+            echo "Performance regression preview:"
+            grep -o '>.*%<' "${WORKSPACE}/performance.regression.pr.html" 2>/dev/null | \
+              head -10 | sed 's/[<>]//g' || echo "No performance regression details available"
+          else
+            echo "✅ No performance regression detected"
           fi
-          # only gating accuracy, others throw warning
-          exit ${acc_failed}
+
+          # Summary
+          echo ""
+          echo "=== Summary ==="
+          echo "Accuracy failures: ${ACC_FAILED}"
+          echo "PT2E failures: ${PT2E_FAILED}"
+          echo "Performance regression: $([ -f "${WORKSPACE}/performance.regression.pr.html" ] && echo "Yes" || echo "No")"
+          echo ""
+
+          # Exit with appropriate code (only accuracy failures block the build)
+          if [ "${ACC_FAILED}" -ne 0 ]; then
+            echo "❌ Build failed due to accuracy regression"
+            exit 1
+          else
+            echo "✅ Build passed (accuracy checks)"
+            echo "Note: PT2E failures and performance regressions are warnings only"
+            exit 0
+          fi
+
+      - name: Upload Generated Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: E2E-Summary-Reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ github.workspace }}/e2e-test-result.html
+            ${{ github.workspace }}/performance.regression.pr.html
+            ${{ github.workspace }}/new_body.txt
+            ${{ github.workspace }}/issue_body.txt
+            /tmp/tmp-*.txt
+          retention-days: 7
+          if-no-files-found: ignore

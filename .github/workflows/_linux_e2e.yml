@@ -6,51 +6,62 @@ on:
       runner:
         required: true
         type: string
-        description: Runner label
+        description: 'Runner label for test execution environment'
       test_type:
         type: string
         default: "build-cicd"
-        description: Test type, default is for CI tests, others (build or wheel)-(nightly, weekly or ondemand)
+        description: |
+          Test type identifier:
+          - build-cicd: Default for CI/CD tests
+          - build-nightly, wheel-nightly: Nightly tests
+          - build-weekly, wheel-weekly: Weekly tests
+          - build-ondemand, wheel-ondemand: On-demand tests
       pytorch:
         type: string
         default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        description: 'Pytorch version: main (default), commit/branch, or repo@commit/repo@branch'
       python:
         type: string
         default: '3.10'
-        description: Python version
+        description: 'Python version'
       suite:
         type: string
         default: 'huggingface'
-        description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
+        description: 'Dynamo benchmarks test suite. Options: huggingface,timm_models,torchbench,pt2e (comma-separated)'
       dt:
         type: string
         default: 'float32'
-        description: Data precision of the test. `float32,bfloat16,float16,amp_bf16,amp_fp16`. Delimiter is comma
+        description: 'Data precision of the test. Options: float32,bfloat16,float16,amp_bf16,amp_fp16,int8 (comma-separated)'
       mode:
         type: string
         default: 'inference'
-        description: Test mode. `inference,training`. Delimiter is comma
+        description: 'Test mode. Options: inference,training (comma-separated)'
       scenario:
         type: string
         default: 'accuracy'
-        description: Test scenario. `accuracy,performance`. Delimiter is comma
+        description: 'Test scenario. Options: accuracy,performance (comma-separated)'
       model:
         required: false
         type: string
         default: ''
-        description: Model. Will only run this one mode if set
+        description: 'Specific model to test. If set, only this model will be tested'
 
-permissions: read-all
+permissions:
+  contents: read
+  checks: write
+  actions: read
+  id-token: write
 
 defaults:
   run:
     shell: bash -xe {0}
+
 env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  WORKSPACE: ${{ github.workspace }}
 
 jobs:
   runner:
@@ -62,10 +73,14 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
       numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
+      ze_affinity_mask: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
-      - name: Checkout torch-xpu-ops
+      - name: Checkout torch-xpu-ops repository
         uses: actions/checkout@v4
-      - name: Get runner
+        with:
+          fetch-depth: 1
+
+      - name: Get runner information and configuration
         id: runner-info
         uses: ./.github/actions/get-runner
 
@@ -77,161 +92,371 @@ jobs:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
-      env:
-        numactl_args: ${{ needs.runner.outputs.numactl_args }}
-        MODEL_ONLY_NAME: ${{ inputs.model }}
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+        - /tmp/xpu-tool:/tmp/xpu-tool
+      options: >-
+        --device=/dev/mem
+        --device=/dev/dri
+        --group-add video
+        --security-opt seccomp=unconfined
+        --cap-add=SYS_PTRACE
+        --shm-size=8g
+        -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+    env:
+      NUMACTL_ARGS: ${{ needs.runner.outputs.numactl_args }}
+      ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+      MODEL_ONLY_NAME: ${{ inputs.model }}
+      AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+      PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+      WORKSPACE: ${{ github.workspace }}
+      TEST_TYPE: ${{ inputs.test_type }}
+      SUITE_INPUT: ${{ inputs.suite }}
+      DT_INPUT: ${{ inputs.dt }}
+      MODE_INPUT: ${{ inputs.mode }}
+      SCENARIO_INPUT: ${{ inputs.scenario }}
     steps:
-      - name: Checkout torch-xpu-ops
+      - name: Checkout torch-xpu-ops repository
         uses: actions/checkout@v4
-      - name: Prepare test env on ${{ needs.runner.outputs.hostname }}
+        with:
+          fetch-depth: 1
+
+      - name: Prepare test environment
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           python: ${{ inputs.python }}
           suite: ${{ inputs.suite }}
 
-      # CICD launch
-      - name: CICD Huggingface BF16 & FP16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'huggingface') }}
+      # Helper function to check if suite is in input
+      - name: Parse suite configuration
+        id: parse-suites
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Parsing Suite Configuration ==="
+
+          SUITE_INPUT="${{ inputs.suite }}"
+
+          # Convert comma-separated list to flags
+          HAS_HUGGINGFACE=0
+          HAS_TIMM_MODELS=0
+          HAS_TORCHBENCH=0
+          HAS_PT2E=0
+
+          IFS=',' read -ra SUITE_ARRAY <<< "${SUITE_INPUT}"
+          for suite in "${SUITE_ARRAY[@]}"; do
+            suite_clean=$(echo "${suite}" | tr -d '[:space:]')
+            case "${suite_clean}" in
+              huggingface)
+                HAS_HUGGINGFACE=1
+                ;;
+              timm_models)
+                HAS_TIMM_MODELS=1
+                ;;
+              torchbench)
+                HAS_TORCHBENCH=1
+                ;;
+              pt2e)
+                HAS_PT2E=1
+                ;;
+            esac
+          done
+
+          echo "Suite configuration:"
+          echo "  - HuggingFace: ${HAS_HUGGINGFACE}"
+          echo "  - TIMM Models: ${HAS_TIMM_MODELS}"
+          echo "  - TorchBench: ${HAS_TORCHBENCH}"
+          echo "  - PT2E: ${HAS_PT2E}"
+
+          echo "HAS_HUGGINGFACE=${HAS_HUGGINGFACE}" >> "${GITHUB_OUTPUT}"
+          echo "HAS_TIMM_MODELS=${HAS_TIMM_MODELS}" >> "${GITHUB_OUTPUT}"
+          echo "HAS_TORCHBENCH=${HAS_TORCHBENCH}" >> "${GITHUB_OUTPUT}"
+          echo "HAS_PT2E=${HAS_PT2E}" >> "${GITHUB_OUTPUT}"
+
+      # CI/CD Test Execution (for pull requests)
+      - name: Execute CI/CD HuggingFace tests
+        if: ${{ github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
-      - name: CICD Timm_models BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'timm_models') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute CI/CD TIMM models tests
+        if: ${{ github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
-      - name: CICD Torchbench BF16 Training Test
-        if: ${{ contains(github.event_name, 'pull_request') && contains(inputs.suite, 'torchbench') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute CI/CD TorchBench tests
+        if: ${{ github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
+          ut_name: ${{ inputs.model }}
 
-      # Nihglty launch
-      - name: Nightly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'huggingface') }}
+      # Nightly Test Execution
+      - name: Execute Nightly HuggingFace full tests
+        if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Nightly Timm_models FP16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'timm_models') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute Nightly TIMM models tests
+        if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
           dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
-      - name: Nightly Torchbench BF16 Training Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'torchbench') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute Nightly TorchBench tests
+        if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
           dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
-      - name: Nightly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'nightly') && contains(inputs.suite, 'pt2e') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute Nightly PT2E tests
+        if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_PT2E == '1' }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
           scenario: accuracy,performance
 
-      # Weekly launch
-      - name: Weekly Huggingface Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'huggingface') }}
+      # Weekly Test Execution
+      - name: Execute Weekly HuggingFace full tests
+        if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Weekly Timm_models Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'timm_models') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute Weekly TIMM models full tests
+        if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Weekly Torchbench Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'torchbench') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute Weekly TorchBench full tests
+        if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-      - name: Weekly PT2E Full Test
-        if: ${{ contains(inputs.test_type, 'weekly') && contains(inputs.suite, 'pt2e') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute Weekly PT2E tests
+        if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_PT2E == '1' }}
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
           scenario: accuracy,performance
 
-      # On-demand launch
-      - name: Get test data types
+      # On-demand Test Execution
+      - name: Parse data types for on-demand tests
+        id: parse-dtypes
         if: ${{ contains(inputs.test_type, 'ondemand') }}
-        id: dtypes
+        shell: bash -eo pipefail {0}
         run: |
-          e2e_dtypes="$(echo "${{ inputs.dt }}" |sed 's/,int8//;s/int8,//')"
-          pt2e_dtypes="$(echo "${{ inputs.dt }}" |\
-                  sed -E 's/,(bfloat16|float16|amp_bf16|amp_fp16)//g;s/(bfloat16|float16|amp_bf16|amp_fp16),//g')"
-          echo "e2e_dtypes=${e2e_dtypes}" >> ${GITHUB_OUTPUT}
-          echo "pt2e_dtypes=${pt2e_dtypes}" >> ${GITHUB_OUTPUT}
-      - name: OnDemand Test (huggingface)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'huggingface') }}
+          echo "=== Parsing Data Types for On-Demand Tests ==="
+
+          DT_INPUT="${{ inputs.dt }}"
+
+          # Split data types for E2E and PT2E tests
+          # E2E tests support: float32,bfloat16,float16,amp_bf16,amp_fp16
+          # PT2E tests support: float32,int8
+
+          E2E_DTYPES=""
+          PT2E_DTYPES=""
+
+          IFS=',' read -ra DT_ARRAY <<< "${DT_INPUT}"
+
+          for dtype in "${DT_ARRAY[@]}"; do
+            dtype_clean=$(echo "${dtype}" | tr -d '[:space:]')
+
+            # Check if dtype is valid for E2E tests
+            case "${dtype_clean}" in
+              float32|bfloat16|float16|amp_bf16|amp_fp16)
+                if [ -n "${E2E_DTYPES}" ]; then
+                  E2E_DTYPES="${E2E_DTYPES},${dtype_clean}"
+                else
+                  E2E_DTYPES="${dtype_clean}"
+                fi
+                ;;
+            esac
+
+            # Check if dtype is valid for PT2E tests
+            case "${dtype_clean}" in
+              float32|int8)
+                if [ -n "${PT2E_DTYPES}" ]; then
+                  PT2E_DTYPES="${PT2E_DTYPES},${dtype_clean}"
+                else
+                  PT2E_DTYPES="${dtype_clean}"
+                fi
+                ;;
+            esac
+          done
+
+          # If no valid E2E dtypes found, use default
+          if [ -z "${E2E_DTYPES}" ]; then
+            E2E_DTYPES="float32"
+          fi
+
+          # If no valid PT2E dtypes found, use default
+          if [ -z "${PT2E_DTYPES}" ]; then
+            PT2E_DTYPES="float32"
+          fi
+
+          echo "E2E data types: ${E2E_DTYPES}"
+          echo "PT2E data types: ${PT2E_DTYPES}"
+
+          echo "E2E_DTYPES=${E2E_DTYPES}" >> "${GITHUB_OUTPUT}"
+          echo "PT2E_DTYPES=${PT2E_DTYPES}" >> "${GITHUB_OUTPUT}"
+
+      - name: Execute On-demand HuggingFace tests
+        if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
-          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
+          dt: ${{ steps.parse-dtypes.outputs.E2E_DTYPES }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-      - name: OnDemand Test (timm_models)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'timm_models') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute On-demand TIMM models tests
+        if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
-          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
+          dt: ${{ steps.parse-dtypes.outputs.E2E_DTYPES }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-      - name: OnDemand Test (torchbench)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'torchbench') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute On-demand TorchBench tests
+        if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
-          dt: ${{ steps.dtypes.outputs.e2e_dtypes }}
+          dt: ${{ steps.parse-dtypes.outputs.E2E_DTYPES }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-      - name: OnDemand PT2E Test (pt2e)
-        if: ${{ contains(inputs.test_type, 'ondemand') && contains(inputs.suite, 'pt2e') }}
+          ut_name: ${{ inputs.model }}
+
+      - name: Execute On-demand PT2E tests
+        if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_PT2E == '1' }}
         uses: ./.github/actions/pt2e
         with:
-          dt: ${{ steps.dtypes.outputs.pt2e_dtypes }}
+          dt: ${{ steps.parse-dtypes.outputs.PT2E_DTYPES }}
           scenario: ${{ inputs.scenario }}
 
-      - name: Get archieve files
-        if: ${{ ! cancelled() }}
+      # Post-test processing
+      - name: Collect and prepare test artifacts
+        id: collect-artifacts
+        if: ${{ !cancelled() }}
+        shell: bash -eo pipefail {0}
         run: |
-          rm -rf ${{ github.workspace }}/upload_files
-          cp -r ${{ github.workspace }}/pytorch/inductor_log ${{ github.workspace }}/upload_files
-      - name: Upload Inductor XPU E2E Data
-        if: ${{ ! cancelled() }}
+          echo "=== Collecting Test Artifacts ==="
+
+          # Define directories
+          LOGS_DIR="${WORKSPACE}/pytorch/inductor_log"
+          UPLOAD_DIR="${WORKSPACE}/upload_files"
+
+          # Clean and create directories
+          rm -rf "${UPLOAD_DIR}"
+          mkdir -p "${UPLOAD_DIR}"
+
+          # Check if logs exist
+          if [ -d "${LOGS_DIR}" ]; then
+            echo "Copying inductor logs..."
+            cp -r "${LOGS_DIR}"/* "${UPLOAD_DIR}/" 2>/dev/null || {
+              echo "Warning: Failed to copy some log files"
+            }
+
+            # Count files
+            FILE_COUNT=$(find "${UPLOAD_DIR}" -type f | wc -l)
+            echo "Collected ${FILE_COUNT} files for upload"
+
+            # List main file types
+            echo "Main file types collected:"
+            find "${UPLOAD_DIR}" -type f -name "*.csv" | head -10 | while read -r file; do
+              echo "  CSV: $(basename "${file}")"
+            done
+
+            find "${UPLOAD_DIR}" -type f -name "*.log" | head -10 | while read -r file; do
+              echo "  LOG: $(basename "${file}")"
+            done
+
+            find "${UPLOAD_DIR}" -type f -name "*.html" | head -10 | while read -r file; do
+              echo "  HTML: $(basename "${file}")"
+            done
+          else
+            echo "Warning: No inductor logs found at ${LOGS_DIR}"
+          fi
+
+          # Create a summary file
+          SUMMARY_FILE="${UPLOAD_DIR}/test_summary.txt"
+          {
+            echo "Test Execution Summary"
+            echo "====================="
+            echo "Timestamp: $(date)"
+            echo "Test Type: ${{ inputs.test_type }}"
+            echo "Suites: ${{ inputs.suite }}"
+            echo "Data Types: ${{ inputs.dt }}"
+            echo "Modes: ${{ inputs.mode }}"
+            echo "Scenarios: ${{ inputs.scenario }}"
+            echo "Specific Model: ${{ inputs.model }}"
+            echo ""
+            echo "Files Collected: ${FILE_COUNT:-0}"
+          } > "${SUMMARY_FILE}"
+
+          echo "Artifacts prepared in: ${UPLOAD_DIR}"
+
+      - name: Upload Inductor XPU E2E Test Artifacts
+        if: ${{ !cancelled() && steps.collect-artifacts.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/upload_files
+          retention-days: 7
+          if-no-files-found: warn
+          compression-level: 6
+
+      - name: Cleanup temporary files
+        if: always()
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Cleaning Temporary Files ==="
+
+          # Clean up temporary directories
+          rm -rf "${WORKSPACE}/upload_files" 2>/dev/null || true
+          rm -rf /tmp/*inductor* 2>/dev/null || true
+          rm -rf /tmp/tmp* 2>/dev/null || true
+
+          echo "Cleanup completed"

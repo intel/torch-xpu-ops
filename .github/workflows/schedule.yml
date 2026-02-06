@@ -1,0 +1,61 @@
+name: Nightly-Scheduled Tests
+
+on:
+  schedule:
+    # GMT+8 21:00 every workday (Build from source)
+    - cron: '10 13 * * 0-4'
+    # GMT+8 21:00 every workday (Nightly wheel)
+    - cron: '30 13 * * 0-4'
+    # GMT+8 00:00 Saturday (Build from source)
+    - cron: '10 16 * * 5'
+    # GMT+8 00:00 Saturday (Nightly wheel)
+    - cron: '30 16 * * 5'
+
+permissions:
+  contents: read
+  checks: write
+  actions: read
+  id-token: write
+
+run-name: |
+  ${{
+    contains(github.event.schedule, '13') && 'Nightly' || 'Weekly'
+  }} / ${{
+    contains(github.event.schedule, '10') && 'Build-from-source' || 'Nightly-wheel'
+  }}
+
+jobs:
+  execute-scheduled-tests:
+    name: Execute Scheduled Tests
+    uses: ./.github/workflows/ondemand-workflow.yml
+    with:
+      # Determine configuration based on schedule
+      test_type: >-
+        ${{
+            contains(github.event.schedule, '10') &&
+            (contains(github.event.schedule, '13') && 'build-nightly' || 'build-weekly') ||
+            (contains(github.event.schedule, '13') && 'wheel-nightly' || 'wheel-weekly')
+        }}
+      pytorch: >-
+        ${{
+            contains(github.event.schedule, '10') && 'main' || 'nightly_wheel'
+        }}
+      torch_xpu_ops: >-
+        ${{
+            contains(github.event.schedule, '10') && 'main' || 'pinned'
+        }}
+      triton: ''
+      python: '3.10'
+      # Fixed test scope for scheduled runs
+      ut: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,microbench,windows'
+      suite: 'huggingface,timm_models,torchbench,pt2e'
+      dt: ''
+      mode: ''
+      scenario: ''
+      model: ''
+      runner: 'pvc_rolling'
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: true
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}

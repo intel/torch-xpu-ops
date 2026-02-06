@@ -1,4 +1,4 @@
-name: pull
+name: Pull Request Tests
 
 on:
   pull_request:
@@ -13,161 +13,115 @@ on:
       - main
       - release/*
 
-permissions: read-all
+permissions:
+  contents: read
+  checks: write
+  actions: read
+  pull-requests: read
+  issues: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  WORKSPACE: ${{ github.workspace }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+
 jobs:
   preci-lint-check:
     if: ${{ github.repository_owner == 'intel' }}
+    name: Lint Check
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+      - name: Run comprehensive lint checks
+        uses: ./.github/actions/lint-check
         with:
-          path: torch-xpu-ops
-      - name: Run lint check
-        run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
-          cd ./torch-xpu-ops
-          bash .github/scripts/lintrunner.sh
-      - name: Run lint check with Clang
-        run: |
-          sudo apt update && sudo apt install -y libomp-dev
-          rm -rf pytorch
-          git clone https://github.com/pytorch/pytorch pytorch
-          cd pytorch && cp -r ../torch-xpu-ops third_party/
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
-                                                    build/xpu/**/*.* \
-                                                    build/xpu/*.* \
-                                                    third_party/torch-xpu-ops/src/*.* \
-                                                    third_party/torch-xpu-ops/src/**/*.* \
-                                                    third_party/torch-xpu-ops/src/**/**/*.* \
-                                                    third_party/torch-xpu-ops/src/**/**/**/*.*"
-          export CLANG=1
-          bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh
+          repository: ${{ github.repository }}
+          enable_clang: true
 
   conditions-filter:
     if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+    name: Conditions Filter
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
     outputs:
-      src_changed: ${{ steps.check-files.outputs.src_changed }}
-      has_label: ${{ steps.check-label.outputs.has_label }}
-      disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
-      pytorch: ${{ contains(steps.check-pr-desc.outputs.disabled_tests, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      src_changed: ${{ steps.filter.outputs.src_changed }}
+      has_label: ${{ steps.filter.outputs.has_label }}
+      disabled_tests: ${{ steps.filter.outputs.disabled_tests }}
+      pytorch_version: ${{ steps.filter.outputs.pytorch_version }}
+      test_type: ${{ steps.filter.outputs.test_type }}
+      torch_xpu_ops_version: ${{ steps.filter.outputs.torch_xpu_ops_version }}
+      ut_scope: ${{ steps.filter.outputs.ut_scope }}
+      e2e_suites: ${{ steps.filter.outputs.e2e_suites }}
+      should_build: ${{ steps.filter.outputs.should_build }}
     steps:
-      - uses: dorny/paths-filter@v2
-        id: check-files
+      - name: Filter PR conditions and determine configuration
+        id: filter
+        uses: ./.github/actions/conditions-filter
         with:
-          filters: |
-            src_changed: 
-              - 'cmake/**'
-              - 'tools/**'
-              - 'src/**.cmake'
-              - 'CMakeLists.txt'
-              - 'test/sycl/CMakeLists.txt'
-              - 'src/xccl/CMakeLists.txt'
-              - 'src/ATen/CMakeLists.txt'
-              - 'src/CMakeLists.txt'
-              - '.github/workflows/_windows_ut.yml'
-      - name: Check Label
-        id: check-label
-        run: |
-          echo "has_label=${{ contains(github.event.pull_request.labels.*.name, 'windows_ci') }}" >> $GITHUB_OUTPUT
-      - name: Check PR infos
-        id: check-pr-desc
-        run: |
-          set -x -e -o pipefail
-          sudo apt update && sudo apt install -y dos2unix
-          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
-          dos2unix pr-info.txt
-          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
-          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
+          pr_number: ${{ env.PR_NUMBER }}
+          base_ref: ${{ github.base_ref }}
+          repository: ${{ github.repository }}
 
-  linux-build:
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') }}
+  linux-pr-tests:
+    name: Linux PR Tests
     needs: [conditions-filter, preci-lint-check]
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        build: [build]
-    uses: ./.github/workflows/_linux_build.yml
+    if: >-
+      ${{
+        github.repository_owner == 'intel' &&
+        github.event.pull_request.draft == false &&
+        ! contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all')
+      }}
+    uses: ./.github/workflows/ondemand-workflow.yml
     with:
-      runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      test_type: ${{ needs.conditions-filter.outputs.test_type }}
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch_version }}
+      torch_xpu_ops: ${{ needs.conditions-filter.outputs.torch_xpu_ops_version }}
+      triton: ''
+      python: '3.10'
+      ut: ${{ needs.conditions-filter.outputs.ut_scope }}
+      suite: ${{ needs.conditions-filter.outputs.e2e_suites }}
+      dt: ''
+      mode: ''
+      scenario: ''
+      model: ''
+      runner: 'pvc_rolling'
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: false
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-  linux-ut:
-    needs: [conditions-filter, linux-build]
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
-    secrets: inherit
-    permissions: write-all
-    strategy:
-      fail-fast: false
-      matrix:
-        ut_name: [op_ut,basic]
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
-      ut: ${{ matrix.ut_name }}
-
-  linux-distributed:
-    needs: [conditions-filter, linux-build]
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
-    secrets: inherit
-    permissions: write-all
-    strategy:
-      fail-fast: false
-      matrix:
-        ut_name: [xpu_distributed]
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: distributed
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
-      ut: ${{ matrix.ut_name }}
-
-  linux-e2e:
-    name: linux-e2e
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
-    secrets: inherit
-    needs: [conditions-filter, linux-build]
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [huggingface, timm_models, torchbench]
-    uses: ./.github/workflows/_linux_e2e.yml
-    with:
-      runner: pvc_rolling
-      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      suite: ${{ matrix.suite }}
-  linux-e2e-summary:
-    name: linux-e2e-summary
-    needs: [conditions-filter, linux-e2e]
-    if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions: write-all
-    uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
-
-  windows:
-    name: windows
-    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
+  windows-pr-tests:
+    name: Windows PR Tests
     needs: [conditions-filter, preci-lint-check]
-    secrets: inherit
-    uses: ./.github/workflows/_windows_ut.yml
-    with: 
-      ut: op_extended,test_xpu
-      runner: Windows_CI
-      src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
-      has_label: ${{ needs.conditions-filter.outputs.has_label }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+    if: >-
+      ${{
+        github.repository_owner == 'intel' &&
+        github.event.pull_request.draft == false &&
+        ! contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') &&
+        ! contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win') &&
+        (needs.conditions-filter.outputs.has_label == 'true' || needs.conditions-filter.outputs.src_changed == 'true')
+      }}
+    uses: ./.github/workflows/ondemand-workflow.yml
+    with:
+      test_type: ${{ needs.conditions-filter.outputs.test_type }}
+      pytorch: ${{ needs.conditions-filter.outputs.pytorch_version }}
+      torch_xpu_ops: ${{ needs.conditions-filter.outputs.torch_xpu_ops_version }}
+      triton: ''
+      python: '3.10'
+      ut: 'windows'
+      suite: ''
+      dt: ''
+      mode: ''
+      scenario: ''
+      model: ''
+      runner: 'pvc_rolling'
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: false
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
