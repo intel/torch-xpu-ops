@@ -1172,8 +1172,8 @@ void _layer_norm_backward_kernel(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      dgamma->set_data(dgamma_blocks.sum(0));
-      dbeta->set_data(dbeta_blocks.sum(0));
+      *dgamma = dgamma_blocks.sum(0);
+      *dbeta = dbeta_blocks.sum(0);
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1214,7 +1214,7 @@ void _layer_norm_backward_kernel(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      dgamma->set_data(dgamma_blocks.sum(0));
+      *dgamma = dgamma_blocks.sum(0);
     } else if (!dgamma->defined() && dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
@@ -1255,7 +1255,7 @@ void _layer_norm_backward_kernel(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      dbeta->set_data(dbeta_blocks.sum(0));
+      *dbeta = dbeta_blocks.sum(0);
     } else {
       return;
     }
