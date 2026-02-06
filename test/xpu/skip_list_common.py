@@ -47,10 +47,7 @@ skip_dict = {
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
-    "test_meta_xpu.py": (
-        "_jiterator_",
-        "vdot",
-    ),
+    "test_meta_xpu.py": ("_jiterator_",),
     "test_modules_xpu.py": None,
     "test_namedtensor_xpu.py": None,
     "test_native_functions_xpu.py": None,
@@ -64,10 +61,10 @@ skip_dict = {
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # not implemented
         "histogramdd",
-        "_vdot_",
-        "_dot_",
         "_flash_attention_",
         "_efficient_attention_",
+        # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
+        "test_dtypes_linalg_multi_dot_xpu",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
@@ -99,4 +96,5 @@ skip_dict = {
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "test/xpu/dynamo/test_ctx_manager_xpu.py": None,
+    "functorch/test_control_flow_xpu.py": None,
 }

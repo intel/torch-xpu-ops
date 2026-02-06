@@ -94,7 +94,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_xpu(
   auto output = at::empty_like(input);
   int64_t n_input = input.size(1);
   auto options =
-      input.options().dtype(at::toAccumulateType(input.scalar_type(), true));
+      input.options().dtype(at::toAccumulateType(input.scalar_type(), kXPU));
   auto save_mean = at::empty({n_input}, options);
   auto save_invstd = at::empty({n_input}, options);
 
@@ -258,7 +258,7 @@ std::tuple<Tensor, Tensor, Tensor, Tensor> _batch_norm_with_update_xpu(
   auto output = at::empty_like(input);
   int64_t n_input = input.size(1);
   auto options =
-      input.options().dtype(at::toAccumulateType(input.scalar_type(), true));
+      input.options().dtype(at::toAccumulateType(input.scalar_type(), kXPU));
   auto save_mean = at::empty({n_input}, options);
   auto save_invstd = at::empty({n_input}, options);
 
