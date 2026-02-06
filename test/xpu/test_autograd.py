@@ -81,7 +81,6 @@ from torch.testing._internal.common_utils import (
     skipIfWindows,
     skipIfXpu,
     slowTest,
-    TEST_CUDA,
     TEST_WITH_TORCHDYNAMO,
     TEST_XPU,
     TestCase,
