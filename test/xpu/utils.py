@@ -8,7 +8,6 @@ from functools import partial, wraps
 
 import numpy as np
 import numpy.typing as npt
-
 import torch
 from torch.testing._internal.common_dtype import (
     _dispatch_dtypes,
@@ -31,7 +30,6 @@ from torch.testing._internal.common_utils import (
     TEST_XPU,
     torch_to_numpy_dtype_dict,
 )
-
 
 COMPLETE_DTYPES_DISPATCH = (
     all_types,
