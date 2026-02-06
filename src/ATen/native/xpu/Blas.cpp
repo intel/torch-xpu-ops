@@ -50,7 +50,7 @@ Tensor& mm_complex_fallback(
     const Tensor& mat2,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex matrix multiplication is using fallback implementation with."
+      "Complex matrix multiplication is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto self_real = at::view_as_real(self.resolve_conj());
@@ -79,7 +79,7 @@ Tensor& bmm_complex_fallback(
     const Tensor& mat2,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex batch matrix multiplication is using fallback implementation."
+      "Complex batch matrix multiplication is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto self_real = at::view_as_real(self.resolve_conj());
@@ -111,7 +111,7 @@ Tensor& addmm_complex_fallback(
     const Scalar& alpha,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex addmm is using fallback implementation with real GEMM."
+      "Complex addmm is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto beta_c = beta.toComplexDouble();
@@ -193,7 +193,7 @@ Tensor& baddbmm_complex_fallback(
     const Scalar& alpha,
     Tensor& out) {
   TORCH_WARN_ONCE(
-      "Complex baddbmm is using fallback implementation with real GEMM."
+      "Complex baddbmm is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   auto beta_c = beta.toComplexDouble();
