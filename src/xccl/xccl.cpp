@@ -424,13 +424,13 @@ void onecclAllToAll(
     xcclComm_t& comm,
     ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-
-  auto [isUniform, uniformCount] = checkUniformAllToAll(
-      sendcounts, senddispls, recvcounts, recvdispls, numranks);
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
     onecclCommCount(comm.onecclComm, &numranks);
+
+    auto [isUniform, uniformCount] = checkUniformAllToAll(
+        sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
     if (isUniform) {
       // Use native onecclAllToAll for uniform case
@@ -470,6 +470,9 @@ void onecclAllToAll(
   } else {
     auto xcclDataType = getXcclDataTypeV1(dataType, false);
     int numranks = comm.cclComm->size();
+
+    auto [isUniform, uniformCount] = checkUniformAllToAll(
+        sendcounts, senddispls, recvcounts, recvdispls, numranks);
 
     if (isUniform) {
       // Use native ccl::alltoall for uniform case
