@@ -921,13 +921,13 @@ void vec_gamma_beta_bwd_simple_kernel(
     const Tensor& X,
     const mean_t* mean_data,
     const mean_t* var_data,
-    Tensor& dgamma,
-    Tensor& dbeta,
+    Tensor* dgamma,
+    Tensor* dbeta,
     NormConfig& cfg) {
   const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
   const scalar_t* X_data = X.const_data_ptr<scalar_t>();
-  weight_t* dg_data = dgamma.defined() ? dgamma.data_ptr<weight_t>() : nullptr;
-  weight_t* db_data = dbeta.defined() ? dbeta.data_ptr<weight_t>() : nullptr;
+  weight_t* dg_data = dgamma->defined() ? dgamma->data_ptr<weight_t>() : nullptr;
+  weight_t* db_data = dbeta->defined() ? dbeta->data_ptr<weight_t>() : nullptr;
 
   using vec_t = aligned_vector<scalar_t, vec_size>;
   using weight_vec_t = aligned_vector<weight_t, vec_size>;
@@ -962,8 +962,8 @@ void gamma_beta_bwd_simple_kernel(
     const Tensor& X,
     const mean_t* mean_data,
     const mean_t* var_data,
-    Tensor& dgamma,
-    Tensor& dbeta,
+    Tensor* dgamma,
+    Tensor* dbeta,
     NormConfig& config) {
 #define VECTORIZE_KERNEL(vec_size)                                  \
   vec_gamma_beta_bwd_simple_kernel<                                 \
@@ -1000,10 +1000,9 @@ void _layer_norm_backward_kernel(
     const Tensor& gamma,
     int64_t M,
     int64_t N,
-    Tensor& dX,
-    Tensor& dgamma,
-    Tensor& dbeta,
-    std::array<bool, 3> grad_input_mask) {
+    Tensor* dX,
+    Tensor* dgamma,
+    Tensor* dbeta) {
   TORCH_CHECK(dY.numel() == M * N);
   TORCH_CHECK(mean.numel() == M);
   TORCH_CHECK(rstd.numel() == M);
@@ -1014,15 +1013,15 @@ void _layer_norm_backward_kernel(
   const weight_t* gamma_data =
       gamma.defined() ? gamma.const_data_ptr<weight_t>() : nullptr;
 
-  if (grad_input_mask[0]) {
+  if (dX->defined()) {
     // backward data
     const scalar_t* X_data = X.const_data_ptr<scalar_t>();
     const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
-    scalar_t* dX_data = dX.data_ptr<scalar_t>();
+    scalar_t* dX_data = dX->data_ptr<scalar_t>();
 
     auto config = NormConfig(M, N, 1, sizeof(scalar_t));
     bool can_use_32bit_index = canUse32BitIndexMath(X) &&
-        canUse32BitIndexMath(dY) && canUse32BitIndexMath(dX);
+        canUse32BitIndexMath(dY) && canUse32BitIndexMath(*dX);
     if (config.workgroup_num_foreach == 1) {
       LayerNormBackward<scalar_t, mean_t, weight_t> norm(
           X_data, dY_data, dX_data, mean_data, var_data, gamma_data, M, N);
@@ -1119,21 +1118,21 @@ void _layer_norm_backward_kernel(
     Tensor dbeta_blocks;
     weight_t* dgamma_blocks_ptr = nullptr;
     weight_t* dbeta_blocks_ptr = nullptr;
-    if (dgamma.defined()) {
-      auto options = dgamma.options();
+    if (dgamma->defined()) {
+      auto options = dgamma->options();
       // TODO: how to set dgamma_blocks dtype = float32?
       dgamma_blocks = at::empty({num_tile_m, N}, options);
       dgamma_blocks_ptr = dgamma_blocks.data_ptr<weight_t>();
     }
-    if (dbeta.defined()) {
-      auto options = dbeta.options();
+    if (dbeta->defined()) {
+      auto options = dbeta->options();
       dbeta_blocks = at::empty({num_tile_m, N}, options);
       dbeta_blocks_ptr = dbeta_blocks.data_ptr<weight_t>();
     }
 
     size_t num_workgroup = std::min(
         num_tile_m * num_tile_n, static_cast<int>(thread_slots / local_size_x));
-    if (dgamma.defined() && dbeta.defined()) {
+    if (dgamma->defined() && dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
           accscalar_t,
@@ -1173,9 +1172,9 @@ void _layer_norm_backward_kernel(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      dgamma = dgamma_blocks.sum(0);
-      dbeta = dbeta_blocks.sum(0);
-    } else if (dgamma.defined() && !dbeta.defined()) {
+      *dgamma = dgamma_blocks.sum(0);
+      *dbeta = dbeta_blocks.sum(0);
+    } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
           accscalar_t,
@@ -1215,8 +1214,8 @@ void _layer_norm_backward_kernel(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      dgamma = dgamma_blocks.sum(0);
-    } else if (!dgamma.defined() && dbeta.defined()) {
+      *dgamma = dgamma_blocks.sum(0);
+    } else if (!dgamma->defined() && dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
           accscalar_t,
@@ -1256,7 +1255,7 @@ void _layer_norm_backward_kernel(
            static_cast<size_t>(tile_size_n < SIMD ? tile_size_n : SIMD)},
           getCurrentSYCLQueue(),
           kfn);
-      dbeta = dbeta_blocks.sum(0);
+      *dbeta = dbeta_blocks.sum(0);
     } else {
       return;
     }
@@ -1289,7 +1288,7 @@ void layer_norm_kernel(
       });
 }
 
-std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
+void layer_norm_backward_kernel(
     const Tensor& dY,
     const Tensor& X,
     const Tensor& mean,
@@ -1297,10 +1296,9 @@ std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
     const Tensor& gamma,
     int64_t M,
     int64_t N,
-    Tensor& dX,
-    Tensor& dgamma,
-    Tensor& dbeta,
-    std::array<bool, 3> grad_input_mask) {
+    Tensor* dX,
+    Tensor* dgamma,
+    Tensor* dbeta) {
   if (M > 0 && N > 0) {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,
@@ -1319,12 +1317,9 @@ std::tuple<Tensor, Tensor, Tensor> layer_norm_backward_kernel(
               N,
               dX,
               dgamma,
-              dbeta,
-              grad_input_mask);
+              dbeta);
         });
   }
-
-  return std::make_tuple(dX, dgamma, dbeta);
 }
 
 } // namespace xpu
