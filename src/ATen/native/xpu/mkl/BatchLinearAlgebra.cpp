@@ -20,8 +20,10 @@
 #include <ATen/native/xpu/mkl/TorchToMklType.h>
 #include <ATen/ops/_linalg_check_errors.h>
 #include <ATen/ops/_linalg_check_errors_native.h>
+#include <ATen/ops/arange.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/from_blob.h>
+#include <ATen/ops/isnan.h>
 #include <ATen/ops/zeros_like.h>
 
 #include <comm/SYCLContext.h>
@@ -325,6 +327,18 @@ void lu_solve_mkl(
   });
 }
 
+// Create NaN value that works for both real and complex types
+template <typename scalar_t>
+inline scalar_t create_quiet_nan() {
+  using real_t = typename c10::scalar_value_type<scalar_t>::type;
+  real_t nan_val = std::numeric_limits<real_t>::quiet_NaN();
+  if constexpr (c10::is_complex<scalar_t>::value) {
+    return scalar_t(nan_val, nan_val);
+  } else {
+    return nan_val;
+  }
+}
+
 void lu_factor_mkl(
     const Tensor& LU,
     const Tensor& pivots,
@@ -348,7 +362,28 @@ void lu_factor_mkl(
 
   AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(LU.scalar_type(), "lu_xpu", [&] {
     using T = get_mkl_type<scalar_t>::type;
-    apply_lu_xpu_<T>(LU, pivots_, info_data);
+    if (!at::isnan(LU).any().item<bool>()) {
+      apply_lu_xpu_<T>(LU, pivots_, info_data);
+    } else {
+      // Has NaN, temporarily replace NaNs to avoid MKL crashes, run batched LU
+      // then restore NaNs for the affected batches.
+      int64_t batch_size = native::batchCount(LU);
+      int64_t m = LU.size(-2);
+      int64_t n = LU.size(-1);
+
+      // Detect NaN per-batch
+      auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
+
+      // Replace NaN batches with identity matrix to avoid MKL crash
+      auto identity = at::eye(m, n, LU.options()).unsqueeze(0);
+      auto nan_mask_expanded = nan_mask_batch.view({batch_size, 1, 1});
+      LU.copy_(at::where(nan_mask_expanded, identity, LU));
+
+      apply_lu_xpu_<T>(LU, pivots_, info_data);
+
+      // Restore NaN for batches that originally had NaN
+      LU.masked_fill_(nan_mask_expanded.expand({batch_size, m, n}), create_quiet_nan<scalar_t>());
+    }
   });
 
   // Copy to original info and pivots tensor
