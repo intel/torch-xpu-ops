@@ -7,15 +7,18 @@ readonly ut_suite="${1:-op_regression}"  # Default to op_regression if no suite 
 readonly inputs_pytorch="${2:-nightly_wheel}"
 readonly REPO="intel/torch-xpu-ops"
 readonly TEST_PLATFORM_RAW="${TEST_PLATFORM:-linux}"
-readonly TEST_PLATFORM="$(
-  case "${TEST_PLATFORM_RAW,,}" in
-    linux|windows) echo "${TEST_PLATFORM_RAW,,}" ;;
-    *) 
-      echo "⚠️  Unsupported TEST_PLATFORM='${TEST_PLATFORM_RAW}', defaulting to 'linux'" >&2
-      echo "linux"
-      ;;
-  esac
-)"
+_test_platform_normalized="${TEST_PLATFORM_RAW,,}"
+case "$_test_platform_normalized" in
+  linux|windows) 
+    _final_platform="$_test_platform_normalized"
+    ;;
+  *)
+    echo "⚠️  Unsupported TEST_PLATFORM='${TEST_PLATFORM_RAW}', defaulting to 'linux'" >&2
+    _final_platform="linux"
+    ;;
+esac
+readonly TEST_PLATFORM="$_final_platform"
+unset _test_platform_normalized _final_platform
 
 # Expected test case counts for op_ut between linux and windows(Focus scope)
 declare -A OP_UT_EXPECTED=(
