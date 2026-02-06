@@ -80,7 +80,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       sycl::nd_item<1> item) const {
     const int64_t i = item.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false, item};
-    WelfordType val(0, 0, 0, 0);
+    WelfordType val(static_cast<T_ACC>(X_[i * N_]),0, 0, 0, 0);
     for (int64_t j = item.get_local_id(0); j < N_;
          j += item.get_local_range(0)) {
       const int64_t index = i * N_ + j;
@@ -138,6 +138,7 @@ struct GNRowwiseMomentsVectorizedFunctor
         const int64_t vec_index = i * N_ + j;
         vec_t vec_in =
             *reinterpret_cast<vec_t*>(const_cast<T*>(X_) + vec_index);
+        val[v] = WelfordType(static_cast<T_ACC>(X_[i * N_]), 0, 0, 0, 0);
 #pragma unroll
         for (int iv = 0; iv < VEC_SIZE; ++iv) {
           val[v] = welford_op.reduce(

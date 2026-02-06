@@ -21,6 +21,7 @@
 #include <comm/XPUPair.h>
 #include <cmath>
 #include <complex>
+#include <cstddef>
 #include <type_traits>
 
 #define MAX(X, Y) max_impl(X, Y)
@@ -35,15 +36,16 @@ namespace xpu {
 
 template <typename scalar_t, typename index_t>
 struct WelfordData {
-  scalar_t mean;
-  scalar_t m2;
+  scalar_t first_elem;
+  scalar_t sum;
+  scalar_t sum_of_squares;
   index_t n;
   scalar_t nf;
 
-  WelfordData() : mean(0), m2(0), n(0), nf(0) {}
+  WelfordData() : first_elem(NULL), sum(0), sum_of_squares(0), n(0), nf(0) {}
 
-  WelfordData(scalar_t mean, scalar_t m2, index_t n, scalar_t nf)
-      : mean(mean), m2(m2), n(n), nf(nf) {}
+  WelfordData(scalar_t first_elem, scalar_t sum, scalar_t sum_of_squares, index_t n, scalar_t nf)
+      : first_elem(first_elem), sum(sum), sum_of_squares(sum_of_squares), n(n), nf(nf) {}
 };
 
 template <
@@ -55,19 +57,22 @@ struct WelfordOps {
   acc_scalar_t correction;
   bool take_sqrt;
 
- public:
+public:
   using acc_t = WelfordData<acc_scalar_t, index_t>;
   inline acc_t reduce(acc_t acc, scalar_t data, index_t /*idx*/) const {
     // We accumulate n in index_t to avoid cumulative rounding error, but still
     // need nf for use in combine where int32 may overflow.
     index_t new_n = acc.n + 1;
     acc_scalar_t new_nf = static_cast<acc_scalar_t>(new_n);
-    acc_scalar_t delta = data - acc.mean;
-    acc_scalar_t new_mean = acc.mean + delta / new_nf;
-    acc_scalar_t new_delta = data - new_mean;
+    acc_scalar_t first_elem = acc.first_elem;
+    acc_scalar_t sum = acc.sum + data;
+    acc_scalar_t dif = static_cast<acc_scalar_t>(data) - acc.first_elem;
+    acc_scalar_t sum_of_squares = acc.sum_of_squares + dif*dif;
+
     return {
-        new_mean,
-        acc.m2 + delta * new_delta,
+        first_elem,
+        sum,
+        sum_of_squares,
         new_n,
         new_nf,
     };
@@ -79,21 +84,18 @@ struct WelfordOps {
     if (b.nf == 0) {
       return a;
     }
-    acc_scalar_t delta = b.mean - a.mean;
     acc_scalar_t new_count = a.nf + b.nf;
-    acc_scalar_t nb_over_n = b.nf / new_count;
     return {
-        a.mean + delta * nb_over_n,
-        a.m2 + b.m2 + delta * delta * a.nf * nb_over_n,
-        // setting acc.n as -1 since acc.n might not be able to represent the
-        // count correctly within its range, setting it to -1 to avoid confusion
-        -1,
-        new_count};
+      b.first_elem,
+      a.sum + b.sum,
+      a.sum_of_squares + b.sum_of_squares,
+      a.n+b.n,
+      new_count};
   }
   inline res_t project(acc_t acc) const __ubsan_ignore_float_divide_by_zero__ {
-    const auto mean = static_cast<scalar_t>(acc.mean);
+    const auto mean = static_cast<scalar_t>(acc.sum/acc.nf);
     const auto divisor = acc.nf > correction ? acc.nf - correction : 0;
-    const auto var = acc.m2 / divisor;
+    const auto var = (acc.sum_of_squares/acc.nf) - (mean - acc.first_elem) * (mean - acc.first_elem);
     res_t results(take_sqrt ? device_sqrt(var) : var, mean);
     return results;
   }
