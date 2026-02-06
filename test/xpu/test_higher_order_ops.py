@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+# flake8: noqa:B950 ignore B950 line too long
 import enum
 import functools
 import pprint
