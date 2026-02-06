@@ -17,6 +17,10 @@
 // Avoid SYCL compiler return-type error
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -1420,3 +1424,7 @@ void max_pool2d_with_indices_backward_kernel(
 #undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif

@@ -14,6 +14,11 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <comm/xpu_aten.h>
@@ -975,3 +980,6 @@ Tensor _embedding_bag_per_sample_weights_backward_kernel(
 
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif

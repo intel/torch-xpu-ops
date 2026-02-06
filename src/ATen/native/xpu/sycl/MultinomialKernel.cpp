@@ -14,6 +14,11 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
+
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -555,3 +560,7 @@ void multinomial_kernel(
 } // namespace at::native::xpu
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
