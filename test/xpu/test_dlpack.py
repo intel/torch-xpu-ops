@@ -821,9 +821,7 @@ class TestTorchDlPack(TestCase):
 
         is_xpu_or_cuda = device.startswith("cuda") or device.startswith("xpu")
         # Run the comprehensive C++ test
-        module.test_dlpack_exchange_api(
-            tensor, api_capsule, is_xpu_or_cuda
-        )
+        module.test_dlpack_exchange_api(tensor, api_capsule, is_xpu_or_cuda)
 
     @skipMeta
     @onlyOn(["xpu", "cuda"])
