@@ -32,7 +32,6 @@ from typing import Any, Literal, TypedDict
 from unittest import mock
 
 import numpy as np
-
 import torch
 import torch._dynamo.test_case
 import torch._dynamo.testing
@@ -76,14 +75,13 @@ from torch.testing._internal.common_utils import (
     skipIfHpu,
     skipIfWindows,
     TEST_WITH_ROCM,
-    xfailIfS390X,
     TEST_XPU,
+    xfailIfS390X,
 )
+from torch.testing._internal.inductor_utils import HAS_GPU
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
 from torch.testing._internal.two_tensor import TwoTensor
 from torch.utils._python_dispatch import TorchDispatchMode
-from torch.testing._internal.inductor_utils import HAS_GPU
-
 
 _orig_module_call = torch.nn.Module.__call__
 
@@ -204,9 +202,9 @@ def shapes_to_tensor(x, device=None):
     if torch.jit.is_scripting():
         return torch.as_tensor(x, device=device)
     if torch.jit.is_tracing():
-        assert all(isinstance(t, torch.Tensor) for t in x), (
-            "Shape should be tensor during tracing!"
-        )
+        assert all(
+            isinstance(t, torch.Tensor) for t in x
+        ), "Shape should be tensor during tracing!"
         # as_tensor should not be used in tracing because it records a constant
         ret = torch.stack(x)
         if ret.device != device:  # avoid recording a hard-coded device if not necessary
@@ -505,9 +503,9 @@ class PartialT5(torch.nn.Module):
         real_seq_length = seq_length
 
         if past_key_value is not None:
-            assert len(past_key_value) == 2, (
-                f"past_key_value should have 2 past states: keys and values. Got {len(past_key_value)} past states"
-            )
+            assert (
+                len(past_key_value) == 2
+            ), f"past_key_value should have 2 past states: keys and values. Got {len(past_key_value)} past states"
             real_seq_length += (
                 past_key_value[0].shape[2] if query_length is None else query_length
             )
@@ -5043,9 +5041,9 @@ def forward(self, s77 : torch.SymInt, s27 : torch.SymInt, L_x_ : torch.Tensor):
                 with warnings.catch_warnings(record=True):
                     data_len = len(value)
                 if len(self._fields):
-                    assert len(self) == data_len, (
-                        f"Adding a field of length {data_len} to a Instances of length {len(self)}"
-                    )
+                    assert (
+                        len(self) == data_len
+                    ), f"Adding a field of length {data_len} to a Instances of length {len(self)}"
                 self._fields[name] = value
 
             def get(self, name: str) -> Any:
@@ -8184,12 +8182,20 @@ class ReproTestsDevice(torch._dynamo.test_case.TestCase):
                 super().__init__()
                 self.a = torch.nn.Parameter(
                     torch.randn(
-                        64, 64, dtype=torch.bfloat16, device=device_type, requires_grad=True
+                        64,
+                        64,
+                        dtype=torch.bfloat16,
+                        device=device_type,
+                        requires_grad=True,
                     )
                 )
                 self.b = torch.nn.Parameter(
                     torch.randn(
-                        64, 64, dtype=torch.bfloat16, device=device_type, requires_grad=True
+                        64,
+                        64,
+                        dtype=torch.bfloat16,
+                        device=device_type,
+                        requires_grad=True,
                     )
                 )
                 self.bias = torch.nn.Parameter(
@@ -8222,7 +8228,9 @@ class ReproTestsDevice(torch._dynamo.test_case.TestCase):
                 self.ops_counter[func] += 1
                 return rs
 
-        a = torch.randn(64, 64, dtype=torch.bfloat16, device=device_type, requires_grad=True)
+        a = torch.randn(
+            64, 64, dtype=torch.bfloat16, device=device_type, requires_grad=True
+        )
         out = m(a)
         with TrackingMode() as mode:
             out.sum().backward()
@@ -8728,9 +8736,9 @@ class ReproTestsDevice(torch._dynamo.test_case.TestCase):
             new_frame_count = torch._dynamo.utils.counters.get("frames", {}).get(
                 "ok", 0
             )
-            assert new_frame_count == prev_frame_count, (
-                "linear() call caused a recompile"
-            )
+            assert (
+                new_frame_count == prev_frame_count
+            ), "linear() call caused a recompile"
 
 
 instantiate_parametrized_tests(ReproTests)
