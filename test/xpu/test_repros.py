@@ -7127,7 +7127,7 @@ def forward(self, s77 : torch.SymInt, s27 : torch.SymInt, L_x_ : torch.Tensor):
         with torch._inductor.config.patch(fallback_random=True):
             for backend in ["eager", "aot_eager"]:
                 torch.manual_seed(54321)
-            torch.get_device_module(device_type).manual_seed_all(54321)
+                torch.get_device_module(device_type).manual_seed_all(54321)
                 actual = torch.compile(backend=backend, fullgraph=True)(f)(
                     torch.randn((2, 12, 16, 32, 32))
                 ).sum()
