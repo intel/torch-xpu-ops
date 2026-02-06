@@ -12800,7 +12800,7 @@ instantiate_device_type_tests(
     TestTorchDeviceType, globals(), allow_xpu=True, only_for="xpu"
 )
 instantiate_device_type_tests(
-    TestDevicePrecision, globals(), except_for="cpu", allow_xpu=True, only_for="xpu"
+    TestDevicePrecision, globals(),  allow_xpu=True, only_for="xpu"
 )
 
 if __name__ == "__main__":
