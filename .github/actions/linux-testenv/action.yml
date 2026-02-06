@@ -3,11 +3,11 @@ name: Setup Test Environment
 inputs:
   pytorch:
     type: string
-    default: 'main'
+    default: 'https://github.com/daisyden/pytorch.git@distributed_2.10'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
-    default: 'main'
+    default: 'daisyden/distributed_2.10'
     description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
   python:
     type: string
@@ -71,9 +71,9 @@ runs:
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-          PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
+          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
         else
-          PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
+          PYTORCH_REPO="https://github.com/daisyden/pytorch.git"
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
@@ -99,14 +99,9 @@ runs:
             TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
           fi
         fi
-        if [ "${{ github.event_name }}" == "pull_request" ] && [[ "${{ inputs.pytorch }}" != *"_wheel" ]];then
-          cp -r ${{ github.workspace }}/torch-xpu-ops third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-        else
-          git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
-          cd third_party/torch-xpu-ops
-          git checkout ${TORCH_XPU_OPS_COMMIT}
-        fi
+        git clone ${TORCH_XPU_OPS_REPO} third_party/torch-xpu-ops
+        cd third_party/torch-xpu-ops
+        git checkout ${TORCH_XPU_OPS_COMMIT}
         git status && git diff && git show -s
     - name: Install E2E Requirements
       shell: bash -xe {0}
