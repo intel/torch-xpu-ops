@@ -1,4 +1,5 @@
 # Owner(s): ["module: dynamo"]
+# flake8: noqa:E731 ignore lambdas definition without def
 
 import copy
 import dataclasses
