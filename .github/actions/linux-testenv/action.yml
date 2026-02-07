@@ -36,10 +36,13 @@ runs:
         sudo apt update
         sudo apt install -y jq numactl
         rm -rf Torch-XPU-Wheel-*
-    - name: Setup python-${{ inputs.python }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ inputs.python }}
+        wget -q -O install-uv.sh "https://astral.sh/uv/install.sh"
+        export UV_INSTALL_DIR="/usr/local/bin"
+        sudo bash install-uv.sh
+        uv venv myvenv --python ${{ inputs.python }} --clear
+        source myvenv/bin/activate
+        uv pip install pip
+        echo "PATH=${PWD}/myvenv/bin:$PATH" >> "${GITHUB_ENV}"
     - name: Check python
       shell: bash -xe {0}
       run: |
