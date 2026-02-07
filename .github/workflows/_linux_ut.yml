@@ -62,7 +62,7 @@ jobs:
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: intelgpu/ubuntu-25.04-rolling:25.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
