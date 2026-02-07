@@ -38,7 +38,7 @@ runs:
         rm -rf Torch-XPU-Wheel-*
         wget -q -O install-uv.sh "https://astral.sh/uv/install.sh"
         export UV_INSTALL_DIR="/usr/local/bin"
-        sudo bash install-uv.sh
+        sudo -E bash install-uv.sh
         uv venv myvenv --python ${{ inputs.python }} --clear
         source myvenv/bin/activate
         uv pip install pip
