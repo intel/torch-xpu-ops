@@ -126,7 +126,7 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename out_t, NormType norm_type, typename opmath_t, int SIMD>
 struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<1> item_id) const {
     auto lid = item_id.get_local_linear_id();
     auto group_id = item_id.get_group(0);
@@ -563,7 +563,7 @@ struct LpMaxFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
 template <typename T, int SIMD>
 struct LpmaxChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<1> item_id) const {
     auto local_range = item_id.get_local_range(0);
     auto lid = item_id.get_local_linear_id();
