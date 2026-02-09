@@ -93,13 +93,16 @@ struct HuberFunctor<at::Half> {
 };
 
 void huber_kernel(TensorIterator& iter, double delta) {
-  // Special case for Half: use float precision like CPU
   if (iter.dtype() == kHalf) {
+    // Special case for Half: use float precision like CPU
     float delta_val(static_cast<float>(delta));
     gpu_kernel(iter, HuberFunctor<at::Half>(delta_val));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND(
-        kBFloat16, iter.dtype(), "huber_xpu", [&iter, delta] {
+        kBFloat16,
+        iter.dtype(),
+        "huber_xpu",
+        [&iter, delta] {
           scalar_t delta_val(delta);
           gpu_kernel(iter, HuberFunctor<scalar_t>(delta_val));
         });
