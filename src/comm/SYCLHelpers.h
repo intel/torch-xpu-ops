@@ -9,9 +9,15 @@
  */
 
 #pragma once
-
+// Suppress deprecation warnings from oneAPI SYCL headers.
+// These are not from our code and would otherwise fail the build under -Werror.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#pragma GCC diagnostic pop
 
 // sycl access address space
 static constexpr auto sycl_priv_space =
