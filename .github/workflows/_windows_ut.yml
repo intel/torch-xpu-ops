@@ -49,24 +49,24 @@ permissions: read-all
 env: 
     USE_XPU: 1
     PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
-      intel-cmplr-lib-rt==2025.3.1 | 
-      intel-cmplr-lib-ur==2025.3.1 | 
-      intel-cmplr-lic-rt==2025.3.1 | 
-      intel-sycl-rt==2025.3.1 | 
-      onemkl-license==2025.3.0 | 
-      onemkl-sycl-blas==2025.3.0 | 
-      onemkl-sycl-dft==2025.3.0 | 
-      onemkl-sycl-lapack==2025.3.0 | 
-      onemkl-sycl-rng==2025.3.0 | 
-      onemkl-sycl-sparse==2025.3.0 | 
-      dpcpp-cpp-rt==2025.3.1 | 
-      intel-opencl-rt==2025.3.1 | 
-      mkl==2025.3.0 | 
-      intel-openmp==2025.3.1 | 
-      tbb==2022.3.0 | 
+      intel-cmplr-lib-rt==2025.3.2 | 
+      intel-cmplr-lib-ur==2025.3.2 | 
+      intel-cmplr-lic-rt==2025.3.2 | 
+      intel-sycl-rt==2025.3.2 | 
+      onemkl-license==2025.3.1 | 
+      onemkl-sycl-blas==2025.3.1 | 
+      onemkl-sycl-dft==2025.3.1 | 
+      onemkl-sycl-lapack==2025.3.1 | 
+      onemkl-sycl-rng==2025.3.1 | 
+      onemkl-sycl-sparse==2025.3.1 | 
+      dpcpp-cpp-rt==2025.3.2 | 
+      intel-opencl-rt==2025.3.2 | 
+      mkl==2025.3.1 | 
+      intel-openmp==2025.3.2 | 
+      tbb==2022.3.1 | 
       tcmlib==1.4.1 | 
-      umf==1.0.2 | 
-      intel-pti==0.15.0
+      umf==1.0.3 | 
+      intel-pti==0.16.0
 
 jobs:
   ut_test:
@@ -370,12 +370,20 @@ jobs:
                 -name "category_*.log" \) \
               -exec mv {} ./ \; || true
 
-          # get skipped known issues
-          count=$(gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" --jq 'length')
-          if [ "$count" -gt 0 ]; then
-            echo -e "$count issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+          # get skipped known issues on Linux
+          count_linux=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
+          if [ "$count_linux" -gt 0 ]; then
+            echo -e "$count_linux issues on linux with skipped label found"
+            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
+          fi
+
+          # get skipped known issues only on Windows
+          count_windows_only=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped_windows+state:open" --jq '.total_count')
+          if [ "$count_windows_only" -gt 0 ]; then
+            echo -e "$count_windows_only windows only issues with skipped label found"
+            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped_windows" \
+              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' >> issues.log
           fi
 
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
