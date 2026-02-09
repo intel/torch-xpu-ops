@@ -31,18 +31,6 @@
     }                                           \
   }()
 
-#define LAUNCH_KERNEL(elements_count_val, inplace_condition)        \
-  BOOL_SWITCH(inplace_condition, inplace, [&] {                     \
-    ApplyTriuTrilKernelFunctor<                                     \
-        scalar_t, IndexType, upper, elements_count_val, inplace>    \
-        kfn(result_info, self_info, k, N_padded, last_dim_padded);  \
-    sycl_kernel_submit(                                             \
-        sycl::range<1>(global_range),                               \
-        sycl::range<1>(local_range),                                \
-        getCurrentSYCLQueue(),                                      \
-        kfn);                                                       \
-  })                                                                \
-
 namespace at::native::xpu {
 
 using namespace at::xpu;
@@ -148,6 +136,22 @@ struct ApplyTriuTrilKernelFunctor {
   const IndexType last_dim_padded_;
 };
 
+#define LAUNCH_KERNEL(elements_count_val, inplace_condition)        \
+  BOOL_SWITCH(inplace_condition, inplace, [&] {                     \
+    ApplyTriuTrilKernelFunctor<                                     \
+        scalar_t,                                                   \
+        IndexType,                                                  \
+        upper,                                                      \
+        elements_count_val,                                         \
+        inplace>                                                    \
+        kfn(result_info, self_info, k, N_padded, last_dim_padded);  \
+    sycl_kernel_submit(                                             \
+        sycl::range<1>(global_range),                               \
+        sycl::range<1>(local_range),                                \
+        getCurrentSYCLQueue(),                                      \
+        kfn);                                                       \
+  })
+
 template <typename scalar_t, typename IndexType, bool upper>
 void apply_triu_tril(
     const Tensor& result,
@@ -162,7 +166,8 @@ void apply_triu_tril(
       c10::multiply_integers(sizes.begin(), sizes.end() - 1) * last_dim_padded;
 
   int64_t local_range = syclMaxWorkItemsPerSubSlice();
-  int64_t global_range = round_up(N_padded / elements_per_thread, local_range);
+  int64_t global_range =
+      round_up<int64_t>(N_padded / elements_per_thread, local_range);
 
   // Increase number of elements per thread to make sure number of threads does
   // not exceed max value of uint32, which was causing problems.
@@ -174,7 +179,7 @@ void apply_triu_tril(
     N_padded =
         c10::multiply_integers(sizes.begin(), sizes.end() - 1) *
         last_dim_padded;
-    global_range = round_up(N_padded / elements_count, local_range);
+    global_range = round_up<int64_t>(N_padded / elements_count, local_range);
   }
 
   auto result_info =
@@ -190,7 +195,7 @@ void apply_triu_tril(
     case 16: LAUNCH_KERNEL(16, self.is_same(result)); break;
     case 32: LAUNCH_KERNEL(32, self.is_same(result)); break;
     default:
-      TORCH_CHECK(false, "Too many threads required! Tensor is too big!");
+      TORCH_CHECK(false, "Number of threads exceeds uint32 limit!");
   }
 }
 
