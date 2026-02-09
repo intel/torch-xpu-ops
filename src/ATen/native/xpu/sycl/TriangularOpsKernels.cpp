@@ -31,6 +31,18 @@
     }                                           \
   }()
 
+#define LAUNCH_KERNEL(elements_count_val, inplace_condition)        \
+  BOOL_SWITCH(inplace_condition, inplace, [&] {                     \
+    ApplyTriuTrilKernelFunctor<                                     \
+        scalar_t, IndexType, upper, elements_count_val, inplace>    \
+        kfn(result_info, self_info, k, N_padded, last_dim_padded);  \
+    sycl_kernel_submit(                                             \
+        sycl::range<1>(global_range),                               \
+        sycl::range<1>(local_range),                                \
+        getCurrentSYCLQueue(),                                      \
+        kfn);                                                       \
+  })                                                                \
+
 namespace at::native::xpu {
 
 using namespace at::xpu;
@@ -150,28 +162,36 @@ void apply_triu_tril(
       c10::multiply_integers(sizes.begin(), sizes.end() - 1) * last_dim_padded;
 
   int64_t local_range = syclMaxWorkItemsPerSubSlice();
-  int64_t global_range =
-      ((N_padded / elements_per_thread + local_range - 1) / local_range) *
-      local_range;
+  int64_t global_range = round_up(N_padded / elements_per_thread, local_range);
+
+  // Increase number of elements per thread to make sure number of threads does
+  // not exceed max value of uint32, which was causing problems.
+  int elements_count = elements_per_thread;
+  constexpr int64_t MAX_UINT32 = std::numeric_limits<uint32_t>::max();
+  while (global_range > MAX_UINT32) {
+    elements_count *= 2;
+    last_dim_padded = round_up<int64_t>(sizes.back(), elements_count);
+    N_padded =
+        c10::multiply_integers(sizes.begin(), sizes.end() - 1) *
+        last_dim_padded;
+    global_range = round_up(N_padded / elements_count, local_range);
+  }
 
   auto result_info =
       at::xpu::detail::getTensorInfo<scalar_t, IndexType>(result);
   auto self_info =
       at::xpu::detail::getTensorInfo<const scalar_t, IndexType>(self);
-  BOOL_SWITCH(self.is_same(result), inplace, [&] {
-    ApplyTriuTrilKernelFunctor<
-        scalar_t,
-        IndexType,
-        upper,
-        elements_per_thread,
-        inplace>
-        kfn(result_info, self_info, k, N_padded, last_dim_padded);
-    sycl_kernel_submit(
-        sycl::range<1>(global_range),
-        sycl::range<1>(local_range),
-        getCurrentSYCLQueue(),
-        kfn);
-  });
+
+  switch (elements_count) {
+    case 1:  LAUNCH_KERNEL(1, self.is_same(result)); break;
+    case 2:  LAUNCH_KERNEL(2, self.is_same(result)); break;
+    case 4:  LAUNCH_KERNEL(4, self.is_same(result)); break;
+    case 8:  LAUNCH_KERNEL(8, self.is_same(result)); break;
+    case 16: LAUNCH_KERNEL(16, self.is_same(result)); break;
+    case 32: LAUNCH_KERNEL(32, self.is_same(result)); break;
+    default:
+      TORCH_CHECK(false, "Too many threads required! Tensor is too big!");
+  }
 }
 
 #define TRIU_TRIL_LAMBDA(upper)                                   \
