@@ -9528,6 +9528,7 @@
   variants: function, method
   dispatch:
     SparseXPU: bmm_sparse_xpu
+    NestedTensorXPU: bmm_nested_xpu
   tags: core
 
 - func: bmm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
