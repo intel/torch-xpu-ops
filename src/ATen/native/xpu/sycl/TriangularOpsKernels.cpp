@@ -195,7 +195,10 @@ void apply_triu_tril(
     case 16: LAUNCH_KERNEL(16, self.is_same(result)); break;
     case 32: LAUNCH_KERNEL(32, self.is_same(result)); break;
     default:
-      TORCH_CHECK(false, "Number of threads exceeds uint32 limit!");
+      TORCH_CHECK(
+          false,
+          "Number of elements in input tensor exceeded max currently supported "
+          "limit of 2^37 elements.");
   }
 }
 
