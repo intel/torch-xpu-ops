@@ -10,6 +10,7 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BatchLinearAlgebra.h>
+#include <ATen/native/ComplexHelper.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
 #if defined(USE_ONEMKL_XPU)
@@ -73,5 +74,63 @@ void lu_factor_kernel_xpu(
 }
 
 REGISTER_XPU_DISPATCH(lu_factor_stub, &lu_factor_kernel_xpu);
+
+at::Tensor copy_to_cpu_preserving_strides_and_conj(const Tensor& xpu_tensor) {
+  if (xpu_tensor.is_complex()) {
+    auto cpu_tensor = at::empty_strided(
+        xpu_tensor.sizes(),
+        xpu_tensor.strides(),
+        xpu_tensor.options().device(kCPU));
+    cpu_tensor._set_conj(xpu_tensor.is_conj());
+    cpu_tensor.copy_(xpu_tensor);
+
+    return cpu_tensor;
+  } else {
+    return xpu_tensor.to(xpu_tensor.options().device(kCPU));
+  }
+}
+
+void triangular_solve_kernel_fallback(
+    const Tensor& A,
+    const Tensor& B,
+    bool left,
+    bool upper,
+    TransposeType transpose,
+    bool unitriangular) {
+  TORCH_WARN_ONCE(
+      "torch.linalg.solve_triangular op is using fallback implementation."
+      "Consider building with USE_ONEMKL_XPU=1 for better performance.");
+
+  // triangular_solve_stub sets TransposeType based on A and B tensors and its
+  // conjugation, copying to CPU solves conjugation leading to improper
+  // TransposeType. So we need to preserve the conjugation and strides when
+  // copying to CPU.
+  auto A_cpu = copy_to_cpu_preserving_strides_and_conj(A);
+  auto B_cpu = copy_to_cpu_preserving_strides_and_conj(B);
+
+  triangular_solve_stub(
+      DeviceType::CPU, A_cpu, B_cpu, left, upper, transpose, unitriangular);
+
+  B.copy_(B_cpu);
+}
+
+void triangular_solve_kernel_mkl(
+    const Tensor& A,
+    const Tensor& B,
+    bool left,
+    bool upper,
+    TransposeType transpose,
+    bool unitriangular) {
+#if defined(USE_ONEMKL_XPU)
+  native::xpu::triangular_solve_mkl(
+      A, B, left, upper, transpose, unitriangular);
+
+#else
+  triangular_solve_kernel_fallback(A, B, left, upper, transpose, unitriangular);
+
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_mkl);
 
 } // namespace at::native

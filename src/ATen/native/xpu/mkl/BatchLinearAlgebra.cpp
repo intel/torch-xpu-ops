@@ -356,4 +356,87 @@ void lu_factor_mkl(
   pivots.copy_(pivots_);
 }
 
+template <typename T>
+void apply_triangular_solve_mkl(
+    const Tensor& A,
+    const Tensor& B,
+    bool left,
+    bool upper,
+    TransposeType transpose,
+    bool unitriangular) {
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+
+  oneapi::mkl::side left_right =
+      left ? oneapi::mkl::side::left : oneapi::mkl::side::right;
+  oneapi::mkl::uplo upper_lower =
+      upper ? oneapi::mkl::uplo::upper : oneapi::mkl::uplo::lower;
+  oneapi::mkl::transpose transa = to_blas_(transpose);
+  oneapi::mkl::diag unit_diag =
+      unitriangular ? oneapi::mkl::diag::unit : oneapi::mkl::diag::nonunit;
+
+  const int64_t batch_size = batchCount(A);
+  const int64_t m = left ? A.size(-1) : B.size(-2);
+  const int64_t n = B.size(-1);
+  const int64_t lda = std::max<int64_t>(1, A.size(-2));
+  const int64_t ldb = std::max<int64_t>(1, B.size(-2));
+
+  const T* A_data = reinterpret_cast<const T*>(A.const_data_ptr());
+  T* B_data = reinterpret_cast<T*>(B.data_ptr());
+
+  if (batch_size > 1) {
+    const int64_t A_mat_stride = matrixStride(A);
+    const int64_t B_mat_stride = matrixStride(B);
+
+    oneapi::mkl::blas::column_major::trsm_batch(
+        queue,
+        left_right,
+        upper_lower,
+        transa,
+        unit_diag,
+        m,
+        n,
+        T(1),
+        A_data,
+        lda,
+        A_mat_stride,
+        B_data,
+        ldb,
+        B_mat_stride,
+        batch_size);
+  } else {
+    oneapi::mkl::blas::column_major::trsm(
+        queue,
+        left_right,
+        upper_lower,
+        transa,
+        unit_diag,
+        m,
+        n,
+        T(1),
+        A_data,
+        lda,
+        B_data,
+        ldb);
+  }
+}
+
+void triangular_solve_mkl(
+    const Tensor& A,
+    const Tensor& B,
+    bool left,
+    bool upper,
+    TransposeType transpose,
+    bool unitriangular) {
+  if (A.numel() == 0 || B.numel() == 0) {
+    return;
+  }
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+      A.scalar_type(), "triangular_solve_mkl", [&] {
+        using T = get_mkl_type<scalar_t>::type;
+        apply_triangular_solve_mkl<T>(
+            A, B, left, upper, transpose, unitriangular);
+      });
+}
+
 } // namespace at::native::xpu
