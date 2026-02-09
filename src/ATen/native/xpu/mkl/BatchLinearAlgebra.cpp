@@ -241,7 +241,8 @@ static void apply_lu_solve_xpu_(
   int64_t ldb = b_.size(-2);
   int64_t stride_b = native::matrixStride(b_);
 
-  scalar_t* a = reinterpret_cast<scalar_t*>(lu_.data_ptr());
+  const auto* a_ro = static_cast<const scalar_t*>(lu_.const_data_ptr());
+  auto* a = const_cast<scalar_t*>(a_ro);
   Tensor pivots = pivots_;
   if (pivots_.scalar_type() == at::ScalarType::Int)
     pivots = pivots_.to(kLong);
