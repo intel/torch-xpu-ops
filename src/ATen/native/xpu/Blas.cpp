@@ -28,24 +28,33 @@ namespace {
 
 class ConjPhysicalGuard final {
  public:
-  explicit ConjPhysicalGuard(Tensor& out) : out_(out), was_conj_(out.is_conj()) {
+  explicit ConjPhysicalGuard(Tensor& out)
+      : out_(out),
+        was_conj_(out.is_conj()) {
+    // When the output tensor is conjugated, avoid mutating its conj state.
+    // Instead, operate on a non-conjugated temporary and copy the conjugated
+    // result back in the destructor.
     if (was_conj_) {
-      out_.conj_physical_();
+      tmp_ = out_.conj().clone();
+    } else {
+      tmp_ = out_;
     }
   }
 
   ~ConjPhysicalGuard() {
     if (was_conj_) {
-      out_.conj_physical_();
+      // Copy the result back into the original conjugated tensor.
+      out_.copy_(tmp_);
     }
   }
 
   Tensor real() const {
-    return at::native::_view_as_real_physical(out_);
+    return at::view_as_real(tmp_);
   }
 
  private:
   Tensor& out_;
+  Tensor tmp_;
   bool was_conj_;
 };
 
@@ -73,7 +82,8 @@ Tensor& mm_complex_fallback(
   auto P2 = at::mm(A_i, B_i);
   auto P3 = at::mm(A_r + A_i, B_r + B_i);
 
-  auto out_real = at::view_as_real(out);
+  ConjPhysicalGuard out_guard(out);
+  auto out_real = out_guard.real();
   out_real.select(-1, 0).copy_(P1 - P2);
   out_real.select(-1, 1).copy_(P3 - P1 - P2);
   return out;
@@ -100,7 +110,8 @@ Tensor& bmm_complex_fallback(
   auto P2 = at::bmm(A_i, B_i);
   auto P3 = at::bmm(A_r + A_i, B_r + B_i);
 
-  auto out_real = at::view_as_real(out);
+  ConjPhysicalGuard out_guard(out);
+  auto out_real = out_guard.real();
   out_real.select(-1, 0).copy_(P1 - P2);
   out_real.select(-1, 1).copy_(P3 - P1 - P2);
   return out;
@@ -434,7 +445,7 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
   #if defined(USE_ONEMKL_XPU)
     return at::native::xpu::dot_xpu_mkl(self, other);
   #else
-    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+    return at::native::dot(self.cpu(), other.cpu()).to(self.device());
   #endif
 }
 
