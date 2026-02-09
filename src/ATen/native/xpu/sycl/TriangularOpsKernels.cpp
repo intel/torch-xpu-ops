@@ -136,13 +136,13 @@ struct ApplyTriuTrilKernelFunctor {
   const IndexType last_dim_padded_;
 };
 
-#define LAUNCH_KERNEL(elements_count_val, inplace_condition)        \
+#define LAUNCH_KERNEL(elements_per_thread, inplace_condition)       \
   BOOL_SWITCH(inplace_condition, inplace, [&] {                     \
     ApplyTriuTrilKernelFunctor<                                     \
         scalar_t,                                                   \
         IndexType,                                                  \
         upper,                                                      \
-        elements_count_val,                                         \
+        elements_per_thread,                                        \
         inplace>                                                    \
         kfn(result_info, self_info, k, N_padded, last_dim_padded);  \
     sycl_kernel_submit(                                             \
