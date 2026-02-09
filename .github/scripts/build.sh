@@ -19,7 +19,7 @@ done
 
 # Set pytorch
 rm -rf ${WORKSPACE}/pytorch
-git clone ${PYTORCH_REPO} ${WORKSPACE}/pytorch
+git clone https://github.com/daisyden/pytorch.git ${WORKSPACE}/pytorch
 cd ${WORKSPACE}/pytorch
 git checkout ${PYTORCH_COMMIT}
 git remote -v && git branch && git show -s
@@ -44,10 +44,9 @@ git remote -v && git branch && git show -s
 # Pre Build
 cd ${WORKSPACE}/pytorch
 python -m pip install requests
-python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
-python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
+python -m pip install mkl-static mkl-include
 export USE_STATIC_MKL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \

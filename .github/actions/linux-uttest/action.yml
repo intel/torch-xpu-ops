@@ -157,7 +157,13 @@ runs:
           echo -e "[ERROR] XCCL is not enabled"
           exit 1
         fi
-        python run_distributed.py \
+        export TEMP_DIR=/tmp
+        export BACKEND="xccl"
+        export WORLD_SIZE=4
+        export USE_CCL_V2=1
+        pip install transformers pulp
+        sudo rm -rf /tmp/torchinductor_jenkins/
+        python run_distributed_local.py \
           2> ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test_error.log | \
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;

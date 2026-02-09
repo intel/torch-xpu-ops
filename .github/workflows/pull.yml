@@ -98,8 +98,8 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      pytorch: distributed_2.10
+      runner: distributed
 
   linux-ut:
     needs: [conditions-filter, linux-build]
@@ -128,9 +128,8 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: distributed
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
+      runner: PVC-03004
+      pytorch: distributed_2.10
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
