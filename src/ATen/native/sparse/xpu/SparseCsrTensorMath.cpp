@@ -22,7 +22,6 @@
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
-#include <ATen/ops/add.h>
 #include <ATen/ops/addmm.h>
 #include <ATen/ops/addmv.h>
 #include <ATen/ops/baddbmm.h>
@@ -295,7 +294,7 @@ Tensor& addmv_out_sparse_compressed_xpu(
   }
   TORCH_CHECK(
       mat.layout() != kSparseBsc,
-      "addmm_out_sparse_csr_xpu currently does not support layout SparseBsc for input mat.");
+      "addmv_out_sparse_compressed_xpu currently does not support layout SparseBsc for input mat.");
 
   TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
   TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
@@ -429,47 +428,6 @@ Tensor& bmm_out_sparse_csr_xpu(
   Scalar alpha(1.0);
   return at::native::baddbmm_out_sparse_csr_xpu(
       result, mat1, mat2, beta, alpha, result);
-}
-
-Tensor& add_out_sparse_compressed_xpu(
-    const Tensor& self,
-    const SparseCsrTensor& other,
-    const Scalar& alpha,
-    SparseCsrTensor& out) {
-  if (self.layout() == kStrided) {
-    at::add_out(out, self, other.to_dense(), alpha);
-    return out;
-  } else if (other.layout() == kStrided) {
-    at::add_out(out, other, self.to_dense(), alpha);
-    return out;
-  } else {
-    TORCH_CHECK(
-        self.sizes().equals(other.sizes()),
-        "torch.add: Expected input tensors to have the same shape, but got tensor `self` with shape ",
-        self.sizes(),
-        " and tensor `other` with shape ",
-        other.sizes());
-    TORCH_CHECK(
-        self.is_xpu(),
-        "add: expected 'self' to be XPU tensor, but got tensor on device: ",
-        self.device());
-    TORCH_CHECK(
-        other.is_xpu(),
-        "add: expected 'other' to be XPU tensor, but got tensor on device: ",
-        other.device());
-    TORCH_CHECK(
-        out.is_xpu(),
-        "add: expected 'out' to be XPU tensor, but got tensor on device: ",
-        out.device());
-
-    if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
-      return out;
-    }
-
-    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-    out = out_dense.to_sparse_csr();
-  }
-  return out;
 }
 
 } // namespace at::native

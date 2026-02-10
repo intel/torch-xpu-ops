@@ -3108,6 +3108,7 @@ class TestSparseCSR(TestCase):
 
     @sparse_compressed_nonblock_layouts()
     @dtypes(torch.float, torch.double)
+    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_add(self, device, layout, dtype):
         def _test_spadd_shape(nnz, shape):
             # sparse.to_dense() uses torch.add internally so if torch.add is wrong,
@@ -3311,6 +3312,7 @@ class TestSparseCSR(TestCase):
                 run_test(m, n, index_dtype)
 
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
+    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sparse_add_errors(self, device, dtype):
         def run_test(index_type):
             a = self.genSparseCSRTensor(
