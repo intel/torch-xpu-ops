@@ -35,6 +35,18 @@ skip_dict = {
     "test_dataloader_xpu.py": None,
     "test_decomp_xpu.py": None,
     "test_distributions_xpu.py": None,
+    "test_activation_checkpointing.py": None,
+    "test_aot_autograd_cache.py": None,
+    "test_compiler_bisector.py": None,
+    "test_debug_utils.py": None,
+    "test_deviceguard.py": None,
+    "test_export.py": None,
+    "test_graph_region_tracker.py": None,
+    "test_guard_manager.py": None,
+    "test_regional_inductor.py": None,
+    "test_structured_trace.py": None,
+    "test_subclasses.py": None,
+    "test_trace_rules.py": None,
     "test_dynamic_shapes_xpu.py": None,
     "test_foreach_xpu.py": (
         # RuntimeError: Tried to instantiate dummy base class CUDAGraph
