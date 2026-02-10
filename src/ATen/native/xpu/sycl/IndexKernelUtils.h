@@ -39,7 +39,7 @@ inline bool fast_gather_kernel_eligible(
       iter.strides(2)[1] == index_element_size &&
       static_cast<size_t>(iter.strides(0)[0]) == element_size &&
       static_cast<size_t>(iter.strides(1)[0]) == element_size &&
-      static_cast<size_t>(iter.strides(1)[1] == 0) &&
+      static_cast<size_t>(iter.strides(1)[1]) == 0 &&
       get_alignment(out_ptr) == alignment &&
       get_alignment(in_ptr) == alignment &&
       get_alignment(static_cast<size_t>(iter.shape()[0] * element_size)) ==
