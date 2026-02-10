@@ -52,7 +52,7 @@ inline bool fast_gather_kernel_eligible(
 
 template <int Alignment, typename index_t>
 struct VectorizedGatherKernel {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<2> item) const {
     int64_t ind = idx_[item.get_group(1)];
     if (allow_neg_indices_) {
