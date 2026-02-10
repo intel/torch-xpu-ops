@@ -98,7 +98,7 @@ void triangular_solve_kernel_fallback(
     TransposeType transpose,
     bool unitriangular) {
   TORCH_WARN_ONCE(
-      "torch.linalg.solve_triangular op is using fallback implementation."
+      "torch.linalg.solve_triangular op is using fallback implementation. "
       "Consider building with USE_ONEMKL_XPU=1 for better performance.");
 
   // triangular_solve_stub sets TransposeType based on A and B tensors and its
@@ -124,10 +124,8 @@ void triangular_solve_kernel_mkl(
 #if defined(USE_ONEMKL_XPU)
   native::xpu::triangular_solve_mkl(
       A, B, left, upper, transpose, unitriangular);
-
 #else
   triangular_solve_kernel_fallback(A, B, left, upper, transpose, unitriangular);
-
 #endif // USE_ONEMKL_XPU
 }
 
