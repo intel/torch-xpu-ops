@@ -74,28 +74,26 @@ struct HuberFunctor {
   scalar_t delta_val_;
 };
 
-// Special Half precision functor for numerical stability  
 template <>
 struct HuberFunctor<at::Half> {
   at::Half operator()(at::Half a, at::Half b) const {
-    // Convert to float for numerical stability (like CPU implementation)
+    // Compute internally in float32 - following CPU implementation.
     float af = static_cast<float>(a);
     float bf = static_cast<float>(b);
     float z = std::abs(af - bf);
-    float out = z < delta_val_ ? 0.5f * z * z 
+    float out = z < delta_val_ ? 0.5f * z * z
                                : delta_val_ * (z - 0.5f * delta_val_);
     return static_cast<at::Half>(out);
   }
   HuberFunctor(float delta_val) : delta_val_(delta_val) {}
-  
+
  private:
   float delta_val_;
 };
 
 void huber_kernel(TensorIterator& iter, double delta) {
   if (iter.dtype() == kHalf) {
-    // Special case for Half: use float precision like CPU
-    float delta_val(static_cast<float>(delta));
+    float delta_val(delta);
     gpu_kernel(iter, HuberFunctor<at::Half>(delta_val));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND(
