@@ -134,10 +134,15 @@ void compare_kernel_impl(TensorIteratorBase& iter, OpType op) {
 }
 
 inline void compare_kernel_with_scalars(TensorIteratorBase& iter, OpType op) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kHalf, kBFloat16, kBool, iter.common_dtype(), "compare_xpu", [&]() {
-        compare_kernel_impl<scalar_t>(iter, op);
-      });
+  AT_DISPATCH_V2(
+      iter.common_dtype(),
+      "compare_xpu",
+      [&]() { compare_kernel_impl<scalar_t>(iter, op); },
+      AT_EXPAND(AT_ALL_TYPES),
+      kHalf,
+      kBFloat16,
+      kBool,
+      AT_EXPAND(AT_FLOAT8_TYPES));
 }
 
 void ge_kernel(TensorIteratorBase& iter) {
