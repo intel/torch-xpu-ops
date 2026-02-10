@@ -6,6 +6,18 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+"""
+Usage: python run_cases.py <jsonl_file> [repeats=3] [log_dir=./logs_by_op]
+
+Run operator test cases from a JSONL file, repeating each case multiple times and
+logging outputs per operator.
+
+Arguments:
+  jsonl_file   Path to JSONL file containing test cases (each line: {"op": "...", "case": {...}})
+  repeats      Number of times to repeat each case (default: 3)
+  log_dir      Directory to store per-operator log files (default: "logs_by_op")
+"""
+
 import json
 import subprocess
 import sys
@@ -86,9 +98,7 @@ def main(jsonl_path, repeats=3, log_dir="logs_by_op"):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print(
-            "Usage: python run_cases.py <jsonl_file> [repeats=3] [log_dir=./logs_by_op]"
-        )
+        print("Error: Missing required argument 'jsonl_file'", file=sys.stderr)
         sys.exit(1)
 
     jsonl_path = sys.argv[1]
