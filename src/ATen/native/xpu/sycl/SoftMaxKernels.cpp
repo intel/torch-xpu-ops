@@ -226,7 +226,7 @@ template <
     bool is_same_dtype>
 struct DispatchSoftmaxForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
@@ -943,7 +943,7 @@ template <
     bool is_same_dtype = false>
 struct DispatchSoftmaxBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
       sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;

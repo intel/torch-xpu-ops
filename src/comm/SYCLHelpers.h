@@ -162,3 +162,9 @@ sycl_kernel_submit(
     SYCL_KERNEL_STRING(fmt_var, fmt_str);       \
     SYCL_KERNEL_PRINTF(fmt_var, ##__VA_ARGS__); \
   }
+
+#ifdef __SYCL_DEVICE_ONLY__
+  #define SYCL_REQD_SUB_GROUP_SIZE(x) [[sycl::reqd_sub_group_size(x)]]
+#else
+  #define SYCL_REQD_SUB_GROUP_SIZE(x)
+#endif
