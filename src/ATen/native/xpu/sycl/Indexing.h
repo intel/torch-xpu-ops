@@ -818,112 +818,415 @@ void _index_kernel(
   index_kernel_impl<func_t>(iter, index_size, index_stride, f);
 }
 
-template <typename scalar_t, typename accscalar_t>
+template <int SZ, int sg_size, typename scalar_t, typename opmath_t>
 struct IndexPutDeterministicKernelFunctor {
-  void operator()(sycl::nd_item<2> item) const {
-    auto id = cfg_.get_item_desc(item);
+  [[sycl::reqd_sub_group_size(sg_size)]] void operator()(
+      sycl::nd_item<3> item) const {
+    // Number of values processed by each thread (grain size)
+    for (int64_t z = item.get_group(0); z < outer_dim_;
+         z += item.get_group_range(0)) {
+      int64_t idx =
+          item.get_group(2) * item.get_local_range(1) + item.get_local_id(1);
+      if (idx < numel_ &&
+          (idx == 0 || sorted_indices_[idx] != sorted_indices_[idx - 1])) {
+        do {
+          int64_t start_feature = item.get_local_id(2) +
+              item.get_group(1) * item.get_local_range(2) * SZ;
+          // if not accumulate, we only keep the last duplicate index so skip
+          // those before it
+          if (!accumulate_ && (idx < numel_ - 1) &&
+              sorted_indices_[idx] == sorted_indices_[idx + 1]) {
+            idx++;
+            continue;
+          }
+          const int64_t weight_row =
+              ((int64_t)sorted_indices_[idx]) * stride_ + z * stride_before_;
+          const int64_t grad_row =
+              ((int64_t)indices_[idx]) * stride_ + z * numel_ * stride_;
+          const opmath_t scale = (opmath_t)1.0;
 
-    if (id.glb_batch >= cfg_.problem_batch_ || id.glb_problem >= cfg_.problem_)
-      return;
+          opmath_t gradient[SZ];
+          opmath_t weight[SZ];
 
-    int64_t idx = sorted_indices_[id.glb_batch];
-    if (id.glb_batch != 0 && idx == sorted_indices_[id.glb_batch - 1])
-      return;
+          while (start_feature < stride_) {
+#pragma unroll
+            for (int ii = 0; ii < SZ; ii++) {
+              int64_t feature_dim = start_feature + ii * sg_size;
+              if (feature_dim < stride_) {
+                gradient[ii] =
+                    static_cast<opmath_t>(grad_output_[grad_row + feature_dim]);
+                if (accumulate_) {
+                  weight[ii] = static_cast<opmath_t>(
+                      grad_weight_[weight_row + feature_dim]);
+                }
+              }
+            }
 
-    int64_t pi_ = id.glb_problem;
-    int64_t si_ = pi_ % stride_;
-    int64_t bi_ = pi_ / stride_;
-    int64_t s_gid = si_ + idx * stride_ + bi_ * stride_before_;
-    int64_t v_stride = si_ + bi_ * v_stride_before_;
+#pragma unroll
+            for (int ii = 0; ii < SZ; ii++) {
+              if (accumulate_) {
+                weight[ii] += gradient[ii] * scale;
+              } else {
+                weight[ii] = gradient[ii] * scale;
+              }
+            }
 
-    accscalar_t acc;
-    if (accumulate_)
-      acc = c10::load(&self_[s_gid]);
-    for (int64_t inner_idx = id.glb_batch;
-         inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
-         inner_idx++) {
-      int64_t idx_orig = indices_[inner_idx];
-      int64_t v_gid = idx_orig * stride_ + v_stride;
-      if (accumulate_) {
-        acc += (accscalar_t)c10::load(&value_[v_gid]);
-      } else {
-        self_[s_gid] = c10::load(&value_[v_gid]);
-        break;
+#pragma unroll
+            for (int ii = 0; ii < SZ; ii++) {
+              int64_t feature_dim = start_feature + ii * sg_size;
+              if (feature_dim < stride_) {
+                grad_weight_[weight_row + feature_dim] =
+                    static_cast<scalar_t>(weight[ii]);
+              }
+            }
+            start_feature +=
+                item.get_group_range(1) * item.get_local_range(2) * SZ;
+          }
+
+          idx++;
+        } while (idx < numel_ &&
+                 sorted_indices_[idx] == sorted_indices_[idx - 1]);
       }
     }
-    if (accumulate_)
-      self_[s_gid] = acc;
   }
 
   IndexPutDeterministicKernelFunctor(
-      int64_t* sorted_indices,
-      int64_t* indices,
-      const scalar_t* value,
-      scalar_t* self,
+      const int64_t* sorted_indices,
+      const int64_t* indices,
+      const scalar_t* grad_output,
+      scalar_t* grad_weight,
+      int64_t numel,
       int64_t stride,
       int64_t stride_before,
-      bool accumulate,
-      int64_t v_stride_before,
-      BatchKernelConfig cfg)
+      int64_t outer_dim,
+      bool accumulate)
       : sorted_indices_(sorted_indices),
         indices_(indices),
-        value_(value),
-        self_(self),
+        grad_output_(grad_output),
+        grad_weight_(grad_weight),
+        numel_(numel),
         stride_(stride),
         stride_before_(stride_before),
-        accumulate_(accumulate),
-        v_stride_before_(v_stride_before),
-        cfg_(cfg) {}
+        outer_dim_(outer_dim),
+        accumulate_(accumulate) {}
 
  private:
-  int64_t* sorted_indices_;
-  int64_t* indices_;
-  const scalar_t* value_;
-  scalar_t* self_;
+  const int64_t* sorted_indices_;
+  const int64_t* indices_;
+  const scalar_t* grad_output_;
+  scalar_t* grad_weight_;
+  int64_t numel_;
   int64_t stride_;
   int64_t stride_before_;
+  int64_t outer_dim_;
   bool accumulate_;
-  int64_t v_stride_before_;
-  BatchKernelConfig cfg_;
 };
-
+#define SIMD16 16
+#define SIMD32 32
 template <typename scalar_t, typename accscalar_t>
 void launch_index_put_deterministic_kernel(
     int64_t* sorted_indices,
-    int64_t* indices,
-    const scalar_t* value,
+    int64_t* orig_indices,
+    const scalar_t* expandedValue,
     scalar_t* self,
-    int64_t numel,
-    int64_t stride,
-    int64_t stride_before,
-    int64_t outer_dim,
+    int64_t num_indices,
+    int64_t sliceSize,
+    int64_t strideBefore,
+    int64_t nElemBefore,
     bool accumulate) {
-  if (outer_dim * stride == 0 || numel == 0) {
-    return;
+  const int UNROLL = 4;
+  const int indices_per_group = 4;
+  const int subgroup_size = (int)syclMaxSubGroupSize();
+  sycl::range<3> local_range(1, indices_per_group, subgroup_size);
+  sycl::range<3> global_range(
+      std::max<int>(1, nElemBefore),
+      ceil_div(sliceSize, (int64_t)(subgroup_size * UNROLL)) *
+          indices_per_group,
+      ceil_div(num_indices, (int64_t)indices_per_group) * subgroup_size);
+
+  if (subgroup_size == SIMD16) {
+    using KernelClass = IndexPutDeterministicKernelFunctor<
+        UNROLL,
+        SIMD16,
+        scalar_t,
+        accscalar_t>;
+    KernelClass kfn(
+        sorted_indices,
+        orig_indices,
+        expandedValue,
+        self,
+        num_indices,
+        sliceSize,
+        strideBefore,
+        nElemBefore,
+        accumulate);
+
+    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+  } else {
+    using KernelClass = IndexPutDeterministicKernelFunctor<
+        UNROLL,
+        SIMD32,
+        scalar_t,
+        accscalar_t>;
+    KernelClass kfn(
+        sorted_indices,
+        orig_indices,
+        expandedValue,
+        self,
+        num_indices,
+        sliceSize,
+        strideBefore,
+        nElemBefore,
+        accumulate);
+
+    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
   }
-  int64_t v_stride_before = numel * stride;
-  using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t>;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      /* num of indices */ numel,
-      /* num of elements to put per indices */ outer_dim * stride,
-      1,
-      numel,
-      true,
-      {BatchKernelConfig::Policy::pSegment,
-       BatchKernelConfig::Policy::pAggressiveSplit});
+}
+
+template <typename scalar_t, typename opmath_t>
+struct IndexPutDeterministicKernelFunctorStride1 {
+  void operator()(sycl::nd_item<3> item) const {
+    // Number of values processed by each thread (grain size)
+    auto sg = item.get_sub_group();
+    int sgSize = static_cast<int>(sg.get_local_range()[0]);
+    for (int64_t z = item.get_group(0); z < outer_dim_;
+         z += item.get_group_range(0)) {
+      int64_t idx =
+          item.get_group(2) * item.get_local_range(1) + item.get_local_id(1);
+      int64_t crnt_sorted_idx = sorted_indices_[idx];
+      if ((idx < numel_) &&
+          (idx == 0 || crnt_sorted_idx != sorted_indices_[idx - 1])) {
+        // Determine the number of duplicates in advance
+        int64_t num_duplicates = 1;
+        while (((idx + num_duplicates) < numel_) &&
+               (sorted_indices_[idx + num_duplicates] == crnt_sorted_idx)) {
+          num_duplicates++;
+        }
+
+        // Continue computing weights
+        const int64_t weight_row =
+            crnt_sorted_idx * stride_ + z * stride_before_;
+        int64_t grad_row = 0;
+        const opmath_t scale = (opmath_t)1.0;
+
+        if (!accumulate_) {
+          grad_row = ((int64_t)indices_[idx + num_duplicates - 1]) * stride_ +
+              z * numel_ * stride_;
+          grad_weight_[weight_row] = static_cast<scalar_t>(
+              static_cast<opmath_t>(grad_output_[grad_row]) * scale);
+        } else {
+          opmath_t gradient = (opmath_t)0.0;
+
+          int laneIdx = item.get_local_id(2) % sgSize;
+          int64_t num_sg_passes = num_duplicates / sgSize;
+          for (int64_t i = 0; i < num_sg_passes; ++i) {
+            grad_row =
+                ((int64_t)indices_[idx + i * sgSize + laneIdx]) * stride_ +
+                z * numel_ * stride_;
+            gradient += static_cast<opmath_t>(grad_output_[grad_row]) * scale;
+          }
+          sycl::group_barrier(sg);
+          for (int offset = sgSize / 2; offset > 0; offset /= 2) {
+            gradient += sycl::shift_group_left(sg, gradient, offset);
+          }
+
+          if (laneIdx == 0) {
+            for (int64_t i = num_sg_passes * sgSize; i < num_duplicates; ++i) {
+              grad_row =
+                  ((int64_t)indices_[idx + i]) * stride_ + z * numel_ * stride_;
+              gradient += static_cast<opmath_t>(grad_output_[grad_row]) * scale;
+            }
+
+            grad_weight_[weight_row] = static_cast<scalar_t>(
+                static_cast<opmath_t>(grad_weight_[weight_row]) + gradient);
+          }
+        }
+      }
+    }
+  }
+
+  IndexPutDeterministicKernelFunctorStride1(
+      const int64_t* sorted_indices,
+      const int64_t* indices,
+      const scalar_t* grad_output,
+      scalar_t* grad_weight,
+      int64_t numel,
+      int64_t stride,
+      int64_t stride_before,
+      int64_t outer_dim,
+      bool accumulate)
+      : sorted_indices_(sorted_indices),
+        indices_(indices),
+        grad_output_(grad_output),
+        grad_weight_(grad_weight),
+        numel_(numel),
+        stride_(stride),
+        stride_before_(stride_before),
+        outer_dim_(outer_dim),
+        accumulate_(accumulate) {}
+
+ private:
+  const int64_t* sorted_indices_;
+  const int64_t* indices_;
+  const scalar_t* grad_output_;
+  scalar_t* grad_weight_;
+  int64_t numel_;
+  int64_t stride_;
+  int64_t stride_before_;
+  int64_t outer_dim_;
+  bool accumulate_;
+};
+
+template <typename scalar_t, typename accscalar_t>
+void launch_index_put_deterministic_kernel_stride1(
+    int64_t* sorted_indices,
+    int64_t* orig_indices,
+    const scalar_t* expandedValue,
+    scalar_t* self,
+    int64_t num_indices,
+    int64_t sliceSize,
+    int64_t strideBefore,
+    int64_t nElemBefore,
+    bool accumulate) {
+  const int UNROLL = 4;
+  const int indices_per_group = 4;
+  const int subgroup_size = (int)syclMaxSubGroupSize();
+  sycl::range<3> local_range(1, indices_per_group, subgroup_size);
+  sycl::range<3> global_range(
+      std::max<int>(1, nElemBefore),
+      ceil_div(sliceSize, (int64_t)(subgroup_size * UNROLL)) *
+          indices_per_group,
+      ceil_div(num_indices, (int64_t)indices_per_group) * subgroup_size);
+  using KernelClass =
+      IndexPutDeterministicKernelFunctorStride1<scalar_t, accscalar_t>;
   KernelClass kfn(
       sorted_indices,
-      indices,
-      value,
+      orig_indices,
+      expandedValue,
       self,
-      stride,
-      stride_before,
-      accumulate,
-      v_stride_before,
-      cfg);
+      num_indices,
+      sliceSize,
+      strideBefore,
+      nElemBefore,
+      accumulate);
 
-  sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
+}
+
+template <typename scalar_t, typename opmath_t>
+struct IndexPutDeterministicKernelFunctorStrideSmallStride {
+  void operator()(sycl::nd_item<3> item) const {
+    // Number of values processed by each thread (grain size)
+    for (int64_t z = item.get_group(0); z < outer_dim_;
+         z += item.get_group_range(0)) {
+      int64_t idx =
+          item.get_group(2) * item.get_local_range(1) + item.get_local_id(1);
+      int64_t tidx = item.get_local_id(2);
+      int64_t crnt_sorted_idx = sorted_indices_[idx];
+      if ((idx < numel_) && (tidx < stride_) &&
+          (idx == 0 || crnt_sorted_idx != sorted_indices_[idx - 1])) {
+        // Determine the number of duplicates in advance
+        int64_t num_duplicates = 1;
+        while (((idx + num_duplicates) < numel_) &&
+               (sorted_indices_[idx + num_duplicates] == crnt_sorted_idx)) {
+          num_duplicates++;
+        }
+
+        // Continue computing weights
+        const int64_t weight_row =
+            crnt_sorted_idx * stride_ + z * stride_before_;
+        int64_t grad_row = 0;
+        const opmath_t scale = (opmath_t)1.0;
+
+        if (!accumulate_) {
+          grad_row = ((int64_t)indices_[idx + num_duplicates - 1]) * stride_ +
+              z * numel_ * stride_;
+          grad_weight_[weight_row + tidx] = static_cast<scalar_t>(
+              static_cast<opmath_t>(grad_output_[grad_row + tidx]) * scale);
+        } else {
+          opmath_t gradient = (opmath_t)0.0;
+          for (int64_t i = 0; i < num_duplicates; ++i) {
+            grad_row =
+                ((int64_t)indices_[idx + i]) * stride_ + z * numel_ * stride_;
+            gradient +=
+                static_cast<opmath_t>(grad_output_[grad_row + tidx]) * scale;
+          }
+
+          grad_weight_[weight_row + tidx] = static_cast<scalar_t>(
+              static_cast<opmath_t>(grad_weight_[weight_row + tidx]) +
+              gradient);
+        }
+      }
+    }
+  }
+
+  IndexPutDeterministicKernelFunctorStrideSmallStride(
+      const int64_t* sorted_indices,
+      const int64_t* indices,
+      const scalar_t* grad_output,
+      scalar_t* grad_weight,
+      int64_t numel,
+      int64_t stride,
+      int64_t stride_before,
+      int64_t outer_dim,
+      bool accumulate)
+      : sorted_indices_(sorted_indices),
+        indices_(indices),
+        grad_output_(grad_output),
+        grad_weight_(grad_weight),
+        numel_(numel),
+        stride_(stride),
+        stride_before_(stride_before),
+        outer_dim_(outer_dim),
+        accumulate_(accumulate) {}
+
+ private:
+  const int64_t* sorted_indices_;
+  const int64_t* indices_;
+  const scalar_t* grad_output_;
+  scalar_t* grad_weight_;
+  int64_t numel_;
+  int64_t stride_;
+  int64_t stride_before_;
+  int64_t outer_dim_;
+  bool accumulate_;
+};
+
+template <typename scalar_t, typename accscalar_t>
+void launch_index_put_deterministic_kernel_small_stride(
+    int64_t* sorted_indices,
+    int64_t* orig_indices,
+    const scalar_t* expandedValue,
+    scalar_t* self,
+    int64_t num_indices,
+    int64_t sliceSize,
+    int64_t strideBefore,
+    int64_t nElemBefore,
+    bool accumulate) {
+  const int UNROLL = 4;
+  const int indices_per_group = 4;
+  const int subgroup_size = (int)syclMaxSubGroupSize();
+  sycl::range<3> local_range(1, indices_per_group, subgroup_size);
+  sycl::range<3> global_range(
+      std::max<int>(1, nElemBefore),
+      ceil_div(sliceSize, (int64_t)(subgroup_size * UNROLL)) *
+          indices_per_group,
+      ceil_div(num_indices, (int64_t)indices_per_group) * subgroup_size);
+  using KernelClass = IndexPutDeterministicKernelFunctorStrideSmallStride<
+      scalar_t,
+      accscalar_t>;
+  KernelClass kfn(
+      sorted_indices,
+      orig_indices,
+      expandedValue,
+      self,
+      num_indices,
+      sliceSize,
+      strideBefore,
+      nElemBefore,
+      accumulate);
+
+  sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
 }
 
 template <int vt, typename func_t>
