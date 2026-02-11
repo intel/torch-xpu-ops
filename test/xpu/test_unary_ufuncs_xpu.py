@@ -54,6 +54,7 @@ from torch.testing._internal.common_utils import (
     IS_WINDOWS,
     numpy_to_torch_dtype_dict,
     run_tests,
+    serialTest,
     skipIfNoSciPy,
     slowTest,
     slowTestIf,
@@ -1662,6 +1663,7 @@ class TestUnaryUfuncs(TestCase):
         self.assertEqual(1, len(z))
         self.assertEqual(torch.empty(0, dtype=torch.long), z[0])
 
+    @serialTest()
     @dtypes(torch.int8)
     @largeTensorTest("8GB")
     def test_nonzero_large(self, device, dtype):
