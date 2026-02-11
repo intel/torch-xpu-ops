@@ -23,7 +23,7 @@
 
 namespace at::native {
 
-#if defined(USE_ONEMKL_XPU)
+#if !defined(USE_ONEMKL_XPU)
 namespace {
 
 // Implement complex mm using real GEMM decomposition
@@ -174,7 +174,7 @@ Tensor& baddbmm_complex_fallback(
 }
 
 } // anonymous namespace
-#endif // USE_ONEMKL_XPU
+#endif // !defined(USE_ONEMKL_XPU)
 
 Tensor& mm_complex_out_xpu(
     const Tensor& self,
