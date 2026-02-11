@@ -8,7 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
+#include <ATen/NumericUtils.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/SharedReduceOps.h>
 
@@ -37,28 +38,49 @@ void min_values_kernel_xpu_impl(TensorIterator& iter) {
 }
 
 void min_values_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kBFloat16, kHalf, kBool, iter.dtype(), "min_values_xpu", [&]() {
+  AT_DISPATCH_V2(
+      iter.dtype(),
+      "min_values_xpu",
+      AT_WRAP([&]() {
         min_values_kernel_xpu_impl<scalar_t>(iter);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBFloat16,
+      kHalf,
+      kBool,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 void min_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kBFloat16, kHalf, kBool, iter.input_dtype(), "min_xpu", [&]() {
+  AT_DISPATCH_V2(
+      iter.input_dtype(),
+      "min_xpu",
+      AT_WRAP([&]() {
         gpu_reduce_kernel<scalar_t, scalar_t, 4, 2>(
             iter,
             MinOps<scalar_t>{},
             at::xpu::pair<scalar_t, int64_t>(
                 at::numeric_limits<scalar_t>::upper_bound(), 0));
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBFloat16,
+      kHalf,
+      kBool,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 void min_all_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      kBFloat16, kHalf, kBool, iter.input_dtype(), "min_all_xpu", [&] {
+  AT_DISPATCH_V2(
+      iter.input_dtype(),
+      "min_all_xpu",
+      AT_WRAP([&] {
         min_values_kernel_xpu_impl<scalar_t>(iter);
-      });
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBFloat16,
+      kHalf,
+      kBool,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 } // namespace xpu

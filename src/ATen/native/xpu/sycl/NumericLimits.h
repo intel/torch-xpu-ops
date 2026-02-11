@@ -135,6 +135,54 @@ struct numeric_limits<int64_t> {
 };
 
 template <>
+struct numeric_limits<uint16_t> {
+  static inline uint16_t lowest() {
+    return 0;
+  }
+  static inline uint16_t max() {
+    return UINT16_MAX;
+  }
+  static inline uint16_t lower_bound() {
+    return 0;
+  }
+  static inline uint16_t upper_bound() {
+    return UINT16_MAX;
+  }
+};
+
+template <>
+struct numeric_limits<uint32_t> {
+  static inline uint32_t lowest() {
+    return 0;
+  }
+  static inline uint32_t max() {
+    return UINT32_MAX;
+  }
+  static inline uint32_t lower_bound() {
+    return 0;
+  }
+  static inline uint32_t upper_bound() {
+    return UINT32_MAX;
+  }
+};
+
+template <>
+struct numeric_limits<uint64_t> {
+  static inline uint64_t lowest() {
+    return 0;
+  }
+  static inline uint64_t max() {
+    return UINT64_MAX;
+  }
+  static inline uint64_t lower_bound() {
+    return 0;
+  }
+  static inline uint64_t upper_bound() {
+    return UINT64_MAX;
+  }
+};
+
+template <>
 struct numeric_limits<at::Half> {
   static inline at::Half lowest() {
     return at::Half(0xFBFF, at::Half::from_bits());

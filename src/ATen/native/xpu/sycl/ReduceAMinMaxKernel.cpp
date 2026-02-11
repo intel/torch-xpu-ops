@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/Dispatch.h>
+#include <ATen/Dispatch_v2.h>
 #include <ATen/NumericUtils.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/NumericLimits.h>
@@ -41,23 +41,31 @@ void aminmax_kernel_impl(TensorIterator& iter) {
 }
 
 void aminmax_allreduce_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       iter.input_dtype(),
       "aminmax_all_xpu",
-      [&]() { _min_max_values_kernel_xpu_impl<scalar_t>(iter); });
+      AT_WRAP([&]() {
+        _min_max_values_kernel_xpu_impl<scalar_t>(iter);
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBFloat16,
+      kHalf,
+      kBool,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 void aminmax_kernel(TensorIterator& iter) {
-  AT_DISPATCH_ALL_TYPES_AND3(
-      at::ScalarType::BFloat16,
-      at::ScalarType::Half,
-      at::ScalarType::Bool,
+  AT_DISPATCH_V2(
       iter.input_dtype(),
       "aminmax_xpu",
-      [&]() { aminmax_kernel_impl<scalar_t>(iter); });
+      AT_WRAP([&]() {
+        aminmax_kernel_impl<scalar_t>(iter);
+      }),
+      AT_EXPAND(AT_ALL_TYPES),
+      kBFloat16,
+      kHalf,
+      kBool,
+      AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES));
 }
 
 } // namespace at::native::xpu
