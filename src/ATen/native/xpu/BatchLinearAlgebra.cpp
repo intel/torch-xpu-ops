@@ -121,6 +121,10 @@ void triangular_solve_kernel_mkl(
     bool upper,
     TransposeType transpose,
     bool unitriangular) {
+  TORCH_CHECK(
+      A.scalar_type() == B.scalar_type(),
+      "triangular_solve_kernel_mkl: A and B must have the same dtype");
+
 #if defined(USE_ONEMKL_XPU)
   native::xpu::triangular_solve_mkl(
       A, B, left, upper, transpose, unitriangular);
