@@ -18,6 +18,12 @@ inputs:
     default: 'None'
     description: Dynamo benchmarks test suite. `huggingface,timm_models,torchbench,pt2e`. Delimiter is comma
 
+outputs:
+  artifact_suffix:
+    value: ${{ steps.artifact.outputs.artifact_suffix }}
+  reference_id:
+    value: ${{ steps.reference.outputs.reference_id }}
+
 runs:
   using: composite
   steps:
@@ -108,6 +114,7 @@ runs:
           git checkout ${TORCH_XPU_OPS_COMMIT}
         fi
         git status && git diff && git show -s
+        echo "TORCH_XPU_OPS_COMMIT=$(git rev-parse HEAD)" >> ${GITHUB_ENV}
     - name: Install E2E Requirements
       shell: bash -xe {0}
       run: |
@@ -192,10 +199,36 @@ runs:
         python -c "import torchvision; print(torchvision.__version__)"
         python -c "import torchaudio; print(torchaudio.__version__)"
         python -c "import triton; print(triton.__version__)"
-        python pytorch/torch/utils/collect_env.py
+        python pytorch/torch/utils/collect_env.py 2>&1 |tee ${{ github.workspace }}/env.txt
+        printenv 2>&1 |tee -a ${{ github.workspace }}/env.txt
         pip list |grep -E 'torch|intel'
         TORCH_CHECK_ID=$(python -c 'import torch; print(torch.version.git_version)')
         if [ "${TORCH_CHECK_ID}" != "${TORCH_COMMIT_ID}" ];then
           echo "Torch is re-installed when installing deps, please check"
           exit 1
         fi
+    - name: Get artifact suffix name
+      id: artifact
+      shell: bash -xe {0}
+      run: |
+        printenv
+        artifact_suffix="attempt${{ github.run_attempt }}-${{ github.event_name }}-torch${TORCH_COMMIT_ID::8}-xpu${TORCH_XPU_OPS_COMMIT::8}-"
+        if [ "${{ github.event_name }}" == "pull_request" ];then
+          artifact_suffix+="${{ github.event.pull_request.number }}-"
+        else
+          artifact_suffix+="${GITHUB_SHA::7}-"
+        fi
+        artifact_suffix+="run${{ github.run_id }}"
+        echo "artifact_suffix=$(artifact_suffix)" |tee -a ${GITHUB_OUTPUT}
+    - name: Get reference run_id
+      id: reference
+      shell: bash -xe {0}
+      run: |
+        if [[ "${TEST_TYPE}" != *"ly" ]];then
+          artifact_type="$(echo ${TEST_TYPE:-"build-nightly"} |awk -F '-' '{print $1}')-nightly"
+        else
+          artifact_type="${TEST_TYPE}"
+        fi
+        gh --repo intel/torch-xpu-ops issue view ${REFERENCE_ISSUE_ID:-"1645"} --json body -q .body 2>&1 |tee body.txt
+        REFERENCE_RUN_ID="$(cat body.txt |grep "Inductor-${artifact_type}-LTS2" |sed 's/.*: *//' || echo '')"
+        echo "reference_id=$(REFERENCE_RUN_ID)" |tee -a ${GITHUB_OUTPUT}

@@ -197,3 +197,31 @@ runs:
         if [ -e ut_failure_list.csv ];then
             cp ut_failure_list.csv ${{ github.workspace }}/ut_log/ut_failure_list.csv || true
         fi
+
+    - name: Get reference artifacts
+      uses: actions/download-artifact@v7
+      with:
+        run_id: ${{ steps.setup-env.outputs.reference_id }}
+        pattern: Inductor-XPU-UT-Data-*
+        path: ${{ github.workspace }}/previous
+    - name: UT Test Results Summary
+      shell: timeout 600 bash -xe {0}
+      run: |
+        pip install aiohttp aiofiles pygithub
+        current_dir="${{ github.workspace }}/ut_log/${{ inputs.ut_name }}"
+        previous_dir="${{ github.workspace }}/previous"
+        python .github/scripts/ut-comparison.py --dry-run --current ${current_dir} --previous ${previous_dir} --output ${current_dir}
+    - name: Rerun the crashed cases
+      shell: timeout 3600 bash -xe {0}
+      run: |
+        failed_cases_file=$(find ${{ github.workspace }}/ut_log/${{ inputs.ut_name }} -name "newly_failed_*.csv")
+        if [ -f ${failed_cases_file} ]; then
+          cd pytorch
+          while read line; do
+            if [[ "$line" != "test_name,"* ]] && [[ "$line" == *"crashed while running"* ]]; then
+              test_file="$(echo $line |sed 's+.*crashed while running..++;s+.,.*++' |awk -F '::' '{print $1}')"
+              test_case="$(echo $line |sed 's+.*crashed while running..++;s+.,.*++' |awk -F '::' '{print $NF}')"
+              pytest -v ${test_file} -k "${test_case}" --junit-xml=${{ github.workspace }}/ut_log/$(echo ${line} |sed 's+,.*++').xml \
+            fi
+          done < ${failed_cases_file}
+        fi
