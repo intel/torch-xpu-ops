@@ -20,10 +20,6 @@ namespace native {
 
 void nonzero_common_checks(const Tensor& self, Tensor& out, const std::string& op_name) {
   TORCH_CHECK(
-      self.numel() < std::numeric_limits<int>::max(),
-      op_name, " is not supported for tensors with more than INT_MAX elements, \
-      See https://github.com/pytorch/pytorch/issues/51871");
-  TORCH_CHECK(
       self.device() == out.device(),
       "expected self and out to be on the same device, but got out on ",
       out.device(),
