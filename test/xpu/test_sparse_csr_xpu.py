@@ -3268,7 +3268,7 @@ class TestSparseCSR(TestCase):
 
     @skipCPUIfNoMklSparse
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2212")
     def test_sparse_add(self, device, dtype):
         def run_test(m, n, index_dtype):
             alpha = random.random()
