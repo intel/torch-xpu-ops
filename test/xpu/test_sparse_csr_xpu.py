@@ -2008,7 +2008,6 @@ class TestSparseCSR(TestCase):
     @skipCPUIfNoMklSparse
     @coalescedonoff
     @dtypes(torch.double)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_coo_to_csr_convert(self, device, dtype, coalesced):
         with self.assertRaisesRegex(RuntimeError, "Input is supposed to be a vector"):
             torch._convert_indices_from_coo_to_csr(
@@ -2113,7 +2112,6 @@ class TestSparseCSR(TestCase):
     # TODO: Support auto generation of device check for sparse tensors
     # See: https://github.com/pytorch/pytorch/issues/59058
     @onlyOn(["cuda", "xpu"])
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     @dtypes(torch.double)
     def test_matmul_device_mismatch(self, device, dtype):
         cpu = torch.rand((10, 10))
@@ -2807,7 +2805,6 @@ class TestSparseCSR(TestCase):
         )
     )
     @dtypesIfXPU(*floating_and_complex_types_and(torch.half, torch.bfloat16))
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     @precisionOverride({torch.bfloat16: 1e-2, torch.float16: 1e-2})
     def test_sparse_mm(self, device, dtype):
         def test_shape(d1, d2, d3, nnz, transposed, index_dtype):
