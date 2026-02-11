@@ -19,10 +19,12 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/add.h>
+#endif
 
 namespace at::native {
 
 using namespace at::sparse;
+using namespace at::sparse_csr;
 
 TORCH_IMPL_FUNC(_convert_indices_from_coo_to_csr_structured_xpu)
 (const Tensor& input,
