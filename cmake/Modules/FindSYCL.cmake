@@ -68,21 +68,7 @@ set(SYCL_HOST_COMPILER "${CMAKE_CXX_COMPILER}"
   CACHE FILEPATH "Host side compiler used by SYCL")
 
 # SYCL_EXECUTABLE
-if(SYCL_COMPILER)
-  set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
-else()
-  if(WIN32)
-    set(SYCL_EXECUTABLE_NAME icx)
-  else()
-    set(SYCL_EXECUTABLE_NAME icpx)
-  endif()
-  find_program(SYCL_EXECUTABLE
-    NAMES ${SYCL_EXECUTABLE_NAME}
-    PATHS "${SYCL_PACKAGE_DIR}"
-    PATH_SUFFIXES bin bin64
-    NO_DEFAULT_PATH
-    )
-endif()
+set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
 
 # Parse HOST_COMPILATION mode.
 option(SYCL_HOST_COMPILATION_CXX "Generated file extension" ON)
@@ -546,5 +532,3 @@ macro(SYCL_ADD_EXECUTABLE sycl_target)
     LINKER_LANGUAGE ${SYCL_C_OR_CXX})
 
 endmacro()
-
-set(SYCL_FOUND True)
