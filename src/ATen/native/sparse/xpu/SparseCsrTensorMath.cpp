@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/ExpandUtils.h>
+ #include <ATen/ExpandUtils.h>
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TensorOperators.h>
 #include <ATen/native/Resize.h>
@@ -23,11 +23,8 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/addmm.h>
-#include <ATen/ops/addmv.h>
-#include <ATen/ops/baddbmm.h>
 #include <ATen/ops/copy_native.h>
 #include <ATen/ops/mul.h>
-#include <ATen/ops/scalar_tensor_native.h>
 #endif
 
 namespace at::native {
@@ -279,155 +276,6 @@ Tensor& addmm_out_sparse_compressed_xpu(
 
   addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
   return result;
-}
-
-Tensor& addmv_out_sparse_compressed_xpu(
-    const Tensor& self,
-    const Tensor& mat,
-    const Tensor& vec,
-    const Scalar& beta,
-    const Scalar& alpha,
-    Tensor& result) {
-  if (mat.layout() == kSparseCsc) {
-    return addmv_out_sparse_compressed_xpu(
-        self, mat.to_sparse_csr(), vec, beta, alpha, result);
-  }
-  TORCH_CHECK(
-      mat.layout() != kSparseBsc,
-      "addmv_out_sparse_compressed_xpu currently does not support layout SparseBsc for input mat.");
-
-  TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
-  TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
-
-  c10::MaybeOwned<Tensor> self_ = expand_size(self, {mat.size(0)});
-  auto betaval = beta.toComplexDouble();
-
-  if (&result != &self) {
-    at::native::resize_output(result, self_->sizes());
-    if (betaval != 0.0) {
-      at::native::copy_(result, *self_);
-    }
-  }
-
-  if (mat._nnz() == 0) {
-    // shortcut for an empty matrix
-    // By definition, when beta==0, values in self should be ignored. nans and
-    // infs should not propagate
-    if (betaval == 0.0) {
-      return result.zero_();
-    } else {
-      return at::mul_out(
-          result,
-          self,
-          at::native::scalar_tensor(
-              beta,
-              self.scalar_type(),
-              std::nullopt /* layout */,
-              at::kCPU,
-              std::nullopt /* pin_memory */));
-    }
-  }
-
-  at::addmv_out(result, self, mat.to_dense(), vec, beta, alpha);
-
-  return result;
-}
-
-void expand_batch_if_necessary(const Tensor& mat) {
-  auto indice_batch_ndim = sparse_csr::numBatchDimensions(mat);
-  auto [compressed_indices, plain_indices] =
-      sparse_csr::getCompressedPlainIndices(mat);
-  auto values = mat.values();
-  auto batch_diff_size = mat.sizes().vec();
-  auto real_batch_ndim = mat.sizes().size() - 2;
-  if (indice_batch_ndim < real_batch_ndim) {
-    batch_diff_size.erase(
-        batch_diff_size.begin() + (real_batch_ndim - indice_batch_ndim),
-        batch_diff_size.end());
-    auto reshaped_compressed_indices_shape = compressed_indices.sizes().vec();
-    reshaped_compressed_indices_shape.insert(
-        std::begin(reshaped_compressed_indices_shape),
-        std::begin(batch_diff_size),
-        std::end(batch_diff_size));
-    compressed_indices =
-        compressed_indices.expand(reshaped_compressed_indices_shape);
-    auto reshaped_plain_indices_shape = plain_indices.sizes().vec();
-    reshaped_plain_indices_shape.insert(
-        reshaped_plain_indices_shape.begin(),
-        batch_diff_size.begin(),
-        batch_diff_size.end());
-    plain_indices = plain_indices.expand(reshaped_plain_indices_shape);
-    auto reshaped_values_indices_shape = values.sizes().vec();
-    reshaped_values_indices_shape.insert(
-        reshaped_values_indices_shape.begin(),
-        batch_diff_size.begin(),
-        batch_diff_size.end());
-    values = values.expand(reshaped_values_indices_shape);
-  }
-  get_sparse_csr_impl(mat)->set_member_tensors(
-      compressed_indices, plain_indices, values, mat.sizes());
-  return;
-}
-
-Tensor& baddbmm_out_sparse_csr_xpu(
-    const Tensor& self,
-    const Tensor& mat1,
-    const Tensor& mat2,
-    const Scalar& beta,
-    const Scalar& alpha,
-    Tensor& result) {
-  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(mat1.is_sparse_csr());
-
-  TORCH_CHECK(
-      self.layout() == kStrided,
-      "torch.baddbmm: Expected self to be strided, but got layout ",
-      self.layout());
-  TORCH_CHECK(
-      mat2.layout() == kStrided,
-      "torch.baddbmm: Expect mat2 to be strided, but got ",
-      mat2.layout());
-  TORCH_CHECK(
-      result.layout() == kStrided,
-      "torch.baddbmm: Expect result to be strided, but got ",
-      result.layout());
-
-  if (!result.is_same(self)) {
-    at::native::resize_output(result, self.sizes());
-  }
-
-  if (mat1._nnz() == 0) {
-    // According to docs, when beta==0 values in self should be ignored
-    // nans and infs should not propagate
-    if (beta.toComplexDouble() == 0.) {
-      result.zero_();
-    } else {
-      if (!result.is_same(self)) {
-        result.copy_(self);
-      }
-      if (beta.toComplexDouble() != 1.) {
-        result.mul_(beta);
-      }
-    }
-    return result;
-  }
-
-  // broadcast batch of sparse indices and values if not compatible with sizes
-  // before to_dense() to_dense issue:
-  // https://github.com/intel/torch-xpu-ops/issues/2801
-  expand_batch_if_necessary(mat1);
-
-  at::baddbmm_out(result, self, mat1.to_dense(), mat2, beta, alpha);
-  return result;
-}
-
-Tensor& bmm_out_sparse_csr_xpu(
-    const Tensor& mat1,
-    const Tensor& mat2,
-    Tensor& result) {
-  Scalar beta(0.0);
-  Scalar alpha(1.0);
-  return at::native::baddbmm_out_sparse_csr_xpu(
-      result, mat1, mat2, beta, alpha, result);
 }
 
 } // namespace at::native
