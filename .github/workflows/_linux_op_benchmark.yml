@@ -123,7 +123,9 @@ jobs:
           if [[ -n "${REFERENCE_RUN_ID}" ]]; then
             echo "Using reference run ID: ${REFERENCE_RUN_ID}"
             gh --repo ${GITHUB_REPOSITORY} run download ${REFERENCE_RUN_ID} -p "Inductor-XPU-OP-Benchmark-Data-*"
-            find . \( -type d -name "new_baseline" -o -type f -name "*summary*.csv" \) -exec mv {} "${{ github.workspace }}/reference/" \; || true
+            find ./Inductor-XPU-OP-Benchmark-Data-* 2>/dev/null \
+                \( -type d -name "new_baseline" -o -type f -name "*summary*.csv" \) \
+                -exec mv {} "${{ github.workspace }}/reference/" \; || true
 
             if [[ -f "${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv" ]]; then
               cp ${{ github.workspace }}/reference/new_baseline/baseline_forward_op_summary.csv ${{ github.workspace }}/baseline
