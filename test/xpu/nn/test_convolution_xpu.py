@@ -1313,7 +1313,7 @@ with XPUPatchForImport(False):
             )
 
     def skip_cudnn_test(self, *args, **kwargs):
-        self.skipTest("This is cuDNN-specific test not applicable to XPU.")
+        self.skipTest("This is a cuDNN-specific test not applicable to XPU.")
 
     TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = (
         conv2d_depthwise_naive_groups
