@@ -113,14 +113,6 @@ void triangular_solve_kernel_fallback(
   B.copy_(B_cpu);
 }
 
-inline bool is_column_major(const Tensor& tensor) {
-  if (tensor.dim() < 2) {
-    return true;
-  }
-
-  return tensor.stride(-2) == 1 && tensor.stride(-1) == tensor.size(-2);
-}
-
 void triangular_solve_kernel_xpu(
     const Tensor& A,
     const Tensor& B,
@@ -133,16 +125,8 @@ void triangular_solve_kernel_xpu(
       "triangular_solve_kernel_xpu: A and B must have the same dtype");
 
 #if defined(USE_ONEMKL_XPU)
-  if (is_column_major(A) && is_column_major(B)) {
-    native::xpu::triangular_solve_mkl(
-        A, B, left, upper, transpose, unitriangular);
-  } else { // We should not enter this branch because triangular_solve_stub
-           // should have returned the transposed tensors if they were not
-           // column major, but we keep it just in case
-    triangular_solve_kernel_fallback(
-        A, B, left, upper, transpose, unitriangular);
-  }
-
+  native::xpu::triangular_solve_mkl(
+      A, B, left, upper, transpose, unitriangular);
 #else
   triangular_solve_kernel_fallback(A, B, left, upper, transpose, unitriangular);
 #endif // USE_ONEMKL_XPU
