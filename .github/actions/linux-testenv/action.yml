@@ -64,7 +64,7 @@ runs:
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/test/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "nightly_wheel" -c) -ne 0 ];then
-          pip install torch==2.11.0.dev20260206 torchvision==0.17.0.dev20260206 torchaudio==2.11.0.dev20260206 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
+          pip install torch==2.11.0.dev20260206 torchvision==0.26.0.dev20260206 torchaudio==2.11.0.dev20260206 --pre --index-url https://download.pytorch.org/whl/nightly/xpu
         else
           latest_dir="$(find . -type d -name "Torch-XPU-Wheel-*" |sort -V |tail -n 1)"
           pip install --force-reinstall $(find ${latest_dir} -name "*.whl")
