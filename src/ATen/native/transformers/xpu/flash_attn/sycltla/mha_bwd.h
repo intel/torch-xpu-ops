@@ -23,6 +23,7 @@
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
 #include <sycl/sycl.hpp>
+#include "mha_common.h"
 
 #pragma clang diagnostic pop
 #pragma GCC diagnostic pop
@@ -251,8 +252,7 @@ struct Param {
         dq_ptr(dq),
         dk_ptr(dk),
         dv_ptr(dv),
-        pb_ptr(pb),
-        is_bhsd(true) {}
+        pb_ptr(pb) {}
   // read only
   const T* do_ptr;
   const T* o_ptr;
@@ -265,10 +265,10 @@ struct Param {
   // write
   float* odo_ptr;
   float* dqaccum_ptr;
+  T* pb_ptr;
   T* dq_ptr;
   T* dk_ptr;
   T* dv_ptr;
-  T* pb_ptr;
 
   // const dimension
   int batch;
@@ -285,43 +285,39 @@ struct Param {
   int tail_m;
   int num_qh_per_kvh;
   int num_nb_per_blk;
-  int q_r_stride;
-  int q_h_stride;
-  int q_b_stride;
 
-  int k_r_stride;
-  int k_h_stride;
-  int k_b_stride;
+  // strides
+  index_t q_r_stride;
+  index_t q_h_stride;
+  index_t q_b_stride;
 
-  int dk_r_stride;
-  int dk_h_stride;
-  int dk_b_stride;
+  index_t k_r_stride;
+  index_t k_h_stride;
+  index_t k_b_stride;
 
-  int v_r_stride;
-  int v_h_stride;
-  int v_b_stride;
+  index_t v_r_stride;
+  index_t v_h_stride;
+  index_t v_b_stride;
 
-  int dv_r_stride;
-  int dv_h_stride;
-  int dv_b_stride;
+  index_t o_r_stride;
+  index_t o_h_stride;
+  index_t o_b_stride;
 
-  int o_r_stride;
-  int o_h_stride;
-  int o_b_stride;
+  index_t dq_r_stride;
+  index_t dq_h_stride;
+  index_t dq_b_stride;
 
-  int s_r_stride;
-  int s_s_stride;
-  int s_b_stride;
+  index_t dk_r_stride;
+  index_t dk_h_stride;
+  index_t dk_b_stride;
 
-  int dq_r_stride;
-  int dq_h_stride;
-  int dq_b_stride;
-  /*
-   * input output layout
-   * true batch, numhead, seqlen, headsize
-   * false batch, seqlen, numhead, headsize
-   */
-  bool is_bhsd;
+  index_t dv_r_stride;
+  index_t dv_h_stride;
+  index_t dv_b_stride;
+
+  index_t do_r_stride;
+  index_t do_h_stride;
+  index_t do_b_stride;
 };
 
 template <typename T>
@@ -331,39 +327,15 @@ struct Boffset {
     return b_id * param.q_b_stride + h_id * param.q_h_stride +
         s_id * param.q_r_stride;
   }
+
   index_t k_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
     return b_id * param.k_b_stride + h_id * param.k_h_stride +
         s_id * param.k_r_stride;
   }
+
   index_t v_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
     return b_id * param.v_b_stride + h_id * param.v_h_stride +
         s_id * param.v_r_stride;
-  }
-  index_t dk_offset(
-      const index_t b_id,
-      const index_t h_id,
-      const index_t s_id) {
-    return b_id * param.dk_b_stride + h_id * param.dk_h_stride +
-        s_id * param.dk_r_stride;
-  }
-  index_t dv_offset(
-      const index_t b_id,
-      const index_t h_id,
-      const index_t s_id) {
-    return b_id * param.dv_b_stride + h_id * param.dv_h_stride +
-        s_id * param.dv_r_stride;
-  }
-  index_t lse_offset(
-      const index_t b_id,
-      const index_t h_id,
-      const index_t s_id) {
-    return b_id * param.seq_len_q * param.num_head_q + h_id * param.seq_len_q +
-        s_id;
-  }
-
-  index_t o_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
-    return b_id * param.o_b_stride + h_id * param.o_h_stride +
-        s_id * param.o_r_stride;
   }
 
   index_t dq_offset(
@@ -373,77 +345,88 @@ struct Boffset {
     return b_id * param.dq_b_stride + h_id * param.dq_h_stride +
         s_id * param.dq_r_stride;
   }
+
+  index_t dk_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.dk_b_stride + h_id * param.dk_h_stride +
+        s_id * param.dk_r_stride;
+  }
+
+  index_t dv_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.dv_b_stride + h_id * param.dv_h_stride +
+        s_id * param.dv_r_stride;
+  }
+
+  index_t o_offset(const index_t b_id, const index_t h_id, const index_t s_id) {
+    return b_id * param.o_b_stride + h_id * param.o_h_stride +
+        s_id * param.o_r_stride;
+  }
+
+  index_t do_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.do_b_stride + h_id * param.do_h_stride +
+        s_id * param.do_r_stride;
+  }
+
+  index_t lse_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.seq_len_q * param.num_head_q + h_id * param.seq_len_q +
+        s_id;
+  }
+
+  index_t dqaccum_offset(
+      const index_t b_id,
+      const index_t h_id,
+      const index_t s_id) {
+    return b_id * param.num_head_q * param.seq_len_q_pad * param.head_dim +
+        h_id * param.seq_len_q_pad * param.head_dim + s_id * param.head_dim;
+  }
+
   Param<T>& param;
 };
 
 // for debug
 template <typename T>
-void setup_bhsd_stride(Param<T>& param) {
-  param.q_r_stride = param.head_dim;
-  param.q_h_stride = param.seq_len_q * param.head_dim;
-  param.q_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
+void setup_stride(Param<T>& param, FLASH_BWD_params& flash_bwd_param) {
+  param.q_r_stride = flash_bwd_param.q_row_stride;
+  param.q_h_stride = flash_bwd_param.q_head_stride;
+  param.q_b_stride = flash_bwd_param.q_batch_stride;
 
-  // param.dq_r_stride = param.head_dim;
-  // param.dq_h_stride = param.seq_len_q * param.head_dim;
-  // param.dq_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
+  param.k_r_stride = flash_bwd_param.k_row_stride;
+  param.k_h_stride = flash_bwd_param.k_head_stride;
+  param.k_b_stride = flash_bwd_param.k_batch_stride;
 
-  param.k_r_stride = param.head_dim;
-  param.k_h_stride = param.seq_len_kv * param.head_dim;
-  param.k_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
+  param.v_r_stride = flash_bwd_param.v_row_stride;
+  param.v_h_stride = flash_bwd_param.v_head_stride;
+  param.v_b_stride = flash_bwd_param.v_batch_stride;
 
-  param.dk_r_stride = param.head_dim;
-  param.dk_h_stride = param.seq_len_kv * param.head_dim;
-  param.dk_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
+  param.o_r_stride = flash_bwd_param.o_row_stride;
+  param.o_h_stride = flash_bwd_param.o_head_stride;
+  param.o_b_stride = flash_bwd_param.o_batch_stride;
 
-  param.v_r_stride = param.head_dim;
-  param.v_h_stride = param.seq_len_kv * param.head_dim;
-  param.v_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
+  param.dq_r_stride = flash_bwd_param.dq_row_stride;
+  param.dq_h_stride = flash_bwd_param.dq_head_stride;
+  param.dq_b_stride = flash_bwd_param.dq_batch_stride;
 
-  param.dv_r_stride = param.head_dim;
-  param.dv_h_stride = param.seq_len_kv * param.head_dim;
-  param.dv_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
+  param.dk_r_stride = flash_bwd_param.dk_row_stride;
+  param.dk_h_stride = flash_bwd_param.dk_head_stride;
+  param.dk_b_stride = flash_bwd_param.dk_batch_stride;
 
-  param.o_r_stride = param.head_dim;
-  param.o_h_stride = param.seq_len_q * param.head_dim;
-  param.o_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
+  param.dv_r_stride = flash_bwd_param.dv_row_stride;
+  param.dv_h_stride = flash_bwd_param.dv_head_stride;
+  param.dv_b_stride = flash_bwd_param.dv_batch_stride;
 
-  param.dq_r_stride = param.head_dim;
-  param.dq_h_stride = param.seq_len_q_pad * param.head_dim;
-  param.dq_b_stride = param.num_head_q * param.seq_len_q_pad * param.head_dim;
-}
-
-template <typename T>
-void setup_bshd_stride(Param<T>& param) {
-  param.q_r_stride = param.num_head_q * param.head_dim;
-  param.q_h_stride = param.head_dim;
-  param.q_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  // param.dq_r_stride = param.head_dim;
-  // param.dq_h_stride = param.seq_len_q * param.head_dim;
-  // param.dq_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  param.k_r_stride = param.num_head_kv * param.head_dim;
-  param.k_h_stride = param.head_dim;
-  param.k_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
-
-  param.dk_r_stride = param.num_head_q * param.head_dim;
-  param.dk_h_stride = param.head_dim;
-  param.dk_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
-
-  param.v_r_stride = param.num_head_kv * param.head_dim;
-  param.v_h_stride = param.head_dim;
-  param.v_b_stride = param.num_head_kv * param.seq_len_kv * param.head_dim;
-
-  param.dv_r_stride = param.num_head_q * param.head_dim;
-  param.dv_h_stride = param.head_dim;
-  param.dv_b_stride = param.num_head_q * param.seq_len_kv * param.head_dim;
-
-  param.o_r_stride = param.num_head_q * param.head_dim;
-  param.o_h_stride = param.head_dim;
-  param.o_b_stride = param.num_head_q * param.seq_len_q * param.head_dim;
-
-  param.dq_r_stride = param.num_head_q * param.head_dim;
-  param.dq_h_stride = param.head_dim;
-  param.dq_b_stride = param.num_head_q * param.seq_len_q_pad * param.head_dim;
+  param.do_r_stride = flash_bwd_param.do_row_stride;
+  param.do_h_stride = flash_bwd_param.do_head_stride;
+  param.do_b_stride = flash_bwd_param.do_batch_stride;
 }
 } // namespace cute
