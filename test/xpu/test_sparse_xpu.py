@@ -6792,13 +6792,12 @@ class TestSparseAny(TestCase):
     @suppress_warnings
     @ops(binary_ufuncs_with_sparse_support)
     @all_sparse_layouts("layout", include_strided=False)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2209")
     def test_binary_operation(self, layout, device, dtype, op):
         if not op.supports_sparse_layout(layout):
             self.skipTest(
                 f"{layout} is not supported in `{op.name}` OpInfo definition. Skipping!"
             )
-        if op.name == "mul" and layout is not torch.sparse_coo and "xpu" in device:
+        if op.name == "mul" and layout is torch.sparse_coo and "xpu" in device:
             self.skipTest(
                 "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
             )
