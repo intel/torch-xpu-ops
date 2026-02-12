@@ -372,7 +372,8 @@ void lu_factor_mkl(
       int64_t n = LU.size(-1);
 
       // Detect NaN per-batch
-      auto nan_mask_batch = at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
+      auto nan_mask_batch =
+          at::isnan(LU).reshape({batch_size, m * n}).any(/*dim=*/1);
 
       // Replace NaN batches with identity matrix to avoid MKL crash
       auto identity = at::eye(m, n, LU.options()).unsqueeze(0);
@@ -382,13 +383,29 @@ void lu_factor_mkl(
       apply_lu_xpu_<T>(LU, pivots_, info_data);
 
       // Restore NaN for batches that originally had NaN
-      LU.masked_fill_(nan_mask_expanded.expand({batch_size, m, n}), create_quiet_nan<scalar_t>());
+      LU.masked_fill_(
+          nan_mask_expanded.expand({batch_size, m, n}),
+          create_quiet_nan<scalar_t>());
     }
   });
 
   // Copy to original info and pivots tensor
   info.copy_(info_);
   pivots.copy_(pivots_);
+}
+
+static void assure_col_major(Tensor& tensor) {
+  if (tensor.dim() < 2) {
+    return;
+  }
+
+  bool is_col_major =
+      tensor.stride(-2) == 1 && tensor.stride(-1) == tensor.size(-2);
+
+  if (!is_col_major) {
+    auto temp = tensor.transpose(-2, -1).contiguous().transpose(-2, -1);
+    tensor.copy_(temp);
+  }
 }
 
 template <typename T>
@@ -399,6 +416,9 @@ void apply_triangular_solve_mkl(
     bool upper,
     TransposeType transpose,
     bool unitriangular) {
+  assure_col_major(A);
+  assure_col_major(B);
+
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
   oneapi::mkl::side left_right =

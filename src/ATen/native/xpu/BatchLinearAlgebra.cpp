@@ -10,7 +10,6 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/BatchLinearAlgebra.h>
-#include <ATen/native/ComplexHelper.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
 #if defined(USE_ONEMKL_XPU)
@@ -114,7 +113,7 @@ void triangular_solve_kernel_fallback(
   B.copy_(B_cpu);
 }
 
-void triangular_solve_kernel_mkl(
+void triangular_solve_kernel_xpu(
     const Tensor& A,
     const Tensor& B,
     bool left,
@@ -123,7 +122,7 @@ void triangular_solve_kernel_mkl(
     bool unitriangular) {
   TORCH_CHECK(
       A.scalar_type() == B.scalar_type(),
-      "triangular_solve_kernel_mkl: A and B must have the same dtype");
+      "triangular_solve_kernel_xpu: A and B must have the same dtype");
 
 #if defined(USE_ONEMKL_XPU)
   native::xpu::triangular_solve_mkl(
@@ -133,6 +132,6 @@ void triangular_solve_kernel_mkl(
 #endif // USE_ONEMKL_XPU
 }
 
-REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_mkl);
+REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
 } // namespace at::native
