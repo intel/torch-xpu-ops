@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -587,22 +587,33 @@ void batch_norm_stats_template(
   at::native::resize_output(out_mean, {n_input});
   at::native::resize_output(out_invstd, {n_input});
 
+  // Support non-contiguous output tensors by using temporary contiguous buffers.
+  // The packed_accessor requires contiguous memory, so we:
+  // 1. Check if output tensors are already contiguous (fast path - no copy)
+  // 2. If not, create temporary contiguous copies for kernel computation
+  // 3. After kernel execution, copy results back to original tensors
+  // This allows users to pass non-contiguous views/slices as outputs without
+  // getting assertion failures, while maintaining kernel performance in the
+  // common contiguous case.
+  Tensor out_mean_contiguous = out_mean.is_contiguous() ? out_mean : out_mean.contiguous();
+  Tensor out_invstd_contiguous = out_invstd.is_contiguous() ? out_invstd : out_invstd.contiguous();
+
   auto input =
       get_packed_accessor<const scalar_t, 3, RestrictPtrTraits, index_t>(
           input_reshaped, "input");
 
   TORCH_INTERNAL_ASSERT(
-      out_invstd.dim() == 1 && out_invstd.is_contiguous() &&
-      out_invstd.sizes()[0]);
+      out_invstd_contiguous.dim() == 1 && out_invstd_contiguous.is_contiguous() &&
+      out_invstd_contiguous.sizes()[0]);
   TORCH_INTERNAL_ASSERT(
-      out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
+      out_mean_contiguous.dim() == 1 && out_mean_contiguous.is_contiguous() && out_mean_contiguous.sizes()[0]);
 
   auto mean =
       packed_accessor_or_dummy<accscalar_t, 1, RestrictPtrTraits, index_t>(
-          out_mean, "out_mean");
+          out_mean_contiguous, "out_mean");
   auto invstd =
       packed_accessor_or_dummy<accscalar_t, 1, RestrictPtrTraits, index_t>(
-          out_invstd, "out_invstd");
+          out_invstd_contiguous, "out_invstd");
 
   auto& queue = getCurrentSYCLQueue();
   int simd = get_prefer_simd(input.size(1), input.size(0) * input.size(2));
@@ -653,6 +664,19 @@ void batch_norm_stats_template(
         sycl::range<2>(work_group_size_y, work_group_size_x),
         queue,
         kfn);
+  }
+
+  // Copy results from temporary contiguous buffers back to original tensors if needed.
+  // This is the counterpart to the pre-kernel conversion: we only copy if the
+  // original tensors were non-contiguous. This ensures users get the correct
+  // results in their original tensor storage.
+  // Synchronize queue to ensure kernel has finished writing before copying.
+  queue.wait_and_throw();
+  if (!out_mean.is_contiguous()) {
+    out_mean.copy_(out_mean_contiguous);
+  }
+  if (!out_invstd.is_contiguous()) {
+    out_invstd.copy_(out_invstd_contiguous);
   }
 }
 
@@ -895,11 +919,22 @@ void batch_norm_stats_channels_last_template(
 
   at::native::resize_output(out_mean, {stride});
   at::native::resize_output(out_invstd, {stride});
+
+  // Support non-contiguous output tensors by using temporary contiguous buffers.
+  // The mutable_data_ptr() call requires contiguous memory, so we:
+  // 1. Check if output tensors are already contiguous (fast path - no copy)
+  // 2. If not, create temporary contiguous copies for kernel computation
+  // 3. After kernel execution, copy results back to original tensors
+  // This allows both vectorized and non-vectorized kernel paths to handle
+  // non-contiguous views/slices without assertion failures.
+  Tensor out_mean_contiguous = out_mean.is_contiguous() ? out_mean : out_mean.contiguous();
+  Tensor out_invstd_contiguous = out_invstd.is_contiguous() ? out_invstd : out_invstd.contiguous();
+
   TORCH_INTERNAL_ASSERT(
-      out_invstd.dim() == 1 && out_invstd.is_contiguous() &&
-      out_invstd.sizes()[0]);
+      out_invstd_contiguous.dim() == 1 && out_invstd_contiguous.is_contiguous() &&
+      out_invstd_contiguous.sizes()[0]);
   TORCH_INTERNAL_ASSERT(
-      out_mean.dim() == 1 && out_mean.is_contiguous() && out_mean.sizes()[0]);
+      out_mean_contiguous.dim() == 1 && out_mean_contiguous.is_contiguous() && out_mean_contiguous.sizes()[0]);
 
   at::Tensor staging_data;
   at::Tensor semaphores;
@@ -910,8 +945,8 @@ void batch_norm_stats_channels_last_template(
       accscalar_t,
       PREFERRED_VEC_SIZE>;
   auto input_ptr = input.const_data_ptr<scalar_t>();
-  auto out_mean_ptr = out_mean.mutable_data_ptr<accscalar_t>();
-  auto out_invstd_ptr = out_invstd.mutable_data_ptr<accscalar_t>();
+  auto out_mean_ptr = out_mean_contiguous.mutable_data_ptr<accscalar_t>();
+  auto out_invstd_ptr = out_invstd_contiguous.mutable_data_ptr<accscalar_t>();
   bool use_vec_kernel = false;
 
   if (VecKernel::valid(
@@ -943,6 +978,14 @@ void batch_norm_stats_channels_last_template(
       kfn.set_semaphores(semaphores_ptr);
       sycl_kernel_submit(
           kfn.global_range(), kfn.local_range(), getCurrentSYCLQueue(), kfn);
+      // Copy results back to original tensors if they were non-contiguous.
+      // This ensures the vectorized kernel path also correctly handles non-contiguous outputs.
+      if (!out_mean.is_contiguous()) {
+        out_mean.copy_(out_mean_contiguous);
+      }
+      if (!out_invstd.is_contiguous()) {
+        out_invstd.copy_(out_invstd_contiguous);
+      }
       return;
     }
   }
@@ -990,13 +1033,22 @@ void batch_norm_stats_channels_last_template(
 
     sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn);
   }
+
+  // Copy results from temporary contiguous buffers back to original tensors if needed.
+  // This handles the non-vectorized kernel path (fallback when vectorization not applicable).
+  if (!out_mean.is_contiguous()) {
+    out_mean.copy_(out_mean_contiguous);
+  }
+  if (!out_invstd.is_contiguous()) {
+    out_invstd.copy_(out_invstd_contiguous);
+  }
 }
 
 std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
     const Tensor& self,
     double epsilon) {
   auto options =
-      self.options().dtype(at::toAccumulateType(self.scalar_type(), kXPU));
+      self.options().dtype(at::toAccumulateType(self.scalar_type(), true));
   auto n_channels = self.size(1);
   auto save_mean = at::empty({n_channels}, options);
   auto save_invstd = at::empty({n_channels}, options);
