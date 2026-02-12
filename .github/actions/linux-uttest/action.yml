@@ -91,6 +91,37 @@ runs:
         find . -type f -name "op_ut_with_*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
         echo -e "File Path: cd pytorch/third_party/torch-xpu-ops/test/xpu" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
         echo -e "Reproduce Command: pytest -sv failed_case" | tee -a ${{ github.workspace }}/ut_log/reproduce_skipped_ut.log
+    - name: xpu_inductor
+      shell: timeout 36000 bash -xe {0}
+      if: ${{ inputs.ut_name == 'xpu_inductor' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        mkdir -p ut_log/xpu_inductor
+        cd pytorch
+        for file in "test/inductor"/test*.py; do
+          filename=$(basename "$file")
+          echo "=== Starting test: $filename ==="
+          start=$(date +%s)
+          pytest -sv test/inductor/$filename --junit-xml=${{ github.workspace }}/ut_log/inductor_$filename.xml 2>${{ github.workspace }}/ut_log/xpu_inductor/xpu_inductor_${filename}_test_error.log | \
+              tee ${{ github.workspace }}/ut_log/xpu_inductor/xpu_inductor_${filename}_test.log
+          end=$(date +%s)
+          echo -e "$filename duration: $((end - start))s"
+          echo "=== Finished test: $filename ==="
+        done
+    - name: test_xpu
+      shell: timeout 3600 bash -xe {0}
+      if: ${{ inputs.ut_name == 'test_xpu' }}
+      run: |
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        mkdir -p ut_log/test_xpu
+        cd pytorch
+        if [ -f "test/test_xpu.py" ]; then
+          pytest -sv test/test_xpu.py --junit-xml=${{ github.workspace }}/ut_log/test_xpu.xml \
+            2> ${{ github.workspace }}/ut_log/test_xpu/test_xpu_error.log | \
+            tee ${{ github.workspace }}/ut_log/test_xpu/test_xpu.log
+        fi
     - name: torch_xpu
       shell: timeout 72000 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
@@ -99,12 +130,12 @@ runs:
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
         mkdir -p ut_log/torch_xpu
         cd pytorch
-        test_cmd="python test/run_test.py --include "
-        for test in $(ls test/inductor | grep test); do test_cmd="${test_cmd} inductor/$test"; done
-        for test in $(ls test/xpu | grep test); do test_cmd="${test_cmd} xpu/$test"; done
-        if [ -f "test/test_xpu.py" ]; then test_cmd="${test_cmd} test_xpu.py"; fi
-        eval $test_cmd 2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test_error.log | \
-          tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_test.log
+        for file in "test/xpu"/test*.py; do
+          filename=$(basename "$file")
+          pytest -sv test/xpu/$filename --junit-xml=${{ github.workspace }}/ut_log/torch_xpu_$filename.xml \
+              2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_${filename}_error.log | \
+              tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_${filename}.log
+        done
     - name: xpu_profiling
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}

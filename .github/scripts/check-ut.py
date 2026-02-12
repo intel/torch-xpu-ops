@@ -107,6 +107,13 @@ def get_message(case):
 
     return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
 
+def get_case_identifier(case):
+    """Generate a unique identifier for a test case to detect duplicates"""
+    category = get_category_from_case(case)
+    classname = get_classname(case)
+    name = get_name(case)
+    return f"{category}:{classname}:{name}"
+
 def print_md_row(row, print_header=False, failure_list=None):
     if print_header:
         header = " | ".join([f"{key}" for key in row.keys()])
@@ -126,7 +133,15 @@ def print_failures(failure_list=None):
 
     print("### Test Failures")
     print_header = True
+    seen_cases = set()
+    unique_failures = []
     for case in failures:
+        case_id = get_case_identifier(case)
+        if case_id not in seen_cases:
+            seen_cases.add(case_id)
+            unique_failures.append(case)
+
+    for case in unique_failures:
         print_md_row({
             'Category': get_category_from_case(case),
             'Class name': get_classname(case),
@@ -141,9 +156,15 @@ def generate_failures_log():
     if not failures:
         return
 
+    seen_cases = set()
+    failures_by_category.clear()
+
     for case in failures:
-        category = get_category_from_case(case)
-        failures_by_category[category].append(case)
+        case_id = get_case_identifier(case)
+        if case_id not in seen_cases:
+            seen_cases.add(case_id)
+            category = get_category_from_case(case)
+            failures_by_category[category].append(case)
 
     for category, category_failures in failures_by_category.items():
         if not category_failures:
@@ -247,6 +268,10 @@ def determine_category(ut):
         return 'op_transformers'
     elif ut == 'test_xpu':
         return 'test_xpu'
+    elif 'torch_xpu_' in ut:
+        return 'torch_xpu'
+    elif 'inductor_' in ut:
+        return 'xpu_inductor'
     elif 'op_ut_windows' in ut:
         return 'op_ut_windows'
     elif 'op_ut' in ut and 'windows' not in ut:
@@ -347,6 +372,8 @@ def print_summary():
     }
 
     for summary in summaries:
+        if summary['Test cases'] == 0:
+            continue
         print_md_row({
             'Category': summary['Category'],
             'UT': summary['UT'],
