@@ -394,20 +394,6 @@ void lu_factor_mkl(
   pivots.copy_(pivots_);
 }
 
-static void assure_col_major(Tensor& tensor) {
-  if (tensor.dim() < 2) {
-    return;
-  }
-
-  bool is_col_major =
-      tensor.stride(-2) == 1 && tensor.stride(-1) == tensor.size(-2);
-
-  if (!is_col_major) {
-    auto temp = tensor.transpose(-2, -1).contiguous().transpose(-2, -1);
-    tensor.copy_(temp);
-  }
-}
-
 template <typename T>
 void apply_triangular_solve_mkl(
     const Tensor& A,
@@ -416,9 +402,6 @@ void apply_triangular_solve_mkl(
     bool upper,
     TransposeType transpose,
     bool unitriangular) {
-  assure_col_major(A);
-  assure_col_major(B);
-
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
   oneapi::mkl::side left_right =
