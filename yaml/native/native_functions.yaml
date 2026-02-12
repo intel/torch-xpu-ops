@@ -9482,6 +9482,17 @@
 - func: linalg_inv.out(Tensor A, *, Tensor(a!) out) -> Tensor(a!)
   python_module: linalg
 
+- func: linalg_solve_triangular.out(Tensor self, Tensor B, *, bool upper, bool left=True, bool unitriangular=False, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  dispatch:
+    XPU: linalg_solve_triangular_out
+
+- func: linalg_solve_triangular(Tensor self, Tensor B, *, bool upper, bool left=True, bool unitriangular=False) -> Tensor
+  python_module: linalg
+  variants: function
+  dispatch:
+    XPU: linalg_solve_triangular
+
 - func: inverse(Tensor self) -> Tensor
   variants: function, method
 
