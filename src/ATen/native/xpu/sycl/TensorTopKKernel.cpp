@@ -110,12 +110,12 @@ void topk_kernel(
       self_.scalar_type(),
       "topk_xpu",
       [&]() {
-        scalar_t* self_ptr = self_.data_ptr<scalar_t>();
+        const scalar_t* self_ptr = self_.const_data_ptr<scalar_t>();
         scalar_t* values_ptr = values_.data_ptr<scalar_t>();
         int64_t* indices_ptr = indices_.data_ptr<int64_t>();
         segmented_group_select_pairs<scalar_t, int64_t>(
             self_ptr,
-            (scalar_t*)values_ptr,
+            values_ptr,
             nullptr,
             (int64_t*)indices_ptr,
             nsegments,
