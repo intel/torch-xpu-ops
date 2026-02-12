@@ -34,27 +34,16 @@ struct XeFlashIndividualTileScheduler {
   static Params to_underlying_arguments(
       ProblemSize const& problem_size,
       KernelHardwareInfo hw_info,
-      TileShape const& tile_shape,
-      bool const& is_bshd) {
+      TileShape const& tile_shape) {
     using namespace cute;
 
-    if (is_bshd) {
-      dim3 grid(
-          size(ceil_div(
-              shape<3>(problem_size),
-              shape<0>(tile_shape))), // seq_len_qo / 128
-          size(shape<1>(problem_size)), // num_heads_q
-          size(shape<0>(problem_size))); // batch
-      return Params{grid, 1}; // 1 since it will not be used.
-    } else {
-      // problem_size = [batch, num_heads_q, num_heads_kv, seq_len_qo,
-      // seq_len_kv, head_size_qk, head_size_vo]
-      dim3 grid(
-          size(ceil_div(shape<6>(problem_size), shape<1>(tile_shape))),
-          size(ceil_div(shape<3>(problem_size), shape<0>(tile_shape))),
-          size(shape<0>(problem_size) * shape<1>(problem_size)));
-      return Params{grid, {shape<1>(problem_size)}};
-    }
+    // problem_size = [batch, num_heads_q, num_heads_kv, seq_len_qo,
+    // seq_len_kv, head_size_qk, head_size_vo]
+    dim3 grid(
+        size(ceil_div(shape<6>(problem_size), shape<1>(tile_shape))),
+        size(ceil_div(shape<3>(problem_size), shape<0>(tile_shape))),
+        size(shape<0>(problem_size) * shape<1>(problem_size)));
+    return Params{grid, {shape<1>(problem_size)}};
   }
 
   template <int Num_SGs>
@@ -68,13 +57,7 @@ struct XeFlashIndividualTileScheduler {
   }
 
   CUTLASS_DEVICE
-  auto get_block_coord_bshd() {
-    using namespace cute;
-    return make_coord(BlockIdxX(), BlockIdxY(), BlockIdxZ());
-  }
-
-  CUTLASS_DEVICE
-  auto get_block_coord_bhsd() {
+  auto get_block_coord() {
     using namespace cute;
     int block_decode = BlockIdxZ();
     int bidh;
