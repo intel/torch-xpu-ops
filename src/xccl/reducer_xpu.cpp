@@ -13,8 +13,14 @@
  */
 
 #include <torch/csrc/distributed/c10d/reducer_timer.hpp>
-
+// Suppress deprecation warnings from oneAPI SYCL headers.
+// These are not from our code and would otherwise fail the build under -Werror.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUEvent.h>
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#pragma GCC diagnostic pop
 #include <c10/core/DeviceGuard.h>
 
 namespace c10d {

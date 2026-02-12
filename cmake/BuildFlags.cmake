@@ -53,11 +53,15 @@ macro(set_build_flags)
       # SYCL headers warnings
       list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
       list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+      list(APPEND SYCL_HOST_FLAGS /WX) # treat warnings as errors
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       list(APPEND SYCL_HOST_FLAGS -fPIC)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
       list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
+      # Disable warnings for unsupported SYCL attributes in GCC
+      list(APPEND SYCL_HOST_FLAGS -Wno-attributes)
+      list(APPEND SYCL_HOST_FLAGS -Werror) # treat warnings as errors
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -104,6 +108,7 @@ macro(set_build_flags)
     # gcc -shared host.o kernel.o device-code.o -o libxxx.so
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} /fp:strict)
       # Suppress warnings about dllexport.
@@ -113,7 +118,6 @@ macro(set_build_flags)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fhonor-infinities)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-associative-math)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-approx-func)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
     endif()
 

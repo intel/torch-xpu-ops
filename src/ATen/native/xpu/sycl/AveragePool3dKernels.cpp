@@ -17,6 +17,10 @@
 // Avoid SYCL compiler return-type error
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -988,3 +992,7 @@ void avg_pool3d_backward_kernel(
 } // namespace at::native::xpu
 #pragma clang diagnostic pop
 #pragma GCC diagnostic pop
+
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
