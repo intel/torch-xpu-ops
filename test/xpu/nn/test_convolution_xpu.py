@@ -1312,6 +1312,9 @@ with XPUPatchForImport(False):
                 conv1.weight.grad.data, conv2.weight.grad.data, atol=0.0, rtol=0
             )
 
+    def skip_cudnn_test(self, *args, **kwargs):
+        self.skipTest("This is a cuDNN-specific test not applicable to XPU.")
+
     TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = (
         conv2d_depthwise_naive_groups
     )
@@ -1335,6 +1338,8 @@ with XPUPatchForImport(False):
     TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = (
         conv2d_deterministic_cudnn
     )
+    TestConvolutionNNDeviceType.test_cudnn_convolution_relu = skip_cudnn_test
+    TestConvolutionNNDeviceType.test_cudnn_convolution_add_relu = skip_cudnn_test
     TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = (
         conv2d_inconsistent_types_on_GPU_with_mkldnn
     )
