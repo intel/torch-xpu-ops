@@ -3830,26 +3830,46 @@ void batch_norm_mean_var(
     Tensor& save_var) {
   // NOTE: Epsilon is only used for InvStd, not Var. The value here is ignored.
   const double dummy_epsilon = 1e-5;
+  auto dispatch_with_contig_handling = [&](auto kernel_fn) {
+    const bool mean_noncontig =
+        save_mean.defined() && !save_mean.is_contiguous();
+    const bool var_noncontig = save_var.defined() && !save_var.is_contiguous();
+    Tensor mean_ = mean_noncontig
+        ? at::empty_like(
+              save_mean,
+              save_mean.options().memory_format(at::MemoryFormat::Contiguous))
+        : save_mean;
+    Tensor var_ = var_noncontig
+        ? at::empty_like(
+              save_var,
+              save_var.options().memory_format(at::MemoryFormat::Contiguous))
+        : save_var;
+    kernel_fn(mean_, var_);
+    if (mean_noncontig)
+      save_mean.copy_(mean_);
+    if (var_noncontig)
+      save_var.copy_(var_);
+  };
   switch (batch_norm_choose_impl(self)) {
     case Impl::Contiguous: {
-      AT_DISPATCH_FLOATING_TYPES_AND2(
-          kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
-            batch_norm_stats_template<scalar_t, int32_t, Var>(
-                save_mean, save_var, self, dummy_epsilon);
-          });
+      dispatch_with_contig_handling([&](Tensor& mean_, Tensor& var_) {
+        AT_DISPATCH_FLOATING_TYPES_AND2(
+            kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
+              batch_norm_stats_template<scalar_t, int32_t, Var>(
+                  mean_, var_, self, dummy_epsilon);
+            });
+      });
       return;
     }
     case Impl::ChannelsLast: {
-      if ((!save_mean.defined() || save_mean.is_contiguous()) &&
-          (!save_var.defined() || save_var.is_contiguous())) {
+      dispatch_with_contig_handling([&](Tensor& mean_, Tensor& var_) {
         AT_DISPATCH_FLOATING_TYPES_AND2(
             kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
               batch_norm_stats_channels_last_template<scalar_t, Var>(
-                  save_mean, save_var, self, dummy_epsilon);
+                  mean_, var_, self, dummy_epsilon);
             });
-        return;
-      }
-      [[fallthrough]];
+      });
+      return;
     }
     case Impl::General: {
       const int64_t ndim = self.dim();
