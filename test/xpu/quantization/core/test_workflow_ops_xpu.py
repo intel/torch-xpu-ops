@@ -94,53 +94,43 @@ def _test_forward_per_channel_cachemask_cuda(self):
     self._test_forward_per_channel_cachemask_impl("xpu")
 
 
-@given(
-    X=hu.per_channel_tensor(
-        shapes=hu.array_shapes(
-            1,
-            5,
-        ),
-        qparams=hu.qparams(dtypes=torch.quint8),
-    )
-)
 @unittest.skipIf(not TEST_CUDA, "No gpu is not available.")
-def _test_learnable_forward_per_channel_cuda(self, X):
+def _test_learnable_forward_per_channel_cuda(self):
     torch.random.manual_seed(NP_RANDOM_SEED)
-    X, (_, _, axis, _) = X
-    X_base = torch.tensor(X).to("xpu")
-    channel_size = X_base.size(axis)
-    scale_base = torch.normal(mean=0, std=1, size=(channel_size,)).clamp(1e-4, 100)
-    zero_point_base = torch.normal(mean=0, std=128, size=(channel_size,))
-    self._test_learnable_forward_per_channel(
-        X_base, "xpu", scale_base, zero_point_base, axis
-    )
+    shape = (2, 1, 2, 10)
+    axis = 1
+
+    for dtype in [torch.float32, torch.bfloat16]:
+        X_base = torch.randn(shape, device="xpu").to(dtype)
+        channel_size = X_base.size(axis)
+        scale_base = torch.normal(mean=0, std=1, size=(channel_size,)).clamp(1e-4, 100).to(dtype)
+        zero_point_base = torch.normal(mean=0, std=128, size=(channel_size,)).to(dtype)
+
+        self._test_learnable_forward_per_channel(
+            X_base, "xpu", scale_base, zero_point_base, axis
+        )
 
 
 @unittest.skipIf(not TEST_CUDA, "No gpu is not available.")
 def _test_backward_per_channel_cachemask_cuda(self):
     self._test_backward_per_channel_cachemask_impl("xpu")
 
-
-@given(
-    X=hu.per_channel_tensor(
-        shapes=hu.array_shapes(
-            2,
-            5,
-        ),
-        qparams=hu.qparams(dtypes=torch.quint8),
-    )
-)
 @unittest.skipIf(not TEST_CUDA, "No gpu is not available.")
-def _test_learnable_backward_per_channel_cuda(self, X):
+def _test_learnable_backward_per_channel_cuda(self):
     torch.random.manual_seed(NP_RANDOM_SEED)
-    X, (scale, zero_point, axis, torch_type) = X
-    X_base = torch.tensor(X).to("xpu")
-    scale_base = to_tensor(scale, "xpu")
-    zero_point_base = to_tensor(zero_point, "xpu")
-    self._test_learnable_backward_per_channel(
-        X_base, "xpu", scale_base, zero_point_base, axis
-    )
 
+    x_shape = (2, 1)
+    scale_shape = (2,)
+    zero_point_shape = (2,)
+    axis = 0
+
+    for dtype in [torch.bfloat16, torch.float32]:
+        X_base = torch.randn(x_shape, dtype=dtype, device='xpu')
+        scale_base = torch.randn(scale_shape, dtype=dtype, device='xpu')
+        zero_point_base = torch.randint(0, 10, zero_point_shape, device='xpu').to(dtype=dtype)
+        self._test_learnable_backward_per_channel(
+            X_base, "xpu", scale_base, zero_point_base, axis, dtype
+        )
 
 def rewrap_hypothesis_test(test, extra_given_kwargs=None, additional_wrapper=None):
     innert_test = test.hypothesis.inner_test
