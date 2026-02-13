@@ -1,24 +1,10 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
 # http://www.apache.org/licenses/LICENSE-2.0
-
-macro(replace_cmake_build_flags)
-  set(CMAKE_C_FLAG_BK "${CMAKE_C_FLAGS}")
-  set(CMAKE_CXX_FLAGS_BK "${CMAKE_CXX_FLAGS}")
-  string(REPLACE "-Werror=format" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-  string(REPLACE "-Werror=format" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  string(REPLACE "-Werror=unused-variable" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-  string(REPLACE "-Werror=unused-variable" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-endmacro()
-
-macro(restore_cmake_build_flags)
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAG_BK}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BK}")
-endmacro()
 
 if(NOT __SYCLTLA_INCLUDED)
   set(__SYCLTLA_INCLUDED TRUE)

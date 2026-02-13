@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -566,7 +566,7 @@ struct ReduceOp {
       value = item_reduce<output_vec_size>(pos, input_slice);
     }
 
-    auto combine = [=](arg1_t value, arg2_t other) -> arg1_t {
+    auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
       return ops.combine(value, other);
     };
 
@@ -992,7 +992,7 @@ struct ReduceOp {
         }
       }
 
-      auto combine = [=](arg1_t value, arg2_t other) -> arg1_t {
+      auto combine = [this](arg1_t value, arg2_t other) -> arg1_t {
         return ops.combine(value, other);
       };
 
