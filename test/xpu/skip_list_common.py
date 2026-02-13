@@ -85,7 +85,7 @@ skip_dict = {
     ),
     "test_transformers_xpu.py": None,
     "test_type_promotion_xpu.py": None,
-    "test_unary_ufuncs_xpu.py": None,
+    "test_unary_ufuncs_xpu.py": ("_jiterator_",),
     "test_view_ops_xpu.py": None,
     "test_schema_check.py": None,
     "test_nestedtensor_xpu.py": None,
