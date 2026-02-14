@@ -202,6 +202,7 @@ jobs:
       runner: pvc_rolling
       pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}
       python: ${{ needs.Conditions-Filter.outputs.python }}
+      test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
 
   Windows-Nightly-Ondemand-UT-Tests:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'windows') }}
