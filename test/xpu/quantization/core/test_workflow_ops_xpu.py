@@ -18,7 +18,6 @@ import torch
 import torch.testing._internal.hypothesis_utils as hu
 from hypothesis import given, strategies as st
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_quantized import to_tensor
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
@@ -103,7 +102,9 @@ def _test_learnable_forward_per_channel_cuda(self):
     for dtype in [torch.float32, torch.bfloat16]:
         X_base = torch.randn(shape, device="xpu").to(dtype)
         channel_size = X_base.size(axis)
-        scale_base = torch.normal(mean=0, std=1, size=(channel_size,)).clamp(1e-4, 100).to(dtype)
+        scale_base = (
+            torch.normal(mean=0, std=1, size=(channel_size,)).clamp(1e-4, 100).to(dtype)
+        )
         zero_point_base = torch.normal(mean=0, std=128, size=(channel_size,)).to(dtype)
 
         self._test_learnable_forward_per_channel(
@@ -115,6 +116,7 @@ def _test_learnable_forward_per_channel_cuda(self):
 def _test_backward_per_channel_cachemask_cuda(self):
     self._test_backward_per_channel_cachemask_impl("xpu")
 
+
 @unittest.skipIf(not TEST_CUDA, "No gpu is not available.")
 def _test_learnable_backward_per_channel_cuda(self):
     torch.random.manual_seed(NP_RANDOM_SEED)
@@ -125,12 +127,15 @@ def _test_learnable_backward_per_channel_cuda(self):
     axis = 0
 
     for dtype in [torch.bfloat16, torch.float32]:
-        X_base = torch.randn(x_shape, dtype=dtype, device='xpu')
-        scale_base = torch.randn(scale_shape, dtype=dtype, device='xpu')
-        zero_point_base = torch.randint(0, 10, zero_point_shape, device='xpu').to(dtype=dtype)
+        X_base = torch.randn(x_shape, dtype=dtype, device="xpu")
+        scale_base = torch.randn(scale_shape, dtype=dtype, device="xpu")
+        zero_point_base = torch.randint(0, 10, zero_point_shape, device="xpu").to(
+            dtype=dtype
+        )
         self._test_learnable_backward_per_channel(
             X_base, "xpu", scale_base, zero_point_base, axis, dtype
         )
+
 
 def rewrap_hypothesis_test(test, extra_given_kwargs=None, additional_wrapper=None):
     innert_test = test.hypothesis.inner_test
