@@ -235,4 +235,61 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward(
       values, offsets, max_lengths, padding_value);
 }
 
+Tensor _padded_dense_to_jagged_forward_xpu(
+    const Tensor& padded,
+    TensorList offsets_list,
+    std::optional<int64_t> total_L) {
+  // TODO: Make this kernel more efficient using TensorIterator or something.
+  TORCH_INTERNAL_ASSERT(
+      offsets_list.size() == 1,
+      "_padded_dense_to_jagged_forward(): only a single jagged dim is supported for now");
+
+  // allocate appropriately-sized values tensor
+  const auto& offsets = offsets_list[0];
+  TORCH_CHECK(
+      offsets.dim() == 1,
+      "_padded_dense_to_jagged_forward(): expected 1D offsets, but got offsets.dim() == ",
+      offsets.dim());
+
+  auto final_offset = offsets[-1].item<int64_t>();
+  int64_t total_L_val = total_L.has_value() ? (*total_L) : final_offset;
+  if (total_L.has_value()) {
+    // error if the offsets try to index past the end of the packed dimension
+    TORCH_CHECK(
+        final_offset == total_L_val,
+        "_padded_dense_to_jagged_forward(): final offset should match total_L value");
+  }
+
+  TORCH_CHECK(
+      padded.dim() >= 2,
+      "_padded_dense_to_jagged_forward(): expected padded dim >= 2, but padded.dim() == ",
+      padded.dim());
+
+  std::vector<int64_t> values_shape;
+  values_shape.reserve(padded.dim() - 1);
+  values_shape.push_back(total_L_val);
+  auto padded_shape = padded.sizes();
+  values_shape.insert(values_shape.end(), padded_shape.begin() + 2, padded_shape.end());
+  Tensor values = padded.new_empty(values_shape);
+
+  // copy data to values tensor
+  auto batch_size = offsets.size(0) - 1;
+  for (auto i : c10::irange(batch_size)) {
+    auto start_offset = offsets[i].item<int64_t>();
+    auto end_offset = offsets[i + 1].item<int64_t>();
+    auto length = end_offset - start_offset;
+
+    TORCH_CHECK(
+        length <= padded_shape[1],
+        "_padded_dense_to_jagged_forward(): found batch item of length ", length,
+        " when max length specified by padded input is ", padded_shape[1]);
+
+    auto dst = values.slice(0, start_offset, end_offset);
+    auto source = padded.select(0, i).slice(0, 0, length);
+    dst.copy_(source);
+  }
+
+  return values;
+}
+
 } // namespace at::native
