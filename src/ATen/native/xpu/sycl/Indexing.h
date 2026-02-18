@@ -37,6 +37,88 @@ TensorInfo<T, IndexType> tensorInfoIfScalar(TensorInfo<T, IndexType> ti) {
   return ti;
 }
 
+template <typename index_t, typename scalar_t>
+struct EmbeddingKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    for (auto thread_id = item.get_global_linear_id();
+         thread_id < indices_length_ * embedding_dim_;
+         thread_id += item.get_local_range(0) * item.get_group_range(0)) {
+      SYCL_KERNEL_ASSERT(index_[thread_id / embedding_dim_] < num_embeddings_);
+      output_[thread_id] = weight_
+          [index_[thread_id / embedding_dim_] * embedding_dim_ +
+           thread_id % embedding_dim_];
+    }
+  }
+  EmbeddingKernelFunctor(
+      scalar_t* output,
+      const scalar_t* weight,
+      const index_t* index,
+      int64_t num_embeddings,
+      int64_t embedding_dim,
+      int64_t indices_length)
+      : output_(output),
+        weight_(weight),
+        index_(index),
+        num_embeddings_(num_embeddings),
+        embedding_dim_(embedding_dim),
+        indices_length_(indices_length) {}
+
+ private:
+  scalar_t* output_;
+  const scalar_t* weight_;
+  const index_t* index_;
+  int64_t num_embeddings_;
+  int64_t embedding_dim_;
+  int64_t indices_length_;
+};
+
+template <typename index_t, typename scalar_t>
+struct EmbeddingKernelSLMFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+  void operator()(sycl::nd_item<1> item) const {
+    for (auto local_id = item.get_local_id(0);
+         local_id < num_embeddings_ * embedding_dim_;
+         local_id += item.get_local_range(0)) {
+      cached_weight_[local_id] = weight_[local_id];
+    }
+    item.barrier(sycl_local_fence);
+    for (auto thread_id = item.get_global_linear_id();
+         thread_id < indices_length_ * embedding_dim_;
+         thread_id += item.get_local_range(0) * item.get_group_range(0)) {
+      SYCL_KERNEL_ASSERT(index_[thread_id / embedding_dim_] < num_embeddings_);
+      output_[thread_id] = cached_weight_
+          [index_[thread_id / embedding_dim_] * embedding_dim_ +
+           thread_id % embedding_dim_];
+    }
+  }
+  void sycl_ker_config_convention(sycl::handler& cgh) {
+    cached_weight_ =
+        sycl_local_acc_t<scalar_t, 1>(num_embeddings_ * embedding_dim_, cgh);
+  }
+  EmbeddingKernelSLMFunctor(
+      scalar_t* output,
+      const scalar_t* weight,
+      const index_t* index,
+      int64_t num_embeddings,
+      int64_t embedding_dim,
+      int64_t indices_length)
+      : output_(output),
+        weight_(weight),
+        index_(index),
+        num_embeddings_(num_embeddings),
+        embedding_dim_(embedding_dim),
+        indices_length_(indices_length),
+        cached_weight_() {}
+
+ private:
+  scalar_t* output_;
+  const scalar_t* weight_;
+  const index_t* index_;
+  int64_t num_embeddings_;
+  int64_t embedding_dim_;
+  int64_t indices_length_;
+  sycl_local_acc_t<scalar_t, 1> cached_weight_;
+};
+
 template <class SrcInfo, class DstInfo, class IdxInfo, class FuncType>
 class IndexKernelConfig : public BatchKernelConfig {
  public:
