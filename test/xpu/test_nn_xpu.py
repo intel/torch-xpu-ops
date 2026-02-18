@@ -92,7 +92,6 @@ from torch.testing._internal.common_utils import (
     download_file,
     dtype2prec_DONTUSE,
     dtype_name,
-    freeze_rng_state,
     gcIfJetson,
     get_function_arglist,
     gradcheck,
@@ -119,6 +118,8 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 from torch.types import _TensorOrTensors
+
+from xpu_test_utils import freeze_rng_state
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 

@@ -65,7 +65,6 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_dtype import get_all_fp_dtypes
 from torch.testing._internal.common_utils import (
-    freeze_rng_state,
     instantiate_parametrized_tests,
     IS_FBCODE,
     IS_WINDOWS,
@@ -80,6 +79,8 @@ from torch.testing._internal.common_utils import (
     xfailIfTorchDynamo,
 )
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+
+from xpu_test_utils import freeze_rng_state
 
 USE_TORCHVISION = False
 try:

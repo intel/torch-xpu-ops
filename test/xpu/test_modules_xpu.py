@@ -18,11 +18,12 @@ import torch
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_modules import module_db, modules
 from torch.testing._internal.common_utils import (
-    freeze_rng_state,
     parametrize,
     run_tests,
     wrapSwapTensorsTest,
 )
+
+from xpu_test_utils import freeze_rng_state
 
 
 def _gradients_helper(self, device, dtype, module_info, training, check):

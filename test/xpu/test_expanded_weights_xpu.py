@@ -31,7 +31,6 @@ from torch.testing._internal.common_nn import (
     TestBase,
 )
 from torch.testing._internal.common_utils import (
-    freeze_rng_state,
     make_tensor,
     parametrize,
     run_tests,
@@ -40,6 +39,8 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 from torch.utils._pytree import tree_map_only
+
+from xpu_test_utils import freeze_rng_state
 
 
 class TestContext:
