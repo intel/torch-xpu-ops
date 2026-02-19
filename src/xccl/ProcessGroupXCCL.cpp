@@ -507,6 +507,7 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
       p2pRank,
       xcclCommCounter_,
       kvs_mutex_);
+  is_scaleout_ = detectScaleOut();
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -556,6 +557,28 @@ void ProcessGroupXCCL::groupStart() {
 void ProcessGroupXCCL::groupEnd() {
   xccl::oneccl_group_end();
   --xcclActiveGroupCounter_;
+}
+
+bool ProcessGroupXCCL::detectScaleOut() {
+    // Early return for single process
+  if (size_ == 1) return false;
+
+  // Method 1: Environment variables
+  std::string localWorldSize = getCvarString({
+    "OMPI_COMM_WORLD_LOCAL_SIZE",
+    "PMI_LOCAL_SIZE",
+    "PALS_LOCAL_SIZE",
+    "LOCAL_WORLD_SIZE",
+    "LOCAL_SIZE"}, "");
+  if (!localWorldSize.empty() && std::stoi(localWorldSize) < size_) {
+    return true;
+  }
+
+  // Method 2: Device count heuristic
+  int localDeviceCount = at::xpu::device_count();
+  if (size_ > localDeviceCount) return true;
+
+  return false;
 }
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
@@ -1196,8 +1219,18 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = opts.reduceOp;
+        bool applyScaleoutPreMulSum =
+            is_scaleout_ && opts.reduceOp == ReduceOp::PREMUL_SUM;
+        if (applyScaleoutPreMulSum) {
+          // Fall back to regular SUM for scale-out case
+          actualReduceOp = ReduceOp::SUM;
+          const auto* preMulSupplement =
+              reinterpret_cast<NCCLPreMulSumSupplement*>(opts.reduceOp.supplement_.get());
+          input.mul_(preMulSupplement->double_factor);
+        }
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1285,8 +1318,18 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = opts.reduceOp;
+        bool applyScaleoutPreMulSum =
+            is_scaleout_ && opts.reduceOp == ReduceOp::PREMUL_SUM;
+        if (applyScaleoutPreMulSum) {
+          // Fall back to regular SUM for scale-out case
+          actualReduceOp = ReduceOp::SUM;
+          const auto* preMulSupplement =
+              reinterpret_cast<NCCLPreMulSumSupplement*>(opts.reduceOp.supplement_.get());
+          input.mul_(preMulSupplement->double_factor);
+        }
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1689,8 +1732,18 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
+          auto actualReduceOp = opts.reduceOp;
+          bool applyScaleoutPreMulSum =
+              is_scaleout_ && opts.reduceOp == ReduceOp::PREMUL_SUM;
+          if (applyScaleoutPreMulSum) {
+            // Fall back to regular SUM for scale-out case
+            actualReduceOp = ReduceOp::SUM;
+            const auto* preMulSupplement =
+                reinterpret_cast<NCCLPreMulSumSupplement*>(opts.reduceOp.supplement_.get());
+            input.mul_(preMulSupplement->double_factor);
+          }
           xccl::onecclReduceScatter(
-              input, output, comm, opts.reduceOp, xcclStream, stream);
+              input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
@@ -1776,8 +1829,18 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = opts.reduceOp;
+        bool applyScaleoutPreMulSum =
+            is_scaleout_ && opts.reduceOp == ReduceOp::PREMUL_SUM;
+        if (applyScaleoutPreMulSum) {
+          // Fall back to regular SUM for scale-out case
+          actualReduceOp = ReduceOp::SUM;
+          const auto* preMulSupplement =
+              reinterpret_cast<NCCLPreMulSumSupplement*>(opts.reduceOp.supplement_.get());
+          input.mul_(preMulSupplement->double_factor);
+        }
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1827,8 +1890,18 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = opts.reduceOp;
+        bool applyScaleoutPreMulSum =
+            is_scaleout_ && opts.reduceOp == ReduceOp::PREMUL_SUM;
+        if (applyScaleoutPreMulSum) {
+          // Fall back to regular SUM for scale-out case
+          actualReduceOp = ReduceOp::SUM;
+          const auto* preMulSupplement =
+              reinterpret_cast<NCCLPreMulSumSupplement*>(opts.reduceOp.supplement_.get());
+          input.mul_(preMulSupplement->double_factor);
+        }
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();

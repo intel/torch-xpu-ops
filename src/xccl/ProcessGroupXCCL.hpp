@@ -188,6 +188,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
     return true;
   }
 
+  bool detectScaleOut();
+
   void startCoalescing() override;
 
   c10::intrusive_ptr<Work> endCoalescing() override;
@@ -512,6 +514,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::unique_ptr<HeartbeatMonitorXCCL> heartbeatMonitor_;
   int traceBufferSize_;
   bool enableNanCheck_;
+  bool is_scaleout_ = false;
 
   friend class HeartbeatMonitorXCCL;
 
