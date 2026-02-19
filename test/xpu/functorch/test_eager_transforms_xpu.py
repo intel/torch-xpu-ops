@@ -79,7 +79,6 @@ from torch.testing._internal.common_utils import (
     xfailIfTorchDynamo,
 )
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
-
 from xpu_test_utils import freeze_rng_state
 
 USE_TORCHVISION = False

@@ -118,7 +118,6 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 from torch.types import _TensorOrTensors
-
 from xpu_test_utils import freeze_rng_state
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()

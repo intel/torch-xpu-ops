@@ -22,7 +22,6 @@ from torch.testing._internal.common_utils import (
     run_tests,
     wrapSwapTensorsTest,
 )
-
 from xpu_test_utils import freeze_rng_state
 
 

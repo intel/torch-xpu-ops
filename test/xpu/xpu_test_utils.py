@@ -13,6 +13,7 @@
 # Owner(s): ["module: intel"]
 
 
+import contextlib
 import copy
 import logging
 import os
@@ -1260,7 +1261,6 @@ def launch_test(test_case, skip_list=None, exe_list=None):
     return os.system(test_command)
 
 
-import contextlib
 # This is a replacement for the `freeze_rng_state` in `torch.testing._internal.common_utils`
 # to be used in XPU tests to properly manage rng state also on XPU.
 @contextlib.contextmanager
@@ -1285,7 +1285,7 @@ def freeze_rng_state():
         # In the long run torch.cuda.set_rng_state should probably be
         # an operator.
         #
-        # NB: Mode disable is to avoid running cross-ref tests on thes seeding
+        # NB: Mode disable is to avoid running cross-ref tests on the seeding
         with torch.utils._mode_utils.no_dispatch(), torch._C._DisableFuncTorch():
             if torch.cuda.is_available():
                 torch.cuda.set_rng_state(cuda_rng_state)  # type: ignore[possibly-undefined]

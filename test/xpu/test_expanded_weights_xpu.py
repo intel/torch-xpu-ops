@@ -39,7 +39,6 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 from torch.utils._pytree import tree_map_only
-
 from xpu_test_utils import freeze_rng_state
 
 
