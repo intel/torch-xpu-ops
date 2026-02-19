@@ -19,16 +19,20 @@ macro(setup_common_libraries)
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS})
   target_compile_definitions(torch_xpu_ops PRIVATE TORCH_XPU_BUILD_MAIN_LIB)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
-  target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
-  target_link_libraries(torch_xpu_ops PUBLIC c10)
+  #target_link_libraries(torch_xpu_ops PUBLIC torch_xpu)
+  #target_link_libraries(torch_xpu_ops PUBLIC torch_cpu)
+  #target_link_libraries(torch_xpu_ops PUBLIC c10)
 endmacro()
 
 if(BUILD_SEPARATE_OPS)
   setup_common_libraries()
   foreach(sycl_src ${ATen_XPU_SYCL_SRCS})
     get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
-    set(sycl_lib torch-xpu-ops-sycl-${name})
+    # Shorten lib name to avoid MAX_PATH issues on Windows with deeply nested sources.
+    # Use a short hash of the full path to ensure uniqueness.
+    string(MD5 src_hash "${sycl_src}")
+    string(SUBSTRING "${src_hash}" 0 8 src_hash_short)
+    set(sycl_lib torch-xpu-ops-sycl-${src_hash_short})
     sycl_add_library(
       ${sycl_lib}
       SHARED
@@ -126,6 +130,7 @@ endif()
 set(SYCL_LINK_LIBRARIES_KEYWORD)
 
 foreach(lib ${TORCH_XPU_OPS_LIBRARIES})
+  message(STATUS "Setting up library ${lib} with SYCL support on Windows")
   # Align with PyTorch compile options PYTORCH_SRC_DIR/cmake/public/utils.cmake
   torch_compile_options(${lib})
   target_compile_options_if_supported(${lib} "-Wno-deprecated-copy")
