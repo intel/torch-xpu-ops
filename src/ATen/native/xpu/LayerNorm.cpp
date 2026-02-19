@@ -177,8 +177,7 @@ namespace native {
                             std::nullopt /* pin_memory */,
                             LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
-
-  return native::xpu::layer_norm_backward_kernel(
+  native::xpu::layer_norm_backward_kernel(
       grad_output.contiguous(),
       *X,
       mean,
@@ -186,13 +185,15 @@ namespace native {
       *gamma,
       M,
       N,
-      grad_input,
-      grad_weight,
-      grad_bias,
-      grad_input_mask);
+      &grad_input,
+      &grad_weight,
+      &grad_bias);
+
+  return std::make_tuple(std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
 }
 
 REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
+REGISTER_XPU_DISPATCH(LayerNormBackwardKernel, &xpu::layer_norm_backward_kernel);
 } // namespace native
 
 } // namespace at
