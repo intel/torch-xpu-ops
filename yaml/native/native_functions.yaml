@@ -9539,3 +9539,18 @@
   variants: function
   dispatch:
     SparseXPU: bmm_out_sparse_xpu
+    SparseCsrXPU: bmm_out_sparse_csr_xpu
+
+- func: baddbmm(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+  variants: function, method
+  structured_delegate: baddbmm.out
+
+- func: baddbmm_(Tensor(a!) self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1) -> Tensor(a!)
+  variants: method
+  structured_delegate: baddbmm.out
+
+- func: baddbmm.out(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  variants: function
+  dispatch:
+    SparseCsrXPU: baddbmm_out_sparse_csr_xpu
