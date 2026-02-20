@@ -67,4 +67,9 @@ TORCH_XPU_API at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
     c10::IntArrayRef max_lengths,
     const double padding_value);
 
+TORCH_XPU_API at::Tensor _fbgemm_dense_to_jagged_forward_kernel(
+    const Tensor& dense,
+    TensorList offsets,
+    std::optional<c10::SymInt> total_L);
+
 } // namespace at::native::xpu

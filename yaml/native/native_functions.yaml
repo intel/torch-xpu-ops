@@ -9352,7 +9352,7 @@
 - func: _padded_dense_to_jagged_forward(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> Tensor
   variants: function
   dispatch:
-    XPU: _padded_dense_to_jagged_forward_xpu
+    XPU: _fbgemm_dense_to_jagged_forward_symint_xpu
 
 
 # Standard complex to complex FFT (forward or backward)
