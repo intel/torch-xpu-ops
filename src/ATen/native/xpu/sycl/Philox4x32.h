@@ -414,54 +414,45 @@ static inline double rand_normal_double(randStatePhilox4_32_10_t* state) {
   return state->boxmuller_extra;
 }
 
+// Compute log(Gamma(a)) for positive integer a
+// Uses precomputed values for small a, Stirling series for large a
 static inline double lgamma_integer(int a) {
-  double s;
-  double t;
-  double fa = fabs((float)a);
-  double sum;
+  // Precomputed log((n-1)!) values for n = 0..9
+  constexpr double kLgammaTable[] = {
+      0.0,                    // a=0: undefined, but return 0
+      0.0,                    // a=1: log(Gamma(1)) = log(0!) = 0
+      0.0,                    // a=2: log(Gamma(2)) = log(1!) = 0
+      0.6931471805599453,     // a=3: log(Gamma(3)) = log(2!) = log(2)
+      1.7917594692280550,     // a=4: log(Gamma(4)) = log(3!) = log(6)
+      3.1780538303479458,     // a=5: log(Gamma(5)) = log(4!) = log(24)
+      4.7874917427820458,     // a=6: log(Gamma(6)) = log(5!) = log(120)
+      6.5792512120101012,     // a=7: log(Gamma(7)) = log(6!) = log(720)
+      8.5251613610654147,     // a=8: log(Gamma(8)) = log(7!) = log(5040)
+      10.604602902745251      // a=9: log(Gamma(9)) = log(8!) = log(40320)
+  };
 
-  if (a > 8) {
-    /* Stirling approximation; coefficients from Hart et al, "Computer
-     * Approximations", Wiley 1968. Approximation 5404.
-     */
-    s = 1.0 / fa;
-    t = s * s;
-    sum = -0.1633436431e-2;
-    sum = sum * t + 0.83645878922e-3;
-    sum = sum * t - 0.5951896861197e-3;
-    sum = sum * t + 0.793650576493454e-3;
-    sum = sum * t - 0.277777777735865004e-2;
-    sum = sum * t + 0.833333333333331018375e-1;
-    sum = sum * s + 0.918938533204672;
-    s = 0.5 * logf(fa);
-    t = fa - 0.5;
-    s = s * t;
-    t = s - fa;
-    s = s + sum;
-    t = t + s;
-    return t;
-  } else {
-    switch (a) {
-      case 1:
-        return 0.000000000000000000e-1;
-      case 2:
-        return 0.000000000000000000e-1;
-      case 3:
-        return 6.931471805599453094e-1;
-      case 4:
-        return 1.791759469228055001e0;
-      case 5:
-        return 3.178053830347945620e0;
-      case 6:
-        return 4.787491742782045994e0;
-      case 7:
-        return 6.579251212010100995e0;
-      case 8:
-        return 8.525161361065414300e0;
-      default:
-        return 1.060460290274525023e1;
-    }
+  if (a <= 9) {
+    return (a >= 0) ? kLgammaTable[a] : 0.0;
   }
+
+  // Stirling's approximation for a > 9:
+  // log(Gamma(x)) ≈ (x - 0.5)*log(x) - x + 0.5*log(2*pi) + 1/(12x) - 1/(360x^3) + ...
+  const double x = static_cast<double>(a);
+  const double log_x = std::log(x);
+  const double inv_x = 1.0 / x;
+  const double inv_x2 = inv_x * inv_x;
+
+  // Asymptotic series coefficients (Bernoulli numbers based)
+  // B_2/(2*1) = 1/12, -B_4/(4*3) = -1/360, B_6/(6*5) = 1/1260, ...
+  double correction = inv_x * (1.0 / 12.0 +
+                      inv_x2 * (-1.0 / 360.0 +
+                      inv_x2 * (1.0 / 1260.0 +
+                      inv_x2 * (-1.0 / 1680.0))));
+
+  // log(sqrt(2*pi)) = 0.9189385332046727
+  constexpr double kLogSqrt2Pi = 0.9189385332046727;
+
+  return (x - 0.5) * log_x - x + kLogSqrt2Pi + correction;
 }
 
 /* Computes regularized gamma function:  gammainc(a,x)/gamma(a) */
