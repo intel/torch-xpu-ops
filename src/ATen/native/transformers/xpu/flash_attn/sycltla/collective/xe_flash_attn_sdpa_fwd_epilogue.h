@@ -119,15 +119,19 @@ class FlashPrefillEpilogue<
 
   // Host side epilogue arguments
   struct Arguments {
-    ElementO const* ptr_O;
-    StrideO dO;
-    float* ptr_LSE;
+    ElementO* o_ptr;
+    int64_t o_batch_stride;
+    int64_t o_head_stride;
+    int64_t o_row_stride;
+    float* lse_ptr;
   };
 
   // Device side epilogue params
-  struct Params {
+  struct Params : public Arguments {};
+
+  struct RuntimeParams {
     XE_Copy_O xe_store_o;
-    float* ptr_LSE;
+    float* lse_ptr;
   };
 
   //
@@ -138,42 +142,8 @@ class FlashPrefillEpilogue<
   static constexpr Params to_underlying_arguments(
       ProblemShape const& problem_shape,
       Arguments const& args,
-      [[maybe_unused]] void* workspace,
-      bool const& is_bshd) {
-    if (is_bshd) {
-      auto
-          [batch,
-           num_heads_q,
-           num_heads_kv,
-           seq_len_qo,
-           seq_len_kv,
-           head_size_qk,
-           head_size_vo] = problem_shape;
-      auto tensorO = make_tensor(
-          make_gmem_ptr(static_cast<ElementO const*>(args.ptr_O)),
-          make_layout(
-              make_shape(seq_len_qo, num_heads_q * head_size_vo, batch),
-              args.dO));
-      XE_Copy_O xe_store_o{XE_Copy_O{}.with(tensorO)};
-      return {xe_store_o, args.ptr_LSE};
-    } else {
-      auto
-          [batch,
-           num_heads_q,
-           num_heads_kv,
-           seq_len_qo,
-           seq_len_kv,
-           head_size_qk,
-           head_size_vo] = problem_shape;
-
-      auto tensorO = make_tensor(
-          make_gmem_ptr(static_cast<ElementO const*>(args.ptr_O)),
-          make_layout(
-              make_shape(seq_len_qo, head_size_vo, batch * num_heads_q),
-              args.dO));
-      XE_Copy_O xe_store_o{XE_Copy_O{}.with(tensorO)};
-      return {xe_store_o, args.ptr_LSE};
-    }
+      [[maybe_unused]] void* workspace) {
+    return Params{args};
   }
 
   template <class ProblemShape>
@@ -202,8 +172,7 @@ class FlashPrefillEpilogue<
 
   // The main operator
   CUTLASS_HOST_DEVICE
-  FlashPrefillEpilogue(Params const& params_, TensorStorage const&)
-      : params(params_) {}
+  FlashPrefillEpilogue(TensorStorage const&) {}
 
   template <
       class ProblemShape,
@@ -216,12 +185,11 @@ class FlashPrefillEpilogue<
       ProblemShape problem_shape,
       SequenceLengthShape sequence_length_shape,
       TileCoord tile_coord,
+      RuntimeParams const& params,
       FragOut& out,
       FragMax const& max,
       FragSum& sum,
-      int const& q_head_coord,
-      float softmax_scale,
-      bool is_bshd) {
+      float softmax_scale) {
     using namespace cute;
     static constexpr bool is_var_len =
         cutlass::fmha::collective::is_variable_length_v<
@@ -264,23 +232,15 @@ class FlashPrefillEpilogue<
     // Indexing variables
     auto [batch, num_heads_q, head_size_vo] = select<0, 1, 6>(problem_shape);
     auto [seq_len_qo] = select<0>(sequence_length_shape);
-    auto [m_coord, n_coord, k_coord, l_coord] = tile_coord;
+    auto [m_coord, n_coord, batch_coord, q_head_coord] = tile_coord;
 
-    Tensor mO_mnl = cute::get_xe_tensor(make_shape(
-        seq_len_qo, head_size_vo, (is_var_len ? batch : 1) * num_heads_q));
+    Tensor mO_mnl =
+        cute::get_xe_tensor(make_shape(seq_len_qo, head_size_vo, 1));
     Tensor g_wg_O = local_tile(
         mO_mnl,
         select<0, 1>(TileShapeOutput{}),
-        make_coord(m_coord, n_coord, l_coord));
+        make_coord(m_coord, n_coord, 0));
 
-    if (is_bshd) {
-      mO_mnl = cute::get_xe_tensor(make_shape(seq_len_qo, head_size_vo, 1));
-
-      g_wg_O = local_tile(
-          mO_mnl,
-          select<0, 1>(TileShapeOutput{}),
-          make_coord(m_coord, n_coord, 0)); // (BLK_M,BLK_N,m,n,l)
-    }
     static constexpr auto ATOM_N =
         get<2>(typename TiledMmaOutput::ThrLayoutVMNK{}.shape());
     auto m_sg = get_sub_group_id() / ATOM_N;
@@ -313,8 +273,8 @@ class FlashPrefillEpilogue<
     const int BLK_M = size(select<0>(TileShapeOutput{}));
     auto blk_m_coord = get<0>(tile_coord); // seq_len_blk_idx
     size_t lse_offset =
-        k_coord * num_heads_q * seq_len_qo + // shift the batch -- batch_idx *
-                                             // num_heads_q * seq_len_qo
+        batch_coord * num_heads_q * seq_len_qo + // shift the batch -- batch_idx
+                                                 // * num_heads_q * seq_len_qo
         q_head_coord * seq_len_qo + // shift the head  -- head_q * seq_len_qo
         m_coord * BLK_M; // shift to the particular tile
     int localtile_seq_coord = 0;
@@ -326,7 +286,7 @@ class FlashPrefillEpilogue<
       auto cur_sum = rowsum[lane_id];
       tLSE_reg =
           cur_sum == 0.f ? -INFINITY : max * softmax_scale + logf(cur_sum);
-      *(params.ptr_LSE + lse_offset + localtile_seq_coord) =
+      *(params.lse_ptr + lse_offset + localtile_seq_coord) =
           std::isnan(tLSE_reg) ? 0 : tLSE_reg;
     }
   }
@@ -336,65 +296,32 @@ class FlashPrefillEpilogue<
   // int, int, int> For Variable Sequence Length, ProblemShapeType = Shape<int,
   // int, int, VariableSeqlen, VariableSeqlen, int, int>
   template <bool VarLen, class ProblemShapeType, class SequenceLengthShapeType>
-  CUTLASS_DEVICE static constexpr Params get_updated_copies(
+  CUTLASS_DEVICE static constexpr RuntimeParams get_updated_copies(
       Params const& params,
       ProblemShapeType const& problem_shape,
       SequenceLengthShapeType const& sequence_length_shape,
-      int const& l_coord,
-      int const& q_head_coord,
-      bool const& is_bshd) {
-    if (is_bshd) {
-      auto [num_heads_q, head_size_vo] = select<1, 6>(problem_shape);
-      auto [seq_len_qo] = select<0>(sequence_length_shape);
-      int offset_o = 0;
-      if constexpr (VarLen) {
-        auto qo_cumulative_length = get<3>(problem_shape).cumulative_length;
-        offset_o = num_heads_q * head_size_vo * qo_cumulative_length[l_coord] +
-            q_head_coord * head_size_vo;
-      } else {
-        offset_o = num_heads_q * head_size_vo * seq_len_qo * l_coord +
-            q_head_coord * head_size_vo;
-      }
-      auto store_traits = static_cast<traits_store_O const&>(params.xe_store_o);
-      ElementO* base_ptr = (ElementO*)store_traits.base_ptr;
-      auto shape_o = make_shape(
-          static_cast<int>(seq_len_qo), num_heads_q * head_size_vo, 1);
-      StrideO stride_o = cutlass::make_cute_packed_stride(StrideO{}, shape_o);
-      auto tensorO = make_tensor(
-          make_gmem_ptr(base_ptr + offset_o), make_layout(shape_o, stride_o));
-      XE_Copy_O xe_store_o{XE_Copy_O{}.with(tensorO)};
-      return Params{xe_store_o, params.ptr_LSE};
+      int const& batch_coord,
+      int const& q_head_coord) {
+    auto [num_heads_q, head_size_vo] = select<1, 6>(problem_shape);
+    auto [seq_len_qo] = select<0>(sequence_length_shape);
+    int offset_o = 0;
+    if constexpr (VarLen) {
+      auto qo_cumulative_length = get<3>(problem_shape).cumulative_length;
+      offset_o = q_head_coord * params.o_head_stride +
+          qo_cumulative_length[batch_coord] * params.o_row_stride;
+    } else {
+      offset_o = batch_coord * params.o_batch_stride +
+          q_head_coord * params.o_head_stride;
     }
-    // BHSD layout
-    else {
-      if constexpr (!VarLen) {
-        return params;
-      } else {
-        auto [num_heads_q, head_size_vo] = select<1, 6>(problem_shape);
-        auto [seq_len_qo] = select<0>(sequence_length_shape);
 
-        auto qo_cumulative_length = get<3>(problem_shape).cumulative_length;
-        int offset_o =
-            num_heads_q * head_size_vo * qo_cumulative_length[l_coord];
-        auto store_traits =
-            static_cast<traits_store_O const&>(params.xe_store_o);
-
-        ElementO* base_ptr = (ElementO*)store_traits.base_ptr;
-        auto shape_o =
-            make_shape(static_cast<int>(seq_len_qo), head_size_vo, num_heads_q);
-        StrideO stride_o = cutlass::make_cute_packed_stride(StrideO{}, shape_o);
-
-        auto tensorO = make_tensor(
-            make_gmem_ptr(base_ptr + offset_o), make_layout(shape_o, stride_o));
-        XE_Copy_O xe_store_o{XE_Copy_O{}.with(tensorO)};
-
-        return Params{xe_store_o, params.ptr_LSE};
-      }
-    }
+    ElementO* base_ptr = params.o_ptr;
+    auto shape_o = make_shape(seq_len_qo, head_size_vo, 1);
+    StrideO stride_o = StrideO{params.o_row_stride, Int<1>{}, 1};
+    auto tensorO = make_tensor(
+        make_gmem_ptr(base_ptr + offset_o), make_layout(shape_o, stride_o));
+    XE_Copy_O xe_store_o{XE_Copy_O{}.with(tensorO)};
+    return RuntimeParams{xe_store_o, params.lse_ptr};
   }
-
- private:
-  Params const& params;
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

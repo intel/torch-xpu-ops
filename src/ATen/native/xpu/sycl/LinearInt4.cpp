@@ -51,7 +51,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         ldc(ldc) {}
   void sycl_ker_config_convention(sycl::handler& cgh) {}
 
-  [[sycl::reqd_sub_group_size(16)]] void operator()(
+  SYCL_REQD_SUB_GROUP_SIZE(16) void operator()(
       sycl::nd_item<1> it) const {
     int constexpr Unroll = 2;
     int constexpr SgSize = 16;
