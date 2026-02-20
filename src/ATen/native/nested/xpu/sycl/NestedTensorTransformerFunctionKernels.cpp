@@ -1138,6 +1138,9 @@ at::Tensor _fbgemm_dense_to_jagged_forward_kernel(
   if (total_L.has_value()) {
     total_L_computed = total_L.value();
   } else {
+    TORCH_CHECK(
+        !offsets.empty(),
+        "_fbgemm_dense_to_jagged_forward: offsets must be non-empty when total_L is not provided.");
     total_L_computed = (int64_t)offsets.back().max().item<int64_t>();
   }
   auto values = at::empty_symint({total_L_computed, D}, dense.options());
