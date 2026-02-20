@@ -25,4 +25,3 @@ exclude:
   - "yaml/**/*"
   - "**/__init__.py"
   - "lint/**/*"
-  - "src/ATen/native/xpu/sycl/Philox4x32.h" #TODO: Remove after https://github.com/intel/torch-xpu-ops/issues/2485 is closed

@@ -1,3 +1,48 @@
+/*
+ * Copyright 2020-2025 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * The Philox4x32 algorithm implemented in this file is based on:
+ *   "Parallel Random Numbers: As Easy as 1, 2, 3"
+ *   Salmon, Moraes, Dror, Shaw - D.E. Shaw Research, SC'11
+ *   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
+ *
+ * Copyright 2010-2011, D. E. Shaw Research.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ * * Redistributions of source code must retain the above copyright
+ *   notice, this list of conditions, and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright
+ *   notice, this list of conditions, and the following disclaimer in the
+ *   documentation and/or other materials provided with the distribution.
+ *
+ * * Neither the name of D. E. Shaw Research nor the names of its
+ *   contributors may be used to endorse or promote products derived from
+ *   this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #pragma once
 
 #include <ATen/core/DistributionsHelper.h>
@@ -40,124 +85,127 @@ typedef rand_vec4<uint32_t> uint4;
 typedef rand_vec2<uint32_t> uint2;
 typedef rand_vec2<uint64_t> ulonglong2;
 
-#define PHILOX_W32_0 (0x9E3779B9)
-#define PHILOX_W32_1 (0xBB67AE85)
-#define PHILOX_M4x32_0 (0xD2511F53)
-#define PHILOX_M4x32_1 (0xCD9E8D57)
+constexpr uint32_t kPhiloxWeylSequence0 = 0x9E3779B9;
+constexpr uint32_t kPhiloxWeylSequence1 = 0xBB67AE85;
+constexpr uint32_t kPhiloxMultiplier0 = 0xD2511F53;
+constexpr uint32_t kPhiloxMultiplier1 = 0xCD9E8D57;
+constexpr unsigned int kPhilox4x32Rounds = 10;
 
-typedef struct randStatePhilox4_32_10 {
-  uint4 ctr;
-  uint4 output;
+struct PhiloxState {
+  uint4 counter;
+  uint4 result;
   uint2 key;
-  unsigned int STATE;
+  unsigned int index;
   int boxmuller_flag;
   int boxmuller_flag_double;
   float boxmuller_extra;
-} randStatePhilox4_32_10_t;
+};
 
-static inline void Philox_State_Incr(
-    randStatePhilox4_32_10_t* s,
-    unsigned long long n) {
-  unsigned int nlo = (unsigned int)(n);
-  unsigned int nhi = (unsigned int)(n >> 32);
-  s->ctr.x += nlo;
-  if (s->ctr.x < nlo)
-    nhi++;
-  s->ctr.y += nhi;
-  if (nhi <= s->ctr.y)
-    return;
-  if (++s->ctr.z)
-    return;
-  ++s->ctr.w;
+using randStatePhilox4_32_10_t = PhiloxState;
+
+static inline void philox_counter_incr(PhiloxState* state, uint64_t n) {
+  const uint32_t low_word = static_cast<uint32_t>(n);
+  const uint32_t high_word = static_cast<uint32_t>(n >> 32);
+
+  const uint32_t old_c0 = state->counter.val[0];
+  state->counter.val[0] += low_word;
+  uint32_t carry = (state->counter.val[0] < old_c0) ? 1u : 0u;
+
+  const uint32_t old_c1 = state->counter.val[1];
+  state->counter.val[1] += high_word + carry;
+  carry = (state->counter.val[1] < old_c1 || (carry && state->counter.val[1] == old_c1)) ? 1u : 0u;
+
+  if (carry == 0) return;
+
+  const uint32_t old_c2 = state->counter.val[2];
+  state->counter.val[2] += carry;
+  if (state->counter.val[2] >= old_c2) return;
+
+  state->counter.val[3] += 1u;
 }
 
-static inline void Philox_State_Incr(randStatePhilox4_32_10_t* s) {
-  if (++s->ctr.x)
-    return;
-  if (++s->ctr.y)
-    return;
-  if (++s->ctr.z)
-    return;
-  ++s->ctr.w;
+static inline void philox_counter_incr_single(PhiloxState* state) {
+  if (++state->counter.val[0] != 0) return;
+  if (++state->counter.val[1] != 0) return;
+  if (++state->counter.val[2] != 0) return;
+  ++state->counter.val[3];
 }
 
-static inline void Philox_State_Incr_hi(
-    randStatePhilox4_32_10_t* s,
-    unsigned long long n) {
-  unsigned int nlo = (unsigned int)(n);
-  unsigned int nhi = (unsigned int)(n >> 32);
-  s->ctr.z += nlo;
-  if (s->ctr.z < nlo)
-    nhi++;
-  s->ctr.w += nhi;
+static inline void philox_counter_incr_high(PhiloxState* state, uint64_t n) {
+  const uint32_t low_word = static_cast<uint32_t>(n);
+  const uint32_t high_word = static_cast<uint32_t>(n >> 32);
+
+  const uint32_t old_c2 = state->counter.val[2];
+  state->counter.val[2] += low_word;
+  const uint32_t carry = (state->counter.val[2] < old_c2) ? 1u : 0u;
+
+  state->counter.val[3] += high_word + carry;
 }
 
-static inline unsigned int mulhilo32(
-    unsigned int a,
-    unsigned int b,
-    unsigned int* hip) {
-  *hip = sycl::mul_hi(a, b);
-  return a * b;
+static inline uint32_t philox_multiply_high_low(
+    uint32_t multiplier,
+    uint32_t multiplicand,
+    uint32_t* high_product) {
+  *high_product = sycl::mul_hi(multiplier, multiplicand);
+  return multiplier * multiplicand;
 }
 
-static inline uint4 _philox4x32round(uint4 ctr, uint2 key) {
-  unsigned int hi0;
-  unsigned int hi1;
-  unsigned int lo0 = mulhilo32(PHILOX_M4x32_0, ctr.x, &hi0);
-  unsigned int lo1 = mulhilo32(PHILOX_M4x32_1, ctr.z, &hi1);
-  uint4 ret = {hi1 ^ ctr.y ^ key.x, lo1, hi0 ^ ctr.w ^ key.y, lo0};
-  return ret;
+static inline uint4 philox4x32_single_round(uint4 input, uint2 round_key) {
+  uint32_t product_hi_0, product_hi_1;
+  const uint32_t product_lo_0 = philox_multiply_high_low(
+      kPhiloxMultiplier0, input.val[0], &product_hi_0);
+  const uint32_t product_lo_1 = philox_multiply_high_low(
+      kPhiloxMultiplier1, input.val[2], &product_hi_1);
+
+  return uint4{
+      product_hi_1 ^ input.val[1] ^ round_key.val[0],
+      product_lo_1,
+      product_hi_0 ^ input.val[3] ^ round_key.val[1],
+      product_lo_0};
 }
 
-static inline uint4 rand_Philox4x32_10(uint4 c, uint2 k) {
-  c = _philox4x32round(c, k); // 1
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 2
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 3
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 4
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 5
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 6
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 7
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 8
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  c = _philox4x32round(c, k); // 9
-  k.x += PHILOX_W32_0;
-  k.y += PHILOX_W32_1;
-  return _philox4x32round(c, k); // 10
+static inline uint2 philox4x32_bump_key(uint2 key) {
+  key.val[0] += kPhiloxWeylSequence0;
+  key.val[1] += kPhiloxWeylSequence1;
+  return key;
+}
+
+static inline uint4 philox4x32_rounds(uint4 counter, uint2 key, unsigned int rounds) {
+  if (rounds > 0)  counter = philox4x32_single_round(counter, key);
+  if (rounds > 1)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 2)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 3)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 4)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 5)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 6)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 7)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 8)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  if (rounds > 9)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+  return counter;
+}
+
+static inline uint4 philox4x32_10(uint4 counter, uint2 key) {
+  return philox4x32_rounds(counter, key, kPhilox4x32Rounds);
 }
 
 static inline void skipahead_sequence(
     unsigned long long n,
     randStatePhilox4_32_10_t* state) {
-  Philox_State_Incr_hi(state, n);
-  state->output = rand_Philox4x32_10(state->ctr, state->key);
+  philox_counter_incr_high(state, n);
+  state->result = philox4x32_10(state->counter, state->key);
 }
 
 static inline void skipahead(
     unsigned long long n,
     randStatePhilox4_32_10_t* state) {
-  state->STATE += (n & 3);
+  state->index += (n & 3);
   n /= 4;
-  if (state->STATE > 3) {
+  if (state->index > 3) {
     n += 1;
-    state->STATE -= 4;
+    state->index -= 4;
   }
-  Philox_State_Incr(state, n);
-  state->output = rand_Philox4x32_10(state->ctr, state->key);
+  philox_counter_incr(state, n);
+  state->result = philox4x32_10(state->counter, state->key);
 }
 
 static inline void rand_init(
@@ -165,66 +213,66 @@ static inline void rand_init(
     unsigned long long subsequence,
     unsigned long long offset,
     randStatePhilox4_32_10_t* state) {
-  state->ctr.x = 0;
-  state->ctr.y = 0;
-  state->ctr.z = 0;
-  state->ctr.w = 0;
+  state->counter.x = 0;
+  state->counter.y = 0;
+  state->counter.z = 0;
+  state->counter.w = 0;
   state->key.x = (unsigned int)seed;
   state->key.y = (unsigned int)(seed >> 32);
-  state->STATE = 0;
+  state->index = 0;
   skipahead_sequence(subsequence, state);
   skipahead(offset, state);
 }
 
 static inline unsigned int rand(randStatePhilox4_32_10_t* state) {
   unsigned int ret;
-  switch (state->STATE++) {
+  switch (state->index++) {
     default:
-      ret = state->output.x;
+      ret = state->result.x;
       break;
     case 1:
-      ret = state->output.y;
+      ret = state->result.y;
       break;
     case 2:
-      ret = state->output.z;
+      ret = state->result.z;
       break;
     case 3:
-      ret = state->output.w;
+      ret = state->result.w;
       break;
   }
-  if (state->STATE == 4) {
-    Philox_State_Incr(state);
-    state->output = rand_Philox4x32_10(state->ctr, state->key);
-    state->STATE = 0;
+  if (state->index == 4) {
+    philox_counter_incr_single(state);
+    state->result = philox4x32_10(state->counter, state->key);
+    state->index = 0;
   }
   return ret;
 }
 
 static inline uint4 rand4(randStatePhilox4_32_10_t* state) {
   uint4 r;
-  uint4 tmp = state->output;
-  Philox_State_Incr(state);
-  state->output = rand_Philox4x32_10(state->ctr, state->key);
-  switch (state->STATE) {
+  uint4 tmp = state->result;
+  philox_counter_incr_single(state);
+  state->result = philox4x32_10(state->counter, state->key);
+  switch (state->index) {
     case 0:
       return tmp;
     case 1:
       r.x = tmp.y;
       r.y = tmp.z;
       r.z = tmp.w;
-      r.w = state->output.x;
+      r.w = state->result.x;
       break;
     case 2:
       r.x = tmp.z;
       r.y = tmp.w;
-      r.z = state->output.x;
-      r.w = state->output.y;
+      r.z = state->result.x;
+      r.w = state->result.y;
       break;
     case 3:
       r.x = tmp.w;
-      r.y = state->output.x;
-      r.z = state->output.y;
-      r.w = state->output.z;
+      r.y = state->result.x;
+      r.z = state->result.y;
+      r.w = state->result.z;
       break;
     default:
       // NOT possible but needed to avoid compiler warnings
