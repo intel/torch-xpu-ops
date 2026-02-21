@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
- #include <ATen/ExpandUtils.h>
+#include <ATen/ExpandUtils.h>
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TensorOperators.h>
 #include <ATen/native/Resize.h>
@@ -281,7 +281,6 @@ Tensor& addmm_out_sparse_compressed_xpu(
 }
 
 Tensor expand_batch_if_necessary(const Tensor& mat) {
-  // std::cout << "mat: " << mat << std::endl;
   auto indice_batch_ndim = sparse_csr::numBatchDimensions(mat);
   auto [compressed_indices, plain_indices] =
       sparse_csr::getCompressedPlainIndices(mat);
@@ -312,20 +311,10 @@ Tensor expand_batch_if_necessary(const Tensor& mat) {
         batch_diff_size.end());
     values = values.expand(reshaped_values_indices_shape);
   }
-  std::cout << "values: " << values << std::endl;
-  std::cout << "compressed_indices: " << compressed_indices << std::endl;
-  std::cout << "plain_indices: " << plain_indices << std::endl;
-  std::cout << "mat.sizes(): " << mat.sizes() << std::endl;
-  std::cout << "mat.options(): " << mat.options() << std::endl;
   auto updated_sparse_tensor = at::sparse_compressed_tensor(
-    compressed_indices,
-    plain_indices,
-    values,
-    mat.sizes(),
-    mat.options());
+      compressed_indices, plain_indices, values, mat.sizes(), mat.options());
   // get_sparse_csr_impl(mat)->set_member_tensors(
   //     compressed_indices, plain_indices, values, mat.sizes());
-  // std::cout << "updated_sparse_tensor: " << updated_sparse_tensor << std::endl;
   return updated_sparse_tensor;
 }
 
@@ -389,6 +378,5 @@ Tensor& bmm_out_sparse_csr_xpu(
   return at::native::baddbmm_out_sparse_csr_xpu(
       result, mat1, mat2, beta, alpha, result);
 }
-
 
 } // namespace at::native
