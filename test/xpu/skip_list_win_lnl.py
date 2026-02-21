@@ -8,12 +8,13 @@
 
 skip_dict = {
     # tensor(0.-0.j, device='xpu:0', dtype=torch.complex32) tensor(nan+nanj, device='xpu:0', dtype=torch.complex32) (1.5707964+0j)
-    "test_unary_ufuncs_xpu.pyy": (
+    "test_unary_ufuncs_xpu.py": (
         "test_reference_numerics_small_acos_xpu_complex32",
         "test_reference_numerics_small_asin_xpu_complex32",
         "test_reference_numerics_small_asinh_xpu_complex32",
         "test_reference_numerics_small_atan_xpu_complex32",
         "test_reference_numerics_small_atanh_xpu_complex32",
+        "test_reference_numerics_small_sigmoid_xpu_complex32",
         # Need to check compiler std::sin() on inf+infj
         "test_reference_numerics_extremal__refs_sin_xpu_complex128",
         "test_reference_numerics_extremal__refs_sin_xpu_complex64",
@@ -32,10 +33,16 @@ skip_dict = {
         "test_reference_numerics_small_exp_xpu_complex32",
         ":test_reference_numerics_normal_special_i1_xpu_float32",
         "test_reference_numerics_normal_sigmoid_xpu_complex32",
+        "test_reference_numerics_extremal__refs_sinh_xpu_complex128",
+        "test_reference_numerics_extremal__refs_sinh_xpu_complex64",
+        "test_reference_numerics_large__refs_sinh_xpu_complex32",
+        "test_reference_numerics_large__refs_tanh_xpu_complex32",
+        "test_reference_numerics_large_sinh_xpu_complex32",
+        "test_reference_numerics_large_tanh_xpu_complex32",
     ),
     # https://github.com/intel/torch-xpu-ops/issues/1171
     # AssertionError: 'Assertion maxind >= 0 && maxind < outputImageSize failed' not found in '\nAssertHandler::printMessage\n' : The expected error was not found
-    "nn\test_pooling_xpu.py": (
+    "nn\\test_pooling_xpu.py": (
         "test_MaxUnpool_index_errors_case1_xpu",
         "test_MaxUnpool_index_errors_case2_xpu",
         "test_MaxUnpool_index_errors_case4_xpu",
@@ -214,4 +221,33 @@ skip_dict = {
         "test_autocast[rois_dtype1-x_dtype1-False-True]",
         "test_autocast[rois_dtype1-x_dtype1-False-False]",
     ),
+    "test_ops_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1733
+        # AssertionError: Tensor-likes are not close!
+        "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float32",
+        "test_compare_cpu_nn_functional_interpolate_bicubic_xpu_float64",
+        "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float32",
+        "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float64",
+    ),
+    "test_nn_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/1737
+        # Accuracy issue for test_nn.py TestNN.test_CTCLoss_long_targets on windows
+        "test_CTCLoss_long_targets",
+        # https://github.com/intel/torch-xpu-ops/issues/1739
+        # DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2
+        "test_no_grad",
+    ),
+    "test_reductions_xpu.py": (
+        "test_noncontiguous_expanded__refs_prod_xpu_complex128",
+        "test_noncontiguous_expanded_masked_prod_xpu_complex128",
+        "test_noncontiguous_transposed__refs_prod_xpu_complex128",
+        "test_noncontiguous_transposed_masked_prod_xpu_complex128",
+        "test_ref_duplicate_values__refs_prod_xpu_complex128",
+        "test_ref_duplicate_values_masked_prod_xpu_complex128",
+        "test_ref_duplicate_values_prod_xpu_complex128",
+        "test_ref_small_input__refs_prod_xpu_complex128",
+        "test_ref_small_input_masked_prod_xpu_complex128",
+        "test_reference_masked_masked_prod_xpu_complex128"",
+    )
+
 }
