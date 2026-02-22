@@ -2138,7 +2138,6 @@ class TestSparseCSR(TestCase):
         )
     )
     @dtypesIfXPU(*floating_and_complex_types_and(torch.half, torch.bfloat16))
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_csr_matvec(self, device, dtype):
         if TEST_WITH_ROCM and (dtype == torch.half or dtype == torch.bfloat16):
             self.skipTest("ROCm doesn't work with half dtypes correctly.")
@@ -2489,7 +2488,6 @@ class TestSparseCSR(TestCase):
     @parametrize("noncontiguous", [True, False])
     @unittest.skipIf(not TEST_SCIPY, "SciPy not found")
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_block_addmv(self, device, dtype, index_dtype, block_size, noncontiguous):
         # TODO: Explicitly disable block size 1 support
         # if (TEST_WITH_ROCM or not TEST_CUSPARSE_GENERIC) and block_size == 1:
