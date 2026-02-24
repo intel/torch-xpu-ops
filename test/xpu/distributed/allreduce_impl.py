@@ -752,6 +752,149 @@ def allreduce_with_symm_mem(
     return tensor
 
 
+def allreduce_with_ring_pull(
+    tensor: torch.Tensor,
+    op: str = "sum",
+    group: dist.ProcessGroup | None = None,
+) -> torch.Tensor:
+    """
+    Perform allreduce using symmetric memory with ring reduce-scatter + ring allgather.
+
+    This implementation uses a true ring pattern where each rank only accesses
+    its next neighbor (pull-based). This is different from allreduce_with_pull
+    where each rank accesses all remote ranks.
+
+    Ring pattern:
+    - Reduce-Scatter: Each rank pulls from prev neighbor and accumulates
+    - Allgather: Each rank pulls from prev neighbor and copies
+
+    For world_size=N, there are (N-1) steps in each phase.
+    Ring: rank -> (rank+1) % N -> (rank+2) % N -> ... -> rank
+
+    Args:
+        tensor: Input tensor to reduce (must be on XPU device)
+        op: Reduction operation (only "sum" is supported)
+        group: Process group (default: None, uses WORLD group)
+
+    Returns:
+        Reduced tensor with the same shape as input (in-place modification)
+    """
+    if op != "sum":
+        raise ValueError(f"Only 'sum' operation is supported, got '{op}'")
+
+    # Get group info
+    if group is None:
+        group = dist.group.WORLD
+
+    group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    # Work with flattened view
+    tensor_flat = tensor.view(-1)
+    numel = tensor_flat.numel()
+
+    # Check divisibility
+    if numel % world_size != 0:
+        raise ValueError(
+            f"Tensor size ({numel}) must be divisible by world_size ({world_size})"
+        )
+
+    chunk_size = numel // world_size
+
+    # Get symmetric memory workspace
+    workspace_size_bytes = chunk_size * world_size * tensor.element_size()
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+    # Ring neighbor: each rank pulls from prev_rank
+    prev_rank = (rank - 1 + world_size) % world_size
+
+    # Barrier to ensure previous allreduce is complete before writing
+    workspace.barrier()
+
+    # ==========================================================================
+    # Phase 1: Copy local data to symmetric memory buffer
+    # Each rank writes its entire tensor to its own symm buffer slot
+    # ==========================================================================
+    my_symm_buffer = workspace.get_buffer(
+        rank, (numel,), tensor.dtype, storage_offset=0
+    )
+    my_symm_buffer.copy_(tensor_flat)
+
+    workspace.barrier()
+
+    # ==========================================================================
+    # Phase 2: Ring Reduce-Scatter
+    # Each step: rank pulls chunk from prev_rank and accumulates
+    # After (world_size - 1) steps, each rank has fully reduced its own chunk
+    # ==========================================================================
+    for step in range(world_size - 1):
+        # Which chunk index to reduce this step
+        # At step 0: rank reduces chunk at index (rank - 1)
+        # At step 1: rank reduces chunk at index (rank - 2), etc.
+        chunk_idx = (rank - step - 1 + world_size) % world_size
+        chunk_start = chunk_idx * chunk_size
+        chunk_end = chunk_start + chunk_size
+
+        # Pull the chunk from prev_rank's symm buffer
+        prev_buffer = workspace.get_buffer(
+            prev_rank, (chunk_size,), tensor.dtype, storage_offset=chunk_start
+        )
+
+        # Accumulate into my symm buffer at the same chunk position
+        my_chunk = workspace.get_buffer(
+            rank, (chunk_size,), tensor.dtype, storage_offset=chunk_start
+        )
+        my_chunk.add_(prev_buffer)
+
+        workspace.barrier()
+
+    # After reduce-scatter:
+    # Rank r has the fully reduced chunk at index (r + 1) % world_size
+    # Copy the reduced result to tensor_flat for the final result
+    my_result_chunk_idx = (rank + 1) % world_size
+    my_result_start = my_result_chunk_idx * chunk_size
+    my_result_end = my_result_start + chunk_size
+
+    reduced_chunk = workspace.get_buffer(
+        rank, (chunk_size,), tensor.dtype, storage_offset=my_result_start
+    )
+    tensor_flat[my_result_start:my_result_end].copy_(reduced_chunk)
+
+    # Also update symm buffer for allgather phase
+    my_symm_buffer[my_result_start:my_result_end].copy_(tensor_flat[my_result_start:my_result_end])
+
+    workspace.barrier()
+
+    # ==========================================================================
+    # Phase 3: Ring Allgather
+    # Each step: rank pulls chunk from prev_rank and copies to local tensor
+    # After (world_size - 1) steps, each rank has all reduced chunks
+    # ==========================================================================
+    for step in range(world_size - 1):
+        # Which chunk index to gather this step
+        # At step 0: rank gathers chunk at index (my_result_chunk_idx - 1)
+        # This is the chunk that prev_rank has fully reduced
+        chunk_idx = (my_result_chunk_idx - step - 1 + world_size) % world_size
+        chunk_start = chunk_idx * chunk_size
+        chunk_end = chunk_start + chunk_size
+
+        # Pull the chunk from prev_rank's symm buffer
+        prev_buffer = workspace.get_buffer(
+            prev_rank, (chunk_size,), tensor.dtype, storage_offset=chunk_start
+        )
+
+        # Copy to my local tensor
+        tensor_flat[chunk_start:chunk_end].copy_(prev_buffer)
+
+        # Also update my symm buffer so next rank can pull from me
+        my_symm_buffer[chunk_start:chunk_end].copy_(prev_buffer)
+
+        workspace.barrier()
+
+    return tensor
+
+
 # =============================================================================
 # Two-Level Hierarchical Allreduce Implementation
 # Level 1: Intra-Socket (all GPUs within socket treated as equal bandwidth)

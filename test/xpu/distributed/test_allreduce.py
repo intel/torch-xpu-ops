@@ -5,11 +5,12 @@ Usage:
     mpirun -n 2 python test_allreduce.py
     mpirun -n 2 python test_allreduce.py --impl symm_mem
     mpirun -n 2 python test_allreduce.py --impl pull
+    mpirun -n 2 python test_allreduce.py --impl ring_pull
     mpirun -n 8 python test_allreduce.py --impl cross_switch
     mpirun -n 8 python test_allreduce.py --impl cross_switch_pipeline --num_pipelines 2
     mpirun -n 8 python test_allreduce.py --impl cross_switch_pipeline --num_pipelines 4
     mpirun -n 2 python test_allreduce.py --profile --impl symm_mem
-    mpirun -n 2 python test_allreduce.py --accuracy --impl pull
+    mpirun -n 2 python test_allreduce.py --accuracy --impl ring_pull
 """
 
 import argparse
@@ -22,6 +23,7 @@ import os
 from allreduce_impl import (
     allreduce_with_symm_mem,
     allreduce_with_pull,
+    allreduce_with_ring_pull,
     allreduce_cross_switch,
     allreduce_cross_switch_pipeline,
 )
@@ -30,6 +32,7 @@ from allreduce_impl import (
 IMPL_MAP = {
     "symm_mem": allreduce_with_symm_mem,
     "pull": allreduce_with_pull,
+    "ring_pull": allreduce_with_ring_pull,
     "cross_switch": allreduce_cross_switch,
     "cross_switch_pipeline": allreduce_cross_switch_pipeline,
 }
