@@ -569,7 +569,7 @@ bool ProcessGroupXCCL::detectScaleOut() {
   int localDeviceCount = at::xpu::device_count();
   std::string localWorldSize = getCvarString({
     "OMPI_COMM_WORLD_LOCAL_SIZE",
-    "PMI_LOCAL_SIZE", 
+    "PMI_LOCAL_SIZE",
     "PALS_LOCAL_SIZE",
     "LOCAL_WORLD_SIZE",
     "LOCAL_SIZE"}, "");
