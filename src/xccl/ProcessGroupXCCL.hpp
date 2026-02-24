@@ -190,6 +190,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   bool detectScaleOut();
 
+  ReduceOp applyPreMulSumIfNeeded(const at::Tensor& input, ReduceOp& reduceOp);
+
   void startCoalescing() override;
 
   c10::intrusive_ptr<Work> endCoalescing() override;
