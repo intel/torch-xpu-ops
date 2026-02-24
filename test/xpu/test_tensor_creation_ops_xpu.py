@@ -4385,10 +4385,12 @@ class TestLikeTensorCreation(TestCase):
             torch.full_like(like, 1.0, dtype=torch.complex64).dtype, torch.complex64
         )
 
+    @largeTensorTest("32GB")
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_zeros_large(self, device, dtype):
         output = torch.zeros(2**31 - 1, device=device, dtype=dtype)
 
+    @largeTensorTest("32GB")
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
     def test_ones_large(self, device, dtype):
         output = torch.ones(2**31 - 1, device=device, dtype=dtype)
