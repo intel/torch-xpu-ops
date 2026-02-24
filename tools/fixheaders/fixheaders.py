@@ -179,7 +179,7 @@ def remove_existing_header(content: str, file_type: str) -> str:
         first_newline = content.find("\n")
         if first_newline != -1:
             shebang = content[: first_newline + 1]
-            content = content[first_newline + 1 :]
+            content = content[first_newline + 1 :].lstrip()
 
     # Only remove the header we actually detected
     header = extract_existing_header(content, file_type)
