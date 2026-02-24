@@ -8,7 +8,7 @@ if ! uv --help > /dev/null 2>&1; then
 fi
 uv venv lint --python 3.12 --clear
 source lint/bin/activate
-uv pip install -U pip setuptools wheel pyyaml typing-extensions
+uv pip install -U pip setuptools==81.0.0 wheel pyyaml typing-extensions
 
 # Use uv to speed up lintrunner init
 uv pip install ruamel.yaml
