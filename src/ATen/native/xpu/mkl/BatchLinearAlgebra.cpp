@@ -479,7 +479,8 @@ void apply_linalg_svd_mkl(
   const auto batch_size = batchCount(A_working);
 
   const auto jobu = compute_uv
-      ? (full_matrices ? oneapi::mkl::jobsvd::vectors : oneapi::mkl::jobsvd::somevec)
+      ? (full_matrices ? oneapi::mkl::jobsvd::vectors
+               : oneapi::mkl::jobsvd::somevec)
       : oneapi::mkl::jobsvd::novec;
   const auto jobvt = jobu;
 
@@ -496,8 +497,10 @@ void apply_linalg_svd_mkl(
 
   auto* A_data = reinterpret_cast<value_t*>(A_working.data_ptr());
   auto* S_data = reinterpret_cast<scalar_t*>(S.data_ptr());
-  auto* U_data = compute_uv ? reinterpret_cast<value_t*>(U.data_ptr()) : nullptr;
-  auto* Vh_data = compute_uv ? reinterpret_cast<value_t*>(Vh.data_ptr()) : nullptr;
+  auto* U_data =
+      compute_uv ? reinterpret_cast<value_t*>(U.data_ptr()) : nullptr;
+  auto* Vh_data =
+      compute_uv ? reinterpret_cast<value_t*>(Vh.data_ptr()) : nullptr;
 
   const auto scratchpad_size =
       oneapi::mkl::lapack::gesvd_scratchpad_size<value_t>(
@@ -505,13 +508,22 @@ void apply_linalg_svd_mkl(
   auto scratchpad = at::empty({scratchpad_size}, A_working.options());
   auto* scratchpad_data = reinterpret_cast<value_t*>(scratchpad.data_ptr());
 
+  sycl::event last_event;
+  std::vector<sycl::event> deps;
+  deps.reserve(1);
+
   for (const auto batch : c10::irange(batch_size)) {
     auto* a_ptr = A_data + batch * A_mat_stride;
     auto* s_ptr = S_data + batch * S_mat_stride;
     auto* u_ptr = compute_uv ? U_data + batch * U_mat_stride : nullptr;
     auto* vh_ptr = compute_uv ? Vh_data + batch * Vh_mat_stride : nullptr;
 
-    oneapi::mkl::lapack::gesvd(
+    deps.clear();
+    if (batch > 0) {
+      deps.push_back(last_event);
+    }
+
+    last_event = oneapi::mkl::lapack::gesvd(
         queue,
         jobu,
         jobvt,
@@ -525,8 +537,14 @@ void apply_linalg_svd_mkl(
         vh_ptr,
         ldvt,
         scratchpad_data,
-        scratchpad_size);
+        scratchpad_size,
+        deps);
   }
+
+  if (batch_size > 0) {
+    last_event.wait();
+  }
+  queue.throw_asynchronous();
 }
 
 void linalg_svd_mkl(
@@ -536,9 +554,12 @@ void linalg_svd_mkl(
     const Tensor& U,
     const Tensor& S,
     const Tensor& Vh) {
-  if (A.scalar_type() == ScalarType::Float || A.scalar_type() == ScalarType::Double) {
+  if (
+      A.scalar_type() == ScalarType::Float ||
+      A.scalar_type() == ScalarType::Double) {
     AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "linalg_svd_mkl", [&] {
-      apply_linalg_svd_mkl<scalar_t, scalar_t>(A, full_matrices, compute_uv, U, S, Vh);
+      apply_linalg_svd_mkl<scalar_t, scalar_t>(
+          A, full_matrices, compute_uv, U, S, Vh);
     });
     return;
   }
@@ -546,7 +567,8 @@ void linalg_svd_mkl(
   AT_DISPATCH_COMPLEX_TYPES(A.scalar_type(), "linalg_svd_mkl", [&] {
     using value_t = typename get_mkl_type<scalar_t>::type;
     using real_t = typename c10::scalar_value_type<scalar_t>::type;
-    apply_linalg_svd_mkl<real_t, value_t>(A, full_matrices, compute_uv, U, S, Vh);
+    apply_linalg_svd_mkl<real_t, value_t>(
+        A, full_matrices, compute_uv, U, S, Vh);
   });
 }
 

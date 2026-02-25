@@ -22,15 +22,54 @@ namespace at::native {
 
 namespace xpu {
 
+namespace {
+
+void fill_identity_if_nonempty(Tensor& out) {
+  constexpr int64_t kMainDiagonal = 0;
+  constexpr int64_t kRowDim = -2;
+  constexpr int64_t kColDim = -1;
+
+  if (out.numel() == 0) {
+    return;
+  }
+  out.zero_();
+  out.diagonal(kMainDiagonal, kRowDim, kColDim).fill_(1.);
+}
+
+bool handle_empty_svd_output(
+    const Tensor& A,
+    bool full_matrices,
+    bool compute_uv,
+    Tensor& U,
+    Tensor& S,
+    Tensor& Vh) {
+  if (A.numel() != 0) {
+    return false;
+  }
+
+  if (compute_uv && full_matrices) {
+    fill_identity_if_nonempty(U);
+    fill_identity_if_nonempty(Vh);
+  }
+
+  return true;
+}
+
+} // namespace
+
 std::tuple<Tensor&, Tensor&, Tensor&> _linalg_svd_U_xpu(
-  const Tensor& A,
-  bool full_matrices,
-  bool compute_uv,
-  std::optional<std::string_view> driver,
-  Tensor& U,
-  Tensor& S,
-  Tensor& Vh) {
+    const Tensor& A,
+    bool full_matrices,
+    bool compute_uv,
+    std::optional<std::string_view> driver,
+    Tensor& U,
+    Tensor& S,
+    Tensor& Vh) {
 #if defined(USE_ONEMKL_XPU)
+  if (handle_empty_svd_output(A, full_matrices, compute_uv, U, S, Vh)) {
+    return std::tuple<Tensor&, Tensor&, Tensor&>{U, S, Vh};
+  }
+
   TORCH_CHECK(
       !driver.has_value(),
       "torch.linalg.svd: keyword argument `driver=` is only supported on CUDA inputs with cuSOLVER backend.");
@@ -38,15 +77,13 @@ std::tuple<Tensor&, Tensor&, Tensor&> _linalg_svd_U_xpu(
 #else
   auto A_cpu = A.to(A.options().device(kCPU));
 
-  auto U_cpu = at::empty_strided(
-    U.sizes(), U.strides(), U.options().device(kCPU));
-  auto S_cpu = at::empty_strided(
-    S.sizes(), S.strides(), S.options().device(kCPU));
-  auto Vh_cpu = at::empty_strided(
-    Vh.sizes(), Vh.strides(), Vh.options().device(kCPU));
+  auto U_cpu = at::empty_strided(U.sizes(), U.strides(), U.options().device(kCPU));
+  auto S_cpu = at::empty_strided(S.sizes(), S.strides(), S.options().device(kCPU));
+  auto Vh_cpu =
+      at::empty_strided(Vh.sizes(), Vh.strides(), Vh.options().device(kCPU));
 
   at::_linalg_svd_out(
-    U_cpu, S_cpu, Vh_cpu, A_cpu, full_matrices, compute_uv, driver);
+      U_cpu, S_cpu, Vh_cpu, A_cpu, full_matrices, compute_uv, driver);
 
   U.copy_(U_cpu);
   S.copy_(S_cpu);
@@ -179,3 +216,4 @@ void triangular_solve_kernel_xpu(
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
 } // namespace at::native
+ative
