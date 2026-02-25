@@ -40,4 +40,8 @@ TORCH_XPU_API Tensor& baddbmm_complex_out_xpu(
     const Scalar& alpha,
     Tensor& out);
 
+TORCH_XPU_API Tensor dot_xpu(const Tensor& self, const Tensor& other);
+
+TORCH_XPU_API Tensor vdot_xpu(const Tensor& self, const Tensor& other);
+
 } // namespace at::native

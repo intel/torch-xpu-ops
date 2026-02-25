@@ -19,8 +19,6 @@
 
 namespace at::native::xpu {
 
-namespace {
-
 template <typename scalar_t, int depth>
 void sgd_math(
     scalar_t r_args[depth][kILP],
@@ -166,8 +164,6 @@ struct FusedSgdMathFunctor {
     }
   }
 };
-
-} // namespace
 
 void fused_sgd_kernel(
     at::TensorList params,

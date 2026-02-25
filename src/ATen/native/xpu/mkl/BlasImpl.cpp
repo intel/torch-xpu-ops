@@ -10,6 +10,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/mkl/BlasImpl.h>
+#include <ATen/native/xpu/mkl/TorchToMklType.h>
 #include <comm/Runtime.h>
 #include <oneapi/mkl/blas.hpp>
 #include <torch/library.h>
@@ -165,8 +166,8 @@ void perform_blas_matmul(
     std::optional<Tensor> self,
     const Tensor& mat1,
     const Tensor& mat2,
-    const std::complex<T> alpha = {T(1), T(0)},
-    const std::complex<T> beta = {T(0), T(0)}) {
+    const T alpha = {double(1), double(0)},
+    const T beta = {double(0), double(0)}) {
   Tensor& result = self.has_value() ? self.value() : out;
 
   const int64_t ndim = mat1.dim();
@@ -191,11 +192,9 @@ void perform_blas_matmul(
       b.strides()[(transpose_b == transpose_c) ? ndim - 1 : ndim - 2];
   const int64_t ldc = get_ldc(transpose_c, c);
 
-  const std::complex<T>* A =
-      reinterpret_cast<const std::complex<T>*>(a.const_data_ptr());
-  const std::complex<T>* B =
-      reinterpret_cast<const std::complex<T>*>(b.const_data_ptr());
-  std::complex<T>* C = reinterpret_cast<std::complex<T>*>(c.data_ptr());
+  const T* A = reinterpret_cast<const T*>(a.const_data_ptr());
+  const T* B = reinterpret_cast<const T*>(b.const_data_ptr());
+  T* C = reinterpret_cast<T*>(c.data_ptr());
   auto queue = c10::xpu::getCurrentXPUStream().queue();
 
   const oneapi::mkl::transpose transA = get_transpose_type(a, transpose_a);
@@ -258,8 +257,8 @@ Tensor& mm_complex_out_xpu_mkl(
     const Tensor& mat2,
     Tensor& out) {
   AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "mm_complex_out_xpu_mkl", [&] {
-    using underlying_t = typename c10::scalar_value_type<scalar_t>::type;
-    perform_blas_matmul<underlying_t>(out, std::nullopt, self, mat2);
+    using T = get_mkl_type<scalar_t>::type;
+    perform_blas_matmul<T>(out, std::nullopt, self, mat2);
   });
 
   return out;
@@ -270,8 +269,8 @@ Tensor& bmm_complex_out_xpu_mkl(
     const Tensor& mat2,
     Tensor& out) {
   AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "bmm_complex_out_xpu_mkl", [&] {
-    using underlying_t = typename c10::scalar_value_type<scalar_t>::type;
-    perform_blas_matmul<underlying_t>(out, std::nullopt, self, mat2);
+    using T = get_mkl_type<scalar_t>::type;
+    perform_blas_matmul<T>(out, std::nullopt, self, mat2);
   });
 
   return out;
@@ -286,14 +285,14 @@ Tensor& addmm_complex_out_xpu_mkl(
     Tensor& out) {
   AT_DISPATCH_COMPLEX_TYPES(
       self.scalar_type(), "addmm_complex_out_xpu_mkl", [&] {
-        using underlying_t = typename c10::scalar_value_type<scalar_t>::type;
-        perform_blas_matmul<underlying_t>(
+        using T = get_mkl_type<scalar_t>::type;
+        perform_blas_matmul<T>(
             out,
             prepare_result_tensor(self, mat1, mat2, false),
             mat1,
             mat2,
-            static_cast<std::complex<underlying_t>>(alpha.toComplexDouble()),
-            static_cast<std::complex<underlying_t>>(beta.toComplexDouble()));
+            static_cast<T>(alpha.toComplexDouble()),
+            static_cast<T>(beta.toComplexDouble()));
       });
 
   return out;
@@ -308,16 +307,79 @@ Tensor& baddbmm_complex_out_xpu_mkl(
     Tensor& out) {
   AT_DISPATCH_COMPLEX_TYPES(
       self.scalar_type(), "baddbmm_complex_out_xpu_mkl", [&] {
-        using underlying_t = typename c10::scalar_value_type<scalar_t>::type;
-        perform_blas_matmul<underlying_t>(
+        using T = get_mkl_type<scalar_t>::type;
+        perform_blas_matmul<T>(
             out,
             prepare_result_tensor(self, batch1, batch2, true),
             batch1,
             batch2,
-            static_cast<std::complex<underlying_t>>(alpha.toComplexDouble()),
-            static_cast<std::complex<underlying_t>>(beta.toComplexDouble()));
+            static_cast<T>(alpha.toComplexDouble()),
+            static_cast<T>(beta.toComplexDouble()));
       });
 
   return out;
 }
+
+template <typename T>
+void vdot_kernel(Tensor& out, const Tensor& self, const Tensor& other) {
+  auto queue = c10::xpu::getCurrentXPUStream().queue();
+
+  const T* x = reinterpret_cast<const T*>(self.const_data_ptr());
+  const T* y = reinterpret_cast<const T*>(other.const_data_ptr());
+  T* result = reinterpret_cast<T*>(out.data_ptr());
+
+  const int64_t n = self.numel();
+  int64_t incx = self.stride(0);
+  int64_t incy = other.stride(0);
+
+  oneapi::mkl::blas::column_major::dotc(queue, n, x, incx, y, incy, result);
+}
+
+template <typename T>
+void dot_kernel(Tensor& out, const Tensor& self, const Tensor& other) {
+  auto queue = c10::xpu::getCurrentXPUStream().queue();
+
+  const T* x = reinterpret_cast<const T*>(self.const_data_ptr());
+  const T* y = reinterpret_cast<const T*>(other.const_data_ptr());
+  T* result = reinterpret_cast<T*>(out.data_ptr());
+
+  const int64_t n = self.numel();
+  int64_t incx = self.stride(0);
+  int64_t incy = other.stride(0);
+
+  if constexpr (
+      std::is_same<T, std::complex<float>>::value ||
+      std::is_same<T, std::complex<double>>::value) {
+    oneapi::mkl::blas::column_major::dotu(queue, n, x, incx, y, incy, result);
+  } else {
+    oneapi::mkl::blas::column_major::dot(queue, n, x, incx, y, incy, result);
+  }
+}
+
+Tensor dot_xpu_mkl(const Tensor& self, const Tensor& other) {
+  Tensor result = at::empty({}, self.options());
+
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      self.scalar_type(),
+      "dot_xpu_mkl",
+      [&]() {
+        using T = get_mkl_type<scalar_t>::type;
+        dot_kernel<T>(result, self, other);
+      });
+  return result;
+}
+
+Tensor vdot_xpu_mkl(const Tensor& self, const Tensor& other) {
+  Tensor result = at::empty({}, self.options());
+
+  AT_DISPATCH_COMPLEX_TYPES(self.scalar_type(), "vdot_xpu_mkl", [&]() {
+    using T = get_mkl_type<scalar_t>::type;
+    vdot_kernel<T>(result, self, other);
+  });
+
+  return result;
+}
+
 } // namespace at::native::xpu

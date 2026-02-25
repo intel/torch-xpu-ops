@@ -15,7 +15,6 @@ macro(setup_common_libraries)
   add_library(
     torch_xpu_ops
     STATIC
-    ${ATen_XPU_CPP_SRCS}
     ${ATen_XPU_MKL_SRCS}
     ${ATen_XPU_NATIVE_CPP_SRCS}
     ${ATen_XPU_GEN_SRCS}
@@ -52,7 +51,7 @@ else()
   sycl_add_library(
     torch_xpu_ops
     STATIC
-    CXX_SOURCES  ${ATen_XPU_CPP_SRCS} ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
+    CXX_SOURCES  ${ATen_XPU_MKL_SRCS} ${ATen_XPU_NATIVE_CPP_SRCS} ${ATen_XPU_GEN_SRCS} ${ATen_XPU_XCCL_SRCS}
     SYCL_SOURCES ${ATen_XPU_SYCL_SRCS})
   if(USE_C10D_XCCL)
     target_compile_definitions(torch_xpu_ops PRIVATE USE_C10D_XCCL)
