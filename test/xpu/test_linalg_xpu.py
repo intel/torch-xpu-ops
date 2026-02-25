@@ -340,9 +340,7 @@ def _int4_mm(self, device, m, k, n):
     for dtype in [torch.bfloat16] + (
         [torch.float16, torch.float32]
         if device == "cpu"
-        else [torch.float16]
-        if "xpu" in device
-        else []
+        else [torch.float16] if "xpu" in device else []
     ):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
@@ -486,6 +484,7 @@ def __tunableop_ctx(self):
             except KeyError:
                 pass
 
+
 @dtypes(*floating_and_complex_types())
 def matrix_rank_out_errors_and_warnings(self, device, dtype):
     # dtypes should be safely castable
@@ -501,7 +500,9 @@ def matrix_rank_out_errors_and_warnings(self, device, dtype):
         torch.linalg.matrix_rank(a, out=out)
         # Expect resize warning, and possibly an XPU-to-CPU fallback warning
         self.assertTrue(len(w) in (1, 2))
-        self.assertTrue("An output with one or more elements was resized" in str(w[0].message))
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[0].message)
+        )
         if len(w) == 2:
             self.assertTrue("Aten Op fallback from XPU to CPU" in str(w[1].message))
 
@@ -526,7 +527,9 @@ TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg._tunableop_ctx = __tunableop_ctx
-TestLinalg.test_matrix_rank_out_errors_and_warnings = matrix_rank_out_errors_and_warnings
+TestLinalg.test_matrix_rank_out_errors_and_warnings = (
+    matrix_rank_out_errors_and_warnings
+)
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)
