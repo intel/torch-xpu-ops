@@ -12,11 +12,55 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
+#include <ATen/ops/_linalg_svd.h>
+#include <torch/library.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
 
 namespace at::native {
+
+namespace xpu {
+
+std::tuple<Tensor&, Tensor&, Tensor&> _linalg_svd_U_xpu(
+  const Tensor& A,
+  bool full_matrices,
+  bool compute_uv,
+  std::optional<std::string_view> driver,
+  Tensor& U,
+  Tensor& S,
+  Tensor& Vh) {
+#if defined(USE_ONEMKL_XPU)
+  TORCH_CHECK(
+      !driver.has_value(),
+      "torch.linalg.svd: keyword argument `driver=` is only supported on CUDA inputs with cuSOLVER backend.");
+  native::xpu::linalg_svd_mkl(A, full_matrices, compute_uv, U, S, Vh);
+#else
+  auto A_cpu = A.to(A.options().device(kCPU));
+
+  auto U_cpu = at::empty_strided(
+    U.sizes(), U.strides(), U.options().device(kCPU));
+  auto S_cpu = at::empty_strided(
+    S.sizes(), S.strides(), S.options().device(kCPU));
+  auto Vh_cpu = at::empty_strided(
+    Vh.sizes(), Vh.strides(), Vh.options().device(kCPU));
+
+  at::_linalg_svd_out(
+    U_cpu, S_cpu, Vh_cpu, A_cpu, full_matrices, compute_uv, driver);
+
+  U.copy_(U_cpu);
+  S.copy_(S_cpu);
+  Vh.copy_(Vh_cpu);
+#endif
+
+  return std::tuple<Tensor&, Tensor&, Tensor&>{U, S, Vh};
+}
+
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  m.impl(TORCH_SELECTIVE_NAME("aten::_linalg_svd.U"), TORCH_FN(_linalg_svd_U_xpu));
+}
+
+} // namespace xpu
 
 void lu_solve_kernel_xpu(
     const Tensor& LU,
