@@ -123,7 +123,7 @@ struct PowChalfTensorScalarFunctor {
   scalar_t operator()(scalar_t base) const {
     return std::pow(opmath_t{base}, exp_);
   }
-  PowChalfTensorScalarFunctor(opmath_t exp) : exp_(exp) {}
+  PowChalfTensogitrScalarFunctor(opmath_t exp) : exp_(exp) {}
 
  private:
   opmath_t exp_;
@@ -242,6 +242,10 @@ void pow_tensor_scalar_kernel(
       return;
     }
     AT_DISPATCH_COMPLEX_TYPES(iter.common_dtype(), "pow_xpu", [&]() {
+      if (exp_scalar.equal(2.0)) {
+        gpu_kernel(iter, PowImplUnaryFunctor1<scalar_t>());
+        return;
+      }
       const auto exp = exp_scalar.to<scalar_t>();
       gpu_kernel(iter, PowScalarTensorFunctor2<scalar_t>(exp));
     });
