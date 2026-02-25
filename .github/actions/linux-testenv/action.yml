@@ -182,6 +182,7 @@ runs:
           # yolov requires numpy>=1.23
           pip install -U numpy==1.26.4
         fi
+        pip install -U "pip" "setuptools<81" "wheel"
     - name: Torch Config
       shell: bash -xe {0}
       run: |
