@@ -360,7 +360,9 @@ def _int4_mm(self, device, m, k, n):
     for dtype in [torch.bfloat16] + (
         [torch.float16, torch.float32]
         if device == "cpu"
-        else [torch.float16] if "xpu" in device else []
+        else [torch.float16]
+        if "xpu" in device
+        else []
     ):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
