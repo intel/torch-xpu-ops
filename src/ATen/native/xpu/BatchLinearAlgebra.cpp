@@ -216,4 +216,3 @@ void triangular_solve_kernel_xpu(
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
 } // namespace at::native
-ative
