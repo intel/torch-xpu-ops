@@ -123,7 +123,7 @@ struct PowChalfTensorScalarFunctor {
   scalar_t operator()(scalar_t base) const {
     return std::pow(opmath_t{base}, exp_);
   }
-  PowChalfTensogitrScalarFunctor(opmath_t exp) : exp_(exp) {}
+  PowChalfTensorScalarFunctor(opmath_t exp) : exp_(exp) {}
 
  private:
   opmath_t exp_;
