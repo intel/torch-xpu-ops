@@ -10,6 +10,8 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 # SPDX-License-Identifier: BSD-3-Clause
 
+# Owner(s): ["module: functorch"]
+
 import copy
 import math
 import os
