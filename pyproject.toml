@@ -16,11 +16,11 @@ build-backend = "setuptools.build_meta:__legacy__"
 [tool.black]
 # Uncomment if pyproject.toml worked fine to ensure consistency with flake8
 # line-length = 120
-target-version = ["py38", "py39", "py310", "py311"]
+target-version = ["py310", "py311", "py312"]
 
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py312"
 line-length = 120
 
 [tool.ruff.lint]
@@ -69,6 +69,7 @@ ignore = [
     "SIM118",
     "UP006", # keep-runtime-typing
     "UP007", # keep-runtime-typing
+    "UP038", # Was removed from newer versions, results in slower code
 ]
 select = [
     "B",
