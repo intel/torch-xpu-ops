@@ -1803,7 +1803,7 @@ void spatial_softmax_backward(
       inscalar_t,                                  \
       outscalar_t,                                 \
       accscalar_t,                                 \
-    IndexType,                                   \
+      IndexType,                                   \
       LogSoftMax,                                  \
       is_same_dtype>(                              \
       gradInput.mutable_data_ptr<inscalar_t>(),    \
