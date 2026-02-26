@@ -86,6 +86,7 @@
   dispatch:
     XPU: add_out_xpu
     SparseXPU: add_out_sparse_xpu
+    SparseCsrXPU: add_out_sparse_compressed_xpu
   tags: pointwise
 
 - func: cummax(Tensor self, int dim) -> (Tensor values, Tensor indices)
