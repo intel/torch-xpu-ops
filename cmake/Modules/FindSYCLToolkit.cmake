@@ -20,16 +20,8 @@ This will define the following variables:
 
 ``SYCLTOOLKIT_FOUND``
   True if the system has the SYCL library.
-``SYCL_COMPILER``
-  SYCL compiler executable.
-``SYCL_INCLUDE_DIR``
-  Include directories needed to use SYCL.
-``SYCL_LIBRARY_DIR``
-  Libaray directories needed to use SYCL.
 ``SYCL_FLAGS``
   SYCL specific flags for the compiler.
-``SYCL_LANGUAGE_VERSION``
-  The SYCL language spec version by Compiler.
 
 #]=======================================================================]
 
@@ -47,42 +39,6 @@ endif()
 set(SYCLTOOLKIT_FOUND TRUE)
 
 include(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
-
-if(WIN32)
-  set(SYCL_EXECUTABLE_NAME icx)
-else()
-  set(SYCL_EXECUTABLE_NAME icpx)
-endif()
-
-if(NOT SYCL_ROOT)
-  execute_process(
-    COMMAND which ${SYCL_EXECUTABLE_NAME}
-    OUTPUT_VARIABLE SYCL_CMPLR_FULL_PATH
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-
-  if(NOT EXISTS "${SYCL_CMPLR_FULL_PATH}")
-    message(WARNING "Cannot find ENV{CMPLR_ROOT} or icpx, please setup SYCL compiler Tool kit enviroment before building!!")
-    return()
-  endif()
-
-  get_filename_component(SYCL_BIN_DIR "${SYCL_CMPLR_FULL_PATH}" DIRECTORY)
-  set(SYCL_ROOT ${SYCL_BIN_DIR}/..)
-endif()
-
-find_program(
-  SYCL_COMPILER
-  NAMES ${SYCL_EXECUTABLE_NAME}
-  PATHS "${SYCL_ROOT}"
-  PATH_SUFFIXES bin bin64
-  NO_DEFAULT_PATH
-  )
-
-string(COMPARE EQUAL "${SYCL_COMPILER}" "" nocmplr)
-if(nocmplr)
-  set(SYCLTOOLKIT_FOUND False)
-  set(SYCL_REASON_FAILURE "SYCL: CMAKE_CXX_COMPILER not set!!")
-  set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
-endif()
 
 # Function to write a test case to verify SYCL features.
 
@@ -220,8 +176,6 @@ if(${has_werror} EQUAL -1)
 
   message(DEBUG "The SYCL Language Version is ${SYCL_LANGUAGE_VERSION}")
 
-  # Include in Cache
-  set(SYCL_LANGUAGE_VERSION "${SYCL_LANGUAGE_VERSION}" CACHE STRING "SYCL Language version")
 endif()
 
 # Create a clean working directory.
@@ -252,10 +206,6 @@ if(nosycllang)
   set(SYCL_REASON_FAILURE "Can not find __INTEL_LLVM_COMPILER}")
   set(SYCL_NOT_FOUND_MESSAGE "${SYCL_REASON_FAILURE}")
 endif()
-
-
-# Include in Cache
-set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm compiler")
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
