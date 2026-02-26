@@ -67,7 +67,6 @@ ignore = [
     "SIM116", # Disable Use a dictionary instead of consecutive `if` statements
     "SIM117",
     "SIM118",
-    "TRY203",
     "UP006", # keep-runtime-typing
     "UP007", # keep-runtime-typing
     "UP038", # Was removed from newer versions, results in slower code
@@ -114,6 +113,7 @@ select = [
     "RUF015", # access first ele in constant time
     "RUF016", # type error non-integer index
     "RUF017",
+    "TRY203",
     "UP",
 ]
 
