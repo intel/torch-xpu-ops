@@ -235,6 +235,19 @@ jobs:
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
+      - name: Run CPP Extensions AOT SYCL UT
+        if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
+        shell: cmd
+        continue-on-error: true
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          call conda activate windows_ci
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
+          python test_cpp_extensions_aot_xpu.py -v
+
+          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
+          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
       - name: Run XPU OP Extended UT
         if: contains(inputs.ut, 'op_extended') || github.event_name == 'schedule'
         shell: cmd
