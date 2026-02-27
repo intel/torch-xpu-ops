@@ -44,6 +44,7 @@ class TestSimpleConversion(TestCase):
         y = x.nonzero()
         self.assertEqual(y.stride(), (1, 1))
 
+
 instantiate_device_type_tests(
     TestSimpleConversion, globals(), only_for="xpu", allow_xpu=True
 )
