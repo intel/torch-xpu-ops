@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -842,8 +842,8 @@ struct IndexPutDeterministicKernelFunctor {
       acc = c10::load(&self_[s_gid]);
 
       for (int64_t inner_idx = id.glb_batch;
-           inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
-           inner_idx++) {
+           inner_idx >= 0 && sorted_indices_[inner_idx] == idx;
+           inner_idx--) {
         int64_t idx_orig = indices_[inner_idx];
         int64_t v_gid = idx_orig * stride_ + v_stride;
         acc += (accscalar_t)c10::load(&value_[v_gid]);
