@@ -28,6 +28,8 @@ def _build_cpp_extensions():
 
     shell_env = os.environ.copy()
     shell_env["USE_NINJA"] = "1"
+    if sys.platform == "win32":
+        shell_env["DISTUTILS_USE_SDK"] = "1"
 
     install_cmd = [
         sys.executable,
