@@ -839,8 +839,7 @@ struct IndexPutDeterministicKernelFunctor {
 
     if (accumulate_) {
       accscalar_t acc;
-      if (accumulate_)
-        acc = c10::load(&self_[s_gid]);
+      acc = c10::load(&self_[s_gid]);
 
       for (int64_t inner_idx = id.glb_batch;
            inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
