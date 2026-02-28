@@ -108,12 +108,10 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
 
   auto num_nonzeros = std::distance(idx_flat_begin, idx_flat_end);
 
-  bool need_to_copy = out.dim() == 2 &&
-      out.sizes()[0] == num_nonzeros && out.sizes()[1] == num_dim &&
-      !out.t().is_contiguous();
+  bool need_to_copy = out.dim() == 2 && out.sizes()[0] == num_nonzeros &&
+      out.sizes()[1] == num_dim && !out.t().is_contiguous();
   Tensor out_ = need_to_copy
-      ? Tensor(at::detail::empty_xpu(
-            {num_dim, num_nonzeros}, out.options()))
+      ? Tensor(at::detail::empty_xpu({num_dim, num_nonzeros}, out.options()))
       : out.resize_({num_dim, num_nonzeros});
 
   if (num_nonzeros > 0 && num_dim > 0) {
@@ -132,13 +130,7 @@ void nonzero_template(const Tensor& self_, Tensor& out) {
     const int64_t N = num_nonzeros * num_dim;
     // restore flatten idx to indices
     FlattenIdxtoRealIdxKernelFunctor kfn(
-        N,
-        num_dim,
-        num_nonzeros,
-        out_begin,
-        idx_flat_begin,
-        divisor,
-        sizes);
+        N, num_dim, num_nonzeros, out_begin, idx_flat_begin, divisor, sizes);
 
     const auto wg_sz = std::min(syclMaxWorkGroupSize(kfn), N);
     const auto num_wg = (N + wg_sz - 1) / wg_sz;

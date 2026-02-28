@@ -432,8 +432,7 @@ template <
     typename index_t>
 struct BatchNormCollectStatisticsKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     int plane = item.get_group(1);
     int tid = item.get_local_linear_id();
 
@@ -1885,8 +1884,7 @@ template <
     typename index_t>
 struct BatchNormBackwardReduceKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
 
     stat_accscalar_t r_mean = mean_[plane];
@@ -4173,8 +4171,7 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
     index_t N = grad_output_.size(0) * grad_output_.size(2);
 
@@ -4381,8 +4378,7 @@ template <
     typename index_t>
 struct BatchNormBackwardVectorizedKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
     index_t N = grad_output_.size(0) * grad_output_.size(2);
 

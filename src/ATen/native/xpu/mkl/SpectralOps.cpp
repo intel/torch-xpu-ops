@@ -339,7 +339,6 @@ Tensor _fft_c2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
-
   if (dim.empty()) {
     return orig_self.clone();
   }
@@ -425,7 +424,6 @@ Tensor _fft_c2r_mkl(
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
-
   if (dim.empty()) {
     return orig_self.clone();
   }
@@ -490,7 +488,6 @@ Tensor _fft_r2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
-
   if (dim.empty()) {
     return orig_self.clone();
   }
