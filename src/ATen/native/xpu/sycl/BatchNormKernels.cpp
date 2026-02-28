@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -470,7 +470,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     for (int i = 1; i < SIMD; i <<= 1) {
       stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
       int o_n = sycl::permute_group_by_xor(sg, n, i);
-      stat_accscalar_t factor = 1.0 / fmaxf(1.0, n + o_n);
+      stat_accscalar_t factor = static_cast<stat_accscalar_t>(1.0) /
+          static_cast<stat_accscalar_t>(std::max(1, n + o_n));
       var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
@@ -501,7 +502,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     for (int i = 1; i < SIMD; i <<= 1) {
       stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
       int o_n = sycl::permute_group_by_xor(sg, n, i);
-      stat_accscalar_t factor = 1.0f / fmaxf(1.0f, n + o_n);
+      stat_accscalar_t factor = static_cast<stat_accscalar_t>(1.0) /
+          static_cast<stat_accscalar_t>(std::max(1, n + o_n));
       var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
