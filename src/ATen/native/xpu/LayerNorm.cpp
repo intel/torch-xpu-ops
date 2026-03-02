@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -189,11 +189,14 @@ namespace native {
       &grad_weight,
       &grad_bias);
 
-  return std::make_tuple(std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
+  return std::make_tuple(
+      std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
 }
 
 REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
-REGISTER_XPU_DISPATCH(LayerNormBackwardKernel, &xpu::layer_norm_backward_kernel);
+REGISTER_XPU_DISPATCH(
+    LayerNormBackwardKernel,
+    &xpu::layer_norm_backward_kernel);
 } // namespace native
 
 } // namespace at

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -10,12 +10,12 @@
 
 #pragma once
 
+#include <cutlass/cutlass.h>
+#include <cutlass/detail/layout.hpp>
+#include <cutlass/epilogue/collective/collective_epilogue.hpp>
+#include <cutlass/epilogue/collective/detail.hpp>
+#include <cutlass/epilogue/dispatch_policy.hpp>
 #include <sycl/sycl.hpp>
-#include "cutlass/cutlass.h"
-#include "cutlass/detail/layout.hpp"
-#include "cutlass/epilogue/collective/collective_epilogue.hpp"
-#include "cutlass/epilogue/collective/detail.hpp"
-#include "cutlass/epilogue/dispatch_policy.hpp"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
