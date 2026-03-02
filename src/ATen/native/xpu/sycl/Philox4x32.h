@@ -514,8 +514,8 @@ static inline unsigned int rand_poisson(
   if (lambda < 64)
     return rand_poisson_knuth(state, (float)lambda);
   if (lambda > 4000)
-    return (
-        unsigned int)((std::sqrt(lambda) * rand_normal_double(state)) + lambda + 0.5); // Round to nearest
+    return (unsigned int)((std::sqrt(lambda) * rand_normal_double(state)) +
+                          lambda + 0.5); // Round to nearest
   return rand_poisson_gammainc(state, (float)lambda);
 }
 
