@@ -114,7 +114,7 @@ skip_dict = {
     "../../../../test/distributed/_composable/test_composability/test_2d_composability.py": None,
     "../../../../test/distributed/_composable/test_replicate.py": (
         # random hang
-        "test_replicate_multi_module",
+        "ReplicateFullyShardInit",
     ),
     "../../../../test/distributed/_shard/test_sharder.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
