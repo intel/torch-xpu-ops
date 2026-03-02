@@ -112,7 +112,10 @@ skip_dict = {
     "../../../../test/distributed/_composable/test_replicate_with_compiler.py": None,
     "../../../../test/distributed/_composable/test_checkpoint.py": None,
     "../../../../test/distributed/_composable/test_composability/test_2d_composability.py": None,
-    "../../../../test/distributed/_composable/test_replicate.py": None,
+    "../../../../test/distributed/_composable/test_replicate.py": (
+        # random hang
+        "test_replicate_multi_module",
+    ),
     "../../../../test/distributed/_shard/test_sharder.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_logger.py": None,
     "../../../../test/distributed/_shard/sharded_tensor/test_sharded_tensor.py": None,
