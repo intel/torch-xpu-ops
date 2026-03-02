@@ -59,6 +59,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # install pytorch
+        pip config unset global.constraint
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then
@@ -70,6 +71,8 @@ runs:
           pip install --force-reinstall $(find ${latest_dir} -name "*torch*.whl")
         fi
         TORCH_COMMIT_ID=$(python -c 'import torch; print(torch.version.git_version)')
+        pip freeze |grep torch > "${GITHUB_WORKSPACE}/torch_constraints.txt"
+        pip config set global.constraint "${GITHUB_WORKSPACE}/torch_constraints.txt"
         if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
           PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
         else
