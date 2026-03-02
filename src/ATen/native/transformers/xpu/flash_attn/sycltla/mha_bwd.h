@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
 #include <sycl/sycl.hpp>
-#include "mha_common.h"
+#include <sycltla/mha_common.h>
 
 namespace cute {
 template <
