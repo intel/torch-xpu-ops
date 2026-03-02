@@ -819,6 +819,67 @@ void _index_kernel(
 }
 
 template <typename scalar_t, typename accscalar_t>
+struct IndexPutDeterministicAccumulateKernelFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    auto id = cfg_.get_item_desc(item);
+
+    if (id.glb_batch >= cfg_.problem_batch_ || id.glb_problem >= cfg_.problem_)
+      return;
+
+    int64_t idx = sorted_indices_[id.glb_batch];
+    if (id.glb_batch != 0 && idx == sorted_indices_[id.glb_batch - 1])
+      return;
+
+    int64_t pi_ = id.glb_problem;
+    int64_t si_ = pi_ % stride_;
+    int64_t bi_ = pi_ / stride_;
+    int64_t s_gid = si_ + idx * stride_ + bi_ * stride_before_;
+    int64_t v_stride = si_ + bi_ * v_stride_before_;
+
+    accscalar_t acc;
+    acc = c10::load(&self_[s_gid]);
+
+    for (int64_t inner_idx = id.glb_batch;
+         inner_idx < cfg_.problem_batch_ && sorted_indices_[inner_idx] == idx;
+         inner_idx++) {
+      int64_t idx_orig = indices_[inner_idx];
+      int64_t v_gid = idx_orig * stride_ + v_stride;
+      acc += (accscalar_t)c10::load(&value_[v_gid]);
+    }
+
+    self_[s_gid] = acc;
+  }
+
+  IndexPutDeterministicAccumulateKernelFunctor(
+      int64_t* sorted_indices,
+      int64_t* indices,
+      const scalar_t* value,
+      scalar_t* self,
+      int64_t stride,
+      int64_t stride_before,
+      int64_t v_stride_before,
+      BatchKernelConfig cfg)
+      : sorted_indices_(sorted_indices),
+        indices_(indices),
+        value_(value),
+        self_(self),
+        stride_(stride),
+        stride_before_(stride_before),
+        v_stride_before_(v_stride_before),
+        cfg_(cfg) {}
+
+ private:
+  int64_t* sorted_indices_;
+  int64_t* indices_;
+  const scalar_t* value_;
+  scalar_t* self_;
+  int64_t stride_;
+  int64_t stride_before_;
+  int64_t v_stride_before_;
+  BatchKernelConfig cfg_;
+};
+
+template <typename scalar_t>
 struct IndexPutDeterministicKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     auto id = cfg_.get_item_desc(item);
@@ -836,25 +897,10 @@ struct IndexPutDeterministicKernelFunctor {
     int64_t bi_ = pi_ / stride_;
     int64_t s_gid = si_ + idx * stride_ + bi_ * stride_before_;
     int64_t v_stride = si_ + bi_ * v_stride_before_;
-
-    if (accumulate_) {
-      accscalar_t acc;
-      acc = c10::load(&self_[s_gid]);
-
-      for (int64_t inner_idx = id.glb_batch;
-           inner_idx >= 0 && sorted_indices_[inner_idx] == idx;
-           inner_idx--) {
-        int64_t idx_orig = indices_[inner_idx];
-        int64_t v_gid = idx_orig * stride_ + v_stride;
-        acc += (accscalar_t)c10::load(&value_[v_gid]);
-      }
-      self_[s_gid] = acc;
-    } else {
-      // For non-accumulate just write the last value to ensure deterministic
-      // output.
-      self_[s_gid] =
-          c10::load(&value_[indices_[id.glb_batch] * stride_ + v_stride]);
-    }
+    // For non-accumulate just write the last value to ensure deterministic
+    // output.
+    self_[s_gid] =
+        c10::load(&value_[indices_[id.glb_batch] * stride_ + v_stride]);
   }
 
   IndexPutDeterministicKernelFunctor(
@@ -864,7 +910,6 @@ struct IndexPutDeterministicKernelFunctor {
       scalar_t* self,
       int64_t stride,
       int64_t stride_before,
-      bool accumulate,
       int64_t v_stride_before,
       BatchKernelConfig cfg)
       : sorted_indices_(sorted_indices),
@@ -873,7 +918,6 @@ struct IndexPutDeterministicKernelFunctor {
         self_(self),
         stride_(stride),
         stride_before_(stride_before),
-        accumulate_(accumulate),
         v_stride_before_(v_stride_before),
         cfg_(cfg) {}
 
@@ -884,7 +928,6 @@ struct IndexPutDeterministicKernelFunctor {
   scalar_t* self_;
   int64_t stride_;
   int64_t stride_before_;
-  bool accumulate_;
   int64_t v_stride_before_;
   BatchKernelConfig cfg_;
 };
@@ -904,28 +947,50 @@ void launch_index_put_deterministic_kernel(
     return;
   }
   int64_t v_stride_before = numel * stride;
-  using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t, accscalar_t>;
-  BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
-      /* num of indices */ numel,
-      /* num of elements to put per indices */ outer_dim * stride,
-      1,
-      numel,
-      true,
-      {BatchKernelConfig::Policy::pSegment,
-       BatchKernelConfig::Policy::pAggressiveSplit});
-  KernelClass kfn(
-      sorted_indices,
-      indices,
-      value,
-      self,
-      stride,
-      stride_before,
-      accumulate,
-      v_stride_before,
-      cfg);
-
-  sycl_kernel_submit(
-      cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+  if (accumulate) {
+    using KernelClass =
+        IndexPutDeterministicAccumulateKernelFunctor<scalar_t, accscalar_t>;
+    BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+        /* num of indices */ numel,
+        /* num of elements to put per indices */ outer_dim * stride,
+        1,
+        numel,
+        true,
+        {BatchKernelConfig::Policy::pSegment,
+         BatchKernelConfig::Policy::pAggressiveSplit});
+    KernelClass kfn(
+        sorted_indices,
+        indices,
+        value,
+        self,
+        stride,
+        stride_before,
+        v_stride_before,
+        cfg);
+    sycl_kernel_submit(
+        cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+  } else {
+    using KernelClass = IndexPutDeterministicKernelFunctor<scalar_t>;
+    BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
+        /* num of indices */ numel,
+        /* num of elements to put per indices */ outer_dim * stride,
+        1,
+        numel,
+        true,
+        {BatchKernelConfig::Policy::pSegment,
+         BatchKernelConfig::Policy::pAggressiveSplit});
+    KernelClass kfn(
+        sorted_indices,
+        indices,
+        value,
+        self,
+        stride,
+        stride_before,
+        v_stride_before,
+        cfg);
+    sycl_kernel_submit(
+        cfg.global_size(), cfg.group_size(), getCurrentSYCLQueue(), kfn);
+  }
 }
 
 template <int vt, typename func_t>
