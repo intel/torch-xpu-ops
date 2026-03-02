@@ -1347,9 +1347,9 @@ void softmax_backward_kernel(
       align_bytes,
       is_same_dtype>;
 
-  int local_size = std::min(
+  int64_t local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int(syclMaxWorkGroupSize<KernelClass>()));
+      int64_t(syclMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 
