@@ -956,8 +956,7 @@ struct JaggedDenseDenseElementwiseJaggedOutputFunctor {
 
     const int offset_begin =
         item.get_group(0) * item.get_local_range(1) + item.get_local_id(1);
-    const int offset_stride =
-        item.get_group_range(0) * item.get_local_range(1);
+    const int offset_stride = item.get_group_range(0) * item.get_local_range(1);
     for (int offset = offset_begin; offset < nnz; offset += offset_stride) {
       // Resolve flat packed index -> (batch_idx, jidx) in the dense tensor.
       // Each jagged dim narrows batch_idx from a flat NNZ index to a batch row.
@@ -968,7 +967,8 @@ struct JaggedDenseDenseElementwiseJaggedOutputFunctor {
 #pragma unroll
       for (int d = NUM_JAGGED_DIM - 1; d >= 0; --d) {
         const int n_seqs = x_offsets_sizes_.vals[d] - 1;
-        const int seq = upper_bound_minus1(x_offsets_.vals[d], n_seqs, batch_idx);
+        const int seq =
+            upper_bound_minus1(x_offsets_.vals[d], n_seqs, batch_idx);
         const int pos = batch_idx - x_offsets_.vals[d][seq];
         if (pos >= jagged_dims_.vals[d]) {
           truncated = true;
@@ -985,18 +985,17 @@ struct JaggedDenseDenseElementwiseJaggedOutputFunctor {
 
       const int oidx = batch_idx;
       int iidx;
-      for (iidx = item.get_local_id(0);
-           iidx * 2 + 1 < inner_dense_size;
+      for (iidx = item.get_local_id(0); iidx * 2 + 1 < inner_dense_size;
            iidx += item.get_local_range(0)) {
         if (!truncated) {
-          output_values[offset][2 * iidx] = f_(
-              x_values_[offset][2 * iidx],
-              y_0_[oidx][jidx][2 * iidx],
-              y_1_[oidx][jidx][2 * iidx]);
-          output_values[offset][2 * iidx + 1] = f_(
-              x_values_[offset][2 * iidx + 1],
-              y_0_[oidx][jidx][2 * iidx + 1],
-              y_1_[oidx][jidx][2 * iidx + 1]);
+          output_values[offset][2 * iidx] =
+              f_(x_values_[offset][2 * iidx],
+                 y_0_[oidx][jidx][2 * iidx],
+                 y_1_[oidx][jidx][2 * iidx]);
+          output_values[offset][2 * iidx + 1] =
+              f_(x_values_[offset][2 * iidx + 1],
+                 y_0_[oidx][jidx][2 * iidx + 1],
+                 y_1_[oidx][jidx][2 * iidx + 1]);
         } else {
           output_values[offset][2 * iidx] =
               f_(x_values_[offset][2 * iidx], 0, 0);
@@ -1006,10 +1005,10 @@ struct JaggedDenseDenseElementwiseJaggedOutputFunctor {
       }
       if (iidx * 2 + 1 == inner_dense_size) {
         if (!truncated) {
-          output_values[offset][2 * iidx] = f_(
-              x_values_[offset][2 * iidx],
-              y_0_[oidx][jidx][2 * iidx],
-              y_1_[oidx][jidx][2 * iidx]);
+          output_values[offset][2 * iidx] =
+              f_(x_values_[offset][2 * iidx],
+                 y_0_[oidx][jidx][2 * iidx],
+                 y_1_[oidx][jidx][2 * iidx]);
         } else {
           output_values[offset][2 * iidx] =
               f_(x_values_[offset][2 * iidx], 0, 0);
@@ -1048,10 +1047,8 @@ struct JaggedDenseDenseElementwiseJaggedOutputFunctor {
 
 template <typename scalar_t>
 struct DenseToJaggedFunctor {
-  scalar_t operator()(
-      scalar_t /*unused*/,
-      scalar_t y,
-      scalar_t /*unused*/) const {
+  scalar_t operator()(scalar_t /*unused*/, scalar_t y, scalar_t /*unused*/)
+      const {
     return y;
   }
 };
@@ -1196,7 +1193,8 @@ at::Tensor jagged_to_padded_dense_forward_kernel(
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
       [&] {
-        scalar_t fill_value = at::native::_get_padding_value<scalar_t>(padding_value, values.is_floating_point());
+        scalar_t fill_value = at::native::_get_padding_value<scalar_t>(
+            padding_value, values.is_floating_point());
         jagged_dense_elementwise_dense_template<scalar_t>(
             values_canonicalized,
             offsets.vec(),
