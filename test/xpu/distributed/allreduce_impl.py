@@ -760,12 +760,13 @@ def allreduce_with_ring_pull(
     """
     Perform allreduce using symmetric memory with ring reduce-scatter + ring allgather.
 
-    This implementation uses a true ring pattern:
-    - Reduce-Scatter (Ring Push): Each rank pushes accumulated data to next neighbor
-    - Allgather (Ring Pull): Each rank pulls from prev neighbor
+    This implementation uses a pull-based ring pattern:
+    - Reduce-Scatter (Ring Pull): Each rank pulls from prev_rank and accumulates
+    - Allgather (Ring Pull): Each rank pulls from prev_rank
 
     Ring pattern for world_size=N:
-    - Data flows: rank 0 -> rank 1 -> rank 2 -> ... -> rank N-1 -> rank 0
+    - Each rank only reads from prev_rank = (rank - 1 + N) % N
+    - Data index starts from rank and rotates backwards
     - Each phase has (N-1) steps
 
     Args:
@@ -821,70 +822,54 @@ def allreduce_with_ring_pull(
     workspace.barrier()
 
     # ==========================================================================
-    # Phase 2: Reduce-Scatter
-    # Step 2a: Scatter - each rank pushes its chunks to all other ranks (parallel)
-    # Step 2b: Reduce - single kernel reduction using torch.sum
+    # Phase 2: Ring Reduce-Scatter (Pull-based)
+    # Each rank only reads from prev_rank to avoid write contention.
+    # Data index starts from rank and rotates backwards.
+    #
+    # Step s: rank r pulls chunk[(r - s + world_size) % N] from prev_rank,
+    #         adds to own symm buffer, writes result for next rank to pull.
+    #
+    # After (world_size - 1) steps, chunk[(rank + 1) % N] has full reduction.
     # ==========================================================================
+    for step in range(world_size - 1):
+        # Which chunk to reduce this step
+        chunk_idx = (rank - step + world_size) % world_size
+        chunk_start = chunk_idx * chunk_size
+        chunk_end = chunk_start + chunk_size
 
-    # Step 2a: Scatter - push my chunk[remote_rank] to remote_rank's buffer
-    for remote_rank in range(world_size):
-        if remote_rank == rank:
-            continue
-        remote_buffer = workspace.get_buffer(
-            remote_rank,
-            (chunk_size,),
-            tensor.dtype,
-            storage_offset=rank * chunk_size  # my slot in remote_rank's buffer
+        # Pull partial sum from prev_rank's symm buffer
+        prev_buffer = workspace.get_buffer(
+            prev_rank, (chunk_size,), tensor.dtype, storage_offset=chunk_start
         )
-        # Send the chunk that remote_rank is responsible for
-        remote_buffer.copy_(tensor_flat[remote_rank * chunk_size:(remote_rank + 1) * chunk_size])
 
-    workspace.barrier()
+        # Add prev_rank's partial sum to my symm buffer (in-place)
+        my_symm_buffer[chunk_start:chunk_end].add_(prev_buffer)
 
-    # Step 2b: Reduce - copy local chunk to my slot, then sum all
-    my_chunk_start = rank * chunk_size
-    my_chunk_end = (rank + 1) * chunk_size
-
-    # Copy my local chunk to my slot (slot[rank] was not written by scatter)
-    my_slot = workspace.get_buffer(
-        rank, (chunk_size,), tensor.dtype, storage_offset=my_chunk_start
-    )
-    my_slot.copy_(tensor_flat[my_chunk_start:my_chunk_end])
-
-    # View symm buffer as [world_size, chunk_size] for reduction
-    my_symm_2d = workspace.get_buffer(
-        rank, (world_size, chunk_size), tensor.dtype, storage_offset=0
-    )
-
-    # Single kernel reduction: sum all chunks
-    torch.sum(my_symm_2d, dim=0, out=tensor_flat[my_chunk_start:my_chunk_end])
-
-    # Write reduced result back to symm buffer for allgather
-    my_slot.copy_(tensor_flat[my_chunk_start:my_chunk_end])
-
-    workspace.barrier()
+        workspace.barrier()
 
     # ==========================================================================
     # Phase 3: Ring Allgather (Pull-based)
-    # Each step: rank pulls chunk from prev_rank and copies to symm buffer
-    # After (world_size - 1) steps, each rank has all reduced chunks in symm buffer
+    # Each rank only reads from its prev_rank.
+    # After (world_size - 1) steps, each rank has all reduced chunks.
     #
-    # Each rank's reduced chunk is at index `rank` (my_chunk_start)
-    # Step s: rank r pulls chunk[(r - s - 1) % N] from prev_rank
+    # After reduce-scatter, each rank r has reduced chunk[(r + 1) % N].
+    # Data index starts from (rank + 1) and rotates backwards.
+    # Step s: rank r pulls chunk[(r + 1 - s + world_size) % N] from prev_rank
     # ==========================================================================
     for step in range(world_size - 1):
         # Which chunk to gather this step
-        # Start from prev_rank's chunk (rank - 1), then (rank - 2), ...
-        chunk_idx = (rank - step - 1 + world_size) % world_size
+        # Start from (rank + 1) which is the reduced chunk we own
+        chunk_idx = (rank + 1 - step + world_size) % world_size
         chunk_start = chunk_idx * chunk_size
+        chunk_end = chunk_start + chunk_size
 
         # Pull the chunk from prev_rank's symm buffer
         prev_buffer = workspace.get_buffer(
             prev_rank, (chunk_size,), tensor.dtype, storage_offset=chunk_start
         )
 
-        # Only write to symm buffer (one remote read, for next rank to pull)
-        my_symm_buffer[chunk_start:chunk_start + chunk_size].copy_(prev_buffer)
+        # Copy to local symm buffer (for next rank to pull in next step)
+        my_symm_buffer[chunk_start:chunk_end].copy_(prev_buffer)
 
         workspace.barrier()
 
