@@ -113,21 +113,29 @@ static inline void philox_counter_incr(PhiloxState* state, uint64_t n) {
 
   const uint32_t old_c1 = state->counter.val[1];
   state->counter.val[1] += high_word + carry;
-  carry = (state->counter.val[1] < old_c1 || (carry && state->counter.val[1] == old_c1)) ? 1u : 0u;
+  carry = (state->counter.val[1] < old_c1 ||
+           (carry && state->counter.val[1] == old_c1))
+      ? 1u
+      : 0u;
 
-  if (carry == 0) return;
+  if (carry == 0)
+    return;
 
   const uint32_t old_c2 = state->counter.val[2];
   state->counter.val[2] += carry;
-  if (state->counter.val[2] >= old_c2) return;
+  if (state->counter.val[2] >= old_c2)
+    return;
 
   state->counter.val[3] += 1u;
 }
 
 static inline void philox_counter_incr_single(PhiloxState* state) {
-  if (++state->counter.val[0] != 0) return;
-  if (++state->counter.val[1] != 0) return;
-  if (++state->counter.val[2] != 0) return;
+  if (++state->counter.val[0] != 0)
+    return;
+  if (++state->counter.val[1] != 0)
+    return;
+  if (++state->counter.val[2] != 0)
+    return;
   ++state->counter.val[3];
 }
 
@@ -152,10 +160,10 @@ static inline uint32_t philox_multiply_high_low(
 
 static inline uint4 philox4x32_single_round(uint4 input, uint2 round_key) {
   uint32_t product_hi_0, product_hi_1;
-  const uint32_t product_lo_0 = philox_multiply_high_low(
-      kPhiloxMultiplier0, input.val[0], &product_hi_0);
-  const uint32_t product_lo_1 = philox_multiply_high_low(
-      kPhiloxMultiplier1, input.val[2], &product_hi_1);
+  const uint32_t product_lo_0 =
+      philox_multiply_high_low(kPhiloxMultiplier0, input.val[0], &product_hi_0);
+  const uint32_t product_lo_1 =
+      philox_multiply_high_low(kPhiloxMultiplier1, input.val[2], &product_hi_1);
 
   return uint4{
       product_hi_1 ^ input.val[1] ^ round_key.val[0],
@@ -170,17 +178,48 @@ static inline uint2 philox4x32_bump_key(uint2 key) {
   return key;
 }
 
-static inline uint4 philox4x32_rounds(uint4 counter, uint2 key, unsigned int rounds) {
-  if (rounds > 0)  counter = philox4x32_single_round(counter, key);
-  if (rounds > 1)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 2)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 3)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 4)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 5)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 6)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 7)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 8)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
-  if (rounds > 9)  { key = philox4x32_bump_key(key); counter = philox4x32_single_round(counter, key); }
+static inline uint4 philox4x32_rounds(
+    uint4 counter,
+    uint2 key,
+    unsigned int rounds) {
+  if (rounds > 0)
+    counter = philox4x32_single_round(counter, key);
+  if (rounds > 1) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 2) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 3) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 4) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 5) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 6) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 7) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 8) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
+  if (rounds > 9) {
+    key = philox4x32_bump_key(key);
+    counter = philox4x32_single_round(counter, key);
+  }
   return counter;
 }
 
@@ -419,16 +458,16 @@ static inline double rand_normal_double(randStatePhilox4_32_10_t* state) {
 static inline double lgamma_integer(int a) {
   // Precomputed log((n-1)!) values for n = 0..9
   constexpr double kLgammaTable[] = {
-      0.0,                    // a=0: undefined, but return 0
-      0.0,                    // a=1: log(Gamma(1)) = log(0!) = 0
-      0.0,                    // a=2: log(Gamma(2)) = log(1!) = 0
-      0.6931471805599453,     // a=3: log(Gamma(3)) = log(2!) = log(2)
-      1.7917594692280550,     // a=4: log(Gamma(4)) = log(3!) = log(6)
-      3.1780538303479458,     // a=5: log(Gamma(5)) = log(4!) = log(24)
-      4.7874917427820458,     // a=6: log(Gamma(6)) = log(5!) = log(120)
-      6.5792512120101012,     // a=7: log(Gamma(7)) = log(6!) = log(720)
-      8.5251613610654147,     // a=8: log(Gamma(8)) = log(7!) = log(5040)
-      10.604602902745251      // a=9: log(Gamma(9)) = log(8!) = log(40320)
+      0.0, // a=0: undefined, but return 0
+      0.0, // a=1: log(Gamma(1)) = log(0!) = 0
+      0.0, // a=2: log(Gamma(2)) = log(1!) = 0
+      0.6931471805599453, // a=3: log(Gamma(3)) = log(2!) = log(2)
+      1.7917594692280550, // a=4: log(Gamma(4)) = log(3!) = log(6)
+      3.1780538303479458, // a=5: log(Gamma(5)) = log(4!) = log(24)
+      4.7874917427820458, // a=6: log(Gamma(6)) = log(5!) = log(120)
+      6.5792512120101012, // a=7: log(Gamma(7)) = log(6!) = log(720)
+      8.5251613610654147, // a=8: log(Gamma(8)) = log(7!) = log(5040)
+      10.604602902745251 // a=9: log(Gamma(9)) = log(8!) = log(40320)
   };
 
   if (a <= 9) {
@@ -436,7 +475,8 @@ static inline double lgamma_integer(int a) {
   }
 
   // Stirling's approximation for a > 9:
-  // log(Gamma(x)) ≈ (x - 0.5)*log(x) - x + 0.5*log(2*pi) + 1/(12x) - 1/(360x^3) + ...
+  // log(Gamma(x)) ≈ (x - 0.5)*log(x) - x + 0.5*log(2*pi) + 1/(12x) - 1/(360x^3)
+  // + ...
   const double x = static_cast<double>(a);
   const double log_x = std::log(x);
   const double inv_x = 1.0 / x;
@@ -444,10 +484,10 @@ static inline double lgamma_integer(int a) {
 
   // Asymptotic series coefficients (Bernoulli numbers based)
   // B_2/(2*1) = 1/12, -B_4/(4*3) = -1/360, B_6/(6*5) = 1/1260, ...
-  double correction = inv_x * (1.0 / 12.0 +
-                      inv_x2 * (-1.0 / 360.0 +
-                      inv_x2 * (1.0 / 1260.0 +
-                      inv_x2 * (-1.0 / 1680.0))));
+  double correction = inv_x *
+      (1.0 / 12.0 +
+       inv_x2 *
+           (-1.0 / 360.0 + inv_x2 * (1.0 / 1260.0 + inv_x2 * (-1.0 / 1680.0))));
 
   // log(sqrt(2*pi)) = 0.9189385332046727
   constexpr double kLogSqrt2Pi = 0.9189385332046727;
@@ -553,8 +593,8 @@ static inline unsigned int rand_poisson(
   if (lambda < 64)
     return rand_poisson_knuth(state, (float)lambda);
   if (lambda > 4000)
-    return (
-        unsigned int)((std::sqrt(lambda) * rand_normal_double(state)) + lambda + 0.5); // Round to nearest
+    return (unsigned int)((std::sqrt(lambda) * rand_normal_double(state)) +
+                          lambda + 0.5); // Round to nearest
   return rand_poisson_gammainc(state, (float)lambda);
 }
 
