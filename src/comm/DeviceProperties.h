@@ -9,9 +9,14 @@
  */
 
 #pragma once
-
+// Suppress deprecation warnings from oneAPI SYCL headers.
+// These are not from our code and would otherwise fail the build under -Werror.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUContext.h>
-
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#pragma GCC diagnostic pop
 #include <comm/Runtime.h>
 
 namespace xpu {

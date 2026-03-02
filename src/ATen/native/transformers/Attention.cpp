@@ -32,9 +32,6 @@
 
 #include <ATen/native/transformers/SDPUtils.h>
 #include <ATen/native/transformers/sycl/AttentionKernels.h>
-
-#include <comm/SYCLContext.h>
-
 namespace at {
 namespace native {
 

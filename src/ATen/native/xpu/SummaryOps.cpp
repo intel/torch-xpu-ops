@@ -7,10 +7,9 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  */
-
+#include <ATen/Context.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/SummaryOpsKernels.h>
-#include <comm/SYCLContext.h>
 
 #include <ATen/ops/bincount_native.h>
 

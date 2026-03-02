@@ -12,11 +12,18 @@
 #include <ATen/native/Copy.h>
 #include <ATen/native/Resize.h>
 #include <ATen/native/TensorIterator.h>
+// Suppress deprecation warnings from oneAPI SYCL headers.
+// These are not from our code and would otherwise fail the build under -Werror.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/CachingHostAllocator.h>
 #include <ATen/xpu/PeerToPeerAccess.h>
 #include <ATen/xpu/XPUContext.h>
 #include <ATen/xpu/XPUEvent.h>
 #include <ATen/xpu/detail/XPUHooks.h>
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#pragma GCC diagnostic pop
 #include <c10/core/ScalarType.h>
 #include <c10/xpu/XPUStream.h>
 #include <comm/xpu_aten.h>

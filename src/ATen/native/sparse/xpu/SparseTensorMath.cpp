@@ -10,7 +10,14 @@
 
 #include <ATen/TensorOperators.h>
 #include <ATen/native/sparse/xpu/sycl/SparseTensorMathKernels.h>
+// Suppress deprecation warnings from oneAPI SYCL headers.
+// These are not from our code and would otherwise fail the build under -Werror.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUUtils.h>
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#pragma GCC diagnostic pop
 #include <c10/xpu/XPUFunctions.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
