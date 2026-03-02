@@ -1,14 +1,9 @@
-# Copyright 2020-2025 Intel Corporation
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Portions of this file are derived from functorch (PyTorch)
+# Owner(s): ["module: functorch"]
 # Copyright (c) Facebook, Inc. and its affiliates.
-# SPDX-License-Identifier: BSD-3-Clause
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
 
 # Owner(s): ["module: functorch"]
 

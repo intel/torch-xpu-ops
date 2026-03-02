@@ -9,6 +9,19 @@
 exclude:
   - "tools/linter/adapters/README.md" # Original README file (unmodified)
   - ".cmakelintrc"
+  # Test files copied from PyTorch — do not add Intel headers
+  # (these will be upstreamed back to PyTorch)
+  - "test/xpu/dynamo/test_ctx_manager_xpu.py"
+  - "test/xpu/functorch/test_control_flow_xpu.py"
+  - "test/xpu/functorch/test_eager_transforms_xpu.py"
+  - "test/xpu/functorch/test_vmap_xpu.py"
+  - "test/xpu/run_test_with_windows_nighltly.py"
+  - "test/xpu/test_cpp_api_parity_xpu.py"
+  - "test/xpu/test_expanded_weights_xpu.py"
+  - "test/xpu/test_fake_tensor_xpu.py"
+  - "test/xpu/test_meta_xpu.py"
+  - "test/xpu/test_nn_xpu.py"
+  - "test/xpu/test_schema_check.py"
 
 # Custom header groups - files listed here get a specific header
 # instead of the default one
@@ -213,18 +226,3 @@ custom_headers:
       - warning: ignore some types, for eg., does not include THCNumerics for T==half
     files:
       - "src/ATen/native/xpu/sycl/SortingRadixSelect.h"
-
-  - header: |
-      Copyright 2020-2025 Intel Corporation
-
-      Licensed under the Apache License, Version 2.0 (the "License");
-      you may not use this file except in compliance with the License.
-      You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-      Portions of this file are derived from functorch (PyTorch)
-      Copyright (c) Facebook, Inc. and its affiliates.
-      SPDX-License-Identifier: BSD-3-Clause
-    files:
-      - "test/xpu/functorch/test_eager_transforms_xpu.py"
