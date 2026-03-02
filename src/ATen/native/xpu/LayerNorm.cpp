@@ -189,11 +189,14 @@ namespace native {
       &grad_weight,
       &grad_bias);
 
-  return std::make_tuple(std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
+  return std::make_tuple(
+      std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
 }
 
 REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
-REGISTER_XPU_DISPATCH(LayerNormBackwardKernel, &xpu::layer_norm_backward_kernel);
+REGISTER_XPU_DISPATCH(
+    LayerNormBackwardKernel,
+    &xpu::layer_norm_backward_kernel);
 } // namespace native
 
 } // namespace at

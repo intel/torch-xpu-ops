@@ -89,8 +89,7 @@ struct NllLoss2dForwardNoReduceKernelFunctor {
 
 template <typename scalar_t, typename accscalar_t, typename index_t, int SIMD>
 struct NllLoss2dForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     scalar_t cur_weight;
     accscalar_t input_sum = 0;
     accscalar_t acc_weight = 0;

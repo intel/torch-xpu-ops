@@ -12,7 +12,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Kernel for fast unfold+copy
- * (borrowed from Caffe: https://github.com/BVLC/caffe/blob/master/src/caffe/layers/conv_layer.cu)
+ * (borrowed from Caffe:
+ * https://github.com/BVLC/caffe/blob/master/src/caffe/layers/conv_layer.cu)
  */
 
 #include <ATen/Dispatch.h>
