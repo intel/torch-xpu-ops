@@ -119,8 +119,10 @@ Tensor& addmm_complex_fallback(
   auto AB_i = P3 - P1 - P2;
 
   // Complex multiplication: alpha * AB and beta * C
-  // alpha * AB: (alpha_r + alpha_i*i) * (AB_r + AB_i*i) = (alpha_r*AB_r - alpha_i*AB_i) + (alpha_r*AB_i + alpha_i*AB_r)*i
-  // beta * C: (beta_r + beta_i*i) * (C_r + C_i*i) = (beta_r*C_r - beta_i*C_i) + (beta_r*C_i + beta_i*C_r)*i
+  // alpha * AB: (alpha_r + alpha_i*i) * (AB_r + AB_i*i) = (alpha_r*AB_r -
+  // alpha_i*AB_i) + (alpha_r*AB_i + alpha_i*AB_r)*i beta * C: (beta_r +
+  // beta_i*i) * (C_r + C_i*i) = (beta_r*C_r - beta_i*C_i) + (beta_r*C_i +
+  // beta_i*C_r)*i
   auto out_real = at::view_as_real(out);
   out_real.select(-1, 0).copy_(
       (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i));
@@ -325,9 +327,9 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
     if (self.is_conj()) {
       if (other.is_conj()) {
         return (dot_xpu(self.conj(), other.conj())).conj();
-       } else {
-         return vdot_xpu(self.conj(), other);
-       }
+      } else {
+        return vdot_xpu(self.conj(), other);
+      }
     } else if (other.is_conj()) {
       return vdot_xpu(other.conj(), self);
     }
@@ -339,11 +341,11 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
     return at::_efficientzerotensor({}, self.options());
   }
 
-  #if defined(USE_ONEMKL_XPU)
-    return at::native::xpu::dot_xpu_mkl(self, other);
-  #else
-    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
-  #endif
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::dot_xpu_mkl(self, other);
+#else
+  return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+#endif
 }
 
 Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
@@ -369,11 +371,11 @@ Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
     return at::_efficientzerotensor({}, self.options());
   }
 
-  #if defined(USE_ONEMKL_XPU)
-    return at::native::xpu::vdot_xpu_mkl(self, other);
-  #else
-    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
-  #endif
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::vdot_xpu_mkl(self, other);
+#else
+  return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+#endif
 }
 
 } // namespace at::native
