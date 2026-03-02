@@ -104,7 +104,7 @@ inline void renormRows(Tensor& t) {
   int64_t cols = t.size(1);
   int subgroup_size = syclMaxSubGroupSize();
   int group_size = std::min(
-      int(syclMaxWorkItemsPerSubSlice()), subgroup_size* subgroup_size);
+      int(syclMaxWorkItemsPerSubSlice()), subgroup_size * subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
   int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
