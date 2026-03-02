@@ -10,12 +10,12 @@
 
 #pragma once
 
-#include "cutlass/cutlass.h"
-#include "cutlass/gemm/dispatch_policy.hpp"
-#include "cutlass/gemm/gemm.h"
-#include "cutlass/kernel_hardware_info.hpp"
+#include <cutlass/cutlass.h>
+#include <cutlass/gemm/dispatch_policy.hpp>
+#include <cutlass/gemm/gemm.h>
+#include <cutlass/kernel_hardware_info.hpp>
 
-#include "../collective/xe_flash_attn_sdpa_fwd_mma.h"
+#include <sycltla/collective/xe_flash_attn_sdpa_fwd_mma.h>
 
 namespace cutlass::flash_attention::kernel {
 

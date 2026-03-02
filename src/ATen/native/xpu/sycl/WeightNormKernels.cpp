@@ -12,10 +12,10 @@
 #include <ATen/core/Array.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
+#include <comm/Runtime.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 #include <comm/TensorOptions.h>
-#include "comm/Runtime.h"
 
 #include <ATen/native/xpu/sycl/WeightNormKernels.h>
 
