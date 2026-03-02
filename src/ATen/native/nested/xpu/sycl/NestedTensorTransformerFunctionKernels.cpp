@@ -1128,7 +1128,7 @@ void jagged_dense_elementwise_jagged_output_template(
 #undef INVOKE_KERNEL_WITH_DIM
 }
 
-at::Tensor _fbgemm_dense_to_jagged_forward_kernel(
+at::Tensor dense_to_jagged_forward_kernel(
     const Tensor& dense,
     TensorList offsets,
     std::optional<c10::SymInt> total_L) {
@@ -1140,7 +1140,7 @@ at::Tensor _fbgemm_dense_to_jagged_forward_kernel(
   } else {
     TORCH_CHECK(
         !offsets.empty(),
-        "_fbgemm_dense_to_jagged_forward: offsets must be non-empty when total_L is not provided.");
+        "dense_to_jagged_forward: offsets must be non-empty when total_L is not provided.");
     total_L_computed = (int64_t)offsets.back().max().item<int64_t>();
   }
   auto values = at::empty_symint({total_L_computed, D}, dense.options());
@@ -1163,7 +1163,7 @@ at::Tensor _fbgemm_dense_to_jagged_forward_kernel(
   return output;
 }
 
-at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
+at::Tensor jagged_to_padded_dense_forward_kernel(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
