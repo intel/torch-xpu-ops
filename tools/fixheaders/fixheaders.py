@@ -74,14 +74,25 @@ def has_license_keywords(text: str) -> bool:
 
 
 def normalize_header_text(text: str) -> str:
-    """Extract and normalize the actual text content from a header, ignoring comment syntax."""
+    """Extract and normalize the actual text content from a header, ignoring comment syntax.
+
+    Normalizes within paragraphs (blank-line-separated blocks) so that
+    different line wrapping (e.g. from clang-format) does not cause
+    false mismatches.
+    """
     # Remove block comment markers
     text = re.sub(r'/\*|\*/', '', text)
     # Remove line comment markers (both // and # and leading *)
     text = re.sub(r'^[ \t]*(?://|#|\*)+[ \t]?', '', text, flags=re.MULTILINE)
-    # Normalize whitespace
-    lines = [line.strip() for line in text.strip().split('\n') if line.strip()]
-    return '\n'.join(lines).lower()
+    # Split into paragraphs (separated by blank lines), normalize each
+    paragraphs = re.split(r'\n\s*\n', text.strip())
+    normalized = []
+    for para in paragraphs:
+        # Collapse all whitespace within each paragraph into single spaces
+        words = ' '.join(para.split())
+        if words:
+            normalized.append(words.lower())
+    return '\n\n'.join(normalized)
 
 
 def get_file_type(filepath: Path) -> Optional[str]:
