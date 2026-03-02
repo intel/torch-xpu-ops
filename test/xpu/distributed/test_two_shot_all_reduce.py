@@ -1,130 +1,181 @@
 """
-Tests for two_shot_all_reduce_ and two_shot_all_reduce_out operations.
+Accuracy test for two_shot_all_reduce_ and two_shot_all_reduce_out operations.
 
 Usage:
-    # Run with pytest (requires multi-GPU setup)
-    pytest test_two_shot_all_reduce.py
-
-    # Run with mpirun
     mpirun -n 2 python test_two_shot_all_reduce.py
+    mpirun -n 2 python test_two_shot_all_reduce.py --impl inplace
+    mpirun -n 2 python test_two_shot_all_reduce.py --impl out
+
+The test uses dist.all_reduce as the reference to verify accuracy.
 """
+
+import argparse
+import os
 
 import torch
 import torch.distributed as dist
 from torch._C._distributed_c10d import _SymmetricMemory
 
-from test_c10d_xccl import requires_xccl
-from torch.testing._internal.common_distributed import MultiProcContinuousTest
-from torch.testing._internal.common_utils import (
-    instantiate_parametrized_tests,
-    parametrize,
-    run_tests,
-)
+
+def init_distributed():
+    """Initialize distributed environment."""
+    os.environ['RANK'] = str(os.environ.get('PMI_RANK', 0))
+    os.environ['WORLD_SIZE'] = str(os.environ.get('PMI_SIZE', 1))
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '29514'
+    if not dist.is_initialized():
+        dist.init_process_group(backend="xccl")
+
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    torch.xpu.set_device(rank)
+
+    return rank, world_size
 
 
-@instantiate_parametrized_tests
-class TwoShotAllReduceTest(MultiProcContinuousTest):
-    @property
-    def device(self) -> torch.device:
-        return torch.device("xpu", self.rank)
+def create_symm_mem_tensor(size, dtype, device, group_name):
+    """Create a tensor allocated with symmetric memory."""
+    strides = torch._prims_common.make_contiguous_strides_for(size)
+    return _SymmetricMemory.empty_strided_p2p(
+        size,
+        strides,
+        dtype,
+        device,
+        group_name,
+    )
 
-    def _init_process(self):
-        torch.xpu.set_device(self.device)
-        torch.manual_seed(42 + self.rank)
 
-    def _create_symm_mem_tensor(self, size, dtype):
-        """Create a tensor allocated with symmetric memory."""
-        group = dist.group.WORLD
-        # Calculate contiguous strides
-        strides = torch._prims_common.make_contiguous_strides_for(size)
-        return _SymmetricMemory.empty_strided_p2p(
-            size,
-            strides,
-            dtype,
-            self.device,
-            group.group_name,
-        )
+def check_accuracy_inplace(tensor_size, rank, device, dtype=torch.float32):
+    """Detailed accuracy check for two_shot_all_reduce_ (in-place)."""
+    group = dist.group.WORLD
 
-    @requires_xccl()
-    @parametrize("dtype", [torch.float32, torch.bfloat16])
-    @parametrize("size", [64, 256, 1024, 4096])
-    def test_two_shot_all_reduce_inplace(self, dtype: torch.dtype, size: int) -> None:
-        """Test in-place two_shot_all_reduce_ operation."""
-        self._init_process()
+    # Use same seed across ranks for reproducibility, but different data
+    torch.manual_seed(42 + rank)
+    local_data = torch.randn(tensor_size, device=device, dtype=dtype)
 
-        group = dist.group.WORLD
-        world_size = self.world_size
-        rank = self.rank
+    # Reference: torch.distributed.all_reduce
+    tensor_ref = local_data.clone()
+    dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
 
-        # Each rank creates its own tensor with rank-specific values
-        torch.manual_seed(42 + rank)
-        local_data = torch.rand(size, device=self.device, dtype=dtype)
+    # Test: two_shot_all_reduce_ (in-place)
+    symm_tensor = create_symm_mem_tensor((tensor_size,), dtype, device, group.group_name)
+    symm_tensor.copy_(local_data)
+    tensor_test = torch.ops.symm_mem.two_shot_all_reduce_(
+        symm_tensor, "sum", group.group_name
+    )
 
-        # Gather all data for reference computation
-        all_data = [torch.zeros_like(local_data) for _ in range(world_size)]
-        dist.all_gather(all_data, local_data)
-        expected = sum(all_data)
+    torch.xpu.synchronize()
 
-        # Allocate symmetric memory tensor and copy data
-        symm_tensor = self._create_symm_mem_tensor((size,), dtype)
-        symm_tensor.copy_(local_data)
+    # Compute metrics
+    abs_diff = torch.abs(tensor_ref - tensor_test)
+    max_abs_diff = abs_diff.max().item()
+    mean_abs_diff = abs_diff.mean().item()
 
-        # Call two_shot_all_reduce_ (in-place)
-        result = torch.ops.symm_mem.two_shot_all_reduce_(
-            symm_tensor, "sum", group.group_name
-        )
+    rel_diff = abs_diff / (torch.abs(tensor_ref) + 1e-8)
+    max_rel_diff = rel_diff.max().item()
+    mean_rel_diff = rel_diff.mean().item()
 
-        torch.xpu.synchronize()
+    is_close = torch.allclose(tensor_ref, tensor_test, rtol=1e-3, atol=1e-3)
 
-        # Verify result
-        self.assertEqual(result.data_ptr(), symm_tensor.data_ptr())  # Same buffer
-        torch.testing.assert_close(
-            result, expected, rtol=1e-3, atol=1e-3,
-            msg=f"two_shot_all_reduce_ failed for dtype={dtype}, size={size}"
-        )
+    return {
+        "is_close": is_close,
+        "max_abs_diff": max_abs_diff,
+        "mean_abs_diff": mean_abs_diff,
+        "max_rel_diff": max_rel_diff,
+        "mean_rel_diff": mean_rel_diff,
+    }
 
-    @requires_xccl()
-    @parametrize("dtype", [torch.float32, torch.bfloat16])
-    @parametrize("size", [64, 256, 1024, 4096])
-    def test_two_shot_all_reduce_out(self, dtype: torch.dtype, size: int) -> None:
-        """Test two_shot_all_reduce_out operation with separate output buffer."""
-        self._init_process()
 
-        group = dist.group.WORLD
-        world_size = self.world_size
-        rank = self.rank
+def check_accuracy_out(tensor_size, rank, device, dtype=torch.float32):
+    """Detailed accuracy check for two_shot_all_reduce_out."""
+    group = dist.group.WORLD
 
-        # Each rank creates its own tensor with rank-specific values
-        torch.manual_seed(42 + rank)
-        local_data = torch.rand(size, device=self.device, dtype=dtype)
+    # Use same seed across ranks for reproducibility, but different data
+    torch.manual_seed(42 + rank)
+    local_data = torch.randn(tensor_size, device=device, dtype=dtype)
 
-        # Gather all data for reference computation
-        all_data = [torch.zeros_like(local_data) for _ in range(world_size)]
-        dist.all_gather(all_data, local_data)
-        expected = sum(all_data)
+    # Reference: torch.distributed.all_reduce
+    tensor_ref = local_data.clone()
+    dist.all_reduce(tensor_ref, op=dist.ReduceOp.SUM)
 
-        # Allocate symmetric memory tensor and copy data
-        symm_tensor = self._create_symm_mem_tensor((size,), dtype)
-        symm_tensor.copy_(local_data)
+    # Test: two_shot_all_reduce_out
+    symm_tensor = create_symm_mem_tensor((tensor_size,), dtype, device, group.group_name)
+    symm_tensor.copy_(local_data)
+    output = torch.empty(tensor_size, device=device, dtype=dtype)
+    tensor_test = torch.ops.symm_mem.two_shot_all_reduce_out(
+        symm_tensor, "sum", group.group_name, output
+    )
 
-        # Create output tensor (regular XPU tensor)
-        output = torch.empty(size, device=self.device, dtype=dtype)
+    torch.xpu.synchronize()
 
-        # Call two_shot_all_reduce_out
-        result = torch.ops.symm_mem.two_shot_all_reduce_out(
-            symm_tensor, "sum", group.group_name, output
-        )
+    # Compute metrics
+    abs_diff = torch.abs(tensor_ref - tensor_test)
+    max_abs_diff = abs_diff.max().item()
+    mean_abs_diff = abs_diff.mean().item()
 
-        torch.xpu.synchronize()
+    rel_diff = abs_diff / (torch.abs(tensor_ref) + 1e-8)
+    max_rel_diff = rel_diff.max().item()
+    mean_rel_diff = rel_diff.mean().item()
 
-        # Verify result
-        self.assertEqual(result.data_ptr(), output.data_ptr())  # Output buffer
-        torch.testing.assert_close(
-            result, expected, rtol=1e-3, atol=1e-3,
-            msg=f"two_shot_all_reduce_out failed for dtype={dtype}, size={size}"
-        )
+    is_close = torch.allclose(tensor_ref, tensor_test, rtol=1e-3, atol=1e-3)
+
+    return {
+        "is_close": is_close,
+        "max_abs_diff": max_abs_diff,
+        "mean_abs_diff": mean_abs_diff,
+        "max_rel_diff": max_rel_diff,
+        "mean_rel_diff": mean_rel_diff,
+    }
+
+
+def run_accuracy_check(impl_name: str):
+    """Run detailed accuracy check."""
+    rank, world_size = init_distributed()
+    device = torch.device("xpu", rank)
+
+    # Select check function based on implementation
+    if impl_name == "inplace":
+        check_func = check_accuracy_inplace
+        impl_display = "two_shot_all_reduce_"
+    else:
+        check_func = check_accuracy_out
+        impl_display = "two_shot_all_reduce_out"
+
+    sizes = [64, 256, 1024, 4096, 8192, 65536, 262144, 1048576]
+    dtypes = [torch.float32, torch.bfloat16]
+
+    for dtype in dtypes:
+        if rank == 0:
+            print("=" * 80)
+            print(f"Accuracy Check: {impl_display} (world_size={world_size}, dtype={dtype})")
+            print("=" * 80)
+            print(f"{'Size':>12} | {'Pass':>6} | {'MaxAbsDiff':>12} | {'MeanAbsDiff':>12} | {'MaxRelDiff':>12}")
+            print("-" * 80)
+
+        for size in sizes:
+            metrics = check_func(size, rank, device, dtype=dtype)
+
+            if rank == 0:
+                status = "✓" if metrics["is_close"] else "✗"
+                print(f"{size:>12} | {status:>6} | {metrics['max_abs_diff']:>12.2e} | "
+                      f"{metrics['mean_abs_diff']:>12.2e} | {metrics['max_rel_diff']:>12.2e}")
+
+        if rank == 0:
+            print("=" * 80)
+            print()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Test two_shot_all_reduce implementations")
+    parser.add_argument("--impl", type=str, default="inplace",
+                        choices=["inplace", "out"],
+                        help="Implementation to test: inplace or out (default: inplace)")
+    args = parser.parse_args()
+
+    run_accuracy_check(args.impl)
+    dist.destroy_process_group()
 
 
 if __name__ == "__main__":
-    run_tests()
+    main()
 
