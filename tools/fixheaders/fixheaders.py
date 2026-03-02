@@ -17,7 +17,6 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -95,7 +94,7 @@ def normalize_header_text(text: str) -> str:
     return '\n\n'.join(normalized)
 
 
-def get_file_type(filepath: Path) -> Optional[str]:
+def get_file_type(filepath: Path) -> str | None:
     """Determine the file type based on extension or filename."""
     if filepath.name == "CMakeLists.txt":
         return "cmake"
@@ -121,7 +120,7 @@ def format_header(header_text: str, file_type: str) -> str:
         return "\n".join(formatted_lines) + "\n\n"
 
 
-def extract_existing_header(content: str, file_type: str) -> Optional[str]:
+def extract_existing_header(content: str, file_type: str) -> str | None:
     """Extract the existing license header from content."""
     # Skip shebang for Python
     check_content = content
