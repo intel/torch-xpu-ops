@@ -42,6 +42,7 @@ init_command = [
 code = 'CLANGFORMAT'
 include_patterns = [
     'src/**/*.h',
+    'src/**/*.hpp',
     'src/**/*.cpp',
 ]
 init_command = [
@@ -330,11 +331,9 @@ command = [
 [[linter]]
 code = 'INCLUDE'
 include_patterns = [
-    'src/comm/**',
-    'src/Aten/**',
-    'src/Aten/**/**',
-    'src/Aten/**/**/**',
-    'src/Aten/**/**/**/**',
+    'src/**/*.h',
+    'src/**/*.hpp',
+    'src/**/*.cpp',
 ]
 command = [
     'python3',

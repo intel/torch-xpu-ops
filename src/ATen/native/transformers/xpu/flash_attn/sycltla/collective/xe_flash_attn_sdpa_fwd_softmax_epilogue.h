@@ -10,12 +10,12 @@
 
 #pragma once
 
+#include <cutlass/cutlass.h>
+#include <cutlass/detail/layout.hpp>
+#include <cutlass/epilogue/collective/collective_epilogue.hpp>
+#include <cutlass/epilogue/collective/detail.hpp>
+#include <cutlass/epilogue/dispatch_policy.hpp>
 #include <sycl/sycl.hpp>
-#include "cutlass/cutlass.h"
-#include "cutlass/detail/layout.hpp"
-#include "cutlass/epilogue/collective/collective_epilogue.hpp"
-#include "cutlass/epilogue/collective/detail.hpp"
-#include "cutlass/epilogue/dispatch_policy.hpp"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

@@ -50,7 +50,9 @@ Tensor& nonzero_out_xpu(const Tensor& self, Tensor& out) {
       out.dtype());
   nonzero_common_checks(self, out, "nonzero");
   if (self.numel() == 0) {
-    out = at::detail::empty_xpu({0, self.dim()}, out.options());
+    at::Tensor out_temp = at::detail::empty_xpu({self.dim(), 0}, out.options());
+    at::Tensor out_final = out_temp.t();
+    out.set_(out_final);
     return out;
   }
   xpu::nonzero_kernel(self, out);
