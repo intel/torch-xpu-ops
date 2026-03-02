@@ -9348,7 +9348,7 @@
 - func: _jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max_lengths, float padding_value=0.0) -> Tensor
   variants: function
   dispatch:
-    XPU: jagged_to_padded_dense_forward
+    XPU: jagged_to_padded_dense_forward_xpu
 
 - func: _padded_dense_to_jagged_forward(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> Tensor
   variants: function

@@ -1160,7 +1160,7 @@ at::Tensor dense_to_jagged_forward_kernel(
   return output;
 }
 
-at::Tensor jagged_to_padded_dense_forward_kernel(
+at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
