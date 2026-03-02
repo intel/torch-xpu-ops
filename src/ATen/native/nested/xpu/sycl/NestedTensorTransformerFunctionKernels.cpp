@@ -959,7 +959,8 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
       [&] {
-        scalar_t fill_value = at::native::_get_padding_value<scalar_t>(padding_value, values.is_floating_point());
+        scalar_t fill_value = at::native::_get_padding_value<scalar_t>(
+            padding_value, values.is_floating_point());
         jagged_dense_elementwise_dense_template<scalar_t>(
             values_canonicalized,
             offsets.vec(),
