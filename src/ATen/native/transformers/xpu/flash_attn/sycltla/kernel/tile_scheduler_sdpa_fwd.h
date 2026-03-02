@@ -10,9 +10,9 @@
 
 #pragma once
 
-#include "cutlass/cutlass.h"
-#include "cutlass/fast_math.h"
-#include "cutlass/kernel_hardware_info.h"
+#include <cutlass/cutlass.h>
+#include <cutlass/fast_math.h>
+#include <cutlass/kernel_hardware_info.h>
 
 namespace cutlass::flash_attention {
 
