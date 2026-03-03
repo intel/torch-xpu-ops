@@ -9,7 +9,10 @@
  */
 
 #include <ATen/SparseCsrTensorUtils.h>
+#include <ATen/ExpandUtils.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/sparse/SparseStubs.h>
+#include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
@@ -19,6 +22,8 @@
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/add.h>
+#include <ATen/ops/addmm.h>
+#include <ATen/ops/empty.h>
 #endif
 
 namespace at::native {
@@ -101,6 +106,84 @@ Tensor& add_out_sparse_compressed_xpu(
     out = out_dense.to_sparse_csr();
   }
   return out;
+}
+
+Tensor& addmm_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_CHECK(self.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'self' to be XPU tensor, but got ", self.device(), " tensor");
+  TORCH_CHECK(mat1.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'mat1' to be XPU tensor, but got ", mat1.device(), " tensor");
+  TORCH_CHECK(mat2.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'mat2' to be XPU tensor, but got ", mat2.device(), " tensor");
+  TORCH_CHECK(result.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'result' to be XPU tensor, but got ", result.device(), " tensor");
+
+  sparse::impl::_check_dim(mat1, 2, "mat1");
+  sparse::impl::_check_dim(mat2, 2, "mat2");
+
+  TORCH_CHECK(
+      mat1.size(1) == mat2.size(0),
+      "mat1 and mat2 shapes cannot be multiplied (",
+      mat1.size(0), "x", mat1.size(1), " and ",
+      mat2.sizes()[0], "x", mat2.sizes()[1], ")");
+
+  c10::MaybeOwned<at::Tensor> self_;
+  if (&result == &self) {
+    self_ = c10::MaybeOwned<Tensor>::borrowed(self);
+  } else {
+    self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+  }
+
+  TORCH_CHECK(
+      ((self_->dim() == 2) &&
+       (self_->size(0) == mat1.size(0)) &&
+       (self_->size(1) == mat2.size(1))),
+      "The input tensor must be a matrix with size ",
+      mat1.size(0), "x", mat2.size(1),
+      ", but got a ", self_->dim(), "-D tensor with size ",
+      self_->size(0), "x", self_->size(1));
+
+  if (!result.is_same(self)) {
+    if (result.layout() == kStrided) {
+      at::native::resize_output(result, self_->sizes());
+    } else {
+      result.resize_as_sparse_(*self_);
+    }
+  }
+
+  if (result.numel() == 0) {
+    if (at::sparse_csr::is_sparse_compressed(result)) {
+      result.zero_();
+    }
+    return result;
+  }
+
+  if (sparse::impl::_is_sparse_and_zero(mat1) ||
+      sparse::impl::_is_sparse_and_zero(mat2)) {
+    //  when beta==0 values in self should be ignored. nans and infs should not propagate.
+    const auto beta_val = beta.toComplexDouble();
+    if (beta_val == 0.) {
+      result.zero_();
+    } else {
+      if (!result.is_same(self)) {
+        result.copy_(*self_);
+      }
+      if (beta_val != 1.) {
+        result.mul_(beta);
+      }
+    }
+    return result;
+  }
+
+  TORCH_CHECK(
+      result.layout() == kStrided,
+      "addmm: XPU sparse compressed addmm only supports strided result tensor, got ",
+      result.layout());
+
+  xpu::addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
+  return result;
 }
 
 } // namespace at::native

@@ -2353,7 +2353,6 @@ class TestSparseCSR(TestCase):
             torch.bfloat16: 1e-3,
         }
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2244")
     def test_block_addmm(self, device, dtype, index_dtype, block_size, noncontiguous):
         def make_transposed_addmm_op(f):
             def tt(t):
