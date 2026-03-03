@@ -4674,6 +4674,7 @@
   python_module: nn
 
 - func: hypot.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
   structured: True
   structured_inherits: TensorIteratorBase
   dispatch:
@@ -4681,11 +4682,13 @@
   tags: pointwise
 
 - func: hypot(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
   structured_delegate: hypot.out
   variants: method, function
   tags: pointwise
 
 - func: hypot_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
   structured_delegate: hypot.out
   variants: method
   tags: pointwise

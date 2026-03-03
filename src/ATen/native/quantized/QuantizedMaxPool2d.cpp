@@ -12,9 +12,9 @@
 #include <ATen/native/Pool.h>
 #include <ATen/native/quantized/sycl/QuantizedMaxPool2d.h>
 #include <ATen/native/utils/ParamUtils.h>
+#include <c10/core/ScalarType.h>
 #include <comm/RegisterUtils.h>
 #include <torch/library.h>
-#include "c10/core/ScalarType.h"
 
 namespace at {
 namespace native {
