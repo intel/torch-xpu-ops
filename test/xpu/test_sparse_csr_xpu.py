@@ -210,7 +210,6 @@ def _test_addmm_addmv(
     res3 = alpha * (m.to(numpy_dtype).cpu().numpy() @ v.to(numpy_dtype).cpu().numpy())
     if beta != 0:
         res3 += (beta * t).to(numpy_dtype).cpu().numpy()
-        # print(f"res3 after +: {res3}")
     res3 = torch.from_numpy(res3).to(dtype)
     test_case.assertEqual(res1, res2)
     test_case.assertEqual(res1, res3)

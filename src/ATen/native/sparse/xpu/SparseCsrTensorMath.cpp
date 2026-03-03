@@ -335,8 +335,6 @@ Tensor expand_batch_if_necessary(const Tensor& mat) {
   }
   auto updated_sparse_tensor = at::sparse_compressed_tensor(
       compressed_indices, plain_indices, values, mat.sizes(), mat.options());
-  // get_sparse_csr_impl(mat)->set_member_tensors(
-  //     compressed_indices, plain_indices, values, mat.sizes());
   return updated_sparse_tensor;
 }
 
