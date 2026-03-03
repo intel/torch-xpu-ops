@@ -9,18 +9,27 @@
 #include <ishmem.h>
 #include <ishmemx.h>
 
+#include <cstdlib>
+#include <dlfcn.h>
+
 namespace c10d {
 namespace symmetric_memory {
 
-// Intel Data Center GPU Max can support up to 8 GPUs in a single node
 constexpr int max_xpu_p2p_domain_size = 8;
-// Maximum number of channels (same as CUDA)
 constexpr int xpu_symm_max_nblocks = 32;
-// Signal pad size for XPU
 constexpr size_t xpu_signal_pad_size =
     xpu_symm_max_nblocks * max_xpu_p2p_domain_size * sizeof(uint32_t);
 
 static StoreExchange storeExchange = StoreExchange("ISHMEMSymmetricMemory");
+
+static bool ishmem_finalized = false;
+
+static void finalize_ishmem_atexit() {
+  if (!ishmem_finalized) {
+    ishmem_finalized = true;
+    ishmem_finalize();
+  }
+}
 
 struct ISHMEMAllocation {
   void* ptr;
@@ -31,7 +40,7 @@ struct ISHMEMAllocation {
       : ptr(ptr), buffer_size(buffer_size), device_idx(device_idx) {}
 
   ~ISHMEMAllocation() {
-    if (is_finalizing()) {
+    if (is_finalizing() || ishmem_finalized) {
       return;
     }
     c10::OptionalDeviceGuard guard;
@@ -40,20 +49,15 @@ struct ISHMEMAllocation {
   }
 };
 
-// A class to hold the base pointers and signal pad pointers for a group of
-// peers. One `ISHMEMPeerAllocInfo` object can be shared by multiple
-// `ISHMEMSymmetricMemory` objects when latter reside on the same allocation
-// and rendezvous over the same group. (The `ISHMEMSymmetricMemory` objects may
-// have different offsets compared to the base address.)
 class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
  public:
   ISHMEMPeerAllocInfo(
       ISHMEMAllocation* allocation,
       const std::string& group_name)
-      : base_ptr_(allocation->ptr), buffer_size_(allocation->buffer_size) {
-    // For logging only
+      : base_ptr_(allocation->ptr),
+        buffer_size_(allocation->buffer_size),
+        device_idx_(allocation->device_idx) {
     static int exchanged_n_times = 0;
-
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, allocation->device_idx));
 
@@ -62,8 +66,6 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
     auto store = group_info.store;
     rank_ = group_info.rank;
     world_size_ = group_info.world_size;
-    // Exchange rank to global rank mapping for this group.
-    // If it is already available, skip the exchange.
     if (group_info.rank_to_global_rank.empty()) {
       group_info.rank_to_global_rank =
           storeExchange.all_gather(store, rank_, world_size_, global_rank);
@@ -82,22 +84,20 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
     for (int r = 0; r < world_size_; ++r) {
       auto peer_ptr = ishmem_ptr(base_ptr_, rank_to_global_rank_[r]);
       buffers_.push_back(peer_ptr);
-      // If a peer is over network, `ishmem_ptr` returns null
       if (peer_ptr == nullptr) {
         world_within_xpu_p2p_ = false;
       }
     }
 
-    // TODO: use the same allocation for signal pad
-    void* signal_pad_ptr = ishmem_malloc(xpu_signal_pad_size);
-    TORCH_CHECK(signal_pad_ptr != nullptr, "ishmem_malloc failed");
+    signal_pad_raw_ptr_ = ishmem_malloc(xpu_signal_pad_size);
+    TORCH_CHECK(signal_pad_raw_ptr_ != nullptr, "ishmem_malloc failed");
 
     auto& queue = at::xpu::getCurrentSYCLQueue();
-    queue.memset(signal_pad_ptr, 0, xpu_signal_pad_size).wait();
+    queue.memset(signal_pad_raw_ptr_, 0, xpu_signal_pad_size).wait();
 
     for (int r = 0; r < world_size_; ++r) {
       signal_pads_.push_back(
-          ishmem_ptr(signal_pad_ptr, rank_to_global_rank_[r]));
+          ishmem_ptr(signal_pad_raw_ptr_, rank_to_global_rank_[r]));
     }
 
     const size_t arr_size = sizeof(void*) * world_size_;
@@ -119,18 +119,44 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
         .wait();
   }
 
+  ~ISHMEMPeerAllocInfo() {
+    if (is_finalizing() || ishmem_finalized) {
+      return;
+    }
+    c10::OptionalDeviceGuard guard;
+    guard.reset_device(at::Device(at::DeviceType::XPU, device_idx_));
+
+    if (signal_pad_raw_ptr_) {
+      ishmem_free(signal_pad_raw_ptr_);
+      signal_pad_raw_ptr_ = nullptr;
+    }
+    if (buffers_dev_) {
+      c10::xpu::XPUCachingAllocator::raw_delete(buffers_dev_);
+      buffers_dev_ = nullptr;
+    }
+    if (signal_pads_dev_) {
+      c10::xpu::XPUCachingAllocator::raw_delete(signal_pads_dev_);
+      signal_pads_dev_ = nullptr;
+    }
+    if (rank_to_global_rank_dev_) {
+      c10::xpu::XPUCachingAllocator::raw_delete(rank_to_global_rank_dev_);
+      rank_to_global_rank_dev_ = nullptr;
+    }
+  }
+
  private:
   void* base_ptr_;
   size_t buffer_size_;
+  int device_idx_;
   int rank_;
   int world_size_;
   std::vector<void*> buffers_;
   std::vector<void*> signal_pads_;
-  void** buffers_dev_;
-  void** signal_pads_dev_;
+  void* signal_pad_raw_ptr_ = nullptr;
+  void** buffers_dev_ = nullptr;
+  void** signal_pads_dev_ = nullptr;
   std::vector<int> rank_to_global_rank_;
-  int* rank_to_global_rank_dev_;
-  // Whether the world is within XPU P2P only, not network
+  int* rank_to_global_rank_dev_ = nullptr;
   bool world_within_xpu_p2p_;
 
   friend class ISHMEMSymmetricMemory;
@@ -142,19 +168,12 @@ class ISHMEMSymmetricMemory : public SymmetricMemory {
       ISHMEMAllocation* allocation,
       const std::string& group_name)
       : device_idx_(allocation->device_idx), group_name_(group_name) {
-    // A handle stores two types of info:
-    // (i) allocation's base ptrs and base signal pads, ours and peers'
     pai_ = c10::make_intrusive<ISHMEMPeerAllocInfo>(allocation, group_name);
-    // (ii) offset of tensor compared to base ptr (in byte)
     offset_ = 0;
   }
 
-  // Exact copy is not needed / supported
   ISHMEMSymmetricMemory(const ISHMEMSymmetricMemory& other) = delete;
 
-  // Copy with offset is allowed
-  // This is mostly a shallow copy that shares the pointer to
-  // `ISHMEMPeerAllocInfo` which has been created by `other`
   ISHMEMSymmetricMemory(const ISHMEMSymmetricMemory& other, size_t offset)
       : device_idx_(other.device_idx_),
         group_name_(other.group_name_),
@@ -257,45 +276,24 @@ static void initialize_ishmem_with_store(
   c10::OptionalDeviceGuard guard;
   guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 
-  // Generate unique ID - ONLY rank 0 should generate it
   ishmemx_uniqueid_t unique_id;
-  memset(
-      &unique_id, 0, sizeof(unique_id)); // Zero-initialize for non-root ranks
+  memset(&unique_id, 0, sizeof(unique_id));
 
   if (rank == 0) {
-    LOG(INFO) << "[ISHMEM Init] Rank 0 generating unique ID";
-    // Root rank generates the unique ID
     int ret = ishmemx_get_uniqueid(&unique_id);
     TORCH_CHECK(ret == 0, "ishmemx_get_uniqueid failed with error: ", ret);
-    LOG(INFO) << "[ISHMEM Init] Rank 0 unique ID generated";
   }
 
-  // All-gather to distribute rank 0's unique_id to all ranks
-  // This creates a vector where all elements should contain rank 0's unique_id
-  std::vector<ishmemx_uniqueid_t> unique_ids;
-  LOG(INFO) << "[ISHMEM Init] Rank " << rank
-            << " about to all_gather unique_id";
-  try {
-    unique_ids = storeExchange.all_gather(store, rank, world_size, unique_id);
-    LOG(INFO) << "[ISHMEM Init] Rank " << rank
-              << " all_gather completed, received " << unique_ids.size()
-              << " unique_ids";
-  } catch (const std::exception& e) {
-    LOG(ERROR) << "[ISHMEM Init] Rank " << rank
-               << " all_gather failed: " << e.what();
-    throw;
-  }
+  std::vector<ishmemx_uniqueid_t> unique_ids =
+      storeExchange.all_gather(store, rank, world_size, unique_id);
 
-  // Initialize ISHMEM with attributes using unique ID from rank 0
   ishmemx_attr_t attr;
   attr.initialize_runtime = false;
   attr.use_uid = true;
   attr.nranks = world_size;
-  attr.uid = &unique_ids[0]; // Use rank 0's unique_id (first element)
+  attr.uid = &unique_ids[0];
 
-  // ishmemx_init_attr returns void, not int
   ishmemx_init_attr(&attr);
-  // Verify initialization succeeded by checking PE info
   TORCH_CHECK(
       ishmem_my_pe() == rank,
       "ISHMEM initialization failed: rank mismatch, expected ",
@@ -305,10 +303,22 @@ static void initialize_ishmem_with_store(
 
   is_initialized = true;
 
-  // Print version
+  // Register ishmem_finalize via Py_AtExit (LIFO order ensures it runs
+  // before mpi4py's MPI_Finalize, preventing proxy thread segfault).
+  using PyAtExitFn = int (*)(void (*)(void));
+  auto py_atexit =
+      reinterpret_cast<PyAtExitFn>(dlsym(RTLD_DEFAULT, "Py_AtExit"));
+  if (py_atexit != nullptr) {
+    py_atexit(finalize_ishmem_atexit);
+  } else {
+    LOG(WARNING) << "Py_AtExit not found, falling back to std::atexit. "
+                 << "ISHMEM cleanup at exit may not be orderly.";
+    std::atexit(finalize_ishmem_atexit);
+  }
+
   int major, minor;
   ishmem_info_get_version(&major, &minor);
-  LOG(INFO) << "ISHMEM initialized with unique ID, version: " << major << '.'
+  LOG(INFO) << "ISHMEM initialized, version: " << major << '.'
             << minor << ", rank: " << rank << "/" << world_size;
 }
 
@@ -318,8 +328,6 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
       size_t size,
       int device_idx,
       const std::optional<std::string>& group_name) override {
-    // Note: group_name may be passed but is ignored for ISHMEM allocations
-    // ISHMEM uses group "0" for all allocations
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 
@@ -330,16 +338,20 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
 
     initialize_ishmem_with_store(store, rank, world_size, device_idx);
     auto ptr = ishmem_malloc(size);
-    // If size is 0 (which is legal allocation request) we shouldn't error out
     TORCH_CHECK(ptr != nullptr || size == 0, "ishmem_malloc failed");
-    // TODO: thread safety
     allocations_.try_emplace(
         ptr, std::make_unique<ISHMEMAllocation>(ptr, size, device_idx));
     return ptr;
   }
 
   void free(void* ptr) override {
-    // TODO: thread safety
+    for (auto it = symm_mems_.begin(); it != symm_mems_.end();) {
+      if (std::get<0>(it->first) == ptr) {
+        it = symm_mems_.erase(it);
+      } else {
+        ++it;
+      }
+    }
     allocations_.erase(ptr);
   };
 
@@ -355,14 +367,8 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
   c10::intrusive_ptr<SymmetricMemory> rendezvous(
       void* ptr,
       const std::optional<std::string>& group_name) override {
-    // Use WORLD group (name "0") if group_name is not provided
-    std::string actual_group_name;
-    if (group_name.has_value()) {
-      actual_group_name = *group_name;
-    } else {
-      // Default to group "0" (WORLD) for ISHMEM
-      actual_group_name = "0";
-    }
+    std::string actual_group_name =
+        group_name.has_value() ? *group_name : "0";
 
     {
       auto it = symm_mems_.find(std::make_tuple(ptr, actual_group_name));
@@ -370,9 +376,6 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
         return it->second;
       }
     }
-    // In case of MemPool, tensor.storage().data_ptr() may not match
-    // exactly an allocation's base address. Thus we perform the search by
-    // testing if the former is within an allocation's range.
     auto alloc_it = std::find_if(
         allocations_.begin(), allocations_.end(), [&](const auto& pair) {
           auto& allocation = pair.second;
@@ -387,41 +390,27 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
         "is the tensor allocated from SymmetricMemory?");
 
     auto& allocation = alloc_it->second;
-
-    // Search again using allocation base ptr (which is the key we use for
-    // caching, see below)
     auto it =
         symm_mems_.find(std::make_tuple(allocation->ptr, actual_group_name));
     c10::intrusive_ptr<ISHMEMSymmetricMemory> symm_mem;
     if (it != symm_mems_.end()) {
-      // Base allocation has been rendezvoused
       symm_mem = it->second;
     } else {
-      // Create a new rendezvous
       symm_mem = c10::make_intrusive<ISHMEMSymmetricMemory>(
           allocation.get(), actual_group_name);
     }
 
-    // Cache rendezvous using allocation's base address as key
     symm_mems_[std::make_tuple(allocation->ptr, actual_group_name)] = symm_mem;
 
-    // TODO: change the `ptr` below to `tensor.data_ptr()` when adding support
-    // for user slice/view operations. For MemPool support,
-    // `tensor.storate().data_ptr()` is fine (today's `ptr`).
-
-    // If the tensor's ptr happen to be the same as allocation ptr
     if (ptr == allocation->ptr) {
       return symm_mem;
     } else {
-      // Return a copy of the SymmetricMemory with an offset. This is a
-      // "shallow" copy adjusting the offset field in the handle.
       return c10::make_intrusive<ISHMEMSymmetricMemory>(
           *symm_mem, (uintptr_t)ptr - (uintptr_t)allocation->ptr);
     }
   };
 
   bool has_multicast_support(int device_idx) override {
-    // ISHMEM does not have multicast support
     return false;
   };
 
@@ -444,9 +433,7 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
 struct RegisterISHMEMSymmetricMemoryAllocator {
   RegisterISHMEMSymmetricMemoryAllocator() {
     auto allocator = c10::make_intrusive<ISHMEMSymmetricMemoryAllocator>();
-    // Always register availability to support dynamic backend switching
     register_availability("ISHMEM", allocator);
-    // If this is the preferred backend, also set it as default
     if (getSymmMemBackendXPU() == "ISHMEM") {
       register_allocator(c10::DeviceType::XPU, allocator);
     }
