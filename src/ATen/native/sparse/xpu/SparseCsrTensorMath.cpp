@@ -12,8 +12,8 @@
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TensorOperators.h>
 #include <ATen/native/Resize.h>
+#include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
-#include <ATen/native/sparse/xpu/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
@@ -89,109 +89,86 @@ void addmm_out_sparse_csr(
   // Invalid combinations are omitted and will fall though to the TORCH check
   // generating an informative error message
 
-  // mm functions that copy input to result when needed (e.g. mm
-  // triton kernels do not require result being initialized with
-  // input):
-  if (mat1.layout() == kSparseBsr) {
-    if (mat2.layout() == kStrided) {
-      if (result.layout() == kStrided) {
-        Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input, beta);
-        }
-        result.copy_(result_dense);
-        return;
-      }
+  if ((mat1.layout() == kSparseBsr) && (mat2.layout() == kStrided) &&
+      (result.layout() == kStrided)) {
+    Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
+    if (beta.toComplexDouble() != 0.) {
+      result_dense.add_(input, beta);
     }
+    result.copy_(result_dense);
+    return;
+  }
+
+  if ((mat1.layout() == kStrided) && (mat2.layout() == kSparseBsc) &&
+      (result.layout() == kStrided)) {
+    Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
+    if (beta.toComplexDouble() != 0.) {
+      result_dense.add_(input, beta);
+    }
+    result.copy_(result_dense);
+    return;
   }
 
   if (mat1.layout() == kStrided) {
-    if (mat2.layout() == kSparseBsc) {
-      if (result.layout() == kStrided) {
-        Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input, beta);
-        }
-        result.copy_(result_dense);
-        return;
+    if ((mat2.layout() == kSparseCsr) && (result.layout() == kStrided)) {
+      Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input, beta);
       }
+      result.copy_(result_dense);
+      return;
     }
-  }
-
-  if (mat1.layout() == kStrided) {
-    if (mat2.layout() == kSparseCsr) {
-      if (result.layout() == kStrided) {
-        Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input, beta);
-        }
-        result.copy_(result_dense);
-        return;
+    if ((mat2.layout() == kSparseCsc) && (result.layout() == kStrided)) {
+      Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input, beta);
       }
-    }
-    if (mat2.layout() == kSparseCsc) {
-      if (result.layout() == kStrided) {
-        Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input, beta);
-        }
-        result.copy_(result_dense);
-        return;
-      }
+      result.copy_(result_dense);
+      return;
     }
   }
   if (mat1.layout() == kSparseCsr) {
-    if (mat2.layout() == kStrided) {
-      if (result.layout() == kStrided) {
-        Tensor result_dense = mat1.to_dense().mm(mat2) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input, beta);
-        }
-        result.copy_(result_dense);
-        return;
+    if ((mat2.layout() == kStrided) && (result.layout() == kStrided)) {
+      Tensor result_dense = mat1.to_dense().mm(mat2) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input, beta);
       }
+      result.copy_(result_dense);
+      return;
     }
-    if (mat2.layout() == kSparseCsr) {
-      if (result.layout() == kSparseCsr) {
-        Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input.to_dense(), beta);
-        }
-        result = result_dense.to_sparse_csr();
-        return;
+    if ((mat2.layout() == kSparseCsr) && (result.layout() == kSparseCsr)) {
+      Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input.to_dense(), beta);
       }
+      result = result_dense.to_sparse_csr();
+      return;
     }
-    if (mat2.layout() == kSparseCsc) {
-      if (result.layout() == kSparseCsr) {
-        Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input.to_dense(), beta);
-        }
-        result = result_dense.to_sparse_csr();
-        return;
+    if ((mat2.layout() == kSparseCsc) && (result.layout() == kSparseCsr)) {
+      Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input.to_dense(), beta);
       }
+      result = result_dense.to_sparse_csr();
+      return;
     }
   }
   if (mat1.layout() == kSparseCsc) {
-    if (mat2.layout() == kStrided) {
-      if (result.layout() == kStrided) {
-        Tensor result_dense = mat1.to_dense().mm(mat2) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input, beta);
-        }
-        result.copy_(result_dense);
-        return;
+    if ((mat2.layout() == kStrided) && (result.layout() == kStrided)) {
+      Tensor result_dense = mat1.to_dense().mm(mat2) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input, beta);
       }
+      result.copy_(result_dense);
+      return;
     }
-    if (mat2.layout() == kSparseCsr) {
-      if (result.layout() == kSparseCsr) {
-        Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input.to_dense(), beta);
-        }
-        result = result_dense.to_sparse_csr();
-        return;
+    if ((mat2.layout() == kSparseCsr) && (result.layout() == kSparseCsr)) {
+      Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
+      if (beta.toComplexDouble() != 0.) {
+        result_dense.add_(input.to_dense(), beta);
       }
+      result = result_dense.to_sparse_csr();
+      return;
     }
     if (mat2.layout() == kSparseCsc) {
       if (result.layout() == kSparseCsr) {
@@ -230,10 +207,26 @@ Tensor& addmm_out_sparse_compressed_xpu(
     const Scalar& beta,
     const Scalar& alpha,
     Tensor& result) {
-  sparse::impl::_check_is_xpu(self, "self");
-  sparse::impl::_check_is_xpu(mat1, "mat1");
-  sparse::impl::_check_is_xpu(mat2, "mat2");
-  sparse::impl::_check_is_xpu(result, "result");
+  TORCH_CHECK(
+      self.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected self to be XPU tensor, but got ",
+      self.device(),
+      " tensor");
+  TORCH_CHECK(
+      mat1.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected mat1 to be XPU tensor, but got ",
+      mat1.device(),
+      " tensor");
+  TORCH_CHECK(
+      mat2.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected mat2 to be XPU tensor, but got ",
+      mat2.device(),
+      " tensor");
+  TORCH_CHECK(
+      result.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected result to be XPU tensor, but got ",
+      result.device(),
+      " tensor");
 
   // Same checks as in TORCH_META_FUNC(addmm) at
   // aten/src/ATen/native/LinearAlgebra.cpp
@@ -406,45 +399,47 @@ Tensor& bmm_out_sparse_csr_xpu(
   Scalar alpha(1.0);
   return at::native::baddbmm_out_sparse_csr_xpu(
       result, mat1, mat2, beta, alpha, result);
-  Tensor& add_out_sparse_compressed_xpu(
-      const Tensor& self,
-      const SparseCsrTensor& other,
-      const Scalar& alpha,
-      SparseCsrTensor& out) {
-    if (self.layout() == kStrided) {
-      at::add_out(out, self, other.to_dense(), alpha);
-      return out;
-    } else if (other.layout() == kStrided) {
-      at::add_out(out, other, self.to_dense(), alpha);
-      return out;
-    } else {
-      TORCH_CHECK(
-          self.sizes().equals(other.sizes()),
-          "torch.add: Expected input tensors to have the same shape, but got tensor `self` with shape ",
-          self.sizes(),
-          " and tensor `other` with shape ",
-          other.sizes());
-      TORCH_CHECK(
-          self.is_xpu(),
-          "add: expected 'self' to be XPU tensor, but got tensor on device: ",
-          self.device());
-      TORCH_CHECK(
-          other.is_xpu(),
-          "add: expected 'other' to be XPU tensor, but got tensor on device: ",
-          other.device());
-      TORCH_CHECK(
-          out.is_xpu(),
-          "add: expected 'out' to be XPU tensor, but got tensor on device: ",
-          out.device());
+}
 
-      if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
-        return out;
-      }
-
-      Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-      out = out_dense.to_sparse_csr();
-    }
+Tensor& add_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const SparseCsrTensor& other,
+    const Scalar& alpha,
+    SparseCsrTensor& out) {
+  if (self.layout() == kStrided) {
+    at::add_out(out, self, other.to_dense(), alpha);
     return out;
+  } else if (other.layout() == kStrided) {
+    at::add_out(out, other, self.to_dense(), alpha);
+    return out;
+  } else {
+    TORCH_CHECK(
+        self.sizes().equals(other.sizes()),
+        "torch.add: Expected input tensors to have the same shape, but got tensor `self` with shape ",
+        self.sizes(),
+        " and tensor `other` with shape ",
+        other.sizes());
+    TORCH_CHECK(
+        self.is_xpu(),
+        "add: expected 'self' to be XPU tensor, but got tensor on device: ",
+        self.device());
+    TORCH_CHECK(
+        other.is_xpu(),
+        "add: expected 'other' to be XPU tensor, but got tensor on device: ",
+        other.device());
+    TORCH_CHECK(
+        out.is_xpu(),
+        "add: expected 'out' to be XPU tensor, but got tensor on device: ",
+        out.device());
+
+    if (only_sparse_compressed_add_trivial_cases(self, other, alpha, out)) {
+      return out;
+    }
+
+    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
+    out = out_dense.to_sparse_csr();
   }
+  return out;
+}
 
 } // namespace at::native

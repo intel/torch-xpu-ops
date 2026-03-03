@@ -2832,7 +2832,9 @@ class TestSparseCSR(TestCase):
         )
     )
     @dtypesIfXPU(*floating_and_complex_types_and(torch.half, torch.bfloat16))
-    @precisionOverride({torch.bfloat16: 3.5e-2, torch.float16: 1e-2, torch.float64: 2e-6})
+    @precisionOverride(
+        {torch.bfloat16: 3.5e-2, torch.float16: 1e-2, torch.float64: 2e-6}
+    )
     def test_sparse_addmm(self, device, dtype):
         def test_shape(m, n, p, nnz, broadcast, index_dtype, alpha_beta=None):
             if alpha_beta is None:
