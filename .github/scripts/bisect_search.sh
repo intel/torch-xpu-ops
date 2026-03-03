@@ -54,16 +54,19 @@ git clone https://github.com/pytorch/benchmark gs-benchmark
 export PYTHONPATH="${PWD}/gs-benchmark:${PYTHONPATH}"
 if [ "${PREPARE_ENV}" == "yes" ];then
     # deps
-    pip install pandas scipy psutil
-    pip install -U 'setuptools<81'
+    pip install pandas scipy psutil tqdm
     if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
-        pip install transformers==4.55.2
+        pip install transformers==4.57.3
     elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
-        pip install timm==1.0.19
+        pip install --no-deps timm==1.0.19
+        pip install pyyaml huggingface_hub safetensors numpy
     elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/torchbench.py"* ]];then
         model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
         cd gs-benchmark
-        sed -i 's/.*pynvml.*//g' requirements.txt
+        sed -i 's/.*pynvml.*//g;s/.*transformers.*//g;s/.*timm.*//g' requirements.txt
+        pip install transformers==4.57.3
+        pip install --no-deps timm==1.0.19
+        pip install pyyaml huggingface_hub safetensors numpy
         pip install -r requirements.txt
         python install.py ${model_name}
         # for dlrm

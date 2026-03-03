@@ -47,6 +47,7 @@ python -m pip install requests
 python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
+pip install -U 'setuptools<81'
 python -m pip install mkl-static==${XPU_MKL_VERSION:-"2025.2.0"} mkl-include==${XPU_MKL_VERSION:-"2025.2.0"}
 export USE_STATIC_MKL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
@@ -86,7 +87,7 @@ rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
 python -m pip install --force-reinstall tmp/torch*.whl
 
-python -m pip freeze |grep torch > "${GITHUB_WORKSPACE}/torch_constraints.txt"
+python -m pip freeze |grep -E 'torch|setuptools' > "${GITHUB_WORKSPACE}/torch_constraints.txt"
 python -m pip config set global.constraint "${GITHUB_WORKSPACE}/torch_constraints.txt"
 
 # Verify
