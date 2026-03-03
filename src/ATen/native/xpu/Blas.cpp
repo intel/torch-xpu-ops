@@ -42,8 +42,11 @@ class ConjPhysicalGuard final {
   }
 
   ~ConjPhysicalGuard() {
+    // Runs automatically when out_guard goes out of scope (before return).
     if (was_conj_) {
-      // Copy the result back into the original conjugated tensor.
+      // out_ has its conj bit set, so copy_ writes conj(tmp_[i]) into
+      // physical storage. Readers of out_ apply another conj, recovering
+      // tmp_[i] — correctly propagating the computed result.
       out_.copy_(tmp_);
     }
   }
