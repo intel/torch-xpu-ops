@@ -21,7 +21,7 @@ on:
       driver:
         type: choice
         required: true
-        default: 'lts2'
+        default: 'rolling-client'
         description: 'Driver version, lts, lts2 or rolling'
         options:
           - lts
