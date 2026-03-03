@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,6 +88,7 @@ if(USE_SYCLTLA)
     # Set Compile options for sycltla kernels
     target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
     target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+    target_include_directories(${sycl_lib} PRIVATE ${ATen_XPU_FLASH_ATTN_DIRS})
   endforeach()
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
