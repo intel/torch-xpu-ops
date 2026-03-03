@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -56,6 +56,7 @@ from torch.testing._internal.common_device_type import (
     skipCUDAIf,
     skipCUDAIfRocm,
     skipMeta,
+    skipXPUIf,
 )
 from torch.testing._internal.common_dtype import floating_types_and_half
 from torch.testing._internal.common_utils import (
@@ -7394,6 +7395,7 @@ torch.cuda.synchronize()
     @skipIfTorchDynamo("compiles internally")
     @unittest.skipIf(IS_WINDOWS, reason="Windows not yet supported for torch.compile")
     @skipCUDAIf(not SM70OrLater, "GPU capability is < SM70")
+    @skipXPUIf(True, "XPU does not support NestedTensor for SDPA operations.")
     @parametrize("use_legacy_api", [True, False])
     @skipCPUIf(True, "SPDA Math NT fallback causes failure: see issue #133644")
     @unittest.skipIf(

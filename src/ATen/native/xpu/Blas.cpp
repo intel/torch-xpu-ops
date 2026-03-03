@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 
 namespace at::native {
 
+#if !defined(USE_ONEMKL_XPU)
 namespace {
 
 class ConjPhysicalGuard final {
@@ -281,6 +282,7 @@ Tensor& baddbmm_complex_fallback(
 }
 
 } // anonymous namespace
+#endif // !defined(USE_ONEMKL_XPU)
 
 Tensor& mm_complex_out_xpu(
     const Tensor& self,
@@ -431,9 +433,9 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
     if (self.is_conj()) {
       if (other.is_conj()) {
         return (dot_xpu(self.conj(), other.conj())).conj();
-       } else {
-         return vdot_xpu(self.conj(), other);
-       }
+      } else {
+        return vdot_xpu(self.conj(), other);
+      }
     } else if (other.is_conj()) {
       return vdot_xpu(other.conj(), self);
     }
@@ -445,11 +447,11 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
     return at::_efficientzerotensor({}, self.options());
   }
 
-  #if defined(USE_ONEMKL_XPU)
-    return at::native::xpu::dot_xpu_mkl(self, other);
-  #else
-    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
-  #endif
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::dot_xpu_mkl(self, other);
+#else
+  return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+#endif
 }
 
 Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
@@ -475,11 +477,11 @@ Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
     return at::_efficientzerotensor({}, self.options());
   }
 
-  #if defined(USE_ONEMKL_XPU)
-    return at::native::xpu::vdot_xpu_mkl(self, other);
-  #else
-    return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
-  #endif
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::vdot_xpu_mkl(self, other);
+#else
+  return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+#endif
 }
 
 } // namespace at::native
