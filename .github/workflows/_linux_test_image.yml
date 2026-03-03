@@ -66,7 +66,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   # Set default values for PR-triggered builds
-  WORKFLOW_DRIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.driver || 'lts2' }}
+  WORKFLOW_DRIVER: ${{ github.event_name == 'workflow_dispatch' && inputs.driver || 'rolling-client' }}
   WORKFLOW_UBUNTU: ${{ github.event_name == 'workflow_dispatch' && inputs.ubuntu || '24.04' }}
   WORKFLOW_GCC: ${{ github.event_name == 'workflow_dispatch' && inputs.gcc || '13' }}
   WORKFLOW_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || 'intelgpu/ubuntu-24.04-rolling:26.05' }}

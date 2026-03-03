@@ -6,7 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
+        default: 'bmg-test'
         description: Runner label
       pytorch:
         type: string
