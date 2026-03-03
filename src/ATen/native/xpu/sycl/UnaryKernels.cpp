@@ -156,6 +156,40 @@ static inline scalar_t _nan_to_num_replace(
                                      : a));
 }
 
+template <typename scalar_t>
+static inline scalar_t _nan_to_num_replace_real(
+    scalar_t a_real,
+    scalar_t a_imag,
+    scalar_t nan_replacement_real,
+    scalar_t nan_replacement_imag,
+    scalar_t pos_inf_replacement_real,
+    scalar_t pos_inf_replacement_imag,
+    scalar_t neg_inf_replacement_real,
+    scalar_t neg_inf_replacement_imag) {
+  return _nan_to_num_replace(
+      a_real,
+      nan_replacement_real,
+      pos_inf_replacement_real,
+      neg_inf_replacement_real);
+}
+
+template <typename scalar_t>
+static inline scalar_t _nan_to_num_replace_imag(
+    scalar_t a_real,
+    scalar_t a_imag,
+    scalar_t nan_replacement_real,
+    scalar_t nan_replacement_imag,
+    scalar_t pos_inf_replacement_real,
+    scalar_t pos_inf_replacement_imag,
+    scalar_t neg_inf_replacement_real,
+    scalar_t neg_inf_replacement_imag) {
+  return _nan_to_num_replace(
+      a_imag,
+      nan_replacement_imag,
+      pos_inf_replacement_imag,
+      neg_inf_replacement_imag);
+}
+
 template <typename scalar_t, typename value_t>
 struct NanToNumComplexFunctor {
   scalar_t operator()(scalar_t a) const {
@@ -177,6 +211,53 @@ struct NanToNumComplexFunctor {
   value_t nan_replacement_;
   value_t pos_inf_replacement_;
   value_t neg_inf_replacement_;
+};
+
+template <typename scalar_t, typename value_t>
+struct NanToNumComplexScalarFunctor {
+  scalar_t operator()(scalar_t a) const {
+    value_t res_real = _nan_to_num_replace_real(
+        a.real(),
+        a.imag(),
+        nan_replacement_real_,
+        nan_replacement_imag_,
+        pos_inf_replacement_real_,
+        pos_inf_replacement_imag_,
+        neg_inf_replacement_real_,
+        neg_inf_replacement_imag_);
+    value_t res_imag = _nan_to_num_replace_imag(
+        a.real(),
+        a.imag(),
+        nan_replacement_real_,
+        nan_replacement_imag_,
+        pos_inf_replacement_real_,
+        pos_inf_replacement_imag_,
+        neg_inf_replacement_real_,
+        neg_inf_replacement_imag_);
+    return scalar_t(res_real, res_imag);
+  }
+
+  NanToNumComplexScalarFunctor(
+      value_t nan_replacement_real,
+      value_t nan_replacement_imag,
+      value_t pos_inf_replacement_real,
+      value_t pos_inf_replacement_imag,
+      value_t neg_inf_replacement_real,
+      value_t neg_inf_replacement_imag)
+      : nan_replacement_real_(nan_replacement_real),
+        nan_replacement_imag_(nan_replacement_imag),
+        pos_inf_replacement_real_(pos_inf_replacement_real),
+        pos_inf_replacement_imag_(pos_inf_replacement_imag),
+        neg_inf_replacement_real_(neg_inf_replacement_real),
+        neg_inf_replacement_imag_(neg_inf_replacement_imag) {}
+
+ private:
+  value_t nan_replacement_real_;
+  value_t nan_replacement_imag_;
+  value_t pos_inf_replacement_real_;
+  value_t pos_inf_replacement_imag_;
+  value_t neg_inf_replacement_real_;
+  value_t neg_inf_replacement_imag_;
 };
 
 template <typename scalar_t>
@@ -201,18 +282,53 @@ struct NanToNumFunctor {
 
 void nan_to_num_kernel(
     TensorIteratorBase& iter,
-    std::optional<double> nan,
-    std::optional<double> pos_inf,
-    std::optional<double> neg_inf) {
+    const std::optional<Scalar>& nan,
+    const std::optional<Scalar>& pos_inf,
+    const std::optional<Scalar>& neg_inf) {
+  bool has_complex_scalar = (nan.has_value() && nan.value().isComplex()) ||
+      (pos_inf.has_value() && pos_inf.value().isComplex()) ||
+      (neg_inf.has_value() && neg_inf.value().isComplex());
+
+  if (has_complex_scalar) {
+    AT_DISPATCH_COMPLEX_TYPES(iter.dtype(), "nan_to_num_xpu", [&]() {
+      using value_t = scalar_t::value_type;
+      scalar_t nan_replacement = static_cast<scalar_t>(
+          nan.has_value() ? nan.value().toComplexDouble()
+                          : c10::complex<double>(0., 0.));
+      scalar_t pos_inf_replacement = static_cast<scalar_t>(
+          pos_inf.has_value() ? pos_inf.value().toComplexDouble()
+                              : c10::complex<double>(
+                                    std::numeric_limits<value_t>::max(),
+                                    std::numeric_limits<value_t>::max()));
+      scalar_t neg_inf_replacement = static_cast<scalar_t>(
+          neg_inf.has_value() ? neg_inf.value().toComplexDouble()
+                              : c10::complex<double>(
+                                    std::numeric_limits<value_t>::lowest(),
+                                    std::numeric_limits<value_t>::lowest()));
+
+      gpu_kernel(
+          iter,
+          NanToNumComplexScalarFunctor<scalar_t, value_t>(
+              nan_replacement.real(),
+              nan_replacement.imag(),
+              pos_inf_replacement.real(),
+              pos_inf_replacement.imag(),
+              neg_inf_replacement.real(),
+              neg_inf_replacement.imag()));
+    });
+    return;
+  }
+
   if (isComplexType(iter.dtype())) {
     AT_DISPATCH_COMPLEX_TYPES(iter.dtype(), "nan_to_num_xpu", [&]() {
       using value_t = scalar_t::value_type;
-      value_t nan_replacement = static_cast<value_t>(nan.value_or(0.));
+      value_t nan_replacement =
+          static_cast<value_t>(nan.has_value() ? nan.value().toDouble() : 0.);
       value_t pos_inf_replacement = pos_inf.has_value()
-          ? static_cast<value_t>(pos_inf.value())
+          ? static_cast<value_t>(pos_inf.value().toDouble())
           : std::numeric_limits<value_t>::max();
       value_t neg_inf_replacement = neg_inf.has_value()
-          ? static_cast<value_t>(neg_inf.value())
+          ? static_cast<value_t>(neg_inf.value().toDouble())
           : std::numeric_limits<value_t>::lowest();
       gpu_kernel(
           iter,
@@ -222,12 +338,13 @@ void nan_to_num_kernel(
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         kHalf, kBFloat16, iter.dtype(), "nan_to_num_xpu", [&]() {
-          scalar_t nan_replacement = static_cast<scalar_t>(nan.value_or(0.));
+          scalar_t nan_replacement = static_cast<scalar_t>(
+              nan.has_value() ? nan.value().toDouble() : 0.);
           scalar_t pos_inf_replacement = pos_inf.has_value()
-              ? static_cast<scalar_t>(pos_inf.value())
+              ? static_cast<scalar_t>(pos_inf.value().toDouble())
               : std::numeric_limits<scalar_t>::max();
           scalar_t neg_inf_replacement = neg_inf.has_value()
-              ? static_cast<scalar_t>(neg_inf.value())
+              ? static_cast<scalar_t>(neg_inf.value().toDouble())
               : std::numeric_limits<scalar_t>::lowest();
           gpu_kernel(
               iter,

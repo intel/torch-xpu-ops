@@ -10,7 +10,9 @@
 
 #pragma once
 
+#include <ATen/core/Scalar.h>
 #include <ATen/native/TensorIterator.h>
+#include <optional>
 
 namespace at::native::xpu {
 
@@ -26,9 +28,9 @@ TORCH_XPU_API void expm1_kernel(TensorIteratorBase& iter);
 
 TORCH_XPU_API void nan_to_num_kernel(
     TensorIteratorBase& iter,
-    std::optional<double> nan,
-    std::optional<double> pos_inf,
-    std::optional<double> neg_inf);
+    const std::optional<Scalar>& nan,
+    const std::optional<Scalar>& pos_inf,
+    const std::optional<Scalar>& neg_inf);
 
 TORCH_XPU_API void frexp_kernel(TensorIteratorBase& iter);
 

@@ -570,6 +570,75 @@ class TestUnaryUfuncs(TestCase):
             res_check = gen_tensor([21, 456])
             self.assertEqual(res, res_check)
 
+    @dtypes(torch.complex64, torch.complex128)
+    def test_nan_to_num_complex_scalar_replacement(self, device, dtype):
+        value_dtype = torch.tensor([], dtype=dtype).real.dtype
+
+        def gen_tensor(a):
+            return torch.view_as_complex(
+                torch.tensor(a, dtype=value_dtype, device=device)
+            )
+
+        # Both real and imag are NaN, replace with complex scalar
+        a = gen_tensor([float("nan"), float("nan")])
+        res = torch.nan_to_num(a, nan=1 + 2j)
+        expected = gen_tensor([1, 2])
+        self.assertEqual(res, expected)
+
+        # Only real is NaN
+        a = gen_tensor([float("nan"), 5])
+        res = torch.nan_to_num(a, nan=1 + 2j)
+        expected = gen_tensor([1, 5])
+        self.assertEqual(res, expected)
+
+        # Only imag is NaN
+        a = gen_tensor([3, float("nan")])
+        res = torch.nan_to_num(a, nan=1 + 2j)
+        expected = gen_tensor([3, 2])
+        self.assertEqual(res, expected)
+
+        # Both real and imag are +inf
+        a = gen_tensor([float("inf"), float("inf")])
+        res = torch.nan_to_num(a, posinf=10 + 20j)
+        expected = gen_tensor([10, 20])
+        self.assertEqual(res, expected)
+
+        # Both real and imag are -inf
+        a = gen_tensor([float("-inf"), float("-inf")])
+        res = torch.nan_to_num(a, neginf=-5 - 6j)
+        expected = gen_tensor([-5, -6])
+        self.assertEqual(res, expected)
+
+        # Mixed: real is NaN, imag is +inf
+        a = gen_tensor([float("nan"), float("inf")])
+        res = torch.nan_to_num(a, nan=1 + 2j, posinf=10 + 20j)
+        expected = gen_tensor([1, 20])
+        self.assertEqual(res, expected)
+
+        # Mixed: real is -inf, imag is NaN
+        a = gen_tensor([float("-inf"), float("nan")])
+        res = torch.nan_to_num(a, nan=1 + 2j, neginf=-5 - 6j)
+        expected = gen_tensor([-5, 2])
+        self.assertEqual(res, expected)
+
+        # All three replacement args with complex scalars
+        a = gen_tensor([float("nan"), float("inf")])
+        res = torch.nan_to_num(a, nan=1 + 2j, posinf=3 + 4j, neginf=-7 - 8j)
+        expected = gen_tensor([1, 4])
+        self.assertEqual(res, expected)
+
+        # No extremals, tensor should pass through unchanged
+        a = gen_tensor([42, 99])
+        res = torch.nan_to_num(a, nan=1 + 2j, posinf=3 + 4j, neginf=-7 - 8j)
+        self.assertEqual(res, a)
+
+        # Out variant
+        a = gen_tensor([float("nan"), float("nan")])
+        out = torch.empty_like(a)
+        torch.nan_to_num(a, nan=1 + 2j, out=out)
+        expected = gen_tensor([1, 2])
+        self.assertEqual(out, expected)
+
     @dtypes(torch.cdouble)
     def test_complex_edge_values(self, device, dtype):
         # sqrt Test Reference: https://github.com/pytorch/pytorch/pull/47424
