@@ -276,24 +276,46 @@ static void initialize_ishmem_with_store(
   c10::OptionalDeviceGuard guard;
   guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 
-  ishmemx_uniqueid_t unique_id;
-  memset(&unique_id, 0, sizeof(unique_id));
-
-  if (rank == 0) {
-    int ret = ishmemx_get_uniqueid(&unique_id);
-    TORCH_CHECK(ret == 0, "ishmemx_get_uniqueid failed with error: ", ret);
+  // Check if MPI is already initialized (e.g. by mpi4py).
+  // ishmemx_get_uniqueid() requires MPI to be initialized, so we can only
+  // use the UID-based path when MPI is already available.
+  bool mpi_already_initialized = false;
+  using MPI_Initialized_fn = int (*)(int*);
+  auto mpi_initialized_fn = reinterpret_cast<MPI_Initialized_fn>(
+      dlsym(RTLD_DEFAULT, "MPI_Initialized"));
+  if (mpi_initialized_fn) {
+    int flag = 0;
+    mpi_initialized_fn(&flag);
+    mpi_already_initialized = (flag != 0);
   }
 
-  std::vector<ishmemx_uniqueid_t> unique_ids =
-      storeExchange.all_gather(store, rank, world_size, unique_id);
+  if (mpi_already_initialized) {
+    // MPI is initialized (mpi4py): use UID-based init with
+    // initialize_runtime=false so ISHMEM won't call MPI_Finalize.
+    ishmemx_uniqueid_t unique_id;
+    memset(&unique_id, 0, sizeof(unique_id));
 
-  ishmemx_attr_t attr;
-  attr.initialize_runtime = false;
-  attr.use_uid = true;
-  attr.nranks = world_size;
-  attr.uid = &unique_ids[0];
+    if (rank == 0) {
+      int ret = ishmemx_get_uniqueid(&unique_id);
+      TORCH_CHECK(ret == 0, "ishmemx_get_uniqueid failed with error: ", ret);
+    }
 
-  ishmemx_init_attr(&attr);
+    std::vector<ishmemx_uniqueid_t> unique_ids =
+        storeExchange.all_gather(store, rank, world_size, unique_id);
+
+    ishmemx_attr_t attr;
+    attr.initialize_runtime = false;
+    attr.use_uid = true;
+    attr.nranks = world_size;
+    attr.uid = &unique_ids[0];
+    ishmemx_init_attr(&attr);
+  } else {
+    // MPI not initialized (no mpi4py): let ISHMEM manage MPI lifecycle.
+    // ishmem_init() calls MPI_Init_thread internally and uses
+    // MPI_COMM_WORLD for rank coordination.
+    ishmem_init();
+  }
+
   TORCH_CHECK(
       ishmem_my_pe() == rank,
       "ISHMEM initialization failed: rank mismatch, expected ",
