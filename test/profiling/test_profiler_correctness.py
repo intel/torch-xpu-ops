@@ -195,7 +195,7 @@ class TestProfilerCorrectness(TestCase):
         # At least some named events must be present in the trace
         self.assertGreater(len(count_names), 0, "No named events found in chrome trace")
 
-    def test_gpu_kernel_time_present(self):
+    def test_xpu_kernel_time_present(self):
         shape = [4, 64, 128, 128]
         kernel_size = 2
         dtype = torch.float32
@@ -237,14 +237,14 @@ class TestProfilerCorrectness(TestCase):
         xpu_times = [avg.self_device_time_total for avg in averages]
         self._assert_has_positive_xpu_time(
             averages,
-            msg="No events with positive self_device_time_total — GPU kernel times "
+            msg="No events with positive self_device_time_total — XPU kernel times "
             f"may be missing. XPU times: {xpu_times}",
         )
 
         # Chrome trace must contain kernel category events
         self._gen_and_check_json(prof, expected_cats=["kernel"])
 
-    def test_time_precision(self):
+    def test_kernel_set_stability(self):
         x = torch.randn(3, 3, device="cpu")
 
         # Warm up
@@ -336,7 +336,8 @@ class TestProfilerCorrectness(TestCase):
         self._assert_has_device_types(prof)
 
         for event in prof.events():
-            # cpu_time_total and xpu_time_total should be non-negative
+            # cpu_time_total, self_cpu_time_total, and self_device_time_total
+            # (XPU time) should all be non-negative
             self.assertGreaterEqual(
                 event.cpu_time_total,
                 0,
@@ -348,6 +349,12 @@ class TestProfilerCorrectness(TestCase):
                 0,
                 f"Event '{event.name}' has negative self_cpu_time_total: "
                 f"{event.self_cpu_time_total}",
+            )
+            self.assertGreaterEqual(
+                event.self_device_time_total,
+                0,
+                f"Event '{event.name}' has negative self_device_time_total "
+                f"(XPU time): {event.self_device_time_total}",
             )
 
     def test_chrome_trace_json_structure(self):
