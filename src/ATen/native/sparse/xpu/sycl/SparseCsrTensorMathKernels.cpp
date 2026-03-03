@@ -656,7 +656,9 @@ void addmm_out_sparse_csr(
           input_t,
           mat2.transpose(-2, -1), // BSC.T == BSR
           mat1.transpose(-2, -1),
-          beta, alpha, result_t);
+          beta,
+          alpha,
+          result_t);
       return;
     }
     if (mat2.layout() == kSparseCsc) {
@@ -664,7 +666,9 @@ void addmm_out_sparse_csr(
           input_t,
           mat2.transpose(-2, -1), // CSC.T == CSR
           mat1.transpose(-2, -1),
-          beta, alpha, result_t);
+          beta,
+          alpha,
+          result_t);
       return;
     }
     if (mat2.layout() == kSparseCsr) {
@@ -672,7 +676,9 @@ void addmm_out_sparse_csr(
           input_t,
           mat2.transpose(-2, -1).to_sparse_csr(),
           mat1.transpose(-2, -1),
-          beta, alpha, result_t);
+          beta,
+          alpha,
+          result_t);
       return;
     }
   }

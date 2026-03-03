@@ -8,11 +8,11 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/ExpandUtils.h>
+#include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/native/Resize.h>
-#include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
+#include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
@@ -115,10 +115,26 @@ Tensor& addmm_out_sparse_compressed_xpu(
     const Scalar& beta,
     const Scalar& alpha,
     Tensor& result) {
-  TORCH_CHECK(self.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'self' to be XPU tensor, but got ", self.device(), " tensor");
-  TORCH_CHECK(mat1.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'mat1' to be XPU tensor, but got ", mat1.device(), " tensor");
-  TORCH_CHECK(mat2.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'mat2' to be XPU tensor, but got ", mat2.device(), " tensor");
-  TORCH_CHECK(result.is_xpu(), "Expected all tensors to be on the same device. addmm expected 'result' to be XPU tensor, but got ", result.device(), " tensor");
+  TORCH_CHECK(
+      self.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected 'self' to be XPU tensor, but got ",
+      self.device(),
+      " tensor");
+  TORCH_CHECK(
+      mat1.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected 'mat1' to be XPU tensor, but got ",
+      mat1.device(),
+      " tensor");
+  TORCH_CHECK(
+      mat2.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected 'mat2' to be XPU tensor, but got ",
+      mat2.device(),
+      " tensor");
+  TORCH_CHECK(
+      result.is_xpu(),
+      "Expected all tensors to be on the same device. addmm expected 'result' to be XPU tensor, but got ",
+      result.device(),
+      " tensor");
 
   sparse::impl::_check_dim(mat1, 2, "mat1");
   sparse::impl::_check_dim(mat2, 2, "mat2");
@@ -126,8 +142,14 @@ Tensor& addmm_out_sparse_compressed_xpu(
   TORCH_CHECK(
       mat1.size(1) == mat2.size(0),
       "mat1 and mat2 shapes cannot be multiplied (",
-      mat1.size(0), "x", mat1.size(1), " and ",
-      mat2.sizes()[0], "x", mat2.sizes()[1], ")");
+      mat1.size(0),
+      "x",
+      mat1.size(1),
+      " and ",
+      mat2.sizes()[0],
+      "x",
+      mat2.sizes()[1],
+      ")");
 
   c10::MaybeOwned<at::Tensor> self_;
   if (&result == &self) {
@@ -137,13 +159,18 @@ Tensor& addmm_out_sparse_compressed_xpu(
   }
 
   TORCH_CHECK(
-      ((self_->dim() == 2) &&
-       (self_->size(0) == mat1.size(0)) &&
+      ((self_->dim() == 2) && (self_->size(0) == mat1.size(0)) &&
        (self_->size(1) == mat2.size(1))),
       "The input tensor must be a matrix with size ",
-      mat1.size(0), "x", mat2.size(1),
-      ", but got a ", self_->dim(), "-D tensor with size ",
-      self_->size(0), "x", self_->size(1));
+      mat1.size(0),
+      "x",
+      mat2.size(1),
+      ", but got a ",
+      self_->dim(),
+      "-D tensor with size ",
+      self_->size(0),
+      "x",
+      self_->size(1));
 
   if (!result.is_same(self)) {
     if (result.layout() == kStrided) {
@@ -162,7 +189,8 @@ Tensor& addmm_out_sparse_compressed_xpu(
 
   if (sparse::impl::_is_sparse_and_zero(mat1) ||
       sparse::impl::_is_sparse_and_zero(mat2)) {
-    //  when beta==0 values in self should be ignored. nans and infs should not propagate.
+    //  when beta==0 values in self should be ignored. nans and infs should not
+    //  propagate.
     const auto beta_val = beta.toComplexDouble();
     if (beta_val == 0.) {
       result.zero_();
