@@ -41,12 +41,9 @@ init_command = [
 [[linter]]
 code = 'CLANGFORMAT'
 include_patterns = [
-    'src/comm/*.h',
-    'src/comm/*.cpp',
-    'src/Aten/**/**/*.h',
-    'src/Aten/**/**/*.cpp',
-    'src/Aten/**/**/**/*.h',
-    'src/Aten/**/**/**/*.cpp',
+    'src/**/*.h',
+    'src/**/*.hpp',
+    'src/**/*.cpp',
 ]
 init_command = [
     'python3',
@@ -121,12 +118,8 @@ command = [
 [[linter]]
 code = 'CLANGTIDY'
 include_patterns = [
-    'src/comm/*.h',
-    'src/comm/*.cpp',
-    'src/Aten/**/**/*.h',
-    'src/Aten/**/**/*.cpp',
-    'src/Aten/**/**/**/*.h',
-    'src/Aten/**/**/**/*.cpp',
+    'src/**/*.h',
+    'src/**/*.cpp',
 ]
 init_command = [
     'python3',
@@ -338,11 +331,9 @@ command = [
 [[linter]]
 code = 'INCLUDE'
 include_patterns = [
-    'src/comm/**',
-    'src/Aten/**',
-    'src/Aten/**/**',
-    'src/Aten/**/**/**',
-    'src/Aten/**/**/**/**',
+    'src/**/*.h',
+    'src/**/*.hpp',
+    'src/**/*.cpp',
 ]
 command = [
     'python3',

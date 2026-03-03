@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -265,8 +265,7 @@ Tensor _flatten_indices_impl(const Tensor& indices, IntArrayRef size) {
     auto strides = c10::contiguous_strides(size);
     return at::sparse::TensorGeometryHolder<max_static_len>(
         strides, strides, indices.options());
-  }
-  ();
+  }();
   const auto hash_coeffs = std::get<0>(*hash_coeffs_storage);
 
   const auto hash_indices = [&]() -> Tensor {
