@@ -13470,8 +13470,11 @@ class TestNNDeviceType(NNTestCase):
         batch_size,
     ):
         # Check output value consistency between resized_input_uint8 and resized input_float
-        if torch.device(device).type == "cuda":
-            raise SkipTest("CUDA implementation is not yet supporting uint8")
+        dev_type = torch.device(device).type
+        if dev_type in ("cuda", "xpu"):
+            raise SkipTest(
+                f"{dev_type.upper()} implementation is not yet supporting uint8"
+            )
 
         torch.manual_seed(0)
 
