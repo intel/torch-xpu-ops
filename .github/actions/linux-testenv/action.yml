@@ -59,7 +59,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # install pytorch
-        pip config unset global.constraint
+        pip config unset global.constraint || true
         if [ $(echo "${{ inputs.pytorch }}" |grep -w "release_wheel" -c) -ne 0 ];then
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu
         elif [ $(echo "${{ inputs.pytorch }}" |grep -w "test_wheel" -c) -ne 0 ];then

@@ -80,7 +80,7 @@ git diff
 WERROR=1 python setup.py bdist_wheel
 
 # Post Build
-python -m pip config unset global.constraint
+python -m pip config unset global.constraint || true
 python -m pip install patchelf
 rm -rf ./tmp
 bash third_party/torch-xpu-ops/.github/scripts/rpath.sh ${WORKSPACE}/pytorch/dist/torch*.whl
