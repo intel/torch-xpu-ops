@@ -52,8 +52,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Get runner
         id: runner-info
-        with:
-          ut_name: ${{ inputs.ut }}
         uses: ./.github/actions/get-runner
 
   test-in-container:
