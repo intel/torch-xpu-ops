@@ -118,15 +118,20 @@ class TestOverlappingKernels(TestCase):
     def test_overlapping_kernels(self):
         filepath = Path("rn50.log.json")
 
-        assert (
-            filepath.exists()
-        ), f"File {filepath} does not exist, cannot find tracefile."
+        self.assertTrue(
+            filepath.exists(),
+            f"File {filepath} does not exist, cannot find tracefile.",
+        )
 
         trace_data = load_trace(filepath)
         kernels = extract_kernels(trace_data)
         overlaps = check_overlaps(kernels)
 
-        assert len(overlaps) == 0, f"Found {len(overlaps)} overlapping kernel pairs!"
+        self.assertEqual(
+            len(overlaps),
+            0,
+            f"Found {len(overlaps)} overlapping kernel pairs!",
+        )
 
 
 if __name__ == "__main__":
