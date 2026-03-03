@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -10,14 +10,14 @@
 
 #pragma once
 
-#include "cutlass/cutlass.h"
-#include "cutlass/fp8_to_fp16.h"
-#include "cutlass/gemm/dispatch_policy.hpp"
+#include <cutlass/cutlass.h>
+#include <cutlass/fp8_to_fp16.h>
+#include <cutlass/gemm/dispatch_policy.hpp>
 
-#include "cute/algorithm/functional.hpp"
-#include "cute/algorithm/gemm.hpp"
-#include "cute/atom/mma_atom.hpp"
-#include "flash_attention_v2/collective/fmha_fusion.hpp"
+#include <cute/algorithm/functional.hpp>
+#include <cute/algorithm/gemm.hpp>
+#include <cute/atom/mma_atom.hpp>
+#include <flash_attention_v2/collective/fmha_fusion.hpp>
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

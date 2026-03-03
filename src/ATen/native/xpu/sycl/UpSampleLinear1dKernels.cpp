@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,13 @@
 
 #include <ATen/ATen.h>
 #include <ATen/AccumulateType.h>
+#include <ATen/Context.h>
 #include <ATen/Dispatch.h>
 #include <ATen/TensorUtils.h>
+#include <ATen/core/TensorBase.h>
 #include <ATen/native/xpu/UpSample.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <comm/SYCLContext.h>
-#include "ATen/Context.h"
-#include "ATen/core/TensorBase.h"
 
 #include <ATen/native/xpu/sycl/UpSampleLinear1dKernels.h>
 
