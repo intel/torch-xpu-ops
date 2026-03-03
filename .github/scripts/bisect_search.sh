@@ -55,6 +55,7 @@ export PYTHONPATH="${PWD}/gs-benchmark:${PYTHONPATH}"
 if [ "${PREPARE_ENV}" == "yes" ];then
     # deps
     pip install pandas scipy psutil
+    pip install -U 'setuptools<81'
     if [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/huggingface.py"* ]];then
         pip install transformers==4.55.2
     elif [[ "${SEARCH_CASE}" == *"benchmarks/dynamo/timm_models.py"* ]];then
