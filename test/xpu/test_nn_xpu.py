@@ -15009,7 +15009,7 @@ class TestNNDeviceType(NNTestCase):
             # (Issue is filed at https://github.com/pytorch/pytorch/issues/21875)
             mw[0][0] = 5
             self.assertTrue(mw[0][0].device.type == "cpu")
-            self.assertTrue(mw._base[0][0].device.type == device)
+            self.assertTrue(mw._base[0][0].device.type == torch.device(device).type)
 
         try:
             torch.__future__.set_overwrite_module_params_on_conversion(True)
