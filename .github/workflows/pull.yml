@@ -90,7 +90,7 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
-      runner: pvc_rolling
+      runner: build
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
 
   linux-ut:
@@ -104,7 +104,7 @@ jobs:
         ut_name: [op_ut,basic]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: pvc_rolling
+      runner: bmg-test
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
@@ -136,7 +136,7 @@ jobs:
         suite: [huggingface, timm_models, torchbench]
     uses: ./.github/workflows/_linux_e2e.yml
     with:
-      runner: pvc_rolling
+      runner: bmg-test
       test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
       pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
       suite: ${{ matrix.suite }}
