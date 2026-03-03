@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,6 +101,7 @@ REGISTER_XPU_DISPATCH(special_ndtri_stub, &xpu::ndtri_kernel);
 REGISTER_XPU_DISPATCH(special_log_ndtr_stub, &xpu::log_ndtr_kernel);
 REGISTER_XPU_DISPATCH(special_erfcx_stub, &xpu::erfcx_kernel);
 REGISTER_XPU_DISPATCH(special_entr_stub, &xpu::entr_kernel);
+REGISTER_XPU_DISPATCH(kaiser_window_stub, &xpu::kaiser_window_kernel);
 
 } // namespace native
 } // namespace at

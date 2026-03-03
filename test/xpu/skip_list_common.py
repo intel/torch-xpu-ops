@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,31 +33,7 @@ skip_dict = {
     "test_complex_xpu.py": None,
     "test_content_store_xpu.py": None,
     "test_dataloader_xpu.py": None,
-    "test_decomp.py": (
-        "test_comprehensive_baddbmm_xpu_float64",
-        "test_comprehensive_logspace_tensor_overload_xpu_int16",
-        "test_comprehensive_logspace_tensor_overload_xpu_int32",
-        "test_comprehensive_logspace_tensor_overload_xpu_int64",
-        "test_comprehensive_logspace_xpu_int16",
-        "test_comprehensive_logspace_xpu_int32",
-        "test_comprehensive_logspace_xpu_int64",
-        "test_comprehensive_nn_functional_instance_norm_xpu_float64",
-        "test_comprehensive_nn_functional_pad_reflect_xpu_bfloat16",
-        "test_comprehensive_vdot_xpu_complex128",
-        "test_comprehensive_vdot_xpu_complex64",
-        "test_quick_baddbmm_xpu_float64",
-        "test_quick_core_backward_baddbmm_xpu_float64",
-        "test_quick_core_backward_mv_xpu_float64",
-        "test_quick_logspace_tensor_overload_xpu_int16",
-        "test_quick_logspace_tensor_overload_xpu_int32",
-        "test_quick_logspace_tensor_overload_xpu_int64",
-        "test_quick_logspace_xpu_int16",
-        "test_quick_logspace_xpu_int32",
-        "test_quick_logspace_xpu_int64",
-        "test_quick_vdot_xpu_complex128",
-        "test_quick_vdot_xpu_complex64",
-        "test_exponential_non_inf_xpu",
-    ),
+    "test_decomp_xpu.py": None,
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
     "test_foreach_xpu.py": (
@@ -71,10 +47,7 @@ skip_dict = {
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
-    "test_meta_xpu.py": (
-        "_jiterator_",
-        "vdot",
-    ),
+    "test_meta_xpu.py": ("_jiterator_",),
     "test_modules_xpu.py": None,
     "test_namedtensor_xpu.py": None,
     "test_native_functions_xpu.py": None,
@@ -88,10 +61,10 @@ skip_dict = {
         "test_dtypes__refs_nn_functional_pdist_xpu",
         # not implemented
         "histogramdd",
-        "_vdot_",
-        "_dot_",
         "_flash_attention_",
         "_efficient_attention_",
+        # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
+        "test_dtypes_linalg_multi_dot_xpu",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
@@ -122,4 +95,6 @@ skip_dict = {
     "test_fake_tensor_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
+    "test/xpu/dynamo/test_ctx_manager_xpu.py": None,
+    "functorch/test_control_flow_xpu.py": None,
 }

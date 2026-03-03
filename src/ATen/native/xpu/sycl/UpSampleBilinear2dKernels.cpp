@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -7,6 +7,12 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  */
+
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -521,23 +527,39 @@ struct UpsampleBilinear2dBackwardKernelFunctor {
       const scalar_t d2val = out_data_[index];
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1, w1)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1,
+                                          w1)),
           static_cast<scalar_t>(h0lambda * w0lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1, w1 + w1p)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1,
+                                          w1 + w1p)),
           static_cast<scalar_t>(h0lambda * w1lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1 + h1p,
+                                          w1)),
           static_cast<scalar_t>(h1lambda * w0lambda * d2val));
 
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(in_data_ + idx(nc, input_height_, input_width_, h1 + h1p, w1 + w1p)),
+          (sycl_global_ptr<scalar_t>)(in_data_ +
+                                      idx(nc,
+                                          input_height_,
+                                          input_width_,
+                                          h1 + h1p,
+                                          w1 + w1p)),
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
@@ -719,20 +741,48 @@ struct UpsampleBilinear2dBackwardnhwcKernelFunctor {
 
       const scalar_t d2val = odata_[index];
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1, w1, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1,
+                                          w1,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h0lambda * w0lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1, w1 + w1p, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1,
+                                          w1 + w1p,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h0lambda * w1lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1 + h1p, w1, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1 + h1p,
+                                          w1,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h1lambda * w0lambda * d2val));
       atomicAdd(
-          (sycl_global_ptr<
-              scalar_t>)(idata_ + idx_cl(n, h1 + h1p, w1 + w1p, c, input_height_, input_width_, channels_)),
+          (sycl_global_ptr<scalar_t>)(idata_ +
+                                      idx_cl(
+                                          n,
+                                          h1 + h1p,
+                                          w1 + w1p,
+                                          c,
+                                          input_height_,
+                                          input_width_,
+                                          channels_)),
           static_cast<scalar_t>(h1lambda * w1lambda * d2val));
     }
   }
@@ -1698,3 +1748,6 @@ void _upsample_bicubic2d_aa_backward_out_kernel(
 }
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop

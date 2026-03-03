@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ Using pytest -k filtering syntax
 
 skip_dict = {
     # Windows: Skip entire files using *.py:: pattern
-    "test_decomp": [
-        "test_decomp.py::",  # Skip entire file on Windows
+    "test_decomp_xpu.py": [
+        "test_decomp_xpu.py::",  # Skip entire file on Windows
     ],
     # Files where Windows only needs to skip specific tests (will merge with Linux defaults)
     # "test_linalg": [

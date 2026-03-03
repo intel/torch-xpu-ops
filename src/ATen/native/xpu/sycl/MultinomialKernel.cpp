@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -7,6 +7,12 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  */
+
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
@@ -98,7 +104,7 @@ inline void renormRows(Tensor& t) {
   int64_t cols = t.size(1);
   int subgroup_size = syclMaxSubGroupSize();
   int group_size = std::min(
-      int(syclMaxWorkItemsPerSubSlice()), subgroup_size* subgroup_size);
+      int(syclMaxWorkItemsPerSubSlice()), subgroup_size * subgroup_size);
   int num_groups = (rows + group_size - 1) / group_size;
   int hw_max_groups = syclMaxWorkItemsPerTile() / group_size;
   num_groups = num_groups > hw_max_groups ? hw_max_groups : num_groups;
@@ -547,3 +553,5 @@ void multinomial_kernel(
 }
 
 } // namespace at::native::xpu
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -149,7 +149,7 @@ Tensor& max_unpooling2d_forward_kernel(
   output.zero_();
 
   auto count = self.numel();
-  if (count != 0) {
+  if (count != 0 && oheight != 0 && owidth != 0) {
     AT_DISPATCH_ALL_TYPES_AND2(
         at::ScalarType::Half,
         at::ScalarType::BFloat16,
@@ -606,6 +606,10 @@ Tensor& max_unpooling3d_forward_kernel(
   }
 
   if (self.numel() == 0) {
+    return output;
+  }
+
+  if (oT == 0 || oH == 0 || oW == 0) {
     return output;
   }
 

@@ -70,7 +70,7 @@ nvidia_deeprecommender,pass,pass,pass,pass,pass
 opacus_cifar10,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 phlippe_densenet,pass,pass,pass,pass,pass
 # https://github.com/intel/torch-xpu-ops/issues/1799
-phlippe_resnet,pass,fail_accuracy,pass,pass,pass
+phlippe_resnet,pass,pass,pass,pass,pass
 pyhpc_equation_of_state,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 pyhpc_isoneutral_mixing,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
 pyhpc_turbulent_kinetic_energy,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load,model_fail_to_load
@@ -107,6 +107,6 @@ timm_vovnet,pass,pass,pass,pass,pass
 torch_multimodal_clip,pass,pass,pass,pass,pass
 tts_angular,pass,pass,pass,pass,pass
 vgg16,pass,pass,pass,pass,pass
-vision_maskrcnn,pass,pass,pass,pass,pass
+vision_maskrcnn,pass,pass,pass,pass,fail_to_run
 yolov3,pass,pass,pass,pass,pass
 hf_Roberta_base,pass,pass,pass,pass,pass

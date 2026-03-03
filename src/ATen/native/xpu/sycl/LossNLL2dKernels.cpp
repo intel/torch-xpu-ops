@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -7,6 +7,12 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  */
+
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 #include <ATen/ATen.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -83,8 +89,7 @@ struct NllLoss2dForwardNoReduceKernelFunctor {
 
 template <typename scalar_t, typename accscalar_t, typename index_t, int SIMD>
 struct NllLoss2dForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     scalar_t cur_weight;
     accscalar_t input_sum = 0;
     accscalar_t acc_weight = 0;
@@ -539,3 +544,6 @@ void nll_loss2d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop

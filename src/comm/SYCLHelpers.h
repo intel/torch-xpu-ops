@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -143,11 +143,10 @@ sycl_kernel_submit(
 }
 
 #ifdef __SYCL_DEVICE_ONLY__
-  #define SYCL_KERNEL_STRING(var, str) \
-    static const __attribute__((opencl_constant)) char var[] = str
+#define SYCL_KERNEL_STRING(var, str) \
+  static const __attribute__((opencl_constant)) char var[] = str
 #else
-  #define SYCL_KERNEL_STRING(var, str) \
-    static const char var[] = str
+#define SYCL_KERNEL_STRING(var, str) static const char var[] = str
 #endif
 #define SYCL_KERNEL_PRINTF sycl::ext::oneapi::experimental::printf
 
@@ -156,3 +155,9 @@ sycl_kernel_submit(
     SYCL_KERNEL_STRING(fmt_var, fmt_str);       \
     SYCL_KERNEL_PRINTF(fmt_var, ##__VA_ARGS__); \
   }
+
+#ifdef __SYCL_DEVICE_ONLY__
+#define SYCL_REQD_SUB_GROUP_SIZE(x) [[sycl::reqd_sub_group_size(x)]]
+#else
+#define SYCL_REQD_SUB_GROUP_SIZE(x)
+#endif

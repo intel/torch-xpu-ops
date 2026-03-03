@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -405,6 +405,15 @@ void nll_loss_forward_kernel(
   int64_t batch_size = n_dims == 1 ? 1 : input.size(0);
 
   auto weight_ = weight.defined() ? weight.contiguous() : weight;
+
+  if (weight_.defined()) {
+    TORCH_CHECK(
+        input.scalar_type() == weight_.scalar_type(),
+        "expected scalar type ",
+        input.scalar_type(),
+        " but found ",
+        weight_.scalar_type());
+  }
 
   if (reduction == at::Reduction::None && n_dims == 2) {
     at::native::resize_output(output, {batch_size});

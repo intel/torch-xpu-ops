@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -226,8 +226,7 @@ template <
     bool is_same_dtype>
 struct DispatchSoftmaxForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
 
@@ -674,7 +673,7 @@ void softmax_forward_kernel(
     const inscalar_t* in_data,
     outscalar_t* out_data,
     int dim_size,
-    int outer_size) {
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   using KernelClass = SoftmaxForwardKernelFunctor<
@@ -943,8 +942,7 @@ template <
     bool is_same_dtype = false>
 struct DispatchSoftmaxBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
 
@@ -1333,8 +1331,8 @@ void softmax_backward_kernel(
     inscalar_t* gradInput,
     const outscalar_t* output,
     const outscalar_t* gradOutput,
-    int dim_size,
-    int outer_size) {
+    int64_t dim_size,
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   using KernelClass = SoftmaxBackwardKernelFunctor<
@@ -1347,9 +1345,9 @@ void softmax_backward_kernel(
       align_bytes,
       is_same_dtype>;
 
-  int local_size = std::min(
+  int64_t local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int(syclMaxWorkGroupSize<KernelClass>()));
+      int64_t(syclMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 

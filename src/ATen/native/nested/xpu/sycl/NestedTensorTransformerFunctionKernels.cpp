@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,13 +12,13 @@
 #include <ATen/Dispatch.h>
 #include <ATen/core/TensorAccessor.h>
 #include <ATen/native/StridedRandomAccessor.h>
+#include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/nested/xpu/sycl/NestedTensorTransformerFunctionKernels.h>
 #include <comm/SYCLContext.h>
 
 // keep align with cuda, global range0 is set to output_batch_size, global_range
 // for dim1 is set to 16,
 #define GRID_DIM_Y 16
-#define BLOCK_DIM 256
 
 namespace at::native::xpu {
 
@@ -27,8 +27,9 @@ struct RemovePaddingFunctor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int offset = offsets_[batch_id];
     const int* sizes_i = output_sizes_ + batch_id * output_dim_;
     const int numel_i = sizes_i[0] * sizes_i[1] * sizes_i[2];
@@ -85,8 +86,9 @@ struct RemovePadding2Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int offset = offsets_[batch_id];
     const int* sizes_i = output_sizes_ + batch_id * output_dim_;
     const int numel_i = sizes_i[0] * sizes_i[1];
@@ -137,8 +139,9 @@ struct RemovePaddingTransform0213Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int offset = offsets_[batch_id];
     const int* sizes_i = output_sizes_ + batch_id * output_dim_;
     const int numel_i = sizes_i[0] * sizes_i[1];
@@ -338,8 +341,9 @@ struct AddPadding1Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int* sizes_i = input_sizes_ + batch_id * input_dim_;
     const int batch_output_offset = batch_id * output_sizes_1_;
     for (int ii = 0; ii < (output_sizes_1_ / grainsize); ii++) {
@@ -397,8 +401,9 @@ struct AddPadding2Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int* sizes_i = input_sizes_ + batch_id * input_dim_;
     const int output_offset = batch_id * output_sizes_1_ * output_sizes_2_;
     const int output_numel = output_sizes_1_ * output_sizes_2_;
@@ -464,8 +469,9 @@ struct AddPadding3Functor {
   void operator()(sycl::nd_item<2> item) const {
     const int batch_id = item.get_group(1);
     const int grid_id = item.get_group(0);
-    const int tid = item.get_local_id(1) + grid_id * BLOCK_DIM;
-    const int grainsize = GRID_DIM_Y * BLOCK_DIM;
+    const int actual_wg_size = item.get_local_range(1);
+    const int tid = item.get_local_id(1) + grid_id * actual_wg_size;
+    const int grainsize = item.get_group_range(0) * actual_wg_size;
     const int* sizes_i = input_sizes_ + batch_id * input_dim_;
     const int output_offset =
         batch_id * output_sizes_1_ * output_sizes_2_ * output_sizes_3_;
@@ -953,13 +959,15 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
       [&] {
+        scalar_t fill_value = at::native::_get_padding_value<scalar_t>(
+            padding_value, values.is_floating_point());
         jagged_dense_elementwise_dense_template<scalar_t>(
             values_canonicalized,
             offsets.vec(),
             padded_values_view, // dummy not used in the lambda function
             padded_values_view,
             PaddingValueFuncutor<scalar_t>(),
-            static_cast<scalar_t>(padding_value));
+            fill_value);
       });
 
   return padded_values;

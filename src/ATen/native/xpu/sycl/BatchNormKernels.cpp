@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -432,8 +432,7 @@ template <
     typename index_t>
 struct BatchNormCollectStatisticsKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     int plane = item.get_group(1);
     int tid = item.get_local_linear_id();
 
@@ -470,7 +469,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     for (int i = 1; i < SIMD; i <<= 1) {
       stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
       int o_n = sycl::permute_group_by_xor(sg, n, i);
-      stat_accscalar_t factor = 1.0 / fmaxf(1.0, n + o_n);
+      stat_accscalar_t factor = static_cast<stat_accscalar_t>(1.0) /
+          static_cast<stat_accscalar_t>(std::max(1, n + o_n));
       var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
@@ -501,7 +501,8 @@ struct BatchNormCollectStatisticsKernelFunctor
     for (int i = 1; i < SIMD; i <<= 1) {
       stat_accscalar_t o_avg = sycl::permute_group_by_xor(sg, avg, i);
       int o_n = sycl::permute_group_by_xor(sg, n, i);
-      stat_accscalar_t factor = 1.0f / fmaxf(1.0f, n + o_n);
+      stat_accscalar_t factor = static_cast<stat_accscalar_t>(1.0) /
+          static_cast<stat_accscalar_t>(std::max(1, n + o_n));
       var_n += sycl::permute_group_by_xor(sg, var_n, i) +
           (avg - o_avg) * (avg - o_avg) * n * o_n * factor;
       avg = (n * avg + o_n * o_avg) * factor;
@@ -996,7 +997,7 @@ std::tuple<Tensor, Tensor> batch_norm_stats_kernel(
     const Tensor& self,
     double epsilon) {
   auto options =
-      self.options().dtype(at::toAccumulateType(self.scalar_type(), true));
+      self.options().dtype(at::toAccumulateType(self.scalar_type(), kXPU));
   auto n_channels = self.size(1);
   auto save_mean = at::empty({n_channels}, options);
   auto save_invstd = at::empty({n_channels}, options);
@@ -1883,8 +1884,7 @@ template <
     typename index_t>
 struct BatchNormBackwardReduceKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
 
     stat_accscalar_t r_mean = mean_[plane];
@@ -3889,7 +3889,7 @@ std::tuple<Tensor, Tensor> batch_norm_update_stats_kernel(
       self.sizes());
 
   auto options =
-      self.options().dtype(at::toAccumulateType(self.scalar_type(), true));
+      self.options().dtype(at::toAccumulateType(self.scalar_type(), kXPU));
 
   auto save_mean = at::empty({n_input}, options);
   auto save_var = at::empty({n_input}, options);
@@ -4171,8 +4171,7 @@ template <
     typename stat_accscalar_t,
     typename index_t>
 struct BatchNormBackwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
     index_t N = grad_output_.size(0) * grad_output_.size(2);
 
@@ -4379,8 +4378,7 @@ template <
     typename index_t>
 struct BatchNormBackwardVectorizedKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     index_t plane = item.get_group(1);
     index_t N = grad_output_.size(0) * grad_output_.size(2);
 
@@ -5018,7 +5016,7 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_kernel(
         });
   }
 
-  const auto acc_type = at::toAccumulateType(input.scalar_type(), true);
+  const auto acc_type = at::toAccumulateType(input.scalar_type(), kXPU);
   Tensor mean;
   TORCH_INTERNAL_ASSERT(
       save_mean->defined(), "save_mean should always be defined\n");

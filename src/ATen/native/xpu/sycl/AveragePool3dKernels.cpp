@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -11,6 +11,12 @@
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * SPDX-License-Identifier: BSD-3-Clause
  */
+
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -980,3 +986,5 @@ void avg_pool3d_backward_kernel(
 }
 
 } // namespace at::native::xpu
+#pragma clang diagnostic pop
+#pragma GCC diagnostic pop

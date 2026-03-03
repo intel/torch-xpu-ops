@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ namespace native {
       std::nullopt /* pin_memory */,
       LEGACY_CONTIGUOUS_MEMORY_FORMAT);
 
-  auto acc_type = at::toAccumulateType(input.scalar_type(), true);
+  auto acc_type = at::toAccumulateType(input.scalar_type(), kXPU);
 
   Tensor mean = at::empty({M}, X->options().dtype(acc_type));
   Tensor rstd = at::empty({M}, X->options().dtype(acc_type));
@@ -177,8 +177,7 @@ namespace native {
                             std::nullopt /* pin_memory */,
                             LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   }
-
-  return native::xpu::layer_norm_backward_kernel(
+  native::xpu::layer_norm_backward_kernel(
       grad_output.contiguous(),
       *X,
       mean,
@@ -186,13 +185,18 @@ namespace native {
       *gamma,
       M,
       N,
-      grad_input,
-      grad_weight,
-      grad_bias,
-      grad_input_mask);
+      &grad_input,
+      &grad_weight,
+      &grad_bias);
+
+  return std::make_tuple(
+      std::move(grad_input), std::move(grad_weight), std::move(grad_bias));
 }
 
 REGISTER_XPU_DISPATCH(LayerNormKernel, &xpu::layer_norm_kernel);
+REGISTER_XPU_DISPATCH(
+    LayerNormBackwardKernel,
+    &xpu::layer_norm_backward_kernel);
 } // namespace native
 
 } // namespace at

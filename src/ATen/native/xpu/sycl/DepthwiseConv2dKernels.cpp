@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -445,8 +445,7 @@ struct ConvDepthwise2dBackwardFunctor {
 template <typename scalar_t, typename acc_t, typename index_t, int SIMD>
 struct ConvDepthwise2dGradWeightFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     // using acc_t = at::acc_type<scalar_t, true>;
     const int channelStride = kernelWidth * kernelHeight;
 

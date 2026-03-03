@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -11,6 +11,12 @@
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * SPDX-License-Identifier: BSD-3-Clause
  */
+
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
@@ -45,40 +51,54 @@ static inline int p_end(int size, int pad, int pooled_size, int stride) {
 }
 
 static inline bool can_use_int32_nhwc(
-    int64_t nbatch, int64_t channels,
-    int64_t height, int64_t width,
-    int64_t pooled_height, int64_t pooled_width,
-    int64_t in_stride_n, int64_t in_stride_c,
-    int64_t in_stride_h, int64_t in_stride_w)
-{
+    int64_t nbatch,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int64_t pooled_height,
+    int64_t pooled_width,
+    int64_t in_stride_n,
+    int64_t in_stride_c,
+    int64_t in_stride_h,
+    int64_t in_stride_w) {
   constexpr int64_t int_max = std::numeric_limits<int>::max();
 
-  int64_t max_intra_batch =
-      (height ? (height - 1) * in_stride_h : 0) +
+  int64_t max_intra_batch = (height ? (height - 1) * in_stride_h : 0) +
       (width ? (width - 1) * in_stride_w : 0) +
       (channels ? (channels - 1) * in_stride_c : 0);
 
-  int64_t max_input_offset = (nbatch ? (nbatch - 1) * in_stride_n : 0) + max_intra_batch;
+  int64_t max_input_offset =
+      (nbatch ? (nbatch - 1) * in_stride_n : 0) + max_intra_batch;
 
-  if (max_input_offset > int_max) return false;
+  if (max_input_offset > int_max)
+    return false;
 
   int64_t out_batch_stride = pooled_height * pooled_width * channels;
-  if ((nbatch ? (nbatch - 1) * out_batch_stride : 0) > int_max) return false;
+  if ((nbatch ? (nbatch - 1) * out_batch_stride : 0) > int_max)
+    return false;
 
-  if (height * width > int_max) return false;
+  if (height * width > int_max)
+    return false;
 
   return true;
 }
 
 static inline bool can_use_int32_nchw(
-    int64_t nbatch, int64_t channels,
-    int64_t height, int64_t width,
-    int64_t pooled_height, int64_t pooled_width) {
+    int64_t nbatch,
+    int64_t channels,
+    int64_t height,
+    int64_t width,
+    int64_t pooled_height,
+    int64_t pooled_width) {
   int64_t hw = height * width;
   return can_use_int32_nhwc(
-      nbatch, channels, height, width,
-      pooled_height, pooled_width,
-      channels * hw,  // in_stride_n
+      nbatch,
+      channels,
+      height,
+      width,
+      pooled_height,
+      pooled_width,
+      channels * hw, // in_stride_n
       hw, // in_stride_c
       width, // in_stride_h
       1 // in_stride_w
@@ -114,8 +134,10 @@ struct MaxPool2dKernelFunctor {
         index_t maxIndex = -1;
         index_t StartH = outputH * dH_ - padH_;
         index_t StartW = outputW * dW_ - padW_;
-        index_t EndH = std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
-        index_t EndW = std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
+        index_t EndH =
+            std::min(StartH + (kH_ - 1) * dilationH_ + 1, inputSizeH_);
+        index_t EndW =
+            std::min(StartW + (kW_ - 1) * dilationW_ + 1, inputSizeW_);
         while (StartH < 0)
           StartH += dilationH_;
         while (StartW < 0)
@@ -202,7 +224,11 @@ struct MaxPool2dKernelFunctor {
   BatchKernelConfig cfg_;
 };
 
-template <typename scalar_t, typename vec_t, int vec_size, typename index_t = int>
+template <
+    typename scalar_t,
+    typename vec_t,
+    int vec_size,
+    typename index_t = int>
 struct MaxPool2dChannelLastVec {
   void operator()(sycl::nd_item<1> item) const {
     for (auto outputIndex = item.get_global_linear_id();
@@ -516,8 +542,11 @@ struct MaxPool2dBackwardDeterministicKernelFunctor {
   BatchKernelConfig cfg_;
 };
 
-
-template <typename scalar_t, typename vec_t, int vec_size, typename index_t = int>
+template <
+    typename scalar_t,
+    typename vec_t,
+    int vec_size,
+    typename index_t = int>
 struct MaxPool2dBackwardChannelLastVec {
   void operator()(sycl::nd_item<1> item) const {
     for (auto inputIndex = item.get_global_linear_id();
@@ -626,59 +655,56 @@ struct MaxPool2dBackwardChannelLastVec {
   int dilation_w_;
 };
 
-
-#define LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(                            \
-    scalar_t,                                                       \
-    vec_size,                                                       \
-    index_t,                                                        \
-    num_wg,                                                         \
-    wg_size,                                                        \
-    queue,                                                          \
-    output,                                                         \
-    indices,                                                        \
-    input,                                                          \
-    numBatch,                                                       \
-    numPlane,                                                       \
-    inputSizeH,                                                     \
-    inputSizeW,                                                     \
-    outputSizeH,                                                    \
-    outputSizeW,                                                    \
-    kH,                                                             \
-    kW,                                                             \
-    dH,                                                             \
-    dW,                                                             \
-    padH,                                                           \
-    padW,                                                           \
-    dilationH,                                                      \
-    dilationW,                                                      \
-    stride)                                                         \
-  {                                                                 \
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;          \
-    vec_t* output_vec = reinterpret_cast<vec_t*>(output);              \
-    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input);    \
-    auto kfn =                                                         \
-        MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size, index_t>(   \
-            output_vec,                                                \
-            indices,                                                   \
-            input_vec,                                                 \
-            numBatch,                                                  \
-            numPlane,                                                  \
-            inputSizeH,                                                \
-            inputSizeW,                                                \
-            outputSizeH,                                               \
-            outputSizeW,                                               \
-            kH,                                                        \
-            kW,                                                        \
-            dH,                                                        \
-            dW,                                                        \
-            padH,                                                      \
-            padW,                                                      \
-            dilationH,                                                 \
-            dilationW,                                                 \
-            stride);                                                   \
-    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);          \
+#define LAUNCH_MAXPOOL_CHANNEL_LAST_VEC(                                    \
+    scalar_t,                                                               \
+    vec_size,                                                               \
+    index_t,                                                                \
+    num_wg,                                                                 \
+    wg_size,                                                                \
+    queue,                                                                  \
+    output,                                                                 \
+    indices,                                                                \
+    input,                                                                  \
+    numBatch,                                                               \
+    numPlane,                                                               \
+    inputSizeH,                                                             \
+    inputSizeW,                                                             \
+    outputSizeH,                                                            \
+    outputSizeW,                                                            \
+    kH,                                                                     \
+    kW,                                                                     \
+    dH,                                                                     \
+    dW,                                                                     \
+    padH,                                                                   \
+    padW,                                                                   \
+    dilationH,                                                              \
+    dilationW,                                                              \
+    stride)                                                                 \
+  {                                                                         \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;               \
+    vec_t* output_vec = reinterpret_cast<vec_t*>(output);                   \
+    const vec_t* input_vec = reinterpret_cast<const vec_t*>(input);         \
+    auto kfn = MaxPool2dChannelLastVec<scalar_t, vec_t, vec_size, index_t>( \
+        output_vec,                                                         \
+        indices,                                                            \
+        input_vec,                                                          \
+        numBatch,                                                           \
+        numPlane,                                                           \
+        inputSizeH,                                                         \
+        inputSizeW,                                                         \
+        outputSizeH,                                                        \
+        outputSizeW,                                                        \
+        kH,                                                                 \
+        kW,                                                                 \
+        dH,                                                                 \
+        dW,                                                                 \
+        padH,                                                               \
+        padW,                                                               \
+        dilationH,                                                          \
+        dilationW,                                                          \
+        stride);                                                            \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);               \
   }
-
 
 template <typename scalar_t, bool is_channels_last, typename index_t = int>
 void launch_max_pool2d_kernel(
@@ -700,8 +726,11 @@ void launch_max_pool2d_kernel(
     int dilationH,
     int dilationW) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
-  int64_t outputSize = static_cast<int64_t>(numBatch) * static_cast<int64_t>(numPlane) * static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
-  int64_t stride = static_cast<int64_t>(numPlane) * static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
+  int64_t outputSize = static_cast<int64_t>(numBatch) *
+      static_cast<int64_t>(numPlane) * static_cast<int64_t>(outputSizeH) *
+      static_cast<int64_t>(outputSizeW);
+  int64_t stride = static_cast<int64_t>(numPlane) *
+      static_cast<int64_t>(outputSizeH) * static_cast<int64_t>(outputSizeW);
   int vec_size = 1;
   int thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
   int64_t num_sub_wg;
@@ -808,7 +837,8 @@ void launch_max_pool2d_kernel(
         break;
     };
   }
-  using KernelClass = MaxPool2dKernelFunctor<scalar_t, is_channels_last, index_t>;
+  using KernelClass =
+      MaxPool2dKernelFunctor<scalar_t, is_channels_last, index_t>;
 
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       1, outputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
@@ -861,31 +891,31 @@ void launch_max_pool2d_kernel(
     dilation_h,                                                                \
     dilation_w)                                                                \
   {                                                                            \
-    using vec_t = memory::aligned_vector<scalar_t, vec_size>;                    \
-    const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput);   \
-    vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);                 \
-    auto kfn =                                                                   \
-        MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size, index_t>(     \
-            grad_input_vec,                                                      \
-            grad_output_vec,                                                     \
-            indices,                                                             \
-            numPlane,                                                            \
-            gradInputSizeH,                                                      \
-            gradInputSizeW,                                                      \
-            gradOutputSizeH,                                                     \
-            gradOutputSizeW,                                                     \
-            gradInputSize,                                                       \
-            out_n_stride,                                                        \
-            in_n_stride,                                                         \
-            kernel_h,                                                            \
-            kernel_w,                                                            \
-            stride_h,                                                            \
-            stride_w,                                                            \
-            pad_h,                                                               \
-            pad_w,                                                               \
-            dilation_h,                                                          \
-            dilation_w);                                                         \
-    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);                    \
+    using vec_t = memory::aligned_vector<scalar_t, vec_size>;                  \
+    const vec_t* grad_output_vec = reinterpret_cast<const vec_t*>(gradOutput); \
+    vec_t* grad_input_vec = reinterpret_cast<vec_t*>(gradInput);               \
+    auto kfn =                                                                 \
+        MaxPool2dBackwardChannelLastVec<scalar_t, vec_t, vec_size, index_t>(   \
+            grad_input_vec,                                                    \
+            grad_output_vec,                                                   \
+            indices,                                                           \
+            numPlane,                                                          \
+            gradInputSizeH,                                                    \
+            gradInputSizeW,                                                    \
+            gradOutputSizeH,                                                   \
+            gradOutputSizeW,                                                   \
+            gradInputSize,                                                     \
+            out_n_stride,                                                      \
+            in_n_stride,                                                       \
+            kernel_h,                                                          \
+            kernel_w,                                                          \
+            stride_h,                                                          \
+            stride_w,                                                          \
+            pad_h,                                                             \
+            pad_w,                                                             \
+            dilation_h,                                                        \
+            dilation_w);                                                       \
+    sycl_kernel_submit(num_wg* wg_size, wg_size, queue, kfn);                  \
   }
 
 template <typename scalar_t, bool is_channels_last, typename index_t = int>
@@ -1035,8 +1065,10 @@ void launch_max_pool2d_backward_kernel(
         break;
     };
   }
-  using KernelClass =
-      MaxPool2dBackwardDeterministicKernelFunctor<scalar_t, is_channels_last, index_t>;
+  using KernelClass = MaxPool2dBackwardDeterministicKernelFunctor<
+      scalar_t,
+      is_channels_last,
+      index_t>;
   BatchKernelConfig cfg = BatchKernelConfig::make_config<KernelClass>(
       1, gradInputSize, 1, 1, true, BatchKernelConfig::Policy::pAdaptive);
   cfg.template build<KernelClass>();
@@ -1112,10 +1144,6 @@ void max_pool2d_with_indices_kernel(
   }
 
   auto memory_format = input_.suggest_memory_format();
-  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-    memory_format = MemoryFormat::ChannelsLast;
-  }
-
   Tensor input = input_.contiguous(memory_format);
 
   const int kH = safe_downcast<int, int64_t>(kernel_size[0]);
@@ -1155,9 +1183,16 @@ void max_pool2d_with_indices_kernel(
         switch (memory_format) {
           case MemoryFormat::ChannelsLast: {
             bool use_int32 = can_use_int32_nhwc(
-                nbatch, nInputPlane, inputHeight, inputWidth,
-                outputHeight, outputWidth,
-                in_stride_n, in_stride_c, in_stride_h, in_stride_w);
+                nbatch,
+                nInputPlane,
+                inputHeight,
+                inputWidth,
+                outputHeight,
+                outputWidth,
+                in_stride_n,
+                in_stride_c,
+                in_stride_h,
+                in_stride_w);
             if (use_int32) {
               launch_max_pool2d_kernel<scalar_t, true, int32_t>(
                   output.mutable_data_ptr<scalar_t>(),
@@ -1201,7 +1236,12 @@ void max_pool2d_with_indices_kernel(
           }
           case MemoryFormat::Contiguous: {
             bool use_int32 = can_use_int32_nchw(
-                nbatch, nInputPlane, inputHeight, inputWidth, outputHeight, outputWidth);
+                nbatch,
+                nInputPlane,
+                inputHeight,
+                inputWidth,
+                outputHeight,
+                outputWidth);
             if (use_int32) {
               launch_max_pool2d_kernel<scalar_t, false, int32_t>(
                   output.mutable_data_ptr<scalar_t>(),
@@ -1270,9 +1310,6 @@ void max_pool2d_with_indices_backward_kernel(
       __func__, {gradInput_arg, gradOutput_arg, input_arg, indices_arg});
 
   auto memory_format = input_.suggest_memory_format();
-  if (memory_format == MemoryFormat::Contiguous && input_.numel() > static_cast<int64_t>(std::numeric_limits<int>::max())) {
-    memory_format = MemoryFormat::ChannelsLast;
-  }
   Tensor input, gradOutput, indices;
 
   input = input_.contiguous(memory_format);
@@ -1321,9 +1358,16 @@ void max_pool2d_with_indices_backward_kernel(
         switch (memory_format) {
           case at::MemoryFormat::ChannelsLast: {
             bool use_int32 = can_use_int32_nhwc(
-                nbatch, nInputPlane, inputHeight, inputWidth,
-                outputHeight, outputWidth,
-                in_stride_n, in_stride_c, in_stride_h, in_stride_w);
+                nbatch,
+                nInputPlane,
+                inputHeight,
+                inputWidth,
+                outputHeight,
+                outputWidth,
+                in_stride_n,
+                in_stride_c,
+                in_stride_h,
+                in_stride_w);
             if (use_int32) {
               launch_max_pool2d_backward_kernel<scalar_t, true, int32_t>(
                   gradInput.mutable_data_ptr<scalar_t>(),
@@ -1367,7 +1411,12 @@ void max_pool2d_with_indices_backward_kernel(
           }
           case at::MemoryFormat::Contiguous: {
             bool use_int32 = can_use_int32_nchw(
-                nbatch, nInputPlane, inputHeight, inputWidth, outputHeight, outputWidth);
+                nbatch,
+                nInputPlane,
+                inputHeight,
+                inputWidth,
+                outputHeight,
+                outputWidth);
             if (use_int32) {
               launch_max_pool2d_backward_kernel<scalar_t, false, int32_t>(
                   gradInput.mutable_data_ptr<scalar_t>(),
@@ -1419,3 +1468,5 @@ void max_pool2d_with_indices_backward_kernel(
 
 } // namespace at::native::xpu
 #undef LAUNCH_MAXPOOL_CHANNEL_LAST_VEC
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop

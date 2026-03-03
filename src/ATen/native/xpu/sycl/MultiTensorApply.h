@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ bool is_aligned(T* p) {
   return ((uint64_t)p) % (kILP * sizeof(T)) == 0;
 }
 
-template <typename T>
+template <typename T, int64_t kILP = kILP>
 void load_store(T* dst, T* src, int dst_offset, int src_offset) {
   using LT = at::native::memory::aligned_vector<T, kILP>;
   ((LT*)dst)[dst_offset] = ((LT*)src)[src_offset];

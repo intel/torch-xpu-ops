@@ -8,7 +8,7 @@ if ! uv --help > /dev/null 2>&1; then
 fi
 uv venv lint --python 3.12 --clear
 source lint/bin/activate
-uv pip install -U pip setuptools wheel
+uv pip install -U pip setuptools==81.0.0 wheel pyyaml typing-extensions
 
 # Use uv to speed up lintrunner init
 uv pip install ruamel.yaml
@@ -49,6 +49,8 @@ fi
 
 RC=0
 # Run lintrunner on all files
+# Remove lint.json from a previous run to avoid lintrunner failing with "File exists" error
+rm -f lint.json
 if ! lintrunner --force-color --tee-json=lint.json ${ADDITIONAL_LINTRUNNER_ARGS} 2> /dev/null; then
     echo ""
     echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner -m origin/main\`. (If you don't get the same results, run \'lintrunner init\' to update your local linter)\e[0m"

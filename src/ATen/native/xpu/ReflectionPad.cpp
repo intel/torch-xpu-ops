@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 #include <ATen/native/Padding.h>
 #include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
 
+#include <ATen/TensorMeta.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/reflection_pad1d_backward_native.h>
 #include <ATen/ops/reflection_pad1d_native.h>
@@ -22,7 +23,6 @@
 #include <ATen/ops/reflection_pad3d_backward_native.h>
 #include <ATen/ops/reflection_pad3d_native.h>
 #include <ATen/ops/zeros_like.h>
-#include "ATen/TensorMeta.h"
 
 namespace at {
 namespace native {

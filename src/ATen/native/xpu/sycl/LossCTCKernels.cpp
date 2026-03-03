@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,16 @@
  * This is the CPU implementation of the Connectionist Temporal Loss.
  * We mostly follow Graves.
  * 1. Graves et al: http://www.cs.toronto.edu/~graves/icml_2006.pdf
- * We use the equations from above link, but note that [1] has 1-based indexing and we (of course) use 0-based.
- * Graves et al call the probabilities y, we use log_probs (also calling them inputs)
+ * We use the equations from above link, but note that [1] has 1-based indexing
+ * and we (of course) use 0-based. Graves et al call the probabilities y, we use
+ * log_probs (also calling them inputs)
  */
+
+#pragma clang diagnostic push
+#pragma GCC diagnostic push
+// Avoid SYCL compiler return-type error
+#pragma clang diagnostic ignored "-Wreturn-type"
+#pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/ATen.h>
 #include <ATen/native/TensorIterator.h>
@@ -1295,3 +1302,6 @@ Tensor ctc_loss_backward_kernel(
 }
 
 } // namespace at::native::xpu
+
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
