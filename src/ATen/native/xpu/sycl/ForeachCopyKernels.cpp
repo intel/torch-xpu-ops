@@ -13,8 +13,6 @@
 
 namespace at::native::xpu {
 
-namespace {
-
 template <typename dst_t>
 constexpr bool is_complex_dtype() {
   return std::is_same_v<dst_t, c10::complex<float>> ||
@@ -118,8 +116,6 @@ struct CopyFunctor {
     }
   }
 };
-
-} // anonymous namespace
 
 void foreach_copy_list_kernel_(TensorList self, TensorList src) {
   std::vector<std::vector<at::Tensor>> tensor_lists{src.vec(), self.vec()};

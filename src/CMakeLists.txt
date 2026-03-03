@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,6 +16,10 @@ set(ATen_XPU_SYCLTLA_SRCS)
 set(ATen_XPU_XCCL_SRCS)
 
 set(ATen_XPU_INCLUDE_DIRS ${TORCH_XPU_OPS_ROOT}/src CACHE STRING "ATen XPU Include directory")
+set(ATen_XPU_FLASH_ATTN_DIRS
+  ${TORCH_XPU_OPS_ROOT}/src/ATen/native/transformers/xpu/flash_attn
+  CACHE STRING "ATen XPU Flash Attention directory"
+)
 
 add_subdirectory(ATen)
 if(USE_C10D_XCCL)
