@@ -18,8 +18,6 @@
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
-#include <algorithm>
-#include <set>
 
 namespace c10d {
 
@@ -62,6 +60,27 @@ void checkSingleTensor(
     }
   }
 }
+
+ReduceOp applyPreMulSumIfNeeded(
+    const at::Tensor& input,
+    const ReduceOp& reduceOp) {
+  // Although premul_sum is supported in oneCCL, it is only for scale-up,
+  // not scale-out, and there is no foolproof way to detect scale-out scenario,
+  // so we always apply premul sum here to be safe.
+  bool applyScaleoutPreMulSum = reduceOp == ReduceOp::PREMUL_SUM;
+  auto newOp = applyScaleoutPreMulSum ? ReduceOp(ReduceOp::SUM) : reduceOp;
+  if (applyScaleoutPreMulSum) {
+    const auto* preMulSupplement =
+        reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+    if (preMulSupplement->tensor_factor.defined()) {
+      input.mul_(preMulSupplement->tensor_factor);
+    } else {
+      input.mul_(preMulSupplement->double_factor);
+    }
+  }
+  return newOp;
+}
+
 
 int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
   TORCH_CHECK_WITH(
@@ -509,7 +528,6 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
       p2pRank,
       xcclCommCounter_,
       kvs_mutex_);
-  is_scaleout_ = detectScaleOut();
 
   RECORD_PARAM_COMMS(
       0, // seq
@@ -559,44 +577,6 @@ void ProcessGroupXCCL::groupStart() {
 void ProcessGroupXCCL::groupEnd() {
   xccl::oneccl_group_end();
   --xcclActiveGroupCounter_;
-}
-
-bool ProcessGroupXCCL::detectScaleOut() {
-  // Early return for single process
-  if (size_ == 1) return false;
-
-  // Assume scale-out if the pg size is larger than the number of local devices
-  int localDeviceCount = at::xpu::device_count();
-  std::string localWorldSize = getCvarString({
-    "OMPI_COMM_WORLD_LOCAL_SIZE",
-    "PMI_LOCAL_SIZE",
-    "PALS_LOCAL_SIZE",
-    "LOCAL_WORLD_SIZE",
-    "LOCAL_SIZE"}, "");
-  if (!localWorldSize.empty()) {
-    localDeviceCount = std::stoi(localWorldSize);
-  }
-
-  return (size_ > localDeviceCount);
-}
-
-ReduceOp ProcessGroupXCCL::applyPreMulSumIfNeeded(
-    at::Tensor& input,
-    ReduceOp& reduceOp) {
-  bool applyScaleoutPreMulSum =
-      is_scaleout_ && reduceOp == ReduceOp::PREMUL_SUM;
-  auto newOp = applyScaleoutPreMulSum ? ReduceOp::SUM : reduceOp;
-  if (applyScaleoutPreMulSum) {
-    // Fall back to regular SUM for scale-out case
-    const auto* preMulSupplement =
-        reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
-    if (preMulSupplement->tensor_factor.defined()) {
-      input.mul_(preMulSupplement->tensor_factor);
-    } else {
-      input.mul_(preMulSupplement->double_factor);
-    }
-  }
-  return newOp;
 }
 
 static constexpr int CoalActive = 0x01, CoalColl = 0x02, CoalP2P = 0x04;
