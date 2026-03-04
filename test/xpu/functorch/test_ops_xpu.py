@@ -524,6 +524,11 @@ class TestOperators(TestCase):
                 {torch.float32: tol(atol=3e-05, rtol=4e-06)},
                 device_type="cpu",
             ),
+            tol1(
+                "nn.functional.conv3d",
+                {torch.float32: tol(atol=5e-04, rtol=5e-04)},
+                device_type="xpu",
+            ),
         ),
     )
     def test_grad(self, device, dtype, op):
@@ -819,6 +824,11 @@ class TestOperators(TestCase):
             tol1("linalg.multi_dot", {torch.float32: tol(atol=1e-04, rtol=1e-04)}),
             tol1("svd_lowrank", {torch.float32: tol(atol=1e-04, rtol=1e-04)}),
             tol1("pca_lowrank", {torch.float32: tol(atol=1e-04, rtol=1e-04)}),
+            tol1(
+                "nn.functional.conv3d",
+                {torch.float32: tol(atol=5e-04, rtol=5e-04)},
+                device_type="xpu",
+            ),
         ),
     )
     def test_vjp(self, device, dtype, op):
@@ -1859,6 +1869,11 @@ class TestOperators(TestCase):
             ),
             tol2(
                 "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-03, rtol=5e-03)}
+            ),
+            tol1(
+                "nn.functional.conv3d",
+                {torch.float32: tol(atol=5e-04, rtol=5e-04)},
+                device_type="xpu",
             ),
         ),
     )
