@@ -1742,13 +1742,18 @@ class TestOperators(TestCase):
                 result = fn(*primals)
                 cotangents = tree_map(lambda x: torch.randn_like(x), result)
 
-                _, vjp_fn = vjp(fn, *primals)
-                result_vjps = vjp_fn(cotangents)
+                for deterministic in [False, True]:
+                    torch.use_deterministic_algorithms(deterministic)
+                    _, vjp_fn = vjp(fn, *primals)
+                    result_vjps = vjp_fn(cotangents)
 
-                _, vjp_fn = ref_vjp(fn, *primals)
-                expected_vjps = vjp_fn(cotangents)
+                    _, vjp_fn = ref_vjp(fn, *primals)
+                    expected_vjps = vjp_fn(cotangents)
 
-                self.assertEqual(result_vjps, expected_vjps)
+                    if deterministic:
+                        self.assertEqual(result_vjps, expected_vjps)
+                    else:
+                        self.assertEqual(result_vjps, expected_vjps, atol=1e-4, rtol=1e-4)
 
     def _compare_jacobians_of_vjp(
         self, fn, cotangents_and_primals, argnums=None, atol_rtol=None
