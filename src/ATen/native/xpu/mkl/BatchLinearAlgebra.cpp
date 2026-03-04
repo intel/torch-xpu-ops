@@ -472,6 +472,12 @@ void apply_linalg_svd_mkl(
 
   auto& queue = at::xpu::getCurrentSYCLQueue();
   auto A_working = cloneBatchedColumnMajor(A);
+  Tensor U_working;
+  Tensor Vh_working;
+  if (compute_uv) {
+    U_working = cloneBatchedColumnMajor(U);
+    Vh_working = cloneBatchedColumnMajor(Vh);
+  }
 
   const auto m = A_working.size(-2);
   const auto n = A_working.size(-1);
@@ -492,15 +498,15 @@ void apply_linalg_svd_mkl(
 
   const int64_t A_mat_stride = matrixStride(A_working);
   const int64_t S_mat_stride = S.size(-1);
-  const int64_t U_mat_stride = compute_uv ? matrixStride(U) : 0;
-  const int64_t Vh_mat_stride = compute_uv ? matrixStride(Vh) : 0;
+  const int64_t U_mat_stride = compute_uv ? matrixStride(U_working) : 0;
+  const int64_t Vh_mat_stride = compute_uv ? matrixStride(Vh_working) : 0;
 
   auto* A_data = reinterpret_cast<value_t*>(A_working.data_ptr());
   auto* S_data = reinterpret_cast<scalar_t*>(S.data_ptr());
   auto* U_data =
-      compute_uv ? reinterpret_cast<value_t*>(U.data_ptr()) : nullptr;
+      compute_uv ? reinterpret_cast<value_t*>(U_working.data_ptr()) : nullptr;
   auto* Vh_data =
-      compute_uv ? reinterpret_cast<value_t*>(Vh.data_ptr()) : nullptr;
+      compute_uv ? reinterpret_cast<value_t*>(Vh_working.data_ptr()) : nullptr;
 
   const auto scratchpad_size =
       oneapi::mkl::lapack::gesvd_scratchpad_size<value_t>(
@@ -541,8 +547,9 @@ void apply_linalg_svd_mkl(
         deps);
   }
 
-  if (batch_size > 0) {
-    last_event.wait();
+  if (compute_uv) {
+    U.copy_(U_working);
+    Vh.copy_(Vh_working);
   }
   queue.throw_asynchronous();
 }
