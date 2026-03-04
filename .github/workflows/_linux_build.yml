@@ -280,6 +280,11 @@ jobs:
             exit 1
           }
 
+          # Install build dependencies
+          dnf install -y libpng-devel libjpeg-devel || {
+            echo "Warning: Failed to install libpng-devel libjpeg-devel"
+          }
+
           # Get TorchVision commit
           TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt 2>/dev/null || echo 'main')"
           echo "TorchVision commit: ${TORCHVISION_COMMIT_ID}"
@@ -455,6 +460,7 @@ jobs:
             # Install build dependencies
             dnf install -y zlib-devel || {
               echo "Warning: Failed to install zlib-devel"
+              exit 1
             }
 
             pip install cmake ninja pybind11 --quiet || {

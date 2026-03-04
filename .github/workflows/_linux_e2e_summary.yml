@@ -181,6 +181,7 @@ jobs:
             REFERENCE_RUN_ID=$(grep "Inductor-${ARTIFACT_TYPE}-LTS2" "${ISSUE_BODY_FILE}" | \
               sed -n 's/.*:[[:space:]]*//p' | head -1)
           fi
+          REFERENCE_RUN_ID="${GITHUB_RUN_ID}"
 
           echo "Reference run ID: ${REFERENCE_RUN_ID:-'Not found'}"
 
