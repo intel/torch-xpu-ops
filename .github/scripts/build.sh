@@ -94,7 +94,8 @@ xpu_is_compiled="$(python -c 'import torch; print(torch.xpu._is_compiled())')"
 
 # Save wheel
 if [ "${xpu_is_compiled,,}" == "true" ];then
-    cp ${WORKSPACE}/pytorch/tmp/torch*.whl ${WORKSPACE}
+    rm -rf ${WORKSPACE}/torch-*.whl
+    cp ${WORKSPACE}/pytorch/tmp/torch-*.whl ${WORKSPACE}
 else
     echo "Build got failed!"
     exit 1
