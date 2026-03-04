@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ custom_headers:
   #   http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
   # Original library: Random123 (BSD-3-Clause)
   - header: |
-      Copyright 2020-2025 Intel Corporation
+      Copyright 2020-2026 Intel Corporation
 
       Licensed under the Apache License, Version 2.0 (the "License");
       you may not use this file except in compliance with the License.
