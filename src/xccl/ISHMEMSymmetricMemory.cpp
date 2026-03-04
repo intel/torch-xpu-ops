@@ -9,8 +9,8 @@
 #include <ishmem.h>
 #include <ishmemx.h>
 
-#include <cstdlib>
 #include <dlfcn.h>
+#include <cstdlib>
 
 namespace c10d {
 namespace symmetric_memory {
@@ -288,33 +288,33 @@ static void initialize_ishmem_with_store(
     mpi_initialized_fn(&flag);
     mpi_already_initialized = (flag != 0);
   }
+  LOG(WARNING) << "Thiago's last version 5:46" << std::endl;
+  //  if (mpi_already_initialized) {
+  // MPI is initialized (mpi4py): use UID-based init with
+  // initialize_runtime=false so ISHMEM won't call MPI_Finalize.
+  ishmemx_uniqueid_t unique_id;
+  memset(&unique_id, 0, sizeof(unique_id));
 
-  if (mpi_already_initialized) {
-    // MPI is initialized (mpi4py): use UID-based init with
-    // initialize_runtime=false so ISHMEM won't call MPI_Finalize.
-    ishmemx_uniqueid_t unique_id;
-    memset(&unique_id, 0, sizeof(unique_id));
-
-    if (rank == 0) {
-      int ret = ishmemx_get_uniqueid(&unique_id);
-      TORCH_CHECK(ret == 0, "ishmemx_get_uniqueid failed with error: ", ret);
-    }
-
-    std::vector<ishmemx_uniqueid_t> unique_ids =
-        storeExchange.all_gather(store, rank, world_size, unique_id);
-
-    ishmemx_attr_t attr;
-    attr.initialize_runtime = false;
-    attr.use_uid = true;
-    attr.nranks = world_size;
-    attr.uid = &unique_ids[0];
-    ishmemx_init_attr(&attr);
-  } else {
-    // MPI not initialized (no mpi4py): let ISHMEM manage MPI lifecycle.
-    // ishmem_init() calls MPI_Init_thread internally and uses
-    // MPI_COMM_WORLD for rank coordination.
-    ishmem_init();
+  if (rank == 0) {
+    int ret = ishmemx_get_uniqueid(&unique_id);
+    TORCH_CHECK(ret == 0, "ishmemx_get_uniqueid failed with error: ", ret);
   }
+
+  std::vector<ishmemx_uniqueid_t> unique_ids =
+      storeExchange.all_gather(store, rank, world_size, unique_id);
+
+  ishmemx_attr_t attr;
+  attr.initialize_runtime = !mpi_already_initialized;
+  attr.use_uid = true;
+  attr.nranks = world_size;
+  attr.uid = &unique_ids[0];
+  ishmemx_init_attr(&attr);
+  //  } else {
+  // MPI not initialized (no mpi4py): let ISHMEM manage MPI lifecycle.
+  // ishmem_init() calls MPI_Init_thread internally and uses
+  // MPI_COMM_WORLD for rank coordination.
+  // ishmem_init();
+  //  }
 
   TORCH_CHECK(
       ishmem_my_pe() == rank,
@@ -340,8 +340,8 @@ static void initialize_ishmem_with_store(
 
   int major, minor;
   ishmem_info_get_version(&major, &minor);
-  LOG(INFO) << "ISHMEM initialized, version: " << major << '.'
-            << minor << ", rank: " << rank << "/" << world_size;
+  LOG(INFO) << "ISHMEM initialized, version: " << major << '.' << minor
+            << ", rank: " << rank << "/" << world_size;
 }
 
 class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
@@ -389,8 +389,7 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
   c10::intrusive_ptr<SymmetricMemory> rendezvous(
       void* ptr,
       const std::optional<std::string>& group_name) override {
-    std::string actual_group_name =
-        group_name.has_value() ? *group_name : "0";
+    std::string actual_group_name = group_name.has_value() ? *group_name : "0";
 
     {
       auto it = symm_mems_.find(std::make_tuple(ptr, actual_group_name));
