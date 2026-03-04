@@ -51,7 +51,7 @@ permissions: read-all
 
 defaults:
   run:
-    shell: bash -xe {0}
+    shell: bash -eo pipefail {0}
 
 env:
   GH_TOKEN: ${{ github.token }}
@@ -81,8 +81,6 @@ jobs:
 
       - name: Get runner information and configuration
         id: runner-info
-        with:
-          ut_name: ${{ inputs.ut }}
         uses: ./.github/actions/get-runner
 
   test-in-container:
@@ -96,6 +94,7 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
+        --rm
         --device=/dev/mem
         --device=/dev/dri
         --group-add video
@@ -103,15 +102,13 @@ jobs:
         --cap-add=SYS_PTRACE
         --shm-size=8g
         -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
-        -e ZE_AFFINITY_MASK=${{ needs.runner.outputs.ze_affinity_mask }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         WORKSPACE: ${{ github.workspace }}
         ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
         PYTEST_ADDOPTS: >-
           -v
-          --timeout 600
-          --timeout_method=thread
+          --timeout 600 --timeout_method=thread
           --max-worker-restart 1000000
           --dist worksteal
           ${{ needs.runner.outputs.pytest_extra_args }}
@@ -139,7 +136,6 @@ jobs:
       - name: Collect and upload UT logs
         id: upload-logs
         if: ${{ !cancelled() }}
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Collecting UT Logs ==="
 
@@ -172,7 +168,6 @@ jobs:
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore
-          compression-level: 6
 
       - name: Upload UT Failure List
         if: ${{ !cancelled() }}
@@ -182,11 +177,9 @@ jobs:
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           retention-days: 7
           if-no-files-found: ignore
-          compression-level: 6
 
       - name: Cleanup temporary files
         if: always()
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Cleaning Temporary Files ==="
 
@@ -235,7 +228,6 @@ jobs:
       - name: Collect and upload UT logs (Baremetal)
         id: upload-logs-baremetal
         if: ${{ !cancelled() }}
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Collecting Baremetal UT Logs ==="
 
@@ -268,7 +260,6 @@ jobs:
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore
-          compression-level: 6
 
       - name: Upload UT Failure List (Baremetal)
         if: ${{ !cancelled() }}
@@ -278,11 +269,9 @@ jobs:
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           retention-days: 7
           if-no-files-found: ignore
-          compression-level: 6
 
       - name: Cleanup temporary files (Baremetal)
         if: always()
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Cleaning Temporary Files (Baremetal) ==="
 
@@ -327,7 +316,6 @@ jobs:
 
       - name: Process UT Results
         id: process-results
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Processing UT Results ==="
 
@@ -488,5 +476,4 @@ jobs:
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: warn
-          compression-level: 6
           overwrite: true

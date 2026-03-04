@@ -20,7 +20,7 @@ permissions: read-all
 
 defaults:
   run:
-    shell: bash -xe {0}
+    shell: bash -eo pipefail {0}
 
 env:
   GH_TOKEN: ${{ github.token }}
@@ -50,7 +50,6 @@ jobs:
           python-version: ${{ inputs.python }}
 
       - name: Install required tools
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Installing Required Tools ==="
 
@@ -89,7 +88,6 @@ jobs:
           pip list | grep -E 'pandas|requests|pygithub'
 
       - name: Download Target Artifacts
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Downloading Target Artifacts ==="
 
@@ -143,7 +141,6 @@ jobs:
           done
 
       - name: Download Baseline Artifacts
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Downloading Baseline Artifacts ==="
 
@@ -240,7 +237,6 @@ jobs:
       - name: Generate E2E Test Summary
         id: generate-summary
         if: ${{ !cancelled() }}
-        shell: bash -eo pipefail {0}
         env:
           TARGET_DIR: ${{ github.workspace }}/target
           BASELINE_DIR: ${{ github.workspace }}/baseline
@@ -324,7 +320,6 @@ jobs:
       - name: Update Reference Run ID (for periodic tests)
         id: update-reference
         if: ${{ contains(inputs.test_type, 'ly') && steps.generate-summary.outputs.e2e_result == 1 }}
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Updating Reference Run ID ==="
           echo "Test type: ${{ inputs.test_type }}"
@@ -412,7 +407,6 @@ jobs:
       - name: Report Test Results
         id: report-results
         if: ${{ !cancelled() }}
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Reporting Test Results ==="
 

@@ -62,7 +62,7 @@ permissions: read-all
 
 defaults:
   run:
-    shell: bash -xe {0}
+    shell: bash -eo pipefail {0}
 
 env:
   GH_TOKEN: ${{ github.token }}
@@ -102,6 +102,7 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
+        --rm
         --device=/dev/mem
         --device=/dev/dri
         --group-add video
@@ -139,7 +140,6 @@ jobs:
       # Helper function to check if suite is in input
       - name: Parse suite configuration
         id: parse-suites
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Parsing Suite Configuration ==="
 
@@ -283,7 +283,6 @@ jobs:
       - name: Parse data types for on-demand tests
         id: parse-dtypes
         if: ${{ contains(inputs.test_type, 'ondemand') }}
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Parsing Data Types for On-Demand Tests ==="
 
@@ -378,7 +377,6 @@ jobs:
       - name: Collect and prepare test artifacts
         id: collect-artifacts
         if: ${{ !cancelled() }}
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Collecting Test Artifacts ==="
 
@@ -448,7 +446,6 @@ jobs:
 
       - name: Cleanup temporary files
         if: always()
-        shell: bash -eo pipefail {0}
         run: |
           echo "=== Cleaning Temporary Files ==="
 
