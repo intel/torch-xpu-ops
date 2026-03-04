@@ -114,12 +114,22 @@ runs:
         # RN50 Test
         PROFILE=1 python -u test/profiling/rn50.py -a resnet50 --dummy ./ --num-iterations 20 --xpu 0
         cp profiling.fp32.train.pt ${{ github.workspace }}/ut_log/xpu_profiling
-        
+        # All Issue Reproduce UT
+        python -u test/profiling/correlation_id_mixed.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/correlation_id_mixed.log
+        python -u test/profiling/reproducer.missing.gpu.kernel.time.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/reproducer.missing.gpu.kernel.time.log
+        python -u test/profiling/time_precision_in_profile.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/time_precision_in_profile.log
+        python -u test/profiling/profile_partial_runtime_ops.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
+        python -u test/profiling/triton_xpu_ops_time.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
         python -m pytest -s test/profiling/test_profiler_correctness.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_correctness.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.log
         # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
-          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_for_overlapping_kernels.log
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
         # llama case for calls number test
         pip install transformers
