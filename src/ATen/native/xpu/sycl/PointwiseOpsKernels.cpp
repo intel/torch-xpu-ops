@@ -46,6 +46,20 @@ struct AddcmulComplexFunctor {
 };
 
 void addcmul_kernel(TensorIteratorBase& iter, const Scalar& value) {
+  TORCH_CHECK(
+    !iter.is_cpu_scalar(1),
+    "CPU Scalar support for self argument is not supported when "
+    "calling addcmul on XPU tensors."
+  );
+
+  TORCH_CHECK(
+    !iter.is_cpu_scalar(2),
+    "CPU Scalar support for tensor1 argument is not supported when "
+    "calling addcmul on XPU tensors. "
+    "However, CPU Scalar support for tensor2 is supported, "
+    "please swap your tensor1 and tensor2 terms."
+  );
+
   auto dtype = iter.common_dtype();
   if (at::isComplexType(dtype)) {
     AT_DISPATCH_COMPLEX_TYPES(dtype, "addcmul_xpu", [&]() {
