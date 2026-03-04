@@ -475,8 +475,10 @@ void apply_linalg_svd_mkl(
   Tensor U_working;
   Tensor Vh_working;
   if (compute_uv) {
-    U_working = cloneBatchedColumnMajor(U);
-    Vh_working = cloneBatchedColumnMajor(Vh);
+    const auto U_strides = batched_matrix_contiguous_strides(U.sizes(), /*f_contig=*/true);
+    const auto Vh_strides = batched_matrix_contiguous_strides(Vh.sizes(), /*f_contig=*/true);
+    U_working = at::empty_strided(U.sizes(), U_strides, U.options());
+    Vh_working = at::empty_strided(Vh.sizes(), Vh_strides, Vh.options());
   }
 
   const auto m = A_working.size(-2);
