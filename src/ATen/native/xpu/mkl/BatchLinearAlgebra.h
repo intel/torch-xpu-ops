@@ -35,4 +35,12 @@ TORCH_XPU_API void triangular_solve_mkl(
     TransposeType transpose,
     bool unitriangular);
 
+TORCH_XPU_API void linalg_svd_mkl(
+    const Tensor& A,
+    bool full_matrices,
+    bool compute_uv,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh);
+
 } // namespace at::native::xpu
