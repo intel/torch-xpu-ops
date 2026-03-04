@@ -95,6 +95,43 @@ def eigh_svd_illcondition_matrix_input_should_not_crash(self, device, dtype):
     self.assertEqual(svd_out.S[:2], [1.0e5, 511.0], atol=1.0, rtol=1.0e-2)
 
 
+@dtypes(torch.float, torch.double, torch.cfloat, torch.cdouble)
+def svd_empty_inputs_full_matrices(self, device, dtype):
+    a_m0 = torch.empty(0, 3, dtype=dtype, device=device)
+    u_m0, s_m0, vh_m0 = torch.linalg.svd(a_m0, full_matrices=True)
+    self.assertEqual(s_m0.numel(), 0)
+    self.assertEqual(u_m0.shape, torch.Size([0, 0]))
+    self.assertEqual(vh_m0, torch.eye(3, dtype=dtype, device=device))
+
+    a_n0 = torch.empty(3, 0, dtype=dtype, device=device)
+    u_n0, s_n0, vh_n0 = torch.linalg.svd(a_n0, full_matrices=True)
+    self.assertEqual(s_n0.numel(), 0)
+    self.assertEqual(vh_n0.shape, torch.Size([0, 0]))
+    self.assertEqual(u_n0, torch.eye(3, dtype=dtype, device=device))
+
+
+@dtypes(torch.float, torch.double, torch.cfloat, torch.cdouble)
+def svdvals_matches_cpu(self, device, dtype):
+    a = make_tensor((3, 5, 4), dtype=dtype, device=device, low=-1.0, high=1.0)
+    s_xpu = torch.linalg.svdvals(a)
+    s_cpu = torch.linalg.svdvals(a.cpu()).to(device=device)
+    tol = 2e-3 if dtype in (torch.float, torch.cfloat) else 1e-10
+    self.assertEqual(s_xpu, s_cpu, atol=tol, rtol=tol)
+
+
+@dtypes(torch.float, torch.double, torch.cfloat, torch.cdouble)
+def svd_batched_strided_input_reconstructs(self, device, dtype):
+    a_base = make_tensor((2, 7, 5), dtype=dtype, device=device, low=-1.0, high=1.0)
+    a = a_base.mT.contiguous().mT
+
+    u, s, vh = torch.linalg.svd(a, full_matrices=False)
+    s_diag = torch.diag_embed(s.cpu()).to(u.cpu().dtype)
+    reconstructed = u.cpu() @ s_diag @ vh.cpu()
+
+    tol = 3e-3 if dtype in (torch.float, torch.cfloat) else 1e-10
+    self.assertEqual(reconstructed, a.cpu(), atol=tol, rtol=tol)
+
+
 def matmul_45724(self, device):
     # https://github.com/pytorch/pytorch/issues/45724
     a = torch.rand(65537, 22, 64, device=device, dtype=torch.half)
@@ -493,6 +530,11 @@ TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_preferred_blas_library = preferred_blas_library
 TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
     eigh_svd_illcondition_matrix_input_should_not_crash
+)
+TestLinalg.test_svd_empty_inputs_full_matrices = svd_empty_inputs_full_matrices
+TestLinalg.test_svdvals_matches_cpu = svdvals_matches_cpu
+TestLinalg.test_svd_batched_strided_input_reconstructs = (
+    svd_batched_strided_input_reconstructs
 )
 TestLinalg.test_matmul_45724 = matmul_45724
 TestLinalg.test_preferred_linalg_library = preferred_linalg_library
