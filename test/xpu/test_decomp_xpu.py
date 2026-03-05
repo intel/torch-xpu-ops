@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -519,7 +519,6 @@ core_backward_failures = {
     skip("frac"),  # slow: fails with --timeout=360 secs
     skip("grid_sampler_2d"),  # slow: fails with --timeout=360 secs
     xfail("lerp"),
-    skip("logaddexp"),  # slow: fails with --timeout=360 secs
     skip("native_dropout_backward"),  # slow: fails with --timeout=360 secs
     xfail("nn.functional.binary_cross_entropy_with_logits"),
     skip("nn.functional.glu"),  # slow: fails with --timeout=360 secs

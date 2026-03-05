@@ -28,8 +28,7 @@ void onecclAllReduce(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
+    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
     onecclAllReduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -40,8 +39,7 @@ void onecclAllReduce(
         &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
+    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
     ccl::allreduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -64,8 +62,7 @@ void onecclReduce(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
+    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
     onecclReduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -77,8 +74,7 @@ void onecclReduce(
         &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
+    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
     ccl::reduce(
         input.data_ptr(),
         output.data_ptr(),
@@ -132,8 +128,7 @@ void onecclReduceScatter(
     at::xpu::XPUStream& stream) {
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV2(reduceOp, input, xcclDataType, comm.onecclComm);
+    auto xcclReduceOp = getXcclReduceOpV2(reduceOp, input);
     onecclReduceScatter(
         input.data_ptr(),
         output.data_ptr(),
@@ -144,8 +139,7 @@ void onecclReduceScatter(
         &stream.queue());
   } else {
     auto xcclDataType = getXcclDataTypeV1(input.scalar_type(), true);
-    auto xcclReduceOp =
-        getXcclReduceOpV1(reduceOp, input, xcclDataType, *comm.cclComm);
+    auto xcclReduceOp = getXcclReduceOpV1(reduceOp, input);
     ccl::reduce_scatter(
         input.data_ptr(),
         output.data_ptr(),
@@ -389,6 +383,29 @@ void onecclScatter(
   return;
 }
 
+static std::pair<bool, size_t> checkUniformAllToAll(
+    const size_t* sendcounts,
+    const size_t* senddispls,
+    const size_t* recvcounts,
+    const size_t* recvdispls,
+    int numranks) {
+  if (numranks <= 0) {
+    return {false, 0};
+  }
+  size_t uniformCount = sendcounts[0];
+  for (int r = 0; r < numranks; ++r) {
+    if (sendcounts[r] != uniformCount || recvcounts[r] != uniformCount) {
+      return {false, 0};
+    }
+    // Check for contiguous displacements
+    if (senddispls[r] != static_cast<size_t>(r) * uniformCount ||
+        recvdispls[r] != static_cast<size_t>(r) * uniformCount) {
+      return {false, 0};
+    }
+  }
+  return {uniformCount > 0, uniformCount};
+}
+
 void onecclAllToAll(
     void* sendbuff,
     const size_t* sendcounts,
@@ -401,11 +418,28 @@ void onecclAllToAll(
     xcclComm_t& comm,
     ccl::stream& xcclStream,
     at::xpu::XPUStream& stream) {
-  xccl::oneccl_group_start();
   if (isCCLV2EnabledCached()) {
     auto xcclDataType = getXcclDataTypeV2(dataType, false);
     int numranks = 0;
     onecclCommCount(comm.onecclComm, &numranks);
+
+    auto [isUniform, uniformCount] = checkUniformAllToAll(
+        sendcounts, senddispls, recvcounts, recvdispls, numranks);
+
+    if (isUniform) {
+      // Use native onecclAllToAll for uniform case
+      onecclAllToAll(
+          sendbuff,
+          recvbuff,
+          uniformCount,
+          xcclDataType,
+          comm.onecclComm,
+          &stream.queue());
+      return;
+    }
+
+    // Fallback to send/recv based implementation for non-uniform case
+    xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         onecclSend(
@@ -426,9 +460,28 @@ void onecclAllToAll(
             &stream.queue());
       }
     }
+    xccl::oneccl_group_end();
   } else {
     auto xcclDataType = getXcclDataTypeV1(dataType, false);
     int numranks = comm.cclComm->size();
+
+    auto [isUniform, uniformCount] = checkUniformAllToAll(
+        sendcounts, senddispls, recvcounts, recvdispls, numranks);
+
+    if (isUniform) {
+      // Use native ccl::alltoall for uniform case
+      ccl::alltoall(
+          sendbuff,
+          recvbuff,
+          uniformCount,
+          xcclDataType,
+          *comm.cclComm,
+          xcclStream);
+      return;
+    }
+
+    // Fallback to send/recv based implementation for non-uniform case
+    xccl::oneccl_group_start();
     for (const auto r : c10::irange(numranks)) {
       if (sendcounts[r] != 0) {
         ccl::send(
@@ -449,8 +502,8 @@ void onecclAllToAll(
             xcclStream);
       }
     }
+    xccl::oneccl_group_end();
   }
-  xccl::oneccl_group_end();
   return;
 }
 

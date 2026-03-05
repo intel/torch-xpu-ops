@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -113,7 +113,7 @@ void upsample_nearest2d_backward_frame(
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
-  int global_range =
+  int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
   auto caller = UpsampleNearest2dBackwardKernelFunctor<
       scalar_t,
@@ -213,7 +213,7 @@ void upsample_nearest2d_backward_channels_last_frame(
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
-  int global_range =
+  int64_t global_range =
       (gi_numel + work_group_size - 1) / work_group_size * work_group_size;
   auto caller = UpsampleNearest2dBackwardChannelsLastKernelFunctor<
       scalar_t,
@@ -564,7 +564,7 @@ void upsample_nearest2d_channels_last_frame(
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
-  int global_range =
+  int64_t global_range =
       (out_numel + work_group_size - 1) / work_group_size * work_group_size;
 
   auto kfn = UpsampleNearest2dChannelsLastKernelFunctor<scalar_t, index_op_t>(

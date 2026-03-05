@@ -86,6 +86,7 @@
   dispatch:
     XPU: add_out_xpu
     SparseXPU: add_out_sparse_xpu
+    SparseCsrXPU: add_out_sparse_compressed_xpu
   tags: pointwise
 
 - func: cummax(Tensor self, int dim) -> (Tensor values, Tensor indices)
@@ -456,6 +457,16 @@
 - func: true_divide_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
   variants: method
+
+- func: dot(Tensor self, Tensor tensor) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: dot_xpu
+
+- func: vdot(Tensor self, Tensor other) -> Tensor
+  variants: function, method
+  dispatch:
+    XPU: vdot_xpu
 
 - func: rsub.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
   device_check: NoCheck   # TensorIterator
@@ -4663,6 +4674,7 @@
   python_module: nn
 
 - func: hypot.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
   structured: True
   structured_inherits: TensorIteratorBase
   dispatch:
@@ -4670,11 +4682,13 @@
   tags: pointwise
 
 - func: hypot(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
   structured_delegate: hypot.out
   variants: method, function
   tags: pointwise
 
 - func: hypot_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
   structured_delegate: hypot.out
   variants: method
   tags: pointwise
@@ -9471,6 +9485,17 @@
 
 - func: linalg_inv.out(Tensor A, *, Tensor(a!) out) -> Tensor(a!)
   python_module: linalg
+
+- func: linalg_solve_triangular.out(Tensor self, Tensor B, *, bool upper, bool left=True, bool unitriangular=False, Tensor(a!) out) -> Tensor(a!)
+  python_module: linalg
+  dispatch:
+    XPU: linalg_solve_triangular_out
+
+- func: linalg_solve_triangular(Tensor self, Tensor B, *, bool upper, bool left=True, bool unitriangular=False) -> Tensor
+  python_module: linalg
+  variants: function
+  dispatch:
+    XPU: linalg_solve_triangular
 
 - func: inverse(Tensor self) -> Tensor
   variants: function, method

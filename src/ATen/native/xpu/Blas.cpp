@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,11 +12,18 @@
 #include <ATen/native/xpu/Blas.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BlasImpl.h>
+#elif AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/dot_native.h>
+#include <ATen/ops/vdot_native.h>
 #endif
 #include <torch/library.h>
 
 namespace at::native {
 
+#if !defined(USE_ONEMKL_XPU)
 namespace {
 
 // Implement complex mm using real GEMM decomposition
@@ -112,8 +119,10 @@ Tensor& addmm_complex_fallback(
   auto AB_i = P3 - P1 - P2;
 
   // Complex multiplication: alpha * AB and beta * C
-  // alpha * AB: (alpha_r + alpha_i*i) * (AB_r + AB_i*i) = (alpha_r*AB_r - alpha_i*AB_i) + (alpha_r*AB_i + alpha_i*AB_r)*i
-  // beta * C: (beta_r + beta_i*i) * (C_r + C_i*i) = (beta_r*C_r - beta_i*C_i) + (beta_r*C_i + beta_i*C_r)*i
+  // alpha * AB: (alpha_r + alpha_i*i) * (AB_r + AB_i*i) = (alpha_r*AB_r -
+  // alpha_i*AB_i) + (alpha_r*AB_i + alpha_i*AB_r)*i beta * C: (beta_r +
+  // beta_i*i) * (C_r + C_i*i) = (beta_r*C_r - beta_i*C_i) + (beta_r*C_i +
+  // beta_i*C_r)*i
   auto out_real = at::view_as_real(out);
   out_real.select(-1, 0).copy_(
       (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i));
@@ -167,6 +176,7 @@ Tensor& baddbmm_complex_fallback(
 }
 
 } // anonymous namespace
+#endif // !defined(USE_ONEMKL_XPU)
 
 Tensor& mm_complex_out_xpu(
     const Tensor& self,
@@ -276,6 +286,96 @@ Tensor& baddbmm_complex_out_xpu(
 #else
   return baddbmm_complex_fallback(self, batch1, batch2, beta, alpha, out);
 #endif // USE_ONEMKL_XPU
+}
+
+inline void dot_check(const Tensor& self, const Tensor& other) {
+  TORCH_CHECK(
+      self.dim() == 1 && other.dim() == 1,
+      "1D tensors expected, but got ",
+      self.dim(),
+      "D and ",
+      other.dim(),
+      "D tensors");
+  TORCH_CHECK(
+      self.scalar_type() == other.scalar_type(),
+      "dot : expected both vectors to have same dtype, but found ",
+      self.scalar_type(),
+      " and ",
+      other.scalar_type());
+  TORCH_CHECK(
+      self.numel() == other.numel(),
+      "inconsistent tensor size, expected tensor [",
+      self.numel(),
+      "] and src [",
+      other.numel(),
+      "] to have the same number of elements, but got ",
+      self.numel(),
+      " and ",
+      other.numel(),
+      " elements respectively");
+  TORCH_CHECK(
+      (self.numel() <= INT_MAX) && (self.stride(0) <= INT_MAX) &&
+          (other.stride(0) <= INT_MAX),
+      "dot only supports n, incx, incy with the bound [val] <= %d",
+      INT_MAX);
+}
+
+Tensor dot_xpu(const Tensor& self, const Tensor& other) {
+  c10::DeviceGuard guard(self.device());
+
+  if (self.is_complex()) {
+    if (self.is_conj()) {
+      if (other.is_conj()) {
+        return (dot_xpu(self.conj(), other.conj())).conj();
+      } else {
+        return vdot_xpu(self.conj(), other);
+      }
+    } else if (other.is_conj()) {
+      return vdot_xpu(other.conj(), self);
+    }
+  }
+
+  dot_check(self, other);
+
+  if (self._is_zerotensor() || other._is_zerotensor()) {
+    return at::_efficientzerotensor({}, self.options());
+  }
+
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::dot_xpu_mkl(self, other);
+#else
+  return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+#endif
+}
+
+Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
+  c10::DeviceGuard guard(self.device());
+
+  if (!self.is_complex()) {
+    return dot_xpu(self, other);
+  }
+
+  if (self.is_conj()) {
+    if (other.is_conj()) {
+      return vdot_xpu(other.conj(), self.conj());
+    } else {
+      return dot_xpu(self.conj(), other);
+    }
+  } else if (other.is_conj()) {
+    return (dot_xpu(self, other.conj())).conj();
+  }
+
+  dot_check(self, other);
+
+  if (self._is_zerotensor() || other._is_zerotensor()) {
+    return at::_efficientzerotensor({}, self.options());
+  }
+
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::vdot_xpu_mkl(self, other);
+#else
+  return at::native::vdot(self.cpu(), other.cpu()).to(self.device());
+#endif
 }
 
 } // namespace at::native

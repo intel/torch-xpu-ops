@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -245,8 +245,7 @@ inline T reduceGroupWithNThreadLocalReductions(
 
 template <typename T, unsigned int Power2Size>
 struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(32)]] void operator()(
-      sycl::nd_item<3> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(32) void operator()(sycl::nd_item<3> item) const {
     int tidx = item.get_local_id(2);
     int stidx = item.get_local_range(2) +
         item.get_local_id(2); // Second index this thread responsible for
@@ -283,7 +282,8 @@ struct ComputeModeKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // valid components in the smem buffer
     bmem[tidx] = tidx < sliceSize_;
     bmem[stidx] = stidx < sliceSize_;
-    sycl::group_barrier(item.get_group()); // barrier for smem, bmem initialization
+    sycl::group_barrier(
+        item.get_group()); // barrier for smem, bmem initialization
 
     // First, sort the input slice in ascending order. smem contains the input
     // elements, and bmem marks the valid indices
