@@ -513,7 +513,7 @@ runs:
           echo "Running summary script..."
           python "${SUMMARY_SCRIPT}" \
             -n "${{ inputs.ut_name }}" \
-            -i "${GITHUB_WORKSPACE}/ut_log/*.xml" |tee -a "${GITHUB_STEP_SUMMARY}" 2>/dev/null || \
+            -i "$(find ${GITHUB_WORKSPACE}/ut_log/ -name "*.xml")" |tee -a "${GITHUB_STEP_SUMMARY}" 2>/dev/null || \
             echo "Summary script completed with warnings"
         else
           echo "Warning: Summary script not found at ${SUMMARY_SCRIPT}"
