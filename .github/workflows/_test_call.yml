@@ -112,10 +112,6 @@ on:
         type: string
         default: ''
         description: 'Component version for comparison'
-      comparison_type:
-        type: string
-        default: ''
-        description: 'Test scope for comparison'
 
     secrets:
       HUGGING_FACE_HUB_TOKEN:
@@ -316,7 +312,6 @@ jobs:
       ut: ${{ matrix.ut_name }}
       component: ${{ inputs.component }}
       component_version: ${{ inputs.component_version }}
-      comparison_type: ${{ inputs.comparison_type }}
 
   linux-e2e-tests:
     name: Linux E2E Tests
@@ -342,7 +337,6 @@ jobs:
       model: ${{ inputs.model }}
       component: ${{ inputs.component }}
       component_version: ${{ inputs.component_version }}
-      comparison_type: ${{ inputs.comparison_type }}
 
   linux-e2e-tests-summary:
     name: E2E Test Summary

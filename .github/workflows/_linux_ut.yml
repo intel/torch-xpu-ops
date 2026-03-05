@@ -42,10 +42,6 @@ on:
         type: string
         default: ''
         description: 'Component version for comparison'
-      comparison_type:
-        type: string
-        default: ''
-        description: 'Test scope for comparison'
 
 permissions: read-all
 

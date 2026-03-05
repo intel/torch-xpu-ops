@@ -44,20 +44,6 @@ on:
           - commit/branch/tag
           - repo@commit/repo@branch/repo@tag
 
-      # Test comparison type
-      comparison_type:
-        type: choice
-        options:
-          - regression
-          - performance
-          - full
-        default: 'regression'
-        description: |
-          Comparison type:
-          - regression: Run regression tests only
-          - performance: Compare performance metrics
-          - full: Run all tests and compare
-
       # Environment
       python:
         type: string
@@ -128,7 +114,6 @@ jobs:
       test_role: 'target'
       component: ${{ inputs.component }}
       component_version: ${{ inputs.target_version }}
-      comparison_type: ${{ inputs.comparison_type }}
     secrets:
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
@@ -170,7 +155,6 @@ jobs:
       test_role: 'baseline'
       component: ${{ inputs.component }}
       component_version: ${{ inputs.baseline_version }}
-      comparison_type: ${{ inputs.comparison_type }}
     secrets:
       HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
@@ -206,7 +190,6 @@ jobs:
           echo "Comparing results for ${{ inputs.component }}..."
           echo "Target: ${{ inputs.target_version }}"
           echo "Baseline: ${{ inputs.baseline_version }}"
-          echo "Comparison type: ${{ inputs.comparison_type }}"
 
           # Generate comparison result
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
