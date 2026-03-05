@@ -90,6 +90,7 @@ jobs:
   run-target-tests:
     name: Run Tests (Target)
     needs: get-runner
+    permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
       runner: ${{ needs.get-runner.outputs.runner_id }}
@@ -112,6 +113,7 @@ jobs:
   run-baseline-tests:
     name: Run Tests (Baseline)
     needs: get-runner
+    permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
       runner: ${{ needs.get-runner.outputs.runner_id }}
