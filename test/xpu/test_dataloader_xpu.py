@@ -27,6 +27,7 @@ try:
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 
+
 class CountingDataset(Dataset):
     def __init__(self, n):
         super().__init__()
@@ -63,9 +64,9 @@ with XPUPatchForImport(False):
         TestCustomPinFn,
         TestDataLoader,
         TestDataLoaderDeviceType,
+        TestDataLoaderPersistentWorkers,
         TestDictDataLoader,
         TestStringDataLoader,
-        TestDataLoaderPersistentWorkers,
     )
 
     def _test_multiprocessing_iterdatapipe(self, with_dill):
@@ -351,8 +352,12 @@ with XPUPatchForImport(False):
     TestCustomPinFn.test_custom_batch_pin = custom_batch_pin
     TestCustomPinFn.test_custom_batch_pin_worker = custom_batch_pin_worker
     TestDataLoaderPersistentWorkers.test_multiple_dataloaders = multiple_dataloaders
-    TestDataLoaderPersistentWorkers.test_multiprocessing_contexts = multiprocessing_contexts
-    TestDataLoaderPersistentWorkers.test_multiprocessing_iterdatapipe = multiprocessing_iterdatapipe
+    TestDataLoaderPersistentWorkers.test_multiprocessing_contexts = (
+        multiprocessing_contexts
+    )
+    TestDataLoaderPersistentWorkers.test_multiprocessing_iterdatapipe = (
+        multiprocessing_iterdatapipe
+    )
     TestDataLoaderPersistentWorkers.test_sequential_pin_memory = sequential_pin_memory
     TestDataLoaderPersistentWorkers.test_shuffle_pin_memory = shuffle_pin_memory
     TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = (
