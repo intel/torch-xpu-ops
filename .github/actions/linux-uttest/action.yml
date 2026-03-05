@@ -28,13 +28,12 @@ runs:
         echo "Python version: $(python -V 2>&1)"
         echo ""
         echo "=== PIP Environment ==="
-        pip --version || echo "pip not found"
-        pip list --format=columns || echo "pip list failed"
+        pip --version
+        pip list --format=columns
 
         echo -e "\n=== Copying Test Configuration ==="
         CONFTEST_SRC="${GITHUB_WORKSPACE}/.github/scripts/conftest.py"
         CONFTEST_DEST="${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/"
-
         if [ -f "${CONFTEST_SRC}" ]; then
           cp "${CONFTEST_SRC}" "${CONFTEST_DEST}" && echo "Copied conftest.py successfully"
         else
@@ -100,7 +99,8 @@ runs:
         echo "Running device 1 specific tests..."
 
         # Run specific device test with timeout
-        timeout 180 pytest test_operation_on_device_1.py \
+        unset PYTEST_ADDOPTS ZE_AFFINITY_MASK
+        timeout 180 pytest -v test_operation_on_device_1.py \
           --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_regression_dev1.xml" \
           2> "${LOG_DIR}/op_regression_dev1_test_error.log" | \
           tee "${LOG_DIR}/op_regression_dev1_test.log"
@@ -501,11 +501,10 @@ runs:
       shell: timeout 300 bash -eo pipefail {0}
       run: |
         echo "=== Generating Test Results Summary ==="
+        set -x
 
         # Install required packages
-        pip install junitparser --quiet || {
-          echo "Warning: Failed to install junitparser"
-        }
+        pip install junitparser
 
         # Run summary script
         SUMMARY_SCRIPT="${GITHUB_WORKSPACE}/.github/scripts/check-ut.py"
@@ -514,10 +513,11 @@ runs:
           echo "Running summary script..."
           python "${SUMMARY_SCRIPT}" \
             -n "${{ inputs.ut_name }}" \
-            -i "${GITHUB_WORKSPACE}/ut_log/*.xml" >> "${GITHUB_STEP_SUMMARY}" 2>/dev/null || \
+            -i "${GITHUB_WORKSPACE}/ut_log/*.xml" |tee -a "${GITHUB_STEP_SUMMARY}" 2>/dev/null || \
             echo "Summary script completed with warnings"
         else
           echo "Warning: Summary script not found at ${SUMMARY_SCRIPT}"
+          exit 1
         fi
 
         echo -e "\n=== Collecting Log Files ==="
