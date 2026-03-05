@@ -16,7 +16,6 @@ readability-redundant-smartptr-get                                           | 6
 cppcoreguidelines-pro-type-const-cast                                        | 6
 modernize-use-bool-literals                                                  | 5
 cppcoreguidelines-use-default-member-init,modernize-use-default-member-init  | 5
-readability-duplicate-include                                                | 4
 readability-redundant-declaration                                            | 3
 modernize-use-equals-default                                                 | 2
 cppcoreguidelines-avoid-const-or-ref-data-members                            | 2
