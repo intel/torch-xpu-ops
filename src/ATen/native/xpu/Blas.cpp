@@ -30,8 +30,7 @@ namespace {
 class ConjPhysicalGuard final {
  public:
   explicit ConjPhysicalGuard(Tensor& out)
-      : out_(out),
-        was_conj_(out.is_conj()) {
+      : out_(out), was_conj_(out.is_conj()) {
     // When the output tensor is conjugated, avoid mutating its conj state.
     // Instead, operate on a non-conjugated temporary and copy the conjugated
     // result back in the destructor.
@@ -143,7 +142,8 @@ Tensor& addmm_complex_fallback(
   bool alpha_zero = (alpha_r == 0.0 && alpha_i == 0.0);
 
   // When beta==0, self may contain uninitialized/NaN values
-  //  0 * NaN = NaN, so we must skip the self term entirely. Similarly skip matmul for alpha==0.
+  //  0 * NaN = NaN, so we must skip the self term entirely. Similarly skip
+  //  matmul for alpha==0.
   if (beta_zero && alpha_zero) {
     out.zero_();
     return out;
@@ -196,8 +196,10 @@ Tensor& addmm_complex_fallback(
       out_real.select(-1, 1).copy_(result_i.reshape_as(out_real.select(-1, 1)));
     } else {
       // General case: result = beta*C + alpha*(A@B)
-      auto result_r = (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i);
-      auto result_i = (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r);
+      auto result_r =
+          (beta_r * C_r - beta_i * C_i) + (alpha_r * AB_r - alpha_i * AB_i);
+      auto result_i =
+          (beta_r * C_i + beta_i * C_r) + (alpha_r * AB_i + alpha_i * AB_r);
       out_real.select(-1, 0).copy_(result_r.reshape_as(out_real.select(-1, 0)));
       out_real.select(-1, 1).copy_(result_i.reshape_as(out_real.select(-1, 1)));
     }
