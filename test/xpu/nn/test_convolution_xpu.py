@@ -1343,7 +1343,7 @@ with XPUPatchForImport(False):
     @dtypes(*floating_and_complex_types_and(torch.half, torch.bfloat16))
     @parametrize_test("dilation", [1, 2, 3])
     def conv2d_deterministic_cudnn(self, device, dtype, dilation):
-        inputs = torch.randn(2, 3, 5, 5, device=device, dtype=dtype, requires_grad=True)
+        inputs = torch.randn(2, 3, 7, 7, device=device, dtype=dtype, requires_grad=True)
         with torch.backends.mkldnn.flags(enabled=False, deterministic=True):
             conv1 = torch.nn.Conv2d(3, 3, 3, dilation=dilation).to(device, dtype)
             conv2 = torch.nn.Conv2d(3, 3, 3, dilation=dilation).to(device, dtype)
