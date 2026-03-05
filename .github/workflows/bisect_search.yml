@@ -80,7 +80,7 @@ jobs:
           sudo apt install -y python3-dev
           which python && python -V
           which pip && pip list
-          pip install -U pip wheel setuptools
+          pip install -U pip wheel 'setuptools<81'
       - name: Install oneAPI DLE
         if: ${{ inputs.oneapi != 'installed' }}
         run: |
