@@ -30,7 +30,7 @@ on:
       target_version:
         required: true
         type: string
-        default: 'HEAD'
+        default: ''
         description: |
           Target component version (new version):
           - commit/branch/tag
@@ -39,7 +39,7 @@ on:
       baseline_version:
         required: true
         type: string
-        default: 'main'
+        default: ''
         description: |
           Baseline component version (reference):
           - commit/branch/tag
