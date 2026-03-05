@@ -45,8 +45,8 @@ class ConjPhysicalGuard final {
   ~ConjPhysicalGuard() {
     // Runs automatically when out_guard goes out of scope (before return).
     if (was_conj_) {
-      // Copy the result back to the conjugated output tensor. 
-      // `out_` is a conj-view; `copy_` respects the target's conj semantics, 
+      // Copy the result back to the conjugated output tensor.
+      // `out_` is a conj-view; `copy_` respects the target's conj semantics,
       // so this correctly conjugates the data as part of the copy.
       out_.copy_(tmp_);
     }
