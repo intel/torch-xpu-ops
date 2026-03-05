@@ -228,7 +228,9 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
             self.assertEqual(output2, ref_input_cpu)
 
 
-TestForeach.test_foreach_copy_with_different_device_inputs = _test_foreach_copy_with_different_device_inputs
+TestForeach.test_foreach_copy_with_different_device_inputs = (
+    _test_foreach_copy_with_different_device_inputs
+)
 
 instantiate_device_type_tests(TestForeach, globals(), only_for="xpu", allow_xpu=True)
 

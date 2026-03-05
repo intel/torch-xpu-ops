@@ -18,8 +18,8 @@ import sys
 import torch
 from torch import multiprocessing as mp
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import parametrize, run_tests, TEST_XPU, IS_WINDOWS, IS_JETSON
-from torch.utils.data import DataLoader, IterDataPipe, Dataset
+from torch.testing._internal.common_utils import parametrize, run_tests, TEST_XPU
+from torch.utils.data import DataLoader, Dataset, IterDataPipe
 from torch.utils.data.datapipes.iter import IterableWrapper
 
 try:
@@ -292,54 +292,9 @@ with XPUPatchForImport(False):
                     ),
                 )
 
-    def _test_multiprocessing_iterdatapipe(self, with_dill):
-        # Testing to make sure that function from global scope (e.g. imported from library) can be serialized
-        # and used with multiprocess DataLoader
-
-        reference = [
-            torch.as_tensor([[2, 3, 4, 5]], dtype=torch.int64),
-            torch.as_tensor([[2, 3, 4, 5]], dtype=torch.int64),
-        ]
-        datapipe: IterDataPipe = IterableWrapper([[1, 2, 3, 4], [1, 2, 3, 4, 5, 6]])
-        datapipe = datapipe.map(row_processor)
-        datapipe = (
-            datapipe.filter(lambda row: len(row) == 4)
-            if with_dill
-            else datapipe.filter(filter_len)
-        )
-
-        dl_common_args = dict(
-            num_workers=2, batch_size=2, shuffle=True, pin_memory=(not TEST_XPU)
-        )
-        for ctx in supported_multiprocessing_contexts:
-            self.assertEqual(
-                reference,
-                [
-                    t.type(torch.int64)
-                    for t in self._get_data_loader(
-                        datapipe, multiprocessing_context=ctx, **dl_common_args
-                    )
-                ],
-            )
-            if ctx is not None:
-                # test ctx object
-                ctx = mp.get_context(ctx)
-                self.assertEqual(
-                    reference,
-                    [
-                        t.type(torch.int64)
-                        for t in self._get_data_loader(
-                            datapipe, multiprocessing_context=ctx, **dl_common_args
-                        )
-                    ],
-                )
-
     def multiprocessing_iterdatapipe(self):
         self._test_multiprocessing_iterdatapipe(with_dill=False)
 
-    TestDataLoader._test_multiprocessing_iterdatapipe = (
-        _test_multiprocessing_iterdatapipe
-    )
     TestDataLoader.test_sequential_pin_memory = sequential_pin_memory
     TestDataLoader.test_shuffle_pin_memory = shuffle_pin_memory
     TestDataLoader.test_multiple_dataloaders = multiple_dataloaders
