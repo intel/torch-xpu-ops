@@ -14,7 +14,6 @@ readability-redundant-smartptr-get                                           | 6
 cppcoreguidelines-pro-type-const-cast                                        | 6
 cppcoreguidelines-use-default-member-init,modernize-use-default-member-init  | 5
 readability-redundant-declaration                                            | 3
-modernize-use-equals-default                                                 | 2
 cppcoreguidelines-avoid-const-or-ref-data-members                            | 2
 clang-diagnostic-deprecated-declarations                                     | 2
 performance-for-range-copy                                                   | 1
