@@ -23,4 +23,3 @@ clang-diagnostic-deprecated-declarations                                     | 2
 performance-for-range-copy                                                   | 1
 bugprone-unused-local-non-trivial-variable                                   | 1
 bugprone-branch-clone                                                        | 1
-bugprone-argument-comment                                                    | 1

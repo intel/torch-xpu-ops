@@ -72,7 +72,6 @@ readability-string-compare,
 
 
 
--bugprone-argument-comment,
 -bugprone-branch-clone,
 -bugprone-narrowing-conversions,
 -bugprone-unchecked-optional-access,
