@@ -168,7 +168,7 @@ jobs:
           # Get issue body
           ISSUE_BODY_FILE="issue_body.txt"
           gh issue view "${REFERENCE_ISSUE_ID}" \
-            --repo "intel/torch-xpu-ops" \
+            --repo "${GITHUB_REPOSITORY}" \
             --json body \
             --jq '.body' > "${ISSUE_BODY_FILE}" 2>/dev/null || {
             echo "Warning: Failed to fetch issue body"
@@ -192,7 +192,7 @@ jobs:
             # List available artifacts
             echo "Available baseline artifacts:"
             gh run view "${REFERENCE_RUN_ID}" \
-              --repo "intel/torch-xpu-ops" \
+              --repo "${GITHUB_REPOSITORY}" \
               --json artifacts \
               --jq '.artifacts[].name' 2>/dev/null || \
               echo "Failed to list baseline artifacts"
@@ -202,7 +202,7 @@ jobs:
             echo "Downloading baseline artifacts matching pattern: ${ARTIFACT_PATTERN}"
 
             gh run download "${REFERENCE_RUN_ID}" \
-              --repo "intel/torch-xpu-ops" \
+              --repo "${GITHUB_REPOSITORY}" \
               --pattern "${ARTIFACT_PATTERN}" || {
               echo "Warning: Failed to download baseline artifacts"
             }
