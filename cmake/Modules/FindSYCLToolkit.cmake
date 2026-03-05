@@ -259,3 +259,16 @@ set(__INTEL_LLVM_COMPILER "${__INTEL_LLVM_COMPILER}" CACHE STRING "Intel llvm co
 
 message(DEBUG "The SYCL compiler is ${SYCL_COMPILER}")
 message(DEBUG "The SYCL Flags are ${SYCL_FLAGS}")
+
+# Find Intel runtime library (libintlc), required when linking SYCL objects
+# with a non-icpx linker (e.g. g++). icpx adds this automatically, but g++
+# does not, leading to undefined reference to '_intel_fast_memcpy' etc.
+find_library(
+  SYCL_INTLC_LIBRARY
+  NAMES intlc
+  HINTS ${SYCL_LIBRARY_DIR}
+  NO_DEFAULT_PATH
+)
+if(SYCL_INTLC_LIBRARY)
+  list(APPEND SYCL_LIBRARY ${SYCL_INTLC_LIBRARY})
+endif()

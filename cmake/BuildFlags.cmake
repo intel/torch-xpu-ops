@@ -57,7 +57,8 @@ macro(set_build_flags)
       list(APPEND SYCL_HOST_FLAGS -fPIC)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
-      list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
+      # Required for Intel compiler breaking changes;
+      list(APPEND SYCL_HOST_FLAGS -D__INTEL_PREVIEW_BREAKING_CHANGES)
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -188,7 +189,7 @@ macro(set_build_flags)
       message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
     endif()
 
-    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_KERNEL_OPTIONS})
+    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_HOST_FLAGS} ${SYCL_KERNEL_OPTIONS})
 
     set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
   else()
