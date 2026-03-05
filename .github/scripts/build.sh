@@ -47,6 +47,7 @@ if [[ -z "${XPU_ONEAPI_PATH:-}" ]]; then
         tcmlib==1.4.1 | \
         umf==1.0.3 | \
         intel-pti==0.16.0
+        "
 fi
 
 # Global variables
