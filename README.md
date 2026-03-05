@@ -84,11 +84,11 @@ True
 
 # FAQ
 
-Some confusion might arise about relationship of this repostory and PyTorch XPU backend in general with [Intel® Extension for PyTorch](https://github.com/intel/intel-extension-for-pytorch). See answers on that below.
+Some confusion might arise about relationship of this repository and PyTorch XPU backend in general with [Intel® Extension for PyTorch](https://github.com/intel/intel-extension-for-pytorch). See answers on that below.
 
 **Does the PyTorch XPU backend implementation use Intel® Extension for PyTorch?**
 
-No. PyTorch XPU backend implementation does not use Intel® Extension for PyTorch and can be used without it levaraging:
+No. PyTorch XPU backend implementation does not use Intel® Extension for PyTorch and can be used without it leveraging:
 
 - Standard PyTorch API to access eager mode operators, compile modules (including Triton kernels), profiling, etc.
 - SYCL kernels to enhance applications with custom operators via PyTorch CPP Extension API

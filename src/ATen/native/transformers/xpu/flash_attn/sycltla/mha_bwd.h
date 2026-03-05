@@ -13,7 +13,7 @@
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
 #include <sycl/sycl.hpp>
-#include "mha_common.h"
+#include <sycltla/mha_common.h>
 
 namespace cute {
 template <

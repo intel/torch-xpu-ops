@@ -10,13 +10,13 @@
 
 #pragma once
 
+#include <cutlass/cutlass.h>
+#include <cutlass/detail/layout.hpp>
+#include <cutlass/epilogue/collective/collective_epilogue.hpp>
+#include <cutlass/epilogue/collective/detail.hpp>
+#include <cutlass/epilogue/dispatch_policy.hpp>
+#include <flash_attention_v2/collective/fmha_fusion.hpp>
 #include <sycl/sycl.hpp>
-#include "cutlass/cutlass.h"
-#include "cutlass/detail/layout.hpp"
-#include "cutlass/epilogue/collective/collective_epilogue.hpp"
-#include "cutlass/epilogue/collective/detail.hpp"
-#include "cutlass/epilogue/dispatch_policy.hpp"
-#include "flash_attention_v2/collective/fmha_fusion.hpp"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 namespace cutlass {
