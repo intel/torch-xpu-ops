@@ -26,11 +26,11 @@ class XpuTimer : public Timer {
  private:
   c10::Device device;
   // at::xpu::XPUEvent(1) means enable_timing=true
-  at::xpu::XPUEvent forward_start = at::xpu::XPUEvent(1);
-  at::xpu::XPUEvent backward_compute_start = at::xpu::XPUEvent(1);
-  at::xpu::XPUEvent backward_compute_end = at::xpu::XPUEvent(1);
-  at::xpu::XPUEvent backward_comm_start = at::xpu::XPUEvent(1);
-  at::xpu::XPUEvent backward_comm_end = at::xpu::XPUEvent(1);
+  at::xpu::XPUEvent forward_start = at::xpu::XPUEvent(true);
+  at::xpu::XPUEvent backward_compute_start = at::xpu::XPUEvent(true);
+  at::xpu::XPUEvent backward_compute_end = at::xpu::XPUEvent(true);
+  at::xpu::XPUEvent backward_comm_start = at::xpu::XPUEvent(true);
+  at::xpu::XPUEvent backward_comm_end = at::xpu::XPUEvent(true);
 
   at::xpu::XPUEvent& getEvent(Event event) {
     switch (event) {
