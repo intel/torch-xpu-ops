@@ -10,8 +10,8 @@ on:
           PyTorch version:
           - main (default for source builds)
           - nightly_wheel, test_wheel, release_wheel (for wheel tests)
-          - commit/branch
-          - repo@commit/repo@branch
+          - commit/branch/tag
+          - repo@commit/repo@branch/repo@tag
 
       # Component selection
       component:
@@ -102,8 +102,8 @@ jobs:
       test_type: >-
         ${{
           inputs.component == 'pytorch'
-            && (contains(inputs.target_version, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
-            || (contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
+            && (contains(inputs.target_version, '_wheel') && 'wheel-target' || 'build-target')
+            || (contains(inputs.pytorch, '_wheel') && 'wheel-target' || 'build-target')
         }}
       pytorch: >-
         ${{
@@ -114,6 +114,12 @@ jobs:
       torch_xpu_ops: >-
         ${{
           inputs.component == 'torch_xpu_ops'
+            && inputs.target_version
+            || 'pinned'
+        }}
+      triton: >-
+        ${{
+          inputs.component == 'triton'
             && inputs.target_version
             || 'pinned'
         }}
@@ -138,8 +144,8 @@ jobs:
       test_type: >-
         ${{
           inputs.component == 'pytorch'
-            && (contains(inputs.baseline_version, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
-            || (contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
+            && (contains(inputs.baseline_version, '_wheel') && 'wheel-baseline' || 'build-baseline')
+            || (contains(inputs.pytorch, '_wheel') && 'wheel-baseline' || 'build-baseline')
         }}
       pytorch: >-
         ${{
@@ -150,6 +156,12 @@ jobs:
       torch_xpu_ops: >-
         ${{
           inputs.component == 'torch_xpu_ops'
+            && inputs.baseline_version
+            || 'pinned'
+        }}
+      triton: >-
+        ${{
+          inputs.component == 'triton'
             && inputs.baseline_version
             || 'pinned'
         }}

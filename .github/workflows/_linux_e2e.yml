@@ -373,6 +373,27 @@ jobs:
           dt: ${{ steps.parse-dtypes.outputs.PT2E_DTYPES }}
           scenario: ${{ inputs.scenario }}
 
+      # On-demand Test Comparison
+      - name: Execute On-demand Training tests
+        if: ${{ contains(inputs.test_type, 'target') || contains(inputs.test_type, 'baseline') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          suite: huggingface,timm_models,torchbench
+          dt: amp_fp16
+          mode: training
+          scenario: accuracy,performance
+          comparison_type: comparison
+
+      - name: Execute On-demand Inference tests
+        if: ${{ contains(inputs.test_type, 'target') || contains(inputs.test_type, 'baseline') }}
+        uses: ./.github/actions/linux-e2etest
+        with:
+          suite: huggingface,timm_models,torchbench
+          dt: bfloat16
+          mode: inference
+          scenario: accuracy,performance
+          comparison_type: comparison
+
       # Post-test processing
       - name: Collect and prepare test artifacts
         id: collect-artifacts

@@ -18,6 +18,9 @@ inputs:
     required: true
     default: 'accuracy'
     description: 'Test scenario. Options: accuracy,performance (comma-separated)'
+  comparison_type:
+    default: 'default'
+    description: 'Test type: comparison or others'
 
 runs:
   using: composite
@@ -78,6 +81,12 @@ runs:
             rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}" || {
               echo "Warning: Failed to sync benchmark models"
             }
+            if [ "${{ inputs.comparison_type }}" == "comparison" ];then
+              BENCHMARK_SRC="../.ci/benchmarks/p0/"
+              rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}" || {
+                echo "Warning: Failed to sync benchmark models"
+              }
+            fi
           else
             echo "Warning: Benchmark source directory not found: ${BENCHMARK_SRC}"
           fi

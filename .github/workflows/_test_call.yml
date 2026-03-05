@@ -168,7 +168,11 @@ jobs:
           echo "torch_xpu_ops=${{ inputs.torch_xpu_ops }}" >> "${GITHUB_OUTPUT}"
 
           # Parse UT list
-          UT_INPUT="${{ inputs.ut }}"
+          if [ "${{ inputs.component }}" != "default" ];then
+            UT_INPUT="op_regression"
+          else
+            UT_INPUT="${{ inputs.ut }}"
+          fi
           if [ -z "${UT_INPUT}" ]; then
             UT_LIST_JSON="[]"
             HAS_UT_TESTS="false"
@@ -234,7 +238,11 @@ jobs:
           echo "has_windows=${HAS_WINDOWS}" >> "${GITHUB_OUTPUT}"
 
           # Parse suite list
-          SUITE_INPUT="${{ inputs.suite }}"
+          if [ "${{ inputs.component }}" != "default" ];then
+            SUITE_INPUT="huggingface"
+          else
+            SUITE_INPUT="${{ inputs.suite }}"
+          fi
           if [ -z "${SUITE_INPUT}" ]; then
             SUITE_LIST_JSON="[]"
             HAS_E2E_TESTS="false"
@@ -346,6 +354,7 @@ jobs:
     permissions: write-all
     if: >-
       ${{
+        inputs.test_role != 'default' &&
         needs.parse-test-inputs.outputs.has_e2e_tests == 'true' &&
         !cancelled() &&
         !(
