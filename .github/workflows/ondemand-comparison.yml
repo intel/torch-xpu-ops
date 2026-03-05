@@ -6,6 +6,7 @@ on:
       pytorch:
         required: true
         type: string
+        default: 'main'
         description: |
           PyTorch version:
           - main (default for source builds)
@@ -18,11 +19,11 @@ on:
         required: true
         type: choice
         options:
-          - pytorch
-          - torch-xpu-ops
           - onednn
           - oneapi
           - triton
+          - pytorch
+          - torch-xpu-ops
         default: 'pytorch'
         description: 'Component to compare'
 
