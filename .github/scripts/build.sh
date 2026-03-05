@@ -3,7 +3,7 @@
 # Usage:
 #   ./build.sh [OPTIONS]
 #   ./build.sh --WORKSPACE=<path> --PYTORCH=main --TORCH_XPU_OPS=main
-set -xeuo pipefail
+set -eu -o pipefail
 export GIT_PAGER=cat
 
 # Colors for output
