@@ -238,11 +238,7 @@ jobs:
           echo "has_windows=${HAS_WINDOWS}" >> "${GITHUB_OUTPUT}"
 
           # Parse suite list
-          if [ "${{ inputs.component }}" != "default" ];then
-            SUITE_INPUT="huggingface"
-          else
-            SUITE_INPUT="${{ inputs.suite }}"
-          fi
+          SUITE_INPUT="${{ inputs.suite }}"
           if [ -z "${SUITE_INPUT}" ]; then
             SUITE_LIST_JSON="[]"
             HAS_E2E_TESTS="false"
