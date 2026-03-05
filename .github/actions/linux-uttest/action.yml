@@ -501,7 +501,6 @@ runs:
       shell: timeout 300 bash -eo pipefail {0}
       run: |
         echo "=== Generating Test Results Summary ==="
-        set -x
 
         # Install required packages
         pip install junitparser
