@@ -84,7 +84,6 @@ readability-string-compare,
 -cppcoreguidelines-pro-type-member-init,
 -cppcoreguidelines-special-member-functions,
 -cppcoreguidelines-use-default-member-init,
--misc-header-include-cycle,
 -modernize-avoid-c-arrays,
 -modernize-concat-nested-namespaces,
 -modernize-type-traits,
@@ -104,5 +103,5 @@ WarningsAsErrors: '*'
 CheckOptions:
   cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
   cppcoreguidelines-special-member-functions.AllowImplicitlyDeletedCopyOrMove: true
-  misc-header-include-cycle.IgnoredFilesList: 'format.h;ivalue.h;custom_class.h;Dict.h;List.h;IListRef.h'
+  misc-header-include-cycle.IgnoredFilesList: 'library.h'
 ...

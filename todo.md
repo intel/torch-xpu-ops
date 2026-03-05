@@ -9,7 +9,6 @@ bugprone-unchecked-optional-access                                           | 4
 cppcoreguidelines-prefer-member-initializer                                  | 41
 performance-unnecessary-value-param                                          | 29
 readability-redundant-casting                                                | 22
-misc-header-include-cycle                                                    | 17
 readability-container-size-empty                                             | 9
 cppcoreguidelines-special-member-functions                                   | 7
 readability-redundant-smartptr-get                                           | 6
