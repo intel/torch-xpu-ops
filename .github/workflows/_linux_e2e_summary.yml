@@ -475,17 +475,3 @@ jobs:
             echo "Note: PT2E failures and performance regressions are warnings only"
             exit 0
           fi
-
-      - name: Upload Generated Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: E2E-Summary-Reports-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ github.workspace }}/e2e-test-result.html
-            ${{ github.workspace }}/performance.regression.pr.html
-            ${{ github.workspace }}/new_body.txt
-            ${{ github.workspace }}/issue_body.txt
-            /tmp/tmp-*.txt
-          retention-days: 7
-          if-no-files-found: ignore
