@@ -16,6 +16,7 @@
 
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
+#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
@@ -584,6 +585,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   const auto key = std::to_string(device.index());
   auto stream = xcclStreamsMap_.at(key).xpuStream;
 
+  c10::xpu::CaptureStatus capture_status =
+      c10::xpu::currentStreamCaptureStatusMayInitCtx();
+
   auto work = initWork(
       device,
       rank_,
@@ -604,7 +608,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
-  setEnqueuedPgStatus(work);
+
+  if (capture_status == c10::xpu::CaptureStatus::Executing) {
+    setEnqueuedPgStatus(work);
+  }
 
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
@@ -631,6 +638,11 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     bool nanCheck) {
   nanCheck &= enableNanCheck_;
   auto device = inputs[0].device();
+  c10::OptionalDeviceGuard gpuGuard(device);
+
+  c10::xpu::CaptureStatus capture_status =
+      c10::xpu::currentStreamCaptureStatusMayInitCtx();
+
   const auto key = std::to_string(device.index());
   std::shared_ptr<xcclComm_t> comm = getXCCLComm(key);
   if (comm == nullptr) {
@@ -684,6 +696,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
+  bool enqueue =
+      !coalescing_state_ && capture_status == c10::xpu::CaptureStatus::Executing;
+
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   work = initWork(
       device,
@@ -693,7 +708,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       profilingTitle,
       inputs,
       outputs,
-      !coalescing_state_);
+      enqueue);
   if (coalescing_state_) {
     FlightRecorderXCCL::get()->record(
         local_id_,
@@ -722,8 +737,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       work->stashed_for_allocator_safety_->stash(outputs);
     }
   }
-
-  c10::OptionalDeviceGuard gpuGuard(device);
 
   if (nanCheck) {
     for (const auto& input : inputs) {
@@ -771,7 +784,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   for (const auto& output : outputs) {
     work->numelOut_ += output.numel();
   }
-  setEnqueuedPgStatus(work);
+
+  if (capture_status == c10::xpu::CaptureStatus::Executing) {
+    setEnqueuedPgStatus(work);
+  }
 
   return asyncOp ? work : nullptr;
 }
@@ -916,7 +932,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
               id, reset_epoch, /*compute_duration*/ false);
         },
         /*use_future*/ false);
-    setEnqueuedPgStatus(work);
+
+    // Skip PG status update during graph capture
+    c10::xpu::CaptureStatus p2p_capture_status =
+        c10::xpu::currentStreamCaptureStatusMayInitCtx();
+    if (p2p_capture_status == c10::xpu::CaptureStatus::Executing) {
+      setEnqueuedPgStatus(work);
+    }
   }
 
   return work;
