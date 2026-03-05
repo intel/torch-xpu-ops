@@ -121,6 +121,10 @@ include_patterns = [
     'src/**/*.h',
     'src/**/*.cpp',
 ]
+exclude_patterns = [
+    'src/**/sycl/**',
+    'src/**/sycltla/**',
+]
 init_command = [
     'python3',
     'tools/linter/adapters/s3_init.py',
