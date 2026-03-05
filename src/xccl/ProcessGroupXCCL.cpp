@@ -86,17 +86,8 @@ int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
 }
 
 bool complexViewAsRealAllowed(const ReduceOp& reduceOp) {
-  switch (reduceOp) {
-    case ReduceOp::SUM:
-      return true;
-    case ReduceOp::AVG:
-      return true;
-    case ReduceOp::UNUSED:
-      return true;
-    default:
-      return false;
-  }
-  return false;
+  return reduceOp == ReduceOp::SUM || reduceOp == ReduceOp::AVG ||
+      reduceOp == ReduceOp::UNUSED;
 }
 
 void syncStream(
