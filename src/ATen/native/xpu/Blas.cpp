@@ -341,11 +341,11 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
     return at::_efficientzerotensor({}, self.options());
   }
 
-  #if defined(USE_ONEMKL_XPU)
-    return at::native::xpu::dot_xpu_mkl(self, other);
-  #else
-    return at::native::dot(self.cpu(), other.cpu()).to(self.device());
-  #endif
+#if defined(USE_ONEMKL_XPU)
+  return at::native::xpu::dot_xpu_mkl(self, other);
+#else
+  return at::native::dot(self.cpu(), other.cpu()).to(self.device());
+#endif
 }
 
 Tensor vdot_xpu(const Tensor& self, const Tensor& other) {
