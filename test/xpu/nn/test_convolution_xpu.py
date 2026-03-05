@@ -1435,15 +1435,9 @@ with XPUPatchForImport(False):
     )
     TestConvolutionNNDeviceType.test_cudnn_convolution_relu = skip_cudnn_test
     TestConvolutionNNDeviceType.test_cudnn_convolution_add_relu = skip_cudnn_test
-    TestConvolutionNNDeviceType.test_Conv2d_large_workspace = (
-        conv2d_large_workspace
-    )
-    TestConvolutionNNDeviceType.test_Conv2d_naive_groups = (
-        conv2d_naive_groups
-    )
-    TestConvolutionNNDeviceType.test_noncontig_conv_grad = (
-        noncontig_conv_grad
-    )
+    TestConvolutionNNDeviceType.test_Conv2d_large_workspace = conv2d_large_workspace
+    TestConvolutionNNDeviceType.test_Conv2d_naive_groups = conv2d_naive_groups
+    TestConvolutionNNDeviceType.test_noncontig_conv_grad = noncontig_conv_grad
     TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = (
         conv2d_inconsistent_types_on_GPU_with_mkldnn
     )

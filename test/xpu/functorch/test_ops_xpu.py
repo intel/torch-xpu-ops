@@ -72,7 +72,10 @@ from torch.utils import _pytree as pytree
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 for op in op_db:
-    if op.name == "nn.functional.batch_norm" and op.variant_test_name == "without_cudnn":
+    if (
+        op.name == "nn.functional.batch_norm"
+        and op.variant_test_name == "without_cudnn"
+    ):
         # Assign XPU-specific dtypes
         if hasattr(op, "_dispatch_dtypes"):
             cuda_dtypes = op._dispatch_dtypes.get("cuda")
@@ -82,8 +85,7 @@ for op in op_db:
         if hasattr(op, "supported_device_types"):
             op.supported_device_types = op.supported_device_types.union({"xpu"})
         op.decorators = tuple(
-            d for d in op.decorators 
-            if "onlyCUDA" not in getattr(d, "__name__", str(d))
+            d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d))
         )
 
         break
