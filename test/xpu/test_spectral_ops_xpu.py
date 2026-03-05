@@ -101,7 +101,23 @@ def _test_reference_1d(self, device, dtype, op):
         )
 
 
+@ops(spectral_funcs, allowed_dtypes=(torch.half, torch.chalf))
+def _test_fft_half_and_chalf_not_power_of_two_error(self, device, dtype, op):
+    t = torch.randn(13, 13, device=device, dtype=dtype)
+    op(t)
+
+    if op.ndimensional in (SpectralFuncType.ND, SpectralFuncType.TwoD):
+        kwargs = {"s": (12, 12)}
+    else:
+        kwargs = {"n": 12}
+
+    op(t, **kwargs)
+
+
 TestFFT.test_reference_1d = _test_reference_1d
+TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
+    _test_fft_half_and_chalf_not_power_of_two_error
+)
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
 
