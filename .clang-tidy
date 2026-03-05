@@ -70,10 +70,8 @@ readability-string-compare,
 -readability-redundant-control-flow,
 -readability-redundant-inline-specifier,
 '
-HeaderFilterRegex: '^(src/).*$'
+HeaderFilterRegex: '.*/torch-xpu-ops/.*'
 WarningsAsErrors: '*'
-LineFilter:
-  - name: '/usr/include/.*'
 CheckOptions:
   cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
   cppcoreguidelines-special-member-functions.AllowImplicitlyDeletedCopyOrMove: true
