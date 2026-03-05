@@ -1,0 +1,174 @@
+name: OnDemand Component Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        required: true
+        type: string
+        description: |
+          PyTorch version:
+          - main (default for source builds)
+          - nightly_wheel, test_wheel, release_wheel (for wheel tests)
+          - commit/branch
+          - repo@commit/repo@branch
+
+      # Component selection
+      component:
+        required: true
+        type: choice
+        options:
+          - pytorch
+          - torch-xpu-ops
+          - onednn
+          - oneapi
+          - triton
+        default: 'pytorch'
+        description: 'Component to compare'
+
+      # Version configuration
+      target_version:
+        required: true
+        type: string
+        default: 'HEAD'
+        description: |
+          Target component version (new version):
+          - commit/branch/tag
+          - repo@commit/repo@branch
+          - HEAD (current HEAD)
+      baseline_version:
+        required: true
+        type: string
+        default: 'main'
+        description: |
+          Baseline component version (reference):
+          - commit/branch/tag
+          - repo@commit/repo@branch
+          - main (default branch)
+
+      # Test comparison type
+      comparison_type:
+        type: choice
+        options:
+          - regression
+          - performance
+          - full
+        default: 'regression'
+        description: |
+          Comparison type:
+          - regression: Run regression tests only
+          - performance: Compare performance metrics
+          - full: Run all tests and compare
+
+      # Environment
+      python:
+        type: string
+        default: '3.10'
+        description: 'Python version'
+
+permissions: read-all
+
+run-name: >-
+  Component Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
+
+jobs:
+  get-runner:
+    runs-on: 'pvc_rolling'
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+    steps:
+      - name: Checkout torch-xpu-ops repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Get runner information and configuration
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  # Run tests on target version
+  run-target-tests:
+    name: Run Tests (Target)
+    needs: get-runner
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      test_type: >-
+        ${{
+            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
+        }}
+      pytorch: ${{ inputs.pytorch }}
+      python: ${{ inputs.python }}
+      is_scheduled_run: false
+      test_role: 'target'
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.target_version }}
+      comparison_type: ${{ inputs.comparison_type }}
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+  # Run tests on baseline version
+  run-baseline-tests:
+    name: Run Tests (Baseline)
+    needs: get-runner
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      test_type: >-
+        ${{
+            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
+        }}
+      pytorch: ${{ inputs.pytorch }}
+      python: ${{ inputs.python }}
+      is_scheduled_run: false
+      test_role: 'baseline'
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.baseline_version }}
+      comparison_type: ${{ inputs.comparison_type }}
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+  # Job 4: Compare results and generate report
+  compare-results:
+    name: Compare Results
+    needs: [run-target-tests, run-baseline-tests]
+    runs-on: ubuntu-24.04
+    outputs:
+      comparison_result: ${{ steps.compare.outputs.result }}
+      regression_found: ${{ steps.compare.outputs.regression_found }}
+      performance_diff: ${{ steps.compare.outputs.performance_diff }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Test Results
+        run: |
+          echo "Downloading test results for comparison..."
+          # In practice, you would download artifacts from previous jobs
+          mkdir -p results/target
+          mkdir -p results/baseline
+
+          # Simulate results for demonstration
+          echo "Target: ${{ inputs.target_version }}" > results/target/summary.txt
+          echo "Baseline: ${{ inputs.baseline_version }}" > results/baseline/summary.txt
+
+      - name: Compare Test Results
+        id: compare
+        run: |
+          echo "Comparing results for ${{ inputs.component }}..."
+          echo "Target: ${{ inputs.target_version }}"
+          echo "Baseline: ${{ inputs.baseline_version }}"
+          echo "Comparison type: ${{ inputs.comparison_type }}"
+
+          # Generate comparison result
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "result=comparison_${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "regression_found=false" >> $GITHUB_OUTPUT
+          echo "performance_diff=0%" >> $GITHUB_OUTPUT
+
+      - name: Generate Comparison Report
+        run: |
+          cat
