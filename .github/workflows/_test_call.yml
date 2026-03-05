@@ -22,7 +22,7 @@ on:
           - commit/branch
           - repo@commit/repo@branch
       torch_xpu_ops:
-        default: 'pinned'
+        required: true
         type: string
         description: |
           Torch-xpu-ops version:
@@ -157,25 +157,15 @@ jobs:
         id: parse-config
         shell: bash -eo pipefail {0}
         run: |
-          echo "=== Parsing pytorch and torch_xpu_ops ==="
-          if [ "${{ inputs.component }}" == "torch_xpu_ops" ];then
-            used_torch_xpu_ops="${{ inputs.component_version }}"
-          elif [ "${{ inputs.component }}" == "pytorch" ];then
-            used_pytorch="${{ inputs.component_version }}"
-          else
-            used_torch_xpu_ops="${{ inputs.torch_xpu_ops }}"
-            used_pytorch="${{ inputs.pytorch }}"
-          fi
-
           echo "=== Parsing Test Configuration ==="
           echo "Test Type: ${{ inputs.test_type }}"
-          echo "PyTorch: ${used_pytorch}"
-          echo "Torch-xpu-ops: ${used_torch_xpu_ops}"
+          echo "PyTorch: ${{ inputs.pytorch }}"
+          echo "Torch-xpu-ops: ${{ inputs.torch_xpu_ops }}"
 
           # Set basic configuration
           echo "test_type=${{ inputs.test_type }}" >> "${GITHUB_OUTPUT}"
-          echo "pytorch=${used_pytorch}" >> "${GITHUB_OUTPUT}"
-          echo "torch_xpu_ops=${used_torch_xpu_ops}" >> "${GITHUB_OUTPUT}"
+          echo "pytorch=${{ inputs.pytorch }}" >> "${GITHUB_OUTPUT}"
+          echo "torch_xpu_ops=${{ inputs.torch_xpu_ops }}" >> "${GITHUB_OUTPUT}"
 
           # Parse UT list
           UT_INPUT="${{ inputs.ut }}"

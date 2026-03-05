@@ -34,8 +34,7 @@ on:
         description: |
           Target component version (new version):
           - commit/branch/tag
-          - repo@commit/repo@branch
-          - HEAD (current HEAD)
+          - repo@commit/repo@branch/repo@tag
       baseline_version:
         required: true
         type: string
@@ -43,8 +42,7 @@ on:
         description: |
           Baseline component version (reference):
           - commit/branch/tag
-          - repo@commit/repo@branch
-          - main (default branch)
+          - repo@commit/repo@branch/repo@tag
 
       # Test comparison type
       comparison_type:
@@ -65,6 +63,13 @@ on:
         type: string
         default: '3.10'
         description: 'Python version'
+      runner:
+        type: choice
+        options:
+          - pvc_rolling
+          - bmg-test
+        default: 'pvc_rolling'
+        description: 'What runner to use'
 
 permissions: read-all
 
@@ -73,7 +78,7 @@ run-name: >-
 
 jobs:
   get-runner:
-    runs-on: 'pvc_rolling'
+    runs-on: ${{ inputs.runner }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
     steps:
@@ -96,9 +101,22 @@ jobs:
       runner: ${{ needs.get-runner.outputs.runner_id }}
       test_type: >-
         ${{
-            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
+          inputs.component == 'pytorch'
+            && (contains(inputs.target_version, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
+            || (contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
         }}
-      pytorch: ${{ inputs.pytorch }}
+      pytorch: >-
+        ${{
+          inputs.component == 'pytorch'
+            && inputs.target_version
+            || inputs.pytorch
+        }}
+      torch_xpu_ops: >-
+        ${{
+          inputs.component == 'torch_xpu_ops'
+            && inputs.target_version
+            || 'pinned'
+        }}
       python: ${{ inputs.python }}
       is_scheduled_run: false
       test_role: 'target'
@@ -119,9 +137,22 @@ jobs:
       runner: ${{ needs.get-runner.outputs.runner_id }}
       test_type: >-
         ${{
-            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
+          inputs.component == 'pytorch'
+            && (contains(inputs.baseline_version, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
+            || (contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand')
         }}
-      pytorch: ${{ inputs.pytorch }}
+      pytorch: >-
+        ${{
+          inputs.component == 'pytorch'
+            && inputs.baseline_version
+            || inputs.pytorch
+        }}
+      torch_xpu_ops: >-
+        ${{
+          inputs.component == 'torch_xpu_ops'
+            && inputs.baseline_version
+            || 'pinned'
+        }}
       python: ${{ inputs.python }}
       is_scheduled_run: false
       test_role: 'baseline'
