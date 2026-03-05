@@ -61,7 +61,7 @@ on:
 permissions: read-all
 
 run-name: >-
-  Component Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
+  Acceptance Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
 
 jobs:
   get-runner:
