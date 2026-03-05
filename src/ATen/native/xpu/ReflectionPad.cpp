@@ -14,6 +14,7 @@
 #include <ATen/native/Padding.h>
 #include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
 
+#include <ATen/TensorMeta.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/reflection_pad1d_backward_native.h>
 #include <ATen/ops/reflection_pad1d_native.h>
@@ -22,7 +23,6 @@
 #include <ATen/ops/reflection_pad3d_backward_native.h>
 #include <ATen/ops/reflection_pad3d_native.h>
 #include <ATen/ops/zeros_like.h>
-#include "ATen/TensorMeta.h"
 
 namespace at {
 namespace native {

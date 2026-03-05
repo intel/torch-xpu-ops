@@ -138,7 +138,11 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   if (src_dtype == kFloat4_e2m1fn_x2) {
     gpu_kernel_nocast(iter, CopyScalarFunc<Float4_e2m1fn_x2>());
   } else {
-    TORCH_CHECK(false, "Copy from ", src_dtype, " to Float4_e2m1fn_x2 has not been supported.");
+    TORCH_CHECK(
+        false,
+        "Copy from ",
+        src_dtype,
+        " to Float4_e2m1fn_x2 has not been supported.");
   }
 }
 

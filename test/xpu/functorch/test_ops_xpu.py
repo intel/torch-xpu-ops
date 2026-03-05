@@ -63,6 +63,7 @@ from torch.testing._internal.common_utils import (
     skipIfRocm,
     TEST_WITH_ASAN,
     TEST_WITH_ROCM,
+    TEST_XPU,
     TestCase,
     unMarkDynamoStrictTest,
 )
@@ -477,8 +478,8 @@ class TestOperators(TestCase):
                 # Fused attention kernels require last dim to be contiguous
                 decorate(
                     "nn.functional.scaled_dot_product_attention",
-                    decorator=expectedFailureIf(not TEST_WITH_ROCM),
-                ),  # Works on ROCm
+                    decorator=expectedFailureIf(not (TEST_WITH_ROCM or TEST_XPU)),
+                ),  # Works on ROCm and XPU
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
             }
@@ -780,8 +781,8 @@ class TestOperators(TestCase):
                 # The fused attention kernels require the last dim to be contiguous
                 decorate(
                     "nn.functional.scaled_dot_product_attention",
-                    decorator=expectedFailureIf(not TEST_WITH_ROCM),
-                ),  # Works on ROCm
+                    decorator=expectedFailureIf(not (TEST_WITH_ROCM or TEST_XPU)),
+                ),  # Works on ROCm and XPU
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
                 # BUG
@@ -1199,7 +1200,7 @@ class TestOperators(TestCase):
             xfail("chalf", ""),
             xfail("scatter_reduce", "prod"),  # item call
             # Batching rule not implemented for aten::_use_cudnn_ctc_loss.Tensor
-            xfail("nn.functional.ctc_loss", device_type=device_type),
+            xfail("nn.functional.ctc_loss", device_type="cuda"),
             # NYI: querying is_contiguous inside of vmap for memory_format other than torch.contiguous_format
             xfail("nn.functional.max_unpool2d"),
             xfail("nn.functional.max_unpool2d", "grad"),
