@@ -2033,7 +2033,7 @@ else:
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
             "reflection_pad2d_backward_" + torch.device(device).type,
-            torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
+            torch.device(device).type == "cuda",
         )
 
     @skipIfMPS
