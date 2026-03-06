@@ -265,8 +265,7 @@ Tensor _flatten_indices_impl(const Tensor& indices, IntArrayRef size) {
     auto strides = c10::contiguous_strides(size);
     return at::sparse::TensorGeometryHolder<max_static_len>(
         strides, strides, indices.options());
-  }
-  ();
+  }();
   const auto hash_coeffs = std::get<0>(*hash_coeffs_storage);
 
   const auto hash_indices = [&]() -> Tensor {

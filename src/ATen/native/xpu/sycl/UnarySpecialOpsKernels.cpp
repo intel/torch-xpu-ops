@@ -356,7 +356,10 @@ struct KaiserWindowFunctor {
   opmath_t inv_i0_beta_;
 };
 
-void kaiser_window_kernel(TensorIteratorBase& iter, int64_t window_length, double beta) {
+void kaiser_window_kernel(
+    TensorIteratorBase& iter,
+    int64_t window_length,
+    double beta) {
   AT_DISPATCH_FLOATING_TYPES_AND2(
       ScalarType::Half,
       ScalarType::BFloat16,
@@ -364,11 +367,13 @@ void kaiser_window_kernel(TensorIteratorBase& iter, int64_t window_length, doubl
       "kaiser_window_xpu",
       [&]() {
         using opmath_t = at::opmath_type<scalar_t>;
-        const opmath_t inv_alpha = static_cast<opmath_t>(2.0 / (window_length - 1));
+        const opmath_t inv_alpha =
+            static_cast<opmath_t>(2.0 / (window_length - 1));
         const opmath_t beta_opmath = static_cast<opmath_t>(beta);
         const opmath_t inv_i0_beta = 1.0 / calc_i0(beta_opmath);
         gpu_kernel(
-            iter, KaiserWindowFunctor<scalar_t>(beta_opmath, inv_alpha, inv_i0_beta));
+            iter,
+            KaiserWindowFunctor<scalar_t>(beta_opmath, inv_alpha, inv_i0_beta));
       });
 }
 

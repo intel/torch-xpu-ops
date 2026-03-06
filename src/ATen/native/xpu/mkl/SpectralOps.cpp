@@ -94,10 +94,6 @@ void _mkl_dft(
     desc.set_value(config_param::BWD_STRIDES, input_strides);
   }
 
-  if (!complex_input || !complex_output) {
-    desc.set_value(config_param::CONJUGATE_EVEN_STORAGE, DFTI_COMPLEX_COMPLEX);
-  }
-
   desc.set_value(
       oneapi::mkl::dft::config_param::WORKSPACE,
       oneapi::mkl::dft::config_value::WORKSPACE_EXTERNAL);
@@ -339,7 +335,6 @@ Tensor _fft_c2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
-
   if (dim.empty()) {
     return orig_self.clone();
   }
@@ -425,7 +420,6 @@ Tensor _fft_c2r_mkl(
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
-
   if (dim.empty()) {
     return orig_self.clone();
   }
@@ -490,7 +484,6 @@ Tensor _fft_r2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
-
   if (dim.empty()) {
     return orig_self.clone();
   }

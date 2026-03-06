@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,8 +37,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mha_fwd.h"
-#include "mha_common.h"
+#include <sycltla/mha_common.h>
+#include <sycltla/mha_fwd.h>
 
 // batch, numhead_qo,numhead_kv,seqlen_qo,seqlen_kv,headsize_qk,headsize_vo
 using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
