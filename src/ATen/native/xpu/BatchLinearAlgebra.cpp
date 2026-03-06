@@ -12,8 +12,8 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
-#include <ATen/ops/linalg_qr_native.h>
 #include <ATen/ops/linalg_qr_cpu_dispatch.h>
+#include <ATen/ops/linalg_qr_native.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -136,10 +136,8 @@ void triangular_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
-TORCH_IMPL_FUNC(linalg_qr_xpu_out)(const Tensor& A,
-                               std::string_view mode,
-                               const Tensor & Q,
-                               const Tensor & R) {
+TORCH_IMPL_FUNC(linalg_qr_xpu_out)
+(const Tensor& A, std::string_view mode, const Tensor& Q, const Tensor& R) {
 #if defined(USE_ONEMKL_XPU)
   if (!A.is_complex()) {
     xpu::linalg_qr_kernel(A, mode, Q, R);
