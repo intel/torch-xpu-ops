@@ -2,7 +2,6 @@ bugprone-narrowing-conversions,cppcoreguidelines-narrowing-conversions       | 1
 cppcoreguidelines-init-variables                                             | 142
 modernize-concat-nested-namespaces                                           | 135
 cppcoreguidelines-pro-type-member-init                                       | 104
-cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays                    | 63
 bugprone-unchecked-optional-access                                           | 43
 cppcoreguidelines-prefer-member-initializer                                  | 41
 performance-unnecessary-value-param                                          | 29
