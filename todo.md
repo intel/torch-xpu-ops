@@ -12,7 +12,6 @@ readability-redundant-casting                                                | 2
 cppcoreguidelines-special-member-functions                                   | 7
 readability-redundant-smartptr-get                                           | 6
 cppcoreguidelines-pro-type-const-cast                                        | 6
-cppcoreguidelines-use-default-member-init,modernize-use-default-member-init  | 5
 readability-redundant-declaration                                            | 3
 cppcoreguidelines-avoid-const-or-ref-data-members                            | 2
 clang-diagnostic-deprecated-declarations                                     | 2

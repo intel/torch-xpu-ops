@@ -276,7 +276,6 @@ ProcessGroupXCCL::ProcessGroupXCCL(
     c10::intrusive_ptr<Options> options)
     : Backend(rank, size),
       store_(std::move(store)),
-      xcclCommCounter_(0),
       local_id_(process_group_id++),
       options_(std::move(options)) {
   this->setGroupUid(options_->group_name);
