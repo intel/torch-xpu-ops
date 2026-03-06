@@ -483,7 +483,6 @@ void linalg_qr_kernel_impl(
     std::string_view mode,
     const at::Tensor& Q,
     const at::Tensor& R) {
-
   at::Tensor a_contig = A.contiguous();
   at::Tensor result_r = at::clone(a_contig);
 
@@ -500,15 +499,15 @@ void linalg_qr_kernel_impl(
   // correct R matrix  dimensions if needed
   if (numel == 0 && mode != "complete") {
     std::vector r(dimensions.begin(), dimensions.end());
-    if (r[range-1] == 0)
-      r[range-2]=0;
-    result_r = at::zeros(r,options);
+    if (r[range - 1] == 0) {
+      r[range - 2] = 0;
+    }
+    result_r = at::zeros(r, options);
   }
 
-  result_r=result_r.transpose(-2,-1).contiguous();
+  result_r = result_r.transpose(-2, -1).contiguous();
 
-
-  if (b==0 && mode=="complete" && n>0) {
+  if (b == 0 && mode == "complete" && n > 0) {
     b = native::batchCount(a_contig);
   }
 
@@ -530,15 +529,13 @@ void linalg_qr_kernel_impl(
 
   at::Tensor result_q = at::empty(q_dimensions, options);
 
-
-
   sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
 
   // add one to size to avoid special case when any of dimensions is 0.
-  int64_t bufsize1 =
-      oneapi::mkl::lapack::geqrf_scratchpad_size<scalar_t>(queue, n+1, m+1, n+1);
-  int64_t bufsize2 =
-      oneapi::mkl::lapack::orgqr_scratchpad_size<scalar_t>(queue, n+1, m+1, m+1, n+1);
+  int64_t bufsize1 = oneapi::mkl::lapack::geqrf_scratchpad_size<scalar_t>(
+      queue, n + 1, m + 1, n + 1);
+  int64_t bufsize2 = oneapi::mkl::lapack::orgqr_scratchpad_size<scalar_t>(
+      queue, n + 1, m + 1, m + 1, n + 1);
 
   int64_t bufsize = bufsize2 > bufsize1 ? bufsize2 : bufsize1;
   int64_t tau_len = m > n ? n : m;
@@ -551,12 +548,12 @@ void linalg_qr_kernel_impl(
     q_buf = result_q.data_ptr<scalar_t>();
   }
 
-
   for (int batch_item = 0; batch_item < b; batch_item++) {
-
-    if (mn != 0) // make QR if there is something to orthogonalize
-      oneapi::mkl::lapack::geqrf(queue, n, m, r_buf, n, tau_buf, sbuffer, bufsize)
-        .wait();
+    if (mn != 0) { // make QR if there is something to orthogonalize
+      oneapi::mkl::lapack::geqrf(
+          queue, n, m, r_buf, n, tau_buf, sbuffer, bufsize)
+          .wait();
+    }
 
     if (mode != "r") {
       // copy relevant part of R matrix to Q matrix
@@ -564,22 +561,13 @@ void linalg_qr_kernel_impl(
       queue.memcpy(q_buf, r_buf, n * copy_columns * sizeof(scalar_t)).wait();
 
       oneapi::mkl::lapack::orgqr(
-          queue,
-          n,
-          out_q_columns,
-          tau_len,
-          q_buf,
-          n,
-          tau_buf,
-          sbuffer,
-          bufsize)
+          queue, n, out_q_columns, tau_len, q_buf, n, tau_buf, sbuffer, bufsize)
           .wait();
 
       q_buf += n * out_q_columns;
     }
 
     r_buf += mn;
-
   } // batch
 
   sycl::free(sbuffer, queue);
@@ -594,15 +582,13 @@ void linalg_qr_kernel_impl(
   }
 
   // normal case, non-zero dimensions
-  if (mode!="r") {
-    result_q.transpose_(-2, -1).contiguous();
+  if (mode != "r") {
+    result_q = result_q.transpose_(-2, -1).contiguous();
   }
+
   Q.set_(result_q);
   R.set_(result_r.transpose(-2, -1).triu_());
-
 }
-
-
 
 void linalg_qr_kernel(
     const at::Tensor& A,
@@ -615,4 +601,3 @@ void linalg_qr_kernel(
 }
 
 } // namespace at::native::xpu
-  //
