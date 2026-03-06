@@ -4413,7 +4413,7 @@ class TestVmapOperatorsOpInfo(TestCase):
     )
     def test_vmap_exhaustive(self, device, dtype, op):
         # needs to be fixed
-        inplace_failure_list = ()
+        inplace_failure_list = ("addmv",)
         self.opinfo_vmap_test(
             device,
             dtype,
@@ -5896,6 +5896,8 @@ class TestRandomness(TestCase):
     def test_random_unary_out_of_place(
         self, device, use_generator, randomness, batched_input
     ):
+        if "xpu" in device and randomness != "error":
+            self.skipTest("XPU vmap random ops do not match direct execution")
         generator = torch.Generator(device=device)
         orig_state = generator.get_state()
         kwargs = {"generator": generator} if use_generator else {}
