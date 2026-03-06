@@ -6782,10 +6782,10 @@ class TestSparseAny(TestCase):
                 torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
             self.skipTest("NOT IMPL")
         else:
-            if "xpu" in device:
-                self.skipTest(
-                    "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2213 for details"
-                )
+            # if "xpu" in device:
+            #     self.skipTest(
+            #         "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2213 for details"
+            #     )
             torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
 
     @onlyNativeDeviceTypes
