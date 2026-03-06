@@ -69,31 +69,13 @@ readability-string-compare,
 -readability-redundant-access-specifiers,
 -readability-redundant-control-flow,
 -readability-redundant-inline-specifier,
-
-
-
--bugprone-narrowing-conversions,
--bugprone-unchecked-optional-access,
--bugprone-unused-local-non-trivial-variable,
--cppcoreguidelines-avoid-const-or-ref-data-members,
--cppcoreguidelines-init-variables,
--cppcoreguidelines-narrowing-conversions,
--cppcoreguidelines-prefer-member-initializer,
--cppcoreguidelines-pro-type-const-cast,
--cppcoreguidelines-pro-type-member-init,
--cppcoreguidelines-special-member-functions,
--modernize-concat-nested-namespaces,
--performance-for-range-copy,
--performance-unnecessary-value-param,
--readability-redundant-casting,
--readability-redundant-declaration,
--readability-redundant-smartptr-get,
--readability-redundant*,
 '
-HeaderFilterRegex: '.*/torch-xpu-ops/.*'
+HeaderFilterRegex: '^(src/).*$'
 WarningsAsErrors: '*'
+LineFilter:
+  - name: '/usr/include/.*'
 CheckOptions:
   cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
   cppcoreguidelines-special-member-functions.AllowImplicitlyDeletedCopyOrMove: true
-  misc-header-include-cycle.IgnoredFilesList: 'library.h'
+  misc-header-include-cycle.IgnoredFilesList: 'format.h;ivalue.h;custom_class.h;Dict.h;List.h;IListRef.h'
 ...
