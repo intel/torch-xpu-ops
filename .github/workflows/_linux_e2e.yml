@@ -136,6 +136,7 @@ jobs:
           suite: ${{ inputs.suite }}
           component: ${{ inputs.component }}
           component_version: ${{ inputs.component_version }}
+          test_role: ${{ inputs.test_role }}
 
       # Helper function to check if suite is in input
       - name: Parse suite configuration
@@ -463,7 +464,6 @@ jobs:
           path: ${{ github.workspace }}/upload_files
           retention-days: 7
           if-no-files-found: warn
-          compression-level: 6
 
       - name: Cleanup temporary files
         if: always()

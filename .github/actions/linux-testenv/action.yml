@@ -20,6 +20,9 @@ inputs:
   component_version:
     default: ''
     description: 'Component version for comparison'
+  test_role:
+    default: 'default'
+    description: 'Role for test comparison'
 
 runs:
   using: composite
@@ -111,7 +114,7 @@ runs:
       if: ${{ !contains(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v4
       with:
-        pattern: Torch-XPU-Wheel-*
+        pattern: Torch-XPU-Wheel-${{ inputs.test_role }}-*
         path: ./wheels
         merge-multiple: true
 

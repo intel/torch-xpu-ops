@@ -121,6 +121,7 @@ jobs:
           echo "=== Cleaning Workspace ==="
           sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
           echo "Workspace cleaned"
+          mkdir -p ${WORKSPACE}/${{ inputs.test_role }}/
 
       - name: Install GitHub CLI
         run: |
@@ -250,10 +251,10 @@ jobs:
 
           # Build PyTorch
           echo "Starting PyTorch build..."
-          BUILD_LOG_FILE="${WORKSPACE}/build_pytorch_${PYTORCH_COMMIT//\//-}.log"
+          BUILD_LOG_FILE="${WORKSPACE}/${{ inputs.test_role }}/build_pytorch_${PYTORCH_COMMIT//\//-}.log"
 
           "${WORKSPACE}/torch-xpu-ops/.github/scripts/build.sh" \
-            --WORKSPACE="${WORKSPACE}" \
+            --WORKSPACE="${WORKSPACE}/${{ inputs.test_role }}/" \
             --PYTORCH="${{ inputs.pytorch }}" \
             --TORCH_XPU_OPS="${{ inputs.torch_xpu_ops }}" \
             --COMPONENT="${{ inputs.component }}" \
@@ -306,7 +307,7 @@ jobs:
 
           # Build TorchVision wheel
           echo "Building TorchVision wheel..."
-          BUILD_LOG_FILE="${WORKSPACE}/build_vision_${TORCHVISION_COMMIT_ID}.log"
+          BUILD_LOG_FILE="${WORKSPACE}/${{ inputs.test_role }}/build_vision_${TORCHVISION_COMMIT_ID}.log"
 
           python setup.py bdist_wheel 2>&1 | tee "${BUILD_LOG_FILE}"
 
@@ -328,7 +329,7 @@ jobs:
             echo "Warning: Failed to install TorchVision wheel"
           }
 
-          cp "${VISION_WHEEL}" "${WORKSPACE}/"
+          cp "${VISION_WHEEL}" "${WORKSPACE}/${{ inputs.test_role }}/"
           echo "Copied: $(basename "${VISION_WHEEL}")"
 
       - name: Build TorchAudio
@@ -361,7 +362,7 @@ jobs:
 
           # Build TorchAudio wheel
           echo "Building TorchAudio wheel..."
-          BUILD_LOG_FILE="${WORKSPACE}/build_audio_${TORCHAUDIO_COMMIT_ID}.log"
+          BUILD_LOG_FILE="${WORKSPACE}/${{ inputs.test_role }}/build_audio_${TORCHAUDIO_COMMIT_ID}.log"
 
           python setup.py bdist_wheel 2>&1 | tee "${BUILD_LOG_FILE}"
 
@@ -383,7 +384,7 @@ jobs:
             echo "Warning: Failed to install TorchAudio wheel"
           }
 
-          cp "${AUDIO_WHEEL}" "${WORKSPACE}/"
+          cp "${AUDIO_WHEEL}" "${WORKSPACE}/${{ inputs.test_role }}/"
           echo "Copied: $(basename "${AUDIO_WHEEL}")"
 
       - name: Build or Download Triton
@@ -472,7 +473,7 @@ jobs:
             }
 
             # Build Triton
-            BUILD_LOG_FILE="${WORKSPACE}/build_triton_${TRITON_COMMIT_ID}.log"
+            BUILD_LOG_FILE="${WORKSPACE}/${{ inputs.test_role }}/build_triton_${TRITON_COMMIT_ID}.log"
 
             sed -i "s+intel/intel-xpu-backend-for-triton+${TRITON_REPO_OWNER}+g" .github/scripts/build_triton_wheel.py
             git diff .github/scripts/build_triton_wheel.py
@@ -493,8 +494,8 @@ jobs:
             echo "Triton build successful!"
 
             # Copy the wheel
-            TRITON_WHEEL=$(find . -name "triton_xpu-*.whl" -type f | head -1)
-            cp "${TRITON_WHEEL}" "${WORKSPACE}/"
+            TRITON_WHEEL=$(find . -name "*triton*.whl" -type f | head -1)
+            cp "${TRITON_WHEEL}" "${WORKSPACE}/${{ inputs.test_role }}/"
             echo "Built and copied: $(basename "${TRITON_WHEEL}")"
           else
             echo "Using downloaded Triton wheel"
@@ -547,7 +548,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Wheel-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/*.whl
+          path: ${{ github.workspace }}/${{ inputs.test_role }}/*.whl
           retention-days: 7
           if-no-files-found: error
 
@@ -556,7 +557,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Torch-XPU-Build-Log-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/build_*.log
+          path: ${{ github.workspace }}/${{ inputs.test_role }}/build_*.log
           retention-days: 7
           if-no-files-found: warn
 
