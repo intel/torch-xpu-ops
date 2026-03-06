@@ -64,7 +64,7 @@ if [ "${PREPARE_ENV}" == "yes" ];then
         model_name="$(echo ${SEARCH_CASE} |sed 's+.*\--only *++;s/ .*//')"
         cd gs-benchmark
         sed -i 's/.*pynvml.*//g;s/.*transformers.*//g;s/.*timm.*//g' requirements.txt
-        sed -i 's/pip_install.*rwightman//g' ./userbenchmark/dynamo/dynamobench/timm_models.py
+        sed -i 's/pip_install.*rwightman.*//g' ./userbenchmark/dynamo/dynamobench/timm_models.py
         pip install transformers==4.57.3
         pip install --no-deps timm==1.0.19
         pip install pyyaml huggingface_hub safetensors numpy
@@ -90,7 +90,7 @@ git clone https://github.com/intel/torch-xpu-ops /tmp/test-xpu-tmp
 if [ "${SEARCH_CHECK}" == "accuracy" ];then
     cd ${WORKSPACE}/pytorch
     rsync -avz /tmp/test-xpu-tmp/.ci/benchmarks/ benchmarks/dynamo/
-    sed -i 's/pip_install.*rwightman//g' ./benchmarks/dynamo/timm_models.py
+    sed -i 's/pip_install.*rwightman.*//g' ./benchmarks/dynamo/timm_models.py
     rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
@@ -103,7 +103,7 @@ if [ "${SEARCH_CHECK}" == "accuracy" ];then
 elif [ "${SEARCH_CHECK}" == "performance" ];then
     cd ${WORKSPACE}/pytorch
     rsync -avz /tmp/test-xpu-tmp/.ci/benchmarks/ benchmarks/dynamo/
-    sed -i 's/pip_install.*rwightman//g' ./benchmarks/dynamo/timm_models.py
+    sed -i 's/pip_install.*rwightman.*//g' ./benchmarks/dynamo/timm_models.py
     rm -rf torch
     test_status="$(eval "${SEARCH_CASE} --output=${WORKSPACE}/tmp.csv" \
         > ${GITHUB_WORKSPACE}/gs-logs/test-${PYTORCH_COMMIT}-${TORCH_XPU_OPS_COMMIT}.log 2>&1 && echo $? || echo $?)"
