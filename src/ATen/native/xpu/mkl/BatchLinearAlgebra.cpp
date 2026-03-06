@@ -485,7 +485,6 @@ void linalg_qr_kernel_impl(
     const at::Tensor& R) {
   at::Tensor a_contig = A.contiguous();
 
-  auto options = at::TensorOptions().dtype(A.dtype()).device(kXPU);
   auto dimensions = A.sizes();
 
   int64_t numel = a_contig.numel();
@@ -503,9 +502,9 @@ void linalg_qr_kernel_impl(
     if (r_sizes[range - 1] == 0) {
       r_sizes[range - 2] = 0;
     }
-    r_out_ = at::zeros(r_sizes, options);
+    r_out_ = A.new_zeros(r_sizes);
   } else {
-    r_out_ = at::clone(a_contig);
+    r_out_ = a_contig.clone();
   }
 
   r_out_ = r_out_.transpose(-2, -1).contiguous();
@@ -525,7 +524,7 @@ void linalg_qr_kernel_impl(
     q_sizes = std::vector<long>({0});
   }
 
-  at::Tensor q_out_ = at::empty(q_sizes, options);
+  at::Tensor q_out_ = A.new_empty(q_sizes);
 
   sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
 
