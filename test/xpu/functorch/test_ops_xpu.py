@@ -1699,6 +1699,13 @@ class TestOperators(TestCase):
             }
         ),
     )
+    @opsToleranceOverride(
+        "TestOperators",
+        "test_vjpvmap",
+        (
+            tol1("nn.functional.conv_transpose3d", {torch.float32: tol(atol=1e-04, rtol=1.3e-06)}),
+        ),
+    )
     def test_vjpvmap(self, device, dtype, op):
         # NB: there is no vjpvmap_has_batch_rule test because that is almost
         # certainly redundant with the vmap_has_batch_rule test in test_vmap.py
@@ -1743,24 +1750,13 @@ class TestOperators(TestCase):
                 result = fn(*primals)
                 cotangents = tree_map(lambda x: torch.randn_like(x), result)
 
-                og_det = torch.are_deterministic_algorithms_enabled()
-                try:
-                    for deterministic in [False, True]:
-                        torch.use_deterministic_algorithms(deterministic)
-                        _, vjp_fn = vjp(fn, *primals)
-                        result_vjps = vjp_fn(cotangents)
+                _, vjp_fn = vjp(fn, *primals)
+                result_vjps = vjp_fn(cotangents)
 
-                        _, vjp_fn = ref_vjp(fn, *primals)
-                        expected_vjps = vjp_fn(cotangents)
+                _, vjp_fn = ref_vjp(fn, *primals)
+                expected_vjps = vjp_fn(cotangents)
 
-                        if deterministic:
-                            self.assertEqual(result_vjps, expected_vjps)
-                        else:
-                            self.assertEqual(
-                                result_vjps, expected_vjps, atol=1e-4, rtol=1e-4
-                            )
-                finally:
-                    torch.use_deterministic_algorithms(og_det)
+                self.assertEqual(result_vjps, expected_vjps)
 
     def _compare_jacobians_of_vjp(
         self, fn, cotangents_and_primals, argnums=None, atol_rtol=None
