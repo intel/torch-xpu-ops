@@ -70,7 +70,7 @@ list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
   # Extract -D defines from CMAKE_HOST_FLAGS and pass them directly to icpx,
   # since host compiler is removed. This is needed for macros like
-  # HAVE_AVX512_CPU_DEFINITION that control signatures, to avoid 
+  # HAVE_AVX512_CPU_DEFINITION that control signatures, to avoid
   # symbol mismatch with libtorch_cpu.so.
   if(flag MATCHES "^-D")
     list(APPEND SYCL_compile_flags "${flag}")
