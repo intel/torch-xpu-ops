@@ -511,7 +511,7 @@ void linalg_qr_kernel_impl(
     b = native::batchCount(a_contig);
   }
 
-  int out_q_columns = m > n ? n : m;
+  int64_t out_q_columns = std::min(m, n);
   if (n > m && mode == "complete") {
     out_q_columns = n;
   }
@@ -537,8 +537,8 @@ void linalg_qr_kernel_impl(
   int64_t bufsize2 = oneapi::mkl::lapack::orgqr_scratchpad_size<scalar_t>(
       queue, n + 1, m + 1, m + 1, n + 1);
 
-  int64_t bufsize = bufsize2 > bufsize1 ? bufsize2 : bufsize1;
-  int64_t tau_len = m > n ? n : m;
+  int64_t bufsize = std::max(bufsize2, bufsize1);
+  int64_t tau_len = std::min(m, n);
   scalar_t* sbuffer = sycl::malloc_device<scalar_t>(bufsize, queue);
   scalar_t* tau_buf = sycl::malloc_device<scalar_t>(tau_len, queue);
   scalar_t* r_buf = result_r.data_ptr<scalar_t>();
@@ -557,7 +557,7 @@ void linalg_qr_kernel_impl(
 
     if (mode != "r") {
       // copy relevant part of R matrix to Q matrix
-      int copy_columns = out_q_columns > m ? m : out_q_columns;
+      int64_t copy_columns = std::min(out_q_columns, m);
       queue.memcpy(q_buf, r_buf, n * copy_columns * sizeof(scalar_t)).wait();
 
       oneapi::mkl::lapack::orgqr(
