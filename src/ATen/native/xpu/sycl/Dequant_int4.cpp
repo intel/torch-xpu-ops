@@ -32,8 +32,7 @@ struct DequantInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         weight_dequant(weight_dequant) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {}
-  SYCL_REQD_SUB_GROUP_SIZE(SgSize) void operator()(
-      sycl::nd_item<1> it) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SgSize) void operator()(sycl::nd_item<1> it) const {
     int constexpr GroupN = TileN;
     int constexpr GroupK = SgSize * TileK;
     assert(blocksize % TileK == 0);

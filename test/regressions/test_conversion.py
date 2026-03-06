@@ -39,6 +39,11 @@ class TestSimpleConversion(TestCase):
         x_fp16_cpu = torch.arange(-100.0, 101.0, dtype=torch.float16)
         self._compare_convert_with_cpu(x_fp16_cpu, dtype)
 
+    def test_empty_nonzero(self):
+        x = torch.empty((5, 0, 2), device=xpu_device)
+        y = x.nonzero()
+        self.assertEqual(y.stride(), (1, 1))
+
 
 instantiate_device_type_tests(
     TestSimpleConversion, globals(), only_for="xpu", allow_xpu=True

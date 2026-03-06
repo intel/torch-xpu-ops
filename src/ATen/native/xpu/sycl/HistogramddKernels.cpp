@@ -243,8 +243,8 @@ struct HistogramddLinearKernelFunctor {
       if (!(i_value >= leftmost_edge && i_value <= rightmost_edge)) {
         return;
       }
-      int64_t bin_idx =
-          (int64_t)(((i_value - leftmost_edge)) * bin_size / (rightmost_edge - leftmost_edge));
+      int64_t bin_idx = (int64_t)(((i_value - leftmost_edge)) * bin_size /
+                                  (rightmost_edge - leftmost_edge));
       if (bin_idx == bin_size) {
         bin_idx -= 1;
       }

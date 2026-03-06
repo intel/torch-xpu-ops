@@ -81,8 +81,8 @@ struct HuberFunctor<at::Half> {
     float af = static_cast<float>(a);
     float bf = static_cast<float>(b);
     float z = std::abs(af - bf);
-    float out = z < delta_val_ ? 0.5f * z * z
-                               : delta_val_ * (z - 0.5f * delta_val_);
+    float out =
+        z < delta_val_ ? 0.5f * z * z : delta_val_ * (z - 0.5f * delta_val_);
     return static_cast<at::Half>(out);
   }
   HuberFunctor(float delta_val) : delta_val_(delta_val) {}
@@ -97,10 +97,7 @@ void huber_kernel(TensorIterator& iter, double delta) {
     gpu_kernel(iter, HuberFunctor<at::Half>(delta_val));
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND(
-        kBFloat16,
-        iter.dtype(),
-        "huber_xpu",
-        [&iter, delta] {
+        kBFloat16, iter.dtype(), "huber_xpu", [&iter, delta] {
           scalar_t delta_val(delta);
           gpu_kernel(iter, HuberFunctor<scalar_t>(delta_val));
         });
