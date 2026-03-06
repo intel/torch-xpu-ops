@@ -174,16 +174,19 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download Test Results
-        run: |
-          echo "Downloading test results for comparison..."
-          # In practice, you would download artifacts from previous jobs
-          mkdir -p results/target
-          mkdir -p results/baseline
+      - name: Download Target Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*target*'
+          path: ${{ github.workspace }}/results/target
+          merge-multiple: true
 
-          # Simulate results for demonstration
-          echo "Target: ${{ inputs.target_version }}" > results/target/summary.txt
-          echo "Baseline: ${{ inputs.baseline_version }}" > results/baseline/summary.txt
+      - name: Download Baseline Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*baseline*'
+          path: ${{ github.workspace }}/results/baseline
+          merge-multiple: true
 
       - name: Compare Test Results
         id: compare
@@ -191,13 +194,4 @@ jobs:
           echo "Comparing results for ${{ inputs.component }}..."
           echo "Target: ${{ inputs.target_version }}"
           echo "Baseline: ${{ inputs.baseline_version }}"
-
-          # Generate comparison result
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "result=comparison_${TIMESTAMP}" >> $GITHUB_OUTPUT
-          echo "regression_found=false" >> $GITHUB_OUTPUT
-          echo "performance_diff=0%" >> $GITHUB_OUTPUT
-
-      - name: Generate Comparison Report
-        run: |
-          cat
+          find results

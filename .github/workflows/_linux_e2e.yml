@@ -53,6 +53,10 @@ on:
         type: string
         default: ''
         description: 'Component version for comparison'
+      test_role:
+        type: string
+        default: 'default'
+        description: 'Role for test comparison'
 
 permissions: read-all
 

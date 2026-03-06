@@ -42,6 +42,10 @@ on:
         type: string
         default: ''
         description: 'Component version for comparison'
+      test_role:
+        type: string
+        default: 'default'
+        description: 'Role for test comparison'
 
 permissions: read-all
 
@@ -160,7 +164,7 @@ jobs:
         if: ${{ !cancelled() && steps.upload-logs.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore
@@ -169,7 +173,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: XPU-UT-Failure-List-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           retention-days: 7
           if-no-files-found: ignore
@@ -252,7 +256,7 @@ jobs:
         if: ${{ !cancelled() && steps.upload-logs-baremetal.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore
@@ -261,7 +265,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: XPU-UT-Failure-List-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           retention-days: 7
           if-no-files-found: ignore
@@ -468,7 +472,7 @@ jobs:
         if: ${{ !cancelled() && steps.process-results.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: warn
