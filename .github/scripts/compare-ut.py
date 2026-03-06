@@ -3,6 +3,7 @@
 JUnit XML Test Details Extractor - Target/Baseline Comparison Tool
 
 Compares test results between target and baseline with GitHub markdown reporting
+and GitHub issue tracking integration.
 
 Usage:
     python compare_tests.py --input "results/*.xml" --output comparison.xlsx
@@ -20,6 +21,7 @@ import os
 import re
 import sys
 import time
+import json
 from datetime import datetime
 from enum import Enum
 from functools import lru_cache
@@ -29,6 +31,17 @@ from xml.etree import ElementTree as ET
 
 import numpy as np
 import pandas as pd
+
+# Try to import PyGithub, but provide fallback if not available
+try:
+    from github import Github, Auth
+    from github.Issue import Issue
+    from github.Repository import Repository
+    GITHUB_AVAILABLE = True
+except ImportError:
+    GITHUB_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("PyGithub not installed. GitHub integration disabled. Install with: pip install PyGithub")
 
 # Configure logging
 logging.basicConfig(
@@ -175,6 +188,273 @@ class TestCase:
         }
 
 
+@dataclasses.dataclass
+class Comparison:
+    """Enhanced comparison data class with GitHub issue information."""
+
+    # Original comparison data
+    uniqname: str
+    testfile_baseline: str = ""
+    classname_baseline: str = ""
+    name_baseline: str = ""
+    testfile_target: str = ""
+    classname_target: str = ""
+    name_target: str = ""
+    device_baseline: str = ""
+    testtype_baseline: str = ""
+    status_baseline: str = ""
+    time_baseline: float = 0.0
+    message_baseline: str = ""
+    device_target: str = ""
+    testtype_target: str = ""
+    status_target: str = ""
+    time_target: float = 0.0
+    message_target: str = ""
+
+    # GitHub issue fields
+    issue_ids: str = ""  # Comma-separated issue IDs
+    issue_labels: str = ""  # Comma-separated labels
+    issue_statuses: str = ""  # Comma-separated statuses (open/closed)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return dataclasses.asdict(self)
+
+
+# ============================================================================
+# GITHUB ISSUE TRACKER (using PyGithub)
+# ============================================================================
+# ... (previous code remains the same until GitHubIssueTracker)
+
+class GitHubIssueTracker:
+    """Fetches and parses GitHub issues using PyGithub, with local caching."""
+
+    CASES_PATTERN = re.compile(r'Cases:\s*\n(.*?)(?:\n\n|\Z)', re.DOTALL | re.IGNORECASE)
+    TEST_CASE_SPLIT_PATTERN = re.compile(r'[\n]+')
+
+    def __init__(self, repo: str = None, token: str = None, cache_path: str = None, pattern_matcher: Optional[FilePatternMatcher] = None):
+        self.repo_name = repo or os.environ.get('GITHUB_REPOSITORY', '')
+        self.token = token or os.environ.get('GITHUB_TOKEN', '')
+        self.cache_path = Path(cache_path) if cache_path else None
+        self.github = None
+        self.repository = None
+        self.issues_cache: Dict[int, Dict[str, Any]] = {}
+        self.test_to_issues: Dict[str, List[Dict[str, Any]]] = {}
+        self.pattern_matcher = pattern_matcher or FilePatternMatcher()
+
+        if not GITHUB_AVAILABLE:
+            logger.error("PyGithub is not installed. GitHub integration disabled.")
+            return
+
+    def load_cache(self) -> bool:
+        """Load issues from local cache file."""
+        if not self.cache_path or not self.cache_path.exists():
+            return False
+
+        try:
+            with open(self.cache_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            self.issues_cache = {int(k): v for k, v in data.get('issues_cache', {}).items()}
+            self.test_to_issues = data.get('test_to_issues', {})
+            logger.info(f"Loaded {len(self.issues_cache)} issues from cache: {self.cache_path}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to load cache from {self.cache_path}: {e}")
+            return False
+
+    def save_cache(self) -> bool:
+        """Save issues to local cache file."""
+        if not self.cache_path:
+            return False
+
+        try:
+            # Convert issues_cache keys to strings for JSON
+            data = {
+                'issues_cache': {str(k): v for k, v in self.issues_cache.items()},
+                'test_to_issues': self.test_to_issues
+            }
+            with open(self.cache_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            logger.info(f"Saved {len(self.issues_cache)} issues to cache: {self.cache_path}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to save cache to {self.cache_path}: {e}")
+            return False
+
+    def fetch_issues(self, state: str = 'all', labels: List[str] = None, force_refresh: bool = False) -> bool:
+        """
+        Fetch issues from GitHub repository, using cache if available and not forced refresh.
+
+        Args:
+            state: 'open', 'closed', or 'all'
+            labels: List of labels to filter by
+            force_refresh: If True, ignore cache and fetch fresh data
+
+        Returns:
+            True if successful (either from cache or fresh fetch), False otherwise
+        """
+        # Try cache first if not forced refresh
+        if not force_refresh and self.load_cache():
+            return True
+
+        # Otherwise, fetch fresh from GitHub
+        if not self.repository:
+            if not self._init_github():
+                return False
+
+        logger.info(f"Fetching issues from {self.repo_name} (state={state})")
+
+        try:
+            github_state = 'all' if state == 'all' else state
+            kwargs = {'state': github_state, 'direction': 'desc'}
+            if labels:
+                kwargs['labels'] = labels
+
+            issues = self.repository.get_issues(**kwargs)
+
+            # Clear any old data
+            self.issues_cache.clear()
+            self.test_to_issues.clear()
+
+            issue_count = 0
+            for issue in issues:
+                if issue.pull_request:
+                    continue
+                self._parse_issue(issue)
+                issue_count += 1
+
+            logger.info(f"Fetched {issue_count} issues, found {len(self.test_to_issues)} test mappings")
+
+            # Save to cache
+            self.save_cache()
+            return True
+
+        except Exception as e:
+            logger.error(f"Error fetching issues from GitHub: {e}")
+            return False
+
+    def _init_github(self) -> bool:
+        """Initialize GitHub client and repository."""
+        try:
+            if self.token:
+                auth = Auth.Token(self.token)
+                self.github = Github(auth=auth)
+            else:
+                self.github = Github()
+
+            self.repository = self.github.get_repo(self.repo_name)
+            logger.info(f"Connected to GitHub repository: {self.repo_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize GitHub client: {e}")
+            return False
+
+    def _parse_issue(self, issue: Issue) -> None:
+        """Parse a single GitHub issue and update caches."""
+        issue_id = issue.number
+        issue_body = issue.body or ''
+        issue_labels = [label.name for label in issue.labels]
+        issue_state = issue.state
+        issue_title = issue.title
+
+        self.issues_cache[issue_id] = {
+            'id': issue_id,
+            'title': issue_title,
+            'state': issue_state,
+            'labels': issue_labels,
+            'url': issue.html_url,
+            'created_at': issue.created_at.isoformat() if issue.created_at else '',
+            'updated_at': issue.updated_at.isoformat() if issue.updated_at else '',
+        }
+
+        test_cases = self._extract_test_cases(issue_body)
+        for test_case in test_cases:
+            # Safely split the test case string
+            parts = test_case.split(',')
+            if len(parts) < 3:
+                logger.debug(f"Issue #{issue_id}: test case '{test_case}' has fewer than 3 comma-separated parts, skipping")
+                continue
+
+            # Assume format: test_file, class_name, test_name (or similar)
+            class_name_raw = parts[1].strip()
+            test_name_raw = parts[2].strip()
+
+            # Use pattern matcher to normalize
+            test_file = self.pattern_matcher.extract_testfile(class_name_raw, None, None)
+            test_class = self.pattern_matcher.extract_classname(class_name_raw)
+            test_name = self.pattern_matcher.extract_casename(test_name_raw)
+            uniqname = self.pattern_matcher.generate_uniqname(test_file, test_class, test_name)
+
+            self.test_to_issues.setdefault(uniqname, []).append({
+                'id': issue_id,
+                'state': issue_state,
+                'labels': issue_labels
+            })
+
+    def _extract_test_cases(self, body: str) -> List[str]:
+        if not body:
+            return []
+        match = self.CASES_PATTERN.search(body)
+        if not match:
+            return []
+        cases_text = match.group(1).strip()
+        cases = self.TEST_CASE_SPLIT_PATTERN.split(cases_text)
+        logger.debug(f"{cases}")
+        return [case.strip() for case in cases if case.strip()]
+
+    def find_issues_for_test(self, test_uniqname: str) -> List[Dict[str, Any]]:
+        return self.test_to_issues.get(test_uniqname, [])
+
+    def enhance_comparison(self, merged_df: pd.DataFrame) -> pd.DataFrame:
+        if merged_df.empty:
+            return merged_df
+
+        enhanced_df = merged_df.copy()
+        enhanced_df['issue_ids'] = ''
+        enhanced_df['issue_labels'] = ''
+        enhanced_df['issue_statuses'] = ''
+
+        for idx, row in enhanced_df.iterrows():
+            uniqname = row.get('uniqname', '')
+            if not uniqname:
+                continue
+            issues = self.find_issues_for_test(uniqname)
+            if issues:
+                logger.debug(f"{issues}")
+                issue_ids = [str(issue['id']) for issue in issues]
+                issue_statuses = [issue['state'] for issue in issues]
+                all_labels = set()
+                for issue in issues:
+                    all_labels.update(issue['labels'])
+                enhanced_df.at[idx, 'issue_ids'] = ','.join(issue_ids)
+                enhanced_df.at[idx, 'issue_labels'] = ','.join(sorted(all_labels))
+                enhanced_df.at[idx, 'issue_statuses'] = ','.join(issue_statuses)
+
+        return enhanced_df
+
+    def get_issue_summary_stats(self) -> Dict[str, Any]:
+        """Compute summary statistics about issues and their association with test cases."""
+        stats = {
+            'total_issues': len(self.issues_cache),
+            'open_issues': 0,
+            'closed_issues': 0,
+            'issues_with_test_cases': len(set(
+                issue['id'] for mappings in self.test_to_issues.values() for issue in mappings
+            )),
+            'unique_test_cases': len(self.test_to_issues),
+            'labels': {},
+        }
+        for issue in self.issues_cache.values():
+            if issue['state'] == 'open':
+                stats['open_issues'] += 1
+            else:
+                stats['closed_issues'] += 1
+            for label in issue['labels']:
+                stats['labels'][label] = stats['labels'].get(label, 0) + 1
+        return stats
+
+
 # ============================================================================
 # FILE PATTERN MATCHER
 # ============================================================================
@@ -185,7 +465,7 @@ class FilePatternMatcher:
     # Compiled regex patterns
     _CLASSNAME_PATTERN = re.compile(r".*\.")
     _CASENAME_PATTERN = re.compile(r"[^a-zA-Z0-9_.-]")
-    _TESTFILE_PATTERN = re.compile(r".*torch-xpu-ops\.test\.xpu\.")
+    _TESTFILE_PATTERN = re.compile(r".*torch-xpu-ops\.test\.")
     _TESTFILE_PATTERN_CPP = re.compile(r".*/test/xpu/")
     _NORMALIZE_PATTERN = re.compile(r".*\.\./test/")
     _GPU_PATTERN = re.compile(r"(?:xpu|cuda)", re.IGNORECASE)
@@ -485,6 +765,11 @@ class ResultAnalyzer:
     def __init__(self, test_cases: List[TestCase]):
         self.test_cases = test_cases
         self.df = self._create_dataframe()
+        self.issue_tracker: Optional[GitHubIssueTracker] = None
+
+    def set_issue_tracker(self, issue_tracker: GitHubIssueTracker):
+        """Set GitHub issue tracker for enhanced analysis."""
+        self.issue_tracker = issue_tracker
 
     def _create_dataframe(self) -> pd.DataFrame:
         """Create DataFrame from test cases."""
@@ -557,7 +842,14 @@ class ResultAnalyzer:
 
         # Keep only existing columns
         existing_cols = [col for col in columns if col in merged.columns]
-        return merged[existing_cols]
+        merged_df = merged[existing_cols]
+
+        # Enhance with GitHub issue information if available
+        if self.issue_tracker:
+            logger.info("Enhancing comparison with GitHub issue information")
+            merged_df = self.issue_tracker.enhance_comparison(merged_df)
+
+        return merged_df
 
     def find_target_changes(self, merged_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -723,6 +1015,32 @@ class ResultAnalyzer:
 
         return pd.DataFrame(stats)
 
+    def generate_issue_summary_section(self) -> str:
+        """Generate markdown section for GitHub issue summary."""
+        if not self.issue_tracker:
+            return ""
+
+        stats = self.issue_tracker.get_issue_summary_stats()
+
+        md = []
+        md.append("## 🏷️ GitHub Issues Summary\n")
+
+        md.append(f"- **Total Issues:** {stats['total_issues']}")
+        md.append(f"  - 🔓 Open: {stats['open_issues']}")
+        md.append(f"  - 🔒 Closed: {stats['closed_issues']}")
+        md.append(f"- **Issues with Test Cases:** {stats['issues_with_test_cases']}")
+        md.append(f"- **Unique Test Cases Tracked:** {stats['unique_test_cases']}")
+
+        if stats['labels']:
+            # Show top 5 labels
+            top_labels = sorted(stats['labels'].items(), key=lambda x: x[1], reverse=True)[:5]
+            md.append("\n**Top Labels:**")
+            for label, count in top_labels:
+                md.append(f"  - `{label}`: {count} issues")
+
+        md.append("")
+        return "\n".join(md)
+
     def generate_markdown_summary(self, df: pd.DataFrame, new_failures_df: pd.DataFrame = None, new_passes_df: pd.DataFrame = None) -> str:
         """
         Generate a comprehensive markdown summary for GitHub issues.
@@ -744,6 +1062,11 @@ class ResultAnalyzer:
         # Header
         md.append("# Test Comparison Report\n")
         md.append(f"**Generated:** {timestamp}\n")
+
+        # GitHub Issues Summary (if available)
+        issue_summary = self.generate_issue_summary_section()
+        if issue_summary:
+            md.append(issue_summary)
 
         # Overall summary section
         md.append("## 📊 Overall Summary\n")
@@ -798,8 +1121,8 @@ class ResultAnalyzer:
                 md.append(f"### {reason_emoji} {reason} ({len(reason_issues)})\n")
 
                 # Create table for this category
-                md.append("| Test File | Test Name | Status | Message |")
-                md.append("|-----------|-----------|--------|---------|")
+                md.append("| Test File | Test Name | Status | Issue IDs | Message |")
+                md.append("|-----------|-----------|--------|-----------|---------|")
 
                 for _, issue in reason_issues.head(10).iterrows():  # Limit to 10 per category
                     test_file = issue.get('testfile_target', issue.get('testfile_baseline', 'Unknown'))
@@ -809,16 +1132,27 @@ class ResultAnalyzer:
                     # Get status emoji
                     status_emoji = TestStatus.from_string(status).emoji
 
+                    # Get issue IDs
+                    issue_ids = issue.get('issue_ids', '')
+                    issue_display = ""
+                    if issue_ids and self.issue_tracker and self.issue_tracker.repo_name:
+                        # Format as links if we have issue IDs and repo
+                        ids = issue_ids.split(',')
+                        issue_links = [f"[#{id}](https://github.com/{self.issue_tracker.repo_name}/issues/{id})" for id in ids]
+                        issue_display = ', '.join(issue_links)
+                    elif issue_ids:
+                        issue_display = issue_ids
+
                     # Truncate message if too long
                     message = issue.get('message_target', '')
                     if len(message) > 100:
                         message = message[:97] + "..."
                     message = message.replace('\n', ' ').replace('|', '\\|')
 
-                    md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {message} |")
+                    md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {issue_display} | {message} |")
 
                 if len(reason_issues) > 10:
-                    md.append(f"| ... | ... | ... | *{len(reason_issues) - 10} more issues* |")
+                    md.append(f"| ... | ... | ... | ... | *{len(reason_issues) - 10} more issues* |")
 
                 md.append("")
         else:
@@ -838,8 +1172,8 @@ class ResultAnalyzer:
                 md.append(f"### {reason_emoji} {reason} ({len(reason_passes)})\n")
 
                 # Create table for this category
-                md.append("| Test File | Test Name | Baseline Status |")
-                md.append("|-----------|-----------|-----------------|")
+                md.append("| Test File | Test Name | Baseline Status | Issue IDs |")
+                md.append("|-----------|-----------|-----------------|-----------|")
 
                 for _, issue in reason_passes.head(10).iterrows():  # Limit to 10 per category
                     test_file = issue.get('testfile_target', issue.get('testfile_baseline', 'Unknown'))
@@ -849,10 +1183,20 @@ class ResultAnalyzer:
                     # Get status emoji
                     status_emoji = TestStatus.from_string(baseline_status).emoji
 
-                    md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {baseline_status} |")
+                    # Get issue IDs
+                    issue_ids = issue.get('issue_ids', '')
+                    issue_display = ""
+                    if issue_ids and self.issue_tracker and self.issue_tracker.repo_name:
+                        ids = issue_ids.split(',')
+                        issue_links = [f"[#{id}](https://github.com/{self.issue_tracker.repo_name}/issues/{id})" for id in ids]
+                        issue_display = ', '.join(issue_links)
+                    elif issue_ids:
+                        issue_display = issue_ids
+
+                    md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {baseline_status} | {issue_display} |")
 
                 if len(reason_passes) > 10:
-                    md.append(f"| ... | ... | *{len(reason_passes) - 10} more passes* |")
+                    md.append(f"| ... | ... | ... | *{len(reason_passes) - 10} more passes* |")
 
                 md.append("")
         else:
@@ -1029,7 +1373,7 @@ class ReportExporter:
             baseline_df, target_df = analyzer.split_by_device(unique_df)
 
             if not baseline_df.empty and not target_df.empty:
-                # Merge results
+                # Merge results (includes GitHub issue info if available)
                 merged_df = analyzer.merge_results(baseline_df, target_df)
 
                 # Write comparison
@@ -1054,6 +1398,12 @@ class ReportExporter:
             if not stats_df.empty:
                 stats_df.to_excel(writer, sheet_name="Summary", index=False)
 
+            # Export case-to-issue mapping if available
+            case_issue_df = self._generate_case_issue_df(analyzer)
+            if not case_issue_df.empty:
+                case_issue_df.to_excel(writer, sheet_name="Case to issue", index=False)
+                logger.info("Exported case-to-issue mapping to sheet 'Case to issue'")
+
         logger.info(f"Exported comparison results to {output_path}")
 
     def export_csv(self, analyzer: ResultAnalyzer, output_path: Path) -> None:
@@ -1071,7 +1421,7 @@ class ReportExporter:
         baseline_df, target_df = analyzer.split_by_device(unique_df)
 
         if not baseline_df.empty and not target_df.empty:
-            # Merge results
+            # Merge results (includes GitHub issue info if available)
             merged_df = analyzer.merge_results(baseline_df, target_df)
 
             # Save comparison
@@ -1095,6 +1445,13 @@ class ReportExporter:
         stats_df = analyzer.generate_summary_stats(unique_df)
         if not stats_df.empty:
             stats_df.to_csv(f"{base_path}_summary.csv", index=False)
+
+        # Export case-to-issue mapping if available
+        case_issue_df = self._generate_case_issue_df(analyzer)
+        if not case_issue_df.empty:
+            case_issue_path = f"{base_path}_case_to_issue.csv"
+            case_issue_df.to_csv(case_issue_path, index=False)
+            logger.info(f"Exported case-to-issue mapping to {case_issue_path}")
 
         logger.info(f"Exported comparison results to {output_path}")
 
@@ -1125,6 +1482,43 @@ class ReportExporter:
 
         logger.info(f"Exported markdown report to {output_path}")
 
+    def _generate_case_issue_df(self, analyzer: ResultAnalyzer) -> pd.DataFrame:
+        """Create a DataFrame from test_to_issues mapping."""
+        if not analyzer.issue_tracker or not analyzer.issue_tracker.test_to_issues:
+            return pd.DataFrame()
+
+        tracker = analyzer.issue_tracker
+        rows = []
+        repo_name = tracker.repo_name
+
+        for uniqname, issues in tracker.test_to_issues.items():
+            # Collect information for all issues of this test
+            issue_ids = [str(issue['id']) for issue in issues]
+            issue_states = [issue['state'] for issue in issues]
+            # Labels are stored as a list per issue; join them for display
+            issue_labels_list = [', '.join(issue.get('labels', [])) for issue in issues]
+
+            # Combine multiple issues into readable strings
+            combined_ids = ', '.join(issue_ids)
+            combined_states = ', '.join(issue_states)
+            combined_labels = ' | '.join(issue_labels_list)  # separate issues with a pipe
+
+            # Build GitHub URLs if repo name is known
+            if repo_name:
+                urls = [f"https://github.com/{repo_name}/issues/{id}" for id in issue_ids]
+                combined_urls = ', '.join(urls)
+            else:
+                combined_urls = ''
+
+            rows.append({
+                'Test Case (uniqname)': uniqname,
+                'Issue IDs': combined_ids,
+                'Issue States': combined_states,
+                'Issue Labels': combined_labels,
+                'Issue URLs': combined_urls,
+            })
+
+        return pd.DataFrame(rows)
 
 # ============================================================================
 # MAIN FUNCTION
@@ -1133,7 +1527,7 @@ class ReportExporter:
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="JUnit XML Test Details Extractor - Target/Baseline Comparison",
+        description="JUnit XML Test Details Extractor - Target/Baseline Comparison with GitHub Issue Integration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -1173,6 +1567,49 @@ def main() -> int:
         help="Enable debug logging",
     )
 
+    # GitHub integration arguments
+    parser.add_argument(
+        "--github-repo",
+        default="intel/torch-xpu-ops",
+        help="GitHub repository in format 'owner/repo' (default: from GITHUB_REPOSITORY env)",
+    )
+
+    parser.add_argument(
+        "--github-token",
+        help="GitHub personal access token (default: from GITHUB_TOKEN env)",
+    )
+
+    parser.add_argument(
+        "--github-issue-state",
+        default="open",
+        choices=["open", "closed", "all"],
+        help="State of issues to fetch (default: all)",
+    )
+
+    parser.add_argument(
+        "--github-labels",
+        nargs="+",
+        default="skipped",
+        help="Filter issues by labels",
+    )
+
+    parser.add_argument(
+        "--no-github",
+        action="store_true",
+        help="Disable GitHub integration even if credentials are available",
+    )
+
+    parser.add_argument(
+        "--github-issue-cache",
+        default="selected_issues.json",
+        help="Path to cache file for GitHub issues (default: selected_issues.json)",
+    )
+
+    parser.add_argument(
+        "--refresh-issues",
+        action="store_true",
+        help="Force refresh GitHub issues even if cache exists",
+    )
     args = parser.parse_args()
 
     # Configure logging
@@ -1198,9 +1635,35 @@ def main() -> int:
             logger.error("No test cases found")
             return 1
 
-        # Analyze results
+        # Initialize analyzer
         logger.info(f"Found {len(extractor.test_cases)} test cases")
         analyzer = ResultAnalyzer(extractor.test_cases)
+
+        # Initialize and fetch GitHub issues if not disabled
+        if not args.no_github:
+            github_repo = args.github_repo or os.environ.get('GITHUB_REPOSITORY')
+            github_token = args.github_token or os.environ.get('GITHUB_TOKEN')
+
+            if github_repo:
+                logger.info(f"Initializing GitHub issue tracker for {github_repo}")
+                issue_tracker = GitHubIssueTracker(
+                    repo=github_repo,
+                    token=github_token,
+                    cache_path=args.github_issue_cache
+                )
+
+                # Fetch issues (using cache if available and not refreshing)
+                if issue_tracker.fetch_issues(
+                    state=args.github_issue_state,
+                    labels=args.github_labels,
+                    force_refresh=args.refresh_issues
+                ):
+                    analyzer.set_issue_tracker(issue_tracker)
+                    logger.info("GitHub issue tracking enabled")
+                else:
+                    logger.warning("Failed to fetch GitHub issues, continuing without issue tracking")
+            else:
+                logger.info("GitHub repository not configured, skipping issue tracking")
 
         # Export results
         output_path = Path(args.output)
