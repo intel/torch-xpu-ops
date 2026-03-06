@@ -284,10 +284,7 @@ int main(int argc, char* argv[]) {
                         remote_data[i] = expected_data;
                         __LscFlushCache();
                         sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::system);
-                        sycl::atomic_ref<uint32_t, sycl::memory_order::relaxed,
-                                         sycl::memory_scope::system,
-                                         sycl::access::address_space::global_space> flag_ref(remote_flag[i]);
-                        flag_ref.store(expected_flag);
+                        remote_flag[i] = expected_flag;
                     });
             }).wait();
         } else if (rank == 1) {
@@ -296,14 +293,12 @@ int main(int argc, char* argv[]) {
                 cgh.parallel_for(sycl::nd_range<1>(BUFFER_SIZE, 64),
                     [=](sycl::nd_item<1> item) {
                         size_t i = item.get_global_linear_id();
-                        sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
-
-                        sycl::atomic_ref<uint32_t, sycl::memory_order::relaxed,
-                                         sycl::memory_scope::system,
-                                         sycl::access::address_space::global_space> flag_ref(flag_buffer[i]);
+                        volatile uint32_t* flag_ptr = &flag_buffer[i];
                         uint32_t spin = 0;
-                        while (flag_ref.load() < expected_flag && spin < MAX_SPIN) { spin++; }
+                        while (*flag_ptr < expected_flag && spin < MAX_SPIN) { spin++; }
 
+                        // Acquire fence AFTER seeing the flag
+                        sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
                         result[i] = data_buffer[i];
                     });
             }).wait();
