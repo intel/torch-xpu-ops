@@ -484,7 +484,6 @@ void linalg_qr_kernel_impl(
     const at::Tensor& Q,
     const at::Tensor& R) {
   at::Tensor a_contig = A.contiguous();
-  at::Tensor result_r = at::clone(a_contig);
 
   auto options = at::TensorOptions().dtype(A.dtype()).device(kXPU);
   auto dimensions = A.sizes();
@@ -496,38 +495,37 @@ void linalg_qr_kernel_impl(
   int64_t mn = int64_t(m * n);
   int64_t b = numel == 0 ? 0 : numel / mn;
 
-  // correct R matrix  dimensions if needed
+  // Prepare R output matrix - correct dimensions if needed
+  at::Tensor r_out_;
+
   if (numel == 0 && mode != "complete") {
-    std::vector r(dimensions.begin(), dimensions.end());
-    if (r[range - 1] == 0) {
-      r[range - 2] = 0;
+    std::vector r_sizes(dimensions.begin(), dimensions.end());
+    if (r_sizes[range - 1] == 0) {
+      r_sizes[range - 2] = 0;
     }
-    result_r = at::zeros(r, options);
+    r_out_ = at::zeros(r_sizes, options);
+  } else {
+    r_out_ = at::clone(a_contig);
   }
 
-  result_r = result_r.transpose(-2, -1).contiguous();
-
-  if (b == 0 && mode == "complete" && n > 0) {
-    b = native::batchCount(a_contig);
-  }
+  r_out_ = r_out_.transpose(-2, -1).contiguous();
 
   int64_t out_q_columns = std::min(m, n);
   if (n > m && mode == "complete") {
     out_q_columns = n;
   }
 
-  // correct Q matrix output dimensions if needed
-  std::vector v_dim(dimensions.begin(), dimensions.end());
+  // Prepare Q output matrix - correct dimensions if needed
+  std::vector q_sizes(dimensions.begin(), dimensions.end());
   if (mode != "r") {
-    v_dim[range - 1] = v_dim[range - 2];
-    v_dim[range - 2] = out_q_columns;
+    q_sizes[range - 1] = q_sizes[range - 2];
+    q_sizes[range - 2] = out_q_columns;
   } else {
-    // dim =(0) for "r" mode
-    v_dim = std::vector<long>({0});
+    // dim = (0) for "r" mode
+    q_sizes = std::vector<long>({0});
   }
-  auto q_dimensions = at::IntArrayRef(v_dim);
 
-  at::Tensor result_q = at::empty(q_dimensions, options);
+  at::Tensor q_out_ = at::empty(q_sizes, options);
 
   sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
 
@@ -541,11 +539,15 @@ void linalg_qr_kernel_impl(
   int64_t tau_len = std::min(m, n);
   scalar_t* sbuffer = sycl::malloc_device<scalar_t>(bufsize, queue);
   scalar_t* tau_buf = sycl::malloc_device<scalar_t>(tau_len, queue);
-  scalar_t* r_buf = result_r.data_ptr<scalar_t>();
+  scalar_t* r_buf = r_out_.data_ptr<scalar_t>();
 
   scalar_t* q_buf = nullptr;
   if (mode != "r") {
-    q_buf = result_q.data_ptr<scalar_t>();
+    q_buf = q_out_.data_ptr<scalar_t>();
+  }
+
+  if (b == 0 && mode == "complete" && n > 0) {
+    b = native::batchCount(a_contig);
   }
 
   for (int batch_item = 0; batch_item < b; batch_item++) {
@@ -574,8 +576,8 @@ void linalg_qr_kernel_impl(
   sycl::free(tau_buf, queue);
 
   if ((mode == "reduced" || mode == "r") && n > m) {
-    result_r =
-        result_r
+    r_out_ =
+        r_out_
             .index(
                 {"...", at::indexing::Slice(0, n), at::indexing::Slice(0, m)})
             .contiguous();
@@ -583,11 +585,11 @@ void linalg_qr_kernel_impl(
 
   // normal case, non-zero dimensions
   if (mode != "r") {
-    result_q = result_q.transpose_(-2, -1).contiguous();
+    q_out_ = q_out_.transpose_(-2, -1).contiguous();
   }
 
-  Q.set_(result_q);
-  R.set_(result_r.transpose(-2, -1).triu_());
+  Q.set_(q_out_);
+  R.set_(r_out_.transpose(-2, -1).triu_());
 }
 
 void linalg_qr_kernel(
