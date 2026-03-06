@@ -490,8 +490,8 @@ void linalg_qr_kernel_impl(
 
   int64_t numel = a_contig.numel();
   int64_t range = a_contig.dim();
-  int64_t n = a_contig.sizes().at(range - 2);
-  int64_t m = a_contig.sizes().at(range - 1);
+  int64_t n = a_contig.size(-2);
+  int64_t m = a_contig.size(-1);
   int64_t mn = m * n;
   int64_t b = numel == 0 ? 0 : numel / mn;
 
