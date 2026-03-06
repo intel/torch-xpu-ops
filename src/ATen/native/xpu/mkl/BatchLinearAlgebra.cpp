@@ -488,11 +488,11 @@ void linalg_qr_kernel_impl(
   auto options = at::TensorOptions().dtype(A.dtype()).device(kXPU);
   auto dimensions = A.sizes();
 
-  int numel = a_contig.numel();
-  int range = a_contig.dim();
+  int64_t numel = a_contig.numel();
+  int64_t range = a_contig.dim();
   int64_t n = a_contig.sizes().at(range - 2);
   int64_t m = a_contig.sizes().at(range - 1);
-  int64_t mn = int64_t(m * n);
+  int64_t mn = m * n;
   int64_t b = numel == 0 ? 0 : numel / mn;
 
   // Prepare R output matrix - correct dimensions if needed
