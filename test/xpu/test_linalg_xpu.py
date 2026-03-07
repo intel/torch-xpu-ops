@@ -105,6 +105,22 @@ def matmul_45724(self, device):
     self.assertEqual(c, cpu_result)
 
 
+@dtypes(torch.float)
+@precisionOverride({torch.float32: 1e-5})
+def matmul_mv_xpu(self, device, dtype):
+    n = 50_000
+    A = torch.ones(n, n, dtype=dtype, device=device)
+    B = torch.randn(n, dtype=dtype, device=device)
+    C = torch.matmul(A, B)
+
+    self.assertEqual(C.shape, (n,))
+    self.assertEqual(C.dtype, dtype)
+    self.assertFalse(torch.isnan(C).any())
+    self.assertFalse(torch.isinf(C).any())
+
+    self.assertEqual(C, B.sum().expand(B.shape), atol=2e-3, rtol=1e-5)
+
+
 @unittest.skip("xpu does not support multi linalg")
 @setLinalgBackendsToDefaultFinally
 def preferred_linalg_library(self):
@@ -495,6 +511,7 @@ TestLinalg.test_eigh_svd_illcondition_matrix_input_should_not_crash = (
     eigh_svd_illcondition_matrix_input_should_not_crash
 )
 TestLinalg.test_matmul_45724 = matmul_45724
+TestLinalg.test_matmul_mv = matmul_mv_xpu
 TestLinalg.test_preferred_linalg_library = preferred_linalg_library
 TestLinalg.test_addbmm = addbmm
 TestLinalg.test__int_mm = _int_mm
