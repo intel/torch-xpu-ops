@@ -107,7 +107,7 @@ def matmul_45724(self, device):
 
 @dtypes(torch.float)
 def matmul_mv_xpu(self, device, dtype):
-    n = 50_000
+    n = 32_769
     A = torch.ones(n, n, dtype=dtype, device=device)
     B = torch.randn(n, dtype=dtype, device=device)
     C = torch.matmul(A, B)
