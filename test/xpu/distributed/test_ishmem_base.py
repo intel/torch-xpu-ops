@@ -21,12 +21,14 @@ device_type = "xpu"
 device_module = torch.get_device_module(device_type)
 class ISHMEMSymmetricMemoryTest(MultiProcContinuousTest):
     def _init_device(self) -> None:
+        import os
+        os.environ["ZE_AFFINITY_MASK"] = str(self.rank)
         device_module.set_device(self.device)
         symm_mem.set_backend("ISHMEM")
 
     @property
     def device(self) -> torch.device:
-        return torch.device(device_type, self.rank)
+        return torch.device(device_type, 0)
 
     def test_alloc(self) -> None:
         self._init_device()

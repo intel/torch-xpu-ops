@@ -298,6 +298,12 @@ static void initialize_ishmem_with_store(
   if (!mpi_already_initialized && !getenv("I_MPI_MPCP")) {
     setenv("I_MPI_MPCP", "1", 1);
   }
+  // MPCP needs MASTER_ADDR (or I_MPI_MPCP_SERVER_NAME) for bootstrap.
+  // MultiProcContinuousTest uses FileStore and doesn't set MASTER_ADDR,
+  // so default to localhost for single-node scenarios.
+  if (!getenv("MASTER_ADDR") && !getenv("I_MPI_MPCP_SERVER_NAME")) {
+    setenv("MASTER_ADDR", "localhost", 1);
+  }
 
   // UID-based init: ishmemx_get_uniqueid reads MASTER_ADDR from env.
   // initialize_runtime=true lets ISHMEM call MPI_Init (with MPCP support);
