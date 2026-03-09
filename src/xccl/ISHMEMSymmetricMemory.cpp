@@ -277,8 +277,6 @@ static void initialize_ishmem_with_store(
   guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 
   // Check if MPI is already initialized (e.g. by mpi4py).
-  // ishmemx_get_uniqueid() requires MPI to be initialized, so we can only
-  // use the UID-based path when MPI is already available.
   bool mpi_already_initialized = false;
   using MPI_Initialized_fn = int (*)(int*);
   auto mpi_initialized_fn = reinterpret_cast<MPI_Initialized_fn>(
@@ -289,9 +287,21 @@ static void initialize_ishmem_with_store(
     mpi_already_initialized = (flag != 0);
   }
   LOG(WARNING) << "Thiago's last version 5:46" << std::endl;
-  //  if (mpi_already_initialized) {
-  // MPI is initialized (mpi4py): use UID-based init with
-  // initialize_runtime=false so ISHMEM won't call MPI_Finalize.
+
+  // For torchrun/MPCP: set I_MPI_MPCP_RANK and I_MPI_MPCP if not set.
+  if (!mpi_already_initialized && !getenv("I_MPI_MPCP_RANK")) {
+    const char* local_rank = getenv("LOCAL_RANK");
+    if (local_rank) {
+      setenv("I_MPI_MPCP_RANK", local_rank, 1);
+    }
+  }
+  if (!mpi_already_initialized && !getenv("I_MPI_MPCP")) {
+    setenv("I_MPI_MPCP", "1", 1);
+  }
+
+  // UID-based init: ishmemx_get_uniqueid reads MASTER_ADDR from env.
+  // initialize_runtime=true lets ISHMEM call MPI_Init (with MPCP support);
+  // initialize_runtime=false when mpi4py already initialized MPI.
   ishmemx_uniqueid_t unique_id;
   memset(&unique_id, 0, sizeof(unique_id));
 
@@ -309,12 +319,6 @@ static void initialize_ishmem_with_store(
   attr.nranks = world_size;
   attr.uid = &unique_ids[0];
   ishmemx_init_attr(&attr);
-  //  } else {
-  // MPI not initialized (no mpi4py): let ISHMEM manage MPI lifecycle.
-  // ishmem_init() calls MPI_Init_thread internally and uses
-  // MPI_COMM_WORLD for rank coordination.
-  // ishmem_init();
-  //  }
 
   TORCH_CHECK(
       ishmem_my_pe() == rank,
