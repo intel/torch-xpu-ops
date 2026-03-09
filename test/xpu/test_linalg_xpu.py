@@ -106,7 +106,6 @@ def matmul_45724(self, device):
 
 
 @dtypes(torch.float)
-@precisionOverride({torch.float32: 1e-5})
 def matmul_mv_xpu(self, device, dtype):
     n = 50_000
     A = torch.ones(n, n, dtype=dtype, device=device)
@@ -118,7 +117,9 @@ def matmul_mv_xpu(self, device, dtype):
     self.assertFalse(torch.isnan(C).any())
     self.assertFalse(torch.isinf(C).any())
 
-    self.assertEqual(C, B.sum().expand(B.shape), atol=2e-3, rtol=1e-5)
+    B_cpu = B.cpu().double()
+    expected = B_cpu.sum().expand(B_cpu.shape)
+    self.assertEqual(C.cpu().double(), expected, atol=2e-3, rtol=1e-5)
 
 
 @unittest.skip("xpu does not support multi linalg")
