@@ -263,15 +263,14 @@ jobs:
 
           # Check if build succeeded
           echo "Checking build artifacts..."
-          WHEEL_COUNT=$(find "${WORKSPACE}" -name "torch-*.whl" -type f | wc -l)
+          WHEEL_COUNT=$(find "${WORKSPACE}/${{ inputs.test_role }}/" -name "torch-*.whl" -type f | wc -l)
+          echo "Build successful! Found ${WHEEL_COUNT} wheel file(s):"
+          find "${WORKSPACE}/${{ inputs.test_role }}/" -name "torch-*.whl" -type f -exec basename {} \;
 
           if [ "${WHEEL_COUNT}" -ne 1 ]; then
             echo "Error: PyTorch build failed - no wheel or multiple wheels"
             exit 1
           fi
-
-          echo "Build successful! Found ${WHEEL_COUNT} wheel file(s):"
-          find "${WORKSPACE}" -name "torch-*.whl" -type f -exec basename {} \;
 
       - name: Build TorchVision
         run: |
@@ -495,12 +494,12 @@ jobs:
 
             # Copy the wheel
             TRITON_WHEEL=$(find . -name "*triton*.whl" -type f | head -1)
-            cp "${TRITON_WHEEL}" "${WORKSPACE}/${{ inputs.test_role }}/"
             echo "Built and copied: $(basename "${TRITON_WHEEL}")"
           else
             echo "Using downloaded Triton wheel"
             TRITON_WHEEL=$(find "${WORKSPACE}" -name "*triton*.whl" -type f | head -1)
           fi
+          cp "${TRITON_WHEEL}" "${WORKSPACE}/${{ inputs.test_role }}/"
 
           # Install Triton
           if [ -f "${TRITON_WHEEL}" ]; then
@@ -539,7 +538,7 @@ jobs:
           pip list | grep -i -E 'torch|triton|intel|xpu' | sort
 
           echo -e "\n=== Generated Wheel Files ==="
-          find "${WORKSPACE}" -name "*.whl" -type f | sort | while read -r wheel; do
+          find "${WORKSPACE}/${{ inputs.test_role }}/" -name "*.whl" -type f | sort | while read -r wheel; do
             echo "  $(basename "${wheel}")"
           done
 
