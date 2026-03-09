@@ -926,13 +926,13 @@ void jagged_dense_elementwise_dense_template(
 #undef INVOKE_KERNEL_WITH_DIM
 }
 
-// Returns the index of the last element in offsets[] that is <= val.
-// Equivalent to (upper_bound(offsets, offsets+n+1, val) - offsets) - 1,
-// searching only the range [1, n] since offsets[0] is always 0.
+// Returns the idx satisfying condition: offsets[r] <= val < offsets[r+1].
+// Equivalent to (upper_bound(offsets, offsets+n+1, val) - offsets) - 1.
+// Searching only the range [1, n] since offsets[0] is always 0.
 template <typename index_t>
 inline int upper_bound_minus1(const index_t* offsets, int n, int val) {
   int first = 1;
-  int count = n;
+  int count = n - 1;
   while (count > 0) {
     const int step = count / 2;
     const int idx = first + step;
@@ -1138,14 +1138,15 @@ at::Tensor dense_to_jagged_forward_kernel(
     TORCH_CHECK(
         !offsets.empty(),
         "dense_to_jagged_forward: offsets must be non-empty when total_L is not provided.");
-    total_L_computed = (int64_t)offsets.back().max().item<int64_t>();
+    total_L_computed = offsets.back().max().item<int64_t>();
   }
   auto values = at::empty_symint({total_L_computed, D}, dense.options());
   auto output = at::empty_like(values);
 
-  AT_DISPATCH_ALL_TYPES_AND2(
+  AT_DISPATCH_ALL_TYPES_AND3(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
       values.scalar_type(),
       "dense_to_jagged_xpu",
       [&] {

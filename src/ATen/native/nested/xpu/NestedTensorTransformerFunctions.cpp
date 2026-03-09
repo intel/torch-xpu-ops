@@ -215,7 +215,7 @@ Tensor NestedTensor_to_padded_tensor_xpu(
   return NestedTensor_to_padded_tensor_generic(t, padding, output_size);
 }
 
-at::Tensor jagged_to_padded_dense_forward_xpu(
+at::Tensor _jagged_to_padded_dense_forward_xpu(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
@@ -235,7 +235,7 @@ at::Tensor jagged_to_padded_dense_forward_xpu(
       values, offsets, max_lengths, padding_value);
 }
 
-Tensor dense_to_jagged_forward_symint_xpu(
+Tensor _padded_dense_to_jagged_forward_symint_xpu(
     const Tensor& padded,
     TensorList offsets_list,
     std::optional<c10::SymInt> total_L) {
