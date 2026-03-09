@@ -495,7 +495,7 @@ void linalg_qr_kernel_impl(
   int64_t b = numel == 0 ? 0 : numel / mn;
 
   // Prepare R output matrix - correct dimensions if needed
-  at::Tensor r_out_;
+  at::Tensor r_out_ = a_contig.clone();
 
   if (numel == 0 && mode != "complete") {
     std::vector r_sizes(dimensions.begin(), dimensions.end());
@@ -503,8 +503,6 @@ void linalg_qr_kernel_impl(
       r_sizes[range - 2] = 0;
     }
     r_out_ = A.new_zeros(r_sizes);
-  } else {
-    r_out_ = a_contig.clone();
   }
 
   r_out_ = r_out_.transpose(-2, -1).contiguous();
