@@ -33,6 +33,30 @@ using namespace at::xpu;
 namespace at {
 namespace native::xpu {
 
+// Maximum single DMA transfer size.  Works around a Level-Zero / IGC
+// limitation on some Intel GPUs (e.g. DG2 / Arc) where a single
+// memcpy > 4 GB may hang or silently corrupt data.
+static constexpr int64_t kMaxMemcpyBytes = static_cast<int64_t>(2) << 30;
+
+static sycl::event chunked_memcpy(
+    sycl::queue& q,
+    void* dst,
+    const void* src,
+    int64_t nbytes) {
+  if (nbytes <= kMaxMemcpyBytes) {
+    return q.memcpy(dst, src, nbytes);
+  }
+  sycl::event last_event;
+  auto dst_byte = static_cast<char*>(dst);
+  auto src_byte = static_cast<const char*>(src);
+  for (int64_t off = 0; off < nbytes; off += kMaxMemcpyBytes) {
+    int64_t chunk = std::min(kMaxMemcpyBytes, nbytes - off);
+    last_event = q.memcpy(dst_byte + off, src_byte + off, chunk);
+  }
+  return last_event;
+}
+
+
 static bool copy_requires_temporaries(TensorIterator& iter, bool p2p_enabled) {
   Device dst_device = iter.device(0);
   Device src_device = iter.device(1);
@@ -84,7 +108,7 @@ void memcpyAsync(
     auto src = (char*)iter.data_ptr(1);
     size_t size = iter.numel() * iter.element_size(0);
     auto q = copy_stream.queue();
-    q.copy(src, dst, size);
+    chunked_memcpy(q, dst, src, static_cast<int64_t>(size));
   }
 }
 
@@ -253,7 +277,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
   if (non_blocking) {
     if (copy_kind == _H2D_) {
       if (at::detail::getXPUHooks().isPinnedPtr(src)) {
-        q.memcpy(dst, src, nbytes);
+        chunked_memcpy(q, dst, src, nbytes);
         at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(src),
             iter.tensor(1).storage().data_ptr().get_context(),
@@ -272,14 +296,14 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
         }
 
         std::memcpy(stage_mem, src, nbytes);
-        q.memcpy(dst, stage_mem, nbytes);
+        chunked_memcpy(q, dst, stage_mem, nbytes);
         at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(stage_mem),
             stage_mem_dptr.get_context(),
             at::xpu::getCurrentXPUStream());
       }
     } else {
-      q.memcpy(dst, src, nbytes);
+      chunked_memcpy(q, dst, src, nbytes);
       if (at::detail::getXPUHooks().isPinnedPtr(dst)) {
         at::getHostAllocator(at::kXPU)->record_event(
             const_cast<void*>(dst),
@@ -288,7 +312,7 @@ void _copy_xpu(TensorIterator& iter, bool non_blocking) {
       }
     }
   } else {
-    auto e = q.memcpy(dst, src, nbytes);
+    auto e = chunked_memcpy(q, dst, src, nbytes);
     e.wait();
   }
 
