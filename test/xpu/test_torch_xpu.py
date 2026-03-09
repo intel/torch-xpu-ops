@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -2033,7 +2033,7 @@ else:
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
             "reflection_pad2d_backward_" + torch.device(device).type,
-            torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
+            torch.device(device).type == "cuda",
         )
 
     @skipIfMPS

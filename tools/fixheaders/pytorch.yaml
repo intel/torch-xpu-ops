@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -9,12 +9,25 @@
 exclude:
   - "tools/linter/adapters/README.md" # Original README file (unmodified)
   - ".cmakelintrc"
+  # Test files copied from PyTorch — do not add Intel headers
+  # (these will be upstreamed back to PyTorch)
+  - "test/xpu/dynamo/test_ctx_manager_xpu.py"
+  - "test/xpu/functorch/test_control_flow_xpu.py"
+  - "test/xpu/functorch/test_eager_transforms_xpu.py"
+  - "test/xpu/functorch/test_vmap_xpu.py"
+  - "test/xpu/run_test_with_windows_nighltly.py"
+  - "test/xpu/test_cpp_api_parity_xpu.py"
+  - "test/xpu/test_expanded_weights_xpu.py"
+  - "test/xpu/test_fake_tensor_xpu.py"
+  - "test/xpu/test_meta_xpu.py"
+  - "test/xpu/test_nn_xpu.py"
+  - "test/xpu/test_schema_check.py"
 
 # Custom header groups - files listed here get a specific header
 # instead of the default one
 custom_headers:
   - header: |
-      Copyright 2020-2025 Intel Corporation
+      Copyright 2020-2026 Intel Corporation
 
       Licensed under the Apache License, Version 2.0 (the "License");
       you may not use this file except in compliance with the License.
@@ -114,7 +127,7 @@ custom_headers:
 
 
   - header: |
-      Copyright 2020-2025 Intel Corporation
+      Copyright 2020-2026 Intel Corporation
 
       Licensed under the Apache License, Version 2.0 (the "License");
       you may not use this file except in compliance with the License.
@@ -132,7 +145,7 @@ custom_headers:
       - "src/ATen/native/xpu/sycl/Col2ImKernel.cpp"
 
   - header: |
-      Copyright 2020-2025 Intel Corporation
+      Copyright 2020-2026 Intel Corporation
 
       Licensed under the Apache License, Version 2.0 (the "License");
       you may not use this file except in compliance with the License.
@@ -155,7 +168,7 @@ custom_headers:
       - "src/ATen/native/xpu/sycl/LossCTCKernels.cpp"
 
   - header: |
-      Copyright 2020-2025 Intel Corporation
+      Copyright 2020-2026 Intel Corporation
 
       Licensed under the Apache License, Version 2.0 (the "License");
       you may not use this file except in compliance with the License.

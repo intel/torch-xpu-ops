@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -362,21 +362,21 @@ struct RoiAlignBackwardKernel {
 
           if (x_low >= 0 && x_high >= 0 && y_low >= 0 && y_high >= 0) {
             atomicAdd(
-                (sycl_global_ptr<
-                    T>)(grad_input_ + input_offset + y_low * width_ + x_low),
+                (sycl_global_ptr<T>)(grad_input_ + input_offset +
+                                     y_low * width_ + x_low),
                 static_cast<T>(g1));
 
             atomicAdd(
-                (sycl_global_ptr<
-                    T>)(grad_input_ + input_offset + y_low * width_ + x_high),
+                (sycl_global_ptr<T>)(grad_input_ + input_offset +
+                                     y_low * width_ + x_high),
                 static_cast<T>(g2));
             atomicAdd(
-                (sycl_global_ptr<
-                    T>)(grad_input_ + input_offset + y_high * width_ + x_low),
+                (sycl_global_ptr<T>)(grad_input_ + input_offset +
+                                     y_high * width_ + x_low),
                 static_cast<T>(g3));
             atomicAdd(
-                (sycl_global_ptr<
-                    T>)(grad_input_ + input_offset + y_high * width_ + x_high),
+                (sycl_global_ptr<T>)(grad_input_ + input_offset +
+                                     y_high * width_ + x_high),
                 static_cast<T>(g4));
           } // if
         } // ix

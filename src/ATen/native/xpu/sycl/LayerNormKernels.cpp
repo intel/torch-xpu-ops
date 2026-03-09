@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -196,8 +196,8 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using WelfordType = WelfordData<T_ACC, int64_t>;
   using WelfordOp = WelfordOps<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<1> item_id) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
+  void operator()(sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
     WelfordOp welford_op = {/*correction=*/0, /*take_sqrt=*/false};
     WelfordType val(0, 0, 0, 0);
@@ -445,8 +445,8 @@ WelfordDataLN compute_stats(
 template <typename T, typename T_ACC>
 struct VectorizedLayerNormKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(
-      sycl::nd_item<2> item_id) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
+  void operator()(sycl::nd_item<2> item_id) const {
     auto i1 = item_id.get_group(1);
     const T* block_row = X_ + i1 * N_;
     WelfordDataLN wd = compute_stats<T>(block_row, N_, buf_, item_id);
@@ -926,7 +926,8 @@ void vec_gamma_beta_bwd_simple_kernel(
     NormConfig& cfg) {
   const scalar_t* dY_data = dY.const_data_ptr<scalar_t>();
   const scalar_t* X_data = X.const_data_ptr<scalar_t>();
-  weight_t* dg_data = dgamma->defined() ? dgamma->data_ptr<weight_t>() : nullptr;
+  weight_t* dg_data =
+      dgamma->defined() ? dgamma->data_ptr<weight_t>() : nullptr;
   weight_t* db_data = dbeta->defined() ? dbeta->data_ptr<weight_t>() : nullptr;
 
   using vec_t = aligned_vector<scalar_t, vec_size>;
@@ -1308,16 +1309,7 @@ void layer_norm_backward_kernel(
         [&]() {
           using accscalar_t = acc_type_device<scalar_t, kXPU>;
           _layer_norm_backward_kernel<scalar_t, accscalar_t, scalar_t>(
-              dY.contiguous(),
-              X,
-              mean,
-              rstd,
-              gamma,
-              M,
-              N,
-              dX,
-              dgamma,
-              dbeta);
+              dY.contiguous(), X, mean, rstd, gamma, M, N, dX, dgamma, dbeta);
         });
   }
 }
