@@ -483,6 +483,8 @@ void linalg_qr_kernel_impl(
     std::string_view mode,
     const at::Tensor& Q,
     const at::Tensor& R) {
+  auto [compute_q, reduced_mode] = at::native::_parse_qr_mode(mode);
+
   at::Tensor a_contig = A.contiguous();
 
   auto dimensions = A.sizes();
@@ -497,7 +499,7 @@ void linalg_qr_kernel_impl(
   // Prepare R output matrix - correct dimensions if needed
   at::Tensor r_out_ = a_contig.clone();
 
-  if (numel == 0 && mode != "complete") {
+  if (numel == 0 && reduced_mode) {
     std::vector r_sizes(dimensions.begin(), dimensions.end());
     if (r_sizes[range - 1] == 0) {
       r_sizes[range - 2] = 0;
@@ -508,13 +510,13 @@ void linalg_qr_kernel_impl(
   r_out_ = r_out_.transpose(-2, -1).contiguous();
 
   int64_t out_q_columns = std::min(m, n);
-  if (n > m && mode == "complete") {
+  if (n > m && !reduced_mode) {
     out_q_columns = n;
   }
 
   // Prepare Q output matrix - correct dimensions if needed
   std::vector q_sizes(dimensions.begin(), dimensions.end());
-  if (mode != "r") {
+  if (compute_q) {
     q_sizes[range - 1] = q_sizes[range - 2];
     q_sizes[range - 2] = out_q_columns;
   } else {
@@ -539,11 +541,11 @@ void linalg_qr_kernel_impl(
   scalar_t* r_buf = r_out_.data_ptr<scalar_t>();
 
   scalar_t* q_buf = nullptr;
-  if (mode != "r") {
+  if (compute_q) {
     q_buf = q_out_.data_ptr<scalar_t>();
   }
 
-  if (b == 0 && mode == "complete" && n > 0) {
+  if (b == 0 && !reduced_mode && n > 0) {
     b = native::batchCount(a_contig);
   }
 
@@ -554,7 +556,7 @@ void linalg_qr_kernel_impl(
           .wait();
     }
 
-    if (mode != "r") {
+    if (compute_q) {
       // copy relevant part of R matrix to Q matrix
       int64_t copy_columns = std::min(out_q_columns, m);
       queue.memcpy(q_buf, r_buf, n * copy_columns * sizeof(scalar_t)).wait();
@@ -572,7 +574,7 @@ void linalg_qr_kernel_impl(
   sycl::free(sbuffer, queue);
   sycl::free(tau_buf, queue);
 
-  if ((mode == "reduced" || mode == "r") && n > m) {
+  if (reduced_mode && n > m) {
     r_out_ =
         r_out_
             .index(
@@ -581,7 +583,7 @@ void linalg_qr_kernel_impl(
   }
 
   // normal case, non-zero dimensions
-  if (mode != "r") {
+  if (compute_q) {
     q_out_ = q_out_.transpose_(-2, -1).contiguous();
   }
 
