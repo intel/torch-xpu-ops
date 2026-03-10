@@ -41,4 +41,8 @@ TORCH_XPU_API void linalg_qr_kernel(
     const at::Tensor& Q,
     const at::Tensor& R);
 
+TORCH_XPU_API void geqrf_mkl(const Tensor& input, const Tensor& tau);
+
+TORCH_XPU_API Tensor& orgqr_mkl(Tensor& result, const Tensor& tau);
+
 } // namespace at::native::xpu

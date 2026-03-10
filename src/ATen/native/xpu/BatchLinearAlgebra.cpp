@@ -12,8 +12,10 @@
 #include <ATen/native/BatchLinearAlgebra.h>
 #include <ATen/native/DispatchStub.h>
 #include <ATen/native/LinearAlgebraUtils.h>
+#include <ATen/native/Resize.h>
 #include <ATen/ops/linalg_qr_cpu_dispatch.h>
 #include <ATen/ops/linalg_qr_native.h>
+#include <torch/library.h>
 #if defined(USE_ONEMKL_XPU)
 #include <ATen/native/xpu/mkl/BatchLinearAlgebra.h>
 #endif // USE_ONEMKL_XPU
@@ -136,6 +138,61 @@ void triangular_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
+void geqrf_kernel_fallback(const Tensor& input, const Tensor& tau) {
+  TORCH_WARN_ONCE(
+      "torch.geqrf op is using CPU fallback implementation on XPU. "
+      "For real inputs, consider building with USE_ONEMKL_XPU=1 for better "
+      "performance. For complex inputs, oneMKL XPU GEQRF kernel is currently "
+      "unsupported.");
+
+  auto input_cpu = input.to(input.options().device(kCPU));
+  auto tau_cpu = tau.to(tau.options().device(kCPU));
+  geqrf_stub(at::kCPU, input_cpu, tau_cpu);
+  input.copy_(input_cpu);
+  tau.copy_(tau_cpu);
+}
+
+Tensor& orgqr_kernel_fallback(Tensor& result, const Tensor& tau) {
+  TORCH_WARN_ONCE(
+      "torch.linalg.householder_product/torch.orgqr op is using CPU fallback "
+      "implementation on XPU. For real inputs, consider building with "
+      "USE_ONEMKL_XPU=1 for better performance. For complex inputs, oneMKL "
+      "XPU ORGQR kernel is currently unsupported.");
+
+  auto result_cpu = result.to(result.options().device(kCPU));
+  auto tau_cpu = tau.to(tau.options().device(kCPU));
+  orgqr_stub(at::kCPU, result_cpu, tau_cpu);
+  result.copy_(result_cpu);
+  return result;
+}
+
+void geqrf_kernel_xpu(const Tensor& input, const Tensor& tau) {
+#if defined(USE_ONEMKL_XPU)
+  if (input.is_complex()) {
+    geqrf_kernel_fallback(input, tau);
+  } else {
+    native::xpu::geqrf_mkl(input, tau);
+  }
+#else
+  geqrf_kernel_fallback(input, tau);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(geqrf_stub, &geqrf_kernel_xpu);
+
+Tensor& orgqr_kernel_xpu(Tensor& result, const Tensor& tau) {
+#if defined(USE_ONEMKL_XPU)
+  if (result.is_complex()) {
+    return orgqr_kernel_fallback(result, tau);
+  }
+  return native::xpu::orgqr_mkl(result, tau);
+#else
+  return orgqr_kernel_fallback(result, tau);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(orgqr_stub, &orgqr_kernel_xpu);
+
 void linalg_qr_kernel_fallback(
     const Tensor& A,
     std::string_view mode,
@@ -167,4 +224,118 @@ TORCH_IMPL_FUNC(linalg_qr_xpu_out)
   linalg_qr_kernel_fallback(A, mode, Q, R);
 #endif // USE_ONEMKL_XPU
 }
+
+std::tuple<Tensor, Tensor> geqrf_xpu(const Tensor& input) {
+  TORCH_CHECK(
+      input.dim() >= 2, "torch.geqrf: input must have at least 2 dimensions.");
+
+  Tensor qr = cloneBatchedColumnMajor(input);
+
+  auto tau_shape = input.sizes().vec();
+  tau_shape.pop_back();
+  tau_shape.back() = std::min(input.size(-2), input.size(-1));
+  Tensor tau = input.new_empty(tau_shape);
+
+  geqrf_stub(input.device().type(), qr, tau);
+  return std::make_tuple(std::move(qr), std::move(tau));
+}
+
+Tensor& linalg_householder_product_out_xpu(
+    const Tensor& input,
+    const Tensor& tau,
+    Tensor& result) {
+  TORCH_CHECK(
+      input.dim() >= 2,
+      "torch.linalg.householder_product: input must have at least 2 dimensions.");
+  TORCH_CHECK(
+      input.size(-2) >= input.size(-1),
+      "torch.linalg.householder_product: input.shape[-2] must be greater than or equal to input.shape[-1]");
+  TORCH_CHECK(
+      input.size(-1) >= tau.size(-1),
+      "torch.linalg.householder_product: input.shape[-1] must be greater than or equal to tau.shape[-1]");
+  TORCH_CHECK(
+      input.dim() - tau.dim() == 1,
+      "torch.linalg.householder_product: Expected tau to have one dimension less than input, but got tau.ndim equal to ",
+      tau.dim(),
+      " and input.ndim is equal to ",
+      input.dim());
+  if (input.dim() > 2) {
+    auto expected_batch_tau_shape =
+        IntArrayRef(input.sizes().data(), input.dim() - 2);
+    auto actual_batch_tau_shape =
+        IntArrayRef(tau.sizes().data(), tau.dim() - 1);
+    TORCH_CHECK(
+        actual_batch_tau_shape.equals(expected_batch_tau_shape),
+        "torch.linalg.householder_product: Expected batch dimensions of tau to be equal to input.shape[:-2], but got ",
+        actual_batch_tau_shape);
+  }
+  TORCH_CHECK(
+      input.scalar_type() == tau.scalar_type(),
+      "torch.linalg.householder_product: tau dtype ",
+      tau.scalar_type(),
+      " does not match input dtype ",
+      input.scalar_type());
+  checkSameDevice("torch.linalg.householder_product", tau, input, "tau");
+  checkSameDevice("torch.linalg.householder_product", result, input);
+  checkLinalgCompatibleDtype("torch.linalg.householder_product", result, input);
+
+  bool result_input_same_type = (result.scalar_type() == input.scalar_type());
+  bool result_equal_expected_shape = result.sizes().equals(input.sizes());
+  bool is_batched_column_major = false;
+  if (result.dim() >= 2) {
+    is_batched_column_major = result.mT().is_contiguous();
+  }
+
+  bool copy_needed = (result.numel() != 0 && !is_batched_column_major);
+  copy_needed |= !result_input_same_type;
+  copy_needed |= (result.numel() != 0 && !result_equal_expected_shape);
+
+  auto householder_product_out_helper =
+      [](const Tensor& in, const Tensor& t, Tensor& out) -> Tensor& {
+    if (out.numel() == 0) {
+      out.resize_as_(in.mT(), MemoryFormat::Contiguous);
+      out.transpose_(-2, -1);
+    }
+
+    TORCH_INTERNAL_ASSERT(out.mT().is_contiguous());
+    TORCH_INTERNAL_ASSERT(out.sizes().equals(in.sizes()));
+
+    Tensor tau_contig = t;
+    if (!t.is_contiguous()) {
+      tau_contig = at::empty(t.sizes(), t.options(), MemoryFormat::Contiguous);
+      tau_contig.copy_(t);
+    }
+
+    out.copy_(in);
+    out = orgqr_stub(out.device().type(), out, tau_contig);
+    return out;
+  };
+
+  if (copy_needed) {
+    Tensor result_tmp = at::empty({0}, input.options());
+    result_tmp = householder_product_out_helper(input, tau, result_tmp);
+    at::native::resize_output(result, result_tmp.sizes());
+    result.copy_(result_tmp);
+  } else {
+    result = householder_product_out_helper(input, tau, result);
+  }
+
+  return result;
+}
+
+Tensor linalg_householder_product_xpu(const Tensor& input, const Tensor& tau) {
+  Tensor result = at::empty({0}, input.options());
+  linalg_householder_product_out_xpu(input, tau, result);
+  return result;
+}
 } // namespace at::native
+
+TORCH_LIBRARY_IMPL(aten, XPU, m) {
+  m.impl("geqrf", TORCH_FN(at::native::geqrf_xpu));
+  m.impl(
+      "linalg_householder_product",
+      TORCH_FN(at::native::linalg_householder_product_xpu));
+  m.impl(
+      "linalg_householder_product.out",
+      TORCH_FN(at::native::linalg_householder_product_out_xpu));
+}

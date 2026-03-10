@@ -477,6 +477,130 @@ void triangular_solve_mkl(
       });
 }
 
+void geqrf_mkl(const Tensor& input, const Tensor& tau) {
+  if (input.numel() == 0) {
+    return;
+  }
+
+  auto& queue = c10::xpu::getCurrentXPUStream().queue();
+  const int64_t m = input.size(-2);
+  const int64_t n = input.size(-1);
+  const int64_t lda = std::max<int64_t>(1, m);
+  const int64_t batch_size = native::batchCount(input);
+  const int64_t matrix_stride = native::matrixStride(input);
+  const int64_t tau_stride = std::max<int64_t>(1, std::min(m, n));
+
+  AT_DISPATCH_FLOATING_TYPES(input.scalar_type(), "geqrf_mkl_xpu", [&] {
+    const int64_t scratchpad_size =
+        oneapi::mkl::lapack::geqrf_batch_scratchpad_size<scalar_t>(
+            queue,
+            m,
+            n,
+            lda,
+            std::max<int64_t>(1, matrix_stride),
+            tau_stride,
+            std::max<int64_t>(1, batch_size));
+    auto* scratchpad = sycl::malloc_device<scalar_t>(scratchpad_size, queue);
+
+    oneapi::mkl::lapack::geqrf_batch(
+        queue,
+        m,
+        n,
+        reinterpret_cast<scalar_t*>(input.data_ptr()),
+        lda,
+        std::max<int64_t>(1, matrix_stride),
+        reinterpret_cast<scalar_t*>(tau.data_ptr()),
+        tau_stride,
+        batch_size,
+        scratchpad,
+        scratchpad_size)
+        .wait();
+
+    sycl::free(scratchpad, queue);
+  });
+}
+
+Tensor& orgqr_mkl(Tensor& result, const Tensor& tau) {
+  if (result.numel() == 0) {
+    return result;
+  }
+
+  auto& queue = c10::xpu::getCurrentXPUStream().queue();
+  const int64_t m = result.size(-2);
+  const int64_t n = result.size(-1);
+  const int64_t k = tau.size(-1);
+  const int64_t lda = std::max<int64_t>(1, m);
+  const int64_t batch_size = native::batchCount(result);
+  const int64_t matrix_stride = native::matrixStride(result);
+  const int64_t tau_stride = std::max<int64_t>(1, k);
+
+  AT_DISPATCH_FLOATING_TYPES(result.scalar_type(), "orgqr_mkl_xpu", [&] {
+    auto* result_data = reinterpret_cast<scalar_t*>(result.data_ptr());
+    auto* tau_data = reinterpret_cast<scalar_t*>(tau.data_ptr());
+
+    // oneMKL orgqr_batch (USM strided) documents tau stride constraints in
+    // terms of min(m, n). For generic orgqr usage (e.g. householder_product), k
+    // can be strictly smaller than n. In that case, use per-matrix orgqr.
+    if (k == n) {
+      const int64_t batch_tau_stride = std::max<int64_t>(1, std::min(m, n));
+      const int64_t scratchpad_size =
+          oneapi::mkl::lapack::orgqr_batch_scratchpad_size<scalar_t>(
+              queue,
+              m,
+              n,
+              k,
+              lda,
+              std::max<int64_t>(1, matrix_stride),
+              batch_tau_stride,
+              std::max<int64_t>(1, batch_size));
+      auto* scratchpad = sycl::malloc_device<scalar_t>(scratchpad_size, queue);
+
+      oneapi::mkl::lapack::orgqr_batch(
+          queue,
+          m,
+          n,
+          k,
+          result_data,
+          lda,
+          std::max<int64_t>(1, matrix_stride),
+          tau_data,
+          batch_tau_stride,
+          batch_size,
+          scratchpad,
+          scratchpad_size)
+          .wait();
+
+      sycl::free(scratchpad, queue);
+    } else {
+      const int64_t scratchpad_size =
+          oneapi::mkl::lapack::orgqr_scratchpad_size<scalar_t>(
+              queue, m, n, k, lda);
+      auto* scratchpad = sycl::malloc_device<scalar_t>(scratchpad_size, queue);
+
+      for (const auto batch_item : c10::irange(batch_size)) {
+        auto* result_batch_ptr = result_data + batch_item * matrix_stride;
+        auto* tau_batch_ptr = tau_data + batch_item * tau_stride;
+
+        oneapi::mkl::lapack::orgqr(
+            queue,
+            m,
+            n,
+            k,
+            result_batch_ptr,
+            lda,
+            tau_batch_ptr,
+            scratchpad,
+            scratchpad_size)
+            .wait();
+      }
+
+      sycl::free(scratchpad, queue);
+    }
+  });
+
+  return result;
+}
+
 template <typename scalar_t>
 void linalg_qr_kernel_impl(
     const at::Tensor& A,
