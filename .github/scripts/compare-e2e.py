@@ -9,6 +9,10 @@ and writes comparison to Excel (two sheets: Summary, Details) or CSV (two files)
 All missing cells are filled with empty strings.
 If performance files are missing, performance columns are omitted.
 If accuracy files are missing, accuracy columns are omitted.
+
+New features:
+- Shortened column headers in output files for brevity.
+- Optional `--markdown` argument to generate a GitHub‑flavored Markdown summary report.
 """
 
 import os
@@ -16,6 +20,7 @@ import argparse
 import pandas as pd
 import numpy as np
 from glob import glob
+from datetime import datetime
 
 # ----------------------------------------------------------------------
 # Constants – known valid values
@@ -31,6 +36,45 @@ SUMMARY_LEVELS = [
     ("By Suite", ["suite"], 1),
     ("By Suite+DataType+Mode", ["suite", "data_type", "mode"], 2)
 ]
+
+# ----------------------------------------------------------------------
+# Column renaming mapping for output (shortened headers)
+# ----------------------------------------------------------------------
+COLUMN_RENAME_MAP = {
+    # Common
+    'data_type': 'dtype',
+    # Accuracy details
+    'batch_size_target': 'bs_tgt',
+    'batch_size_baseline': 'bs_bsl',
+    'accuracy_target': 'acc_tgt',
+    'accuracy_baseline': 'acc_bsl',
+    'comparison_acc': 'cmp_acc',
+    # Performance details
+    'inductor_target': 'ind_tgt',
+    'inductor_baseline': 'ind_bsl',
+    'eager_target': 'eag_tgt',
+    'eager_baseline': 'eag_bsl',
+    'inductor_ratio': 'ind_ratio',
+    'eager_ratio': 'eag_ratio',
+    'comparison_perf': 'cmp_perf',
+    'comparison': 'cmp',
+    # Summary specific (with spaces)
+    'target passed': 'tgt_ps',
+    'baseline passed': 'bsl_ps',
+    'total': 'total',
+    'target passrate': 'tgt_pass%',
+    'baseline passrate': 'bsl_pass%',
+    'New failed': 'new_fail',
+    'New passed': 'new_pass',
+    'inductor ratio': 'ind_ratio',      # from summary
+    'eager ratio': 'eag_ratio',          # from summary
+    # Grouping columns (kept as-is, but we can map if desired)
+    # 'suite' -> 'suite' (unchanged)
+    # 'mode' -> 'mode' (unchanged)
+    # 'model' -> 'model' (unchanged)
+    # 'Category' -> 'Category' (unchanged)
+    # 'Type' -> 'Type' (unchanged)
+}
 
 # ----------------------------------------------------------------------
 # File discovery and parsing (unchanged)
@@ -512,7 +556,221 @@ def generate_all_summaries(acc_merged, perf_merged):
 
 
 # ----------------------------------------------------------------------
-# Main (updated to use new summary function)
+# Markdown summary generation (new)
+# ----------------------------------------------------------------------
+def generate_markdown_summary(combined_summary, details, markdown_file):
+    """
+    Write a GitHub‑flavored Markdown report with:
+    - Emojis outside tables for section headings.
+    - Plain Markdown tables for per‑suite and overall summaries, using emoji indicators.
+    - HTML tables with row background colors for new failures/passes (for easy scanning).
+    """
+    with open(markdown_file, 'w', encoding='utf-8') as f:
+        f.write(f"# Inductor Test Results Comparison: Target vs Baseline\n\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+        # ----- Quick overview per suite (plain Markdown, with emoji indicators) -----
+        if not details.empty and 'suite' in details.columns:
+            f.write("## 📊 Overview by Suite\n\n")
+            suite_rows = []
+            for suite in details['suite'].dropna().unique():
+                suite_df = details[details['suite'] == suite]
+                # Accuracy counts
+                acc_fail = 0
+                if 'cmp_acc' in suite_df.columns:
+                    acc_fail = (suite_df['cmp_acc'] == 'new_failed').sum()
+                acc_pass = 0
+                if 'cmp_acc' in suite_df.columns:
+                    acc_pass = (suite_df['cmp_acc'] == 'new_passed').sum()
+                # Performance counts
+                perf_fail = 0
+                perf_drop = 0
+                perf_pass = 0
+                perf_improve = 0
+                if 'cmp_perf' in suite_df.columns:
+                    perf_fail = (suite_df['cmp_perf'] == 'new_failed').sum()
+                    perf_drop = (suite_df['cmp_perf'] == 'new_dropped').sum()
+                    perf_pass = (suite_df['cmp_perf'] == 'new_passed').sum()
+                    perf_improve = (suite_df['cmp_perf'] == 'new_improved').sum()
+                suite_rows.append({
+                    'suite': suite,
+                    'acc_fail': acc_fail,
+                    'acc_pass': acc_pass,
+                    'perf_fail': perf_fail,
+                    'perf_drop': perf_drop,
+                    'perf_pass': perf_pass,
+                    'perf_improve': perf_improve
+                })
+
+            if suite_rows:
+                # Helper to format a number with emoji if >0
+                def fmt_count(val, good=False):
+                    if val > 0:
+                        emoji = "🟢" if good else "🔴"
+                        return f"{val} {emoji}"
+                    return str(val)
+
+                f.write("| Suite | 🧪 Acc Fail | 🧪 Acc Pass | ⏱️ Perf Fail | ⏱️ Perf Drop | ⏱️ Perf Pass | ⏱️ Perf Improve |\n")
+                f.write("|-------|-------------|-------------|---------------|---------------|---------------|-----------------|\n")
+                for s in suite_rows:
+                    row = [
+                        s['suite'],
+                        fmt_count(s['acc_fail'], good=False),
+                        fmt_count(s['acc_pass'], good=True),
+                        fmt_count(s['perf_fail'], good=False),
+                        fmt_count(s['perf_drop'], good=False),
+                        fmt_count(s['perf_pass'], good=True),
+                        fmt_count(s['perf_improve'], good=True)
+                    ]
+                    f.write("| " + " | ".join(row) + " |\n")
+                f.write("\n")
+            else:
+                f.write("No suite information available.\n\n")
+        else:
+            f.write("## 📊 Overview by Suite\n\nNo suite information available.\n\n")
+
+        # ----- Overall summary (plain Markdown, with emoji indicators for thresholds) -----
+        f.write("## 📈 Overall Summary\n\n")
+        overall = combined_summary[combined_summary['Category'] == 'Overall']
+        if not overall.empty:
+            # Helper to add emoji for new_fail/new_pass
+            def fmt_new(val, is_fail=True):
+                if pd.notna(val) and val > 0:
+                    emoji = "🔴" if is_fail else "🟢"
+                    return f"{val} {emoji}"
+                return str(val) if pd.notna(val) else ""
+
+            # Helper to add emoji for ratios based on thresholds
+            def fmt_ratio(val):
+                if pd.notna(val):
+                    if val < 0.95:
+                        return f"{val} 🔴"
+                    elif val > 1.05:
+                        return f"{val} 🟢"
+                return str(val) if pd.notna(val) else ""
+
+            f.write("| Type | tgt_ps | bsl_ps | total | new_fail | new_pass | tgt_pass% | bsl_pass% | ind_ratio | eag_ratio |\n")
+            f.write("|------|--------|--------|-------|----------|----------|-----------|-----------|-----------|-----------|\n")
+            for _, row in overall.iterrows():
+                type_label = "Accuracy" if row['Type'] == 'Accuracy' else "Performance"
+                tgt_ps = row.get('tgt_ps', '')
+                bsl_ps = row.get('bsl_ps', '')
+                total = row.get('total', '')
+                new_fail = fmt_new(row.get('new_fail'), is_fail=True)
+                new_pass = fmt_new(row.get('new_pass'), is_fail=False)
+                tgt_pass = row.get('tgt_pass%', '')
+                bsl_pass = row.get('bsl_pass%', '')
+                ind_ratio = fmt_ratio(row.get('ind_ratio'))
+                eag_ratio = fmt_ratio(row.get('eag_ratio'))
+                f.write(f"| {type_label} | {tgt_ps} | {bsl_ps} | {total} | {new_fail} | {new_pass} | {tgt_pass} | {bsl_pass} | {ind_ratio} | {eag_ratio} |\n")
+            f.write("\n")
+        else:
+            f.write("No overall summary data available.\n\n")
+
+        if details.empty:
+            f.write("No detailed data available.\n")
+            return
+
+        # ----- Helper to generate an HTML table with row background colors -----
+        def write_html_table(rows, columns, condition_column, fail_color="#f8d7da", pass_color="#d4edda"):
+            """
+            Write an HTML table with rows colored based on the value in condition_column.
+            - rows: DataFrame subset
+            - columns: list of column names to display
+            - condition_column: column used to determine color (e.g., 'cmp_acc')
+            - fail_color: background color for "new_failed"/"new_dropped"
+            - pass_color: background color for "new_passed"/"new_improved"
+            """
+            f.write('<table>\n')
+            f.write('<thead><tr>')
+            for col in columns:
+                f.write(f'<th>{col}</th>')
+            f.write('</tr></thead>\n')
+            f.write('<tbody>\n')
+            for _, row in rows.iterrows():
+                val = row.get(condition_column, '')
+                bg_color = ''
+                if val in ['new_failed', 'new_dropped']:
+                    bg_color = f' style="background-color: {fail_color};"'
+                elif val in ['new_passed', 'new_improved']:
+                    bg_color = f' style="background-color: {pass_color};"'
+                f.write(f'<tr{bg_color}>')
+                for col in columns:
+                    cell = str(row.get(col, ''))
+                    f.write(f'<td>{cell}</td>')
+                f.write('</tr>\n')
+            f.write('</tbody>\n')
+            f.write('</table>\n\n')
+
+        # ----- New Failures -----
+        f.write("## ❌ New Failures & Regressions\n\n")
+
+        # Accuracy failures
+        acc_fail = details[details['cmp_acc'] == 'new_failed']
+        if not acc_fail.empty:
+            f.write("### 🧪 Accuracy Failures\n\n")
+            cols = ['suite', 'dtype', 'mode', 'model', 'bs_acc_tgt', 'acc_tgt', 'bs_acc_bsl', 'acc_bsl', 'cmp_acc']
+            available = [c for c in cols if c in acc_fail.columns]
+            write_html_table(acc_fail, available, 'cmp_acc', fail_color="#f8d7da")
+        else:
+            f.write("✅ No new accuracy failures.\n\n")
+
+        # Performance regressions (new_failed + new_dropped)
+        perf_regress = details[details['cmp_perf'].isin(['new_dropped', 'new_failed'])]
+        if not perf_regress.empty:
+            f.write("### ⏱️ Performance Regressions (ratio < {:.0f}%)\n\n".format((1 - PERFORMANCE_THRESHOLD) * 100))
+            cols = ['suite', 'dtype', 'mode', 'model', 'ind_tgt', 'eag_tgt', 'ind_bsl', 'eag_bsl', 'ind_ratio', 'eag_ratio', 'cmp_perf']
+            available = [c for c in cols if c in perf_regress.columns]
+            write_html_table(perf_regress, available, 'cmp_perf', fail_color="#f8d7da")
+        else:
+            f.write("✅ No performance regressions.\n\n")
+
+        # ----- New Passes / Improvements -----
+        f.write("## ✅ New Passes & Improvements\n\n")
+
+        # Accuracy new passes
+        acc_pass = details[details['cmp_acc'] == 'new_passed']
+        if not acc_pass.empty:
+            f.write("### 🧪 Accuracy New Passes\n\n")
+            cols = ['suite', 'dtype', 'mode', 'model', 'bs_acc_tgt', 'acc_tgt', 'bs_acc_bsl', 'acc_bsl', 'cmp_acc']
+            available = [c for c in cols if c in acc_pass.columns]
+            write_html_table(acc_pass, available, 'cmp_acc', pass_color="#d4edda")
+        else:
+            f.write("ℹ️ No new accuracy passes.\n\n")
+
+        # Performance improvements (new_improved + new_passed)
+        perf_impr = details[details['cmp_perf'].isin(['new_improved', 'new_passed'])]
+        if not perf_impr.empty:
+            f.write("### ⏱️ Performance Improvements (ratio > {:.0f}%)\n\n".format((1 + PERFORMANCE_THRESHOLD) * 100))
+            cols = ['suite', 'dtype', 'mode', 'model', 'ind_tgt', 'eag_tgt', 'ind_bsl', 'eag_bsl', 'ind_ratio', 'eag_ratio', 'cmp_perf']
+            available = [c for c in cols if c in perf_impr.columns]
+            write_html_table(perf_impr, available, 'cmp_perf', pass_color="#d4edda")
+        else:
+            f.write("ℹ️ No performance improvements.\n\n")
+
+        # ----- Suggestions -----
+        f.write("## 💡 Suggestions\n\n")
+        suggestions = []
+        if not acc_fail.empty:
+            suggestions.append("❌ Investigate the new accuracy failures.")
+        if not perf_regress.empty:
+            suggestions.append("📉 Review performance regressions; they may indicate a real slowdown.")
+        if acc_pass.empty and perf_impr.empty:
+            suggestions.append("ℹ️ No new passes or improvements detected.")
+        else:
+            if not acc_pass.empty:
+                suggestions.append("✅ New accuracy passes are good; ensure they are not due to test changes.")
+            if not perf_impr.empty:
+                suggestions.append("🚀 Performance improvements are encouraging; verify they are consistent.")
+        if suggestions:
+            for s in suggestions:
+                f.write(f"- {s}\n")
+        else:
+            f.write("- All metrics are stable. No action required.\n")
+
+
+# ----------------------------------------------------------------------
+# Main (updated with column renaming and markdown option)
 # ----------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
@@ -520,13 +778,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s target_dir baseline_dir comparison.xlsx   # Creates Excel with Summary & Details sheets
-  %(prog)s target_dir baseline_dir comparison.csv    # Creates summary.csv and details.csv
+  %(prog)s --target_dir --baseline_dir --comparison.xlsx               # Creates Excel with Summary & Details sheets
+  %(prog)s --target_dir --baseline_dir --comparison.csv                # Creates summary.csv and details.csv
+  %(prog)s --target_dir --baseline_dir --comparison.xlsx --markdown report.md   # Also generates a Markdown summary
         """
     )
-    parser.add_argument("target_dir", help="Directory containing target (test) result CSV files (searched recursively)")
-    parser.add_argument("baseline_dir", help="Directory containing baseline (reference) result CSV files (searched recursively)")
-    parser.add_argument("output", help="Output file name (without extension). Use .xlsx for Excel, .csv for CSV files.")
+    parser.add_argument("-t", "--target_dir", help="Directory containing target (test) result CSV files (searched recursively)")
+    parser.add_argument("-b", "--baseline_dir", help="Directory containing baseline (reference) result CSV files (searched recursively)")
+    parser.add_argument("-o", "--output", help="Output file name (without extension). Use .xlsx for Excel, .csv for CSV files.")
+    parser.add_argument("-m", "--markdown", help="Generate a Markdown summary report and save to this file (e.g., report.md)")
     args = parser.parse_args()
 
     # Determine output base name and format
@@ -562,6 +822,16 @@ Examples:
 
     # Generate detailed combined data
     details = combine_results(acc_merged, perf_merged)
+
+    # Apply column renaming for output (short headers)
+    # Only rename columns that exist in each dataframe
+    combined_summary.rename(columns={k: v for k, v in COLUMN_RENAME_MAP.items() if k in combined_summary.columns}, inplace=True)
+    details.rename(columns={k: v for k, v in COLUMN_RENAME_MAP.items() if k in details.columns}, inplace=True)
+
+    # Generate markdown if requested
+    if args.markdown:
+        generate_markdown_summary(combined_summary, details, args.markdown)
+        print(f"Markdown summary written to {args.markdown}")
 
     if out_ext == '.xlsx':
         # Excel: two sheets
