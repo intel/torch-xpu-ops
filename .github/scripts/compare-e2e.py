@@ -102,10 +102,39 @@ def parse_filename(filepath):
 
 def load_results(file_list, result_type_filter):
     """
-    Load all files of a given result_type (accuracy or performance) and
-    return a list of dictionaries with extracted data.
+    Load all files of a given result_type (accuracy or performance),
+    merge duplicates by (suite, data_type, mode, model) according to rules,
+    and return a list of merged records.
     """
-    records = []
+    # Helper merge functions
+    def merge_accuracy(records):
+        # records: list of dicts with 'accuracy', 'batch_size'
+        pass_recs = [r for r in records if 'pass' in str(r['accuracy'])]
+        if pass_recs:
+            return pass_recs[0]
+        fail_recs = [r for r in records if 'fail' in str(r['accuracy'])]
+        if fail_recs:
+            return fail_recs[0]
+        return records[0]  # fallback
+
+    def merge_performance(records):
+        # records: list of dicts with 'inductor', 'eager', 'batch_size'
+        # 1. Prefer positive records (valid latencies)
+        positive = [r for r in records if r['inductor'] > 0 and r['eager'] > 0]
+        if positive:
+            # Choose record with smallest inductor (best performance), tie‑break by smallest eager
+            return min(positive, key=lambda r: (r['inductor'], r['eager']))
+
+        # 2. No positive records – keep the one with largest inductor (closest to zero)
+        if records:
+            # Among non‑positive, the largest inductor is the least negative (or zero)
+            return max(records, key=lambda r: (r['inductor'], r['eager']))
+
+        return None  # should never happen because records is non‑empty when called
+
+    # Temporary dictionary to collect all raw records by key
+    raw_by_key = {}
+
     for fpath in file_list:
         try:
             suite, data_type, mode, res_type = parse_filename(fpath)
@@ -122,30 +151,28 @@ def load_results(file_list, result_type_filter):
             print(f"Error reading {fpath}: {e}")
             continue
 
-        if result_type_filter == "accuracy":
-            for _, row in df.iterrows():
-                if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
-                    continue
-                records.append({
+        for _, row in df.iterrows():
+            if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
+                continue
+
+            if result_type_filter == "accuracy":
+                record = {
                     "suite": suite,
                     "data_type": data_type,
                     "mode": mode,
                     "model": row["name"],
                     "batch_size": row["batch_size"],
                     "accuracy": row["accuracy"]
-                })
-        elif result_type_filter == "performance":
-            for _, row in df.iterrows():
+                }
+            else:  # performance
                 speedup = row.get("speedup")
                 abs_latency = row.get("abs_latency")
                 if pd.isna(speedup) or pd.isna(abs_latency):
                     print(f"Warning: Missing speedup/abs_latency for {suite}/{data_type}/{mode}/{row.get('name')} in {fpath}")
                     continue
-                eager = speedup * abs_latency   # baseline eager time
+                eager = speedup * abs_latency
                 inductor = abs_latency
-                if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
-                    continue
-                records.append({
+                record = {
                     "suite": suite,
                     "data_type": data_type,
                     "mode": mode,
@@ -153,8 +180,22 @@ def load_results(file_list, result_type_filter):
                     "batch_size": row["batch_size"],
                     "inductor": inductor,
                     "eager": eager
-                })
-    return records
+                }
+
+            key = (suite, data_type, mode, row["name"])
+            raw_by_key.setdefault(key, []).append(record)
+
+    # Merge duplicates per key
+    merged = []
+    for key, rec_list in raw_by_key.items():
+        if result_type_filter == "accuracy":
+            merged.append(merge_accuracy(rec_list))
+        else:  # performance
+            m = merge_performance(rec_list)
+            if m is not None:
+                merged.append(m)
+
+    return merged
 
 
 # ----------------------------------------------------------------------
@@ -240,7 +281,7 @@ def merge_performance(target_records, baseline_records):
     # Round
     for col in ["inductor_target", "inductor_baseline", "eager_target", "eager_baseline"]:
         if col in merged.columns:
-            merged[col] = merged[col].round(2)
+            merged[col] = merged[col].round(4)
     for col in ["inductor_ratio", "eager_ratio"]:
         if col in merged.columns:
             merged[col] = merged[col].round(3)
