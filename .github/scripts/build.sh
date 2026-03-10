@@ -19,7 +19,7 @@ readonly DEFAULT_ONEDNN_COMMIT="main"
 
 # Extra install requirements for oneAPI (used only if XPU_ONEAPI_PATH not set)
 # MKL version
-: "${MKL_VERSION:='2025.3.1'}"
+: "${MKL_VERSION:=2025.3.1}"
 if [[ -z "${XPU_ONEAPI_PATH:-}" ]]; then
     export USE_STATIC_MKL=1
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
