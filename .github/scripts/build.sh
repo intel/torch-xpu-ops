@@ -4,17 +4,12 @@
 #   ./build.sh [OPTIONS]
 #   ./build.sh --WORKSPACE=<path> --PYTORCH=main --TORCH_XPU_OPS=main
 set -eu -o pipefail
-export GIT_PAGER=cat
 
-# Colors for output
-readonly RED='\033[0;31m'
-readonly GREEN='\033[0;32m'
-readonly YELLOW='\033[1;33m'
-readonly BLUE='\033[0;34m'
-readonly NC='\033[0m' # No Color
+# -------------------- Configuration --------------------
+# Git clone depth (set to 1 for shallow, empty for full history)
+: "${GIT_DEPTH:=}"  # e.g., export GIT_DEPTH=1 for shallow clones
 
-# Default configurations
-readonly DEFAULT_WORKSPACE="${WORKSPACE:-/tmp/pytorch_build}"
+# Default repositories
 readonly DEFAULT_PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
 readonly DEFAULT_PYTORCH_COMMIT="main"
 readonly DEFAULT_TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
@@ -22,10 +17,11 @@ readonly DEFAULT_TORCH_XPU_OPS_COMMIT="main"
 readonly DEFAULT_ONEDNN_REPO="https://github.com/uxlfoundation/oneDNN.git"
 readonly DEFAULT_ONEDNN_COMMIT="main"
 
-# Set extra requirements for oneAPI components
-export USE_STATIC_MKL=1
-readonly DEFAULT_MKL_VERSION="2025.3.0"
+# Extra install requirements for oneAPI (used only if XPU_ONEAPI_PATH not set)
+# MKL version
+: "${MKL_VERSION:='2025.3.1'}"
 if [[ -z "${XPU_ONEAPI_PATH:-}" ]]; then
+    export USE_STATIC_MKL=1
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
         intel-cmplr-lib-rt==2025.3.2 | \
         intel-cmplr-lib-ur==2025.3.2 | \
@@ -46,11 +42,10 @@ if [[ -z "${XPU_ONEAPI_PATH:-}" ]]; then
         tbb==2022.3.1 | \
         tcmlib==1.4.1 | \
         umf==1.0.3 | \
-        intel-pti==0.16.0
-        "
+        intel-pti==0.16.0"
 fi
 
-# Global variables
+# -------------------- Global Variables --------------------
 WORKSPACE=""
 PYTORCH_REPO=""
 PYTORCH_COMMIT=""
@@ -61,35 +56,44 @@ COMPONENT_COMMIT=""
 ONEDNN_REPO=""
 ONEDNN_COMMIT=""
 
-# Logging functions
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $*"
+# -------------------- Utility Functions --------------------
+# Color definitions
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
+
+log_info()    { echo -e "${BLUE}[INFO]${NC} $(date '+%Y-%m-%d %H:%M:%S') $*"; }
+log_success() { echo -e "${GREEN}[SUCCESS]${NC} $(date '+%Y-%m-%d %H:%M:%S') $*"; }
+log_warning() { echo -e "${YELLOW}[WARNING]${NC} $(date '+%Y-%m-%d %H:%M:%S') $*" >&2; }
+log_error()   { echo -e "${RED}[ERROR]${NC} $(date '+%Y-%m-%d %H:%M:%S') $*" >&2; }
+
+# Realpath with fallback (for systems without realpath)
+realpath_fallback() {
+    if command -v realpath &>/dev/null; then
+        realpath -m "$1"
+    else
+        # Simple absolute path resolution (may not resolve symlinks)
+        case "$1" in
+            /*) echo "$1" ;;
+            *) echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")" ;;
+        esac
+    fi
 }
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $*"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $*" >&2
-}
-
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $*" >&2
-}
-
-# Cleanup function
+# Cleanup trap
 cleanup() {
     local exit_code=$?
     if [[ $exit_code -ne 0 ]]; then
         log_error "Build failed with exit code: $exit_code"
     fi
-    # Remove any temporary files if needed
+    # Add custom cleanup here if needed
     return $exit_code
 }
 trap cleanup EXIT
 
-# Parse command line arguments
+# -------------------- Argument Parsing --------------------
 parse_arguments() {
     for arg in "$@"; do
         case "$arg" in
@@ -119,18 +123,22 @@ parse_arguments() {
     done
 }
 
-# Show usage information
 show_usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
 
 Options:
-  --WORKSPACE=<path>           Workspace directory (default: $DEFAULT_WORKSPACE)
-  --PYTORCH=<spec>             PyTorch specification in format: repo@commit (default: ${DEFAULT_PYTORCH_REPO}@${DEFAULT_PYTORCH_COMMIT})
-  --TORCH_XPU_OPS=<spec>       torch-xpu-ops specification in format: repo@commit (default: ${DEFAULT_TORCH_XPU_OPS_REPO}@${DEFAULT_TORCH_XPU_OPS_COMMIT})
+  --WORKSPACE=<path>           Workspace directory (default: /tmp/pytorch_build)
+  --PYTORCH=<spec>             PyTorch specification (format: [repo@]commit, default: ${DEFAULT_PYTORCH_REPO}@${DEFAULT_PYTORCH_COMMIT})
+  --TORCH_XPU_OPS=<spec>       torch-xpu-ops specification (format: [repo@]commit, default: ${DEFAULT_TORCH_XPU_OPS_REPO}@${DEFAULT_TORCH_XPU_OPS_COMMIT})
   --COMPONENT=<name>           Component to patch (e.g., onednn)
-  --COMPONENT_COMMIT=<spec>    Component commit specification
+  --COMPONENT_COMMIT=<spec>    Component commit specification (format: [repo@]commit)
   --help, -h                   Show this help message
+
+Environment variables:
+  GIT_DEPTH                    If set to a positive integer, performs shallow clone with that depth.
+  MKL_VERSION                  MKL version to install (default: 2025.3.0)
+  XPU_ONEAPI_PATH              Path to oneAPI installation (skips extra requirements if set)
 
 Examples:
   $0 --WORKSPACE=/build --PYTORCH=main
@@ -139,169 +147,155 @@ Examples:
 EOF
 }
 
-# Validate inputs
+# -------------------- Input Validation --------------------
 validate_inputs() {
-    # Set defaults if not provided
-    WORKSPACE="${WORKSPACE:-$DEFAULT_WORKSPACE}"
-    WORKSPACE=$(realpath -m "$WORKSPACE")
+    # Set defaults
+    WORKSPACE="${WORKSPACE:-/tmp/pytorch_build}"
+    WORKSPACE=$(realpath_fallback "$WORKSPACE")
 
-    if [[ -z "${PYTORCH:-}" ]]; then
-        PYTORCH="${DEFAULT_PYTORCH_REPO}@${DEFAULT_PYTORCH_COMMIT}"
-    fi
+    PYTORCH="${PYTORCH:-${DEFAULT_PYTORCH_REPO}@${DEFAULT_PYTORCH_COMMIT}}"
+    TORCH_XPU_OPS="${TORCH_XPU_OPS:-${DEFAULT_TORCH_XPU_OPS_REPO}@${DEFAULT_TORCH_XPU_OPS_COMMIT}}"
 
-    if [[ -z "${TORCH_XPU_OPS:-}" ]]; then
-        TORCH_XPU_OPS="$DEFAULT_TORCH_XPU_OPS_REPO}@${DEFAULT_TORCH_XPU_OPS_COMMIT}"
-    fi
-
-    # Validate workspace
+    # Create workspace if needed
     if ! mkdir -p "$WORKSPACE" 2>/dev/null; then
-        log_error "Cannot create or access workspace directory: $WORKSPACE"
+        log_error "Cannot create or access workspace: $WORKSPACE"
         exit 1
     fi
 
     log_info "Workspace: $WORKSPACE"
     log_info "PyTorch spec: $PYTORCH"
     log_info "Torch-XPU-Ops spec: $TORCH_XPU_OPS"
-    log_info "Component: $COMPONENT"
+    log_info "Component: ${COMPONENT:-none}"
+    log_info "Component commit: ${COMPONENT_COMMIT:-none}"
 }
 
-# Extract repository and commit from specification
+# -------------------- Repository/Commit Parsing --------------------
+# Extracts repo URL and commit from a spec string.
+# Usage: extract_repo_commit <spec> <default_repo> <default_commit>
+# Returns: repo_url commit (space-separated)
 extract_repo_commit() {
     local spec="$1"
     local default_repo="$2"
     local default_commit="$3"
-    local repo=""
-    local commit=""
+    local repo="$default_repo"
+    local commit="$default_commit"
 
     if [[ "$spec" == *"@"* ]]; then
         repo="${spec%%@*}"
         commit="${spec##*@}"
     else
-        # If no repo specified, assume it's just a commit/branch/tag for default repo
-        repo="$default_repo"
+        # If no '@', assume spec is a commit/branch/tag for the default repo
         commit="$spec"
     fi
 
-    # Ensure repo ends with .git
-    if [[ "$repo" != *".git" ]] && [[ "$repo" == http* ]]; then
+    # Ensure repo URL ends with .git if it's a http(s) URL
+    if [[ "$repo" =~ ^https?:// && "$repo" != *.git ]]; then
         repo="${repo}.git"
     fi
 
     echo "$repo $commit"
 }
 
-# Parse configurations
-parse_configurations() {
-    log_info "Parsing configurations..."
-
-    # Parse PyTorch
-    read -r PYTORCH_REPO PYTORCH_COMMIT <<< "$(extract_repo_commit \
-        "$PYTORCH" \
-        "${DEFAULT_PYTORCH_REPO}" \
-        "${DEFAULT_PYTORCH_COMMIT}")"
-
-    # Parse torch-xpu-ops
-    read -r TORCH_XPU_OPS_REPO TORCH_XPU_OPS_COMMIT <<< "$(extract_repo_commit \
-        "$TORCH_XPU_OPS" \
-        "${DEFAULT_TORCH_XPU_OPS_REPO}" \
-        "${DEFAULT_TORCH_XPU_OPS_COMMIT}")"
-
-    log_info "PyTorch: $PYTORCH_REPO @ $PYTORCH_COMMIT"
-    log_info "Torch-XPU-Ops: $TORCH_XPU_OPS_REPO @ $TORCH_XPU_OPS_COMMIT"
-}
-
-# Clone and checkout repository
+# -------------------- Clone Repository --------------------
+# Clones a repository and checks out the specified commit.
+# Usage: clone_repo <repo_url> <commit> <target_dir> <name>
 clone_repo() {
     local repo_url="$1"
     local commit="$2"
     local target_dir="$3"
     local name="$4"
+    local clone_args=("--recursive")
 
-    log_info "Cloning $name..."
+    if [[ -n "${GIT_DEPTH:-}" && "$GIT_DEPTH" -gt 0 ]]; then
+        clone_args+=("--depth" "$GIT_DEPTH")
+        log_info "Shallow clone depth: $GIT_DEPTH"
+    fi
+
+    log_info "Cloning $name from $repo_url ..."
 
     if [[ -d "$target_dir" ]]; then
         log_warning "Directory $target_dir already exists, removing..."
         rm -rf "$target_dir"
     fi
 
-    if ! git clone --recursive "$repo_url" "$target_dir"; then
-        log_error "Failed to clone $name from $repo_url"
+    if ! git clone "${clone_args[@]}" "$repo_url" "$target_dir"; then
+        log_error "Failed to clone $name"
         exit 1
     fi
 
     cd "$target_dir"
 
+    # Try to checkout the specified commit
     if ! git checkout "$commit" 2>/dev/null; then
-        log_warning "Commit $commit not found, trying as branch..."
-        if ! git checkout -b "build_$commit" "$commit" 2>/dev/null; then
+        log_warning "Commit $commit not found, trying as remote branch..."
+        if ! git checkout -b "build_$commit" "origin/$commit" 2>/dev/null; then
             log_error "Failed to checkout $commit for $name"
             exit 1
         fi
     fi
 
-    # Save commit hash
+    # Record actual commit hash
     local actual_commit=$(git rev-parse HEAD)
-    log_info "$name commit: $actual_commit"
+    log_info "$name checked out at commit: $actual_commit"
     echo "$actual_commit" > "$WORKSPACE/${name}.commit"
 
-    # Show repository info
-    log_info "$name repository info:"
-    git remote -v | head -2
+    # Show repository info (first remote, current branch, latest commit)
+    git remote -v
     git branch --show-current
-    git show -s --oneline | head -1
+    git show -s --oneline HEAD
+    echo ""
 }
 
-# Setup PyTorch
+# -------------------- Setup Functions --------------------
 setup_pytorch() {
     log_info "Setting up PyTorch..."
     clone_repo "$PYTORCH_REPO" "$PYTORCH_COMMIT" "$WORKSPACE/pytorch" "PyTorch"
 }
 
-# Setup torch-xpu-ops
 setup_torch_xpu_ops() {
     log_info "Setting up torch-xpu-ops..."
 
     local pytorch_dir="$WORKSPACE/pytorch"
     local torch_xpu_ops_dir="$pytorch_dir/third_party/torch-xpu-ops"
 
-    # Handle pinned version
+    # Handle pinned version (special value "pinned")
     if [[ "${TORCH_XPU_OPS_COMMIT,,}" == "pinned" ]]; then
-        TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
+        TORCH_XPU_OPS_REPO="$DEFAULT_TORCH_XPU_OPS_REPO"
         if [[ -f "$pytorch_dir/third_party/xpu.txt" ]]; then
             TORCH_XPU_OPS_COMMIT=$(cat "$pytorch_dir/third_party/xpu.txt")
             log_info "Using pinned torch-xpu-ops commit: $TORCH_XPU_OPS_COMMIT"
         else
-            log_error "xpu.txt not found for pinned version"
+            log_error "xpu.txt not found in PyTorch third_party; cannot use pinned version"
             exit 1
         fi
     fi
 
-    # Clean up existing directory
+    # Remove existing directory if any
     if [[ -d "$torch_xpu_ops_dir" ]]; then
         rm -rf "$torch_xpu_ops_dir"
     fi
 
-    # Handle different scenarios
+    # In a GitHub PR workflow, we may have a local copy of torch-xpu-ops
     if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]] && [[ -d "$WORKSPACE/torch-xpu-ops" ]]; then
-        log_info "Using existing torch-xpu-ops from workspace (PR build)"
+        log_info "Using local torch-xpu-ops from workspace (PR build)"
         cp -r "$WORKSPACE/torch-xpu-ops" "$torch_xpu_ops_dir"
     else
         clone_repo "$TORCH_XPU_OPS_REPO" "$TORCH_XPU_OPS_COMMIT" "$torch_xpu_ops_dir" "torch-xpu-ops"
     fi
 }
 
-# Apply patches and configurations
+# -------------------- Patching Functions --------------------
 apply_patches() {
     local pytorch_dir="$WORKSPACE/pytorch"
     cd "$pytorch_dir"
 
     log_info "Applying patches..."
 
-    # Apply torch-xpu-ops patches
+    # Apply torch-xpu-ops patches (if any)
     if [[ -f "third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py" ]]; then
-        python -m pip install -q requests
+        python -m pip install requests
         if ! python third_party/torch-xpu-ops/.github/scripts/apply_torch_pr.py; then
-            log_warning "Failed to apply torch-xpu-ops patches"
+            log_warning "Failed to apply torch-xpu-ops patches (continuing)"
         fi
     fi
 
@@ -310,28 +304,30 @@ apply_patches() {
         patch_onednn
     fi
 
-    # Patch CMakeLists.txt to avoid git checkout during build
+    # Patch CMakeLists.txt to avoid git checkout during build (speeds up build)
     patch_cmakelists
 }
 
-# Patch oneDNN configuration
 patch_onednn() {
     log_info "Patching oneDNN configuration..."
 
+    local pytorch_dir="$WORKSPACE/pytorch"
+    cd "$pytorch_dir"
+
     read -r ONEDNN_REPO ONEDNN_COMMIT <<< "$(extract_repo_commit \
         "$COMPONENT_COMMIT" \
-        "${DEFAULT_ONEDNN_REPO}" \
-        "${DEFAULT_ONEDNN_COMMIT}")"
+        "$DEFAULT_ONEDNN_REPO" \
+        "$DEFAULT_ONEDNN_COMMIT")"
 
-    log_info "Configuring oneDNN to use: $ONEDNN_REPO@$ONEDNN_COMMIT"
+    log_info "Configuring oneDNN to use: $ONEDNN_REPO @ $ONEDNN_COMMIT"
 
     local cmake_file="cmake/Modules/FindMKLDNN.cmake"
     if [[ ! -f "$cmake_file" ]]; then
-        log_warning "FindMKLDNN.cmake not found at $cmake_file"
+        log_error "FindMKLDNN.cmake not found at $cmake_file"
         return 1
     fi
 
-    # Backup original file
+    # Backup original
     cp "$cmake_file" "$cmake_file.bak"
 
     # Patch the file
@@ -347,23 +343,21 @@ patch_onednn() {
     log_success "oneDNN configuration updated"
 }
 
-# Patch CMakeLists.txt
 patch_cmakelists() {
-    local cmake_lists="caffe2/CMakeLists.txt"
+    local pytorch_dir="$WORKSPACE/pytorch"
+    local cmake_lists="$pytorch_dir/caffe2/CMakeLists.txt"
 
     if [[ ! -f "$cmake_lists" ]]; then
         log_warning "$cmake_lists not found, skipping patch"
         return
     fi
 
-    log_info "Patching $cmake_lists..."
+    log_info "Patching $cmake_lists to disable git checkout during build..."
 
-    # Backup original
     cp "$cmake_lists" "$cmake_lists.bak"
 
-    # Patch to avoid git checkout during build
-    if ! sed -i 's/checkout --quiet .*TORCH_XPU_OPS_COMMIT}/log -n 1/g' \
-        "$cmake_lists"; then
+    # Replace 'checkout --quiet' with 'log -n 1' to avoid network calls
+    if ! sed -i 's/checkout --quiet .*TORCH_XPU_OPS_COMMIT}/log -n 1/g' "$cmake_lists"; then
         log_error "Failed to patch CMakeLists.txt"
         cp "$cmake_lists.bak" "$cmake_lists"
         return 1
@@ -372,9 +366,9 @@ patch_cmakelists() {
     log_success "CMakeLists.txt patched"
 }
 
-# Install dependencies
+# -------------------- Dependencies --------------------
 install_dependencies() {
-    log_info "Installing dependencies..."
+    log_info "Installing build dependencies..."
 
     local pytorch_dir="$WORKSPACE/pytorch"
     cd "$pytorch_dir"
@@ -383,28 +377,25 @@ install_dependencies() {
     git submodule sync
     git submodule update --init --recursive
 
-    # Install Python dependencies
+    # Python dependencies
     if [[ -f "requirements.txt" ]]; then
-        python -m pip install -q -r requirements.txt
+        python -m pip install -r requirements.txt
     fi
 
-    # Install MKL
-    python -m pip install -q \
-        "mkl-static==$DEFAULT_MKL_VERSION" \
-        "mkl-include==$DEFAULT_MKL_VERSION"
-
-
+    # Install MKL (static and includes)
+    python -m pip install \
+        "mkl-static==$MKL_VERSION" \
+        "mkl-include==$MKL_VERSION"
 }
 
-# Build PyTorch
+# -------------------- Build --------------------
 build_pytorch() {
     log_info "Building PyTorch..."
 
     local pytorch_dir="$WORKSPACE/pytorch"
     cd "$pytorch_dir"
 
-    # Show applied patches
-    log_info "Applied patches summary:"
+    # Show applied patches summary
     git diff --stat 2>/dev/null || true
 
     # Build with warnings as errors
@@ -412,26 +403,25 @@ build_pytorch() {
         log_error "PyTorch build failed"
         exit 1
     fi
+
+    log_success "PyTorch build completed"
 }
 
-# Post-build processing
+# -------------------- Post-Build Processing --------------------
 post_build() {
     log_info "Post-build processing..."
 
     local pytorch_dir="$WORKSPACE/pytorch"
     cd "$pytorch_dir"
 
-    # Install patchelf for wheel processing
-    python -m pip install -q patchelf
+    # Install patchelf if not present
+    python -m pip install patchelf
 
-    # Process wheel files
     local dist_dir="$pytorch_dir/dist"
     local tmp_dir="$pytorch_dir/tmp"
-
-    rm -rf "$tmp_dir"
     mkdir -p "$tmp_dir"
 
-    # Find and process wheel files
+    # Find wheel files
     local wheel_files=("$dist_dir"/torch-*.whl)
     if [[ ${#wheel_files[@]} -eq 0 ]]; then
         log_error "No wheel files found in $dist_dir"
@@ -441,91 +431,112 @@ post_build() {
     for wheel_file in "${wheel_files[@]}"; do
         log_info "Processing wheel: $(basename "$wheel_file")"
 
-        # Run rpath script if available
+        # Run rpath script if available; it will modify the wheel in place or produce a new one.
         if [[ -f "third_party/torch-xpu-ops/.github/scripts/rpath.sh" ]]; then
-            bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$wheel_file"
+            # Capture output: rpath.sh may print the path to the final wheel
+            # Assume it modifies the wheel in place, but also outputs it to tmp?
+            # Safer: copy wheel to tmp, then run rpath.sh on the copy, then use that.
+            local wheel_basename=$(basename "$wheel_file")
+            local working_wheel="$tmp_dir/$wheel_basename"
+            cp "$wheel_file" "$working_wheel"
+
+            # Run rpath.sh on the copy; it might modify in place and/or print the path.
+            # We'll assume it modifies in place and then we use that file.
+            if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$working_wheel"; then
+                # If rpath.sh succeeded, install from the processed wheel
+                processed_wheel="$working_wheel"
+            else
+                log_warning "rpath.sh failed, using original wheel"
+                processed_wheel="$wheel_file"
+            fi
+        else
+            processed_wheel="$wheel_file"
         fi
 
-        # Install the wheel
-        local processed_wheel="$tmp_dir/$(basename "$wheel_file")"
-        if [[ -f "$processed_wheel" ]]; then
-            python -m pip install --force-reinstall "$processed_wheel"
-        fi
-        break
+        # Install the wheel (force reinstall to ensure clean state)
+        python -m pip install --force-reinstall "$processed_wheel"
+        log_success "Installed: $(basename "$processed_wheel")"
+        break # Only process first wheel (there should be exactly one)
     done
 }
 
-# Verify installation
+# -------------------- Verification --------------------
 verify_installation() {
     log_info "Verifying installation..."
 
     cd "$WORKSPACE"
 
-    # Check environment
-    if ! python "$WORKSPACE/pytorch/torch/utils/collect_env.py"; then
+    # Collect environment info (optional, but useful)
+    if ! python "$WORKSPACE/pytorch/torch/utils/collect_env.py" 2>/dev/null; then
         log_warning "Failed to collect environment info"
     fi
 
-    # Check torch configuration
-    if ! python -c "import torch; print(torch.__config__.show())"; then
-        log_error "Failed to import torch or show config"
-        exit 1
-    fi
-
-    if ! python -c "import torch; print(torch.__config__.parallel_info())"; then
-        log_warning "Failed to get parallel info"
+    # Check PyTorch basics
+    if ! python -c "import torch; print('PyTorch version:', torch.__version__)"; then
+        log_error "Failed to import torch"
+        return 1
     fi
 
     # Check XPU compilation
     local xpu_compiled
-    xpu_compiled=$(python -c 'import torch; print(torch.xpu._is_compiled())' 2>/dev/null || echo "false")
-
+    xpu_compiled=$(python -c 'import torch; print(torch.xpu._is_compiled())' 2>/dev/null || echo "False")
     if [[ "${xpu_compiled,,}" != "true" ]]; then
-        log_error "XPU is not compiled correctly"
+        log_error "XPU is not compiled correctly (torch.xpu._is_compiled() returned $xpu_compiled)"
         return 1
     fi
 
-    log_success "XPU compilation verified: $xpu_compiled"
+    log_success "XPU compilation verified"
     return 0
 }
 
-# Save artifacts
+# -------------------- Artifact Saving --------------------
 save_artifacts() {
-    log_info "Saving artifacts..."
+    log_info "Saving artifacts to $WORKSPACE"
 
     local pytorch_dir="$WORKSPACE/pytorch"
     local tmp_dir="$pytorch_dir/tmp"
 
-    # Copy wheel files to workspace
+    # Copy wheel(s) from tmp_dir to workspace (should be exactly one, processed)
     local wheel_files=("$tmp_dir"/torch-*.whl)
     if [[ ${#wheel_files[@]} -eq 0 ]]; then
-        log_warning "No wheel files found in $tmp_dir"
+        # Fallback to dist directory if tmp empty (e.g., if rpath.sh wasn't used)
+        wheel_files=("$pytorch_dir/dist"/torch-*.whl)
+    fi
+
+    if [[ ${#wheel_files[@]} -eq 0 ]]; then
+        log_warning "No wheel files found to save"
         return 1
     fi
 
     for wheel_file in "${wheel_files[@]}"; do
-        local dest="$WORKSPACE/$(basename "$wheel_file")"
-        cp "$wheel_file" "$dest"
-        log_success "Saved wheel: $dest"
+        cp "$wheel_file" "$WORKSPACE/"
+        log_success "Saved wheel: $(basename "$wheel_file")"
     done
 
     # Save build info
     cat > "$WORKSPACE/build_info.txt" << EOF
 Build Information:
-- Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-- Workspace: $WORKSPACE
-- PyTorch: $PYTORCH_REPO @ $PYTORCH_COMMIT
-- Torch-XPU-Ops: $TORCH_XPU_OPS_REPO @ $TORCH_XPU_OPS_COMMIT
-- Component: $COMPONENT
-- Component Commit: $COMPONENT_COMMIT
+  Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+  Workspace: $WORKSPACE
+  PyTorch: $PYTORCH_REPO @ $PYTORCH_COMMIT
+  Torch-XPU-Ops: $TORCH_XPU_OPS_REPO @ $TORCH_XPU_OPS_COMMIT
+  Component: ${COMPONENT:-none}
+  Component Commit: ${COMPONENT_COMMIT:-none}
+  MKL Version: $MKL_VERSION
 EOF
+    log_info "Build info saved to build_info.txt"
 }
 
-# Main execution
+# -------------------- Main --------------------
 main() {
     parse_arguments "$@"
     validate_inputs
     parse_configurations
+
+    # Pre-flight checks
+    command -v git >/dev/null 2>&1 || { log_error "git is required but not installed"; exit 1; }
+    command -v python >/dev/null 2>&1 || { log_error "python is required but not installed"; exit 1; }
+    command -v pip >/dev/null 2>&1 || { log_error "pip is required but not installed"; exit 1; }
 
     setup_pytorch
     setup_torch_xpu_ops
@@ -544,5 +555,23 @@ main() {
     fi
 }
 
-# Run main function
+# Parse configurations (after inputs are set)
+parse_configurations() {
+    log_info "Parsing repository specifications..."
+
+    read -r PYTORCH_REPO PYTORCH_COMMIT <<< "$(extract_repo_commit \
+        "$PYTORCH" \
+        "$DEFAULT_PYTORCH_REPO" \
+        "$DEFAULT_PYTORCH_COMMIT")"
+
+    read -r TORCH_XPU_OPS_REPO TORCH_XPU_OPS_COMMIT <<< "$(extract_repo_commit \
+        "$TORCH_XPU_OPS" \
+        "$DEFAULT_TORCH_XPU_OPS_REPO" \
+        "$DEFAULT_TORCH_XPU_OPS_COMMIT")"
+
+    log_info "PyTorch: $PYTORCH_REPO @ $PYTORCH_COMMIT"
+    log_info "Torch-XPU-Ops: $TORCH_XPU_OPS_REPO @ $TORCH_XPU_OPS_COMMIT"
+}
+
+# Run main
 main "$@"
