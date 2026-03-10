@@ -433,17 +433,10 @@ post_build() {
 
         # Run rpath script if available; it will modify the wheel in place or produce a new one.
         if [[ -f "third_party/torch-xpu-ops/.github/scripts/rpath.sh" ]]; then
-            # Capture output: rpath.sh may print the path to the final wheel
-            # Assume it modifies the wheel in place, but also outputs it to tmp?
-            # Safer: copy wheel to tmp, then run rpath.sh on the copy, then use that.
-            local wheel_basename=$(basename "$wheel_file")
-            local working_wheel="$tmp_dir/$wheel_basename"
-            cp "$wheel_file" "$working_wheel"
-
-            # Run rpath.sh on the copy; it might modify in place and/or print the path.
             # We'll assume it modifies in place and then we use that file.
-            if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$working_wheel"; then
+            if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$wheel_file" "$tmp_dir"; then
                 # If rpath.sh succeeded, install from the processed wheel
+                local working_wheel="$tmp_dir/torch-*.whl"
                 processed_wheel="$working_wheel"
             else
                 log_warning "rpath.sh failed, using original wheel"
@@ -455,7 +448,8 @@ post_build() {
 
         # Install the wheel (force reinstall to ensure clean state)
         python -m pip install --force-reinstall "$processed_wheel"
-        log_success "Installed: $(basename "$processed_wheel")"
+        log_success "Installed: $processed_wheel"
+        cp "$processed_wheel" "$WORKSPACE/"
         break # Only process first wheel (there should be exactly one)
     done
 }
@@ -486,45 +480,26 @@ verify_installation() {
     fi
 
     log_success "XPU compilation verified"
-    return 0
-}
-
-# -------------------- Artifact Saving --------------------
-save_artifacts() {
-    log_info "Saving artifacts to $WORKSPACE"
-
-    local pytorch_dir="$WORKSPACE/pytorch"
-    local tmp_dir="$pytorch_dir/tmp"
-
-    # Copy wheel(s) from tmp_dir to workspace (should be exactly one, processed)
-    local wheel_files=("$tmp_dir"/torch-*.whl)
-    if [[ ${#wheel_files[@]} -eq 0 ]]; then
-        # Fallback to dist directory if tmp empty (e.g., if rpath.sh wasn't used)
-        wheel_files=("$pytorch_dir/dist"/torch-*.whl)
-    fi
-
-    if [[ ${#wheel_files[@]} -eq 0 ]]; then
-        log_warning "No wheel files found to save"
-        return 1
-    fi
-
-    for wheel_file in "${wheel_files[@]}"; do
-        cp "$wheel_file" "$WORKSPACE/"
-        log_success "Saved wheel: $(basename "$wheel_file")"
-    done
 
     # Save build info
-    cat > "$WORKSPACE/build_info.txt" << EOF
+    . /etc/os-release
+    cat > "$WORKSPACE/build_info.log" << EOF
 Build Information:
   Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
   Workspace: $WORKSPACE
-  PyTorch: $PYTORCH_REPO @ $PYTORCH_COMMIT
+  OS: $VERSION
+  Kernel: $(uname -r)
+  GCC: $(g++ -v 2>&1 |tail -n 1)
+  Python: $(python -V 2>&1 |tail -n 1)
+  PyTorch: $PYTORCH_REPO @ $(python -c "import torch; print(torch.version.git_version)" 2>&1 |tail -n 1)
   Torch-XPU-Ops: $TORCH_XPU_OPS_REPO @ $TORCH_XPU_OPS_COMMIT
   Component: ${COMPONENT:-none}
   Component Commit: ${COMPONENT_COMMIT:-none}
   MKL Version: $MKL_VERSION
 EOF
-    log_info "Build info saved to build_info.txt"
+    log_info "Build info saved to build_info.log"
+
+    return 0
 }
 
 # -------------------- Main --------------------
@@ -546,7 +521,6 @@ main() {
     post_build
 
     if verify_installation; then
-        save_artifacts
         log_success "Build completed successfully!"
         log_info "Wheel files are available in: $WORKSPACE"
     else
