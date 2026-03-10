@@ -1,4 +1,4 @@
-name: OnDemand Component Tests
+name: OnDemand Acceptance Tests
 
 on:
   workflow_dispatch:
