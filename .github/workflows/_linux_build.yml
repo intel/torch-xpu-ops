@@ -263,9 +263,9 @@ jobs:
 
           # Check if build succeeded
           echo "Checking build artifacts..."
-          WHEEL_COUNT=$(find "${WORKSPACE}/${{ inputs.test_role }}/" -name "torch-*.whl" -type f | wc -l)
+          WHEEL_COUNT=$(find "${WORKSPACE}/${{ inputs.test_role }}/" -maxdepth 1 -name "torch-*.whl" -type f | wc -l)
           echo "Build successful! Found ${WHEEL_COUNT} wheel file(s):"
-          find "${WORKSPACE}/${{ inputs.test_role }}/" -name "torch-*.whl" -type f -exec basename {} \;
+          find "${WORKSPACE}/${{ inputs.test_role }}/" -maxdepth 1 -name "torch-*.whl" -type f
 
           if [ "${WHEEL_COUNT}" -ne 1 ]; then
             echo "Error: PyTorch build failed - no wheel or multiple wheels"
