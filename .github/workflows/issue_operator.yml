@@ -1,0 +1,24 @@
+name: Issue Operator
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions: read-all
+
+jobs:
+  auto-milestone:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set milestone
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // If the issue has the 'skipped' label, automatically assign it to Milestone ID 13
+            if (context.payload.issue.labels.some(l => l.name === 'skipped')) {
+              github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                milestone: 13
+              });
+            }

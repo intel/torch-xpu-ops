@@ -79,6 +79,8 @@ jobs:
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
           dnf install -y gh --repo gh-cli
           gh --version
+          # cleanup files
+          rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
       - name: Setup python-${{ inputs.python }}
         run: |
           rm -rf /tmp/xpu-tool/myvenv

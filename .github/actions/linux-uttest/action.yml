@@ -125,6 +125,9 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/profile_partial_runtime_ops.log
         python -u test/profiling/triton_xpu_ops_time.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/triton_xpu_ops_time.log
+        python -m pytest -s test/profiling/test_profiler_correctness.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_profiler_correctness.log
+        # Overlapping kernels test (depends on rn50.log.json from RN50 run above)
         python -m pytest -s test/profiling/test_for_overlapping_kernels.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce/test_for_overlapping_kernels.log
 
@@ -142,8 +145,10 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_execution_trace.log
         python -m pytest -s test_memory_profiler.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_memory_profiler.log
-        python -m pytest -s -vs test_profiler_tree.py | \
+        python -m pytest -s test_profiler_tree.py | \
           tee ${{ github.workspace }}/ut_log/xpu_profiling/test_profiler_tree.log
+        python -m pytest -s test_xpu_profiler.py | \
+          tee ${{ github.workspace }}/ut_log/xpu_profiling/test_xpu_profiler.log
 
     - name: xpu_distributed
       shell: timeout 36000 bash -xeu -o pipefail {0}
