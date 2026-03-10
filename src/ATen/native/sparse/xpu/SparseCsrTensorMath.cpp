@@ -71,6 +71,23 @@ Tensor _sparse_csr_prod_xpu(
       input, dims_to_reduce, keepdim, dtype);
 }
 
+Tensor addmm_calculation(
+    const Tensor& input,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha) {
+  Tensor mat1_dense = mat1.layout() != kStrided ? mat1.to_dense() : mat1;
+  Tensor mat2_dense = mat2.layout() != kStrided ? mat2.to_dense() : mat2;
+
+  Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
+  if (beta.toComplexDouble() != 0.) {
+    Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
+    result_dense.add_(input_dense, beta);
+  }
+  return result_dense;
+}
+
 void addmm_out_sparse_csr(
     const Tensor& input,
     const Tensor& mat1,
@@ -91,99 +108,66 @@ void addmm_out_sparse_csr(
 
   if ((mat1.layout() == kSparseBsr) && (mat2.layout() == kStrided) &&
       (result.layout() == kStrided)) {
-    Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-    if (beta.toComplexDouble() != 0.) {
-      result_dense.add_(input, beta);
-    }
+    Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
     result.copy_(result_dense);
     return;
   }
 
   if ((mat1.layout() == kStrided) && (mat2.layout() == kSparseBsc) &&
       (result.layout() == kStrided)) {
-    Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
-    if (beta.toComplexDouble() != 0.) {
-      result_dense.add_(input, beta);
-    }
+    Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
     result.copy_(result_dense);
     return;
   }
 
   if (mat1.layout() == kStrided) {
     if ((mat2.layout() == kSparseCsr) && (result.layout() == kStrided)) {
-      Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input, beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result.copy_(result_dense);
       return;
     }
     if ((mat2.layout() == kSparseCsc) && (result.layout() == kStrided)) {
-      Tensor result_dense = mat1.mm(mat2.to_dense()) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input, beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result.copy_(result_dense);
       return;
     }
   }
   if (mat1.layout() == kSparseCsr) {
     if ((mat2.layout() == kStrided) && (result.layout() == kStrided)) {
-      Tensor result_dense = mat1.to_dense().mm(mat2) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input, beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result.copy_(result_dense);
       return;
     }
     if ((mat2.layout() == kSparseCsr) && (result.layout() == kSparseCsr)) {
-      Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input.to_dense(), beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result = result_dense.to_sparse_csr();
       return;
     }
     if ((mat2.layout() == kSparseCsc) && (result.layout() == kSparseCsr)) {
-      Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input.to_dense(), beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result = result_dense.to_sparse_csr();
       return;
     }
   }
   if (mat1.layout() == kSparseCsc) {
     if ((mat2.layout() == kStrided) && (result.layout() == kStrided)) {
-      Tensor result_dense = mat1.to_dense().mm(mat2) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input, beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result.copy_(result_dense);
       return;
     }
     if ((mat2.layout() == kSparseCsr) && (result.layout() == kSparseCsr)) {
-      Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-      if (beta.toComplexDouble() != 0.) {
-        result_dense.add_(input.to_dense(), beta);
-      }
+      Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
       result = result_dense.to_sparse_csr();
       return;
     }
     if (mat2.layout() == kSparseCsc) {
       if (result.layout() == kSparseCsr) {
-        Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input.to_dense(), beta);
-        }
+        Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
         result = result_dense.to_sparse_csr();
         return;
       }
       if (result.layout() == kSparseCsc) {
-        Tensor result_dense = mat1.to_dense().mm(mat2.to_dense()) * alpha;
-        if (beta.toComplexDouble() != 0.) {
-          result_dense.add_(input.to_dense(), beta);
-        }
+        Tensor result_dense = addmm_calculation(input, mat1, mat2, beta, alpha);
         result = result_dense.to_sparse_csc();
         return;
       }
