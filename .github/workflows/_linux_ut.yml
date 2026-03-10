@@ -170,15 +170,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Upload UT Failure List
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          retention-days: 7
-          if-no-files-found: ignore
-
       - name: Cleanup temporary files
         if: always()
         run: |
@@ -260,15 +251,6 @@ jobs:
         with:
           name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Upload UT Failure List (Baremetal)
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
           retention-days: 7
           if-no-files-found: ignore
 

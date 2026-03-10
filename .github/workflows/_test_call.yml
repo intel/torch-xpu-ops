@@ -341,25 +341,6 @@ jobs:
       component_version: ${{ inputs.component_version }}
       test_role: ${{ inputs.test_role }}
 
-  linux-e2e-tests-summary:
-    name: E2E Test Summary
-    needs: [linux-e2e-tests, parse-test-inputs]
-    permissions: write-all
-    if: >-
-      ${{
-        inputs.test_role == 'default' &&
-        needs.parse-test-inputs.outputs.has_e2e_tests == 'true' &&
-        !cancelled() &&
-        !(
-          needs.linux-e2e-tests.result == 'skipped' ||
-          needs.linux-e2e-tests.result == 'cancelled'
-        )
-      }}
-    uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: ${{ needs.parse-test-inputs.outputs.test_type }}
-      python: ${{ inputs.python }}
-
   linux-microbench-tests:
     name: Linux Microbenchmark Tests
     needs:
