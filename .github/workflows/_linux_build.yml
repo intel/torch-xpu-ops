@@ -87,7 +87,7 @@ jobs:
 
       - name: Get runner information
         id: runner-info
-        uses: ./.github/actions/get-runner
+        uses: ./torch-xpu-ops/.github/actions/get-runner
 
   build:
     name: Build PyTorch XPU
