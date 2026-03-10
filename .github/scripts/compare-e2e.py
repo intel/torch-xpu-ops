@@ -4,25 +4,37 @@ Enhanced comparison tool for PyTorch inductor test results (target vs baseline).
 Recursively finds all *_performance.csv and *_accuracy.csv files,
 validates known suites, data types, and modes,
 merges data by suite, data_type, mode, model,
-and writes comparison to Excel (three sheets) or CSV (combined file).
-All missing cells are filled with empty strings.
+and writes comparison to Excel (two sheets: Summary, Details) or CSV (two files).
 
-If performance files are missing, the combined output excludes performance columns.
-If accuracy files are missing, the combined output excludes accuracy columns.
+All missing cells are filled with empty strings.
+If performance files are missing, performance columns are omitted.
+If accuracy files are missing, accuracy columns are omitted.
 """
 
 import os
 import argparse
 import pandas as pd
+import numpy as np
 from glob import glob
 
-# Known valid values
+# ----------------------------------------------------------------------
+# Constants – known valid values
+# ----------------------------------------------------------------------
 KNOWN_SUITES = {"huggingface", "timm_models", "torchbench"}
 KNOWN_DATA_TYPES = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16"}
 KNOWN_MODES = {"inference", "training"}
-PERFORMANCE_THRESHHOLD = 0.1
+PERFORMANCE_THRESHOLD = 0.1
 
+# Grouping levels for summary (name, group_cols, sort_priority)
+SUMMARY_LEVELS = [
+    ("Overall", [], 0),
+    ("By Suite", ["suite"], 1),
+    ("By Suite+DataType+Mode", ["suite", "data_type", "mode"], 2)
+]
 
+# ----------------------------------------------------------------------
+# File discovery and parsing (unchanged)
+# ----------------------------------------------------------------------
 def find_result_files(root_dir):
     """
     Recursively find all files ending with _performance.csv or _accuracy.csv.
@@ -39,33 +51,29 @@ def parse_filename(filepath):
     Expected format: inductor_<suite>_<data_type>_<mode>_xpu_<result_type>.csv
     Example: inductor_timm_models_bfloat16_training_xpu_accuracy.csv
     Returns (suite, data_type, mode, result_type) or raises ValueError.
-    Also validates against known keys (warning only).
     """
     basename = os.path.basename(filepath)
     if not basename.endswith(".csv"):
         raise ValueError("Not a CSV file")
 
-    # Remove .csv extension
-    base = basename[:-4]
+    base = basename[:-4]  # remove .csv
 
-    # Ensure it starts with "inductor_"
     if not base.startswith("inductor_"):
         raise ValueError(f"Filename does not start with 'inductor_': {basename}")
-    rest = base[len("inductor_"):]  # everything after "inductor_"
+    rest = base[len("inductor_"):]
 
-    # Identify suite by checking which known suite the rest starts with
+    # Identify suite (check longer first)
     suite = None
-    for s in sorted(KNOWN_SUITES, key=len, reverse=True):  # check longer first
+    for s in sorted(KNOWN_SUITES, key=len, reverse=True):
         if rest.startswith(s + "_"):
             suite = s
-            rest = rest[len(s) + 1:]  # remove suite and the following underscore
+            rest = rest[len(s) + 1:]
             break
     if suite is None:
         raise ValueError(f"Unknown suite in {basename}")
 
-    # Now rest should be: <data_type>_<mode>_xpu_<result_type>
+    # Locate mode (inference/training)
     parts = rest.split('_')
-    # Find the index of the mode (inference/training)
     mode_index = None
     for i, part in enumerate(parts):
         if part in KNOWN_MODES:
@@ -75,17 +83,17 @@ def parse_filename(filepath):
         raise ValueError(f"Could not find mode (inference/training) in {basename}")
     mode = parts[mode_index]
 
-    # Data type is everything before mode_index
+    # Data type is everything before mode
     data_type = "_".join(parts[:mode_index])
     if data_type not in KNOWN_DATA_TYPES:
         print(f"Warning: Unknown data_type '{data_type}' in {basename}")
 
-    # After mode, we expect "xpu" then result_type
+    # After mode, expect "xpu" then result_type
     if mode_index + 1 >= len(parts) or parts[mode_index + 1] != "xpu":
         raise ValueError(f"Missing 'xpu' after mode in {basename}")
     if mode_index + 2 >= len(parts):
         raise ValueError(f"Missing result type in {basename}")
-    result_type = parts[mode_index + 2]  # after "xpu"
+    result_type = parts[mode_index + 2]
     if result_type not in ("accuracy", "performance"):
         raise ValueError(f"Result type not recognized in {basename}")
 
@@ -115,8 +123,9 @@ def load_results(file_list, result_type_filter):
             continue
 
         if result_type_filter == "accuracy":
-            # Expected columns: name, batch_size, accuracy
             for _, row in df.iterrows():
+                if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
+                    continue
                 records.append({
                     "suite": suite,
                     "data_type": data_type,
@@ -126,7 +135,6 @@ def load_results(file_list, result_type_filter):
                     "accuracy": row["accuracy"]
                 })
         elif result_type_filter == "performance":
-            # Expected columns: name, batch_size, speedup, abs_latency
             for _, row in df.iterrows():
                 speedup = row.get("speedup")
                 abs_latency = row.get("abs_latency")
@@ -135,6 +143,8 @@ def load_results(file_list, result_type_filter):
                     continue
                 eager = speedup * abs_latency   # baseline eager time
                 inductor = abs_latency
+                if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
+                    continue
                 records.append({
                     "suite": suite,
                     "data_type": data_type,
@@ -147,6 +157,9 @@ def load_results(file_list, result_type_filter):
     return records
 
 
+# ----------------------------------------------------------------------
+# Merging functions (unchanged except for minor improvements)
+# ----------------------------------------------------------------------
 def merge_accuracy(target_records, baseline_records):
     """Merge accuracy records and add comparison column."""
     target_df = pd.DataFrame(target_records)
@@ -159,12 +172,12 @@ def merge_accuracy(target_records, baseline_records):
     merged = pd.merge(target_df, baseline_df, on=merge_keys, how="outer",
                       suffixes=("_target", "_baseline"), indicator=True)
 
-    # Convert batch_size columns to Int64 (nullable integer)
+    # Convert batch_size to nullable integer
     for col in ["batch_size_target", "batch_size_baseline"]:
         if col in merged.columns:
             merged[col] = pd.to_numeric(merged[col], errors='coerce').astype('Int64')
 
-    # Add comparison column
+    # Comparison logic
     def compare_acc(row):
         if pd.isna(row.get("accuracy_target")) and pd.isna(row.get("accuracy_baseline")):
             return ""
@@ -185,12 +198,10 @@ def merge_accuracy(target_records, baseline_records):
 
     merged["comparison_acc"] = merged.apply(compare_acc, axis=1)
 
-    # Select and order columns
     cols = ["suite", "data_type", "mode", "model",
             "batch_size_target", "accuracy_target",
             "batch_size_baseline", "accuracy_baseline",
             "comparison_acc"]
-    # Ensure all columns exist (fill missing if needed)
     for c in cols:
         if c not in merged.columns:
             merged[c] = None
@@ -209,16 +220,24 @@ def merge_performance(target_records, baseline_records):
     merged = pd.merge(target_df, baseline_df, on=merge_keys, how="outer",
                       suffixes=("_target", "_baseline"), indicator=True)
 
-    # Convert batch_size columns to Int64
     for col in ["batch_size_target", "batch_size_baseline"]:
         if col in merged.columns:
             merged[col] = pd.to_numeric(merged[col], errors='coerce').astype('Int64')
 
-    # Compute ratios (target / baseline)
-    merged["inductor_ratio"] = merged["inductor_baseline"] / merged["inductor_target"]
-    merged["eager_ratio"] = merged["eager_baseline"] / merged["eager_target"]
+    # Compute inductor_ratio
+    mask = merged["inductor_target"].notna() & (merged["inductor_target"].astype(float) > 0)
+    merged.loc[mask, "inductor_ratio"] = (
+        merged.loc[mask, "inductor_baseline"].astype(float) /
+        merged.loc[mask, "inductor_target"].astype(float)
+    )
+    # Compute eager_ratio
+    mask = merged["eager_target"].notna() & (merged["eager_target"].astype(float) > 0)
+    merged.loc[mask, "eager_ratio"] = (
+        merged.loc[mask, "eager_baseline"].astype(float) /
+        merged.loc[mask, "eager_target"].astype(float)
+    )
 
-    # Round performance values to 2 decimals, ratios to 3 decimals
+    # Round
     for col in ["inductor_target", "inductor_baseline", "eager_target", "eager_baseline"]:
         if col in merged.columns:
             merged[col] = merged[col].round(2)
@@ -226,7 +245,6 @@ def merge_performance(target_records, baseline_records):
         if col in merged.columns:
             merged[col] = merged[col].round(3)
 
-    # Add comparison column
     def compare_perf(row):
         if pd.isna(row.get("inductor_target")) and pd.isna(row.get("inductor_baseline")):
             return ""
@@ -236,16 +254,15 @@ def merge_performance(target_records, baseline_records):
             return "new_failed"
         elif pd.isna(row.get("inductor_baseline")) or row["inductor_baseline"] < 0:
             return "new_passed"
-        elif row["inductor_ratio"] < 1 - PERFORMANCE_THRESHHOLD or row["eager_ratio"] < 1 - PERFORMANCE_THRESHHOLD:
+        elif row["inductor_ratio"] < 1 - PERFORMANCE_THRESHOLD or row["eager_ratio"] < 1 - PERFORMANCE_THRESHOLD:
             return "new_dropped"
-        elif row["inductor_ratio"] > 1 + PERFORMANCE_THRESHHOLD or row["eager_ratio"] > 1 + PERFORMANCE_THRESHHOLD:
+        elif row["inductor_ratio"] > 1 + PERFORMANCE_THRESHOLD or row["eager_ratio"] > 1 + PERFORMANCE_THRESHOLD:
             return "new_improved"
         else:
             return "no_changed"
 
     merged["comparison_perf"] = merged.apply(compare_perf, axis=1)
 
-    # Select and order columns
     cols = ["suite", "data_type", "mode", "model",
             "batch_size_target", "inductor_target", "eager_target",
             "batch_size_baseline", "inductor_baseline", "eager_baseline",
@@ -261,7 +278,6 @@ def combine_results(acc_merged, perf_merged):
     Combine accuracy and performance merged dataframes into one wide-format dataframe.
     If one type is missing, return only the available data (with renamed batch size columns).
     """
-    # Prepare renamed versions if data exists
     acc_renamed = None
     perf_renamed = None
 
@@ -277,11 +293,10 @@ def combine_results(acc_merged, perf_merged):
             "batch_size_baseline": "batch_size_performance_baseline"
         })
 
-    # Decide what to return
     if acc_renamed is not None and perf_renamed is not None:
-        # Both exist: merge on keys
         merge_keys = ["suite", "data_type", "mode", "model"]
         combined = pd.merge(acc_renamed, perf_renamed, on=merge_keys, how="outer")
+
         def compare_result(row):
             if pd.isna(row.get("comparison_acc")) and pd.isna(row.get("comparison_perf")):
                 return ""
@@ -290,51 +305,203 @@ def combine_results(acc_merged, perf_merged):
             elif pd.isna(row.get("comparison_perf")):
                 return row.get("comparison_acc")
             elif ('new_dropped' in [row.get("comparison_acc"), row.get("comparison_perf")] or
-                'new_failed' in [row.get("comparison_acc"), row.get("comparison_perf")]):
+                  'new_failed' in [row.get("comparison_acc"), row.get("comparison_perf")]):
                 return "new_failed"
             elif ('new_improved' in [row.get("comparison_acc"), row.get("comparison_perf")] or
-                'new_passed' in [row.get("comparison_acc"), row.get("comparison_perf")]):
+                  'new_passed' in [row.get("comparison_acc"), row.get("comparison_perf")]):
                 return "new_improved"
             else:
                 return "no_changed"
+
         combined["comparison"] = combined.apply(compare_result, axis=1)
-        # combined.drop(columns=['comparison_acc', 'comparison_perf'], inplace=True)
         return combined.sort_values(by=merge_keys)
+
     elif acc_renamed is not None:
-        # Only accuracy exists
         return acc_renamed.sort_values(by=["suite", "data_type", "mode", "model"])
     elif perf_renamed is not None:
-        # Only performance exists
         return perf_renamed.sort_values(by=["suite", "data_type", "mode", "model"])
     else:
-        # Neither exists
         return pd.DataFrame()
 
 
+# ----------------------------------------------------------------------
+# Summary generation (enhanced with multiple grouping levels)
+# ----------------------------------------------------------------------
+def accuracy_metrics(group):
+    """Compute accuracy metrics for a grouped DataFrame."""
+    def is_acc_pass(val):
+        return pd.notna(val) and str(val) != "" and 'pass' in str(val)
+
+    return pd.Series({
+        'target_passed': group['accuracy_target'].apply(is_acc_pass).sum(),
+        'baseline_passed': group['accuracy_baseline'].apply(is_acc_pass).sum(),
+        'total': len(group),
+        'new_failed': (group['comparison_acc'] == 'new_failed').sum(),
+        'new_passed': (group['comparison_acc'] == 'new_passed').sum(),
+    })
+
+
+def performance_metrics(group):
+    """Compute performance metrics for a grouped DataFrame."""
+    def is_perf_pass(val):
+        return pd.notna(val) and str(val) != "" and int(val) > 0
+
+    def geomean(series):
+        vals = series.replace("", np.nan).replace(0, np.nan).dropna()
+        if len(vals) == 0:
+            return np.nan
+        return np.exp(np.log(vals).mean())
+
+    return pd.Series({
+        'target_passed': group['inductor_target'].apply(is_perf_pass).sum(),
+        'baseline_passed': group['inductor_baseline'].apply(is_perf_pass).sum(),
+        'total': len(group),
+        'new_failed': ((group['comparison_perf'] == 'new_failed') | (group['comparison_perf'] == 'new_dropped')).sum(),
+        'new_passed': ((group['comparison_perf'] == 'new_passed') | (group['comparison_perf'] == 'new_improved')).sum(),
+        'inductor_ratio_geomean': geomean(group['inductor_ratio']),
+        'eager_ratio_geomean': geomean(group['eager_ratio']),
+    })
+
+
+def compute_group_summary(acc_merged, perf_merged, group_cols, level_name):
+    """
+    Generate a summary DataFrame for a given grouping level.
+    Returns a DataFrame with columns:
+        Level (internal), Type, Category, target passed, baseline passed, total,
+        target passrate, baseline passrate, New failed, New passed,
+        inductor ratio, eager ratio
+    """
+    summaries = []
+
+    # Accuracy summary
+    if not acc_merged.empty:
+        if not group_cols:
+            # Overall: create a dummy column
+            acc_sum = acc_merged.assign(_dummy='Overall').groupby('_dummy').apply(accuracy_metrics).reset_index(drop=True)
+            acc_sum['Category'] = 'Overall'
+        else:
+            acc_sum = acc_merged.groupby(group_cols).apply(accuracy_metrics).reset_index()
+            # Create Category by concatenating group values
+            acc_sum['Category'] = acc_sum[group_cols].astype(str).agg('_'.join, axis=1)
+        acc_sum['Type'] = 'Accuracy'
+        acc_sum['Level'] = level_name
+        summaries.append(acc_sum)
+
+    # Performance summary
+    if not perf_merged.empty:
+        if not group_cols:
+            perf_sum = perf_merged.assign(_dummy='Overall').groupby('_dummy').apply(performance_metrics).reset_index(drop=True)
+            perf_sum['Category'] = 'Overall'
+        else:
+            perf_sum = perf_merged.groupby(group_cols).apply(performance_metrics).reset_index()
+            perf_sum['Category'] = perf_sum[group_cols].astype(str).agg('_'.join, axis=1)
+        perf_sum['Type'] = 'Performance'
+        perf_sum['Level'] = level_name
+        summaries.append(perf_sum)
+
+    if not summaries:
+        return pd.DataFrame()
+
+    # Combine accuracy and performance rows
+    combined = pd.concat(summaries, ignore_index=True, sort=False)
+
+    # Compute pass rates
+    combined['target passrate'] = combined['target_passed'] / combined['total']
+    combined['baseline passrate'] = combined['baseline_passed'] / combined['total']
+
+    # Rename columns for output
+    combined.rename(columns={
+        'target_passed': 'target passed',
+        'baseline_passed': 'baseline passed',
+        'new_failed': 'New failed',
+        'new_passed': 'New passed',
+        'inductor_ratio_geomean': 'inductor ratio',
+        'eager_ratio_geomean': 'eager ratio'
+    }, inplace=True)
+
+    # Reorder columns (keep Level for now)
+    cols = ['Level', 'Type', 'Category', 'target passed', 'baseline passed', 'total',
+            'target passrate', 'baseline passrate', 'New failed', 'New passed',
+            'inductor ratio', 'eager ratio']
+    for col in cols:
+        if col not in combined.columns:
+            combined[col] = np.nan
+    return combined[cols]
+
+
+def generate_all_summaries(acc_merged, perf_merged):
+    """
+    Generate summary dataframes for all predefined grouping levels.
+    Returns a single concatenated DataFrame with hierarchical ordering and formatted numbers.
+    """
+    all_summaries = []
+    for level_name, group_cols, priority in SUMMARY_LEVELS:
+        df = compute_group_summary(acc_merged, perf_merged, group_cols, level_name)
+        if not df.empty:
+            df['SortPriority'] = priority
+            all_summaries.append(df)
+
+    if not all_summaries:
+        return pd.DataFrame()
+
+    final = pd.concat(all_summaries, ignore_index=True, sort=False)
+
+    # Convert counts to nullable integers
+    for col in ['target passed', 'baseline passed', 'total', 'New failed', 'New passed']:
+        if col in final.columns:
+            final[col] = pd.to_numeric(final[col], errors='coerce').astype('Int64')
+
+    # Convert pass rates to percentages (multiply by 100) and round to 2 decimals
+    for col in ['target passrate', 'baseline passrate']:
+        if col in final.columns:
+            final[col] = (final[col] * 100).round(2)
+
+    # Ratios already rounded to 3 decimals in merge_performance, but ensure
+    for col in ['inductor ratio', 'eager ratio']:
+        if col in final.columns:
+            final[col] = final[col].round(3)
+
+    # Sort by priority, then Type, then Category
+    final.sort_values(['SortPriority', 'Type', 'Category'], inplace=True)
+
+    # Drop internal columns
+    final.drop(columns=['Level', 'SortPriority'], inplace=True, errors='ignore')
+
+    return final.reset_index(drop=True)
+
+
+# ----------------------------------------------------------------------
+# Main (updated to use new summary function)
+# ----------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
         description="Compare PyTorch inductor test results with baseline.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s target_dir baseline_dir comparison.xlsx   # Creates Excel with three sheets
-  %(prog)s target_dir baseline_dir comparison.csv    # Creates single combined CSV
+  %(prog)s target_dir baseline_dir comparison.xlsx   # Creates Excel with Summary & Details sheets
+  %(prog)s target_dir baseline_dir comparison.csv    # Creates summary.csv and details.csv
         """
     )
     parser.add_argument("target_dir", help="Directory containing target (test) result CSV files (searched recursively)")
     parser.add_argument("baseline_dir", help="Directory containing baseline (reference) result CSV files (searched recursively)")
-    parser.add_argument("output", help="Output file name. Use .xlsx for Excel with three sheets, "
-                                        "or .csv for a single combined CSV file.")
+    parser.add_argument("output", help="Output file name (without extension). Use .xlsx for Excel, .csv for CSV files.")
     args = parser.parse_args()
 
-    # Recursively find all relevant files
+    # Determine output base name and format
+    out_base, out_ext = os.path.splitext(args.output)
+    if out_ext not in ('.xlsx', '.csv'):
+        print("Output file must end with .xlsx or .csv")
+        return 1
+
+    # Find files
     target_files = find_result_files(args.target_dir)
     baseline_files = find_result_files(args.baseline_dir)
 
     print(f"Found {len(target_files)} CSV files in target directory.")
     print(f"Found {len(baseline_files)} CSV files in baseline directory.")
 
-    # Load accuracy and performance records
+    # Load records
     target_acc = load_results(target_files, "accuracy")
     target_perf = load_results(target_files, "performance")
     baseline_acc = load_results(baseline_files, "accuracy")
@@ -349,29 +516,45 @@ Examples:
     acc_merged = merge_accuracy(target_acc, baseline_acc)
     perf_merged = merge_performance(target_perf, baseline_perf)
 
-    if args.output.endswith(".xlsx"):
-        # Write Excel with three sheets (no need to fillna, blanks are automatic)
+    # Generate combined summary (with multiple levels)
+    combined_summary = generate_all_summaries(acc_merged, perf_merged)
+
+    # Generate detailed combined data
+    details = combine_results(acc_merged, perf_merged)
+
+    if out_ext == '.xlsx':
+        # Excel: two sheets
         with pd.ExcelWriter(args.output, engine="openpyxl") as writer:
-            # Combined sheet
-            combined = combine_results(acc_merged, perf_merged)
-            if not combined.empty:
-                combined.to_excel(writer, sheet_name="Details", index=False)
+            # Summary sheet
+            if not combined_summary.empty:
+                combined_summary.to_excel(writer, sheet_name="Summary", index=False)
             else:
-                pd.DataFrame({"Info": ["No data to combine"]}).to_excel(writer, sheet_name="Details", index=False)
+                pd.DataFrame({"Info": ["No summary data available"]}).to_excel(writer, sheet_name="Summary", index=False)
 
-        print(f"Comparison written to {args.output} (Excel with three sheets)")
+            # Details sheet
+            if not details.empty:
+                details.to_excel(writer, sheet_name="Details", index=False)
+            else:
+                pd.DataFrame({"Info": ["No detailed data available"]}).to_excel(writer, sheet_name="Details", index=False)
 
-    elif args.output.endswith(".csv"):
-        # Write a single combined CSV file with empty strings for missing values
-        combined = combine_results(acc_merged, perf_merged)
-        if not combined.empty:
-            combined.to_csv(args.output, index=False, na_rep='')
-            print(f"Combined comparison written to {args.output}")
+        print(f"Excel written to {args.output} (sheets: Summary, Details)")
+
+    else:  # .csv
+        # Write two CSV files: summary.csv and details.csv
+        summary_file = out_base + "_summary.csv"
+        details_file = out_base + "_details.csv"
+
+        if not combined_summary.empty:
+            combined_summary.to_csv(summary_file, index=False, na_rep='')
+            print(f"Summary written to {summary_file}")
         else:
-            print("No data to write.")
-    else:
-        print("Output file name must end with .xlsx or .csv")
-        return 1
+            print("No summary data to write.")
+
+        if not details.empty:
+            details.to_csv(details_file, index=False, na_rep='')
+            print(f"Details written to {details_file}")
+        else:
+            print("No detailed data to write.")
 
     return 0
 
