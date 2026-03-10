@@ -9482,7 +9482,7 @@
   python_module: linalg
   structured: True
   dispatch:
-    XPU: linalg_qr_xpu_out
+    XPU: linalg_qr_out
 
 - func: linalg_inv_ex(Tensor A, *, bool check_errors=False) -> (Tensor inverse, Tensor info)
   python_module: linalg

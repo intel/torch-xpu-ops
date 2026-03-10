@@ -490,7 +490,7 @@ def __tunableop_ctx(self):
 @parametrize("batch", [1, 3])
 @parametrize("m", [1, 12])
 @parametrize("n", [1, 17])
-@dtypes(torch.float32, torch.float64)
+@dtypes(*floating_and_complex_types())
 def qr_mode_r(self, device, dtype, batch, m, n):
     if batch > 1:
         A_cpu = torch.randn(batch, m, n, dtype=dtype, device="cpu")
@@ -504,14 +504,19 @@ def qr_mode_r(self, device, dtype, batch, m, n):
 
     # Verify that R is upper triangular
     lower_triangle = torch.tril(R_xpu, diagonal=-1)
-    self.assertEqual(lower_triangle.sum(), 0.0, atol=0.0, rtol=0.0)
+    self.assertEqual(
+        lower_triangle.sum(),
+        torch.zeros((), dtype=dtype, device=device),
+        atol=0.0,
+        rtol=0.0,
+    )
 
 
 @parametrize("batch", [1, 3])
 @parametrize("m", [0, 1, 12])
 @parametrize("n", [0, 1, 17])
 @parametrize("mode", ["reduced", "complete"])
-@dtypes(torch.float32, torch.float64)
+@dtypes(*floating_and_complex_types())
 def qr_modes_reduced_complete(self, device, dtype, batch, m, n, mode):
     if batch > 1:
         A_cpu = torch.randn(batch, m, n, dtype=dtype, device="cpu")
@@ -525,8 +530,8 @@ def qr_modes_reduced_complete(self, device, dtype, batch, m, n, mode):
     self.assertEqual(Q_xpu, Q_cpu, atol=1e-5, rtol=1e-5)
     self.assertEqual(R_xpu, R_cpu, atol=1e-5, rtol=1e-5)
 
-    # Verify Q is orthogonal: Q^T @ Q should be identity
-    QTQ_xpu = torch.matmul(Q_xpu.mT, Q_xpu)
+    # Verify Q is unitary: Q^H @ Q should be identity
+    QTQ_xpu = torch.matmul(Q_xpu.mH, Q_xpu)
     k = min(m, n) if mode == "reduced" else m
     identity = torch.eye(k, dtype=dtype, device=device)
     if batch > 1:
@@ -535,7 +540,12 @@ def qr_modes_reduced_complete(self, device, dtype, batch, m, n, mode):
 
     # Verify that R is upper triangular
     lower_triangle = torch.tril(R_xpu, diagonal=-1)
-    self.assertEqual(lower_triangle.sum(), 0.0, atol=0.0, rtol=0.0)
+    self.assertEqual(
+        lower_triangle.sum(),
+        torch.zeros((), dtype=dtype, device=device),
+        atol=0.0,
+        rtol=0.0,
+    )
 
 
 with XPUPatchForImport(False):
