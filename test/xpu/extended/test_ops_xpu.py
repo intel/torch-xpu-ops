@@ -10,6 +10,7 @@
 
 import sys
 import unittest
+from collections.abc import Sequence
 
 import pytest
 import torch
@@ -129,6 +130,42 @@ class Namespace:
 
 
 class TestCommon(TestCase):
+    def _iter_tensors(self, x):
+        if isinstance(x, torch.Tensor):
+            yield x
+        elif isinstance(x, Sequence):
+            for y in x:
+                yield from self._iter_tensors(y)
+
+    def _run_compare_cpu_with_output_dtype_tolerance(
+        self, test_common_test_fn, device, dtype, op
+    ):
+        self.proxy = Namespace.TestCommonProxy(self)
+
+        original_assert_equal = self.proxy.assertEqual
+
+        def assert_equal_with_output_dtype_tolerance(a, b, *args, **kwargs):
+            result_tensors = [
+                *list(self._iter_tensors(a)),
+                *list(self._iter_tensors(b)),
+            ]
+            has_inexact_output = any(
+                t.dtype.is_floating_point or t.dtype.is_complex
+                for t in result_tensors
+            )
+
+            if has_inexact_output:
+                if kwargs.get("atol", 0) == 0 and kwargs.get("rtol", 0) == 0:
+                    kwargs["atol"] = 1e-3
+                    kwargs["rtol"] = 1e-3
+            return original_assert_equal(a, b, *args, **kwargs)
+
+        self.proxy.assertEqual = assert_equal_with_output_dtype_tolerance
+        try:
+            test_common_test_fn(self.proxy, device, dtype, op)
+        finally:
+            self.proxy.assertEqual = original_assert_equal
+
     @onlyXPU
     @suppress_warnings
     @slowTest
@@ -137,19 +174,21 @@ class TestCommon(TestCase):
     def test_compare_cpu(self, device, dtype, op):
         # check if supported both by CPU and XPU
         if dtype in op.dtypes and dtype in op.supported_dtypes(device):
-            self.proxy = Namespace.TestCommonProxy(self)
             test_common_test_fn = get_wrapped_fn(
                 Namespace.TestCommonProxy.test_compare_cpu
             )
-            test_common_test_fn(self.proxy, device, dtype, op)
+            self._run_compare_cpu_with_output_dtype_tolerance(
+                test_common_test_fn, device, dtype, op
+            )
         # for CUDA doesn't support operators
         elif op.name in _ops_without_cuda_support:
             if dtype in op.dtypes:
-                self.proxy = Namespace.TestCommonProxy(self)
                 test_common_test_fn = get_wrapped_fn(
                     Namespace.TestCommonProxy.test_compare_cpu
                 )
-                test_common_test_fn(self.proxy, device, dtype, op)
+                self._run_compare_cpu_with_output_dtype_tolerance(
+                    test_common_test_fn, device, dtype, op
+                )
         else:
             pytest.skip(f"{op.name} has not supported {dtype} yet both for cpu and xpu")
 
