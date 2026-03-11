@@ -417,12 +417,12 @@ void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
     HermitSymmImpl(input, dim, -1);
 }
 
-Tensor _fft_c2r_mkl_out(
+Tensor& _fft_c2r_mkl_out(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size,
-    Tensor& out) {
+    Tensor& orig_out) {
   if (dim.empty()) {
     orig_out = orig_self.clone();
     return orig_out;
@@ -472,7 +472,7 @@ Tensor _fft_c2r_mkl_out(
   return out;
 }
 
-Tensor& _fft_c2r_mkl(
+Tensor _fft_c2r_mkl(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
