@@ -14,9 +14,9 @@
 
 #ifdef USE_C10D_XCCL
 
+#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
-#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
@@ -106,6 +106,25 @@ void syncStream(
     at::xpu::XPUStream& xcclStream) {
   xcclEvent.record(at::xpu::getCurrentXPUStream(device.index()));
   xcclEvent.block(xcclStream);
+}
+
+inline void errorIfCapturingNonCapturableXCCL(c10::xpu::CaptureStatus status) {
+  // oneCCL graph capture support requires version >= 2021.17.2
+  static const bool is_capturable = []() -> bool {
+    const std::string& ver = getXcclVersion();
+    int major = 0, minor = 0, patch = 0;
+    if (std::sscanf(ver.c_str(), "%d.%d.%d", &major, &minor, &patch) >= 2) {
+      return major > 2021 ||
+          (major == 2021 && (minor > 17 || (minor == 17 && patch >= 2)));
+    }
+    return false;
+  }();
+  if (!is_capturable) {
+    TORCH_CHECK_WITH(
+        NotImplementedError,
+        status == c10::xpu::CaptureStatus::Executing,
+        "Capturing XCCL collectives is only allowed with oneCCL >= 2021.17.2");
+  }
 }
 
 } // namespace
@@ -642,6 +661,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
 
   c10::xpu::CaptureStatus capture_status =
       c10::xpu::currentStreamCaptureStatusMayInitCtx();
+  errorIfCapturingNonCapturableXCCL(capture_status);
 
   const auto key = std::to_string(device.index());
   std::shared_ptr<xcclComm_t> comm = getXCCLComm(key);
@@ -696,19 +716,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
-  bool enqueue =
-      !coalescing_state_ && capture_status == c10::xpu::CaptureStatus::Executing;
+  bool enqueue = !coalescing_state_ &&
+      capture_status == c10::xpu::CaptureStatus::Executing;
 
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   work = initWork(
-      device,
-      rank_,
-      opType,
-      false,
-      profilingTitle,
-      inputs,
-      outputs,
-      enqueue);
+      device, rank_, opType, false, profilingTitle, inputs, outputs, enqueue);
   if (coalescing_state_) {
     FlightRecorderXCCL::get()->record(
         local_id_,
@@ -785,6 +798,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     work->numelOut_ += output.numel();
   }
 
+  /* Note [xpu graph capture and setEnqueuedPgStatus]
+
+  Similar to NCCL's workEnqueue behavior, we should not update PG status
+  during graph capture as event queries are disallowed during capture.
+  See Note [cuda graph capture and workEnqueue] in ProcessGroupNCCL.cpp.
+  */
   if (capture_status == c10::xpu::CaptureStatus::Executing) {
     setEnqueuedPgStatus(work);
   }
@@ -805,6 +824,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   std::string key;
   int p2pRank = 0, p2pTargetRank = 0;
   bool isSendRecvSelf = false;
+
+  c10::xpu::CaptureStatus capture_status =
+      c10::xpu::currentStreamCaptureStatusMayInitCtx();
+  errorIfCapturingNonCapturableXCCL(capture_status);
 
   bool batchP2P = xcclActiveGroupCounter_ > 0;
   if (batchP2P) {
