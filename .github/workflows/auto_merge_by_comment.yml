@@ -1,0 +1,213 @@
+name: Auto Merge PR by Comment with Checks
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.issue.pull_request
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      && (startsWith(github.event.comment.body, '/merge -f') || startsWith(github.event.comment.body, '/merge'))
+    steps:
+      - name: Get PR Info
+        uses: actions/github-script@v7
+        id: prinfo
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.issue.number
+            });
+            core.setOutput('pr_number', pr.data.number);
+            core.setOutput('head_sha', pr.data.head.sha);
+            core.setOutput('mergeable', String(pr.data.mergeable));
+            core.setOutput('mergeable_state', pr.data.mergeable_state);
+
+      - name: Check Reviews
+        uses: actions/github-script@v7
+        id: reviews
+        with:
+          script: |
+            const prNumber = ${{ steps.prinfo.outputs.pr_number }};
+
+            const reviews = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            // Deduplicate: keep only the latest review per user
+            const latestByUser = new Map();
+            for (const r of reviews.data) {
+              latestByUser.set(r.user.login, r);
+            }
+            const approvals = [...latestByUser.values()].filter(r => r.state === 'APPROVED');
+            core.setOutput('approval_count', approvals.length);
+
+            if (approvals.length < 2) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `❌ Not enough approvals (${approvals.length}/2). At least 2 approvals are required to merge.`
+              });
+              core.setFailed(`Not enough approvals: ${approvals.length}/2`);
+            }
+
+      - name: Check CI Status
+        if: ${{ !startsWith(github.event.comment.body, '/merge -f') }}
+        uses: actions/github-script@v7
+        id: status
+        with:
+          script: |
+            const prNumber = ${{ steps.prinfo.outputs.pr_number }};
+            const sha = '${{ steps.prinfo.outputs.head_sha }}';
+
+            // Check both Check Runs and Commit Statuses
+            const [checks, statuses] = await Promise.all([
+              github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: sha
+              }),
+              github.rest.repos.getCombinedStatusForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: sha
+              })
+            ]);
+
+            const pending = checks.data.check_runs.filter(c => c.status !== 'completed');
+            if (pending.length > 0) {
+              const names = pending.map(c => c.name).join(', ');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `⏳ Some checks are still running: ${names}. Please wait for them to complete.`
+              });
+              core.setFailed(`Checks still in progress: ${names}`);
+              return;
+            }
+
+            const failedChecks = checks.data.check_runs
+              .filter(c => c.conclusion !== 'skipped' && c.conclusion !== 'success');
+            const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
+
+            if (failedChecks.length > 0 || statusFailed) {
+              const failedNames = failedChecks.map(c => `${c.name}: ${c.conclusion}`).join(', ');
+              const msg = [
+                failedChecks.length > 0 ? `Failed checks: ${failedNames}` : '',
+                statusFailed ? `Combined commit status: ${statuses.data.state}` : ''
+              ].filter(Boolean).join('\n');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `❌ CI checks have not passed.\n${msg}\n\nUse \`/merge -f\` to force merge (maintainers only).`
+              });
+              core.setFailed('CI checks failed.');
+            }
+
+      - name: Check Merge Conflicts
+        uses: actions/github-script@v7
+        id: conflict
+        with:
+          script: |
+            const prNumber = ${{ steps.prinfo.outputs.pr_number }};
+            const mergeable = '${{ steps.prinfo.outputs.mergeable }}';
+            const mergeableState = '${{ steps.prinfo.outputs.mergeable_state }}';
+
+            if (mergeable === 'null') {
+              // GitHub hasn't computed mergeability yet — retry after a short delay
+              await new Promise(r => setTimeout(r, 3000));
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              if (pr.data.mergeable === false || pr.data.mergeable === null) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  body: '❌ This PR has conflicts with the target branch or mergeability could not be determined. Please resolve conflicts and try again.'
+                });
+                core.setFailed('PR has merge conflicts or mergeability unknown.');
+                return;
+              }
+            } else if (mergeable === 'false') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: '❌ This PR has conflicts with the target branch. Please resolve the conflicts before merging.'
+              });
+              core.setFailed('PR has merge conflicts.');
+            }
+
+      - name: Merge PR
+        uses: actions/github-script@v7
+        env:
+          FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
+        with:
+          script: |
+            const prNumber = ${{ steps.prinfo.outputs.pr_number }};
+            const forceMerge = process.env.FORCE_MERGE === 'true';
+            const author = context.payload.comment.user.login;
+
+            if (forceMerge) {
+              // Check if comment author is a maintainer
+              const teamSlug = 'torch-xpu-ops-maintain'; // Adjust to actual team name
+              try {
+                const teamMembers = await github.rest.teams.listMembersInOrg({
+                  org: context.repo.owner,
+                  team_slug: teamSlug
+                });
+                const isMaintainer = teamMembers.data.some(member => member.login === author);
+                if (!isMaintainer) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: prNumber,
+                    body: '⛔ Only maintainers can force merge. Please contact a maintainer.'
+                  });
+                  core.setFailed('Force merge not allowed: author is not a maintainer.');
+                  return;
+                }
+              } catch (e) {
+                core.warning(`Could not verify team membership: ${e.message}. Proceeding based on author_association.`);
+              }
+            }
+
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+                merge_method: 'squash'
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `✅ PR has been successfully merged by @${author}${forceMerge ? ' (force merge)' : ''}.`
+              });
+            } catch (e) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `❌ Failed to merge PR: ${e.message}`
+              });
+              core.setFailed(`Merge failed: ${e.message}`);
+            }
