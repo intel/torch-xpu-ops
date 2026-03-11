@@ -26,6 +26,7 @@ from allreduce_impl import (
     allreduce_with_ring_pull,
     allreduce_cross_switch,
     allreduce_cross_switch_pipeline,
+    allreduce_low_latency,
 )
 
 # Map implementation names to functions
@@ -35,6 +36,7 @@ IMPL_MAP = {
     "ring_pull": allreduce_with_ring_pull,
     "cross_switch": allreduce_cross_switch,
     "cross_switch_pipeline": allreduce_cross_switch_pipeline,
+    "allreduce_low_latency": allreduce_low_latency,
 }
 
 def get_impl_func(impl_name: str, num_pipelines: int = 2):

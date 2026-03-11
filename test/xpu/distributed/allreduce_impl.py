@@ -529,6 +529,67 @@ def allreduce_with_pull(
     workspace.barrier()
     return tensor
 
+
+def allreduce_low_latency(
+        tensor: torch.Tensor,
+        op: str = "sum",
+        group: dist.ProcessGroup | None = None,
+) -> torch.Tensor:
+    """
+    Perform allreduce using symmetric memory with ring reduce-scatter + allgather.
+
+    Args:
+        tensor: Input tensor to reduce (must be on XPU device)
+        op: Reduction operation (only "sum" is supported)
+        group: Process group (default: None, uses WORLD group)
+
+    Returns:
+        Reduced tensor with the same shape as input (in-place modification)
+    """
+    if op != "sum":
+        raise ValueError(f"Only 'sum' operation is supported, got '{op}'")
+
+    # Get group info
+    if group is None:
+        group = dist.group.WORLD
+
+    group_name = group.group_name
+    rank = dist.get_rank(group)
+    world_size = dist.get_world_size(group)
+
+    # Work with flattened view
+    tensor_flat = tensor.view(-1)
+    numel = tensor_flat.numel()
+
+    # Check divisibility
+    if numel % world_size != 0:
+        raise ValueError(
+            f"Tensor size ({numel}) must be divisible by world_size ({world_size})"
+        )
+
+    chunk_size = numel // world_size
+
+    # Get symmetric memory workspace
+    workspace_size_bytes = chunk_size * world_size * tensor.element_size()
+    workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
+
+    workspace.get_buffer(rank, (numel,), tensor.dtype, storage_offset=0).copy_(tensor)
+
+    # Barrier to ensure previous allreduce is complete before writing
+    workspace.barrier()
+
+    for step in range(rank + 1, rank + world_size - 1):
+        remote_rank = step % world_size
+        remote_buffer = workspace.get_buffer(
+            remote_rank,
+            (numel,),
+            tensor.dtype,
+            storage_offset=0
+        )
+        tensor = tensor + remote_buffer
+    workspace.barrier()
+    return tensor
+
 def allreduce_with_symm_mem(
     tensor: torch.Tensor,
     op: str = "sum",

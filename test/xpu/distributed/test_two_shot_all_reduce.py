@@ -15,7 +15,9 @@ import os
 import torch
 import torch.distributed as dist
 from torch._C._distributed_c10d import _SymmetricMemory
+import torch.distributed.distributed_c10d as c10d
 
+_group_name_to_store: dict[str, c10d.Store] = {}
 
 def init_distributed():
     """Initialize distributed environment."""
@@ -32,6 +34,31 @@ def init_distributed():
 
     return rank, world_size
 
+def enable_symm_mem_for_group(group_name: str) -> None:
+    """
+    Enables symmetric memory for a process group.
+
+    Args:
+        group_name (str): the name of the process group.
+    """
+    if group_name in _group_name_to_store:
+        return
+
+    group = c10d._resolve_process_group(group_name)
+    global_ranks = sorted(c10d._world.pg_group_ranks[group].keys())
+    # Different subgroups with the same name should use different stores
+    global_ranks_str = "_".join(map(str, global_ranks))
+    store = c10d.PrefixStore(
+        f"symmetric_memory-{global_ranks_str}",
+        c10d._get_process_group_store(group),
+    )
+    _group_name_to_store[group_name] = store
+    _SymmetricMemory.set_group_info(
+        group_name,
+        group.rank(),
+        group.size(),
+        store,
+    )
 
 def create_symm_mem_tensor(size, dtype, device, group_name):
     """Create a tensor allocated with symmetric memory."""
@@ -59,6 +86,7 @@ def check_accuracy_inplace(tensor_size, rank, device, dtype=torch.float32):
 
     # Test: two_shot_all_reduce_ (in-place)
     symm_tensor = create_symm_mem_tensor((tensor_size,), dtype, device, group.group_name)
+    enable_symm_mem_for_group(group.group_name)
     symm_tensor.copy_(local_data)
     tensor_test = torch.ops.symm_mem.two_shot_all_reduce_(
         symm_tensor, "sum", group.group_name
@@ -100,6 +128,7 @@ def check_accuracy_out(tensor_size, rank, device, dtype=torch.float32):
 
     # Test: two_shot_all_reduce_out
     symm_tensor = create_symm_mem_tensor((tensor_size,), dtype, device, group.group_name)
+    enable_symm_mem_for_group(group.group_name)
     symm_tensor.copy_(local_data)
     output = torch.empty(tensor_size, device=device, dtype=dtype)
     tensor_test = torch.ops.symm_mem.two_shot_all_reduce_out(
