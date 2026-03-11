@@ -152,14 +152,36 @@ def clang_search_dirs() -> list[str]:
     return search_paths
 
 
+def find_pytorch_include_dir() -> str:
+    """Find PyTorch include directory."""
+    # 1. Try to find via torch package
+    try:
+        import torch
+        inc = os.path.join(os.path.dirname(torch.__file__), "include")
+        if os.path.isdir(inc):
+            return inc
+    except ImportError:
+        pass
+    # 2. Check sibling pytorch directory (common dev layout)
+    sibling = os.path.join(os.path.dirname(PYTORCH_ROOT), "pytorch", "torch", "include")
+    if os.path.isdir(sibling):
+        return sibling
+    return ""
+
+def find_sycl_include_dir() -> str:
+    return os.path.join(os.environ.get("CMPLR_ROOT", ""), "include")
+
+
 include_args = []
 include_dir = [
-    "/usr/lib/llvm-11/include/openmp",
+    "/usr/lib/llvm-18/include/openmp",
     get_python_include_dir(),
     os.path.join(PYTORCH_ROOT, "third_party/pybind11/include"),
+    find_pytorch_include_dir(),
+    find_sycl_include_dir(),
 ] + clang_search_dirs()
 for dir in include_dir:
-    include_args += ["--extra-arg", f"-I{dir}"]
+    include_args += ["--extra-arg", f"-isystem{dir}"]
 
 
 def check_file(
@@ -195,6 +217,16 @@ def check_file(
         for match in RESULTS_RE.finditer(proc.stdout.decode()):
             # Convert the reported path to an absolute path.
             abs_path = str(Path(match["file"]).resolve())
+            # Skip diagnostics from system headers (e.g. /usr/include/).
+            if not abs_path.startswith(PYTORCH_ROOT):
+                continue
+            # clang-diagnostic-error/fatal come from the compiler frontend
+            # and cannot be suppressed via .clang-tidy config. Skip them.
+            if match["code"] in (
+                "[clang-diagnostic-error]",
+                "[clang-diagnostic-fatal-error]",
+            ):
+                continue
             message = LintMessage(
                 path=abs_path,
                 name=match["code"],
