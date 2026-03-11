@@ -18,11 +18,9 @@
 
 #include <ATen/native/xpu/sycl/CopyKernel.h>
 #include <ATen/native/xpu/sycl/Loops.h>
+#include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
 
-#include <ATen/native/xpu/sycl/CopyKernel.h>
-#include <ATen/native/xpu/sycl/Loops.h>
-#include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 
 namespace at::native::xpu {
 
