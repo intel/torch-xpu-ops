@@ -61,6 +61,13 @@ static void xpu_fallback_impl(
   native::cpu_fallback(op, stack, true);
 }
 
+static void xpu_fallback_impl_silent(
+    const c10::OperatorHandle& op,
+    torch::jit::Stack* stack) {
+  check_device_consistency(stack, op);
+  native::cpu_fallback(op, stack, true);
+}
+
 namespace native::xpu {
 Tensor nms(const Tensor& dets, const Tensor& scores, double iou_threshold_);
 Tensor roi_align(const Tensor& input, const Tensor& rois, double spatial_scale, int64_t pooled_height, int64_t pooled_width, int64_t sampling_ratio, bool aligned);
@@ -256,9 +263,15 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "_validate_compressed_sparse_indices",
   };
   for (auto& op_name : fallback_list) {
-    m.impl(
-        op_name.c_str(),
-        torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+    if (op_name == "_linalg_svd.U") {
+      m.impl(
+          op_name.c_str(),
+          torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl_silent>());
+    } else {
+      m.impl(
+          op_name.c_str(),
+          torch::CppFunction::makeFromBoxedFunction<&xpu_fallback_impl>());
+    }
   }
 }
 TORCH_LIBRARY_IMPL(_inductor_test, XPU, m) {
