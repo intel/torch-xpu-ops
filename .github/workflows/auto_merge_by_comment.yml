@@ -6,7 +6,7 @@ on:
 jobs:
   check-approval:
     runs-on: ubuntu-latest
-    if: ${{ github.event.issue.pull_request && (contains(github.event.comment.body, 'merge') || contains(github.event.comment.body, 'merge -f')) }}
+    if: ${{ github.event.issue.pull_request && (github.event.comment.body == '/merge' || github.event.comment.body == '/merge -f') && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}
     steps:
       - name: Get PR Info
         uses: actions/github-script@v6
@@ -38,7 +38,7 @@ jobs:
   auto-merge:
     needs: check-approval
     runs-on: ubuntu-latest
-    if: ${{ github.event.issue.pull_request && (contains(github.event.comment.body, 'merge') || contains(github.event.comment.body, 'merge -f')) }}
+    if: ${{ github.event.issue.pull_request && (github.event.comment.body == '/merge' || github.event.comment.body == '/merge -f') && (github.event.comment.author_association == 'OWNER' || github.event.comment.author_association == 'MEMBER' || github.event.comment.author_association == 'COLLABORATOR') }}
     steps:
       - name: Get PR Info
         uses: actions/github-script@v6
@@ -50,7 +50,7 @@ jobs:
             return pr.data.number;
 
       - name: Check Status
-        if: ${{ !contains(github.event.comment.body, 'merge -f') }}
+        if: ${{ github.event.comment.body != '/merge -f' }}
         uses: actions/github-script@v6
         id: status
         with:
@@ -95,12 +95,12 @@ jobs:
             return pr.data.mergeable;
 
       - name: Merge PR
-        if: ${{ (contains(github.event.comment.body, 'merge -f') && steps.conflict.outputs.result == 'true') || (contains(github.event.comment.body, 'merge') && steps.status.outputs.result == 'true' && steps.conflict.outputs.result == 'true') }}
+        if: ${{ steps.conflict.outputs.result == 'true' && (github.event.comment.body == '/merge -f' || steps.status.outputs.result == 'true') }}
         uses: actions/github-script@v6
         with:
           script: |
             const pr_number = steps.prinfo.outputs.result;
-            const forceMerge = github.event.comment.body.includes('merge -f');
+            const forceMerge = github.event.comment.body === '/merge -f';
             if (forceMerge) {
               // Check if comment author is a maintainer
               const author = github.event.comment.user.login;
