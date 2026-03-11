@@ -3,8 +3,6 @@ on:
   issues:
     types: [opened, labeled]
 
-permissions: read-all
-
 jobs:
   auto-milestone:
     runs-on: ubuntu-latest
