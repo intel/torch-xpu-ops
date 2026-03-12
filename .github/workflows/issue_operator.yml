@@ -1,24 +1,49 @@
 name: Issue Operator
+
 on:
   issues:
     types: [opened, labeled]
 
-permissions: read-all
+permissions:
+  issues: write
 
 jobs:
   auto-milestone:
     runs-on: ubuntu-latest
+    # Only run when the 'skipped' label is present
+    if: contains(github.event.issue.labels.*.name, 'skipped')
     steps:
-      - name: Set milestone
-        uses: actions/github-script@v6
+      - name: Set milestone for skipped issues
+        uses: actions/github-script@v7
         with:
           script: |
-            // If the issue has the 'skipped' label, automatically assign it to Milestone ID 13
-            if (context.payload.issue.labels.some(l => l.name === 'skipped')) {
-              github.rest.issues.update({
+            // Look up milestone by name instead of hardcoding the ID
+            const milestoneName = 'UT Backlog';
+            const milestones = await github.rest.issues.listMilestones({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open'
+            });
+            const milestone = milestones.data.find(m => m.title === milestoneName);
+            if (!milestone) {
+              core.setFailed(`Milestone "${milestoneName}" not found. Available: ${milestones.data.map(m => m.title).join(', ')}`);
+              return;
+            }
+
+            // Skip if already assigned to this milestone
+            if (context.payload.issue.milestone?.number === milestone.number) {
+              core.info('Issue already has the correct milestone. Skipping.');
+              return;
+            }
+
+            try {
+              await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.issue.number,
-                milestone: 13
+                milestone: milestone.number
               });
+              core.info(`Assigned milestone "${milestoneName}" to issue #${context.payload.issue.number}`);
+            } catch (e) {
+              core.setFailed(`Failed to set milestone: ${e.message}`);
             }
