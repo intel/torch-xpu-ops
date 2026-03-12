@@ -148,7 +148,7 @@ include_args = []
 include_dir = [
     os.path.join(PYTORCH_ROOT, "include"),
     find_sycl_include_dir(),
-] + clang_search_dirs()
+]
 for dir in include_dir:
     include_args += ["--extra-arg", f"-isystem{dir}"]
 
