@@ -3,7 +3,7 @@
 # Usage:
 #   ./build.sh [OPTIONS]
 #   ./build.sh --WORKSPACE=<path> --PYTORCH=main --TORCH_XPU_OPS=main
-set -eu -o pipefail
+set -xeu -o pipefail
 
 # -------------------- Configuration --------------------
 # Git clone depth (set to 1 for shallow, empty for full history)
@@ -436,7 +436,7 @@ post_build() {
             # We'll assume it modifies in place and then we use that file.
             if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$wheel_file" "$tmp_dir"; then
                 # If rpath.sh succeeded, install from the processed wheel
-                local working_wheel="$tmp_dir/torch-*.whl"
+                local working_wheel=($tmp_dir/torch-*.whl)
                 processed_wheel="$working_wheel"
             else
                 log_warning "rpath.sh failed, using original wheel"
