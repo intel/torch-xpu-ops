@@ -165,11 +165,6 @@ jobs:
     name: Compare Results
     needs: [run-target-tests, run-baseline-tests]
     runs-on: ubuntu-24.04
-    outputs:
-      comparison_result: ${{ steps.compare.outputs.result }}
-      regression_found: ${{ steps.compare.outputs.regression_found }}
-      performance_diff: ${{ steps.compare.outputs.performance_diff }}
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -177,21 +172,47 @@ jobs:
       - name: Download Target Logs
         uses: actions/download-artifact@v4
         with:
-          pattern: '*target*'
+          pattern: 'Inductor-*target*'
           path: ${{ github.workspace }}/results/target
           merge-multiple: true
 
       - name: Download Baseline Logs
         uses: actions/download-artifact@v4
         with:
-          pattern: '*baseline*'
+          pattern: 'Inductor-*baseline*'
           path: ${{ github.workspace }}/results/baseline
           merge-multiple: true
 
-      - name: Compare Test Results
-        id: compare
+      - name: Setup python env
         run: |
+          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+          uv venv myvenv --python 3.12 --clear
+          source myvenv/bin/activate
+          uv pip install pip numpy 'setuptools<81' wheel
+          uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
+
+      - name: Compare Test Results
+        run: |
+          source myvenv/bin/activate
           echo "Comparing results for ${{ inputs.component }}..."
           echo "Target: ${{ inputs.target_version }}"
           echo "Baseline: ${{ inputs.baseline_version }}"
           find results
+          # UT
+          python .github/scripts/compare-ut.py --input results/ --output ut_comparison.csv --markdown --markdown-output ut_comparison.md
+          cat ut_comparison.md >> "${GITHUB_STEP_SUMMARY}"
+          # E2E
+          python .github/scripts/compare-e2e.py results/target results/baseline e2e_comparison.csv --markdown e2e_comparison.md
+          cat e2e_comparison.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload Build Artifacts (Wheels + Logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Torch-XPU-Wheel-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            *_comparison*.csv
+            *_comparison*.xlsx
+            *_comparison*.md
+          retention-days: 30
+          if-no-files-found: error

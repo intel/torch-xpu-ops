@@ -164,7 +164,7 @@ jobs:
           echo "torch_xpu_ops=${{ inputs.torch_xpu_ops }}" >> "${GITHUB_OUTPUT}"
 
           # Parse UT list
-          if [ "${{ inputs.component }}" != "default" ];then
+          if [ "${{ inputs.test_role }}" != "default" ];then
             UT_INPUT="op_regression"
           else
             UT_INPUT="${{ inputs.ut }}"
@@ -234,7 +234,11 @@ jobs:
           echo "has_windows=${HAS_WINDOWS}" >> "${GITHUB_OUTPUT}"
 
           # Parse suite list
-          SUITE_INPUT="${{ inputs.suite }}"
+          if [ "${{ inputs.test_role }}" != "default" ];then
+            SUITE_INPUT='huggingface,timm_models,torchbench'
+          else
+            SUITE_INPUT="${{ inputs.suite }}"
+          fi
           if [ -z "${SUITE_INPUT}" ]; then
             SUITE_LIST_JSON="[]"
             HAS_E2E_TESTS="false"
