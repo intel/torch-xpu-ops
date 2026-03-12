@@ -60,7 +60,7 @@ performance-*,
 readability-container-size-empty,
 readability-delete-null-pointer,
 readability-duplicate-include,
-readability-named-parameter,
+-readability-named-parameter,
 readability-misplaced-array-index,
 readability-redundant*,
 readability-simplify-subscript-expr,
@@ -71,7 +71,7 @@ readability-string-compare,
 -readability-redundant-inline-specifier,
 '
 HeaderFilterRegex: '^(src/).*$'
-WarningsAsErrors: "*,-clang-diagnostic-*"
+WarningsAsErrors: "*"
 CheckOptions:
   cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
   cppcoreguidelines-special-member-functions.AllowImplicitlyDeletedCopyOrMove: true
