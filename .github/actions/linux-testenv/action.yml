@@ -170,11 +170,11 @@ runs:
             ;;
           *)
             echo "Installing from local wheel"
-            local_wheel_dir=$(find ./wheels -type d -name "Torch-XPU-Wheel-*" 2>/dev/null | sort -V | tail -n 1)
+            local_wheel_files=$(find ./wheels -type d -name "*.whl" 2>/dev/null | sort -V | tail -n 1)
 
-            if [ -n "${local_wheel_dir}" ] && [ -d "${local_wheel_dir}" ]; then
-              echo "Found wheel directory: ${local_wheel_dir}"
-              pip install --force-reinstall $(find "${local_wheel_dir}" -name "*.whl" -type f)
+            if [ -n "${local_wheel_files}" ] && [ -f "${local_wheel_files}" ]; then
+              echo "Found wheels: ${local_wheel_files}"
+              pip install --force-reinstall ${local_wheel_files}
             else
               echo "Error: No local wheel directory found"
               exit 1

@@ -398,8 +398,8 @@ jobs:
         with:
           name: Torch-XPU-Wheel-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ env.BUILD_DIR }}/*.whl
-            ${{ env.BUILD_DIR }}/build_*.log
+            ${{ inputs.test_role }}/*.whl
+            ${{ inputs.test_role }}/build_*.log
           retention-days: 7
           if-no-files-found: error
 
