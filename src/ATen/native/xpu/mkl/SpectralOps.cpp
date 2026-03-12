@@ -330,19 +330,24 @@ Tensor promote_fft_input(const Tensor& input) {
 
 } // namespace impl
 
-Tensor _fft_c2c_mkl(
+Tensor& _fft_c2c_mkl_out(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
-    bool forward) {
+    bool forward,
+    Tensor& orig_out) {
   if (dim.empty()) {
-    return orig_self.clone();
+    orig_out = orig_self.clone();
+    return orig_out;
   }
+
   auto self = impl::promote_fft_input(orig_self);
+  auto out = impl::promote_fft_input(orig_out);
 
   auto sorted_dims = impl::_sort_dims(self, dim);
   auto out_sizes = self.sizes();
-  auto out = at::empty(out_sizes, self.options());
+  //auto out = at::empty(out_sizes, self.options());
+  at::native::resize_output(out, out_sizes);
   auto input_sizes = self.sizes();
   auto working_tensor = self;
 
@@ -385,15 +390,16 @@ Tensor _fft_c2c_mkl(
   return out;
 }
 
-Tensor& _fft_c2c_mkl_out(
+Tensor _fft_c2c_mkl(
     const Tensor& self,
     IntArrayRef dim,
     int64_t normalization,
-    bool forward,
-    Tensor& out) {
-  auto result = _fft_c2c_mkl(self, dim, normalization, forward);
-  at::native::resize_output(out, result.sizes());
-  out.copy_(result);
+    bool forward) {
+  auto input_sizes = self.sizes();
+  auto out = at::empty(input_sizes, self.options());
+  _fft_c2c_mkl_out(self, dim, normalization, forward, out);
+  //at::native::resize_output(out, result.sizes());
+  //out.copy_(result);
   return out;
 }
 
