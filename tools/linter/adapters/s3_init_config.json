@@ -21,21 +21,9 @@
         }
     },
     "clang-tidy": {
-        "Darwin-x86_64": {
-            "download_url": "https://oss-clang-format.s3.us-east-2.amazonaws.com/macos-i386/19.1.4/clang-tidy",
-            "hash": "7b5da17d3f8b1c18c77d043999f05293f43402affb16de15dfcb276971984a3e"
-        },
-        "Darwin-arm64": {
-            "download_url": "https://oss-clang-format.s3.us-east-2.amazonaws.com/macos-arm/19.1.4/clang-tidy",
-            "hash": "04243f4044fe6d95f6d51d15be803331c3cbb61f2d8fcfeba5a5dec1e7ae6dfb"
-        },
         "Linux": {
             "download_url": "https://oss-clang-format.s3.us-east-2.amazonaws.com/linux64/19.1.4/clang-tidy",
             "hash": "5637bd0fca665d2797926fedf53ca5ad4655bb9dbed1e1c8654c8e032ce1e7a8"
-        },
-        "Linux-aarch64": {
-            "download_url": "https://oss-clang-format.s3.us-east-2.amazonaws.com/linux-aarch64/19.1.4/clang-tidy",
-            "hash": "cd6708ca9731002abd8ecc1b616716d8a21cf682a3cb931dd3265c3f3f600d30"
         }
     },
     "actionlint": {
