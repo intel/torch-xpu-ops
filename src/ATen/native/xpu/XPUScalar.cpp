@@ -18,6 +18,8 @@
 namespace at::native {
 
 Scalar _local_scalar_dense_xpu(const Tensor& self) {
+  TORCH_CHECK(
+      self.numel() > 0, "_local_scalar_dense: Empty tensor not supported");
   Scalar r;
   AT_DISPATCH_V2(
       self.scalar_type(),
