@@ -3452,7 +3452,7 @@ class TestSparseCSR(TestCase):
             torch.complex128: 1e-8,
         }
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sampled_addmm(self, device, dtype):
         def run_test(c, a, b, op_a, op_b, *, alpha=None, beta=None):
             if dtype.is_complex:
@@ -3500,7 +3500,7 @@ class TestSparseCSR(TestCase):
                 if bcast_c and len(b) == 0:
                     continue
                 nnz = random.randint(0, m * n)
-                c_batch = () if bcast_c else b
+                c_batch = () if bcast_c else b                
                 c = self.genSparseCSRTensor(
                     (*c_batch, m, n),
                     nnz,
@@ -3561,7 +3561,7 @@ class TestSparseCSR(TestCase):
         True,
         "Causes CUDA memory exception, see https://github.com/pytorch/pytorch/issues/72177",
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
     @precisionOverride(
         {
@@ -3577,14 +3577,15 @@ class TestSparseCSR(TestCase):
             self.assertEqual(actual.shape, c.shape)
 
         for m, n, k in itertools.product([0, 5], repeat=3):
-            c = torch.empty(m, n, dtype=dtype, device=device, layout=torch.sparse_csr)
+            with torch.sparse.check_sparse_tensor_invariants(enable=False):
+                c = torch.empty(m, n, dtype=dtype, device=device, layout=torch.sparse_csr)
             a = make_tensor((m, k), dtype=dtype, device=device)
             b = make_tensor((k, n), dtype=dtype, device=device)
             run_test(c, a, b)
 
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_sampled_addmm_errors(self, device, dtype):
         # test that the errors are the same for dense and sparse sampled versions
         # import re
@@ -3905,7 +3906,7 @@ class TestSparseCSR(TestCase):
             self.assertEqual(sparse_input.grad, dense_input.grad)
 
     @dtypes(torch.float64)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2213")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2213")
     def test_autograd_dense_output_addmm(self, device, dtype):
         from torch.testing._internal.common_methods_invocations import (
             sample_inputs_addmm,
