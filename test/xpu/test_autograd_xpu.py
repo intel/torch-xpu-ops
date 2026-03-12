@@ -587,6 +587,11 @@ with XPUPatchForImport(False):
         TestMultithreadAutograd,
         TestNestedCheckpoint,
         TestSelectiveActivationCheckpoint,
+        TestAllowMutationOnSaved,
+        TestAutogradForwardModeBatchedGrad,
+        TestAutogradForwardMode,
+        TestAutogradInferenceMode,
+        TestAutogradStreamSynchronization,
     )
 
     @base_and_logging_tensor
@@ -711,10 +716,17 @@ instantiate_device_type_tests(
 instantiate_device_type_tests(
     TestAutogradMultipleDispatch, globals(), only_for="xpu", allow_xpu=True
 )
+instantiate_device_type_tests(
+    TestAutogradStreamSynchronization, globals(), only_for="xpu", allow_xpu=True
+)
 
 instantiate_parametrized_tests(TestAutograd)
 instantiate_parametrized_tests(TestNestedCheckpoint)
 instantiate_parametrized_tests(TestAutogradFunctional)
+instantiate_parametrized_tests(TestAllowMutationOnSaved)
+instantiate_parametrized_tests(TestAutogradForwardMode)
+instantiate_parametrized_tests(TestAutogradForwardModeBatchedGrad)
+instantiate_parametrized_tests(TestAutogradInferenceMode)
 
 
 if __name__ == "__main__":
