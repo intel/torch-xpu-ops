@@ -1313,8 +1313,8 @@ class TestSparseCompressed(TestCase):
             subtest("sparse_compressed_tensor_no_size"),
         ],
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2229")
-    @skipCPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2229")
+    @skipXPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2229")
+    @skipCPUIf(False, "https://github.com/intel/torch-xpu-ops/issues/2229")
     def test_invalid_input(self, layout, device, target):
         for (
             label,
@@ -1366,6 +1366,8 @@ class TestSparseCompressed(TestCase):
                 continue
             with self.assertRaisesRegex(RuntimeError, errmsg):
                 print("go on")
+                print(f"label: {label}, target: {target}, compressed_indices: {compressed_indices}, plain_indices: {plain_indices}, values: {values}, size: {size}, layout: {layout}")
+                print(f"errmsg: {errmsg}")
                 if target == "validate_sparse_compressed_tensor_args":
                     torch._validate_sparse_compressed_tensor_args(
                         compressed_indices, plain_indices, values, size, layout

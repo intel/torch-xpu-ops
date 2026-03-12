@@ -9551,3 +9551,9 @@
   variants: function
   dispatch:
     SparseXPU: bmm_out_sparse_xpu
+
+- func: _validate_compressed_sparse_indices(bool is_crow, Tensor compressed_idx, Tensor plain_idx, int cdim, int dim, int nnz) -> ()
+  device_check: NoCheck
+  variants: function
+  dispatch:
+    XPU: _validate_compressed_sparse_indices_xpu
