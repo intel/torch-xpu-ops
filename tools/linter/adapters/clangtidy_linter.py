@@ -28,21 +28,7 @@ from sysconfig import get_paths as gp
 from typing import Any, NamedTuple
 
 
-# PyTorch directory root
-def scm_root() -> str:
-    path = os.path.abspath(os.getcwd())
-    while True:
-        if os.path.exists(os.path.join(path, ".git")):
-            return path
-        if os.path.isdir(os.path.join(path, ".hg")):
-            return path
-        n = len(path)
-        path = os.path.dirname(path)
-        if len(path) == n:
-            raise RuntimeError("Unable to find SCM root")
-
-
-PYTORCH_ROOT = scm_root()
+PYTORCH_ROOT = "/home/jenkins/actions-runner/_work/torch-xpu-ops/torch-xpu-ops/pytorch"
 IS_WINDOWS: bool = os.name == "nt"
 
 
@@ -151,14 +137,6 @@ def clang_search_dirs() -> list[str]:
 
     return search_paths
 
-
-def find_pytorch_include_dir() -> str:
-    import torch
-    dir = os.path.dirname(torch.__file__)
-    if dir != "":
-        dir = os.path.join(dir, "include")
-    return dir
-
 def find_sycl_include_dir() -> str:
     dir = os.environ.get("CMPLR_ROOT", "")
     if dir != "":
@@ -168,10 +146,7 @@ def find_sycl_include_dir() -> str:
 
 include_args = []
 include_dir = [
-    "/usr/lib/llvm-18/include/openmp",
-    get_python_include_dir(),
-    os.path.join(PYTORCH_ROOT, "third_party/pybind11/include"),
-    find_pytorch_include_dir(),
+    os.path.join(PYTORCH_ROOT, "include"),
     find_sycl_include_dir(),
 ] + clang_search_dirs()
 for dir in include_dir:
