@@ -37,7 +37,23 @@ jobs:
       - name: Run lint check with Clang
         run: |
           cd ./torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
+          bash .github/scripts/lintrunner.sh
+
+  clang-tidy-check:
+    needs: preci-lint-check
+    if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Run clang-tidy
+        run: |
+          cd ./torch-xpu-ops
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY --all-files"
           bash .github/scripts/lintrunner.sh
 
   conditions-filter:
