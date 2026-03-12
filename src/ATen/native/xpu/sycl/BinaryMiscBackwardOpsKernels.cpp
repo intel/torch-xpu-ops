@@ -144,15 +144,13 @@ void tanh_backward_kernel(TensorIteratorBase& iter) {
           gpu_kernel(iter, TanhBackwardComplexFunctor<scalar_t>());
         });
   } else if (at::isReducedFloatingType(dtype)) {
-    AT_DISPATCH_REDUCED_FLOATING_TYPES(
-        dtype, "tanh_backward_xpu", [&]() {
-          gpu_kernel(iter, TanhBackwardReducedFunctor<scalar_t>());
-        });
+    AT_DISPATCH_REDUCED_FLOATING_TYPES(dtype, "tanh_backward_xpu", [&]() {
+      gpu_kernel(iter, TanhBackwardReducedFunctor<scalar_t>());
+    });
   } else {
-    AT_DISPATCH_FLOATING_TYPES(
-        dtype, "tanh_backward_xpu", [&]() {
-          gpu_kernel(iter, TanhBackwardFunctor<scalar_t>());
-        });
+    AT_DISPATCH_FLOATING_TYPES(dtype, "tanh_backward_xpu", [&]() {
+      gpu_kernel(iter, TanhBackwardFunctor<scalar_t>());
+    });
   }
 }
 
