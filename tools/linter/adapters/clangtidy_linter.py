@@ -211,12 +211,8 @@ def check_file(
         for match in RESULTS_RE.finditer(proc.stdout.decode()):
             # Convert the reported path to an absolute path.
             abs_path = str(Path(match["file"]).resolve())
-            # clang-diagnostic-error/fatal come from the compiler frontend
-            # and cannot be suppressed via .clang-tidy config. Skip them.
-            if match["code"] in (
-                "[clang-diagnostic-error]",
-                "[clang-diagnostic-fatal-error]",
-            ):
+            # clang-diagnostic-error cannot be suppressed via .clang-tidy config.
+            if match["code"] == "[clang-diagnostic-error]":
                 continue
             message = LintMessage(
                 path=abs_path,
