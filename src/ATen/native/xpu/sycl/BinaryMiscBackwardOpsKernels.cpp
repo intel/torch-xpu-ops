@@ -132,7 +132,7 @@ struct TanhBackwardReducedFunctor {
 template <typename scalar_t>
 struct TanhBackwardFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a * (scalar_t{1} - b * b);
+    return a * (scalar_t{1.} - b * b);
   }
 };
 
