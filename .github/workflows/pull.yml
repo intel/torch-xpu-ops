@@ -37,7 +37,7 @@ jobs:
       - name: Run lint check with Clang
         run: |
           cd ./torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
           bash .github/scripts/lintrunner.sh
 
   conditions-filter:

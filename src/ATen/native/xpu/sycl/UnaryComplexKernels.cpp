@@ -21,7 +21,6 @@
 #include <ATen/native/xpu/sycl/UnaryComplexKernels.h>
 #include <comm/SYCLContext.h>
 
-
 namespace at::native::xpu {
 
 template <typename scalar_t>
