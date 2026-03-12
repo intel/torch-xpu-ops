@@ -6,8 +6,9 @@ on:
       - opened
       - synchronize
       - reopened
-      - converted_to_draft
       - ready_for_review
+      - labeled
+      - unlabeled
     branches:
       - main
       - release/*
@@ -40,7 +41,10 @@ jobs:
           bash .github/scripts/lintrunner.sh
 
   conditions-filter-win:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+    if: >-
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -92,7 +96,7 @@ jobs:
 
   linux-distributed:
     needs: [linux-build]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distribute') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions: write-all
     strategy:
@@ -132,7 +136,6 @@ jobs:
 
   windows:
     name: windows
-    if: ${{ !(contains(github.event.pull_request.labels.*.name, 'disable_all') || contains(github.event.pull_request.labels.*.name, 'disable_win')) }} 
     needs: [conditions-filter-win, preci-lint-check]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
