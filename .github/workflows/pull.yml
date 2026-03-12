@@ -8,8 +8,6 @@ on:
       - reopened
       - converted_to_draft
       - ready_for_review
-      - labeled
-      - unlabeled
     branches:
       - main
       - release/*
@@ -48,7 +46,7 @@ jobs:
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
     steps:
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: check-files
         with:
           filters: |
