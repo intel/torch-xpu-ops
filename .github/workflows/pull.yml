@@ -6,9 +6,9 @@ on:
       - opened
       - synchronize
       - reopened
-      - converted_to_draft
       - ready_for_review
       - labeled
+      - unlabeled
     branches:
       - main
       - release/*
@@ -40,19 +40,17 @@ jobs:
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
           bash .github/scripts/lintrunner.sh
 
-  conditions-filter:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+  conditions-filter-win:
+    if: >-
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
-      has_label: ${{ steps.check-label.outputs.has_label }}
-      disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
-      pytorch: ${{ contains(steps.check-pr-desc.outputs.disabled_tests, 'disable_build') && 'nightly_wheel' || github.base_ref }}
     steps:
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: check-files
         with:
           filters: |
@@ -66,23 +64,10 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
-      - name: Check Label
-        id: check-label
-        run: |
-          echo "has_label=${{ contains(github.event.pull_request.labels.*.name, 'windows_ci') }}" >> $GITHUB_OUTPUT
-      - name: Check PR infos
-        id: check-pr-desc
-        run: |
-          set -x -e -o pipefail
-          sudo apt update && sudo apt install -y dos2unix
-          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
-          dos2unix pr-info.txt
-          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
-          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
   linux-build:
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') }}
-    needs: [conditions-filter, preci-lint-check]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    needs: [preci-lint-check]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -91,7 +76,7 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   # linux-ut:
   #   needs: [conditions-filter, linux-build]
