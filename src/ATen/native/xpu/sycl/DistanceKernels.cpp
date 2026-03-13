@@ -19,9 +19,30 @@
 namespace at::native::xpu {
 
 template <typename scalar_t>
-static double device_sqrt(scalar_t val) {
+static scalar_t device_sqrt(scalar_t val) {
   return std::sqrt(val);
 };
+
+// Compute row index i from linear upper-triangle index k
+// Uses float sqrt as approximation, then corrects with integer arithmetic.
+// This avoids fp64 which is unsupported on some XPU devices (e.g., Arc).
+static inline int64_t pdist_row_idx(int64_t k, int64_t n) {
+  // Binary search for row i such that cum(i) <= k < cum(i+1)
+  // where cum(i) = i * (2*n - i - 1) / 2  (pairs before row i)
+  // Uses pure integer arithmetic to avoid fp64 (unsupported on some XPU devices)
+  // and float32 catastrophic cancellation for large k.  O(log n) iterations.
+  int64_t lo = 0, hi = n - 2;
+  while (lo < hi) {
+    int64_t mid = lo + (hi - lo + 1) / 2;
+    int64_t cum_mid = mid * (2 * n - mid - 1) / 2;
+    if (cum_mid <= k) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
+}
 
 template <typename scalar_t>
 class Dists {
@@ -735,11 +756,12 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     auto out_ptr = out_data_;
     auto in_ptr = in_data_;
 
-    const size_t k = item_id.get_group_linear_id();
-    const size_t stride = item_id.get_local_range().size();
+    const int64_t local_k = static_cast<int64_t>(item_id.get_group_linear_id());
+    const int64_t k = offset_ + local_k;
+    if (k >= total_combs_) return;
 
-    int64_t i = static_cast<int64_t>(
-        (n2_val_ - device_sqrt<double>(n2_squared_minus_1_val_ - 2 * k)));
+    const size_t stride = item_id.get_local_range().size();
+    int64_t i = pdist_row_idx(k, n_);
     int64_t j = k - n_ * i + i * (i + 1) / 2 + i + 1;
 
     const scalar_t* const start = in_ptr + i * m_;
@@ -754,10 +776,10 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           p_val_);
     }
 
-    agg =
-        group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared_);
+    agg = group_reduce_agg_without_broadcast<scalar_t, F>(
+        agg, item_id, shared_);
     if (item_id.get_local_linear_id() == 0) {
-      out_ptr[k] = F::finish(agg, p_val_);
+      out_ptr[local_k] = F::finish(agg, p_val_);
     }
   }
 
@@ -769,17 +791,17 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   PdistKernelFunctor(
       const int64_t n,
       const int64_t m,
+      const int64_t total_combs,
+      const int64_t offset,
       accscalar_t p_val,
-      const double n2_val,
-      const double n2_squared_minus_1_val,
       scalar_t* out_data,
       const scalar_t* in_data,
       const int64_t wgroup_size)
       : n_(n),
         m_(m),
+        total_combs_(total_combs),
+        offset_(offset),
         p_val_(p_val),
-        n2_val_(n2_val),
-        n2_squared_minus_1_val_(n2_squared_minus_1_val),
         out_data_(out_data),
         in_data_(in_data),
         wgroup_size_(wgroup_size) {}
@@ -787,9 +809,9 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   const int64_t n_;
   const int64_t m_;
+  const int64_t total_combs_;
+  const int64_t offset_;
   accscalar_t p_val_;
-  const double n2_val_;
-  const double n2_squared_minus_1_val_;
   scalar_t* out_data_;
   const scalar_t* in_data_;
   sycl_local_acc_t<scalar_t, 1> shared_;
@@ -802,10 +824,8 @@ static void pdist_kernel_impl(
     const Tensor& self,
     const int64_t n,
     const int64_t m,
-    const double p,
-    const double n2,
-    const double n2_squared_minus_1) {
-  const auto ngroups = result.numel();
+    const double p) {
+  const int64_t total_combs = result.numel();
   using accscalar_t = acc_type_device<scalar_t, kXPU>;
   using KernelClass = PdistKernelFunctor<scalar_t, F, accscalar_t>;
   auto min_sg_size = syclMinSubGroupSize();
@@ -814,51 +834,60 @@ static void pdist_kernel_impl(
     wgroup_size >>= 1;
   }
 
-  auto p_val = static_cast<accscalar_t>(p);
+  // Limit global work size per launch to stay below the Level Zero / SYCL
+  // runtime limit (observed as 2^35 work items on Intel GPUs).
+  // Use multiple kernel launches if total_combs exceeds the per-launch limit.
+  const int64_t kMaxGroupsPerLaunch =
+      static_cast<int64_t>(10000000);  // 10M groups per launch
 
+  auto p_val = static_cast<accscalar_t>(p);
   auto out_data = result.mutable_data_ptr<scalar_t>();
   auto in_data = self.const_data_ptr<scalar_t>();
-
-  auto kfn = KernelClass(
-      n,
-      m,
-      p_val,
-      n2,
-      n2_squared_minus_1,
-      out_data,
-      in_data,
-      wgroup_size / min_sg_size);
   auto& queue = getCurrentSYCLQueue();
-  sycl_kernel_submit(ngroups * wgroup_size, wgroup_size, queue, kfn);
+
+  for (int64_t offset = 0; offset < total_combs; offset += kMaxGroupsPerLaunch) {
+    int64_t ngroups = std::min(total_combs - offset, kMaxGroupsPerLaunch);
+    // Pass out_data + offset so the kernel writes via small local indices,
+    // keeping per-access byte offsets under 4 GiB (Intel GPU 32-bit offset
+    // limit).
+    auto kfn = KernelClass(
+        n,
+        m,
+        total_combs,
+        offset,
+        p_val,
+        out_data + offset,
+        in_data,
+        wgroup_size / min_sg_size);
+    sycl_kernel_submit(ngroups * wgroup_size, wgroup_size, queue, kfn);
+  }
 }
 
 void pdist_forward_kernel(Tensor& result, const Tensor& self, double p) {
   int64_t n = self.size(0);
   int64_t m = self.size(1);
-  const double n2 = n - .5;
-  const double n2_squared_minus_1 = n2 * n2 - 1;
 
   AT_DISPATCH_FLOATING_TYPES(self.scalar_type(), "pdist_xpu", [&] {
     if (p == 0.0) {
       pdist_kernel_impl<scalar_t, DistsZero<scalar_t>>(
-          result, self, n, m, p, n2, n2_squared_minus_1);
+          result, self, n, m, p);
     } else if (p == 1.0) {
       pdist_kernel_impl<scalar_t, DistsOne<scalar_t>>(
-          result, self, n, m, p, n2, n2_squared_minus_1);
+          result, self, n, m, p);
     } else if (p == 2.0) {
       pdist_kernel_impl<scalar_t, DistsTwo<scalar_t>>(
-          result, self, n, m, p, n2, n2_squared_minus_1);
+          result, self, n, m, p);
     } else if (std::isinf(p)) {
       pdist_kernel_impl<scalar_t, DistsInf<scalar_t>>(
-          result, self, n, m, p, n2, n2_squared_minus_1);
+          result, self, n, m, p);
     } else {
       pdist_kernel_impl<scalar_t, DistsP<scalar_t>>(
-          result, self, n, m, p, n2, n2_squared_minus_1);
+          result, self, n, m, p);
     }
   });
 }
 
-template <typename scalar_t, typename F, typename accscalar_t = double>
+template <typename scalar_t, typename F>
 struct PdistBackwardKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     const int64_t k =
@@ -872,8 +901,7 @@ struct PdistBackwardKernelFunctor {
     }
 
     // select row i, j depending on k
-    int64_t i = static_cast<int64_t>(
-        (n2_val_ - device_sqrt<accscalar_t>(n2_squared_minus_1_val_ - 2 * k)));
+    int64_t i = pdist_row_idx(k, n_);
     int64_t j = k - n_ * i + i * (i + 1) / 2 + i + 1;
     int64_t ib = j - i - 1;
     int64_t jb = n_ - 2 - i;
@@ -907,9 +935,7 @@ struct PdistBackwardKernelFunctor {
       const int64_t n,
       const int64_t m,
       const int64_t combs,
-      const scalar_t p,
-      const accscalar_t n2,
-      const accscalar_t n2_squared_minus_1)
+      const scalar_t p)
       : out_ptr_(buffer),
         grad_ptr_(grad),
         in_ptr_(self),
@@ -918,9 +944,7 @@ struct PdistBackwardKernelFunctor {
         n_(n),
         m_(m),
         combs_(combs),
-        p_val_(p),
-        n2_val_(n2),
-        n2_squared_minus_1_val_(n2_squared_minus_1) {}
+        p_val_(p) {}
 
  private:
   scalar_t* out_ptr_;
@@ -932,8 +956,6 @@ struct PdistBackwardKernelFunctor {
   const int64_t m_;
   const int64_t combs_;
   const scalar_t p_val_;
-  const accscalar_t n2_val_;
-  const accscalar_t n2_squared_minus_1_val_;
 };
 
 void pdist_backward_kernel(
@@ -948,9 +970,6 @@ void pdist_backward_kernel(
   }
   const int64_t n = result.size(0);
   const int64_t m = self.size(1);
-  const double n2 = n - .5;
-  const double n2_squared_minus_1 = n2 * n2 - 1;
-
   Tensor buffer =
       at::empty({n - 1, result.size(0), result.size(1)}, result.options());
 
@@ -977,9 +996,7 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
-          n2,
-          n2_squared_minus_1);
+          p);
       sycl_kernel_submit(
           global_range, local_range, getCurrentSYCLQueue(), caller);
     } else if (p < 2.0) {
@@ -992,9 +1009,7 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
-          n2,
-          n2_squared_minus_1);
+          p);
       sycl_kernel_submit(
           global_range, local_range, getCurrentSYCLQueue(), caller);
     } else if (p == 2.0) {
@@ -1007,9 +1022,7 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
-          n2,
-          n2_squared_minus_1);
+          p);
       sycl_kernel_submit(
           global_range, local_range, getCurrentSYCLQueue(), caller);
     } else if (std::isinf(p)) {
@@ -1022,9 +1035,7 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
-          n2,
-          n2_squared_minus_1);
+          p);
       sycl_kernel_submit(
           global_range, local_range, getCurrentSYCLQueue(), caller);
     } else {
@@ -1037,9 +1048,7 @@ void pdist_backward_kernel(
           n,
           m,
           dist.numel(),
-          p,
-          n2,
-          n2_squared_minus_1);
+          p);
       sycl_kernel_submit(
           global_range, local_range, getCurrentSYCLQueue(), caller);
     }
