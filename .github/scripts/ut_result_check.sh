@@ -80,7 +80,41 @@ check_passed_known_issues() {
     fi
     # Mark passed items in GitHub issues with strikethrough
     if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ];then
-        mark_passed_issue "$output_file" "issues.log"
+        mark_issue "$output_file" "issues.log"
+    fi
+    rm -f "$output_file"  # Clean up temporary file
+}
+
+# Find known issues that are now skipped
+# Args: skipped_tests_file, known_issues_file, [output_file]
+check_skipped_known_issues() {
+    local skipped_file="$1" known_file="$2" output_file="${3:-${skipped_file%.*}_skipped_known.log}"
+    if [[ $# -lt 2 ]]; then
+        echo "❌ Need 2 files to compare" >&2
+        return 1
+    fi
+    if [[ ! -f "$skipped_file" ]]; then
+        echo -e "ℹ️  Skipped file not found: ${skipped_file}"
+        return 0
+    fi
+    # Handle Windows line endings
+    if grep -q $'\r' "$skipped_file"; then
+        sed -i 's/\r$//' "$skipped_file"
+    fi
+    # Find known issues that are now skipped
+    grep -Fxf "$skipped_file" "$known_file" | sort | uniq > "$output_file"
+    echo -e "\n📊 New Skipping Known Issues:"
+    if [[ -s "$output_file" ]]; then
+        local count
+        count=$(wc -l < "$output_file")
+        cat "$output_file"
+        echo -e "⏭️  ${count} known issues are now skipped!"
+    else
+        echo -e "ℹ️  No known issues are now skipped"
+    fi
+    # Mark skipped items in GitHub issues with strikethrough
+    if [ "$GITHUB_EVENT_NAME" == "schedule" ] && [ "$inputs_pytorch" != "nightly_wheel" ]; then
+        mark_issue "$output_file" "issues.log" "skipped"
     fi
     rm -f "$output_file"  # Clean up temporary file
 }
@@ -208,6 +242,18 @@ run_main_tests() {
     # Check for known issues that are now passing (regression fixes)
     echo -e "\\n✅ Passing Known Issues:"
     check_passed_known_issues "passed_${suite}.log" "Known_issue.log"
+    # Check for known issues that are now skipped
+    echo -e "\n⏭️  Skipping Known Issues:"
+    if [[ ! -f "skipped_${suite}.log" ]]; then
+        if [[ -f "${suite}_test.log" ]]; then
+            grep "SKIPPED" "${suite}_test.log" > "skipped_${suite}.log" || true
+            clean_file "skipped_${suite}.log"
+        else
+            : > "skipped_${suite}.log"
+            echo "ℹ️  No ${suite}_test.log found, created empty skipped_${suite}.log"
+        fi
+    fi
+    check_skipped_known_issues "skipped_${suite}.log" "Known_issue.log"
     # Check for new failures not in known issues
     echo -e "\\nChecking New Failures:"
     if [[ -f "failures_${suite}.log" ]]; then
@@ -243,6 +289,8 @@ run_distributed_tests() {
     clean_file "${suite}_failed.log"
     grep "PASSED" "${suite}_test.log" > "${suite}_passed.log"
     clean_file "${suite}_passed.log"
+    grep "SKIPPED" "${suite}_test.log" > "${suite}_skipped.log"
+    clean_file "${suite}_skipped.log"
     echo "📋 Failed Cases:"
     cat "${suite}_failed.log"
     # Identify filtered tests (known issues in distributed tests)
@@ -258,6 +306,7 @@ run_distributed_tests() {
     fi
     # Run standard checks for distributed tests
     check_passed_known_issues "${suite}_passed.log" "Known_issue.log"
+    check_skipped_known_issues "${suite}_skipped.log" "Known_issue.log"
     check_new_failed "${suite}_failed.log" "Known_issue.log"
     # Calculate final statistics for distributed tests
     local failed_count=0 passed_count=0
@@ -274,20 +323,21 @@ run_distributed_tests() {
     fi
 }
 
-# Mark passed items in GitHub issues with strikethrough
-mark_passed_issue() {
-    local PASSED_FILE="$1"
+# Mark passed/skipped items in GitHub issues with strikethrough
+mark_issue() {
+    local CASES_FILE="$1"
     local ISSUE_FILE="$2"
+    local CASE_STATUS="${3:-passed}"
     random_issues="$(gh issue list --repo ${REPO} --label 'skipped,random' --json number --jq '.[].number')"
     # Cehck before start
-    [[ ! -f "$PASSED_FILE" ]] && { echo "❌ Missing $PASSED_FILE" >&2; exit 1; }
+    [[ ! -f "$CASES_FILE" ]] && { echo "❌ Missing $CASES_FILE" >&2; exit 1; }
     [[ ! -f "$ISSUE_FILE" ]] && { echo "❌ Missing $ISSUE_FILE" >&2; exit 1; }
     command -v gh &>/dev/null || { echo "❌ GitHub CLI required" >&2; exit 1; }
-    echo "🔍 Loading passed items..."
-    # Load passed items into array for efficient lookup
-    declare -a passed_items
-    mapfile -t passed_items < <(grep -v '^[[:space:]]*$' "$PASSED_FILE")
-    echo "🔍 Mapping passed items to issues..."
+    echo "🔍 Loading ${CASE_STATUS} items..."
+    # Load case items into array for efficient lookup
+    declare -a case_items
+    mapfile -t case_items < <(grep -v '^[[:space:]]*$' "$CASES_FILE")
+    echo "🔍 Mapping ${CASE_STATUS} items to issues..."
     declare -A issue_items
     local issue_id=""
     local in_cases_section=0
@@ -308,20 +358,20 @@ mark_passed_issue() {
             continue
         fi
         if [[ $in_cases_section -eq 1 && -n "$issue_id" ]]; then
-            # Check if this case is in the passed items
-            for passed_case in "${passed_items[@]}"; do
-                if [[ "$passed_case" == "$line" ]]; then
+            # Check if this case is in the target case items
+            for case_item in "${case_items[@]}"; do
+                if [[ "$case_item" == "$line" ]]; then
                     if [[ -n "${issue_items[$issue_id]:-}" ]]; then
-                        issue_items["$issue_id"]+=" $passed_case"
+                        issue_items["$issue_id"]+=" $case_item"
                     else
-                        issue_items["$issue_id"]="$passed_case"
+                        issue_items["$issue_id"]="$case_item"
                     fi
                     break
                 fi
             done
         fi
     done < "$ISSUE_FILE"
-    echo "✅ Done! Found ${#issue_items[@]} issues with passed items"
+    echo "✅ Done! Found ${#issue_items[@]} issues with ${CASE_STATUS} items"
     # Print results and update issues
     for issue_id in "${!issue_items[@]}"; do
         # Remove duplicate cases and clean up formatting
@@ -329,17 +379,25 @@ mark_passed_issue() {
         echo "📝 Processing issue #${issue_id} with cases: ${uniq_cases}"
         # Get current issue body
         gh --repo "$REPO" issue view "${issue_id}" --json body -q .body > "issue-body-${issue_id}.txt"
-        # Apply strikethrough to passed cases
+        # Apply strikethrough to passed/skipped cases
         for case in $uniq_cases; do
             sed -i "s|^${case}[[:space:]]*$|~~${case}~~|g" "issue-body-${issue_id}.txt"
         done
         # Update the issue
         gh --repo "$REPO" issue edit "${issue_id}" --body-file "issue-body-${issue_id}.txt"
         # Add comment
-        if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+        if [[ "$CASE_STATUS" == "skipped" ]]; then
+            if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+                gh --repo "$REPO" issue comment "${issue_id}" --body "⏭️ ${uniq_cases} Skipped in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            else
+                gh --repo "$REPO" issue comment "${issue_id}" --body "⏭️ ${uniq_cases} Skipped in nightly testing"
+            fi
         else
-            gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing"
+            if [[ -n "${GITHUB_RUN_ID:-}" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+                gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in [nightly testing](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
+            else
+                gh --repo "$REPO" issue comment "${issue_id}" --body "✅ ${uniq_cases} Passed in nightly testing"
+            fi
         fi
         # Clean up temporary file
         rm -f "issue-body-${issue_id}.txt"
