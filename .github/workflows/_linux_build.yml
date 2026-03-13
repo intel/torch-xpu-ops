@@ -6,7 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
+        default: 'build'
         description: Runner label
       pytorch:
         type: string
@@ -97,9 +97,9 @@ jobs:
         run: |
           export USE_XCCL=1
           export IS_XPU_CI=1
-          # only build pvc for CI
+          # only build bmg for CI
           if [ "${{ github.event_name }}" == "pull_request" ];then
-            export TORCH_XPU_ARCH_LIST='pvc'
+            export TORCH_XPU_ARCH_LIST='bmg'
           fi
           if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
             PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
