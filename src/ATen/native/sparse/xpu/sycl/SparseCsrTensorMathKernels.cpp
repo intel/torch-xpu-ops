@@ -32,11 +32,13 @@
 #include <ATen/ops/_sparse_csr_tensor_unsafe_native.h>
 #include <ATen/ops/_unique.h>
 #include <ATen/ops/add_native.h>
+#include <ATen/ops/addmm.h>
 #include <ATen/ops/resize_as_sparse_native.h>
 #include <ATen/ops/tensor.h>
 #include <ATen/ops/zeros.h>
 #endif
 
+#include <ATen/native/sparse/SparseBlasImpl.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/Reduce.h>
@@ -609,6 +611,82 @@ void convert_indices_from_csr_to_coo_structured_kernel(
               result, crow_indices, col_indices, transpose);
         });
   }
+}
+
+void addmm_out_sparse_csr(
+    const Tensor& input,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  TORCH_INTERNAL_ASSERT(
+      !((mat1.layout() == kStrided) && (mat2.layout() == kStrided) &&
+        (result.layout() == kStrided)),
+      "Expected at least one sparse input");
+
+  // using the  _compressed_row_strided_addmm_out which  handles
+  // float16/bfloat16 precision by internally promoting to float32.
+  if (mat1.layout() == kSparseBsr || mat1.layout() == kSparseCsr) {
+    if (mat2.layout() == kStrided) {
+      sparse::impl::_compressed_row_strided_addmm_out(
+          input, mat1, mat2, beta, alpha, result);
+      return;
+    }
+  }
+
+  if (mat1.layout() == kSparseCsc) {
+    if (mat2.layout() == kStrided) {
+      sparse::impl::_compressed_row_strided_addmm_out(
+          input, mat1.to_sparse_csr(), mat2, beta, alpha, result);
+      return;
+    }
+  }
+
+  if (mat1.layout() == kStrided) {
+    // When mat2 is the sparse argument, transpose both sides:
+    //   result = alpha * mat1 @ mat2 + beta * input
+    //   result.T = alpha * mat2.T @ mat1.T + beta * input.T
+    // Then call _compressed_row_strided_addmm_out with mat2.T as the
+    // CSR/BSR sparse argument.
+    Tensor result_t = result.transpose(-2, -1);
+    Tensor input_t = result.is_same(input) ? result_t : input.transpose(-2, -1);
+    if (mat2.layout() == kSparseBsc) {
+      sparse::impl::_compressed_row_strided_addmm_out(
+          input_t,
+          mat2.transpose(-2, -1), // BSC.T == BSR
+          mat1.transpose(-2, -1),
+          beta,
+          alpha,
+          result_t);
+      return;
+    }
+    if (mat2.layout() == kSparseCsc) {
+      sparse::impl::_compressed_row_strided_addmm_out(
+          input_t,
+          mat2.transpose(-2, -1), // CSC.T == CSR
+          mat1.transpose(-2, -1),
+          beta,
+          alpha,
+          result_t);
+      return;
+    }
+    if (mat2.layout() == kSparseCsr) {
+      sparse::impl::_compressed_row_strided_addmm_out(
+          input_t,
+          mat2.transpose(-2, -1).to_sparse_csr(),
+          mat1.transpose(-2, -1),
+          beta,
+          alpha,
+          result_t);
+      return;
+    }
+  }
+
+  // Fallback for any remaining combinations by converting sparse to dense.
+  Tensor mat1_dense = mat1.layout() == kStrided ? mat1 : mat1.to_dense();
+  Tensor mat2_dense = mat2.layout() == kStrided ? mat2 : mat2.to_dense();
+  at::addmm_out(result, input, mat1_dense, mat2_dense, beta, alpha);
 }
 
 } // namespace at::native::xpu
