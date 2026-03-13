@@ -30,7 +30,11 @@ namespace impl {
 
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  // return std::pow(base, exp);
+  if (base <= 0) {
+    return std::pow(base, exp);
+  }
+  return std::exp2(exp * std::log2(base));
 }
 
 template <typename T>
