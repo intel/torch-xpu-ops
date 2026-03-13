@@ -14,12 +14,12 @@
 
 #ifdef USE_C10D_XCCL
 
-#include <cstdio>
 #include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
+#include <cstdio>
 
 namespace c10d {
 
