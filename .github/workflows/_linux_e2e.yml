@@ -191,7 +191,6 @@ jobs:
           dt: bfloat16,float16
           mode: training
           scenario: accuracy,performance
-
       - name: Execute CI/CD TIMM models tests
         if: ${{ github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -200,7 +199,6 @@ jobs:
           dt: bfloat16
           mode: training
           scenario: accuracy,performance
-
       - name: Execute CI/CD TorchBench tests
         if: ${{ github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -219,7 +217,6 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-
       - name: Execute Nightly TIMM models tests
         if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -228,7 +225,6 @@ jobs:
           dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
-
       - name: Execute Nightly TorchBench tests
         if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -237,7 +233,6 @@ jobs:
           dt: float16,bfloat16
           mode: training
           scenario: accuracy,performance
-
       - name: Execute Nightly PT2E tests
         if: ${{ contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_PT2E == '1' }}
         uses: ./.github/actions/pt2e
@@ -254,7 +249,6 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-
       - name: Execute Weekly TIMM models full tests
         if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -263,7 +257,6 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-
       - name: Execute Weekly TorchBench full tests
         if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -272,7 +265,6 @@ jobs:
           dt: float32,bfloat16,float16,amp_bf16,amp_fp16
           mode: inference,training
           scenario: accuracy,performance
-
       - name: Execute Weekly PT2E tests
         if: ${{ contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_PT2E == '1' }}
         uses: ./.github/actions/pt2e
@@ -339,7 +331,6 @@ jobs:
 
           echo "E2E_DTYPES=${E2E_DTYPES}" >> "${GITHUB_OUTPUT}"
           echo "PT2E_DTYPES=${PT2E_DTYPES}" >> "${GITHUB_OUTPUT}"
-
       - name: Execute On-demand HuggingFace tests
         if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -348,7 +339,6 @@ jobs:
           dt: ${{ steps.parse-dtypes.outputs.E2E_DTYPES }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-
       - name: Execute On-demand TIMM models tests
         if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -357,7 +347,6 @@ jobs:
           dt: ${{ steps.parse-dtypes.outputs.E2E_DTYPES }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-
       - name: Execute On-demand TorchBench tests
         if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1' }}
         uses: ./.github/actions/linux-e2etest
@@ -366,7 +355,6 @@ jobs:
           dt: ${{ steps.parse-dtypes.outputs.E2E_DTYPES }}
           mode: ${{ inputs.mode }}
           scenario: ${{ inputs.scenario }}
-
       - name: Execute On-demand PT2E tests
         if: ${{ contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_PT2E == '1' }}
         uses: ./.github/actions/pt2e
@@ -379,17 +367,16 @@ jobs:
         if: ${{ contains(inputs.test_type, 'target') || contains(inputs.test_type, 'baseline') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface,timm_models,torchbench
+          suite: ${{ inputs.suite }}
           dt: amp_fp16
           mode: training
           scenario: accuracy,performance
           comparison_type: comparison
-
       - name: Execute On-demand Inference tests
         if: ${{ contains(inputs.test_type, 'target') || contains(inputs.test_type, 'baseline') }}
         uses: ./.github/actions/linux-e2etest
         with:
-          suite: huggingface,timm_models,torchbench
+          suite: ${{ inputs.suite }}
           dt: bfloat16
           mode: inference
           scenario: accuracy,performance
