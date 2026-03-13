@@ -20,8 +20,9 @@ on:
         type: choice
         options:
           - onednn
-          - oneapi
+          - sycltla
           - triton
+          - oneapi
           - pytorch
           - torch-xpu-ops
         default: 'pytorch'

@@ -16,6 +16,8 @@ readonly DEFAULT_TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
 readonly DEFAULT_TORCH_XPU_OPS_COMMIT="main"
 readonly DEFAULT_ONEDNN_REPO="https://github.com/uxlfoundation/oneDNN.git"
 readonly DEFAULT_ONEDNN_COMMIT="main"
+readonly DEFAULT_SYCLTLA_REPO="https://github.com/intel/sycl-tla.git"
+readonly DEFAULT_SYCLTLA_COMMIT="main"
 
 # Extra install requirements for oneAPI (used only if XPU_ONEAPI_PATH not set)
 # MKL version
@@ -55,6 +57,8 @@ COMPONENT=""
 COMPONENT_COMMIT=""
 ONEDNN_REPO=""
 ONEDNN_COMMIT=""
+SYCLTLA_REPO=""
+SYCLTLA_COMMIT=""
 
 # -------------------- Utility Functions --------------------
 # Color definitions
@@ -131,7 +135,7 @@ Options:
   --WORKSPACE=<path>           Workspace directory (default: /tmp/pytorch_build)
   --PYTORCH=<spec>             PyTorch specification (format: [repo@]commit, default: ${DEFAULT_PYTORCH_REPO}@${DEFAULT_PYTORCH_COMMIT})
   --TORCH_XPU_OPS=<spec>       torch-xpu-ops specification (format: [repo@]commit, default: ${DEFAULT_TORCH_XPU_OPS_REPO}@${DEFAULT_TORCH_XPU_OPS_COMMIT})
-  --COMPONENT=<name>           Component to patch (e.g., onednn)
+  --COMPONENT=<name>           Component to patch (e.g., onednn, sycltla)
   --COMPONENT_COMMIT=<spec>    Component commit specification (format: [repo@]commit)
   --help, -h                   Show this help message
 
@@ -301,27 +305,36 @@ apply_patches() {
 
     # Patch oneDNN if specified
     if [[ "$COMPONENT" == "onednn" ]] && [[ -n "$COMPONENT_COMMIT" ]] && [[ "${COMPONENT_COMMIT,,}" != 'pinned' ]]; then
-        patch_onednn
+        patch_component "$DEFAULT_ONEDNN_REPO" "$DEFAULT_ONEDNN_COMMIT"
+    fi
+    # Patch sycltla if specified
+    if [[ "$COMPONENT" == "sycltla" ]] && [[ -n "$COMPONENT_COMMIT" ]] && [[ "${COMPONENT_COMMIT,,}" != 'pinned' ]]; then
+        patch_component "$DEFAULT_SYCLTLA_REPO" "$DEFAULT_SYCLTLA_COMMIT"
     fi
 
     # Patch CMakeLists.txt to avoid git checkout during build (speeds up build)
     patch_cmakelists
 }
 
-patch_onednn() {
-    log_info "Patching oneDNN configuration..."
+patch_component() {
+    log_info "Patching component configuration..."
 
     local pytorch_dir="$WORKSPACE/pytorch"
+    local cmake_file
     cd "$pytorch_dir"
 
-    read -r ONEDNN_REPO ONEDNN_COMMIT <<< "$(extract_repo_commit \
-        "$COMPONENT_COMMIT" \
-        "$DEFAULT_ONEDNN_REPO" \
-        "$DEFAULT_ONEDNN_COMMIT")"
+    read -r PATCH_REPO PATCH_COMMIT <<< "$(extract_repo_commit \
+        "$COMPONENT_COMMIT" "$1" "$2")"
 
-    log_info "Configuring oneDNN to use: $ONEDNN_REPO @ $ONEDNN_COMMIT"
-
-    local cmake_file="cmake/Modules/FindMKLDNN.cmake"
+    log_info "Configuring component to use: $PATCH_REPO @ $PATCH_COMMIT"
+    if [[ "$COMPONENT" == "onednn" ]];then
+        cmake_file="cmake/Modules/FindMKLDNN.cmake"
+    elif [[ "$COMPONENT" == "sycltla" ]];then
+        cmake_file="third_party/torch-xpu-ops/cmake/SYCLTLA.cmake"
+    else
+        echo "No such ${COMPONENT} to patch"
+        exit 1
+    fi
     if [[ ! -f "$cmake_file" ]]; then
         log_error "FindMKLDNN.cmake not found at $cmake_file"
         return 1
@@ -332,15 +345,15 @@ patch_onednn() {
 
     # Patch the file
     if ! sed -i \
-        -e "s|GIT_REPOSITORY .*|GIT_REPOSITORY $ONEDNN_REPO|" \
-        -e "s|GIT_TAG .*|GIT_TAG $ONEDNN_COMMIT|" \
+        -e "s|GIT_REPOSITORY .*|GIT_REPOSITORY $PATCH_REPO|" \
+        -e "s|GIT_TAG .*|GIT_TAG $PATCH_COMMIT|" \
         "$cmake_file"; then
-        log_error "Failed to patch oneDNN configuration"
+        log_error "Failed to patch component configuration"
         cp "$cmake_file.bak" "$cmake_file"
         return 1
     fi
 
-    log_success "oneDNN configuration updated"
+    log_success "component configuration updated"
 }
 
 patch_cmakelists() {
