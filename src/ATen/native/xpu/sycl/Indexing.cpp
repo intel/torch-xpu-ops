@@ -657,6 +657,7 @@ void index_put_deterministic_kernel(
         indices.size(),
         ")");
   }
+
   bool self_contiguous = self.is_contiguous();
   auto self_ = self_contiguous ? self : self.contiguous();
   Tensor linearIndex, src, expandedValue = value;
@@ -687,8 +688,9 @@ void index_put_deterministic_kernel(
 
     linearIndex.divide_(sliceSize, "trunc");
 
+    // Sort the inputs into sorted with the corresponding indices
     auto range = at::arange(num_indices, linearIndex.options());
-    sort_pairs<int64_t, int64_t>(
+    sort_pairs(
         linearIndex.const_data_ptr<int64_t>(),
         sorted_indices.mutable_data_ptr<int64_t>(),
         range.const_data_ptr<int64_t>(),
@@ -697,31 +699,69 @@ void index_put_deterministic_kernel(
         false);
 
     TORCH_INTERNAL_ASSERT(
-        linearIndex.numel() * sliceSize * nElemBefore == expandedValue.numel(),
-        "number of flattened indices did not match number of elements in the value tensor: ",
-        linearIndex.numel() * sliceSize * nElemBefore,
-        " vs ",
-        expandedValue.numel());
+        linearIndex.numel() * sliceSize * nElemBefore == expandedValue.numel());
 
-    if (sliceSize > SIMD) {
+    // --- Dynamic Tuning Configuration ---
+    const int warp_size = 32;
+    int indices_per_block = 4; // Proven baseline for large/complex strides
+    int current_unroll = 4;
+
+    // 1. Small workload: Increase block size to reduce kernel launch overhead
+    if (num_indices <= 1024) {
+      indices_per_block = 16;
+    }
+    // 2. Stride 1: Use larger blocks to improve subgroup reduction efficiency
+    else if (sliceSize == 1) {
+      indices_per_block = 32;
+    }
+
+    // 3. Medium Stride: Boost unroll for bandwidth, but avoid on massive
+    // strides (>1024)
+    if (sliceSize > 64 && sliceSize <= 1024) {
+      current_unroll = 8;
+    }
+
+    auto local_range =
+        sycl::range<3>{size_t(1), size_t(warp_size), size_t(indices_per_block)};
+
+    int64_t wg_size0 = std::min(std::max<int>(1, nElemBefore), 65535);
+    int64_t wg_size1 = std::max<int64_t>(
+        1, ceil_div(sliceSize, (int64_t)(warp_size * current_unroll)));
+    int64_t wg_size2 = ceil_div(num_indices, (int64_t)indices_per_block);
+    int64_t large_wg_size2 = std::max<int64_t>(
+        1, ceil_div(num_indices, (int64_t)(indices_per_block * warp_size)));
+
+    auto small_global_range = sycl::range<3>{
+        size_t(wg_size0),
+        size_t(wg_size1 * warp_size),
+        size_t(wg_size2 * indices_per_block)};
+    auto large_global_range = sycl::range<3>{
+        size_t(wg_size0),
+        size_t(wg_size1 * warp_size),
+        size_t(large_wg_size2 * indices_per_block)};
+
+    size_t smem_size = indices_per_block * warp_size;
+
+    if (sliceSize == 1) {
       AT_DISPATCH_V2(
           expandedValue.scalar_type(),
-          "index_put_deterministic_kernel",
+          "indexing_backward_kernel_stride_1",
           AT_WRAP([&] {
-            launch_index_put_deterministic_kernel<scalar_t, scalar_t>(
-                sorted_indices.mutable_data_ptr<int64_t>(),
-                orig_indices.mutable_data_ptr<int64_t>(),
+            auto kfn = indexing_backward_kernel_stride_1<scalar_t>(
+                sorted_indices.const_data_ptr<int64_t>(),
+                orig_indices.const_data_ptr<int64_t>(),
                 expandedValue.const_data_ptr<scalar_t>(),
                 src_.mutable_data_ptr<scalar_t>(),
                 num_indices,
                 sliceSize,
                 strideBefore,
                 nElemBefore,
-                accumulate);
+                accumulate,
+                smem_size);
+            sycl_kernel_submit(
+                large_global_range, local_range, getCurrentSYCLQueue(), kfn);
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
-          // cleared for float8 dtypes.
           kFloat8_e4m3fn,
           kFloat8_e5m2,
           kFloat8_e4m3fnuz,
@@ -731,39 +771,89 @@ void index_put_deterministic_kernel(
           kBool,
           kBFloat16);
     } else {
-      // Align acc type with CUDA
-      AT_DISPATCH_V2(
-          expandedValue.scalar_type(),
-          "index_put_deterministic_kernel",
-          AT_WRAP([&] {
-            using accscalar_t = at::opmath_type<scalar_t>;
-            launch_index_put_deterministic_kernel<scalar_t, accscalar_t>(
-                sorted_indices.mutable_data_ptr<int64_t>(),
-                orig_indices.mutable_data_ptr<int64_t>(),
-                expandedValue.const_data_ptr<scalar_t>(),
-                src_.mutable_data_ptr<scalar_t>(),
-                num_indices,
-                sliceSize,
-                strideBefore,
-                nElemBefore,
-                accumulate);
-          }),
-          AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
-          // TODO: Enable AT_FLOAT8_DTYPES after accumulation behavior is
-          // cleared for float8 dtypes.
-          kFloat8_e4m3fn,
-          kFloat8_e5m2,
-          kFloat8_e4m3fnuz,
-          kFloat8_e5m2fnuz,
-          kComplexHalf,
-          kHalf,
-          kBool,
-          kBFloat16);
+      if (sliceSize <= warp_size) {
+        AT_DISPATCH_V2(
+            expandedValue.scalar_type(),
+            "indexing_backward_kernel_small_stride",
+            AT_WRAP([&] {
+              auto kfn = indexing_backward_kernel_small_stride<scalar_t>(
+                  sorted_indices.const_data_ptr<int64_t>(),
+                  orig_indices.const_data_ptr<int64_t>(),
+                  expandedValue.const_data_ptr<scalar_t>(),
+                  src_.mutable_data_ptr<scalar_t>(),
+                  num_indices,
+                  sliceSize,
+                  strideBefore,
+                  nElemBefore,
+                  accumulate);
+              sycl_kernel_submit(
+                  small_global_range, local_range, getCurrentSYCLQueue(), kfn);
+            }),
+            AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+            kFloat8_e4m3fn,
+            kFloat8_e5m2,
+            kFloat8_e4m3fnuz,
+            kFloat8_e5m2fnuz,
+            kComplexHalf,
+            kHalf,
+            kBool,
+            kBFloat16);
+      } else {
+        AT_DISPATCH_V2(
+            expandedValue.scalar_type(),
+            "indexing_backward",
+            AT_WRAP([&] {
+              if (current_unroll == 8) {
+                auto kfn = indexing_backward_kernel<scalar_t, 8>(
+                    sorted_indices.const_data_ptr<int64_t>(),
+                    orig_indices.const_data_ptr<int64_t>(),
+                    expandedValue.const_data_ptr<scalar_t>(),
+                    src_.mutable_data_ptr<scalar_t>(),
+                    num_indices,
+                    sliceSize,
+                    strideBefore,
+                    nElemBefore,
+                    accumulate,
+                    smem_size);
+                sycl_kernel_submit(
+                    large_global_range,
+                    local_range,
+                    getCurrentSYCLQueue(),
+                    kfn);
+              } else {
+                auto kfn = indexing_backward_kernel<scalar_t, 4>(
+                    sorted_indices.const_data_ptr<int64_t>(),
+                    orig_indices.const_data_ptr<int64_t>(),
+                    expandedValue.const_data_ptr<scalar_t>(),
+                    src_.mutable_data_ptr<scalar_t>(),
+                    num_indices,
+                    sliceSize,
+                    strideBefore,
+                    nElemBefore,
+                    accumulate,
+                    smem_size);
+                sycl_kernel_submit(
+                    large_global_range,
+                    local_range,
+                    getCurrentSYCLQueue(),
+                    kfn);
+              }
+            }),
+            AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+            kFloat8_e4m3fn,
+            kFloat8_e5m2,
+            kFloat8_e4m3fnuz,
+            kFloat8_e5m2fnuz,
+            kComplexHalf,
+            kHalf,
+            kBool,
+            kBFloat16);
+      }
     }
 
-    if (permuted)
+    if (permuted) {
       self.copy_(src_.permute(inversePerm));
-    else if (!self_contiguous) {
+    } else if (!self_contiguous) {
       self.copy_(self_);
     }
   }
