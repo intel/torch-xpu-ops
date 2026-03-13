@@ -30,11 +30,17 @@ namespace impl {
 
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  // return std::pow(base, exp);
-  if (base <= 0) {
+  if constexpr (c10::is_complex<Base_type>::value) {
     return std::pow(base, exp);
+  } else {
+    // return std::pow(base, exp);
+    if (base <= 0) {
+      return std::pow(base, exp);
+    }
+    // Explicitly use opmath_type to ensure high precision calculation if possible
+    using opmath_t = at::opmath_type<Base_type>;
+    return static_cast<Base_type>(std::exp2(static_cast<opmath_t>(exp) * std::log2(static_cast<opmath_t>(base))));
   }
-  return std::exp2(exp * std::log2(base));
 }
 
 template <typename T>
