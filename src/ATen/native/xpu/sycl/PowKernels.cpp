@@ -17,7 +17,12 @@
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 
 #include <ATen/native/xpu/sycl/PowKernels.h>
+#if __has_include(<sycl/ext/intel/math.hpp>)
 #include <sycl/ext/intel/math.hpp>
+#define TORCH_XPU_HAS_INTEL_MATH 1
+#else
+#define TORCH_XPU_HAS_INTEL_MATH 0
+#endif
 
 namespace at {
 namespace native {
@@ -31,15 +36,19 @@ namespace impl {
 
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  if constexpr (c10::is_complex<Base_type>::value) {
+  if constexpr (
+      c10::is_complex<Base_type>::value || std::is_integral<Base_type>::value) {
     return std::pow(base, exp);
   } else {
     if (base <= 0) {
       return std::pow(base, exp);
     }
-    using opmath_t = at::opmath_type<Base_type>;
-#ifdef __SYCL_DEVICE_ONLY__
-    return static_cast<Base_type>(sycl::ext::intel::math::ha::exp2(static_cast<opmath_t>(exp) * sycl::log2(static_cast<opmath_t>(base))));
+    using base_opmath_t = at::opmath_type<Base_type>;
+    using exp_opmath_t = at::opmath_type<Exp_type>;
+    using opmath_t = std::common_type_t<base_opmath_t, exp_opmath_t>;
+#if defined(__SYCL_DEVICE_ONLY__) && TORCH_XPU_HAS_INTEL_MATH
+    return static_cast<Base_type>(sycl::ext::intel::math::ha::exp2(
+        static_cast<opmath_t>(exp) * sycl::log2(static_cast<opmath_t>(base))));
 #else
     return std::pow(base, exp);
 #endif
