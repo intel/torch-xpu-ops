@@ -1,0 +1,106 @@
+name: Component Setup Action
+description: Setup component version for testing
+
+inputs:
+  component:
+    required: true
+    description: 'Component name'
+  version:
+    required: true
+    description: 'Component version (commit/branch/tag)'
+  output_dir:
+    required: true
+    description: 'Output directory'
+  fetch_strategy:
+    required: true
+    default: 'clone'
+    description: 'Fetch strategy'
+  version_type:
+    required: true
+    description: 'target or baseline'
+
+outputs:
+  component_dir:
+    description: 'Directory containing component'
+  metadata:
+    description: 'Component metadata JSON'
+  version_hash:
+    description: 'Version hash/identifier'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Component Directory
+      shell: bash
+      run: |
+        COMPONENT_DIR="${{ inputs.output_dir }}/${{ inputs.component }}"
+        mkdir -p "$COMPONENT_DIR"
+        echo "component_dir=$COMPONENT_DIR" >> $GITHUB_OUTPUT
+
+    - name: Determine Component Repository
+      shell: bash
+      run: |
+        # Map components to their repositories
+        case "${{ inputs.component }}" in
+          "pytorch")
+            REPO="https://github.com/pytorch/pytorch"
+            ;;
+          "torch-xpu-ops")
+            REPO="https://github.com/intel/torch-xpu-ops"
+            ;;
+          "onednn")
+            REPO="https://github.com/oneapi-src/oneDNN"
+            ;;
+          "oneapi")
+            REPO="https://github.com/oneapi-src/oneAPI"
+            ;;
+          "triton")
+            REPO="https://github.com/openai/triton"
+            ;;
+          *)
+            echo "Unknown component: ${{ inputs.component }}"
+            exit 1
+            ;;
+        esac
+
+        echo "REPO=$REPO" >> $GITHUB_ENV
+
+    - name: Fetch Component
+      shell: bash
+      run: |
+        cd "${{ inputs.output_dir }}/${{ inputs.component }}"
+
+        case "${{ inputs.fetch_strategy }}" in
+          "clone")
+            git clone "$REPO" .
+            git checkout "${{ inputs.version }}" || git reset --hard "${{ inputs.version }}"
+            ;;
+          "download")
+            # Download logic for pre-built components
+            echo "Downloading ${{ inputs.component }}@${{ inputs.version }}"
+            # Implementation depends on component distribution
+            ;;
+          "existing")
+            # Use existing installation
+            echo "Using existing ${{ inputs.component }} installation"
+            ;;
+        esac
+
+    - name: Generate Metadata
+      shell: bash
+      run: |
+        METADATA_FILE="${{ inputs.output_dir }}/${{ inputs.component }}/metadata.json"
+
+        cat > "$METADATA_FILE" << EOF
+        {
+          "component": "${{ inputs.component }}",
+          "version": "${{ inputs.version }}",
+          "version_type": "${{ inputs.version_type }}",
+          "fetch_strategy": "${{ inputs.fetch_strategy }}",
+          "timestamp": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+          "workflow_run": "${{ github.run_id }}",
+          "repository": "${{ github.repository }}"
+        }
+        EOF
+
+        echo "metadata=$(cat $METADATA_FILE | jq -c .)" >> $GITHUB_OUTPUT

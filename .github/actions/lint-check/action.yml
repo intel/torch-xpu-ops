@@ -1,0 +1,103 @@
+name: 'Lint Check'
+description: 'Run lint checks for torch-xpu-ops repository'
+
+inputs:
+  repository:
+    description: 'Repository to check'
+    required: false
+    default: 'intel/torch-xpu-ops'
+  checkout_path:
+    description: 'Path to checkout repository'
+    required: false
+    default: 'torch-xpu-ops'
+  enable_clang:
+    description: 'Whether to run Clang format/tidy checks'
+    required: false
+    default: 'true'
+  additional_args:
+    description: 'Additional arguments for lintrunner'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        path: ${{ inputs.checkout_path }}
+        fetch-depth: 1
+
+    - name: Run basic lint checks
+      shell: bash -eo pipefail {0}
+      run: |
+        echo "=== Running Basic Lint Checks ==="
+        cd "./${{ inputs.checkout_path }}"
+
+        # Set default arguments if not provided
+        if [ -z "${{ inputs.additional_args }}" ]; then
+          ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+        else
+          ADDITIONAL_LINTRUNNER_ARGS="${{ inputs.additional_args }}"
+        fi
+
+        export ADDITIONAL_LINTRUNNER_ARGS
+        echo "Running lintrunner with args: ${ADDITIONAL_LINTRUNNER_ARGS}"
+
+        bash .github/scripts/lintrunner.sh || {
+          echo "Lint check failed"
+          exit 1
+        }
+
+        echo "Basic lint checks completed successfully"
+
+    - name: Run Clang format/tidy checks
+      if: ${{ inputs.enable_clang == 'true' }}
+      shell: bash -eo pipefail {0}
+      run: |
+        echo "=== Running Clang Format/Tidy Checks ==="
+
+        # Install required dependencies
+        echo "Installing dependencies..."
+        sudo apt-get update -q
+        sudo apt-get install -y \
+          libomp-dev \
+          clang \
+          clang-format \
+          clang-tidy \
+          2>/dev/null || {
+          echo "Warning: Some dependencies failed to install"
+        }
+
+        # Clone PyTorch for Clang checks
+        echo "Cloning PyTorch repository..."
+        rm -rf pytorch
+        git clone --depth 1 https://github.com/pytorch/pytorch pytorch || {
+          echo "Error: Failed to clone PyTorch"
+          exit 1
+        }
+
+        # Copy torch-xpu-ops to PyTorch third_party
+        echo "Setting up torch-xpu-ops in PyTorch..."
+        cd pytorch
+        cp -r "../${{ inputs.checkout_path }}" third_party/torch-xpu-ops
+
+        # Run Clang checks
+        echo "Running Clang format and tidy checks..."
+        export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY,CLANGFORMAT \
+          build/xpu/**/*.* \
+          build/xpu/*.* \
+          third_party/torch-xpu-ops/src/*.* \
+          third_party/torch-xpu-ops/src/**/*.* \
+          third_party/torch-xpu-ops/src/**/**/*.* \
+          third_party/torch-xpu-ops/src/**/**/**/*.*"
+
+        export CLANG=1
+
+        bash third_party/torch-xpu-ops/.github/scripts/lintrunner.sh || {
+          echo "Clang lint check failed"
+          exit 1
+        }
+
+        echo "Clang lint checks completed successfully"
