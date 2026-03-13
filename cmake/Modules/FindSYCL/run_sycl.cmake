@@ -35,6 +35,7 @@ set(SYCL_host_compiler "@SYCL_HOST_COMPILER@") # path
 set(generated_file_path "@generated_file_path@") # path
 set(generated_file_internal "@generated_file@") # path
 set(SYCL_executable "@SYCL_EXECUTABLE@") # path
+set(SYCL_compiler_launcher "@CMAKE_SYCL_COMPILER_LAUNCHER@") # path
 set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
@@ -134,7 +135,7 @@ else()
 endif()
 SYCL_execute_process(
   "Generating ${generated_file}"
-  COMMAND "${SYCL_executable}"
+  COMMAND ${SYCL_compiler_launcher} "${SYCL_executable}"
   ${SYCL_dependency_file_args}
   -c
   "${source_file}"
