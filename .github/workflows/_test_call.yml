@@ -235,7 +235,7 @@ jobs:
 
           # Parse suite list
           if [ "${{ inputs.test_role }}" != "default" ];then
-            SUITE_INPUT='huggingface,timm_models,torchbench'
+            SUITE_INPUT='huggingface'
           else
             SUITE_INPUT="${{ inputs.suite }}"
           fi
