@@ -11,6 +11,10 @@
 
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests
+from torch._prims import utils as prims_utils
+import torch._prims as prims
+import torch._refs as refs
+import builtins
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -24,6 +28,22 @@ with XPUPatchForImport(False):
         TestForwardADWithScalars,
         TestMathBits,
     )
+
+
+_original_reshape_view_helper = refs._reshape_view_helper
+
+
+def _xpu_refs_reshape_view_helper(a, *shape, allow_copy):
+    shape = prims_utils.extract_shape_from_varargs(shape, validate=False)
+    shape = prims_utils.infer_size(shape, a.numel())
+    if a.numel() == 0:
+        if len(shape) == a.ndim and builtins.all(d == s for d, s in zip(shape, a.shape)):
+            return prims.view_of(a)
+    return _original_reshape_view_helper(a, *shape, allow_copy=allow_copy)
+
+
+refs._reshape_view_helper = _xpu_refs_reshape_view_helper
+
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
 # in finegrand
