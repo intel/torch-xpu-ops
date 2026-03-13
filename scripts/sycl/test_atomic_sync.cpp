@@ -169,6 +169,22 @@ static sycl::queue create_queue(int local_rank) {
     throw std::runtime_error("Level-Zero platform not found.");
 }
 
+// Store value with release fence (for put_signal)
+// Order: store first, then release fence to flush the store
+inline void store_release(int32_t* addr, int32_t val) {
+  *addr = val;
+  sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::system);
+}
+
+// Load value with acquire fence (for get_signal/wait_signal)
+// Order: acquire fence first, then load to see the latest value
+inline int32_t load_acquire(int32_t* addr) {
+  sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
+  int32_t val = *addr;
+  return val;
+}
+
+
 int main(int argc, char** argv) {
     // ========== Step 1: Initialize MPI and Level-Zero ==========
     MPI_Init(&argc, &argv);
@@ -274,42 +290,37 @@ int main(int argc, char** argv) {
     // std::cout << "[Step 9] SUCCESS! Local[0]=" << host_local[0]
     //           << ", Remote[0]=" << host_remote[0] 
     //           << " (from rank " << remote_rank_id << ")" << std::endl;
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 100000; i++) {
       std::cout << "node: " << rank << ", running iteration " << i << "======================" <<std::endl;
       // barrier_sync
       compute_queue.submit([&](sycl::handler &h) {
         sycl::stream out(1024, 256, h);
         std::cout << "node: " << rank <<", barrier_async submit 1" << std::endl;
         h.parallel_for(sycl::nd_range<1>(sycl::range<1>(num_elements), sycl::range<1>(num_elements)), [=](sycl::nd_item<1> item) {
-            int tid = item.get_local_id(0);
-            if (tid < num_elements) {
-                sycl::atomic_fence(sycl::memory_order::acq_rel, sycl::memory_scope::system);
-                // read and write to the remote flag
-                int32_t *sync_buffer_dst = remote_ptr + rank;
-                // sycl::atomic_ref<int32_t, sycl::memory_order::relaxed, 
-                //                     sycl::memory_scope::system, 
-                //                     sycl::access::address_space::global_space> atm1(*sync_buffer_dst);
-                // int32_t expected = 0;
-                // while (!atm1.compare_exchange_weak(expected, 1)) {expected = 0;}
-                out << "node: " << rank << ", tid: " << tid << " 1 starting" << sycl::endl;
-                while (*sync_buffer_dst != 0) {}
-                out << "node: " << rank << ", tid: " << tid << " 1 completed" << sycl::endl;
-                *sync_buffer_dst = 1;
-
-                sycl::atomic_fence(sycl::memory_order::acq_rel, sycl::memory_scope::system);
-                // read and write to the local flag
-                int32_t *wait_ptr = local_ptr + tid;
-                // sycl::atomic_ref<int32_t, sycl::memory_order::relaxed, 
-                //                     sycl::memory_scope::system, 
-                //                     sycl::access::address_space::global_space> atm2(*wait_ptr);
-                // expected = 1;
-                // while (!atm2.compare_exchange_weak(expected, 0)) {expected = 1;}
-                out << "node: " << rank << ", tid: " << tid << " 2 starting" << sycl::endl;
-                while (*wait_ptr != 0) {}
-                out << "node: " << rank << ", tid: " << tid << " 2 completed" << sycl::endl;
-                *wait_ptr = 1;
-                sycl::atomic_fence(sycl::memory_order::acq_rel, sycl::memory_scope::system);
+            int target_rank = item.get_local_id(0);
+            if (target_rank == rank) {
+                return;
             }
+             if (target_rank < world_size) {
+               if (target_rank == rank ) {
+                   return;
+               }
+               // step1: put signal - write to remote buffer
+//                sycl::atomic_fence(sycl::memory_order::release, sycl::memory_scope::system);
+//                int32_t *sync_buffer_dst = remote_ptr + rank;
+//                *sync_buffer_dst = 1; // to global memory
+
+               int32_t *sync_buffer_dst = remote_ptr + rank;
+                while (load_acquire(sync_buffer_dst) != 0) {}
+                // Set signal to 1 with release semantics
+                store_release(sync_buffer_dst, 1);
+
+                 // step2: wait for my own signal to be updated
+                sycl::atomic_fence(sycl::memory_order::acquire, sycl::memory_scope::system);
+                int32_t *wait_ptr = local_ptr + target_rank;
+                while (load_acquire(wait_ptr) != 1) {}
+                store_release(wait_ptr, 0);
+             }
         });
         std::cout << "node: " << rank <<", barrier_async submit 2" << std::endl;
       });
