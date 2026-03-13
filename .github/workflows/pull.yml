@@ -109,7 +109,6 @@ jobs:
 
   linux-build:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
-    needs: [preci-lint-check]
     secrets: inherit
     strategy:
       fail-fast: false
