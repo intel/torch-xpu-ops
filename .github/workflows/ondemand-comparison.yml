@@ -1,0 +1,219 @@
+name: OnDemand Acceptance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      pytorch:
+        required: true
+        type: string
+        default: 'main'
+        description: |
+          PyTorch version:
+          - main (default for source builds)
+          - nightly_wheel, test_wheel, release_wheel (for wheel tests)
+          - commit/branch/tag
+          - repo@commit/repo@branch/repo@tag
+
+      # Component selection
+      component:
+        required: true
+        type: choice
+        options:
+          - onednn
+          - sycltla
+          - triton
+          - oneapi
+          - pytorch
+          - torch-xpu-ops
+        default: 'pytorch'
+        description: 'Component to compare'
+
+      # Version configuration
+      target_version:
+        required: true
+        type: string
+        default: ''
+        description: |
+          Target component version (new version):
+          - commit/branch/tag
+          - repo@commit/repo@branch/repo@tag
+      baseline_version:
+        required: true
+        type: string
+        default: ''
+        description: |
+          Baseline component version (reference):
+          - commit/branch/tag
+          - repo@commit/repo@branch/repo@tag
+
+      # Environment
+      python:
+        type: string
+        default: '3.10'
+        description: 'Python version'
+      runner:
+        type: choice
+        options:
+          - pvc_rolling
+          - bmg-test
+        default: 'pvc_rolling'
+        description: 'What runner to use'
+
+permissions: read-all
+
+run-name: >-
+  Acceptance Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
+
+jobs:
+  get-runner:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+    steps:
+      - name: Checkout torch-xpu-ops repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Get runner information and configuration
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  # Run tests on target version
+  run-target-tests:
+    name: Run Tests (Target)
+    needs: get-runner
+    permissions: write-all
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      test_type: >-
+        ${{
+          inputs.component == 'pytorch'
+            && (contains(inputs.target_version, '_wheel') && 'wheel-target' || 'build-target')
+            || (contains(inputs.pytorch, '_wheel') && 'wheel-target' || 'build-target')
+        }}
+      pytorch: >-
+        ${{
+          inputs.component == 'pytorch'
+            && inputs.target_version
+            || inputs.pytorch
+        }}
+      torch_xpu_ops: >-
+        ${{
+          inputs.component == 'torch_xpu_ops'
+            && inputs.target_version
+            || 'pinned'
+        }}
+      triton: >-
+        ${{
+          inputs.component == 'triton'
+            && inputs.target_version
+            || 'pinned'
+        }}
+      python: ${{ inputs.python }}
+      is_scheduled_run: false
+      test_role: 'target'
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.target_version }}
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+  # Run tests on baseline version
+  run-baseline-tests:
+    name: Run Tests (Baseline)
+    needs: get-runner
+    permissions: write-all
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      test_type: >-
+        ${{
+          inputs.component == 'pytorch'
+            && (contains(inputs.baseline_version, '_wheel') && 'wheel-baseline' || 'build-baseline')
+            || (contains(inputs.pytorch, '_wheel') && 'wheel-baseline' || 'build-baseline')
+        }}
+      pytorch: >-
+        ${{
+          inputs.component == 'pytorch'
+            && inputs.baseline_version
+            || inputs.pytorch
+        }}
+      torch_xpu_ops: >-
+        ${{
+          inputs.component == 'torch_xpu_ops'
+            && inputs.baseline_version
+            || 'pinned'
+        }}
+      triton: >-
+        ${{
+          inputs.component == 'triton'
+            && inputs.baseline_version
+            || 'pinned'
+        }}
+      python: ${{ inputs.python }}
+      is_scheduled_run: false
+      test_role: 'baseline'
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.baseline_version }}
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+  # Job 4: Compare results and generate report
+  compare-results:
+    name: Compare Results
+    needs: [run-target-tests, run-baseline-tests]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Target Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'Inductor-*target*'
+          path: ${{ github.workspace }}/results/target
+          merge-multiple: true
+
+      - name: Download Baseline Logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'Inductor-*baseline*'
+          path: ${{ github.workspace }}/results/baseline
+          merge-multiple: true
+
+      - name: Setup python env
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+          uv venv myvenv --python 3.12 --clear
+          source myvenv/bin/activate
+          uv pip install pip numpy 'setuptools<81' wheel
+          uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
+
+      - name: Compare Test Results
+        run: |
+          source myvenv/bin/activate
+          echo "Comparing results for ${{ inputs.component }}..."
+          echo "Target: ${{ inputs.target_version }}"
+          echo "Baseline: ${{ inputs.baseline_version }}"
+          find results
+          # UT
+          python .github/scripts/compare-ut.py --input results/ --output ut_comparison.csv --markdown --markdown-output ut_comparison.md
+          cat ut_comparison.md >> "${GITHUB_STEP_SUMMARY}"
+          # E2E
+          python .github/scripts/compare-e2e.py results/target results/baseline e2e_comparison.csv --markdown e2e_comparison.md
+          cat e2e_comparison.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload Tests Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.component }}-test-summary
+          path: |
+            *_comparison*.csv
+            *_comparison*.xlsx
+            *_comparison*.md
+          retention-days: 30
+          if-no-files-found: error
