@@ -485,13 +485,16 @@ class TestMatmulCuda(InductorTestCase):
         torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = orig_bf16
         torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = orig_fp16
 
-    @unittest.skipIf(not SM80OrLater, "Grouped gemm supported only on SM80 or greater")
+    @unittest.skipIf(
+        TEST_CUDA and not SM80OrLater,
+        "Grouped gemm supported only on SM80 or greater",
+    )
     @parametrize("strided", [False, True])
     @parametrize("a_row_major", [False, True])
     @parametrize("b_row_major", [False, True])
     @dtypes(torch.bfloat16, torch.float32, torch.float16)
     def test_grouped_gemm_2d_2d(self, strided, a_row_major, b_row_major, dtype):
-        device = "cuda"
+        device = device_type
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
             a = torch.randn(
@@ -530,13 +533,16 @@ class TestMatmulCuda(InductorTestCase):
             start = offs_cpu[i]
         self.grouped_mm_helper(alist, blist, gO, agradlist, bgradlist, out)
 
-    @unittest.skipIf(not SM80OrLater, "Grouped gemm supported only on SM80 or greater")
+    @unittest.skipIf(
+        TEST_CUDA and not SM80OrLater,
+        "Grouped gemm supported only on SM80 or greater",
+    )
     @parametrize("strided", [False, True])
     @parametrize("a_row_major", [False, True])
     @parametrize("b_row_major", [False, True])
     @dtypes(torch.bfloat16, torch.float32, torch.float16)
     def test_grouped_gemm_2d_3d(self, strided, a_row_major, b_row_major, dtype):
-        device = "cuda"
+        device = device_type
         s_int = int(strided)
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
@@ -595,13 +601,16 @@ class TestMatmulCuda(InductorTestCase):
                 start = offs_cpu[i]
             self.grouped_mm_helper(alist, b, gOlist, agradlist, bgradlist, outlist)
 
-    @unittest.skipIf(not SM80OrLater, "Grouped gemm supported only on SM80 or greater")
+    @unittest.skipIf(
+        TEST_CUDA and not SM80OrLater,
+        "Grouped gemm supported only on SM80 or greater",
+    )
     @parametrize("strided", [False, True])
     @parametrize("a_row_major", [False, True])
     @parametrize("b_row_major", [False, True])
     @dtypes(torch.bfloat16, torch.float32, torch.float16)
     def test_grouped_gemm_3d_3d(self, strided, a_row_major, b_row_major, dtype):
-        device = "cuda"
+        device = device_type
         s_int = int(strided)
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
@@ -634,13 +643,16 @@ class TestMatmulCuda(InductorTestCase):
         out.backward(gO)
         self.grouped_mm_helper(a, b, gO, a.grad, b.grad, out)
 
-    @unittest.skipIf(not SM80OrLater, "Grouped gemm supported only on SM80 or greater")
+    @unittest.skipIf(
+        TEST_CUDA and not SM80OrLater,
+        "Grouped gemm supported only on SM80 or greater",
+    )
     @parametrize("strided", [False, True])
     @parametrize("a_row_major", [False, True])
     @parametrize("b_row_major", [False, True])
     @dtypes(torch.bfloat16, torch.float32, torch.float16)
     def test_grouped_gemm_3d_2d(self, strided, a_row_major, b_row_major, dtype):
-        device = "cuda"
+        device = device_type
         s_int = int(strided)
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
