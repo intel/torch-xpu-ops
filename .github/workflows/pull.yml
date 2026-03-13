@@ -200,8 +200,7 @@ jobs:
               - '.github/workflows/_windows_ut.yml'
 
   linux-build:
-    needs: preci-lint-check
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
     secrets: inherit
     strategy:
       fail-fast: false
