@@ -17,6 +17,7 @@
 #include <ATen/native/xpu/sycl/UnaryKernels.h>
 
 #include <ATen/native/xpu/sycl/PowKernels.h>
+#include <sycl/ext/intel/math.hpp>
 
 namespace at {
 namespace native {
@@ -33,13 +34,15 @@ static inline Base_type pow_(Base_type base, Exp_type exp) {
   if constexpr (c10::is_complex<Base_type>::value) {
     return std::pow(base, exp);
   } else {
-    // return std::pow(base, exp);
     if (base <= 0) {
       return std::pow(base, exp);
     }
-    // Explicitly use opmath_type to ensure high precision calculation if possible
     using opmath_t = at::opmath_type<Base_type>;
-    return static_cast<Base_type>(std::exp2(static_cast<opmath_t>(exp) * std::log2(static_cast<opmath_t>(base))));
+#ifdef __SYCL_DEVICE_ONLY__
+    return static_cast<Base_type>(sycl::ext::intel::math::ha::exp2(static_cast<opmath_t>(exp) * sycl::log2(static_cast<opmath_t>(base))));
+#else
+    return std::pow(base, exp);
+#endif
   }
 }
 
