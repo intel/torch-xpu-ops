@@ -233,7 +233,10 @@ void ProcessGroupXCCL::WorkXCCL::synchronize() {
 
 void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
   auto currentStream = at::xpu::getCurrentXPUStream(device_.index());
-  xcclEndEvent_->block(currentStream);
+  auto capture_status = c10::xpu::currentStreamCaptureStatusMayInitCtx();
+  if (capture_status != c10::xpu::CaptureStatus::Recording) {
+    xcclEndEvent_->block(currentStream);
+  }
   stashed_for_allocator_safety_->unstash();
 }
 
@@ -693,10 +696,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  auto stream = asyncOp ? xcclStreamsMap_.at(key).xpuStream
-                        : at::xpu::getCurrentXPUStream(device.index());
+  bool useAsync =
+      asyncOp && capture_status != c10::xpu::CaptureStatus::Recording;
+  auto stream = useAsync ? xcclStreamsMap_.at(key).xpuStream
+                         : at::xpu::getCurrentXPUStream(device.index());
   std::unique_ptr<ccl::stream> cclstream;
-  if (asyncOp) {
+  if (useAsync) {
     cclstream =
         std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).cclStream);
     syncStream(device, xcclEventsMap_[key], stream);
