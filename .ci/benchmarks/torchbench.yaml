@@ -43,7 +43,6 @@ tolerance:
     - doctr_reco_predictor
     - drq
     - phlippe_resnet
-    - pytorch_CycleGAN_and_pix2pix
 
   higher_bf16:
     - doctr_reco_predictor
@@ -159,7 +158,7 @@ trt_not_yet_working:
 skip:
   all:
     # OOMs (A100 40G)
-    # - detectron2_maskrcnn
+    - detectron2_maskrcnn
     # TIMEOUT, https://github.com/pytorch/pytorch/issues/98467
     - tacotron2
     # Failing in eager mode
@@ -168,35 +167,43 @@ skip:
     - simple_gpt_tp_manual
     # skip hf and timm models in torchbench since
     # there are already separate benchmarks for them
-    # - hf_Albert
-    # - hf_Bart
-    # - hf_Bert
-    # - hf_BigBird
-    # - hf_DistilBert
-    # - hf_GPT2
-    # - hf_Longformer
-    # - hf_Reformer
-    # - hf_T5
-    # - timm_efficientdet
-    # - timm_efficientnet
-    # - timm_nfnet
-    # - timm_regnet
-    # - timm_resnest
-    # - timm_vision_transformer
-    # - timm_vovnet
-    # - hf_Bert_large
-    # - hf_GPT2_large
-    # - hf_Roberta_base
-    # - hf_T5_base
-    # - hf_T5_generate
-    # - hf_T5_large
-    # - hf_Whisper
-    # - hf_distil_whisper
-    # - timm_vision_transformer_large
+    - hf_Albert
+    - hf_Bart
+    - hf_Bert
+    - hf_BigBird
+    - hf_DistilBert
+    - hf_GPT2
+    - hf_Longformer
+    - hf_Reformer
+    - hf_T5
+    - timm_efficientdet
+    - timm_efficientnet
+    - timm_nfnet
+    - timm_regnet
+    - timm_resnest
+    - timm_vision_transformer
+    - timm_vovnet
+    - hf_Bert_large
+    - hf_GPT2_large
+    - hf_Roberta_base
+    - hf_T5_base
+    - hf_T5_generate
+    - hf_T5_large
+    - hf_Whisper
+    - hf_distil_whisper
+    - timm_vision_transformer_large
     # https://github.com/pytorch/pytorch/issues/167895
     - stable_diffusion
     - stable_diffusion_text_encoder
     - stable_diffusion_unet
+    # Disabled in PyTorch PR: https://github.com/pytorch/pytorch/pull/172125
+    # Has never been working correctly
+    # https://github.com/pytorch/pytorch/issues/172015#issuecomment-3730509098
+    - modded_nanogpt
+    # Disabled in PyTorch PR: https://github.com/pytorch/pytorch/pull/175066
+    # Broken since mid-2025, eager_fail_to_run on all platforms.
+    # Legacy 2017 model providing zero CI signal.
+    - pytorch_CycleGAN_and_pix2pix
 
   device:
     cpu:
