@@ -75,8 +75,8 @@ jobs:
         build: [build]
     uses: ./.github/workflows/_linux_build.yml
     with:
+      runner: pvc_rolling
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      runner: pvc_e2e
 
   linux-ut:
     needs: [linux-build]
