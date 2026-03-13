@@ -199,13 +199,13 @@ runs:
         echo "Checking out commit: ${PYTORCH_COMMIT}"
 
         rm -rf pytorch
-        git clone --depth 1 "${PYTORCH_REPO}" pytorch || {
+        git clone "${PYTORCH_REPO}" pytorch || {
           echo "Warning: Failed to clone pytorch repository"
           exit 1
         }
 
         cd pytorch
-        git fetch --depth 1 origin "${PYTORCH_COMMIT}" || true
+        git fetch origin "${PYTORCH_COMMIT}" || true
         git checkout "${PYTORCH_COMMIT}" || {
           echo "Warning: Failed to checkout commit ${PYTORCH_COMMIT}, trying as branch"
           git checkout -b temp_branch "${PYTORCH_COMMIT}" || true
@@ -279,7 +279,7 @@ runs:
           }
         else
           echo "Cloning torch-xpu-ops repository"
-          git clone --depth 1 "${TORCH_XPU_OPS_REPO}" third_party/torch-xpu-ops || {
+          git clone "${TORCH_XPU_OPS_REPO}" third_party/torch-xpu-ops || {
             echo "Error: Failed to clone torch-xpu-ops repository"
             exit 1
           }
@@ -289,7 +289,7 @@ runs:
           # Try to checkout the specific commit
           if [ "${TORCH_XPU_OPS_COMMIT}" != "main" ]; then
             echo "Checking out commit: ${TORCH_XPU_OPS_COMMIT}"
-            git fetch --depth 1 origin "${TORCH_XPU_OPS_COMMIT}" || true
+            git fetch origin "${TORCH_XPU_OPS_COMMIT}" || true
             git checkout "${TORCH_XPU_OPS_COMMIT}" || {
               echo "Warning: Failed to checkout commit ${TORCH_XPU_OPS_COMMIT}, using main"
               git checkout main
@@ -365,7 +365,7 @@ runs:
           cd ..
           rm -rf ./benchmark
 
-          git clone --depth 1 https://github.com/pytorch/benchmark benchmark || {
+          git clone https://github.com/pytorch/benchmark benchmark || {
             echo "Error: Failed to clone torchbench"
             exit 1
           }
@@ -427,12 +427,12 @@ runs:
           # Clone PT2E repositories
           rm -rf ./pt2e-accuracy ./pt2e-performance
 
-          git clone -b main --depth 1 https://github.com/chuanqi129/inductor-tools pt2e-accuracy || {
+          git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy || {
             echo "Error: Failed to clone pt2e-accuracy"
             exit 1
           }
 
-          git clone -b yifeng/pt2e_xpu --depth 1 https://github.com/zxd1997066/benchmark pt2e-performance || {
+          git clone -b yifeng/pt2e_xpu https://github.com/zxd1997066/benchmark pt2e-performance || {
             echo "Error: Failed to clone pt2e-performance"
             exit 1
           }
