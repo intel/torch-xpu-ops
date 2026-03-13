@@ -16,6 +16,7 @@ import contextlib
 import itertools
 import math
 import unittest
+import warnings
 from functools import partial
 
 import torch
@@ -27,6 +28,7 @@ from torch.testing._internal.common_device_type import (
     precisionOverride,
 )
 from torch.testing._internal.common_dtype import (
+    floating_and_complex_types,
     floating_and_complex_types_and,
     floating_types_and,
 )
@@ -485,6 +487,28 @@ def __tunableop_ctx(self):
                 pass
 
 
+@dtypes(*floating_and_complex_types())
+def matrix_rank_out_errors_and_warnings(self, device, dtype):
+    # dtypes should be safely castable
+    a = torch.eye(2, dtype=dtype, device=device)
+    out = torch.empty(0, dtype=torch.bool, device=device)
+    with self.assertRaisesRegex(RuntimeError, "but got result with dtype Bool"):
+        torch.linalg.matrix_rank(a, out=out)
+
+    # if out tensor with wrong shape is passed a warning is given
+    with warnings.catch_warnings(record=True) as w:
+        out = torch.empty(3, dtype=dtype, device=device)
+        # Trigger warning
+        torch.linalg.matrix_rank(a, out=out)
+        # Expect resize warning, and possibly an XPU-to-CPU fallback warning
+        self.assertTrue(len(w) in (1, 2))
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[0].message)
+        )
+        if len(w) == 2:
+            self.assertTrue("Aten Op fallback from XPU to CPU" in str(w[1].message))
+
+
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
@@ -505,6 +529,9 @@ TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg._tunableop_ctx = __tunableop_ctx
+TestLinalg.test_matrix_rank_out_errors_and_warnings = (
+    matrix_rank_out_errors_and_warnings
+)
 
 TestLinalg._default_dtype_check_enabled = True
 instantiate_device_type_tests(TestLinalg, globals(), only_for=("xpu"), allow_xpu=True)
