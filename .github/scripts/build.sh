@@ -481,6 +481,9 @@ verify_installation() {
 
     log_success "XPU compilation verified"
 
+    # Check oneDNN
+    ONEDNN_VERBOSE=1 python -c 'import torch; torch.nn.Conv2d(1,1,1,stride=1,device="xpu")(torch.randn(1,1,1,1,device="xpu"))'
+
     # Save build info
     . /etc/os-release
     cat > "$WORKSPACE/build_info.log" << EOF

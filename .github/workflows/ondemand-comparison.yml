@@ -205,11 +205,11 @@ jobs:
           python .github/scripts/compare-e2e.py results/target results/baseline e2e_comparison.csv --markdown e2e_comparison.md
           cat e2e_comparison.md >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Upload Build Artifacts (Wheels + Logs)
+      - name: Upload Tests Summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Torch-XPU-Wheel-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ inputs.component }}-test-summary
           path: |
             *_comparison*.csv
             *_comparison*.xlsx

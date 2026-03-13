@@ -520,9 +520,6 @@ runs:
         fi
         echo "=== Final Environment Verification ==="
 
-        echo -e "\n=== Environment Variables ==="
-        printenv | sort
-
         echo -e "\n=== Pytorch Configuration ==="
         python -c "import torch; print(torch.__config__.show())"
         python -c "import torch; print(torch.__config__.parallel_info())"
@@ -533,10 +530,15 @@ runs:
 
         echo -e "\n=== Collect Environment Info ==="
         if [ -f "pytorch/torch/utils/collect_env.py" ]; then
-          python pytorch/torch/utils/collect_env.py
+          python pytorch/torch/utils/collect_env.py |tee ${GITHUB_WORKSPACE}/test_info.log
         else
           echo "collect_env.py not found"
         fi
+
+        echo -e "\n=== Environment Variables ==="
+        printenv | sort |tee -a ${GITHUB_WORKSPACE}/test_info.log
+        ONEDNN_VERBOSE=1 python -c 'import torch; torch.nn.Conv2d(1,1,1,stride=1,device="xpu")(torch.randn(1,1,1,1,device="xpu"))' 2>&1 \
+            |tee -a ${GITHUB_WORKSPACE}/test_info.log
 
         echo -e "\n=== Installed Torch-related Packages ==="
         pip list | grep -i -E 'torch|intel|xpu' | sort
