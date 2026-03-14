@@ -160,6 +160,7 @@ jobs:
         env:
           FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
         with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const forceMerge = process.env.FORCE_MERGE === 'true';
