@@ -31,6 +31,7 @@
 #include <ATen/xpu/XPUEvent.h>
 #include <c10/core/StreamGuard.h>
 #include <c10/xpu/XPUCachingAllocator.h>
+#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/Backend.hpp>
 #include <torch/csrc/distributed/c10d/Store.hpp>
 #include <torch/csrc/distributed/c10d/TraceUtils.h>
@@ -324,11 +325,20 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // `xcclActiveGroupCounter_` is introduced to track group calls made
           // in the frontend. In this scenario, the `groupStart` wrap API is
           // used.
-          xccl::oneccl_group_start();
+
+          // Skip group API during graph recording: ccl::group_end() calls
+          // event.wait() internally which fails on graph-associated events.
+          auto status = c10::xpu::currentStreamCaptureStatusMayInitCtx();
+          if (status != c10::xpu::CaptureStatus::Recording) {
+            xccl::oneccl_group_start();
+          }
         },
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
-          xccl::oneccl_group_end();
+          auto status = c10::xpu::currentStreamCaptureStatusMayInitCtx();
+          if (status != c10::xpu::CaptureStatus::Recording) {
+            xccl::oneccl_group_end();
+          }
         },
         opType,
         asyncOp,

@@ -934,6 +934,109 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             list(zip(range(self.world_size), range(self.world_size))),
         )
 
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_allreduce_graph_replay(self):
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        W = self.world_size
+
+        xs = torch.tensor([float(self.rank + 1)], device=f"xpu:{device}")
+
+        # warmup
+        c10d.all_reduce(xs, group=self.pg)
+        torch.xpu.synchronize()
+        self.assertEqual(xs.item(), float(W * (W + 1) // 2))
+
+        # capture
+        graph = torch.xpu.XPUGraph()
+        with torch.xpu.graph(graph):
+            c10d.all_reduce(xs, group=self.pg)
+
+        # multiple replays with different per-rank values
+        for trial in range(5):
+            new_val = float((self.rank + 1) * (trial + 1) * 100)
+            xs.fill_(new_val)
+            torch.xpu.synchronize()
+
+            graph.replay()
+            torch.xpu.synchronize()
+
+            expected = sum((r + 1) * (trial + 1) * 100.0 for r in range(W))
+            self.assertEqual(xs.item(), expected)
+
+        graph.reset()
+
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_allgather_graph_replay(self):
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        W = self.world_size
+
+        input_tensor = torch.tensor([float(self.rank + 1)], device=f"xpu:{device}")
+        output_tensor = torch.zeros(W, device=f"xpu:{device}")
+
+        # warmup
+        c10d.all_gather_into_tensor(output_tensor, input_tensor, group=self.pg)
+        torch.xpu.synchronize()
+        self.assertEqual(output_tensor.tolist(), [float(r + 1) for r in range(W)])
+
+        # capture
+        graph = torch.xpu.XPUGraph()
+        with torch.xpu.graph(graph):
+            c10d.all_gather_into_tensor(output_tensor, input_tensor, group=self.pg)
+
+        # multiple replays with different per-rank values
+        for trial in range(5):
+            new_val = float((self.rank + 1) * (trial + 1) * 100)
+            input_tensor.fill_(new_val)
+            output_tensor.fill_(0.0)
+            torch.xpu.synchronize()
+
+            graph.replay()
+            torch.xpu.synchronize()
+
+            expected = [float((r + 1) * (trial + 1) * 100) for r in range(W)]
+            self.assertEqual(output_tensor.tolist(), expected)
+
+        graph.reset()
+
+    @requires_xccl()
+    @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
+    def test_reduce_scatter_graph_replay(self):
+        device = self.rank_to_GPU[self.rank][0]
+        torch.xpu.set_device(device)
+        W = self.world_size
+
+        input_tensor = torch.full((W,), float(self.rank + 1), device=f"xpu:{device}")
+        output_tensor = torch.zeros(1, device=f"xpu:{device}")
+
+        # warmup
+        c10d.reduce_scatter_tensor(output_tensor, input_tensor, group=self.pg)
+        torch.xpu.synchronize()
+        self.assertEqual(output_tensor.item(), float(W * (W + 1) // 2))
+
+        # capture
+        graph = torch.xpu.XPUGraph()
+        with torch.xpu.graph(graph):
+            c10d.reduce_scatter_tensor(output_tensor, input_tensor, group=self.pg)
+
+        # multiple replays with different per-rank values
+        for trial in range(5):
+            new_val = float((self.rank + 1) * (trial + 1) * 100)
+            input_tensor.fill_(new_val)
+            output_tensor.fill_(0.0)
+            torch.xpu.synchronize()
+
+            graph.replay()
+            torch.xpu.synchronize()
+
+            expected = sum((r + 1) * (trial + 1) * 100.0 for r in range(W))
+            self.assertEqual(output_tensor.item(), expected)
+
+        graph.reset()
+
 
 instantiate_parametrized_tests(ProcessGroupXCCLOpTest)
 if __name__ == "__main__":
