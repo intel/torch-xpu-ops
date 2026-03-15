@@ -31,7 +31,6 @@ set(source_file "@source_file@") # path
 set(SYCL_generated_dependency_file "@SYCL_generated_dependency_file@") # path
 set(cmake_dependency_file "@cmake_dependency_file@") # path
 set(SYCL_make2cmake "@SYCL_make2cmake@") # path
-set(SYCL_host_compiler "@SYCL_HOST_COMPILER@") # path
 set(generated_file_path "@generated_file_path@") # path
 set(generated_file_internal "@generated_file@") # path
 set(SYCL_executable "@SYCL_EXECUTABLE@") # path
@@ -39,7 +38,7 @@ set(SYCL_compile_flags @SYCL_COMPILE_FLAGS@) # list
 set(SYCL_include_dirs [==[@SYCL_include_dirs@]==]) # list
 set(SYCL_compile_definitions [==[@SYCL_compile_definitions@]==]) # list
 
-list(REMOVE_DUPLICATES SYCL_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES SYCL_include_dirs)
 
 set(SYCL_include_args)
 
@@ -61,19 +60,17 @@ endforeach()
 # Choose host flags in FindSYCL.cmake
 @SYCL_host_flags@
 
-# Adding permissive flag for MSVC build to overcome ambiguous symbol error.
-if(WIN32)
-  list(APPEND SYCL_compile_flags "/permissive-")
-endif()
-
 list(REMOVE_DUPLICATES CMAKE_HOST_FLAGS)
 foreach(flag ${CMAKE_HOST_FLAGS})
-  # Extract -D defines from CMAKE_HOST_FLAGS and pass them directly to icpx,
-  # since host compiler is removed. This is needed for macros like
-  # HAVE_AVX512_CPU_DEFINITION that control signatures, to avoid
+  # Extract -D (GCC/Clang) or /D (MSVC) defines from CMAKE_HOST_FLAGS and pass
+  # them directly to icpx, since host compiler is removed. This is needed for
+  # macros like HAVE_AVX512_CPU_DEFINITION that control signatures, to avoid
   # symbol mismatch with libtorch_cpu.so.
   if(flag MATCHES "^-D")
     list(APPEND SYCL_compile_flags "${flag}")
+  elseif(flag MATCHES "^/D")
+    string(REGEX REPLACE "^/D" "-D" converted_flag "${flag}")
+    list(APPEND SYCL_compile_flags "${converted_flag}")
   endif()
 endforeach()
 

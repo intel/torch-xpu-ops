@@ -83,9 +83,9 @@ macro(set_build_flags)
     # to be replaced with an approximately equivalent set of instructions or
     # alternative math function calls, which have great errors.
     #
-    # PSEUDO of separate compilation with DPCPP compiler.
-    # 1. Kernel source compilation:
-    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+    # PSEUDO of pure icpx compilation (no separate host compiler).
+    # 1. Kernel source compilation (icpx handles both host and device code):
+    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} kernel.cpp -o kernel.o
     # 2. Device code linkage:
     # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
     # 3. Host only source compilation:
@@ -121,7 +121,19 @@ macro(set_build_flags)
       or a Native API failed error.")
     endif()
 
-    set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
+    # TORCH_XPU_OPS_FLAGS is applied to all libs including non-SYCL ones (e.g. torch_xpu_ops
+    # compiled by the host compiler). On Windows the host compiler is still MSVC, so we
+    # must use MSVC-style flags here instead of the GCC/Clang-style SYCL_HOST_FLAGS.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      set(TORCH_XPU_OPS_FLAGS)
+      list(APPEND TORCH_XPU_OPS_FLAGS /std:${CPP_STD})
+      list(APPEND TORCH_XPU_OPS_FLAGS /MD)
+      list(APPEND TORCH_XPU_OPS_FLAGS /EHsc) # exception handling
+      list(APPEND TORCH_XPU_OPS_FLAGS /wd4996) # allow usage of deprecated functions
+      list(APPEND TORCH_XPU_OPS_FLAGS /wd4018) # allow signed and unsigned comparison
+    else()
+      set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
+    endif()
 
     # -- SYCL device object linkage flags
     include(ProcessorCount)
