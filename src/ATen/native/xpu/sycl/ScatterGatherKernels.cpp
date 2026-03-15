@@ -393,10 +393,10 @@ struct ScatterGatherBaseKernel {
         iter.dtype(),
         "scatter_gather_base_kernel_func",
         [&] {
-          using dtype = typename std::conditional<
+          using dtype = std::conditional_t<
               cast_to_opaque,
               OpaqueType<sizeof(scalar_t)>,
-              scalar_t>::type;
+              scalar_t>;
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "scatter_gather_base_kernel_func", [&]() {
                 ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
@@ -453,10 +453,10 @@ struct ScatterGatherBaseKernel {
           self.qscheme() == kPerTensorAffine,
           "Only per_tensor quantized quantized tensors are supported by gather.")
       AT_DISPATCH_QINT_TYPES(iter.dtype(), "gather_quant_xpu", [&] {
-        using dtype = typename std::conditional<
+        using dtype = std::conditional_t<
             cast_to_opaque,
             OpaqueType<sizeof(scalar_t)>,
-            scalar_t>::type;
+            scalar_t>;
         AT_DISPATCH_INDEX_TYPES(
             index.scalar_type(), "xpu_scatter_gather_base_kernel_func", [&]() {
               ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
@@ -468,10 +468,10 @@ struct ScatterGatherBaseKernel {
           iter.dtype(),
           "gather_xpu",
           AT_WRAP([&] {
-            using dtype = typename std::conditional<
+            using dtype = std::conditional_t<
                 cast_to_opaque,
                 OpaqueType<sizeof(scalar_t)>,
-                scalar_t>::type;
+                scalar_t>;
             AT_DISPATCH_INDEX_TYPES(
                 index.scalar_type(),
                 "xpu_scatter_gather_base_kernel_func",
