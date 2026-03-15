@@ -45,33 +45,23 @@ macro(set_build_flags)
     else()
       set(CPP_STD c++17)
     endif()
-    # # -- Host flags (SYCL_CXX_FLAGS)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-      list(APPEND SYCL_HOST_FLAGS /MD)
-      list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
-      # SYCL headers warnings
-      list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
-      list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
-    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-      list(APPEND SYCL_HOST_FLAGS -fPIC)
-      list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
-      list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
-      list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
-      # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
-      # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
-      # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
-      # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
-      # the issue we wrap paths to SYCL headers in `-isystem`.
-      if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
-        foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
-          list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
-        endforeach()
-      endif()
-      # Excluding warnings which flood the compilation output
-      # TODO: fix warnings in the source code and then reenable them in compilation
-      list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
+    # -- Host flags (SYCL_CXX_FLAGS)
+    list(APPEND SYCL_HOST_FLAGS -fPIC)
+    list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+    list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
+    # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
+    # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
+    # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
+    # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
+    # the issue we wrap paths to SYCL headers in `-isystem`.
+    if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
+      foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
+        list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
+      endforeach()
     endif()
+    # Excluding warnings which flood the compilation output
+    # TODO: fix warnings in the source code and then reenable them in compilation
+    list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)
       list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
@@ -93,9 +83,9 @@ macro(set_build_flags)
     # to be replaced with an approximately equivalent set of instructions or
     # alternative math function calls, which have great errors.
     #
-    # PSEUDO of separate compilation with DPCPP compiler.
-    # 1. Kernel source compilation:
-    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+    # PSEUDO of pure icpx compilation (no separate host compiler).
+    # 1. Kernel source compilation (icpx handles both host and device code):
+    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} kernel.cpp -o kernel.o
     # 2. Device code linkage:
     # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
     # 3. Host only source compilation:
@@ -131,7 +121,19 @@ macro(set_build_flags)
       or a Native API failed error.")
     endif()
 
-    set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
+    # TORCH_XPU_OPS_FLAGS is applied to all libs including non-SYCL ones (e.g. torch_xpu_ops
+    # compiled by the host compiler). On Windows the host compiler is still MSVC, so we
+    # must use MSVC-style flags here instead of the GCC/Clang-style SYCL_HOST_FLAGS.
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      set(TORCH_XPU_OPS_FLAGS)
+      list(APPEND TORCH_XPU_OPS_FLAGS /std:${CPP_STD})
+      list(APPEND TORCH_XPU_OPS_FLAGS /MD)
+      list(APPEND TORCH_XPU_OPS_FLAGS /EHsc) # exception handling
+      list(APPEND TORCH_XPU_OPS_FLAGS /wd4996) # allow usage of deprecated functions
+      list(APPEND TORCH_XPU_OPS_FLAGS /wd4018) # allow signed and unsigned comparison
+    else()
+      set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
+    endif()
 
     # -- SYCL device object linkage flags
     include(ProcessorCount)
@@ -188,7 +190,7 @@ macro(set_build_flags)
       message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
     endif()
 
-    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_KERNEL_OPTIONS})
+    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_HOST_FLAGS} ${SYCL_KERNEL_OPTIONS})
 
     set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
   else()
