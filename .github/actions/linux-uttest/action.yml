@@ -115,7 +115,7 @@ runs:
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        mkdir -p ut_log/torch_xpu
+        mkdir -p ${{ github.workspace }}/ut_log/torch_xpu
         cd pytorch
         for file in "test/xpu"/test*.py; do
           filename=$(basename "$file")
@@ -125,7 +125,7 @@ runs:
         done
         export PYTORCH_TEST_WITH_SLOW=1
         export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        mkdir -p ut_log/test_xpu
+        mkdir -p ${{ github.workspace }}/ut_log/test_xpu
         if [ -f "test/test_xpu.py" ]; then
           pytest -sv test/test_xpu.py --junit-xml=${{ github.workspace }}/ut_log/test_xpu.xml \
             2> ${{ github.workspace }}/ut_log/test_xpu/test_xpu_error.log | \
