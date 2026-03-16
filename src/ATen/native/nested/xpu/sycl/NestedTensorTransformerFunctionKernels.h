@@ -61,10 +61,15 @@ TORCH_XPU_API void add_padding_kernel(
     const int batch_size,
     const int output_batch_size);
 
-TORCH_XPU_API at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
+TORCH_XPU_API at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
     const double padding_value);
+
+TORCH_XPU_API at::Tensor dense_to_jagged_forward_kernel(
+    const Tensor& dense,
+    TensorList offsets,
+    std::optional<c10::SymInt> total_L);
 
 } // namespace at::native::xpu
