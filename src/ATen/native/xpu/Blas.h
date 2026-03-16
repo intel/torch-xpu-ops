@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,5 +39,9 @@ TORCH_XPU_API Tensor& baddbmm_complex_out_xpu(
     const Scalar& beta,
     const Scalar& alpha,
     Tensor& out);
+
+TORCH_XPU_API Tensor dot_xpu(const Tensor& self, const Tensor& other);
+
+TORCH_XPU_API Tensor vdot_xpu(const Tensor& self, const Tensor& other);
 
 } // namespace at::native

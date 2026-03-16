@@ -79,6 +79,8 @@ jobs:
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
           dnf install -y gh --repo gh-cli
           gh --version
+          # cleanup files
+          rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
       - name: Setup python-${{ inputs.python }}
         run: |
           rm -rf /tmp/xpu-tool/myvenv
@@ -86,7 +88,7 @@ jobs:
           /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
           which python && python -V
           which pip && pip list
-          pip install -U pip wheel setuptools
+          pip install -U pip wheel setuptools==81.0.0
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -609,8 +609,8 @@ template <
     class Norm,
     bool one_moment = false>
 struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<3> item_id) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
+  void operator()(sycl::nd_item<3> item_id) const {
     accscalar_t sum1 = 0;
     accscalar_t sum2 = 0;
     norm.template reduce_combine<vec_size, vec_t, weight_vec_t, index_t>(
@@ -756,8 +756,8 @@ template <
     class Norm,
     bool one_moment = false>
 struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<3> item_id) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD)
+  void operator()(sycl::nd_item<3> item_id) const {
     index_t local_id = item_id.get_local_id(2);
 
     accscalar_t sum1 = 0;

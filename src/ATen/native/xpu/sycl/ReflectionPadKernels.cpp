@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -366,6 +366,184 @@ void reflection_pad2d_backward_template(
   sycl_kernel_submit(
       sycl::range<3>(nbatch, nplane, work_group_size * work_group_num),
       sycl::range<3>(1, 1, work_group_size),
+      queue,
+      kfn);
+}
+
+template <typename scalar_t>
+struct ReflectionPad2dBackwardDetKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    const int64_t tid = static_cast<int64_t>(item.get_global_id(0));
+
+    const int64_t width = input_dim_x_ + pad_left_ + pad_right_;
+    const int64_t height = input_dim_y_ + pad_top_ + pad_bottom_;
+    const int64_t N = height * width;
+
+    const int64_t end = nbatch_ * nplane_ * input_dim_y_ * input_dim_x_;
+
+    if (tid >= end) {
+      return;
+    }
+    // linear index over B*C*H*W (contiguous)
+    const int64_t pos_xy = tid % (input_dim_x_ * input_dim_y_);
+    const int64_t inp_row = pos_xy / input_dim_x_;
+    const int64_t inp_col = pos_xy % input_dim_x_;
+
+    const int64_t bottom_row = input_dim_y_ - 1;
+    const int64_t rightmost_col = input_dim_x_ - 1;
+    const int64_t dist_from_bottom = std::abs(inp_row - bottom_row);
+    const int64_t dist_from_right = std::abs(inp_col - rightmost_col);
+
+    const bool is_top = (inp_row >= 1) && (inp_row <= pad_top_);
+    const bool is_bottom =
+        (inp_row < bottom_row) && (inp_row >= bottom_row - pad_bottom_);
+    const bool is_left = (inp_col >= 1) && (inp_col <= pad_left_);
+    const bool is_right =
+        (inp_col < rightmost_col) && (inp_col >= rightmost_col - pad_right_);
+
+    // Accumulate grad_output at reflected output position (row, col)
+    // into partial, if the linearized index falls within [0, N).
+    scalar_t partial = static_cast<scalar_t>(0);
+
+    const int64_t batch_idx = tid / (nplane_ * input_dim_x_ * input_dim_y_);
+    const int64_t channel_idx = (tid / (input_dim_x_ * input_dim_y_)) % nplane_;
+    const int64_t grad_output_base_offset =
+        batch_idx * (nplane_ * N) + channel_idx * N;
+
+    auto accum_grad_at = [&](int64_t row, int64_t col) {
+      const int64_t idx = row * width + col;
+      if (idx >= 0 && idx < N) {
+        partial += grad_output_[grad_output_base_offset + idx];
+      }
+    };
+
+    if (is_top) {
+      // Reflect across the top border: row mirrors above pad_top_,
+      // column stays at its padded position.
+      accum_grad_at(pad_top_ - inp_row, pad_left_ + inp_col);
+
+      if (is_left) { // top-left corner
+        // Row mirrors above pad_top_, column mirrors left of pad_left_.
+        accum_grad_at(pad_top_ - inp_row, pad_left_ - inp_col);
+      } else if (is_right) { // top-right corner
+        // Row mirrors above pad_top_, column mirrors right of
+        // the right border at pad_left_ + rightmost_col,
+        // offset by the distance from inp_col to the right edge.
+        accum_grad_at(
+            pad_top_ - inp_row, pad_left_ + rightmost_col + dist_from_right);
+      }
+    }
+
+    if (is_bottom) {
+      // Reflect across the bottom border: row mirrors below
+      // pad_top_ + bottom_row, column stays at its padded position.
+      accum_grad_at(
+          pad_top_ + bottom_row + dist_from_bottom, pad_left_ + inp_col);
+
+      if (is_left) { // bottom-left corner
+        // Row mirrors below pad_top_ + bottom_row, column mirrors
+        // left of pad_left_, offset by inp_col.
+        accum_grad_at(
+            pad_top_ + bottom_row + dist_from_bottom, pad_left_ - inp_col);
+      } else if (is_right) { // bottom-right corner
+        // Row mirrors below pad_top_ + bottom_row, column mirrors right
+        // of the right border at pad_left_ + rightmost_col,
+        // each offset by their respective distances from the corner.
+        accum_grad_at(
+            pad_top_ + bottom_row + dist_from_bottom,
+            pad_left_ + rightmost_col + dist_from_right);
+      }
+    }
+
+    if (is_left) {
+      // Reflect across the left border: row stays at its padded
+      // position, column mirrors left of pad_left_.
+      accum_grad_at(inp_row + pad_top_, pad_left_ - inp_col);
+    }
+
+    if (is_right) {
+      // Reflect across the right border: row stays at its padded
+      // position, column mirrors right of pad_left_ + rightmost_col,
+      // offset by the distance from inp_col to the right edge.
+      accum_grad_at(
+          inp_row + pad_top_, pad_left_ + rightmost_col + dist_from_right);
+    }
+
+    // Center (always): direct padded position, no reflection.
+    accum_grad_at(inp_row + pad_top_, inp_col + pad_left_);
+
+    grad_input_[tid] = partial;
+  }
+
+  ReflectionPad2dBackwardDetKernelFunctor(
+      scalar_t* grad_input,
+      const scalar_t* grad_output,
+      int64_t input_dim_x,
+      int64_t input_dim_y,
+      int64_t pad_t,
+      int64_t pad_b,
+      int64_t pad_l,
+      int64_t pad_r,
+      int64_t nbatch,
+      int64_t nplane)
+      : grad_input_(grad_input),
+        grad_output_(grad_output),
+        input_dim_x_(input_dim_x),
+        input_dim_y_(input_dim_y),
+        pad_top_(pad_t),
+        pad_bottom_(pad_b),
+        pad_left_(pad_l),
+        pad_right_(pad_r),
+        nbatch_(nbatch),
+        nplane_(nplane) {}
+
+ private:
+  scalar_t* grad_input_;
+  const scalar_t* grad_output_;
+  int64_t input_dim_x_;
+  int64_t input_dim_y_;
+  int64_t pad_top_;
+  int64_t pad_bottom_;
+  int64_t pad_left_;
+  int64_t pad_right_;
+  int64_t nbatch_;
+  int64_t nplane_;
+};
+
+template <typename scalar_t>
+void reflection_pad2d_backward_det_template(
+    scalar_t* grad_input,
+    const scalar_t* grad_output,
+    int64_t input_dim_x,
+    int64_t input_dim_y,
+    int64_t pad_t,
+    int64_t pad_b,
+    int64_t pad_l,
+    int64_t pad_r,
+    int64_t nbatch,
+    int64_t nplane) {
+  auto queue = getCurrentSYCLQueue();
+  const int64_t work_group_size = syclMaxWorkItemsPerSubSlice();
+
+  const int64_t total_elements = nbatch * nplane * input_dim_x * input_dim_y;
+  const int64_t work_group_num = at::ceil_div(total_elements, work_group_size);
+
+  ReflectionPad2dBackwardDetKernelFunctor<scalar_t> kfn(
+      grad_input,
+      grad_output,
+      input_dim_x,
+      input_dim_y,
+      pad_t,
+      pad_b,
+      pad_l,
+      pad_r,
+      nbatch,
+      nplane);
+
+  // Use a flat 1D range for one work-item per input element.
+  sycl_kernel_submit(
+      sycl::range<1>(work_group_size * work_group_num),
+      sycl::range<1>(work_group_size),
       queue,
       kfn);
 }
@@ -784,17 +962,31 @@ void reflection_pad2d_backward_kernel(
       input.scalar_type(),
       "reflection_pad2d_backward_xpu",
       [&] {
-        reflection_pad2d_backward_template<scalar_t>(
-            grad_input.mutable_data_ptr<scalar_t>(),
-            grad_output.const_data_ptr<scalar_t>(),
-            input_w,
-            input_h,
-            pad_t,
-            pad_b,
-            pad_l,
-            pad_r,
-            nbatch,
-            nplane);
+        if (at::globalContext().deterministicAlgorithms()) {
+          reflection_pad2d_backward_det_template<scalar_t>(
+              grad_input.mutable_data_ptr<scalar_t>(),
+              grad_output.const_data_ptr<scalar_t>(),
+              input_w,
+              input_h,
+              pad_t,
+              pad_b,
+              pad_l,
+              pad_r,
+              nbatch,
+              nplane);
+        } else {
+          reflection_pad2d_backward_template<scalar_t>(
+              grad_input.mutable_data_ptr<scalar_t>(),
+              grad_output.const_data_ptr<scalar_t>(),
+              input_w,
+              input_h,
+              pad_t,
+              pad_b,
+              pad_l,
+              pad_r,
+              nbatch,
+              nplane);
+        }
       });
 }
 
