@@ -1,7 +1,9 @@
 name: Hello World
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - clangtidy_actions
 
 jobs:
   hello:
