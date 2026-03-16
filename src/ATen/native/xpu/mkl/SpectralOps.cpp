@@ -483,9 +483,12 @@ Tensor _fft_c2r_mkl(
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
-  auto input_sizes = self.sizes();
+  auto in_sizes = self.sizes();
+  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  out_sizes[dim.back()] = last_dim_size;
+
   auto out = at::empty(
-      input_sizes,
+      out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
   _fft_c2r_mkl_out(self, dim, normalization, last_dim_size, out);
   //at::native::resize_output(out, result.sizes());
@@ -584,9 +587,16 @@ Tensor _fft_r2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
-  auto input_sizes = self.sizes();
+  auto in_sizes = self.sizes();
+  DimVector onesided_sizes(in_sizes.begin(), in_sizes.end());
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = (in_sizes[last_dim]) / 2 + 1;
+  onesided_sizes[last_dim] = last_dim_halfsize;
+
+  IntArrayRef out_sizes = onesided ? onesided_sizes : in_sizes;
+
   auto out = at::empty(
-      input_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+      out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
   _fft_r2c_mkl_out(self, dim, normalization, onesided, out);
 
   //at::native::resize_output(out, result.sizes());
