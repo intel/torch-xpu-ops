@@ -143,17 +143,11 @@ def clang_search_dirs() -> list[str]:
 
     return search_paths
 
-def find_sycl_include_dir() -> str:
-    sycl_root = os.environ.get("CMPLR_ROOT")
-    if not sycl_root:
-        raise RuntimeError("Environment variable CMPLR_ROOT is not set.")
-    return os.path.join(sycl_root, "include")
-
 
 include_args = []
 include_dir = [
     os.path.join(PYTORCH_ROOT, "include"),
-    find_sycl_include_dir(),
+    "/opt/intel/oneapi/compiler/latest/include",
 ] + clang_search_dirs()
 for dir in include_dir:
     include_args += ["--extra-arg", f"-isystem{dir}"]
