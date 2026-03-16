@@ -7,7 +7,6 @@
 
 namespace at::native::xpu {
 
-// XPU dispatch implementation
 at::Tensor _fused_gate_up_silu_xpu(
     const at::Tensor& input,
     const at::Tensor& gate_weight,
@@ -17,21 +16,20 @@ at::Tensor _fused_gate_up_silu_xpu(
 
 } // namespace at::native::xpu
 
-// Define op schema in xpu namespace
 TORCH_LIBRARY_FRAGMENT(xpu, m) {
   m.def(
       "_fused_gate_up_silu(Tensor input, Tensor gate_weight, "
       "Tensor up_weight) -> Tensor");
+  m.def("_is_fused_gate_up_silu_available() -> bool");
 }
 
 TORCH_LIBRARY_IMPL(xpu, XPU, m) {
   m.impl("_fused_gate_up_silu", at::native::xpu::_fused_gate_up_silu_xpu);
 }
 
-// In TORCH_LIBRARY_FRAGMENT(xpu, m):
-m.def("_is_fused_gate_up_silu_available() -> bool");
-
-// In TORCH_LIBRARY_IMPL(xpu, XPU, m):
-m.impl("_is_fused_gate_up_silu_available", []() {
-  return sycltla::is_fused_gate_up_silu_available();
-});
+// No Tensor args → dispatcher can't infer XPU key; use CatchAll
+TORCH_LIBRARY_IMPL(xpu, CatchAll, m) {
+  m.impl("_is_fused_gate_up_silu_available", []() {
+    return sycltla::is_fused_gate_up_silu_available();
+  });
+}

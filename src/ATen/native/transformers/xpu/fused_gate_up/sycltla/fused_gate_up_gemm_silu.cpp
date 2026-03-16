@@ -68,7 +68,7 @@ static void run_sycl_tla_gemm_impl(
           TiledMMA;
 
   using GEMMDispatchPolicy = cutlass::gemm::MainloopXeL1Staged<3>;
-  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeGeneric;
+  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeXMX16;
 
   using EpilogueOp = cutlass::epilogue::fusion::LinearCombination<
       Element,
@@ -83,17 +83,24 @@ static void run_sycl_tla_gemm_impl(
       TileShape_,
       decltype(tile_shape(TiledMma()))>;
 
+  // Element is half_t or bfloat16_t (16-bit) — must use U16 copy ops.
+  // Default (void) falls back to XE_2D_U32x8x16_ST_N which is 32-bit only.
+  using CopyOpR2G = cute::XE_2D_U16x8x16_ST_N;
+
   using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue<
       EpilogueDispatchPolicy,
       TileShape_,
-      void,
-      ElementAccumulator,
-      cutlass::gemm::TagToStrideC_t<LayoutC>,
-      Element,
-      cutlass::gemm::TagToStrideC_t<LayoutD>,
+      void,                                        // ElementC (no source)
+      cutlass::gemm::TagToStrideC_t<LayoutC>,      // StrideC
+      Element,                                     // ElementD
+      cutlass::gemm::TagToStrideC_t<LayoutD>,      // StrideD
       FusionCallbacks,
-      void,
-      void>;
+      void,                                        // CopyOpG2R (no source load)
+      void,                                        // SmemLayoutAtomC
+      void,                                        // CopyOpS2R
+      CopyOpR2G,                                   // CopyOpR2G (16-bit store)
+      void,                                        // SmemLayoutAtomD
+      void>;                                       // CopyOpR2S
 
   using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<
       GEMMDispatchPolicy,
