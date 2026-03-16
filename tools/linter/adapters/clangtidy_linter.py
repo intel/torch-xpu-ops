@@ -29,6 +29,12 @@ from typing import Any, NamedTuple
 
 
 PYTORCH_ROOT = os.environ.get("PYTORCH_ROOT")
+if PYTORCH_ROOT is None:
+     raise RuntimeError(
+         "Environment variable PYTORCH_ROOT is not set. "
+         "Please set PYTORCH_ROOT to the root directory of the PyTorch source "
+         "tree so that clang-tidy can locate the appropriate headers."
+     )
 IS_WINDOWS: bool = os.name == "nt"
 
 
@@ -138,10 +144,10 @@ def clang_search_dirs() -> list[str]:
     return search_paths
 
 def find_sycl_include_dir() -> str:
-    dir = os.environ.get("CMPLR_ROOT", "")
-    if dir != "":
-        dir = os.path.join(dir, "include")
-    return dir
+    sycl_root = os.environ.get("CMPLR_ROOT")
+    if not sycl_root:
+        raise RuntimeError("Environment variable CMPLR_ROOT is not set.")
+    return os.path.join(sycl_root, "include")
 
 
 include_args = []
