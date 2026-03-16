@@ -108,19 +108,6 @@ runs:
           echo -e "$filename duration: $((end - start))s"
           echo "=== Finished test: $filename ==="
         done
-    - name: test_xpu
-      shell: timeout 3600 bash -xe {0}
-      if: ${{ inputs.ut_name == 'test_xpu' }}
-      run: |
-        export PYTORCH_TEST_WITH_SLOW=1
-        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
-        mkdir -p ut_log/test_xpu
-        cd pytorch
-        if [ -f "test/test_xpu.py" ]; then
-          pytest -sv test/test_xpu.py --junit-xml=${{ github.workspace }}/ut_log/test_xpu.xml \
-            2> ${{ github.workspace }}/ut_log/test_xpu/test_xpu_error.log | \
-            tee ${{ github.workspace }}/ut_log/test_xpu/test_xpu.log
-        fi
     - name: torch_xpu
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'torch_xpu' }}
@@ -135,6 +122,14 @@ runs:
               2> ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_${filename}_error.log | \
               tee ${{ github.workspace }}/ut_log/torch_xpu/torch_xpu_${filename}.log
         done
+        export PYTORCH_TEST_WITH_SLOW=1
+        export PYTORCH_TESTING_DEVICE_ONLY_FOR="xpu"
+        mkdir -p ut_log/test_xpu
+        if [ -f "test/test_xpu.py" ]; then
+          pytest -sv test/test_xpu.py --junit-xml=${{ github.workspace }}/ut_log/test_xpu.xml \
+            2> ${{ github.workspace }}/ut_log/test_xpu/test_xpu_error.log | \
+            tee ${{ github.workspace }}/ut_log/test_xpu/test_xpu.log
+        fi
     - name: xpu_profiling
       shell: timeout 3600 bash -xe {0}
       if: ${{ inputs.ut_name == 'xpu_profiling' }}
