@@ -1,0 +1,14 @@
+name: Hello World
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Hello World
+        run: echo "Hello World"
