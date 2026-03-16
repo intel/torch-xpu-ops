@@ -15,6 +15,7 @@
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
+#include <ATen/native/Resize.h>
 #include <ATen/ops/copy.h>
 #include <ATen/ops/resize_native.h>
 #include <ATen/ops/set_native.h>
@@ -35,7 +36,7 @@ const Tensor& resize_xpu_(
   auto* self_ = self.unsafeGetTensorImpl();
   int64_t old_storage_nbytes =
       self_->unsafe_storage() ? self_->unsafe_storage().nbytes() : 0;
-  resize_impl_xpu_(self_, size, /*stride=*/std::nullopt);
+  resize_impl_xpu_(self_, size, /*strides=*/std::nullopt);
   if (optional_memory_format.has_value()) {
     auto memory_format = optional_memory_format.value();
     TORCH_CHECK(

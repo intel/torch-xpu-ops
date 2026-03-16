@@ -26,6 +26,9 @@
 #include <ATen/native/xpu/sycl/ForeachPointwiseOpScalarListKernels.h>
 #include <ATen/native/xpu/sycl/ForeachTernaryOpScalarListKernels.h>
 
+#include <ATen/ops/_foreach_add_native.h>
+#include <ATen/ops/_foreach_mul_native.h>
+
 namespace at {
 namespace native {
 

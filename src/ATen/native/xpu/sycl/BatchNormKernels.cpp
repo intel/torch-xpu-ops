@@ -103,8 +103,8 @@ template <
     typename index_t = int64_t>
 static GenericPackedTensorAccessor<scalar_t, dim, PtrTraits, index_t>
 get_packed_accessor(const Tensor& t, std::string_view var_name) {
-  constexpr auto expect_type =
-      c10::CppTypeToScalarType<std::remove_const_t<scalar_t>>::value;
+  constexpr auto expect_type = c10::CppTypeToScalarType<
+      typename std::remove_const<scalar_t>::type>::value;
   const auto actual_type = t.scalar_type();
   TORCH_CHECK(
       actual_type == expect_type,

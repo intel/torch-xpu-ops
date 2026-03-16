@@ -35,7 +35,7 @@ inline Tensor& resize_reduction(
     } else {
       out = create_out(shape, {}, self.options().dtype(out_dtype));
     }
-  } else if (shape.empty()) {
+  } else if (shape.size() == 0) {
     if (out.defined()) {
       resize_out(
           out, shape, {}, self.options().dtype(out_dtype).layout(kStrided));

@@ -69,8 +69,8 @@ void glu_jvp_kernel(TensorIteratorBase& iter) {
 // cheaper. For fixed offsets, this removes all penalty from 64-bit indexing.
 template <typename T>
 T* byte_offset(T* ptr, int64_t offset) {
-  using byte_ptr_t =
-      std::conditional_t<std::is_const<T>::value, const char*, char*>;
+  using byte_ptr_t = typename std::
+      conditional<std::is_const<T>::value, const char*, char*>::type;
   return reinterpret_cast<T*>(reinterpret_cast<byte_ptr_t>(ptr) + offset);
 }
 

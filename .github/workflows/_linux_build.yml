@@ -215,11 +215,6 @@ jobs:
         with:
           name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/build_*.log
-      - name: Run clang-tidy
-        run: |
-          cd ${{ github.workspace }}/torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGTIDY --all-files"
-          bash .github/scripts/lintrunner.sh
       - name: Cleanup workspace
         if: ${{ always() }}
         run: |

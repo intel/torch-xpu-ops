@@ -28,7 +28,7 @@ from sysconfig import get_paths as gp
 from typing import Any, NamedTuple
 
 
-PYTORCH_ROOT = "/home/jenkins/actions-runner/_work/torch-xpu-ops/torch-xpu-ops/pytorch"
+PYTORCH_ROOT = os.environ.get("PYTORCH_ROOT")
 IS_WINDOWS: bool = os.name == "nt"
 
 
@@ -156,11 +156,10 @@ for dir in include_dir:
 def check_file(
     filename: str,
     binary: str,
-    build_dir: Path,
 ) -> list[LintMessage]:
     try:
         proc = run_command(
-            [binary, f"-p={build_dir}", *include_args, filename],
+            [binary, *include_args, filename],
         )
     except OSError as err:
         return [
@@ -177,34 +176,25 @@ def check_file(
             )
         ]
     lint_messages = []
-    try:
-        # Change the current working directory to the build directory, since
-        # clang-tidy will report files relative to the build directory.
-        saved_cwd = os.getcwd()
-        os.chdir(build_dir)
-
-        for match in RESULTS_RE.finditer(proc.stdout.decode()):
-            # Convert the reported path to an absolute path.
-            abs_path = str(Path(match["file"]).resolve())
-            # clang-diagnostic-error cannot be suppressed via .clang-tidy config.
-            if match["code"] == "[clang-diagnostic-error]":
-                continue
-            message = LintMessage(
-                path=abs_path,
-                name=match["code"],
-                description=match["message"],
-                line=int(match["line"]),
-                char=int(match["column"])
-                if match["column"] is not None and not match["column"].startswith("-")
-                else None,
-                code="CLANGTIDY",
-                severity=severities.get(match["severity"], LintSeverity.ERROR),
-                original=None,
-                replacement=None,
-            )
-            lint_messages.append(message)
-    finally:
-        os.chdir(saved_cwd)
+    for match in RESULTS_RE.finditer(proc.stdout.decode()):
+        abs_path = str(Path(match["file"]).resolve())
+        # clang-diagnostic-error cannot be suppressed via .clang-tidy config.
+        if match["code"] == "[clang-diagnostic-error]":
+            continue
+        message = LintMessage(
+            path=abs_path,
+            name=match["code"],
+            description=match["message"],
+            line=int(match["line"]),
+            char=int(match["column"])
+            if match["column"] is not None and not match["column"].startswith("-")
+            else None,
+            code="CLANGTIDY",
+            severity=severities.get(match["severity"], LintSeverity.ERROR),
+            original=None,
+            replacement=None,
+        )
+        lint_messages.append(message)
 
     return lint_messages
 
@@ -218,15 +208,6 @@ def main() -> None:
         "--binary",
         required=True,
         help="clang-tidy binary path",
-    )
-    parser.add_argument(
-        "--build-dir",
-        "--build_dir",
-        required=True,
-        help=(
-            "Where the compile_commands.json file is located. "
-            "Gets passed to clang-tidy -p"
-        ),
     )
     parser.add_argument(
         "--verbose",
@@ -268,8 +249,6 @@ def main() -> None:
         print(json.dumps(err_msg._asdict()), flush=True)
         sys.exit(0)
 
-    abs_build_dir = Path(args.build_dir).resolve()
-
     # Get the absolute path to clang-tidy and use this instead of the relative
     # path such as .lintbin/clang-tidy. The problem here is that os.chdir is
     # per process, and the linter uses it to move between the current directory
@@ -287,7 +266,6 @@ def main() -> None:
                 check_file,
                 filename,
                 binary_path,
-                abs_build_dir,
             ): filename
             for filename in args.filenames
         }

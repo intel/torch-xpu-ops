@@ -277,7 +277,7 @@ Tensor bincount_template(
     return at::zeros({minlength}, device(kXPU).dtype(kLong));
   }
   if (self.dim() != 1 ||
-      (!std::is_same_v<input_t, uint8_t> &&
+      (!std::is_same<input_t, uint8_t>::value &&
        *self.min().cpu().data_ptr<input_t>() < 0)) {
     TORCH_CHECK(0, "bincount only supports 1-d non-negative integral inputs.");
   }

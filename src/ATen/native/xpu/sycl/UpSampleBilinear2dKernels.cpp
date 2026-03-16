@@ -636,7 +636,7 @@ void launch_upsample_bilinear2d_backward_kernel(
       (align_corners ||
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
-      !std::is_same_v<scalar_t, double>;
+      !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, false>
@@ -850,7 +850,7 @@ void launch_upsample_bilinear2d_backward_nhwc_kernel(
       (align_corners ||
        (input_width == (rwidth * output_width) &&
         input_height == (rheight * output_height))) &&
-      !std::is_same_v<scalar_t, double>;
+      !std::is_same<scalar_t, double>::value;
   if (can_optimize) {
     if (align_corners) {
       UpsampleBilinear2dBackwardAlignKernelFunctor<scalar_t, accscalar_t, true>

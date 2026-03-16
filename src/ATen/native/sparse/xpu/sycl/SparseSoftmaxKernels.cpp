@@ -66,6 +66,7 @@
 #include <comm/Memory.h>
 
 #include <ATen/native/sparse/xpu/sycl/SparseSoftmaxKernels.h>
+#include <ATen/native/xpu/sycl/Loops.h>
 #include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 

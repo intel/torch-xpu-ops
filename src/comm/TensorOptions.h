@@ -15,53 +15,53 @@
 namespace at {
 template <typename T>
 static inline TensorOptions map_options() {
-  if (std::is_same_v<T, uint8_t>)
+  if (std::is_same<T, uint8_t>::value)
     return at::TensorOptions().dtype(kByte).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, int8_t>)
+  else if (std::is_same<T, int8_t>::value)
     return at::TensorOptions().dtype(kChar).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, int16_t>)
+  else if (std::is_same<T, int16_t>::value)
     return at::TensorOptions().dtype(kShort).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, int32_t>)
+  else if (std::is_same<T, int32_t>::value)
     return at::TensorOptions().dtype(kInt).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, int64_t>)
+  else if (std::is_same<T, int64_t>::value)
     return at::TensorOptions().dtype(kLong).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, float>)
+  else if (std::is_same<T, float>::value)
     return at::TensorOptions().dtype(kFloat).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, double>)
+  else if (std::is_same<T, double>::value)
     return at::TensorOptions().dtype(kDouble).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, at::Half>)
+  else if (std::is_same<T, at::Half>::value)
     return at::TensorOptions().dtype(kHalf).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, at::BFloat16>)
+  else if (std::is_same<T, at::BFloat16>::value)
     return at::TensorOptions().dtype(kBFloat16).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, bool>)
+  else if (std::is_same<T, bool>::value)
     return at::TensorOptions().dtype(kBool).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, c10::complex<float>>)
+  else if (std::is_same<T, c10::complex<float>>::value)
     return at::TensorOptions()
         .dtype(kComplexFloat)
         .device(kXPU)
         .memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, c10::complex<double>>)
+  else if (std::is_same<T, c10::complex<double>>::value)
     return at::TensorOptions()
         .dtype(kComplexDouble)
         .device(kXPU)
         .memory_format(LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, uint16_t>)
+  else if (std::is_same<T, uint16_t>::value)
     return at::TensorOptions().dtype(kUInt16).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, uint32_t>)
+  else if (std::is_same<T, uint32_t>::value)
     return at::TensorOptions().dtype(kUInt32).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
-  else if (std::is_same_v<T, uint64_t>)
+  else if (std::is_same<T, uint64_t>::value)
     return at::TensorOptions().dtype(kUInt64).device(kXPU).memory_format(
         LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   else {
