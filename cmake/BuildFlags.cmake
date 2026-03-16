@@ -121,9 +121,11 @@ macro(set_build_flags)
       or a Native API failed error.")
     endif()
 
-    # TORCH_XPU_OPS_FLAGS is applied to all libs including non-SYCL ones (e.g. torch_xpu_ops
-    # compiled by the host compiler). On Windows the host compiler is still MSVC, so we
-    # must use MSVC-style flags here instead of the GCC/Clang-style SYCL_HOST_FLAGS.
+    # TORCH_XPU_OPS_FLAGS is applied to all libs including non-SYCL ones (e.g. torch_xpu_ops).
+    # Note: icpx only compiles SYCL kernel files; non-SYCL files (e.g. ops.cpp) are compiled
+    # by CMAKE_CXX_COMPILER (GCC on Linux, MSVC on Windows), NOT the removed SYCL host compiler.
+    # On Linux CMAKE_CXX_COMPILER is GCC, so GCC/Clang-style SYCL_HOST_FLAGS apply.
+    # On Windows CMAKE_CXX_COMPILER is MSVC, so we must use MSVC-style flags instead.
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       set(TORCH_XPU_OPS_FLAGS)
       list(APPEND TORCH_XPU_OPS_FLAGS /std:${CPP_STD})
