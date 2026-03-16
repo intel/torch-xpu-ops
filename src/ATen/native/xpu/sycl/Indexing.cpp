@@ -1346,11 +1346,10 @@ void submit_small_index_kernel(
       selfNumel,
       reduce_func,
       alpha_value);
-  size_t num_wg = std::min(
-      ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
+  size_t num_wg =
+      std::min(ceil_div(sliceSize, (uint64_t)128), (uint64_t)(ssc * 8));
   size_t wg_size = std::min(sliceSize, (uint64_t)128);
-  sycl_kernel_submit(
-      num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
+  sycl_kernel_submit(num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
 }
 
 template <
@@ -1397,13 +1396,12 @@ void submit_large_index_kernel(
       reduce_func,
       alpha_value);
   int maxGroupThreads = syclMaxWorkGroupSize(caller);
-  size_t num_wg = std::min(
-      ceil_div(sourceTotalSize, (uint64_t)128), (uint64_t)(ssc * 8));
+  size_t num_wg =
+      std::min(ceil_div(sourceTotalSize, (uint64_t)128), (uint64_t)(ssc * 8));
   size_t wg_size = (sourceTotalSize < (uint64_t)maxGroupThreads)
       ? sourceTotalSize
       : (uint64_t)maxGroupThreads;
-  sycl_kernel_submit(
-      num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
+  sycl_kernel_submit(num_wg * wg_size, wg_size, getCurrentSYCLQueue(), caller);
 }
 
 template <
@@ -1429,67 +1427,168 @@ void dispatch_index_kernels(
   if (numIndex <= 16) {
     if (selfInfo.dims == 1 && sourceInfo.dims == 1 && indContig) {
       submit_small_index_kernel<scalar_t, index_t, IndexType, 1, 1, -2>(
-          selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-          sliceSize, selfReduceDimSize, selfNumel, reduce_func,
-          alpha_value, ssc);
+          selfInfo,
+          sourceInfo,
+          indexInfo,
+          selfReduceDim,
+          sourceReduceDim,
+          sliceSize,
+          selfReduceDimSize,
+          selfNumel,
+          reduce_func,
+          alpha_value,
+          ssc);
     } else if (selfInfo.dims == 2 && sourceInfo.dims == 2 && indContig) {
       submit_small_index_kernel<scalar_t, index_t, IndexType, 2, 2, -2>(
-          selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-          sliceSize, selfReduceDimSize, selfNumel, reduce_func,
-          alpha_value, ssc);
+          selfInfo,
+          sourceInfo,
+          indexInfo,
+          selfReduceDim,
+          sourceReduceDim,
+          sliceSize,
+          selfReduceDimSize,
+          selfNumel,
+          reduce_func,
+          alpha_value,
+          ssc);
     } else if (selfInfo.dims == 3 && sourceInfo.dims == 3 && indContig) {
       submit_small_index_kernel<scalar_t, index_t, IndexType, 3, 3, -2>(
-          selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-          sliceSize, selfReduceDimSize, selfNumel, reduce_func,
-          alpha_value, ssc);
+          selfInfo,
+          sourceInfo,
+          indexInfo,
+          selfReduceDim,
+          sourceReduceDim,
+          sliceSize,
+          selfReduceDimSize,
+          selfNumel,
+          reduce_func,
+          alpha_value,
+          ssc);
     } else {
       submit_small_index_kernel<scalar_t, index_t, IndexType, -1, -1, -1>(
-          selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-          sliceSize, selfReduceDimSize, selfNumel, reduce_func,
-          alpha_value, ssc);
+          selfInfo,
+          sourceInfo,
+          indexInfo,
+          selfReduceDim,
+          sourceReduceDim,
+          sliceSize,
+          selfReduceDimSize,
+          selfNumel,
+          reduce_func,
+          alpha_value,
+          ssc);
     }
   } else {
     bool indexIsMajor = indexShouldBeMajor(selfInfo, selfReduceDim);
 
     if (selfInfo.dims == 1 && sourceInfo.dims == 1 && indContig) {
       submit_large_index_kernel<scalar_t, index_t, IndexType, 1, 1, -2, true>(
-          selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-          sourceTotalSize, sliceSize, numIndex, selfReduceDimSize, selfNumel,
-          reduce_func, alpha_value, ssc);
+          selfInfo,
+          sourceInfo,
+          indexInfo,
+          selfReduceDim,
+          sourceReduceDim,
+          sourceTotalSize,
+          sliceSize,
+          numIndex,
+          selfReduceDimSize,
+          selfNumel,
+          reduce_func,
+          alpha_value,
+          ssc);
     } else if (selfInfo.dims == 2 && sourceInfo.dims == 2 && indContig) {
       if (indexIsMajor) {
-        submit_large_index_kernel<
-            scalar_t, index_t, IndexType, 2, 2, -2, true>(
-            selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-            sourceTotalSize, sliceSize, numIndex, selfReduceDimSize, selfNumel,
-            reduce_func, alpha_value, ssc);
+        submit_large_index_kernel<scalar_t, index_t, IndexType, 2, 2, -2, true>(
+            selfInfo,
+            sourceInfo,
+            indexInfo,
+            selfReduceDim,
+            sourceReduceDim,
+            sourceTotalSize,
+            sliceSize,
+            numIndex,
+            selfReduceDimSize,
+            selfNumel,
+            reduce_func,
+            alpha_value,
+            ssc);
       } else {
         submit_large_index_kernel<
-            scalar_t, index_t, IndexType, 2, 2, -2, false>(
-            selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-            sourceTotalSize, sliceSize, numIndex, selfReduceDimSize, selfNumel,
-            reduce_func, alpha_value, ssc);
+            scalar_t,
+            index_t,
+            IndexType,
+            2,
+            2,
+            -2,
+            false>(
+            selfInfo,
+            sourceInfo,
+            indexInfo,
+            selfReduceDim,
+            sourceReduceDim,
+            sourceTotalSize,
+            sliceSize,
+            numIndex,
+            selfReduceDimSize,
+            selfNumel,
+            reduce_func,
+            alpha_value,
+            ssc);
       }
     } else if (selfInfo.dims == 3 && sourceInfo.dims == 3 && indContig) {
       if (indexIsMajor) {
-        submit_large_index_kernel<
-            scalar_t, index_t, IndexType, 3, 3, -2, true>(
-            selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-            sourceTotalSize, sliceSize, numIndex, selfReduceDimSize, selfNumel,
-            reduce_func, alpha_value, ssc);
+        submit_large_index_kernel<scalar_t, index_t, IndexType, 3, 3, -2, true>(
+            selfInfo,
+            sourceInfo,
+            indexInfo,
+            selfReduceDim,
+            sourceReduceDim,
+            sourceTotalSize,
+            sliceSize,
+            numIndex,
+            selfReduceDimSize,
+            selfNumel,
+            reduce_func,
+            alpha_value,
+            ssc);
       } else {
         submit_large_index_kernel<
-            scalar_t, index_t, IndexType, 3, 3, -2, false>(
-            selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-            sourceTotalSize, sliceSize, numIndex, selfReduceDimSize, selfNumel,
-            reduce_func, alpha_value, ssc);
+            scalar_t,
+            index_t,
+            IndexType,
+            3,
+            3,
+            -2,
+            false>(
+            selfInfo,
+            sourceInfo,
+            indexInfo,
+            selfReduceDim,
+            sourceReduceDim,
+            sourceTotalSize,
+            sliceSize,
+            numIndex,
+            selfReduceDimSize,
+            selfNumel,
+            reduce_func,
+            alpha_value,
+            ssc);
       }
     } else {
-      submit_large_index_kernel<
-          scalar_t, index_t, IndexType, -1, -1, -1, true>(
-          selfInfo, sourceInfo, indexInfo, selfReduceDim, sourceReduceDim,
-          sourceTotalSize, sliceSize, numIndex, selfReduceDimSize, selfNumel,
-          reduce_func, alpha_value, ssc);
+      submit_large_index_kernel<scalar_t, index_t, IndexType, -1, -1, -1, true>(
+          selfInfo,
+          sourceInfo,
+          indexInfo,
+          selfReduceDim,
+          sourceReduceDim,
+          sourceTotalSize,
+          sliceSize,
+          numIndex,
+          selfReduceDimSize,
+          selfNumel,
+          reduce_func,
+          alpha_value,
+          ssc);
     }
   }
 }
@@ -1502,8 +1601,7 @@ struct IndexReduceAddFunctor {
       int64_t numel,
       const scalar_t* src_data) const {
     (void)numel; // suppress unused warning
-    atomicAdd(
-        (sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
+    atomicAdd((sycl_global_ptr<scalar_t>)(self_data_start + index), *src_data);
   }
 };
 
@@ -1587,33 +1685,31 @@ void index_add_kernel(
           int selfReduceDim = selfInfo.collapseDims(dim);
           selfInfo.reduceDim(selfReduceDim);
           auto alpha_value = alpha.to<scalar_t>();
-          AT_DISPATCH_INDEX_TYPES(
-              index.scalar_type(), "index_add_xpu", [&]() {
-                auto sourceInfo =
-                    getTensorInfo<const scalar_t, unsigned int>(source_);
-                int sourceReduceDim = sourceInfo.collapseDims(dim);
-                sourceInfo.reduceDim(sourceReduceDim);
+          AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&]() {
+            auto sourceInfo =
+                getTensorInfo<const scalar_t, unsigned int>(source_);
+            int sourceReduceDim = sourceInfo.collapseDims(dim);
+            sourceInfo.reduceDim(sourceReduceDim);
 
-                auto indexInfo =
-                    getTensorInfo<const index_t, unsigned int>(index);
-                indexInfo.collapseDims();
+            auto indexInfo = getTensorInfo<const index_t, unsigned int>(index);
+            indexInfo.collapseDims();
 
-                dispatch_index_kernels(
-                    selfInfo,
-                    sourceInfo,
-                    indexInfo,
-                    selfReduceDim,
-                    sourceReduceDim,
-                    sliceSize,
-                    sourceTotalSize,
-                    selfReduceDimSize,
-                    numIndex,
-                    selfNumel,
-                    reduce_func,
-                    alpha_value,
-                    indContig,
-                    ssc);
-              });
+            dispatch_index_kernels(
+                selfInfo,
+                sourceInfo,
+                indexInfo,
+                selfReduceDim,
+                sourceReduceDim,
+                sliceSize,
+                sourceTotalSize,
+                selfReduceDimSize,
+                numIndex,
+                selfNumel,
+                reduce_func,
+                alpha_value,
+                indContig,
+                ssc);
+          });
         });
   } else {
     AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND4(
@@ -1629,33 +1725,36 @@ void index_add_kernel(
           selfInfo.reduceDim(selfReduceDim);
           auto alpha_value = alpha.to<scalar_t>();
 
-          auto sourceInfo =
-              getTensorInfo<const scalar_t, uint64_t>(source_);
+          auto sourceInfo = getTensorInfo<const scalar_t, uint64_t>(source_);
           int sourceReduceDim = sourceInfo.collapseDims(dim);
           sourceInfo.reduceDim(sourceReduceDim);
 
-          AT_DISPATCH_INDEX_TYPES(
-              index.scalar_type(), "index_add_xpu", [&]() {
-                auto indexInfo =
-                    getTensorInfo<const index_t, uint64_t>(index);
-                indexInfo.collapseDims();
+          AT_DISPATCH_INDEX_TYPES(index.scalar_type(), "index_add_xpu", [&]() {
+            auto indexInfo = getTensorInfo<const index_t, uint64_t>(index);
+            indexInfo.collapseDims();
 
-                submit_large_index_kernel<
-                    scalar_t, index_t, uint64_t, -1, -1, -1, true>(
-                    selfInfo,
-                    sourceInfo,
-                    indexInfo,
-                    selfReduceDim,
-                    sourceReduceDim,
-                    sourceTotalSize,
-                    sliceSize,
-                    numIndex,
-                    selfReduceDimSize,
-                    selfNumel,
-                    reduce_func,
-                    alpha_value,
-                    ssc);
-              });
+            submit_large_index_kernel<
+                scalar_t,
+                index_t,
+                uint64_t,
+                -1,
+                -1,
+                -1,
+                true>(
+                selfInfo,
+                sourceInfo,
+                indexInfo,
+                selfReduceDim,
+                sourceReduceDim,
+                sourceTotalSize,
+                sliceSize,
+                numIndex,
+                selfReduceDimSize,
+                selfNumel,
+                reduce_func,
+                alpha_value,
+                ssc);
+          });
         });
   }
 }
@@ -1790,19 +1889,23 @@ void index_reduce_func_xpu_template(
           selfInfo.reduceDim(selfReduceDim);
           auto alpha_value = (scalar_t)1;
 
-          auto sourceInfo =
-              getTensorInfo<const scalar_t, uint64_t>(source_);
+          auto sourceInfo = getTensorInfo<const scalar_t, uint64_t>(source_);
           int sourceReduceDim = sourceInfo.collapseDims(dim);
           sourceInfo.reduceDim(sourceReduceDim);
 
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "index_reduce_xpu", [&]() {
-                auto indexInfo =
-                    getTensorInfo<const index_t, uint64_t>(index);
+                auto indexInfo = getTensorInfo<const index_t, uint64_t>(index);
                 indexInfo.collapseDims();
 
                 submit_large_index_kernel<
-                    scalar_t, index_t, uint64_t, -1, -1, -1, true>(
+                    scalar_t,
+                    index_t,
+                    uint64_t,
+                    -1,
+                    -1,
+                    -1,
+                    true>(
                     selfInfo,
                     sourceInfo,
                     indexInfo,
