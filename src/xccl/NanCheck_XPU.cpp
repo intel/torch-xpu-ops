@@ -14,9 +14,9 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUContext.h>
 #include <comm/SYCLContext.h>
-#include <stdint.h>
 #include <xccl/NanCheck_XPU.hpp>
 #include <algorithm>
+#include <cstdint>
 
 namespace c10d {
 
