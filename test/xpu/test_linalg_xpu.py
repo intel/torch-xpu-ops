@@ -516,15 +516,15 @@ def pinv_errors_and_warnings(self, device, dtype):
     with self.assertRaisesRegex(RuntimeError, "but got result with dtype Int"):
         torch.linalg.pinv(a, out=out)
 
-    if torch.cuda.is_available():
+    if torch.xpu.is_available():
         # device of out and input should match
-        wrong_device = "cpu" if self.device_type != "cpu" else "cuda"
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         out = torch.empty_like(a).to(wrong_device)
         with self.assertRaisesRegex(RuntimeError, "Expected result and input tensors to be on the same device"):
             torch.linalg.pinv(a, out=out)
 
         # device of rcond and input should match
-        wrong_device = "cpu" if self.device_type != "cpu" else "cuda"
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         rcond = torch.full((), 1e-2, device=wrong_device)
         with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
             torch.linalg.pinv(a, rcond=rcond)
