@@ -149,7 +149,8 @@ void check_channel(int channel, int world_size) {
       "must be greater than 0 (got ",
       channel,
       ")");
-  const size_t num_channels = get_signal_pad_size() / sizeof(uint32_t) * world_size;
+  const size_t num_channels =
+      get_signal_pad_size() / sizeof(uint32_t) * world_size;
   TORCH_CHECK(
       static_cast<size_t>(channel) < num_channels,
       "The maximum supported channel for barrier(), put_signal() and wait_signal() is ",
@@ -381,10 +382,10 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
   c10::Device local_device(c10::DeviceType::XPU, block->device_idx);
   c10::DeviceGuard guard(local_device);
 
-  auto group_info = get_group_info(group_name_);
-  auto store = group_info.store;
-  int rank = group_info.rank;
-  int world_size = group_info.world_size;
+  auto group = resolve_process_group(group_name_);
+  auto rank = group->getRank();
+  auto world_size = group->getSize();
+  auto store = group->getStore();
   sycl::queue current_queue = at::xpu::getCurrentXPUStream().queue();
 
   auto local_req = RendezvousRequest{
@@ -481,8 +482,8 @@ c10::intrusive_ptr<SymmetricMemory> XPUSymmetricMemoryAllocator::rendezvous(
       mc_addr,
       block->buffer_size,
       block->device_idx,
-      group_info.rank,
-      group_info.world_size);
+      rank,
+      world_size);
   symm_mem->set_group_name(group_name_);
   block->symm_mems[group_name_] = symm_mem;
   return symm_mem;

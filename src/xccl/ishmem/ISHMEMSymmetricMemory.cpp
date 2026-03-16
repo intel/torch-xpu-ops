@@ -1,3 +1,4 @@
+#include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 #include "../XPUSymmetricMemoryUtils.hpp"
 
@@ -61,14 +62,17 @@ class ISHMEMPeerAllocInfo : public c10::intrusive_ptr_target {
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, allocation->device_idx));
 
-    auto global_rank = get_group_info("0").rank;
-    GroupInfo& group_info = get_group_info(group_name);
-    auto store = group_info.store;
-    rank_ = group_info.rank;
-    world_size_ = group_info.world_size;
+    auto global_group = resolve_process_group("0");
+    auto global_rank = global_group->getRank();
+    auto group = resolve_process_group(group_name);
+    auto store = group->getStore();
+    rank_ = group->getRank();
+    world_size_ = group->getSize();
 
-    // Cache rank_to_global_rank per group_name locally (no longer stored in GroupInfo)
-    static std::unordered_map<std::string, std::vector<int>> rank_to_global_rank_cache;
+    // Cache rank_to_global_rank per group_name locally (no longer stored in
+    // GroupInfo)
+    static std::unordered_map<std::string, std::vector<int>>
+        rank_to_global_rank_cache;
     auto cache_it = rank_to_global_rank_cache.find(group_name);
     if (cache_it == rank_to_global_rank_cache.end()) {
       rank_to_global_rank_cache[group_name] =
@@ -367,10 +371,10 @@ class ISHMEMSymmetricMemoryAllocator : public SymmetricMemoryAllocator {
     c10::OptionalDeviceGuard guard;
     guard.reset_device(at::Device(at::DeviceType::XPU, device_idx));
 
-    auto group_info = get_group_info("0");
-    auto store = group_info.store;
-    int rank = group_info.rank;
-    int world_size = group_info.world_size;
+    auto group = resolve_process_group("0");
+    auto store = group->getStore();
+    int rank = group->getRank();
+    int world_size = group->getSize();
 
     initialize_ishmem_with_store(store, rank, world_size, device_idx);
     auto ptr = ishmem_malloc(size);
