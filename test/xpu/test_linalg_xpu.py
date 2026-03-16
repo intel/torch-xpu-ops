@@ -495,7 +495,9 @@ with XPUPatchForImport(False):
 def pinv_errors_and_warnings(self, device, dtype):
     # pinv requires at least 2D tensor
     a = torch.randn(1, device=device, dtype=dtype)
-    with self.assertRaisesRegex(RuntimeError, "expected a tensor with 2 or more dimensions"):
+    with self.assertRaisesRegex(
+        RuntimeError, "expected a tensor with 2 or more dimensions"
+    ):
         torch.linalg.pinv(a)
 
     # if non-empty out tensor with wrong shape is passed a warning is given
@@ -509,7 +511,9 @@ def pinv_errors_and_warnings(self, device, dtype):
         )
         torch.linalg.pinv(a, out=out)
         self.assertEqual(len(w), 1)
-        self.assertTrue("An output with one or more elements was resized" in str(w[-1].message))
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[-1].message)
+        )
 
     # dtypes of out and input should be safely castable
     out = torch.empty_like(a).to(torch.int)
@@ -520,29 +524,40 @@ def pinv_errors_and_warnings(self, device, dtype):
         # device of out and input should match
         wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         out = torch.empty_like(a).to(wrong_device)
-        with self.assertRaisesRegex(RuntimeError, "Expected result and input tensors to be on the same device"):
+        with self.assertRaisesRegex(
+            RuntimeError, "Expected result and input tensors to be on the same device"
+        ):
             torch.linalg.pinv(a, out=out)
 
         # device of rcond and input should match
         wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         rcond = torch.full((), 1e-2, device=wrong_device)
-        with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
+        with self.assertRaisesRegex(
+            RuntimeError, "Expected all tensors to be on the same device"
+        ):
             torch.linalg.pinv(a, rcond=rcond)
 
     # rcond can't be complex
     rcond = torch.full((), 1j, device=device)
-    with self.assertRaisesRegex(RuntimeError, "rcond tensor of complex type is not supported"):
+    with self.assertRaisesRegex(
+        RuntimeError, "rcond tensor of complex type is not supported"
+    ):
         torch.linalg.pinv(a, rcond=rcond)
 
     # atol can't be complex
     atol = torch.full((), 1j, device=device)
-    with self.assertRaisesRegex(RuntimeError, "atol tensor of complex type is not supported"):
+    with self.assertRaisesRegex(
+        RuntimeError, "atol tensor of complex type is not supported"
+    ):
         torch.linalg.pinv(a, atol=atol)
 
     # rtol can't be complex
     rtol = torch.full((), 1j, device=device)
-    with self.assertRaisesRegex(RuntimeError, "rtol tensor of complex type is not supported"):
+    with self.assertRaisesRegex(
+        RuntimeError, "rtol tensor of complex type is not supported"
+    ):
         torch.linalg.pinv(a, rtol=rtol)
+
 
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
