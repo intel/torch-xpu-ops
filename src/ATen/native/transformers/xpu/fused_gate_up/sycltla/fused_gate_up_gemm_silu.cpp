@@ -90,17 +90,17 @@ static void run_sycl_tla_gemm_impl(
   using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue<
       EpilogueDispatchPolicy,
       TileShape_,
-      void,                                        // ElementC (no source)
-      cutlass::gemm::TagToStrideC_t<LayoutC>,      // StrideC
-      Element,                                     // ElementD
-      cutlass::gemm::TagToStrideC_t<LayoutD>,      // StrideD
+      void, // ElementC (no source)
+      cutlass::gemm::TagToStrideC_t<LayoutC>, // StrideC
+      Element, // ElementD
+      cutlass::gemm::TagToStrideC_t<LayoutD>, // StrideD
       FusionCallbacks,
-      void,                                        // CopyOpG2R (no source load)
-      void,                                        // SmemLayoutAtomC
-      void,                                        // CopyOpS2R
-      CopyOpR2G,                                   // CopyOpR2G (16-bit store)
-      void,                                        // SmemLayoutAtomD
-      void>;                                       // CopyOpR2S
+      void, // CopyOpG2R (no source load)
+      void, // SmemLayoutAtomC
+      void, // CopyOpS2R
+      CopyOpR2G, // CopyOpR2G (16-bit store)
+      void, // SmemLayoutAtomD
+      void>; // CopyOpR2S
 
   using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<
       GEMMDispatchPolicy,
