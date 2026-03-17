@@ -23,9 +23,8 @@ static scalar_t device_sqrt(scalar_t val) {
   return std::sqrt(val);
 };
 
-// Compute row index i from linear upper-triangle index k
-// Uses float sqrt as approximation, then corrects with integer arithmetic.
-// This avoids fp64 which is unsupported on some XPU devices (e.g., Arc).
+// Compute row index i from linear upper-triangle index k using integer-only
+// binary search to avoid fp64, which is unsupported on some XPU devices (e.g., Arc).
 static inline int64_t pdist_row_idx(int64_t k, int64_t n) {
   // Binary search for row i such that cum(i) <= k < cum(i+1)
   // where cum(i) = i * (2*n - i - 1) / 2  (pairs before row i)
