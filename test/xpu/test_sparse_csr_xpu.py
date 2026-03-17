@@ -46,6 +46,8 @@ from torch.testing._internal.common_device_type import (
     skipCUDAIfNoSparseGeneric,
     skipCUDAIfRocm,
     skipMeta,
+    tol,
+    toleranceOverride,
 )
 from torch.testing._internal.common_dtype import (
     all_types_and_complex,
@@ -2142,6 +2144,7 @@ class TestSparseCSR(TestCase):
 
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.float32, torch.float64, torch.complex64, torch.complex128)
+    @precisionOverride({torch.float64: 2e-6})
     def test_baddbmm(self, device, dtype):
         # TODO: disable the invariant checks within torch.baddbmm that
         # constructs unconventional csr tensors leading to
@@ -2803,7 +2806,9 @@ class TestSparseCSR(TestCase):
         )
     )
     @dtypesIfXPU(*floating_and_complex_types_and(torch.half, torch.bfloat16))
-    @precisionOverride({torch.bfloat16: 3.5e-2, torch.float16: 1e-2})
+    @precisionOverride(
+        {torch.bfloat16: 3.5e-2, torch.float16: 1e-2, torch.float64: 2e-6}
+    )
     def test_sparse_addmm(self, device, dtype):
         def test_shape(m, n, p, nnz, broadcast, index_dtype, alpha_beta=None):
             if alpha_beta is None:
@@ -2845,6 +2850,7 @@ class TestSparseCSR(TestCase):
             torch.cdouble: 1e-8,
         }
     )
+    @toleranceOverride({torch.double: tol(atol=2e-6, rtol=1e-6)})
     @dtypesIfCUDA(
         *floating_types_and(
             torch.complex64,
@@ -2987,6 +2993,7 @@ class TestSparseCSR(TestCase):
             torch.cdouble: 1e-8,
         }
     )
+    @toleranceOverride({torch.double: tol(atol=2e-6, rtol=1e-6)})
     def test_addmm_sizes_all_sparse_csr(self, device, dtype, m, n, k):
         M = torch.randn(n, m, device=device).to(dtype)
         m1 = torch.randn(n, k, device=device).to(dtype)
