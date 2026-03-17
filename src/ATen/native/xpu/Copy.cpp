@@ -26,6 +26,7 @@
 #include <comm/SYCLContext.h>
 
 #include <ATen/ops/empty_like.h>
+#include <vector>
 
 using namespace at;
 using namespace at::xpu;
@@ -46,14 +47,20 @@ static sycl::event chunked_memcpy(
   if (nbytes <= kMaxMemcpyBytes) {
     return q.memcpy(dst, src, nbytes);
   }
-  sycl::event last_event;
+
   auto dst_byte = static_cast<char*>(dst);
   auto src_byte = static_cast<const char*>(src);
+  std::vector<sycl::event> events;
+  events.reserve(
+      static_cast<std::size_t>((nbytes + kMaxMemcpyBytes - 1) / kMaxMemcpyBytes));
+
   for (int64_t off = 0; off < nbytes; off += kMaxMemcpyBytes) {
     int64_t chunk = std::min(kMaxMemcpyBytes, nbytes - off);
-    last_event = q.memcpy(dst_byte + off, src_byte + off, chunk);
+    events.push_back(q.memcpy(dst_byte + off, src_byte + off, chunk));
   }
-  return last_event;
+
+  // Return an event that represents completion of all chunked memcpy operations.
+  return q.ext_oneapi_submit_barrier(events);
 }
 
 
