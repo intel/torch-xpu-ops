@@ -500,32 +500,17 @@ REGISTER_XPU_DISPATCH(
     fft_fill_with_conjugate_symmetry_stub,
     &_fft_fill_with_conjugate_symmetry_xpu);
 
-Tensor& _fft_r2c_mkl_out(
+Tensor& _fft_r2c_mkl_out_impl(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool onesided,
     Tensor& orig_out) {
-
-  if (dim.empty()) {
-    orig_out = orig_self.clone();
-    return orig_out;
-  }
-
   auto self = impl::promote_fft_input(orig_self);
   auto out = impl::promote_fft_input(orig_out);
 
   auto input_sizes = self.sizes();
-  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
-  auto last_dim = dim.back();
-  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
-  onesided_sizes[last_dim] = last_dim_halfsize;
-
-  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
-
-  //auto out = at::empty(
-  //    out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
-  at::native::resize_output(out, out_sizes);
+  auto out_sizes = out.sizes();
 
   auto working_tensor = self.contiguous();
 
@@ -587,6 +572,10 @@ Tensor _fft_r2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool onesided) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
   auto in_sizes = self.sizes();
   DimVector onesided_sizes(in_sizes.begin(), in_sizes.end());
   auto last_dim = dim.back();
@@ -597,10 +586,38 @@ Tensor _fft_r2c_mkl(
 
   auto out = at::empty(
       out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
-  _fft_r2c_mkl_out(self, dim, normalization, onesided, out);
+  _fft_r2c_mkl_out_impl(self, dim, normalization, onesided, out);
 
   //at::native::resize_output(out, result.sizes());
   //out.copy_(result);
+  return out;
+}
+
+Tensor& _fft_r2c_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool onesided,
+    Tensor& out) {
+  if (dim.empty()) {
+    out = self.clone();
+    return out;
+  }
+
+  auto input_sizes = self.sizes();
+  DimVector onesided_sizes(input_sizes.begin(), input_sizes.end());
+  auto last_dim = dim.back();
+  auto last_dim_halfsize = (input_sizes[last_dim]) / 2 + 1;
+  onesided_sizes[last_dim] = last_dim_halfsize;
+
+  IntArrayRef out_sizes = onesided ? onesided_sizes : input_sizes;
+
+  //auto out = at::empty(
+  //    out_sizes, self.options().dtype(c10::toComplexType(self.scalar_type())));
+  at::native::resize_output(out, out_sizes);
+
+  _fft_r2c_mkl_out_impl(self, dim, normalization, onesided, out);
+
   return out;
 }
 
