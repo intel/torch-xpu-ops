@@ -215,7 +215,7 @@ Tensor NestedTensor_to_padded_tensor_xpu(
   return NestedTensor_to_padded_tensor_generic(t, padding, output_size);
 }
 
-at::Tensor _fbgemm_jagged_to_padded_dense_forward(
+at::Tensor _jagged_to_padded_dense_forward_xpu(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
@@ -231,8 +231,19 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward(
   c10::OptionalDeviceGuard device_guard;
   device_guard.reset_device(values.device());
 
-  return at::native::xpu::_fbgemm_jagged_to_padded_dense_forward_kernel(
+  return at::native::xpu::jagged_to_padded_dense_forward_xpu_kernel(
       values, offsets, max_lengths, padding_value);
+}
+
+Tensor _padded_dense_to_jagged_forward_symint_xpu(
+    const Tensor& padded,
+    TensorList offsets_list,
+    std::optional<c10::SymInt> total_L) {
+  c10::OptionalDeviceGuard device_guard;
+  device_guard.reset_device(padded.device());
+
+  return at::native::xpu::dense_to_jagged_forward_kernel(
+      padded, offsets_list, total_L);
 }
 
 } // namespace at::native

@@ -2033,7 +2033,7 @@ else:
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
             "reflection_pad2d_backward_" + torch.device(device).type,
-            torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
+            torch.device(device).type == "cuda",
         )
 
     @skipIfMPS
@@ -7687,6 +7687,11 @@ else:
             self.skipTest("uint16,32,64 not implemented on XLA")
         t = torch.ones((), device=device, dtype=dtype)
         self.assertEqual(1, t.item())
+
+    def test__local_scalar_dense_with_empty_tensor(self, device):
+        input = torch.randn(0, device=device)
+        with self.assertRaisesRegex(RuntimeError, "Empty tensor not supported"):
+            torch.ops.aten._local_scalar_dense(input)
 
     @onlyNativeDeviceTypes
     def test_masked_scatter_inplace_noncontiguous(self, device):
