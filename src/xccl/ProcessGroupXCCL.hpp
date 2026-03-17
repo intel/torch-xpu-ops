@@ -484,6 +484,19 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
+ public:
+  // Performs XCCL user buffer registration for all buffers in
+  // the given MemPool. If symm is true, use window registration
+  // for symmetric memory access optimization.
+  void registerMemPool(
+      c10::DeviceIndex device,
+      c10::MempoolId_t mempool_id,
+      bool symm = false);
+
+  // Performs XCCL user buffer de-registration for all buffers in
+  // the given MemPool
+  void deregisterMemPool(c10::DeviceIndex device, c10::MempoolId_t mempool_id);
+
  protected:
   std::unordered_map<std::string, XCCLStream> xcclStreamsMap_;
   std::unordered_map<std::string, at::xpu::XPUEvent> xcclEventsMap_;
@@ -517,6 +530,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
  private:
   std::mutex kvs_mutex_;
+  std::mutex xcclCommMemPoolMapMutex_;
 };
 
 // Dumps the comm traces and additional information about the ProcessGroup.

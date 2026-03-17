@@ -36,6 +36,18 @@
 #define XCCL_HAS_AVG 1
 #endif // oneCCL version >= 2021.15
 
+#if defined(CCL_MAJOR_VERSION) &&  \
+    ((CCL_MAJOR_VERSION > 2022) || \
+     (CCL_MAJOR_VERSION == 2022) && (CCL_MINOR_VERSION >= 0))
+#define XCCL_HAS_COMM_REGISTER 1
+#endif // oneCCL version >= 2022.0
+
+#if defined(CCL_MAJOR_VERSION) &&  \
+    ((CCL_MAJOR_VERSION > 2022) || \
+     (CCL_MAJOR_VERSION == 2022) && (CCL_MINOR_VERSION >= 0))
+#define XCCL_HAS_COMM_WINDOW_REGISTER 1
+#endif // oneCCL version >= 2022.0
+
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {
     case c10d::ReduceOp::SUM:
@@ -113,11 +125,31 @@ struct XCCLStream {
 struct xcclComm_t {
   std::optional<ccl::communicator> cclComm;
   onecclComm_t onecclComm{nullptr};
+  c10::DeviceIndex deviceIndex_{-1};
+
+  std::unordered_map<void*, void*> registeredSegmentHandles_;
+  std::mutex mutex_;
 
   xcclComm_t() = default;
   explicit xcclComm_t(ccl::communicator comm)
       : cclComm(std::move(comm)), onecclComm(nullptr) {}
   explicit xcclComm_t(onecclComm_t comm) : onecclComm(comm) {}
+
+  void setDeviceIndex(c10::DeviceIndex idx) {
+    deviceIndex_ = idx;
+  }
+
+  c10::DeviceIndex getDeviceIndex() const {
+    return deviceIndex_;
+  }
+
+  bool registerSegment(
+      void* ptr,
+      size_t size,
+      bool errorOnRereg = true,
+      bool window = false);
+
+  bool deregisterSegment(void* ptr, bool window = false);
 };
 
 const std::map<c10d::ReduceOp, onecclRedOp_t> xcclOpsV2 = {
