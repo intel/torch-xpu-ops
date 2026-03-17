@@ -423,17 +423,12 @@ void HermitSymm(Tensor& input, int64_t dim, int64_t out_size) {
     HermitSymmImpl(input, dim, -1);
 }
 
-Tensor& _fft_c2r_mkl_out(
+Tensor& _fft_c2r_mkl_out_impl(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size,
     Tensor& orig_out) {
-  if (dim.empty()) {
-    orig_out = orig_self.clone();
-    return orig_out;
-  }
-
   auto self = impl::promote_fft_input(orig_self);
   auto out = impl::promote_fft_input(orig_out);
 
@@ -483,6 +478,10 @@ Tensor _fft_c2r_mkl(
     IntArrayRef dim,
     int64_t normalization,
     int64_t last_dim_size) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
   auto in_sizes = self.sizes();
   DimVector out_sizes(in_sizes.begin(), in_sizes.end());
   out_sizes[dim.back()] = last_dim_size;
@@ -490,9 +489,30 @@ Tensor _fft_c2r_mkl(
   auto out = at::empty(
       out_sizes,
       self.options().dtype(c10::toRealValueType(self.scalar_type())));
-  _fft_c2r_mkl_out(self, dim, normalization, last_dim_size, out);
+  _fft_c2r_mkl_out_impl(self, dim, normalization, last_dim_size, out);
   //at::native::resize_output(out, result.sizes());
   //out.copy_(result);
+  return out;
+}
+
+Tensor& _fft_c2r_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    int64_t last_dim_size,
+    Tensor& out) {
+  if (dim.empty()) {
+    out = self.clone();
+    return out;
+  }
+
+  auto in_sizes = self.sizes();
+  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
+  out_sizes[dim.back()] = last_dim_size;
+
+  at::native::resize_output(out, out_sizes);
+  _fft_c2r_mkl_out_impl(self, dim, normalization, last_dim_size, out);
+
   return out;
 }
 
