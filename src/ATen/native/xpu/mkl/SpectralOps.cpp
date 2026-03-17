@@ -462,8 +462,7 @@ Tensor& _fft_c2r_mkl_out_impl(
   }
 
   auto in_sizes = input.sizes();
-  DimVector out_sizes(in_sizes.begin(), in_sizes.end());
-  out_sizes[dim.back()] = last_dim_size;
+  auto out_sizes = out.sizes();
 
   //auto out = at::empty(
   //    out_sizes,
