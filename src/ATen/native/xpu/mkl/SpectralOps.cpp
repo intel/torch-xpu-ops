@@ -330,17 +330,12 @@ Tensor promote_fft_input(const Tensor& input) {
 
 } // namespace impl
 
-Tensor& _fft_c2c_mkl_out(
+Tensor& _fft_c2c_mkl_out_impl(
     const Tensor& orig_self,
     IntArrayRef dim,
     int64_t normalization,
     bool forward,
     Tensor& orig_out) {
-  if (dim.empty()) {
-    orig_out = orig_self.clone();
-    return orig_out;
-  }
-
   auto self = impl::promote_fft_input(orig_self);
   auto out = impl::promote_fft_input(orig_out);
 
@@ -395,11 +390,34 @@ Tensor _fft_c2c_mkl(
     IntArrayRef dim,
     int64_t normalization,
     bool forward) {
+  if (dim.empty()) {
+    return self.clone();
+  }
+
   auto input_sizes = self.sizes();
   auto out = at::empty(input_sizes, self.options());
-  _fft_c2c_mkl_out(self, dim, normalization, forward, out);
+  _fft_c2c_mkl_out_impl(self, dim, normalization, forward, out);
   //at::native::resize_output(out, result.sizes());
   //out.copy_(result);
+  return out;
+}
+
+Tensor& _fft_c2c_mkl_out(
+    const Tensor& self,
+    IntArrayRef dim,
+    int64_t normalization,
+    bool forward,
+    Tensor& out) {
+  if (dim.empty()) {
+    out = self.clone();
+    return out;
+  }
+
+  auto out_sizes = self.sizes();
+  at::native::resize_output(out, out_sizes);
+
+  _fft_c2c_mkl_out_impl(self, dim, normalization, forward, out);
+
   return out;
 }
 
