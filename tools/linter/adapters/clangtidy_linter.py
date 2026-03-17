@@ -35,6 +35,8 @@ if PYTORCH_ROOT is None:
          "Please set PYTORCH_ROOT to the root directory of the PyTorch source "
          "tree so that clang-tidy can locate the appropriate headers."
      )
+
+CMPLR_ROOT = os.environ.get("CMPLR_ROOT", "/opt/intel/oneapi/compiler/latest")
 IS_WINDOWS: bool = os.name == "nt"
 
 
@@ -147,7 +149,7 @@ def clang_search_dirs() -> list[str]:
 include_args = []
 include_dir = [
     os.path.join(PYTORCH_ROOT, "include"),
-    "/opt/intel/oneapi/compiler/latest/include",
+    os.path.join(CMPLR_ROOT, "include")
 ] + clang_search_dirs()
 for dir in include_dir:
     include_args += ["--extra-arg", f"-isystem{dir}"]
