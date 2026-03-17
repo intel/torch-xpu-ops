@@ -43,7 +43,11 @@ skip_dict = {
     "../../../../test/distributed/_composable/test_checkpoint.py": None,
     "../../../../test/distributed/_composable/test_contract.py": None,
     "distributed/test_c10d_xccl.py": None,
-    "distributed/test_c10d_ops_xccl.py": None,
+    "distributed/test_c10d_ops_xccl.py": (
+        "test_allreduce_graph_replay",
+        "test_allgather_graph_replay",
+        "test_reduce_scatter_graph_replay",
+    ),
     "../../../../test/distributed/test_c10d_functional_native.py": None,
     "../../../../test/distributed/_tools/test_fsdp2_mem_tracker.py": None,
     "../../../../test/distributed/_tools/test_mem_tracker.py": None,

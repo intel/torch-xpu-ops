@@ -110,13 +110,13 @@ void syncStream(
 }
 
 inline void errorIfCapturingNonCapturableXCCL(c10::xpu::CaptureStatus status) {
-  // oneCCL graph capture support requires version >= 2021.17.2
+  // oneCCL graph capture support requires version >= 2022.0.0
   static const bool is_capturable = []() -> bool {
     const std::string& ver = getXcclVersion();
     int major = 0, minor = 0, patch = 0;
     if (std::sscanf(ver.c_str(), "%d.%d.%d", &major, &minor, &patch) >= 2) {
-      return major > 2021 ||
-          (major == 2021 && (minor > 17 || (minor == 17 && patch >= 2)));
+      return major > 2022 ||
+          (major == 2022 && (minor > 0 || (minor == 0 && patch >= 0)));
     }
     return false;
   }();
@@ -124,7 +124,7 @@ inline void errorIfCapturingNonCapturableXCCL(c10::xpu::CaptureStatus status) {
     TORCH_CHECK_WITH(
         NotImplementedError,
         status == c10::xpu::CaptureStatus::Executing,
-        "Capturing XCCL collectives is only allowed with oneCCL >= 2021.17.2");
+        "Capturing XCCL collectives is only allowed with oneCCL >= 2022.0.0");
   }
 }
 
