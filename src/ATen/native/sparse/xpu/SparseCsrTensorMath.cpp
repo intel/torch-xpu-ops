@@ -206,8 +206,10 @@ Tensor& addmm_out_sparse_compressed_xpu(
   }
 
   TORCH_CHECK(
-      result.layout() == kStrided,
-      "addmm: XPU sparse compressed addmm only supports strided result tensor, got ",
+      result.layout() == kStrided ||
+          result.layout() == kSparseCsr ||
+          result.layout() == kSparseCsc,
+      "addmm: XPU sparse compressed addmm does not support result layout ",
       result.layout());
 
   xpu::addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);

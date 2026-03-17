@@ -2890,7 +2890,6 @@ class TestSparseCSR(TestCase):
             torch.complex64, torch.bfloat16, torch.half, torch.complex128
         )
     )
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2213")
     @sparse_compressed_nonblock_layouts()
     def test_addmm_all_sparse_csr(self, device, dtype, layout):
         M = torch.randn(10, 25, device=device).to(dtype)
