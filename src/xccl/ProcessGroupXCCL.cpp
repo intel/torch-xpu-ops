@@ -891,7 +891,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   c10::xpu::XPUCachingAllocator::recordStream(
       tensor.storage().data_ptr(), stream);
 
-  fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  if (!batchP2P) {
+    xccl::oneccl_group_start();
+    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+    xccl::oneccl_group_end();
+  } else {
+    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  }
 
   if (!coalescing_state_) {
     post(stream);
