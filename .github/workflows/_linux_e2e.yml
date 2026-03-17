@@ -235,3 +235,16 @@ jobs:
         with:
           name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/upload_files
+      - name: Get test jsons
+        if: ${{ contains(inputs.test_type, 'ondemand') }}
+        run: |
+          mkdir -p ${{ github.workspace }}/graph_dump
+          cd graph_dump
+          find ${{ github.workspace }}/ -name "graph-*.json" -type f -print0 | xargs -0 -I {} cp {} ./
+      - name: Upload Inductor XPU E2E Data
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jsons-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: graph_dump
+          retention-days: 2
