@@ -65,7 +65,7 @@ std::vector<Tensor> foreach_tensor_norm_xpu(
     }
   }();
   at::native::check_foreach_api_restrictions(tensors);
-   // If the tensor is empty and norm == infty, we cannot compute the norm
+  // If the tensor is empty and norm == infty, we cannot compute the norm
   // because the operation does not have an identity. Also populate the
   // has_int_or_complex flag.
   bool has_int_or_complex = false;
