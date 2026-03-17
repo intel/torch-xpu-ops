@@ -272,9 +272,7 @@ def determine_category(ut):
         return 'torch_xpu'
     elif 'inductor_' in ut:
         return 'xpu_inductor'
-    elif 'op_ut_windows' in ut:
-        return 'op_ut_windows'
-    elif 'op_ut' in ut and 'windows' not in ut:
+    elif 'op_ut' in ut:
         return 'op_ut'
     else:
         return 'unknown'
