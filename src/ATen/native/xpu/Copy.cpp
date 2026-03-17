@@ -59,18 +59,18 @@ static sycl::event chunked_memcpy(
   auto dst_byte = static_cast<char*>(dst);
   auto src_byte = static_cast<const char*>(src);
   std::vector<sycl::event> events;
-  events.reserve(
-      static_cast<std::size_t>((nbytes + kMaxMemcpyBytes - 1) / kMaxMemcpyBytes));
+  events.reserve(static_cast<std::size_t>(
+      (nbytes + kMaxMemcpyBytes - 1) / kMaxMemcpyBytes));
 
   for (int64_t off = 0; off < nbytes; off += kMaxMemcpyBytes) {
     int64_t chunk = std::min(kMaxMemcpyBytes, nbytes - off);
     events.push_back(q.memcpy(dst_byte + off, src_byte + off, chunk));
   }
 
-  // Return an event that represents completion of all chunked memcpy operations.
+  // Return an event that represents completion of all chunked memcpy
+  // operations.
   return q.ext_oneapi_submit_barrier(events);
 }
-
 
 static bool copy_requires_temporaries(TensorIterator& iter, bool p2p_enabled) {
   Device dst_device = iter.device(0);
