@@ -6,9 +6,9 @@ on:
       - opened
       - synchronize
       - reopened
-      - converted_to_draft
       - ready_for_review
       - labeled
+      - unlabeled
     branches:
       - main
       - release/*
@@ -40,19 +40,17 @@ jobs:
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
           bash .github/scripts/lintrunner.sh
 
-  conditions-filter:
-    if: ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
+  conditions-filter-win:
+    if: >-
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
-      has_label: ${{ steps.check-label.outputs.has_label }}
-      disabled_tests: ${{ steps.check-pr-desc.outputs.disabled_tests }}
-      pytorch: ${{ contains(steps.check-pr-desc.outputs.disabled_tests, 'disable_build') && 'nightly_wheel' || github.base_ref }}
     steps:
-      - uses: dorny/paths-filter@v2
+      - uses: dorny/paths-filter@v3
         id: check-files
         with:
           filters: |
@@ -66,23 +64,10 @@ jobs:
               - 'src/ATen/CMakeLists.txt'
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
-      - name: Check Label
-        id: check-label
-        run: |
-          echo "has_label=${{ contains(github.event.pull_request.labels.*.name, 'windows_ci') }}" >> $GITHUB_OUTPUT
-      - name: Check PR infos
-        id: check-pr-desc
-        run: |
-          set -x -e -o pipefail
-          sudo apt update && sudo apt install -y dos2unix
-          gh --repo ${GITHUB_REPOSITORY} pr view ${{ github.event.pull_request.number }} 2>&1 |tee pr-info.txt
-          dos2unix pr-info.txt
-          disabled_tests="$(awk '/disable_/{printf("%s ", $0)}' pr-info.txt)"
-          echo "disabled_tests=${disabled_tests}" |tee "${GITHUB_OUTPUT}"
 
   linux-build:
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') }}
-    needs: [conditions-filter, preci-lint-check]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    needs: [preci-lint-check]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -91,11 +76,11 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
 
   linux-ut:
-    needs: [conditions-filter, linux-build]
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_ut') }}
+    needs: [linux-build]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
     permissions: write-all
     strategy:
@@ -105,13 +90,13 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
   linux-distributed:
-    needs: [conditions-filter, linux-build]
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_distribute') }}
+    needs: [linux-build]
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
     permissions: write-all
     strategy:
@@ -121,15 +106,15 @@ jobs:
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: distributed
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'pinned' || 'main' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
     name: linux-e2e
-    if: ${{ !contains(needs.conditions-filter.outputs.disabled_tests, 'disable_e2e') }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
     secrets: inherit
-    needs: [conditions-filter, linux-build]
+    needs: [linux-build]
     strategy:
       fail-fast: false
       matrix:
@@ -137,27 +122,26 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: pvc_rolling
-      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       suite: ${{ matrix.suite }}
   linux-e2e-summary:
     name: linux-e2e-summary
-    needs: [conditions-filter, linux-e2e]
+    needs: [linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
     permissions: write-all
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
-      test_type: ${{ needs.conditions-filter.outputs.pytorch == 'nightly_wheel' && 'wheel-cicd' || 'build-cicd' }}
+      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
 
   windows:
     name: windows
-    if: ${{ !(contains(needs.conditions-filter.outputs.disabled_tests, 'disable_all') || contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win')) }} 
-    needs: [conditions-filter, preci-lint-check]
+    needs: [conditions-filter-win, preci-lint-check]
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
-    with: 
+    with:
       ut: op_extended,test_xpu
       runner: Windows_CI
-      src_changed: ${{ needs.conditions-filter.outputs.src_changed }}
-      has_label: ${{ needs.conditions-filter.outputs.has_label }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch }}
+      src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
+      has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}

@@ -248,8 +248,11 @@ struct ElementwiseGlobalRangeKernel {
   void operator()(sycl::nd_item<1> item) const {
     int linear_idx =
         item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
+    SYCL_PRINT("linear_idx: %ld \n", (long)linear_idx);
     for (int idx = linear_idx; idx < numel_;
          idx += item.get_group_range(0) * item.get_local_range(0)) {
+      SYCL_PRINT("idx: %ld \n", (long)idx);
+      SYCL_PRINT("numel_: %ld \n", (long)numel_);
       if (idx < numel_) {
         f_(idx);
       }
@@ -342,6 +345,9 @@ static void launch_legacy_global_range_kernel(int64_t N, const func_t& f) {
   int64_t num_wg = ceil_div<int64_t>(N, wg_sz);
   int64_t hw_max_num_wg = syclMaxWorkItemsPerTile() / wg_sz;
   num_wg = num_wg > hw_max_num_wg ? hw_max_num_wg : num_wg;
+  std::cout << "N: " << N << std::endl;
+  std::cout << "wg_sz: "<< wg_sz << "num_wg: " << num_wg << "hw_max_num_wg: " << hw_max_num_wg << std::endl;
+  std::cout << "sycl_kernel_submit ElementwiseGlobalRangeKernel" << std::endl;
   sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
 }
 
@@ -404,11 +410,13 @@ static inline void launch_vectorized_kernel(
 #define VEC_KER(vec_size)                                                    \
   {                                                                          \
     TORCH_CHECK(max_scalar_bytes* vec_size <= 16);                           \
-    if constexpr (max_scalar_bytes * vec_size <= 16) {                       \
+    if constexpr (max_scalar_bytes * vec_size <= 16) {                      \
+      std::cout << "VectorizedElementwiseKernel" << std::endl;             \
       auto ker =                                                             \
           VectorizedElementwiseKernel<vec_size, func_t, array_t, in_calc_t>( \
               N, f, data, input_calc);                                       \
-      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);               \
+      int64_t num_wg = ceil_div<int64_t>(N, wg_sz * vec_size);              \
+      std::cout << "sycl_kernel_submit VectorizedElementwiseKernel" << std::endl; \
       sycl_kernel_submit(wg_sz* num_wg, wg_sz, getCurrentSYCLQueue(), ker);  \
     }                                                                        \
   }
@@ -437,6 +445,7 @@ static inline void launch_vectorized_kernel(
       using ker_t = decltype(ker);
 
       int64_t num_wg = ceil_div<int64_t>(N, wg_sz * ker_t::item_work_size);
+      std::cout << "sycl_kernel_submit unrolledElementwiseKernel" << std::endl;
       sycl_kernel_submit(wg_sz * num_wg, wg_sz, getCurrentSYCLQueue(), ker);
       break;
     }
@@ -507,6 +516,7 @@ static inline bool can_vectorize_for_non_contigouous(
 
 template <typename func_t, bool enable_broadcast_vec = true>
 void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
+  std::cout << "enter gpu_kernel_impl_nocast" << std::endl;
   using traits = function_traits<func_t>;
   using arg0_t = typename traits::result_type;
   constexpr int ntensors = traits::arity + 1;
@@ -525,7 +535,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   bool contiguous = iter.is_contiguous();
   bool latency_case = numel <= syclMaxWorkItemsPerSubSlice() *
           4; /* on tuning for different data types */
-
+  std::cout << "contiguous from gpu_kernel_impl_nocast: " << contiguous << std::endl;
   int vec_size;
   if (contiguous) {
     auto input_calc = TrivialOffsetCalculator<traits::arity>();
@@ -537,6 +547,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
       if (!latency_case &&
           can_vectorize_for_non_contigouous<func_t>(iter, data, vec_size)) {
         auto input_calc = make_input_offset_calculator<traits::arity>(iter);
+        std::cout << "launch_vectorized_kernel" << std::endl;
         launch_vectorized_kernel(numel, f, data, input_calc, vec_size);
         return;
       }
@@ -544,6 +555,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
   }
 
   auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);
+  std::cout << "launch_legacy_global_range_kernel" << std::endl;
   launch_legacy_global_range_kernel(
       numel,
       LegacyKernelScalarFunctor<
@@ -555,6 +567,7 @@ void gpu_kernel_impl_nocast(TensorIteratorBase& iter, const func_t& f) {
 
 template <typename func_t, bool enable_broadcast_vec = true>
 void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
+  std::cout << "enter gpu_kernel_impl: " <<  std::endl;
   if (!needs_dynamic_casting<func_t>::check(iter)) {
     return gpu_kernel_impl_nocast<func_t, enable_broadcast_vec>(iter, f);
   }
@@ -575,11 +588,14 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
 
   bool contiguous = iter.is_contiguous();
 
+  std::cout << "contiguous: " << contiguous << std::endl;
+
   if (contiguous) {
     auto loader = memory::LoadWithCast<traits::arity>(iter);
     auto storer = memory::StoreWithCast<1>(iter);
     auto input_offset_calculator = TrivialOffsetCalculator<traits::arity>();
     auto output_offset_calculator = TrivialOffsetCalculator<1>();
+    std::cout << "before launch_unrolled_kernel " << std::endl;
     launch_unrolled_kernel(
         numel,
         f,
@@ -595,6 +611,7 @@ void gpu_kernel_impl(TensorIteratorBase& iter, const func_t& f) {
     }
     auto offset_calc = ::make_offset_calculator<traits::arity + 1>(iter);
     constexpr int unroll_factor = sizeof(arg0_t) > 4 ? 2 : 4;
+    std::cout << "before launch_legacy_group_range_kernel " << std::endl;
     launch_legacy_group_range_kernel<unroll_factor>(
         numel,
         LegacyKernelWithCastScalarFunctor<
@@ -639,6 +656,8 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
         arg,
         ": expected an XPU device but found ",
         iter.device(arg));
+    std::cout << "arg: " << arg << std::endl;
+    std::cout << "iter.device(arg): " << iter.device(arg) << std::endl;
   }
 
   if (iter.numel() == 0) {
@@ -653,7 +672,7 @@ void gpu_kernel(TensorIteratorBase& iter, const func_t& f) {
     }
     return;
   }
-
+  std::cout << "after can_use_32bit_indexing" << std::endl;
   gpu_kernel_impl<func_t, enable_broadcast_vec>(iter, f);
 }
 
