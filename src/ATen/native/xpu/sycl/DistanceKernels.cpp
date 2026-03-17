@@ -24,12 +24,14 @@ static scalar_t device_sqrt(scalar_t val) {
 };
 
 // Compute row index i from linear upper-triangle index k using integer-only
-// binary search to avoid fp64, which is unsupported on some XPU devices (e.g., Arc).
+// binary search to avoid fp64, which is unsupported on some XPU devices (e.g.,
+// Arc).
 static inline int64_t pdist_row_idx(int64_t k, int64_t n) {
   // Binary search for row i such that cum(i) <= k < cum(i+1)
   // where cum(i) = i * (2*n - i - 1) / 2  (pairs before row i)
-  // Uses pure integer arithmetic to avoid fp64 (unsupported on some XPU devices)
-  // and float32 catastrophic cancellation for large k.  O(log n) iterations.
+  // Uses pure integer arithmetic to avoid fp64 (unsupported on some XPU
+  // devices) and float32 catastrophic cancellation for large k.  O(log n)
+  // iterations.
   int64_t lo = 0, hi = n - 2;
   while (lo < hi) {
     int64_t mid = lo + (hi - lo + 1) / 2;
@@ -757,7 +759,8 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     const int64_t local_k = static_cast<int64_t>(item_id.get_group_linear_id());
     const int64_t k = offset_ + local_k;
-    if (k >= total_combs_) return;
+    if (k >= total_combs_)
+      return;
 
     const size_t stride = item_id.get_local_range().size();
     int64_t i = pdist_row_idx(k, n_);
@@ -775,8 +778,8 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           p_val_);
     }
 
-    agg = group_reduce_agg_without_broadcast<scalar_t, F>(
-        agg, item_id, shared_);
+    agg =
+        group_reduce_agg_without_broadcast<scalar_t, F>(agg, item_id, shared_);
     if (item_id.get_local_linear_id() == 0) {
       out_ptr[local_k] = F::finish(agg, p_val_);
     }
@@ -837,14 +840,15 @@ static void pdist_kernel_impl(
   // runtime limit (observed as 2^35 work items on Intel GPUs).
   // Use multiple kernel launches if total_combs exceeds the per-launch limit.
   const int64_t kMaxGroupsPerLaunch =
-      static_cast<int64_t>(10000000);  // 10M groups per launch
+      static_cast<int64_t>(10000000); // 10M groups per launch
 
   auto p_val = static_cast<accscalar_t>(p);
   auto out_data = result.mutable_data_ptr<scalar_t>();
   auto in_data = self.const_data_ptr<scalar_t>();
   auto& queue = getCurrentSYCLQueue();
 
-  for (int64_t offset = 0; offset < total_combs; offset += kMaxGroupsPerLaunch) {
+  for (int64_t offset = 0; offset < total_combs;
+       offset += kMaxGroupsPerLaunch) {
     int64_t ngroups = std::min(total_combs - offset, kMaxGroupsPerLaunch);
     // Pass out_data + offset so the kernel writes via small local indices,
     // keeping per-access byte offsets under 4 GiB (Intel GPU 32-bit offset
@@ -868,20 +872,15 @@ void pdist_forward_kernel(Tensor& result, const Tensor& self, double p) {
 
   AT_DISPATCH_FLOATING_TYPES(self.scalar_type(), "pdist_xpu", [&] {
     if (p == 0.0) {
-      pdist_kernel_impl<scalar_t, DistsZero<scalar_t>>(
-          result, self, n, m, p);
+      pdist_kernel_impl<scalar_t, DistsZero<scalar_t>>(result, self, n, m, p);
     } else if (p == 1.0) {
-      pdist_kernel_impl<scalar_t, DistsOne<scalar_t>>(
-          result, self, n, m, p);
+      pdist_kernel_impl<scalar_t, DistsOne<scalar_t>>(result, self, n, m, p);
     } else if (p == 2.0) {
-      pdist_kernel_impl<scalar_t, DistsTwo<scalar_t>>(
-          result, self, n, m, p);
+      pdist_kernel_impl<scalar_t, DistsTwo<scalar_t>>(result, self, n, m, p);
     } else if (std::isinf(p)) {
-      pdist_kernel_impl<scalar_t, DistsInf<scalar_t>>(
-          result, self, n, m, p);
+      pdist_kernel_impl<scalar_t, DistsInf<scalar_t>>(result, self, n, m, p);
     } else {
-      pdist_kernel_impl<scalar_t, DistsP<scalar_t>>(
-          result, self, n, m, p);
+      pdist_kernel_impl<scalar_t, DistsP<scalar_t>>(result, self, n, m, p);
     }
   });
 }
