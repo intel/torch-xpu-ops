@@ -37,6 +37,14 @@ namespace native::xpu {
 // Maximum single DMA transfer size.  Works around a Level-Zero / IGC
 // limitation on some Intel GPUs (e.g. DG2 / Arc) where a single
 // memcpy > 4 GB may hang or silently corrupt data.
+//
+// NOTE: We intentionally cap at 2 GiB (half of the observed 4 GiB limit)
+// instead of pushing right up against 4 GiB.  This provides a safety
+// margin for implementation details in drivers/runtimes (e.g. internal
+// use of 32-bit indices/offsets or per-transfer book-keeping) and helps
+// avoid edge cases where "just under 4 GiB" transfers might still trigger
+// buggy behavior on some stacks.  Please do not "optimize" this back up
+// to 4 GiB without thoroughly re-validating on affected hardware.
 static constexpr int64_t kMaxMemcpyBytes = static_cast<int64_t>(2) << 30;
 
 static sycl::event chunked_memcpy(
