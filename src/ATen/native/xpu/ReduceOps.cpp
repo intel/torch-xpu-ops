@@ -32,7 +32,6 @@
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
-#include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
 
 #include <ATen/ops/add.h>
