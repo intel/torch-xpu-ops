@@ -50,11 +50,9 @@ using ElementAccumulator = float;
 
 // ── GEMM template ────────────────────────────────────────────────────────────
 //
-// Outputs float32 to the scratch buffer.  sycl-tla v0.6 CollectiveEpilogue
-// (IntelXeXMX16) is validated only with float32 output + XE_2D_U32x8x16_ST_N
-// in all upstream examples; 16-bit ElementD produces incorrect results for
-// bf16 on some platforms.  The downstream SiLU kernel handles the final
-// float32 → fp16/bf16 conversion.
+// GEMM outputs fp16/bf16 directly via XE_2D_U16x8x16_ST_N (16-bit store).
+// Beta=0, no C source load needed.  Combined buffer is fp16/bf16, halving
+// scratch memory and bandwidth vs float32.
 
 template <typename Element, typename TileShape_, typename SubGroupLayout_>
 static void run_sycl_tla_gemm_impl(
@@ -74,8 +72,8 @@ static void run_sycl_tla_gemm_impl(
   using GEMMDispatchPolicy = cutlass::gemm::MainloopXeL1Staged<3>;
   using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeXMX16;
 
-  // Output float32 — matching sycl-tla v0.6 validated pattern.
-  using ElementOutput = float;
+  // 16-bit output with correctly paired XE_2D_U16x8x16_ST_N store copy atom.
+  using ElementOutput = Element;
 
   using EpilogueOp = cutlass::epilogue::fusion::LinearCombination<
       ElementOutput,
@@ -93,15 +91,15 @@ static void run_sycl_tla_gemm_impl(
   using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue<
       EpilogueDispatchPolicy,
       TileShape_,
-      ElementAccumulator, // ElementC
+      void, // ElementC (no source, beta=0)
       cutlass::gemm::TagToStrideC_t<LayoutC>, // StrideC
-      ElementOutput, // ElementD (float32)
+      ElementOutput, // ElementD (fp16/bf16)
       cutlass::gemm::TagToStrideC_t<LayoutD>, // StrideD
       FusionCallbacks,
-      cute::XE_2D_U32x8x16_LD_N, // CopyOpG2R
+      void, // CopyOpG2R (no C load)
       void,
       void,
-      cute::XE_2D_U32x8x16_ST_N, // CopyOpR2G (32-bit store)
+      cute::XE_2D_U16x8x16_ST_N, // CopyOpR2G (16-bit store)
       void,
       void>;
 
@@ -144,7 +142,7 @@ static void run_sycl_tla_gemm_impl(
 
   const Element* A_ptr = reinterpret_cast<const Element*>(input_ptr);
   const Element* B_ptr = reinterpret_cast<const Element*>(weight_ptr);
-  float* D_ptr = reinterpret_cast<float*>(output_ptr);
+  Element* D_ptr = reinterpret_cast<Element*>(output_ptr);
 
   cutlass::KernelHardwareInfo hw_info;
   hw_info.sm_count =
@@ -202,7 +200,8 @@ static void dispatch_sycl_tla_gemm(
 
 // ── SiLU * mul kernel ───────────────────────────────────────────────────────
 //
-// Reads float32 GEMM output (combined), applies SiLU*mul, writes fp16/bf16.
+// Reads 16-bit GEMM output (combined), applies SiLU*mul in fp32, writes
+// fp16/bf16.  2D nd_range eliminates integer division (N=11008 not pow2).
 
 template <typename Element>
 struct SiluMulKernel {};
@@ -214,7 +213,7 @@ static void launch_silu_mul_impl(
     int M,
     int N,
     sycl::queue& queue) {
-  const float* in = reinterpret_cast<const float*>(combined_ptr);
+  const Element* in = reinterpret_cast<const Element*>(combined_ptr);
   Element* out = reinterpret_cast<Element*>(output_ptr);
 
   constexpr int WG_N = 256;
@@ -228,8 +227,8 @@ static void launch_silu_mul_impl(
         if (col >= N)
           return;
         int base = row * 2 * N + col;
-        float gate = in[base];
-        float up = in[base + N];
+        float gate = static_cast<float>(in[base]);
+        float up = static_cast<float>(in[base + N]);
         float silu = gate / (1.0f + sycl::exp(-gate));
         out[row * N + col] = static_cast<Element>(silu * up);
       });
@@ -267,22 +266,21 @@ at::Tensor fused_gate_up_silu_sycltla(
   const int K = input.size(1);
   const int N = gate_weight.size(0);
 
-  // GEMM outputs float32 (sycl-tla v0.6 validated pattern); SiLU kernel
-  // converts back to fp16/bf16.
-  auto combined = at::empty(
-      {M, 2 * N},
-      input.options().dtype(at::kFloat)); // scratch (float32)
+  // GEMM outputs fp16/bf16 directly; combined buffer matches input dtype.
+  // This halves scratch memory vs the previous float32 approach.
+  auto combined = at::empty({M, 2 * N}, input.options());
   auto output = at::empty({M, N}, input.options()); // result (fp16/bf16)
 
   auto& queue = at::xpu::getCurrentXPUStream(input.device().index()).queue();
-  float* combined_ptr = combined.data_ptr<float>();
+  void* combined_ptr = combined.data_ptr();
 
   // Two GEMMs into combined [M, 2N] with ldd=2*N (no weight concatenation)
   if (dtype == at::kHalf) {
+    auto* ptr = reinterpret_cast<cutlass::half_t*>(combined_ptr);
     dispatch_sycl_tla_gemm<cutlass::half_t>(
         input.data_ptr(),
         gate_weight.data_ptr(),
-        combined_ptr,
+        ptr,
         M,
         N,
         K,
@@ -291,7 +289,7 @@ at::Tensor fused_gate_up_silu_sycltla(
     dispatch_sycl_tla_gemm<cutlass::half_t>(
         input.data_ptr(),
         up_weight.data_ptr(),
-        combined_ptr + N,
+        ptr + N,
         M,
         N,
         K,
@@ -300,24 +298,11 @@ at::Tensor fused_gate_up_silu_sycltla(
     launch_silu_mul_impl<cutlass::half_t>(
         combined_ptr, output.data_ptr(), M, N, queue);
   } else {
+    auto* ptr = reinterpret_cast<cutlass::bfloat16_t*>(combined_ptr);
     dispatch_sycl_tla_gemm<cutlass::bfloat16_t>(
-        input.data_ptr(),
-        gate_weight.data_ptr(),
-        combined_ptr,
-        M,
-        N,
-        K,
-        2 * N,
-        queue);
+        input.data_ptr(), gate_weight.data_ptr(), ptr, M, N, K, 2 * N, queue);
     dispatch_sycl_tla_gemm<cutlass::bfloat16_t>(
-        input.data_ptr(),
-        up_weight.data_ptr(),
-        combined_ptr + N,
-        M,
-        N,
-        K,
-        2 * N,
-        queue);
+        input.data_ptr(), up_weight.data_ptr(), ptr + N, M, N, K, 2 * N, queue);
     launch_silu_mul_impl<cutlass::bfloat16_t>(
         combined_ptr, output.data_ptr(), M, N, queue);
   }
