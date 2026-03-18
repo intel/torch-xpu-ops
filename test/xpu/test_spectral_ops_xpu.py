@@ -104,14 +104,33 @@ def _test_reference_1d(self, device, dtype, op):
 @ops(spectral_funcs, allowed_dtypes=(torch.half, torch.chalf))
 def _test_fft_half_and_chalf_not_power_of_two_error(self, device, dtype, op):
     t = torch.randn(13, 13, device=device, dtype=dtype)
-    op(t)
+    # Basic smoke test: op should run without error and return a complex tensor
+    result_default = op(t)
+    self.assertIsInstance(result_default, torch.Tensor)
+    self.assertEqual(result_default.device, t.device)
+    # FFT results should be complex; allow upcasting (e.g., half -> cfloat)
+    self.assertTrue(result_default.is_complex())
 
     if op.ndimensional in (SpectralFuncType.ND, SpectralFuncType.TwoD):
         kwargs = {"s": (12, 12)}
     else:
         kwargs = {"n": 12}
 
-    op(t, **kwargs)
+    result = op(t, **kwargs)
+    self.assertIsInstance(result, torch.Tensor)
+    self.assertEqual(result.device, t.device)
+    self.assertTrue(result.is_complex())
+
+    # Verify that the requested size parameters affect the last dimension(s)
+    if "n" in kwargs:
+        expected_shape = list(t.shape)
+        expected_shape[-1] = kwargs["n"]
+    else:
+        expected_shape = list(t.shape)
+        s0, s1 = kwargs["s"]
+        expected_shape[-2] = s0
+        expected_shape[-1] = s1
+    self.assertEqual(result.shape, torch.Size(expected_shape))
 
 
 TestFFT.test_reference_1d = _test_reference_1d
