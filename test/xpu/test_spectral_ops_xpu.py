@@ -102,7 +102,7 @@ def _test_reference_1d(self, device, dtype, op):
 
 
 @ops(spectral_funcs, allowed_dtypes=(torch.half, torch.chalf))
-def _test_fft_half_and_chalf_not_power_of_two_error(self, device, dtype, op):
+def _test_success_on_fft_half_and_chalf_not_power_of_two_error_path(self, device, dtype, op):
     t = torch.randn(13, 13, device=device, dtype=dtype)
     # Basic smoke test: op should run without error and return a complex tensor
     result_default = op(t)
@@ -135,7 +135,7 @@ def _test_fft_half_and_chalf_not_power_of_two_error(self, device, dtype, op):
 
 TestFFT.test_reference_1d = _test_reference_1d
 TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
-    _test_fft_half_and_chalf_not_power_of_two_error
+    _test_success_on_fft_half_and_chalf_not_power_of_two_error_path
 )
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
