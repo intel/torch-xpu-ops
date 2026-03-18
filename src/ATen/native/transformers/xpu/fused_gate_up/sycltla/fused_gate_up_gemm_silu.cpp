@@ -64,6 +64,7 @@ static void run_sycl_tla_gemm_impl(
     int M,
     int N,
     int K,
+    int ldd,
     sycl::queue& queue) {
   using MmaAtom = MMA_Atom<XE_DPAS_TT<8, float, Element>>;
   using TiledMma =
@@ -137,9 +138,9 @@ static void run_sycl_tla_gemm_impl(
   StrideB stride_B =
       cutlass::make_cute_packed_stride(StrideB{}, make_shape(N, K, 1));
   StrideC stride_C =
-      cutlass::make_cute_packed_stride(StrideC{}, make_shape(M, N, 1));
+      cutlass::make_cute_packed_stride(StrideC{}, make_shape(M, ldd, 1));
   StrideD stride_D =
-      cutlass::make_cute_packed_stride(StrideD{}, make_shape(M, N, 1));
+      cutlass::make_cute_packed_stride(StrideD{}, make_shape(M, ldd, 1));
 
   const Element* A_ptr = reinterpret_cast<const Element*>(input_ptr);
   const Element* B_ptr = reinterpret_cast<const Element*>(weight_ptr);
@@ -185,16 +186,17 @@ static void dispatch_sycl_tla_gemm(
     int M,
     int N,
     int K,
+    int ldd,
     sycl::queue& queue) {
   if (M <= 32) {
     run_sycl_tla_gemm_impl<Element, TileShapeSmall, SGLayoutSmall>(
-        input_ptr, weight_ptr, output_ptr, M, N, K, queue);
+        input_ptr, weight_ptr, output_ptr, M, N, K, ldd, queue);
   } else if (M <= 64) {
     run_sycl_tla_gemm_impl<Element, TileShapeMedium, SGLayoutMedium>(
-        input_ptr, weight_ptr, output_ptr, M, N, K, queue);
+        input_ptr, weight_ptr, output_ptr, M, N, K, ldd, queue);
   } else {
     run_sycl_tla_gemm_impl<Element, TileShapeLarge, SGLayoutLarge>(
-        input_ptr, weight_ptr, output_ptr, M, N, K, queue);
+        input_ptr, weight_ptr, output_ptr, M, N, K, ldd, queue);
   }
 }
 
@@ -265,7 +267,6 @@ at::Tensor fused_gate_up_silu_sycltla(
   const int K = input.size(1);
   const int N = gate_weight.size(0);
 
-  auto fused_weight = at::cat({gate_weight, up_weight}, 0); // [2N, K]
   // GEMM outputs float32 (sycl-tla v0.6 validated pattern); SiLU kernel
   // converts back to fp16/bf16.
   auto combined = at::empty(
@@ -274,29 +275,51 @@ at::Tensor fused_gate_up_silu_sycltla(
   auto output = at::empty({M, N}, input.options()); // result (fp16/bf16)
 
   auto& queue = at::xpu::getCurrentXPUStream(input.device().index()).queue();
+  float* combined_ptr = combined.data_ptr<float>();
 
+  // Two GEMMs into combined [M, 2N] with ldd=2*N (no weight concatenation)
   if (dtype == at::kHalf) {
     dispatch_sycl_tla_gemm<cutlass::half_t>(
         input.data_ptr(),
-        fused_weight.data_ptr(),
-        combined.data_ptr(),
+        gate_weight.data_ptr(),
+        combined_ptr,
         M,
-        2 * N,
+        N,
         K,
-        queue);
+        2 * N,
+        queue); // gate -> cols [0, N)
+    dispatch_sycl_tla_gemm<cutlass::half_t>(
+        input.data_ptr(),
+        up_weight.data_ptr(),
+        combined_ptr + N,
+        M,
+        N,
+        K,
+        2 * N,
+        queue); // up -> cols [N, 2N)
     launch_silu_mul_impl<cutlass::half_t>(
-        combined.data_ptr(), output.data_ptr(), M, N, queue);
+        combined_ptr, output.data_ptr(), M, N, queue);
   } else {
     dispatch_sycl_tla_gemm<cutlass::bfloat16_t>(
         input.data_ptr(),
-        fused_weight.data_ptr(),
-        combined.data_ptr(),
+        gate_weight.data_ptr(),
+        combined_ptr,
         M,
-        2 * N,
+        N,
         K,
+        2 * N,
+        queue);
+    dispatch_sycl_tla_gemm<cutlass::bfloat16_t>(
+        input.data_ptr(),
+        up_weight.data_ptr(),
+        combined_ptr + N,
+        M,
+        N,
+        K,
+        2 * N,
         queue);
     launch_silu_mul_impl<cutlass::bfloat16_t>(
-        combined.data_ptr(), output.data_ptr(), M, N, queue);
+        combined_ptr, output.data_ptr(), M, N, queue);
   }
 
   return output;
