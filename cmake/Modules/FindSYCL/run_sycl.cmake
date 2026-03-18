@@ -74,6 +74,8 @@ foreach(flag ${CMAKE_HOST_FLAGS})
   endif()
 endforeach()
 
+list(APPEND SYCL_HOST_FLAGS -no-intel-lib=libirc)
+
 # SYCL_execute_process - Executes a command with optional command echo and status message.
 #
 #   status  - Status message to print if verbose is true
