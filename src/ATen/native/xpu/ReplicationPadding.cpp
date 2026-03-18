@@ -14,8 +14,6 @@
 #include <ATen/native/Padding.h>
 #include <ATen/native/xpu/sycl/ReplicationPaddingKernels.h>
 
-#include <comm/RegisterUtils.h>
-
 #include <ATen/ops/replication_pad1d_backward_native.h>
 #include <ATen/ops/replication_pad1d_native.h>
 #include <ATen/ops/replication_pad2d_backward_native.h>

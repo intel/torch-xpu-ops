@@ -11,7 +11,6 @@
 #include <ATen/core/Reduction.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/LossCTCKernels.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
 namespace native {
