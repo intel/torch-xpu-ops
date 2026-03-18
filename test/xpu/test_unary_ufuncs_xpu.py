@@ -1959,6 +1959,24 @@ class TestUnaryUfuncs(TestCase):
         self.assertTrue(result.dtype.is_floating_point)
         self.assertTrue(torch.all(torch.isfinite(result)))
 
+    # Regression test for TanhBackwardFunctor precision bug (bf16/half).
+    # The XPU kernel must use float32 intermediates (opmath_type) for b*b,
+    # otherwise a 1-ULP rounding error in `b*b` propagates to the gradient.
+    @dtypes(torch.bfloat16, torch.float16)
+    def test_tanh_backward_reduced_precision(self, device, dtype):
+        z_vals = [0.5, 1.0, 1.5, 2.0, 2.5, -0.5, -1.5, -2.5]
+        z = torch.tensor(z_vals, dtype=dtype, device=device, requires_grad=True)
+        grad_out = torch.ones_like(z)
+
+        torch.tanh(z).backward(grad_out)
+        xpu_grad = z.grad.clone()
+
+        z_cpu = z.detach().cpu().to(dtype).requires_grad_(True)
+        torch.tanh(z_cpu).backward(grad_out.cpu())
+        cpu_grad = z_cpu.grad
+
+        self.assertEqual(xpu_grad.cpu(), cpu_grad)
+
 
 instantiate_device_type_tests(
     TestUnaryUfuncs, globals(), only_for=("xpu"), allow_xpu=True
