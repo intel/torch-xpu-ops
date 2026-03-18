@@ -86,6 +86,7 @@
   dispatch:
     XPU: add_out_xpu
     SparseXPU: add_out_sparse_xpu
+    SparseCsrXPU: add_out_sparse_compressed_xpu
   tags: pointwise
 
 - func: cummax(Tensor self, int dim) -> (Tensor values, Tensor indices)
@@ -4673,6 +4674,7 @@
   python_module: nn
 
 - func: hypot.out(Tensor self, Tensor other, *, Tensor(a!) out) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
   structured: True
   structured_inherits: TensorIteratorBase
   dispatch:
@@ -4680,11 +4682,13 @@
   tags: pointwise
 
 - func: hypot(Tensor self, Tensor other) -> Tensor
+  device_check: NoCheck   # TensorIterator
   structured_delegate: hypot.out
   variants: method, function
   tags: pointwise
 
 - func: hypot_(Tensor(a!) self, Tensor other) -> Tensor(a!)
+  device_check: NoCheck   # TensorIterator
   structured_delegate: hypot.out
   variants: method
   tags: pointwise
@@ -9347,7 +9351,12 @@
 - func: _jagged_to_padded_dense_forward(Tensor values, Tensor[] offsets, SymInt[] max_lengths, float padding_value=0.0) -> Tensor
   variants: function
   dispatch:
-    XPU: _fbgemm_jagged_to_padded_dense_forward
+    XPU: _jagged_to_padded_dense_forward_xpu
+
+- func: _padded_dense_to_jagged_forward(Tensor dense, Tensor[] offsets, SymInt? total_L=None) -> Tensor
+  variants: function
+  dispatch:
+    XPU: _padded_dense_to_jagged_forward_symint_xpu
 
 # Standard complex to complex FFT (forward or backward)
 - func: _fft_c2c(Tensor self, SymInt[] dim, int normalization, bool forward) -> Tensor
@@ -9503,11 +9512,13 @@
   variants: function, method
   dispatch:
     SparseXPU: addmm_sparse_dense_xpu
+    SparseCsrXPU: addmm_sparse_compressed_dense
 
 - func: addmm.out(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
   structured: True
   dispatch:
     SparseXPU: addmm_out_sparse_dense_xpu
+    SparseCsrXPU: addmm_out_sparse_compressed_xpu
 
 - func: addmm_(Tensor(a!) self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor(a!)
   structured_delegate: addmm.out
@@ -9522,12 +9533,14 @@
   variants: function, method
   dispatch:
     SparseXPU: _sparse_mm
+    SparseCsrXPU: _sparse_csr_mm
   tags: core
 
 - func: mm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
   structured: True
   dispatch:
     SparseXPU: _sparse_mm_out
+    SparseCsrXPU: _sparse_csr_mm_out
 
 - func: _sparse_sparse_matmul(Tensor self, Tensor other) -> Tensor
   dispatch:
@@ -9539,6 +9552,7 @@
   variants: function, method
   dispatch:
     SparseXPU: bmm_sparse_xpu
+    NestedTensorXPU: bmm_nested_xpu
   tags: core
 
 - func: bmm.out(Tensor self, Tensor mat2, *, Tensor(a!) out) -> Tensor(a!)
@@ -9546,3 +9560,18 @@
   variants: function
   dispatch:
     SparseXPU: bmm_out_sparse_xpu
+    SparseCsrXPU: bmm_out_sparse_csr_xpu
+
+- func: baddbmm(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+  variants: function, method
+  structured_delegate: baddbmm.out
+
+- func: baddbmm_(Tensor(a!) self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1) -> Tensor(a!)
+  variants: method
+  structured_delegate: baddbmm.out
+
+- func: baddbmm.out(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  variants: function
+  dispatch:
+    SparseCsrXPU: baddbmm_out_sparse_csr_xpu
