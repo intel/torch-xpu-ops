@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,10 +58,12 @@ struct AdaptiveAvgPool2dBwdKernelFunctor {
       opmath_t _ikh, _ikw;
       for (int _oh = _oh0; _oh < _oh1; _oh++) {
         _ikh = opmath_t(1.0) /
-            (opmath_t)(native::end_index(_oh, oh_, ih_) - native::start_index(_oh, oh_, ih_));
+            (opmath_t)(native::end_index(_oh, oh_, ih_) -
+                       native::start_index(_oh, oh_, ih_));
         for (int _ow = _ow0; _ow < _ow1; _ow++) {
           _ikw = opmath_t(1.0) /
-              (opmath_t)(native::end_index(_ow, ow_, iw_) - native::start_index(_ow, ow_, iw_));
+              (opmath_t)(native::end_index(_ow, ow_, iw_) -
+                         native::start_index(_ow, ow_, iw_));
           gx += gyacc_[_ob][_oc][_oh][_ow] * _ikh * _ikw;
         }
       }

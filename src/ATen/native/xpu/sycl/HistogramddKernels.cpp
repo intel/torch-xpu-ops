@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -243,8 +243,8 @@ struct HistogramddLinearKernelFunctor {
       if (!(i_value >= leftmost_edge && i_value <= rightmost_edge)) {
         return;
       }
-      int64_t bin_idx =
-          (int64_t)(((i_value - leftmost_edge)) * bin_size / (rightmost_edge - leftmost_edge));
+      int64_t bin_idx = (int64_t)(((i_value - leftmost_edge)) * bin_size /
+                                  (rightmost_edge - leftmost_edge));
       if (bin_idx == bin_size) {
         bin_idx -= 1;
       }

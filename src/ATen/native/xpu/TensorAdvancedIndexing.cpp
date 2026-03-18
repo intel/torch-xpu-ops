@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-//#include <ATen/native/TensorFactories.cpp>
+// #include <ATen/native/TensorFactories.cpp>
 #include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <ATen/ops/ones_like.h>
@@ -38,7 +38,7 @@
 #include <ATen/ops/index_add_native.h>
 #include <ATen/ops/index_reduce_meta.h>
 #include <ATen/ops/index_reduce_native.h> //generated
-//#include <ATen/ops/index_reduce_prod_native.h> //generated
+// #include <ATen/ops/index_reduce_prod_native.h> //generated
 
 namespace at {
 
