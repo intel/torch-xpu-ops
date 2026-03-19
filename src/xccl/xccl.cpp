@@ -517,5 +517,24 @@ void onecclAllToAll(
   return;
 }
 
+void onecclCommSplit(
+    xcclComm_t& comm,
+    int color,
+    int key,
+    xcclComm_t& newcomm,
+    onecclConfig_t* config) {
+  if (isCCLV2EnabledCached()) {
+    auto result =
+        ::onecclCommSplit(comm.onecclComm, color, key, &newcomm.onecclComm, config);
+    if (result != onecclSuccess) {
+      C10_THROW_ERROR(DistBackendError, "onecclCommSplit failed.");
+    }
+    return;
+  }
+
+  C10_THROW_ERROR(DistBackendError,
+      "onecclCommSplit is only supported in CCLv2. Please set env CCL_ENABLE_V2=1 to enable it.");
+}
+
 } // namespace xccl
 } // namespace c10d

@@ -158,6 +158,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
       return c10::make_intrusive<Options>(is_high_priority_stream);
     }
     bool is_high_priority_stream;
+
+    // Communicator split fields
+    c10::intrusive_ptr<ProcessGroupXCCL> split_from;
+    int split_color{0};
+    std::vector<uint64_t> global_ranks_in_group;
   };
 
   ProcessGroupXCCL(
@@ -470,6 +475,21 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   uint64_t getSequenceNumberForGroup() override;
 
   void enableCollectivesTiming() override;
+
+  c10::intrusive_ptr<Backend> split(
+      const c10::intrusive_ptr<Store>& store,
+      const std::vector<int>& ranks,
+      const c10::intrusive_ptr<Backend::Options>& opts) override;
+
+  c10::intrusive_ptr<Backend> merge(
+      const c10::intrusive_ptr<Store>& store,
+      const c10::intrusive_ptr<Backend::Options>& opts,
+      const int& rank,
+      const int& size) override;
+
+
+  void performNocolorSplit(at::Device device);
+
 
   std::string createLogPrefix() const;
 

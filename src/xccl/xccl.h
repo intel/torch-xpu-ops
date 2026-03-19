@@ -487,5 +487,12 @@ void onecclAllToAll(
     ccl::stream& xcclStream,
     at::xpu::XPUStream& stream);
 
+void onecclCommSplit(
+    xcclComm_t& comm,
+    int color,
+    int key,
+    xcclComm_t& newcomm,
+    onecclConfig_t* config);
+
 } // namespace xccl
 } // namespace c10d

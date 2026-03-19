@@ -151,6 +151,85 @@ std::vector<at::Tensor>& TensorShelf::get() {
   return tVector_;
 }
 
+c10::intrusive_ptr<Backend> ProcessGroupXCCL::split(
+    const c10::intrusive_ptr<Store>& store,
+    const std::vector<int>& ranks,
+    const c10::intrusive_ptr<Backend::Options>& opts) {
+  auto deviceIdx = guessDeviceId();
+  TORCH_CHECK(
+      deviceIdx >= 0,
+      "ProcessGroupXCCL::split: rank ",
+      rank_,
+      " has no device is bound to this rank.");
+  auto device = at::Device(at::DeviceType::XPU, deviceIdx);
+  auto it = std::find(ranks.begin(), ranks.end(), rank_);
+  int groupRank;
+  if (it == ranks.end()) {
+    // This rank is not in the new group, so no_color split should be called
+    performNocolorSplit(device);
+    return nullptr;
+  } else {
+    groupRank = std::distance(ranks.begin(), it);
+  }
+
+  auto xcclOpts = c10::dynamic_intrusive_pointer_cast<Options>(opts);
+  TORCH_CHECK(xcclOpts != nullptr, "opts not a ProcessGroupXCCL::Options.");
+
+  // TODO: we need to get rid of globalRanksInGroup eventually.
+  std::vector<uint64_t> globalRanksInGroup;
+  for (auto rank : ranks) {
+    globalRanksInGroup.emplace_back(groupRanks()[rank]);
+  }
+  xcclOpts->split_from =
+      c10::intrusive_ptr<ProcessGroupXCCL>::unsafe_reclaim_from_nonowning(this);
+  xcclOpts->global_ranks_in_group = std::move(globalRanksInGroup);
+  // We use the lowest rank in the group as the split_color as each rank can
+  // only participate in one group.
+  // This value must be non-negative int32 and all ranks are.
+  xcclOpts->split_color = *std::min_element(ranks.cbegin(), ranks.cend());
+  auto pg = c10::make_intrusive<ProcessGroupXCCL>(
+      store->clone(), groupRank, ranks.size(), xcclOpts);
+#ifdef NCCL_COMM_DESCRIPTION
+  // We need to set the desc here so that when eager init the nccl, we can
+  // propagate desc to the nccl comm.
+  pg->setGroupDesc(xcclOpts->group_desc);
+  pg->logPrefix_ = pg->createLogPrefix();
+#endif // NCCL_COMM_DESCRIPTION
+  pg->eagerConnectSingleDevice(device);
+  return c10::static_intrusive_pointer_cast<Backend>(pg);
+}
+
+void ProcessGroupXCCL::performNocolorSplit(at::Device device) {
+  const auto key = std::to_string(device.index());
+  LOG(INFO) << logPrefix() << "Performing nocolor split on backend device "
+            << device << ", key " << key << ", i am " << this;
+  auto comm = getXCCLComm(key);
+  if (comm == nullptr) {
+    C10_THROW_ERROR(
+        DistBackendError,
+        c10::str(
+            "ProcessGroupXCCL::split could not find the parent communicator "
+            "for device key '",
+            key,
+            "'."));
+  }
+  auto splitComm = std::make_shared<xcclComm_t>();
+  xccl::onecclCommSplit(
+      *comm, ONECCL_SPLIT_NOCOLOR, rank_, *splitComm, nullptr);
+}
+
+c10::intrusive_ptr<Backend> ProcessGroupXCCL::merge(
+    const c10::intrusive_ptr<Store>& store,
+    const c10::intrusive_ptr<Backend::Options>& opts,
+    const int& rank,
+    const int& size) {
+    auto xcclOpts = c10::dynamic_intrusive_pointer_cast<Options>(opts);
+    TORCH_CHECK(xcclOpts != nullptr, "opts not a ProcessGroupXCCL::Options.");
+    auto pg = c10::make_intrusive<ProcessGroupXCCL>(
+      store->clone(), rank, size, xcclOpts);
+    return c10::static_intrusive_pointer_cast<Backend>(pg);
+}
+
 ProcessGroupXCCL::WorkXCCL::WorkXCCL(
     at::Device& device,
     int rank,
