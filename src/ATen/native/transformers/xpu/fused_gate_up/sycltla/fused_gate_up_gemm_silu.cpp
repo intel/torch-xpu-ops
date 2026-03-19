@@ -50,7 +50,7 @@ using ElementAccumulator = float;
 
 // ── GEMM template ────────────────────────────────────────────────────────────
 //
-// GEMM outputs fp16/bf16 directly via XE_2D_U16x8x16_ST_N (16-bit store).
+// GEMM outputs fp16/bf16 directly (v0.7 auto-deduces 16-bit store copy atom).
 // Beta=0, no C source load needed.  Combined buffer is fp16/bf16, halving
 // scratch memory and bandwidth vs float32.
 
@@ -70,9 +70,10 @@ static void run_sycl_tla_gemm_impl(
           TiledMMA;
 
   using GEMMDispatchPolicy = cutlass::gemm::MainloopXeL1Staged<3>;
-  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeXMX16;
+  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeGeneric;
 
-  // 16-bit output with correctly paired XE_2D_U16x8x16_ST_N store copy atom.
+  // 16-bit output: v0.7 auto-deduces correct store copy atom for ElementD
+  // bitwidth.
   using ElementOutput = Element;
 
   using EpilogueOp = cutlass::epilogue::fusion::LinearCombination<
@@ -91,17 +92,14 @@ static void run_sycl_tla_gemm_impl(
   using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue<
       EpilogueDispatchPolicy,
       TileShape_,
+      void, // EpilogueTile (auto-deduce)
       void, // ElementC (no source, beta=0)
       cutlass::gemm::TagToStrideC_t<LayoutC>, // StrideC
       ElementOutput, // ElementD (fp16/bf16)
       cutlass::gemm::TagToStrideC_t<LayoutD>, // StrideD
       FusionCallbacks,
-      void, // CopyOpG2R (no C load)
-      void,
-      void,
-      cute::XE_2D_U16x8x16_ST_N, // CopyOpR2G (16-bit store)
-      void,
-      void>;
+      void, // CopyOpG2R (auto-deduce, no C load)
+      void>; // CopyOpR2G (auto-deduce → 16-bit store)
 
   using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<
       GEMMDispatchPolicy,
