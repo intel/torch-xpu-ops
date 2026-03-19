@@ -230,7 +230,7 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
             "Work ran time out after ", timeElapsed.count(), " milliseconds.");
         LOG(ERROR) << exceptionMsg;
         // todo: abort comm and exit
-        TORCH_CHECK(false, exceptionMsg)
+        C10_THROW_ERROR(DistBackendError, exceptionMsg);
       }
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kSynchronizeBusyWaitMillis));
@@ -362,6 +362,14 @@ const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
     return globalRanks;
   }
   return options_->global_ranks_in_group;
+}
+
+bool ProcessGroupXCCL::isInitialized() {
+  if (devXCCLCommMap_.empty()) {
+    return false;
+  }
+  // Unlike PGNCCL, all comms are initialized (or we fail)
+  return true;
 }
 
 void ProcessGroupXCCL::setEnqueuedPgStatus(
