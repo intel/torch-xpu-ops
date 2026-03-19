@@ -1167,7 +1167,7 @@ struct IndexFuncSmallIndexFunctor {
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
                   srcIndex, indices_)];
-      SYCL_KERNEL_ASSERT(dstIndex >= 0 && dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
 
       // We stride over the output ignoring the indexed dimension
       // (innerSize), whose offset calculation is handled differently
@@ -1256,7 +1256,7 @@ struct IndexFuncLargeIndexFunctor {
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
                   srcIndex, indices_)];
-      SYCL_KERNEL_ASSERT(dstIndex >= 0 && dstIndex < dstAddDimSize_);
+      SYCL_KERNEL_ASSERT(dstIndex < dstAddDimSize_);
 
       IndexType dstOffset =
           IndexToOffset<T, IndexType, DstDim>::get(elementInSlice, dst_);
