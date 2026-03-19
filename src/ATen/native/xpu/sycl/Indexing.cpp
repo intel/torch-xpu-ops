@@ -341,32 +341,6 @@ bool indexShouldBeMajor(
 }
 
 template <typename ValType>
-struct IndexAddScalarFunctor {
-  void operator()(
-      ValType* dst,
-      const ValType* src,
-      int64_t dst_off,
-      int64_t src_off,
-      int64_t idx,
-      ValType alpha) const {
-    atomicAdd((sycl_global_ptr<ValType>)(dst + dst_off), src[src_off] * alpha);
-  }
-};
-
-template <>
-struct IndexAddScalarFunctor<bool> {
-  void operator()(
-      bool* dst,
-      const bool* src,
-      int64_t dst_off,
-      int64_t src_off,
-      int64_t idx,
-      bool alpha) const {
-    atomicAdd((sycl_global_ptr<bool>)(dst + dst_off), src[src_off] && alpha);
-  }
-};
-
-template <typename ValType>
 struct IndexFillScalarFunctor {
   void operator()(
       ValType* dst,
@@ -1162,7 +1136,6 @@ struct IndexFuncSmallIndexFunctor {
     // this is a good choice (small number of chosen indices), since
     // re-accessing indices in addition to src elements can be slow.
     for (IndexType srcIndex = 0; srcIndex < indices_.sizes[0]; ++srcIndex) {
-      // Lua indices begin at 1
       IndexType dstIndex =
           indices_
               .data[IndexToOffset<const IndicesType, IndexType, IdxDim>::get(
