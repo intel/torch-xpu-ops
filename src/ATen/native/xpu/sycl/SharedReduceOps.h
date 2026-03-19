@@ -128,7 +128,6 @@ template <
     typename index_t,
     typename res_t>
 struct SumVarOps {
-  acc_scalar_t correction;
   bool take_sqrt;
 
  public:
@@ -172,8 +171,8 @@ struct SumVarOps {
     return acc;
   }
 
-  SumVarOps(acc_scalar_t correction, bool take_sqrt)
-      : correction(correction), take_sqrt(take_sqrt) {}
+  SumVarOps(bool take_sqrt)
+      : take_sqrt(take_sqrt) {}
 };
 
 template <

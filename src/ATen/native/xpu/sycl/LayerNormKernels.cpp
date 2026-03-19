@@ -199,7 +199,7 @@ struct RowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
   void operator()(sycl::nd_item<1> item_id) const {
     const int64_t i = item_id.get_group(0);
-    SumVarOp sumvar_op = {/*correction=*/0, /*take_sqrt=*/false};
+    SumVarOp sumvar_op = {/*take_sqrt=*/false};
     SumVarType val(static_cast<T_ACC>(X_[i * N_]), 0, 0, 0, 0);
     for (int64_t j = item_id.get_local_id(0); j < N_;
          j += item_id.get_local_range(0)) {

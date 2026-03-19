@@ -63,9 +63,8 @@ struct SumVarOpsXPU
         sycl::shift_group_left(sg, acc.nf, offset)};
   }
 
-  SumVarOpsXPU(acc_scalar_t correction, bool take_sqrt, sycl::nd_item<1>& item)
+  SumVarOpsXPU(bool take_sqrt, sycl::nd_item<1>& item)
       : SumVarOps<scalar_t, acc_scalar_t, index_t, res_t>(
-            correction,
             take_sqrt),
         item(item) {}
 };
@@ -79,7 +78,7 @@ struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     const int64_t i = item.get_group(0);
-    SumVarOp sumvar_op = {/*correction=*/0, /*take_sqrt=*/false, item};
+    SumVarOp sumvar_op = {/*take_sqrt=*/false, item};
     SumVarType val(static_cast<T_ACC>(X_[i * N_]), 0, 0, 0, 0);
     for (int64_t j = item.get_local_id(0); j < N_;
          j += item.get_local_range(0)) {
@@ -126,7 +125,7 @@ struct GNRowwiseMomentsVectorizedFunctor
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     SumVarType val[VEC_SIZE];
-    SumVarOp sumvar_op = {/*correction=*/0, /*take_sqrt=*/false, item};
+    SumVarOp sumvar_op = {/*take_sqrt=*/false, item};
     auto group_start = item.get_group(0) * VEC_SIZE;
 
 #pragma unroll
