@@ -26,6 +26,7 @@
 #include <comm/SYCLContext.h>
 
 #include <ATen/ops/empty_like.h>
+#include <algorithm>
 #include <vector>
 
 using namespace at;
