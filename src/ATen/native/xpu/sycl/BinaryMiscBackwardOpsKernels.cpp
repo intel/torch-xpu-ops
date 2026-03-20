@@ -117,22 +117,13 @@ struct TanhBackwardComplexFunctor {
   }
 };
 
-// Use opmath_t for intermediate computation to match CPU precision behavior.
-// This avoids reduced-precision rounding in the b * b term for bf16/half.
 template <typename scalar_t>
-struct TanhBackwardReducedFunctor {
+struct TanhBackwardFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     using opmath_t = at::opmath_type<scalar_t>;
     const auto a0 = static_cast<opmath_t>(a);
     const auto b0 = static_cast<opmath_t>(b);
     return static_cast<scalar_t>(a0 * (opmath_t{1} - b0 * b0));
-  }
-};
-
-template <typename scalar_t>
-struct TanhBackwardFunctor {
-  scalar_t operator()(scalar_t a, scalar_t b) const {
-    return a * (scalar_t{1.} - b * b);
   }
 };
 
@@ -143,14 +134,13 @@ void tanh_backward_kernel(TensorIteratorBase& iter) {
         kComplexHalf, dtype, "tanh_backward_complex_xpu", [&]() {
           gpu_kernel(iter, TanhBackwardComplexFunctor<scalar_t>());
         });
-  } else if (at::isReducedFloatingType(dtype)) {
-    AT_DISPATCH_REDUCED_FLOATING_TYPES(dtype, "tanh_backward_xpu", [&]() {
-      gpu_kernel(iter, TanhBackwardReducedFunctor<scalar_t>());
-    });
   } else {
-    AT_DISPATCH_FLOATING_TYPES(dtype, "tanh_backward_xpu", [&]() {
-      gpu_kernel(iter, TanhBackwardFunctor<scalar_t>());
-    });
+    AT_DISPATCH_FLOATING_TYPES_AND2(
+        at::ScalarType::Half,
+        at::ScalarType::BFloat16,
+        dtype,
+        "tanh_backward_xpu",
+        [&]() { gpu_kernel(iter, TanhBackwardFunctor<scalar_t>()); });
   }
 }
 
