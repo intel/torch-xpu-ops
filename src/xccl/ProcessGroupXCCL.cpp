@@ -81,7 +81,6 @@ ReduceOp applyPreMulSumIfNeeded(
   return newOp;
 }
 
-
 int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
   TORCH_CHECK_WITH(
       ValueError, tensors.size() != 0, "Tensor list must be nonempty");
