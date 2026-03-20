@@ -452,8 +452,8 @@ post_build() {
             # We'll assume it modifies in place and then we use that file.
             if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$wheel_file" "$tmp_dir"; then
                 # If rpath.sh succeeded, install from the processed wheel
-                working_wheel=($tmp_dir/torch-*.whl)
-                processed_wheel="${working_wheel[@]}"
+                working_wheel=("$tmp_dir"/torch-*.whl)
+                processed_wheel="${working_wheel[*]}"
             else
                 log_warning "rpath.sh failed, using original wheel"
                 processed_wheel="$wheel_file"

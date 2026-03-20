@@ -26,7 +26,7 @@ run_pytest() {
     test_name=$(basename "$test_file" .py)
     xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
     echo "Running pytest $test_file -> $xml_file"
-    pytest "$test_file" --junit-xml="$xml_file" ${extra_args[@]}
+    pytest "$test_file" --junit-xml="$xml_file" "${extra_args[@]}"
 }
 
 # -------------------- Test Groups --------------------
