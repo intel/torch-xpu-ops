@@ -26,11 +26,13 @@ env:
 
 jobs:
   preci-lint-check:
-    if: ${{ github.repository_owner == 'intel' }}
+    if: github.repository_owner == 'intel'
     name: Lint Check
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
       - name: Run comprehensive lint checks
         uses: ./.github/actions/lint-check
         with:
@@ -38,12 +40,10 @@ jobs:
           enable_clang: true
 
   conditions-filter:
-    if: >-
-      ${{
-        github.repository_owner == 'intel' &&
-        github.event.pull_request.draft == false &&
-        ! contains(github.event.pull_request.labels.*.name, 'disable_all')
-      }}
+    if: |
+      github.repository_owner == 'intel' &&
+      github.event.pull_request.draft == false &&
+      ! contains(github.event.pull_request.labels.*.name, 'disable_all')
     name: Conditions Filter
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -58,6 +58,8 @@ jobs:
       e2e_suites: ${{ steps.filter.outputs.e2e_suites }}
       should_build: ${{ steps.filter.outputs.should_build }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
       - name: Filter PR conditions and determine configuration
         id: filter
         uses: ./.github/actions/conditions-filter
@@ -93,14 +95,12 @@ jobs:
   windows-pr-tests:
     name: Windows PR Tests
     needs: [conditions-filter, preci-lint-check]
-    if: >-
-      ${{
-        ! contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win') &&
-        (
-          contains(github.event.pull_request.labels.*.name, 'windows_ci') ||
-          needs.conditions-filter.outputs.src_changed == 'true'
-        )
-      }}
+    if: |
+      ! contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win') &&
+      (
+        contains(github.event.pull_request.labels.*.name, 'windows_ci') ||
+        needs.conditions-filter.outputs.src_changed == 'true'
+      )
     uses: ./.github/workflows/_test_call.yml
     permissions: write-all
     with:
