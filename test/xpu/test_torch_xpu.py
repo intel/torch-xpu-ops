@@ -61,6 +61,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
+    onlyCUDA,
     onlyXPU,
     PYTORCH_CUDA_MEMCHECK,
     skipMeta,
@@ -2504,7 +2505,7 @@ else:
         result = original.scatter(0, null_index, null_arr)
         self.assertEqual(result, original, atol=0, rtol=0)
 
-    @onlyXPU
+    @onlyCUDA
     @skipIfTorchInductor("FIXME")
     def test_sync_warning(self, device):
         def _sync_raises_helper(f, level):
@@ -7687,6 +7688,11 @@ else:
             self.skipTest("uint16,32,64 not implemented on XLA")
         t = torch.ones((), device=device, dtype=dtype)
         self.assertEqual(1, t.item())
+
+    def test__local_scalar_dense_with_empty_tensor(self, device):
+        input = torch.randn(0, device=device)
+        with self.assertRaisesRegex(RuntimeError, "Empty tensor not supported"):
+            torch.ops.aten._local_scalar_dense(input)
 
     @onlyNativeDeviceTypes
     def test_masked_scatter_inplace_noncontiguous(self, device):
