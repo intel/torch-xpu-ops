@@ -36,6 +36,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_CROSSREF,
     TEST_WITH_TORCHDYNAMO,
     TestCase,
+    TEST_CUDA,
 )
 
 requires_accelerator = unittest.skipUnless(
@@ -1306,7 +1307,7 @@ def forward(self, pred_1, x_1):
 
     @skipIfTorchDynamo("don't test compile on compile")
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -1766,7 +1767,7 @@ def forward(self, pred_1, x_1):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -1813,7 +1814,7 @@ def forward(self, pred_1, x_1):
                     self.check_autograd(result, result_exp, (init, x))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -1878,7 +1879,7 @@ def forward(self, pred_1, x_1):
             self.assertEqual(grads, expected_grads)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -2025,7 +2026,7 @@ def forward(self, pred_1, x_1):
     # The paT206899919 rameterization is commented out for the moment and the test is marked with expected fail
     # Fails with: AssertionError: scan is not an OpOverload
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -2162,7 +2163,7 @@ def forward(self, pred_1, x_1):
             self.check_autograd(result, expected_result, (init, init2, inp))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -2618,7 +2619,7 @@ def forward(self, pred_1, x_1):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -2808,7 +2809,7 @@ class GraphModule(torch.nn.Module):
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -2886,7 +2887,7 @@ class GraphModule(torch.nn.Module):
             self.assertEqual(add_input_grads, expected_add_input_grads)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -2976,7 +2977,7 @@ class GraphModule(torch.nn.Module):
     @requires_accelerator
     @skipIfTorchDynamo("not a dynamo test")
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @parametrize("layers", [1, 2, 3])
@@ -3134,7 +3135,7 @@ class GraphModule(torch.nn.Module):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3177,7 +3178,7 @@ class GraphModule(torch.nn.Module):
             self.check_autograd(res_req_grad_flat, res_exp_req_grad_flat, (x, h2))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3220,7 +3221,7 @@ class GraphModule(torch.nn.Module):
             self.check_autograd(res_req_grad_flat, res_exp_req_grad_flat, (x, h2))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3252,7 +3253,7 @@ class GraphModule(torch.nn.Module):
             self.check_autograd(result[0], result_exp[0], (x, h1, h2))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3290,7 +3291,7 @@ class GraphModule(torch.nn.Module):
             self.check_autograd(result[1], result_exp[1], (h, x, W_ih, b_ih))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3330,7 +3331,7 @@ class GraphModule(torch.nn.Module):
             self.check_autograd(result[1], result_exp[1], (h, x))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3370,7 +3371,7 @@ class GraphModule(torch.nn.Module):
             self.check_autograd(result[1], result_exp[1], (h, x))
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3601,7 +3602,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             scan(fct_input_output_alias, init, inp, dim=0)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3627,7 +3628,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor):
             scan(fct_carry_carry_alias, init, inp, dim=0)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3814,7 +3815,7 @@ class AssociativeScanTests(TestCase):
         return kwargs_fake
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3900,7 +3901,7 @@ class AssociativeScanTests(TestCase):
         self.assertEqual(result, results_torch)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3959,7 +3960,7 @@ class AssociativeScanTests(TestCase):
                 self.assertEqual(results, results_torch)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -3985,7 +3986,7 @@ class AssociativeScanTests(TestCase):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4031,7 +4032,7 @@ class AssociativeScanTests(TestCase):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4063,7 +4064,7 @@ class AssociativeScanTests(TestCase):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4097,7 +4098,7 @@ class AssociativeScanTests(TestCase):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4285,7 +4286,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4336,7 +4337,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4388,7 +4389,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4457,7 +4458,7 @@ class GraphModule(torch.nn.Module):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4508,7 +4509,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4563,7 +4564,7 @@ class GraphModule(torch.nn.Module):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4601,7 +4602,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4645,7 +4646,7 @@ class GraphModule(torch.nn.Module):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4680,7 +4681,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4717,7 +4718,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4752,7 +4753,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4802,7 +4803,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4843,7 +4844,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -4880,7 +4881,7 @@ class GraphModule(torch.nn.Module):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -4936,7 +4937,7 @@ class GraphModule(torch.nn.Module):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -5016,7 +5017,7 @@ class GraphModule(torch.nn.Module):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -5060,7 +5061,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -5103,7 +5104,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -5145,7 +5146,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
@@ -5204,7 +5205,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -5267,7 +5268,7 @@ class GraphModule(torch.nn.Module):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -5319,7 +5320,7 @@ class GraphModule(torch.nn.Module):
         )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     def test_associative_scan_sparse_tensor(self):
@@ -5336,7 +5337,7 @@ class GraphModule(torch.nn.Module):
             )
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -5366,7 +5367,7 @@ class GraphModule(torch.nn.Module):
                 associative_scan(fct, x, 0)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     def test_associative_scan_wrong_pytree(self):
@@ -5389,7 +5390,7 @@ class GraphModule(torch.nn.Module):
             associative_scan(fct_wrong_pytree, inp, 0, combine_mode="generic")
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
@@ -5448,7 +5449,7 @@ class GraphModule(torch.nn.Module):
             associative_scan(fct_input_output_alias, inp, 0)
 
     @unittest.skipIf(
-        not SM70OrLater and torch.cuda.is_available(),
+        TEST_CUDA and not SM70OrLater,
         "triton requires CUDA with SM>=7.0",
     )
     @requires_accelerator
