@@ -18,7 +18,6 @@
 #include <ATen/native/xpu/sycl/BinaryMiscOpsKernels.h>
 #include <ATen/native/xpu/sycl/LossKernels.h>
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
-#include <comm/RegisterUtils.h>
 
 namespace at {
 namespace native {
