@@ -64,9 +64,18 @@ permissions: read-all
 run-name: >-
   Acceptance Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
 
+env:
+  ut: 'op_p0'
+  suite: 'huggingface,timm_models,torchbench'
+
 jobs:
   get-runner:
-    runs-on: ${{ inputs.runner }}
+    runs-on: |
+      (contains(inputs.runner, 'pvc') && 'pvc_rolling')
+      ||
+      (contains(inputs.runner, 'bmg') && 'bmg-test')
+      ||
+      inputs.runner
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
     steps:
@@ -86,36 +95,11 @@ jobs:
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
-      runner: ${{ needs.get-runner.outputs.runner_id }}
-      test_type: >-
-        ${{
-          inputs.component == 'pytorch'
-            && (contains(inputs.target_version, '_wheel') && 'wheel-target' || 'build-target')
-            || (contains(inputs.pytorch, '_wheel') && 'wheel-target' || 'build-target')
-        }}
-      pytorch: >-
-        ${{
-          inputs.component == 'pytorch'
-            && inputs.target_version
-            || inputs.pytorch
-        }}
-      torch_xpu_ops: >-
-        ${{
-          inputs.component == 'torch_xpu_ops'
-            && inputs.target_version
-            || 'pinned'
-        }}
-      triton: >-
-        ${{
-          inputs.component == 'triton'
-            && inputs.target_version
-            || 'pinned'
-        }}
-      python: ${{ inputs.python }}
-      is_scheduled_run: false
       test_role: 'target'
-      component: ${{ inputs.component }}
-      component_version: ${{ inputs.target_version }}
+      all_inputs_json: ${{ toJSON(inputs) }}
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: comparison-manually
     secrets: inherit
 
   # Run tests on baseline version
@@ -125,36 +109,11 @@ jobs:
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
-      runner: ${{ needs.get-runner.outputs.runner_id }}
-      test_type: >-
-        ${{
-          inputs.component == 'pytorch'
-            && (contains(inputs.baseline_version, '_wheel') && 'wheel-baseline' || 'build-baseline')
-            || (contains(inputs.pytorch, '_wheel') && 'wheel-baseline' || 'build-baseline')
-        }}
-      pytorch: >-
-        ${{
-          inputs.component == 'pytorch'
-            && inputs.baseline_version
-            || inputs.pytorch
-        }}
-      torch_xpu_ops: >-
-        ${{
-          inputs.component == 'torch_xpu_ops'
-            && inputs.baseline_version
-            || 'pinned'
-        }}
-      triton: >-
-        ${{
-          inputs.component == 'triton'
-            && inputs.baseline_version
-            || 'pinned'
-        }}
-      python: ${{ inputs.python }}
-      is_scheduled_run: false
       test_role: 'baseline'
-      component: ${{ inputs.component }}
-      component_version: ${{ inputs.baseline_version }}
+      all_inputs_json: ${{ toJSON(inputs) }}
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: comparison-manually
     secrets: inherit
 
   # Job 4: Compare results and generate report

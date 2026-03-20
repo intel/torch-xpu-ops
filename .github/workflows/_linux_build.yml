@@ -8,6 +8,14 @@ on:
         type: string
         default: 'pvc_rolling'
         description: 'Runner label for build environment'
+      docker_image_name:
+        type: string
+        default: 'pytorch/manylinux2_28-builder:xpu-main'
+        description: 'Docker image for build environment'
+      python:
+        type: string
+        default: '3.10'
+        description: 'Python version'
       pytorch:
         type: string
         default: 'main'
@@ -16,19 +24,14 @@ on:
         type: string
         default: 'main'
         description: 'Torch-xpu-ops version: main, commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
-      triton:
-        required: false
-        type: string
-        default: ''
-        description: 'Triton version: empty for pytorch pinned version, commit/branch, or repo@commit/repo@branch'
-      python:
-        type: string
-        default: '3.10'
-        description: 'Python version'
       should_build:
         type: string
         default: 'false'
         description: 'Build from source or use nightly wheel'
+      test_role:
+        type: string
+        default: 'default'
+        description: 'Role for test comparison (used as subdirectory)'
       component:
         type: string
         default: ''
@@ -37,14 +40,6 @@ on:
         type: string
         default: ''
         description: 'Component version for comparison'
-      docker_image_name:
-        type: string
-        default: 'pytorch/manylinux2_28-builder:xpu-main'
-        description: 'Docker image for build environment'
-      test_role:
-        type: string
-        default: 'default'
-        description: 'Role for test comparison (used as subdirectory)'
 
 permissions: read-all
 
@@ -297,17 +292,15 @@ jobs:
             else
               TRITON_COMMIT="$spec"
             fi
-          elif [ -z "${{ inputs.triton }}" ] || [ "${{ inputs.triton }}" = "pinned" ]; then
+          else
             # Use pinned version from PyTorch
             if [ -f "${PYTORCH_SRC}/.ci/docker/ci_commit_pins/triton-xpu.txt" ]; then
               TRITON_COMMIT="$(cat ${PYTORCH_SRC}/.ci/docker/ci_commit_pins/triton-xpu.txt)"
             else
               TRITON_COMMIT="main"
             fi
-            echo "Using pinned Triton commit: ${TRITON_COMMIT}"
-          else
-            TRITON_COMMIT="${{ inputs.triton }}"
           fi
+          echo "Using pinned Triton commit: ${TRITON_COMMIT}"
 
           echo "Triton repository: ${TRITON_REPO}"
           echo "Triton commit: ${TRITON_COMMIT}"

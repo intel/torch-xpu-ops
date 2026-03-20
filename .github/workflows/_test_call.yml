@@ -4,87 +4,9 @@ on:
   workflow_call:
     inputs:
       # Basic configuration
-      test_type:
-        required: true
+      all_inputs_json:
         type: string
-        description: |
-          Test type:
-          - build-nightly, wheel-nightly (scheduled nightly)
-          - build-weekly, wheel-weekly (scheduled weekly)
-          - build-ondemand, wheel-ondemand (manual/on-demand)
-      pytorch:
-        required: true
-        type: string
-        description: |
-          PyTorch version:
-          - main (default for source builds)
-          - nightly_wheel, test_wheel, release_wheel (for wheel tests)
-          - commit/branch
-          - repo@commit/repo@branch
-      torch_xpu_ops:
-        required: true
-        type: string
-        description: |
-          Torch-xpu-ops version:
-          - main (default)
-          - pinned (use pytorch pin)
-          - commit/branch
-          - repo@commit/repo@branch
-      triton:
-        type: string
-        default: ''
-        description: |
-          Triton version:
-          - (empty): Use pytorch pinned version
-          - commit/branch
-          - repo@commit/repo@branch
-      python:
-        type: string
-        default: '3.10'
-        description: 'Python version'
-
-      # Test scope configuration
-      ut:
-        type: string
-        default: ''
-        description: |
-          Unit test scope (comma-separated):
-          - basic: op_regression, op_transformers, op_extended, op_regression_dev1
-          - op_regression, op_transformers, op_extended, op_regression_dev1
-          - op_ut, skipped_ut, torch_xpu, xpu_profiling, xpu_distributed
-          - op_p0 (for acceptance tests)
-          - microbench, windows (special flags)
-      suite:
-        type: string
-        default: ''
-        description: |
-          E2E test suite (comma-separated):
-          - huggingface, timm_models, torchbench, pt2e
-
-      # E2E test parameters
-      dt:
-        type: string
-        default: ''
-        description: |
-          Data precision for E2E tests (comma-separated):
-          - float32, bfloat16, float16, amp_bf16, amp_fp16 (for E2E)
-          - int8 (for PT2E)
-      mode:
-        type: string
-        default: ''
-        description: |
-          Test mode for E2E tests (comma-separated):
-          - inference, training
-      scenario:
-        type: string
-        default: ''
-        description: |
-          Test scenario for E2E tests (comma-separated):
-          - accuracy, performance
-      model:
-        type: string
-        default: ''
-        description: 'Specific model to test (if set, only this model runs)'
+        description: 'JSON string containing all inputs'
 
       # Advanced configuration
       runner:
@@ -96,200 +18,54 @@ on:
         default: 'Windows_CI'
         description: 'Runner label for Windows tests'
       is_scheduled_run:
-        type: boolean
-        default: false
+        type: string
+        required: true
         description: 'Set to true for scheduled runs (affects build behavior)'
 
-      # Comparison
-      test_role:
-        type: string
-        default: 'default'
-        description: 'Role for test comparison'
-      component:
-        type: string
-        default: 'default'
-        description: 'Component name for comparison'
-      component_version:
-        type: string
-        default: ''
-        description: 'Component version for comparison'
-
-      # New input for baseline issue ID (makes it configurable)
-      baseline_issue_id:
-        type: number
-        default: 1645
-        description: 'Issue ID containing baseline run IDs'
-
-      issue_prefix:
-        type: string
-        default: 'BMG-'
-        description: 'Prefix used in the baseline issue for each artifact type'
-
-      baseline_suffixes:
-        type: string
-        default: 'weekly,nightly'
-        description: 'Comma-separated list of suffixes that identify a baseline run'
-
 permissions: read-all
-
-env:
-  WORKSPACE: ${{ github.workspace }}
-  REPOSITORY: ${{ github.repository }}
 
 jobs:
   parse-test-inputs:
     name: Parse Test Inputs
     runs-on: ubuntu-24.04
-    timeout-minutes: 3
+    timeout-minutes: 10
     outputs:
-      # Configuration outputs
+      # Configuration
       test_type: ${{ steps.parse-config.outputs.test_type }}
       pytorch: ${{ steps.parse-config.outputs.pytorch }}
       torch_xpu_ops: ${{ steps.parse-config.outputs.torch_xpu_ops }}
+      should_build: ${{ steps.parse-config.outputs.should_build }}
 
-      # Test scope outputs
+      # Test scope
       ut_list_json: ${{ steps.parse-config.outputs.ut_list_json }}
       suite_list_json: ${{ steps.parse-config.outputs.suite_list_json }}
+      dt: ${{ steps.parse-config.outputs.dt }}
+      mode: ${{ steps.parse-config.outputs.mode }}
+      scenario: ${{ steps.parse-config.outputs.scenario }}
+      model_only: ${{ steps.parse-config.outputs.model_only }}
 
       # Flags
       has_ut_tests: ${{ steps.parse-config.outputs.has_ut_tests }}
       has_e2e_tests: ${{ steps.parse-config.outputs.has_e2e_tests }}
       has_microbench: ${{ steps.parse-config.outputs.has_microbench }}
       has_windows: ${{ steps.parse-config.outputs.has_windows }}
-      should_build: ${{ steps.parse-config.outputs.should_build }}
+
+      # Others
+      python: ${{ steps.parse-config.outputs.python }}
+      test_role: ${{ steps.parse-config.outputs.test_role }}
+      component: ${{ steps.parse-config.outputs.component }}
+      component_version: ${{ steps.parse-config.outputs.component_version }}
     steps:
-      - name: Parse and validate all inputs
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Filter PR conditions and determine configuration
         id: parse-config
-        shell: bash -eo pipefail {0}
-        run: |
-          echo "=== Parsing Test Configuration ==="
-          echo "Test Type: ${{ inputs.test_type }}"
-          echo "PyTorch: ${{ inputs.pytorch }}"
-          echo "Torch-xpu-ops: ${{ inputs.torch_xpu_ops }}"
-
-          # Set basic configuration
-          echo "test_type=${{ inputs.test_type }}" >> "${GITHUB_OUTPUT}"
-          echo "pytorch=${{ inputs.pytorch }}" >> "${GITHUB_OUTPUT}"
-          echo "torch_xpu_ops=${{ inputs.torch_xpu_ops }}" >> "${GITHUB_OUTPUT}"
-
-          # ------------------------------------------------------------
-          # Parse UT list
-          # ------------------------------------------------------------
-          # If test_role is not default, force op_p0 (acceptance tests)
-          if [ "${{ inputs.test_role }}" != "default" ]; then
-            UT_INPUT="op_p0"
-          else
-            UT_INPUT="${{ inputs.ut }}"
-          fi
-
-          # Initialize flags
-          HAS_UT_TESTS="false"
-          HAS_MICROBENCH="false"
-          HAS_WINDOWS="false"
-          UT_LIST_JSON="[]"
-
-          if [ -n "${UT_INPUT}" ]; then
-            # Helper function to create JSON array from comma-separated list
-            create_json_array() {
-              local input="$1"
-              local exclude_items="$2"
-              IFS=',' read -ra ARRAY <<< "${input}"
-              local result="["
-              for item in "${ARRAY[@]}"; do
-                item_clean=$(echo "${item}" | tr -d '[:space:]')
-                # Skip if empty or in exclude list
-                if [ -n "${item_clean}" ]; then
-                  should_exclude=false
-                  for exclude in ${exclude_items}; do
-                    if [ "${item_clean}" = "${exclude}" ]; then
-                      should_exclude=true
-                      break
-                    fi
-                  done
-                  if [ "${should_exclude}" = "false" ]; then
-                    result="${result}\"${item_clean}\","
-                  fi
-                fi
-              done
-              if [ "${result}" != "[" ]; then
-                result="${result%,}"
-              fi
-              result="${result}]"
-              echo "${result}"
-            }
-
-            # Create JSON array excluding special flags
-            UT_LIST_JSON=$(create_json_array "${UT_INPUT}" "microbench windows")
-
-            # Check if we have any regular UT tests
-            if [ "${UT_LIST_JSON}" != "[]" ]; then
-              HAS_UT_TESTS="true"
-            fi
-
-            # Check for special test types
-            if [[ "${UT_INPUT}" == *"microbench"* ]]; then
-              HAS_MICROBENCH="true"
-            fi
-            if [[ "${UT_INPUT}" == *"windows"* ]]; then
-              HAS_WINDOWS="true"
-            fi
-          fi
-
-          echo "ut_list_json=${UT_LIST_JSON}" >> "${GITHUB_OUTPUT}"
-          echo "has_ut_tests=${HAS_UT_TESTS}" >> "${GITHUB_OUTPUT}"
-          echo "has_microbench=${HAS_MICROBENCH}" >> "${GITHUB_OUTPUT}"
-          echo "has_windows=${HAS_WINDOWS}" >> "${GITHUB_OUTPUT}"
-
-          # ------------------------------------------------------------
-          # Parse suite list
-          # ------------------------------------------------------------
-          if [ "${{ inputs.test_role }}" != "default" ]; then
-            SUITE_INPUT='huggingface,timm_models,torchbench'
-          else
-            SUITE_INPUT="${{ inputs.suite }}"
-          fi
-
-          HAS_E2E_TESTS="false"
-          SUITE_LIST_JSON="[]"
-          if [ -n "${SUITE_INPUT}" ]; then
-            IFS=',' read -ra SUITE_ARRAY <<< "${SUITE_INPUT}"
-            SUITE_LIST_JSON="["
-            for item in "${SUITE_ARRAY[@]}"; do
-              item_clean=$(echo "${item}" | tr -d '[:space:]')
-              if [ -n "${item_clean}" ]; then
-                SUITE_LIST_JSON="${SUITE_LIST_JSON}\"${item_clean}\","
-              fi
-            done
-            if [ "${SUITE_LIST_JSON}" != "[" ]; then
-              SUITE_LIST_JSON="${SUITE_LIST_JSON%,}"
-            fi
-            SUITE_LIST_JSON="${SUITE_LIST_JSON}]"
-            HAS_E2E_TESTS="true"
-          fi
-
-          echo "suite_list_json=${SUITE_LIST_JSON}" >> "${GITHUB_OUTPUT}"
-          echo "has_e2e_tests=${HAS_E2E_TESTS}" >> "${GITHUB_OUTPUT}"
-
-          # ------------------------------------------------------------
-          # Determine if we should run build
-          # ------------------------------------------------------------
-          # Always build for source-based test types or scheduled runs
-          if [[ "${{ inputs.test_type }}" == *"build-"* ]] || [ "${{ inputs.is_scheduled_run }}" = "true" ]; then
-            SHOULD_BUILD="true"
-          else
-            SHOULD_BUILD="false"
-          fi
-
-          echo "should_build=${SHOULD_BUILD}" >> "${GITHUB_OUTPUT}"
-
-          echo "Parsed configuration:"
-          echo "  UT List: ${UT_LIST_JSON}"
-          echo "  Suite List: ${SUITE_LIST_JSON}"
-          echo "  Has UT Tests: ${HAS_UT_TESTS}"
-          echo "  Has E2E Tests: ${HAS_E2E_TESTS}"
-          echo "  Has Microbench: ${HAS_MICROBENCH}"
-          echo "  Has Windows: ${HAS_WINDOWS}"
-          echo "  Should Build: ${SHOULD_BUILD}"
+        uses: ./.github/actions/conditions-filter
+        with:
+          pr_number: ${{ github.event.pull_request.number || '' }}
+          base_ref: ${{ github.base_ref || '' }}
+          all_inputs_json: ${{ inputs.all_inputs_json || '' }}
+          is_scheduled_run: ${{ inputs.is_scheduled_run }}
 
   linux-build:
     name: Linux Build
@@ -301,12 +77,11 @@ jobs:
       runner: ${{ inputs.runner }}
       pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
-      triton: ${{ inputs.triton }}
-      python: ${{ inputs.python }}
       should_build: ${{ needs.parse-test-inputs.outputs.should_build }}
-      component: ${{ inputs.component }}
-      component_version: ${{ inputs.component_version }}
-      test_role: ${{ inputs.test_role }}
+      python: ${{ needs.parse-test-inputs.outputs.python }}
+      test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
+      component: ${{ needs.parse-test-inputs.outputs.component }}
+      component_version: ${{ needs.parse-test-inputs.outputs.component_version }}
 
   linux-ut-tests:
     name: Linux Unit Tests
@@ -325,11 +100,11 @@ jobs:
       runner: ${{ inputs.runner }}
       pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.parse-test-inputs.outputs.python }}
+      test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
+      component: ${{ needs.parse-test-inputs.outputs.component }}
+      component_version: ${{ needs.parse-test-inputs.outputs.component_version }}
       ut: ${{ matrix.ut_name }}
-      component: ${{ inputs.component }}
-      component_version: ${{ inputs.component_version }}
-      test_role: ${{ inputs.test_role }}
 
   linux-e2e-tests:
     name: Linux E2E Tests
@@ -345,17 +120,17 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ inputs.runner }}
-      test_type: ${{ needs.parse-test-inputs.outputs.test_type }}
       pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      python: ${{ inputs.python }}
+      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
+      python: ${{ needs.parse-test-inputs.outputs.python }}
+      test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
+      component: ${{ needs.parse-test-inputs.outputs.component }}
+      component_version: ${{ needs.parse-test-inputs.outputs.component_version }}
       suite: ${{ matrix.suite }}
-      dt: ${{ inputs.dt }}
-      mode: ${{ inputs.mode }}
-      scenario: ${{ inputs.scenario }}
-      model: ${{ inputs.model }}
-      component: ${{ inputs.component }}
-      component_version: ${{ inputs.component_version }}
-      test_role: ${{ inputs.test_role }}
+      dt: ${{ needs.parse-test-inputs.outputs.dt }}
+      mode: ${{ needs.parse-test-inputs.outputs.mode }}
+      scenario: ${{ needs.parse-test-inputs.outputs.scenario }}
+      model_only: ${{ needs.parse-test-inputs.outputs.model_only }}
 
   linux-microbench-tests:
     name: Linux Microbenchmark Tests
@@ -369,7 +144,7 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      python: ${{ inputs.python }}
+      python: ${{ needs.parse-test-inputs.outputs.python }}
 
   windows-ut-tests:
     name: Windows Unit Tests
@@ -379,7 +154,7 @@ jobs:
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut_windows'
-      python: ${{ inputs.python }}
+      python: ${{ needs.parse-test-inputs.outputs.python }}
       src_changed: false
       has_label: true
       runner: ${{ inputs.windows_runner }}
@@ -391,15 +166,18 @@ jobs:
   # ----------------------------------------------------------------------
   compare-results:
     name: Compare Results
-    if: ${{ inputs.test_role == 'default' }}
-    needs: [linux-ut-tests, linux-e2e-tests]
+    if: ${{ inputs.is_scheduled_run != 'comparison-manually' }}
+    needs:
+      - parse-test-inputs
+      - linux-ut-tests
+      - linux-e2e-tests
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
       # Configurable via workflow inputs
-      BASELINE_ISSUE_ID: ${{ inputs.baseline_issue_id }}
-      ISSUE_PREFIX: ${{ inputs.issue_prefix }}
-      BASELINE_SUFFIXES: ${{ inputs.baseline_suffixes }}
+      BASELINE_ISSUE_ID: 1645
+      ISSUE_PREFIX: 'PVC -'
+      BASELINE_SUFFIXES: 'weekly,nightly'
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
@@ -420,7 +198,7 @@ jobs:
       - name: Determine Baseline Artifact Type
         id: determine_type
         run: |
-          TEST_TYPE="${{ inputs.test_type }}"
+          TEST_TYPE="${{ needs.parse-test-inputs.outputs.test_type }}"
           EVENT_NAME="${{ github.event_name }}"
           IFS=',' read -ra SUFFIXES <<< "${{ env.BASELINE_SUFFIXES }}"
 
@@ -505,7 +283,7 @@ jobs:
       - name: Compare Test Results
         run: |
           source myvenv/bin/activate
-          echo "Comparing results for ${{ inputs.component }}..."
+          echo "Comparing results for ${{ needs.parse-test-inputs.outputs.component }}..."
           echo "Target: ${{ github.run_id }}"
           echo "Baseline: ${{ steps.baseline.outputs.BASELINE_RUN_ID }}"
           find results   # Debug: list downloaded files
@@ -569,7 +347,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ inputs.component }}-test-summary
+          name: ${{ needs.parse-test-inputs.outputs.component }}-test-summary
           path: |
             *_comparison*.csv
             *_comparison*.xlsx

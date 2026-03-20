@@ -1,5 +1,5 @@
 name: 'Conditions Filter'
-description: 'Filter PR conditions and determine test configurations'
+description: 'Filter tests conditions and determine test configurations'
 
 inputs:
   pr_number:
@@ -8,41 +8,78 @@ inputs:
   base_ref:
     description: 'Base branch reference'
     required: true
-  repository:
-    description: 'Repository to check'
-    required: false
-    default: ''
+  all_inputs_json:
+    description: 'test_type'
+    required: true
+  is_scheduled_run:
+    description: 'test_type'
+    required: true
 
 outputs:
-  src_changed:
-    description: 'Whether source files changed'
-    value: ${{ steps.check-files.outputs.src_changed }}
-  disabled_tests:
-    description: 'List of disabled tests from PR description'
-    value: ${{ steps.check-pr-desc.outputs.disabled_tests }}
-  pytorch_version:
-    description: 'PyTorch version to use'
-    value: ${{ steps.determine-config.outputs.pytorch_version }}
+  # Configuration
   test_type:
-    description: 'Test type based on configuration'
+    description: 'PyTorch version to use'
     value: ${{ steps.determine-config.outputs.test_type }}
-  torch_xpu_ops_version:
-    description: 'Torch-xpu-ops version to use'
-    value: ${{ steps.determine-config.outputs.torch_xpu_ops_version }}
-  ut_scope:
-    description: 'UT scope to test'
-    value: ${{ steps.determine-config.outputs.ut_scope }}
-  e2e_suites:
-    description: 'E2E suites to test'
-    value: ${{ steps.determine-config.outputs.e2e_suites }}
+  pytorch:
+    description: 'Whether source files changed'
+    value: ${{ steps.determine-config.outputs.pytorch }}
+  torch_xpu_ops:
+    description: 'List of disabled tests from PR description'
+    value: ${{ steps.determine-config.outputs.torch_xpu_ops }}
   should_build:
-    description: 'Whether to run build'
+    description: 'Test type based on configuration'
     value: ${{ steps.determine-config.outputs.should_build }}
+  # Test scope
+  ut_list_json:
+    description: 'Torch-xpu-ops version to use'
+    value: ${{ steps.determine-scope.outputs.ut_list_json }}
+  suite_list_json:
+    description: 'UT scope to test'
+    value: ${{ steps.determine-scope.outputs.suite_list_json }}
+  dt:
+    description: 'UT scope to test'
+    value: ${{ steps.determine-scope.outputs.dt }}
+  mode:
+    description: 'UT scope to test'
+    value: ${{ steps.determine-scope.outputs.mode }}
+  scenario:
+    description: 'UT scope to test'
+    value: ${{ steps.determine-scope.outputs.scenario }}
+  model_only:
+    description: 'UT scope to test'
+    value: ${{ steps.determine-scope.outputs.model_only }}
+  # Flags
+  has_ut_tests:
+    description: 'E2E suites to test'
+    value: ${{ steps.determine-config.outputs.has_ut_tests }}
+  has_e2e_tests:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.has_e2e_tests }}
+  has_microbench:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.has_microbench }}
+  has_windows:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.has_windows }}
+  # Others
+  python:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.python }}
+  test_role:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.test_role }}
+  component:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.component }}
+  component_version:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.component_version }}
 
 runs:
   using: composite
   steps:
     - name: Check source file changes
+      if: inputs.is_scheduled_run == 'pull_request'
       id: check-files
       uses: dorny/paths-filter@v2
       with:
@@ -59,24 +96,37 @@ runs:
             - 'src/CMakeLists.txt'
             - '.github/workflows/_windows_ut.yml'
 
-    - name: Check PR description for disabled tests
-      id: check-pr-desc
+    - name: Process all inputs
+      if: contains(inputs.is_scheduled_run, 'manually')
+      id: all-inputs
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const allInputs = JSON.parse('${{ inputs.all_inputs_json }}');
+          // Iterate over each key
+          for (const [key, value] of Object.entries(allInputs)) {
+            console.log(`Input: ${key} = ${value}`);
+
+            // Optionally set an environment variable
+            core.exportVariable(key, value);
+
+            // Or set a step output
+            core.setOutput(key, value);
+          }
+
+    - name: Check PR labels for disabled tests
+      if: inputs.is_scheduled_run == 'pull_request'
+      id: pr-labels
       shell: bash -eo pipefail {0}
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        echo "=== Checking PR Description ==="
+        echo "=== Checking PR labels ==="
 
-        if [ -z "${{ inputs.repository }}" ]; then
-          REPO="${GITHUB_REPOSITORY}"
-        else
-          REPO="${{ inputs.repository }}"
-        fi
+        # Get PR labels and extract disabled tests
+        pr_labels="$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[].name')"
 
-        # Get PR description and extract disabled tests
-        disabled_tests="$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[].name')"
-
-        echo "disabled_tests=${DISABLED_LIST}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "pr_labels=${pr_labels}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
 
     - name: Determine test configuration
       id: determine-config
@@ -85,61 +135,167 @@ runs:
         echo "=== Determining Test Configuration ==="
 
         # Determine PyTorch version
-        if [[ "${disabled_tests}" == *"disable_build"* ]]; then
-          PYTORCH_VERSION="nightly_wheel"
-          echo "Build disabled, using nightly wheel"
+        if [[ "${pr_labels}" == *"disable_build"* ]]; then
+          test_type="wheel-cicd"
+          pytorch="nightly_wheel"
+          torch_xpu_ops="pinned"
+          echo "Build disabled, using nightly wheel for CICD"
+        elif [ "${{ github.event_name }}" == "pull_request" ];then
+          test_type="build-cicd"
+          pytorch="main"
+          torch_xpu_ops="cicd"
+          echo "Build PR, using merged torch-xpu-ops for CICD"
+        elif [ "${{ inputs.is_scheduled_run }}" == "schedule" ];then
+          if [ "${{ contains(github.event.schedule, '10') }}" == "true" ];then
+            string_1='build'
+          else
+            string_1='wheel'
+          fi
+          if [ "${{ contains(github.event.schedule, '0-4') }}" == "true" ];then
+            string_2='nightly'
+          else
+            string_2='weekly'
+          fi
+          test_type="${string_1}-${string_2}"
+          if [ "${string_1}" == "build" ];then
+            pytorch="main"
+            torch_xpu_ops="main"
+          else
+            pytorch="nightly_wheel"
+            torch_xpu_ops="pinned"
+          fi
+          echo "Nightly Test: ${test_type}"
         else
-          PYTORCH_VERSION="${{ inputs.base_ref }}"
-          echo "Using base ref: ${PYTORCH_VERSION}"
+          test_type="${{ steps.all-inputs.outputs.test_type }}"
+          pytorch="${{ steps.all-inputs.outputs.pytorch }}"
+          torch_xpu_ops="${{ steps.all-inputs.outputs.torch_xpu_ops }}"
+          echo "Ondemand Test: ${pytorch}/${torch_xpu_ops}"
         fi
-
+        if [ "${component}" == "pytorch" ];then
+          if [ "${test_role}" == "target" ];then
+            pytorch="${target_version}"
+          else
+            pytorch="${baseline_version}"
+          fi
+        fi
+        if [ "${component}" == "torch-xpu-ops" ];then
+          if [ "${test_role}" == "target" ];then
+            torch_xpu_ops="${target_version}"
+          else
+            pytorch="${baseline_version}"
+          fi
+        fi
         # Determine test type
-        if [ "${PYTORCH_VERSION}" = "nightly_wheel" ]; then
-          TEST_TYPE="wheel-cicd"
-          TORCH_XPU_OPS_VERSION="pinned"
-          SHOULD_BUILD="false"
-        else
-          TEST_TYPE="build-cicd"
-          TORCH_XPU_OPS_VERSION="main"
-          SHOULD_BUILD="true"
+        case "${pytorch}" in
+            nightly_wheel|test_wheel|release_wheel) should_build="false" ;;
+            *) should_build="true" ;;
+        esac
+
+        # Determine components
+        if [ "${{ contains(inputs.is_scheduled_run, 'manually') }}" == "true" ];then
+          # Triton
+          if [ "${component}" != "none" ];then
+            if [ "${test_role}" == "target" ];then
+              component_version="${target_version}"
+            elif [ "${test_role}" == "baseline" ];then
+              component_version="${baseline_version}"
+            fi
+          fi
+
+        # Determine python
+        if [ "${python}" == "" ];then
+          python='3.10'
         fi
 
-        # Determine UT scope (excluding disabled tests)
-        disabled_tests="${{ steps.check-pr-desc.outputs.disabled_tests }}"
+        echo "test_type=${test_type}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "pytorch=${pytorch}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "torch_xpu_ops=${torch_xpu_ops}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "python=${python}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "test_role=${test_role}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "component=${component}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "component_version=${component_version}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
 
-        # Default UT scope for PRs
-        UT_SCOPE="basic,op_ut,xpu_distributed"
+    - name: Determine test scope
+      id: determine-scope
+      shell: bash -eo pipefail {0}
+      run: |
+        # Initialize flags
+        UT_LIST_JSON="[]"
 
-        # Remove disabled UTs from scope
-        if [[ "${disabled_tests}" == *"disable_ut"* ]]; then
-          echo "UT tests disabled"
-          UT_SCOPE=""
+        if [ -n "${ut}" ]; then
+          # Helper function to create JSON array from comma-separated list
+          create_json_array() {
+            local input="$1"
+            local exclude_items="$2"
+            IFS=',' read -ra ARRAY <<< "${input}"
+            local result="["
+            for item in "${ARRAY[@]}"; do
+              item_clean=$(echo "${item}" | tr -d '[:space:]')
+              # Skip if empty or in exclude list
+              if [ -n "${item_clean}" ]; then
+                should_exclude=false
+                for exclude in ${exclude_items}; do
+                  if [ "${item_clean}" = "${exclude}" ]; then
+                    should_exclude=true
+                    break
+                  fi
+                done
+                if [ "${should_exclude}" = "false" ]; then
+                  result="${result}\"${item_clean}\","
+                fi
+              fi
+            done
+            if [ "${result}" != "[" ]; then
+              result="${result%,}"
+            fi
+            result="${result}]"
+            echo "${result}"
+          }
+
+          # Create JSON array excluding special flags
+          UT_LIST_JSON=$(create_json_array "${ut}" "microbench windows")
+        fi
+        echo "ut_list_json=${UT_LIST_JSON}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+
+
+        SUITE_LIST_JSON="[]"
+        if [ -n "${suite}" ]; then
+          IFS=',' read -ra SUITE_ARRAY <<< "${suite}"
+          SUITE_LIST_JSON="["
+          for item in "${SUITE_ARRAY[@]}"; do
+            item_clean=$(echo "${item}" | tr -d '[:space:]')
+            if [ -n "${item_clean}" ]; then
+              SUITE_LIST_JSON="${SUITE_LIST_JSON}\"${item_clean}\","
+            fi
+          done
+          if [ "${SUITE_LIST_JSON}" != "[" ]; then
+            SUITE_LIST_JSON="${SUITE_LIST_JSON%,}"
+          fi
+          SUITE_LIST_JSON="${SUITE_LIST_JSON}]"
+        fi
+        echo "suite_list_json=${SUITE_LIST_JSON}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+
+
+        # Check if we have any regular UT tests
+        if [[ "${pr_labels}" != *"disable_ut"* ]] && [ "${UT_LIST_JSON}" != "[]" ]; then
+          HAS_UT_TESTS="true"
+        fi
+        if [[ "${pr_labels}" != *"disable_e2e"* ]] && [ -n "${suite}" ]; then
+          HAS_E2E_TESTS="true"
+        fi
+        # Check for special test types
+        if [[ "${pr_labels}" != *"disable_micro"* ]] && [[ "${ut}" == *"microbench"* ]]; then
+          HAS_MICROBENCH="true"
+        fi
+        if [[ "${pr_labels}" != *"disable_win"* ]] && (\
+                [[ "${ut}" == *"windows"* ]] || \
+                [[ "${pr_labels}" == *"windows_ci"* ]] || \
+                [ "${{ steps.check-files.outputs.src_changed }}" == "true" ] \
+              ); then
+          HAS_WINDOWS="true"
         fi
 
-        if [[ "${disabled_tests}" == *"disable_distribute"* ]]; then
-          echo "Distributed tests disabled"
-          UT_SCOPE=$(echo "${UT_SCOPE}" | sed 's/,xpu_distributed//g;s/xpu_distributed,//g')
-        fi
-
-        # Determine E2E suites
-        E2E_SUITES="huggingface,timm_models,torchbench"
-        if [[ "${disabled_tests}" == *"disable_e2e"* ]]; then
-          echo "E2E tests disabled"
-          E2E_SUITES=""
-        fi
-
-        # Set outputs
-        echo "pytorch_version=${PYTORCH_VERSION}" >> "${GITHUB_OUTPUT}"
-        echo "test_type=${TEST_TYPE}" >> "${GITHUB_OUTPUT}"
-        echo "torch_xpu_ops_version=${TORCH_XPU_OPS_VERSION}" >> "${GITHUB_OUTPUT}"
-        echo "ut_scope=${UT_SCOPE}" >> "${GITHUB_OUTPUT}"
-        echo "e2e_suites=${E2E_SUITES}" >> "${GITHUB_OUTPUT}"
-        echo "should_build=${SHOULD_BUILD}" >> "${GITHUB_OUTPUT}"
-
-        echo "Configuration:"
-        echo "  PyTorch: ${PYTORCH_VERSION}"
-        echo "  Test Type: ${TEST_TYPE}"
-        echo "  Torch-xpu-ops: ${TORCH_XPU_OPS_VERSION}"
-        echo "  UT Scope: ${UT_SCOPE}"
-        echo "  E2E Suites: ${E2E_SUITES}"
-        echo "  Should Build: ${SHOULD_BUILD}"
+        echo "has_e2e_tests=${HAS_E2E_TESTS}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "has_ut_tests=${HAS_UT_TESTS}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "has_microbench=${HAS_MICROBENCH}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "has_windows=${HAS_WINDOWS}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"

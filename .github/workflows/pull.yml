@@ -23,6 +23,8 @@ env:
   GH_TOKEN: ${{ github.token }}
   WORKSPACE: ${{ github.workspace }}
   PR_NUMBER: ${{ github.event.pull_request.number }}
+  ut: 'basic,op_ut'
+  suite: 'huggingface,timm_models,torchbench'
 
 jobs:
   preci-lint-check:
@@ -39,81 +41,14 @@ jobs:
           repository: ${{ github.repository }}
           enable_clang: true
 
-  conditions-filter:
-    if: |
-      github.repository_owner == 'intel' &&
-      github.event.pull_request.draft == false &&
-      ! contains(github.event.pull_request.labels.*.name, 'disable_all')
-    name: Conditions Filter
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      src_changed: ${{ steps.filter.outputs.src_changed }}
-      has_label: ${{ steps.filter.outputs.has_label }}
-      disabled_tests: ${{ steps.filter.outputs.disabled_tests }}
-      pytorch_version: ${{ steps.filter.outputs.pytorch_version }}
-      test_type: ${{ steps.filter.outputs.test_type }}
-      torch_xpu_ops_version: ${{ steps.filter.outputs.torch_xpu_ops_version }}
-      ut_scope: ${{ steps.filter.outputs.ut_scope }}
-      e2e_suites: ${{ steps.filter.outputs.e2e_suites }}
-      should_build: ${{ steps.filter.outputs.should_build }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-      - name: Filter PR conditions and determine configuration
-        id: filter
-        uses: ./.github/actions/conditions-filter
-        with:
-          pr_number: ${{ env.PR_NUMBER }}
-          base_ref: ${{ github.base_ref }}
-          repository: ${{ github.repository }}
-
-  linux-pr-tests:
-    name: Linux PR Tests
-    needs: [conditions-filter, preci-lint-check]
+  pr-tests:
+    if: github.event.pull_request.draft == false
+    name: PR Tests
+    needs: [preci-lint-check]
     uses: ./.github/workflows/_test_call.yml
     permissions: write-all
     with:
-      test_type: ${{ needs.conditions-filter.outputs.test_type }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch_version }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.torch_xpu_ops_version }}
-      triton: ''
-      python: '3.10'
-      ut: ${{ needs.conditions-filter.outputs.ut_scope }}
-      suite: ${{ needs.conditions-filter.outputs.e2e_suites }}
-      dt: ''
-      mode: ''
-      scenario: ''
-      model: ''
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
-      is_scheduled_run: false
-    secrets: inherit
-
-  windows-pr-tests:
-    name: Windows PR Tests
-    needs: [conditions-filter, preci-lint-check]
-    if: |
-      ! contains(needs.conditions-filter.outputs.disabled_tests, 'disable_win') &&
-      (
-        contains(github.event.pull_request.labels.*.name, 'windows_ci') ||
-        needs.conditions-filter.outputs.src_changed == 'true'
-      )
-    uses: ./.github/workflows/_test_call.yml
-    permissions: write-all
-    with:
-      test_type: ${{ needs.conditions-filter.outputs.test_type }}
-      pytorch: ${{ needs.conditions-filter.outputs.pytorch_version }}
-      torch_xpu_ops: ${{ needs.conditions-filter.outputs.torch_xpu_ops_version }}
-      triton: ''
-      python: '3.10'
-      ut: 'windows'
-      suite: ''
-      dt: ''
-      mode: ''
-      scenario: ''
-      model: ''
-      runner: 'pvc_rolling'
-      windows_runner: 'Windows_CI'
-      is_scheduled_run: false
+      is_scheduled_run: pull_request
     secrets: inherit

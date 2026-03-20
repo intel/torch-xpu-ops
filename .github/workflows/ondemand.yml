@@ -21,11 +21,22 @@ on:
           - pinned (use pytorch pin)
           - commit/branch
           - repo@commit/repo@branch
-      triton:
+      # Component selection if needed
+      component:
+        type: choice
+        options:
+          - none
+          - onednn
+          - sycltla
+          - triton
+          - oneapi
+        default: none
+        description: 'Component to build'
+      component_version:
         type: string
         default: ''
         description: |
-          Triton version:
+          Component version:
           - (empty): Use pytorch pinned version
           - commit/branch
           - repo@commit/repo@branch
@@ -87,25 +98,8 @@ jobs:
     uses: ./.github/workflows/_test_call.yml
     permissions: write-all
     with:
-      # Determine test type based on pytorch input
-      test_type: >-
-        ${{
-            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
-        }}
-      pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: >-
-        ${{
-            inputs.torch_xpu_ops == '' && github.ref_name || inputs.torch_xpu_ops
-        }}
-      triton: ${{ inputs.triton }}
-      python: ${{ inputs.python }}
-      ut: ${{ inputs.ut }}
-      suite: ${{ inputs.suite }}
-      dt: ${{ inputs.dt }}
-      mode: ${{ inputs.mode }}
-      scenario: ${{ inputs.scenario }}
-      model: ${{ inputs.model }}
+      all_inputs_json: ${{ toJSON(inputs) }}
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
-      is_scheduled_run: false
+      is_scheduled_run: dispatch-manually
     secrets: inherit
