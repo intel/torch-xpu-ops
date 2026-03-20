@@ -559,6 +559,57 @@ def pinv_errors_and_warnings(self, device, dtype):
         torch.linalg.pinv(a, rtol=rtol)
 
 
+@unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
+def _int_mm_errors(self, device):
+    def genf_int(x, y):
+        return torch.empty((x, y), dtype=torch.int8, device=device)
+
+    def _gen_pair(m, k, n):
+        return genf_int(m, k), genf_int(k, n)
+
+    # XPU does not enforce CUDA-specific size constraints (size(0)>16,
+    # size(1) multiple of 8, mat2.size(1) multiple of 8), so those checks
+    # are omitted here.
+
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"self.size\(1\) needs to match mat2.size\(0\) but got 8 and 7",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(7, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected self dtype to be of type int8",
+        lambda: torch._int_mm(genf_int(17, 8).float(), genf_int(8, 32)),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected mat2 dtype to be of type int8",
+        lambda: torch._int_mm(genf_int(17, 8), genf_int(8, 32).float()),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result dtype to be of type kInt but got float",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 32).float()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 15",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(15, 32).int()
+        ),
+    )
+    self.assertRaisesRegex(
+        RuntimeError,
+        r"Expected result.size\(0\) to be 17 but got 16",
+        lambda: torch._int_mm(
+            genf_int(17, 8), genf_int(8, 32), out=genf_int(16, 31).int()
+        ),
+    )
+
+
+TestLinalg.test__int_mm_errors = _int_mm_errors
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_preferred_blas_library = preferred_blas_library
