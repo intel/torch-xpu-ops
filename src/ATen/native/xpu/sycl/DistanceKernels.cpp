@@ -839,8 +839,11 @@ static void pdist_kernel_impl(
   // Limit global work size per launch to stay below the Level Zero / SYCL
   // runtime limit (observed as 2^35 work items on Intel GPUs).
   // Use multiple kernel launches if total_combs exceeds the per-launch limit.
-  const int64_t kMaxGroupsPerLaunch =
-      static_cast<int64_t>(10000000); // 10M groups per launch
+  const int64_t kMaxWorkItemsPerLaunch = static_cast<int64_t>(1) << 35;
+  int64_t max_groups_per_launch = kMaxWorkItemsPerLaunch / wgroup_size;
+  if (max_groups_per_launch < 1) {
+    max_groups_per_launch = 1;
+  }
 
   auto p_val = static_cast<accscalar_t>(p);
   auto out_data = result.mutable_data_ptr<scalar_t>();
@@ -848,8 +851,8 @@ static void pdist_kernel_impl(
   auto& queue = getCurrentSYCLQueue();
 
   for (int64_t offset = 0; offset < total_combs;
-       offset += kMaxGroupsPerLaunch) {
-    int64_t ngroups = std::min(total_combs - offset, kMaxGroupsPerLaunch);
+       offset += max_groups_per_launch) {
+    int64_t ngroups = std::min(total_combs - offset, max_groups_per_launch);
     // Pass out_data + offset so the kernel writes via small local indices,
     // keeping per-access byte offsets under 4 GiB (Intel GPU 32-bit offset
     // limit).
