@@ -81,7 +81,7 @@ runs:
     - name: Check source file changes
       if: inputs.is_scheduled_run == 'pull_request'
       id: check-files
-      uses: dorny/paths-filter@v2
+      uses: dorny/paths-filter@v4
       with:
         base: ${{ github.base_ref }}
         filters: |
@@ -99,7 +99,7 @@ runs:
     - name: Process all inputs
       if: contains(inputs.is_scheduled_run, 'manually')
       id: all-inputs
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       with:
         script: |
           const allInputs = JSON.parse('${{ inputs.all_inputs_json }}');
