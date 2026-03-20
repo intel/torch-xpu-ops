@@ -12,7 +12,6 @@
 #include <ATen/native/AdaptivePooling.h>
 
 #include <ATen/native/xpu/sycl/AdaptiveMaxPooling2dKernels.h>
-#include <comm/RegisterUtils.h>
 
 #include <ATen/ops/adaptive_max_pool2d_backward_native.h>
 #include <ATen/ops/adaptive_max_pool2d_native.h>
