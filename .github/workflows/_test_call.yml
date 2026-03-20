@@ -129,7 +129,7 @@ jobs:
       dt: ${{ needs.parse-test-inputs.outputs.dt }}
       mode: ${{ needs.parse-test-inputs.outputs.mode }}
       scenario: ${{ needs.parse-test-inputs.outputs.scenario }}
-      model_only: ${{ needs.parse-test-inputs.outputs.model_only }}
+      model: ${{ needs.parse-test-inputs.outputs.model_only }}
 
   linux-microbench-tests:
     name: Linux Microbenchmark Tests
