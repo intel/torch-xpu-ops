@@ -564,9 +564,6 @@ def _int_mm_errors(self, device):
     def genf_int(x, y):
         return torch.empty((x, y), dtype=torch.int8, device=device)
 
-    def _gen_pair(m, k, n):
-        return genf_int(m, k), genf_int(k, n)
-
     # XPU does not enforce CUDA-specific size constraints (size(0)>16,
     # size(1) multiple of 8, mat2.size(1) multiple of 8), so those checks
     # are omitted here.
