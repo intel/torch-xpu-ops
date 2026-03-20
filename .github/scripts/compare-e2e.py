@@ -4,12 +4,13 @@ Comparison tool for PyTorch inductor test results (target vs baseline).
 """
 
 import os
+import sys
 import argparse
 import pandas as pd
 import numpy as np
 from glob import glob
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional, Any
+from typing import list, dict, tuple, Any
 
 # ----------------------------------------------------------------------
 # Constants – easily adjustable
@@ -62,14 +63,14 @@ COLUMN_RENAME_MAP = {
 # ----------------------------------------------------------------------
 # File discovery and parsing
 # ----------------------------------------------------------------------
-def find_result_files(root_dir: str) -> List[str]:
+def find_result_files(root_dir: str) -> list[str]:
     """Recursively find all *_performance.csv and *_accuracy.csv files."""
     perf_files = glob(os.path.join(root_dir, "**", "*_performance.csv"), recursive=True)
     acc_files = glob(os.path.join(root_dir, "**", "*_accuracy.csv"), recursive=True)
     return perf_files + acc_files
 
 
-def _parse_filename_components(filename: str) -> Tuple[str, str, str, str]:
+def _parse_filename_components(filename: str) -> tuple[str, str, str, str]:
     """
     Extract suite, data_type, mode, result_type from a filename like
     inductor_<suite>_<data_type>_<mode>_xpu_<result_type>.csv
@@ -119,7 +120,7 @@ def _parse_filename_components(filename: str) -> Tuple[str, str, str, str]:
     return suite, data_type, mode, result_type
 
 
-def _merge_accuracy_records(records: List[Dict]) -> Dict:
+def _merge_accuracy_records(records: list[dict]) -> dict:
     """
     Merge multiple accuracy records for the same key.
     Prefer 'pass' over 'fail', otherwise take the first.
@@ -133,7 +134,7 @@ def _merge_accuracy_records(records: List[Dict]) -> Dict:
     return records[0]
 
 
-def _merge_performance_records(records: List[Dict]) -> Optional[Dict]:
+def _merge_performance_records(records: list[dict]) -> dict | None:
     """
     Merge multiple performance records for the same key.
     Prefer records with positive inductor/eager values, then choose the one with
@@ -150,12 +151,12 @@ def _merge_performance_records(records: List[Dict]) -> Optional[Dict]:
     return None
 
 
-def load_results(file_list: List[str], result_type_filter: str) -> List[Dict]:
+def load_results(file_list: list[str], result_type_filter: str) -> list[dict]:
     """
     Load all CSV files of a given result type, parse them, and merge duplicates.
     Returns a list of records (each a dict).
     """
-    raw_by_key: Dict[Tuple, List[Dict]] = {}
+    raw_by_key: dict[tuple, list[dict]] = {}
 
     for fpath in file_list:
         try:
@@ -227,7 +228,7 @@ def load_results(file_list: List[str], result_type_filter: str) -> List[Dict]:
 # ----------------------------------------------------------------------
 # Merging target and baseline
 # ----------------------------------------------------------------------
-def merge_accuracy(target_records: List[Dict], baseline_records: List[Dict]) -> pd.DataFrame:
+def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> pd.DataFrame:
     """Merge target and baseline accuracy DataFrames and compute comparison column."""
     target_df = pd.DataFrame(target_records)
     baseline_df = pd.DataFrame(baseline_records)
@@ -273,7 +274,7 @@ def merge_accuracy(target_records: List[Dict], baseline_records: List[Dict]) -> 
     return merged[cols].sort_values(by=["suite", "data_type", "mode", "model"])
 
 
-def merge_performance(target_records: List[Dict], baseline_records: List[Dict],
+def merge_performance(target_records: list[dict], baseline_records: list[dict],
                       threshold: float) -> pd.DataFrame:
     """Merge target and baseline performance DataFrames, compute ratios and comparison."""
     target_df = pd.DataFrame(target_records)
@@ -431,7 +432,7 @@ def _performance_metrics(group: pd.DataFrame) -> pd.Series:
 
 
 def _compute_group_summary(acc_merged: pd.DataFrame, perf_merged: pd.DataFrame,
-                           group_cols: List[str], level_name: str) -> pd.DataFrame:
+                           group_cols: list[str], level_name: str) -> pd.DataFrame:
     """Compute summary for one grouping level (Overall, By Suite, etc.)."""
     summaries = []
     if not acc_merged.empty:
@@ -534,7 +535,7 @@ def _fmt_ratio(val: Any, threshold: float) -> str:
                 return f"{val} 🔴"
             if num > 1 + threshold:
                 return f"{val} 🟢"
-        except:
+        except (TypeError, ValueError):
             pass
     return str(val) if pd.notna(val) else ""
 
@@ -542,7 +543,7 @@ def _fmt_ratio(val: Any, threshold: float) -> str:
 def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, filename: str):
     """Write a Markdown file with the Overall Summary table (split new_fail/drop and new_pass/improve)."""
     with open(filename, 'w', encoding='utf-8') as f:
-        f.write(f"\n\n# Dynamo Benchmark Test Results - Summary\n\n")
+        f.write("\n\n# Dynamo Benchmark Test Results - Summary\n\n")
 
         overall = combined_summary[combined_summary['Category'] == 'Overall']
         if overall.empty:
@@ -574,7 +575,7 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
         f.write("\n")
 
 
-def _write_html_table(rows: pd.DataFrame, columns: List[str], condition_col: str,
+def _write_html_table(rows: pd.DataFrame, columns: list[str], condition_col: str,
                       fail_color: str, pass_color: str, file_handle):
     """Write an HTML table with row background colors based on condition_col."""
     file_handle.write('<table>\n')
@@ -607,7 +608,7 @@ def write_details_markdown(details_df: pd.DataFrame, threshold: float, filename:
         return
 
     with open(filename, 'w', encoding='utf-8') as f:
-        f.write(f"\n\n# Dynamo Benchmark Test Results - Details\n\n")
+        f.write("\n\n# Dynamo Benchmark Test Results - Details\n\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
         # ----- Overview by Suite -----
@@ -731,7 +732,7 @@ def write_details_markdown(details_df: pd.DataFrame, threshold: float, filename:
                 _write_html_table(acc_fail, available, 'cmp_acc', "#f8d7da", "#d4edda", f)
 
             if not perf_regress.empty:
-                f.write("### ⏱️ Performance Regressions (ratio < {:.0f}%)\n\n".format((1 - threshold) * 100))
+                f.write(f"### ⏱️ Performance Regressions (ratio < {((1 - threshold) * 100):.0f}%)\n\n")
                 cols = ['suite', 'dtype', 'mode', 'model', 'ind_tgt', 'eag_tgt', 'ind_bsl', 'eag_bsl', 'ind_ratio', 'eag_ratio', 'cmp_perf']
                 available = [c for c in cols if c in perf_regress.columns]
                 _write_html_table(perf_regress, available, 'cmp_perf', "#f8d7da", "#d4edda", f)
@@ -757,7 +758,7 @@ def write_details_markdown(details_df: pd.DataFrame, threshold: float, filename:
                 _write_html_table(acc_pass, available, 'cmp_acc', "#f8d7da", "#d4edda", f)
 
             if not perf_impr.empty:
-                f.write("### ⏱️ Performance Improvements (ratio > {:.0f}%)\n\n".format((1 + threshold) * 100))
+                f.write(f"### ⏱️ Performance Improvements (ratio > {(1 + threshold) * 100:.0f}%)\n\n")
                 cols = ['suite', 'dtype', 'mode', 'model', 'ind_tgt', 'eag_tgt', 'ind_bsl', 'eag_bsl', 'ind_ratio', 'eag_ratio', 'cmp_perf']
                 available = [c for c in cols if c in perf_impr.columns]
                 _write_html_table(perf_impr, available, 'cmp_perf', "#f8d7da", "#d4edda", f)
@@ -856,4 +857,4 @@ Examples:
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

@@ -116,9 +116,7 @@ jobs:
       test_role: 'target'
       component: ${{ inputs.component }}
       component_version: ${{ inputs.target_version }}
-    secrets:
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+    secrets: inherit
 
   # Run tests on baseline version
   run-baseline-tests:
@@ -157,9 +155,7 @@ jobs:
       test_role: 'baseline'
       component: ${{ inputs.component }}
       component_version: ${{ inputs.baseline_version }}
-    secrets:
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+    secrets: inherit
 
   # Job 4: Compare results and generate report
   compare-results:

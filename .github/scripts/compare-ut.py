@@ -26,7 +26,7 @@ from datetime import datetime
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, dict, list, set, tuple
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -36,7 +36,6 @@ import pandas as pd
 try:
     from github import Github, Auth
     from github.Issue import Issue
-    from github.Repository import Repository
     GITHUB_AVAILABLE = True
 except ImportError:
     GITHUB_AVAILABLE = False
@@ -173,7 +172,7 @@ class TestCase:
     # Metadata
     message: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for DataFrame creation."""
         return {
             "uniqname": self.uniqname,
@@ -216,7 +215,7 @@ class Comparison:
     issue_labels: str = ""  # |-separated labels
     issue_statuses: str = ""  # |-separated statuses (open/closed)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return dataclasses.asdict(self)
 
@@ -231,15 +230,15 @@ class GitHubIssueTracker:
     CASES_PATTERN = re.compile(r'Cases:\s*\n(.*?)(?:\n\n|\Z)', re.DOTALL | re.IGNORECASE)
     TEST_CASE_SPLIT_PATTERN = re.compile(r'[\n]+')
 
-    def __init__(self, repo: str = None, token: str = None, cache_path: str = None, pattern_matcher: Optional[FilePatternMatcher] = None):
+    def __init__(self, repo: str = None, token: str = None, cache_path: str = None, pattern_matcher: FilePatternMatcher | None = None):
         self.repo_name = repo or os.environ.get('GITHUB_REPOSITORY', '')
         # Allow token from GH_TOKEN or GITHUB_TOKEN
         self.token = token or os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN', '')
         self.cache_path = Path(cache_path) if cache_path else None
         self.github = None
         self.repository = None
-        self.issues_cache: Dict[int, Dict[str, Any]] = {}
-        self.test_to_issues: Dict[str, List[Dict[str, Any]]] = {}
+        self.issues_cache: dict[int, dict[str, Any]] = {}
+        self.test_to_issues: dict[str, list[dict[str, Any]]] = {}
         self.pattern_matcher = pattern_matcher or FilePatternMatcher()
 
         if not GITHUB_AVAILABLE:
@@ -252,12 +251,16 @@ class GitHubIssueTracker:
             return False
 
         try:
-            with open(self.cache_path, 'r', encoding='utf-8') as f:
+            with open(self.cache_path, encoding='utf-8') as f:
                 data = json.load(f)
 
             self.issues_cache = {int(k): v for k, v in data.get('issues_cache', {}).items()}
             self.test_to_issues = data.get('test_to_issues', {})
-            logger.info(f"Loaded {len(self.issues_cache)} issues from cache: {self.cache_path}")
+            logger.info(
+                "Loaded %d issues from cache: %s",
+                len(self.issues_cache),
+                self.cache_path
+            )
             return True
         except Exception as e:
             logger.warning(f"Failed to load cache from {self.cache_path}: {e}")
@@ -282,13 +285,13 @@ class GitHubIssueTracker:
             logger.warning(f"Failed to save cache to {self.cache_path}: {e}")
             return False
 
-    def fetch_issues(self, state: str = 'all', labels: List[str] = None, force_refresh: bool = False) -> bool:
+    def fetch_issues(self, state: str = 'all', labels: list[str] = None, force_refresh: bool = False) -> bool:
         """
         Fetch issues from GitHub repository, using cache if available and not forced refresh.
 
         Args:
             state: 'open', 'closed', or 'all'
-            labels: List of labels to filter by
+            labels: list of labels to filter by
             force_refresh: If True, ignore cache and fetch fresh data
 
         Returns:
@@ -392,7 +395,7 @@ class GitHubIssueTracker:
                 'labels': issue_labels
             })
 
-    def _extract_test_cases(self, body: str) -> List[str]:
+    def _extract_test_cases(self, body: str) -> list[str]:
         if not body:
             return []
         match = self.CASES_PATTERN.search(body)
@@ -403,7 +406,7 @@ class GitHubIssueTracker:
         logger.debug(f"{cases}")
         return [case.strip() for case in cases if case.strip()]
 
-    def find_issues_for_test(self, test_uniqname: str) -> List[Dict[str, Any]]:
+    def find_issues_for_test(self, test_uniqname: str) -> list[dict[str, Any]]:
         return self.test_to_issues.get(test_uniqname, [])
 
     def enhance_comparison(self, merged_df: pd.DataFrame) -> pd.DataFrame:
@@ -433,15 +436,15 @@ class GitHubIssueTracker:
 
         return enhanced_df
 
-    def get_issue_summary_stats(self) -> Dict[str, Any]:
+    def get_issue_summary_stats(self) -> dict[str, Any]:
         """Compute summary statistics about issues and their association with test cases."""
         stats = {
             'total_issues': len(self.issues_cache),
             'open_issues': 0,
             'closed_issues': 0,
-            'issues_with_test_cases': len(set(
+            'issues_with_test_cases': len({
                 issue['id'] for mappings in self.test_to_issues.values() for issue in mappings
-            )),
+            }),
             'unique_test_cases': len(self.test_to_issues),
             'labels': {},
         }
@@ -486,7 +489,7 @@ class FilePatternMatcher:
     def __init__(self):
         self._compiled_test_type_patterns = self._compile_patterns()
 
-    def _compile_patterns(self) -> Dict[str, List[re.Pattern]]:
+    def _compile_patterns(self) -> dict[str, list[re.Pattern]]:
         """Compile regex patterns."""
         return {
             test_type: [re.compile(pattern) for pattern in patterns]
@@ -583,9 +586,9 @@ class FilePatternMatcher:
 class TestDetailsExtractor:
     """Extracts test details from JUnit XML files."""
 
-    def __init__(self, pattern_matcher: Optional[FilePatternMatcher] = None):
+    def __init__(self, pattern_matcher: FilePatternMatcher | None = None):
         self.pattern_matcher = pattern_matcher or FilePatternMatcher()
-        self.test_cases: List[TestCase] = []
+        self.test_cases: list[TestCase] = []
         self.stats = {
             "files_processed": 0,
             "test_cases_found": 0,
@@ -593,7 +596,7 @@ class TestDetailsExtractor:
             "failed_files": 0,
         }
 
-    def _determine_test_status(self, testcase: ET.Element) -> Tuple[TestStatus, str]:
+    def _determine_test_status(self, testcase: ET.Element) -> tuple[TestStatus, str]:
         """Determine test status and extract message."""
         # Check for failure
         failure = testcase.find("failure")
@@ -619,7 +622,7 @@ class TestDetailsExtractor:
 
         return TestStatus.PASSED, ""
 
-    def _parse_testcase(self, testcase: ET.Element, xml_file: Path) -> Optional[TestCase]:
+    def _parse_testcase(self, testcase: ET.Element, xml_file: Path) -> TestCase | None:
         """Parse a single testcase element."""
         try:
             classname = testcase.get("classname", "")
@@ -670,7 +673,7 @@ class TestDetailsExtractor:
             logger.debug(f"Error parsing test case in {xml_file}: {e}")
             return None
 
-    def process_xml(self, xml_file: Path) -> List[TestCase]:
+    def process_xml(self, xml_file: Path) -> list[TestCase]:
         """Process a single XML file and return test cases."""
         try:
             test_cases = []
@@ -690,9 +693,9 @@ class TestDetailsExtractor:
             self.stats["failed_files"] += 1
             return []
 
-    def find_xml_files(self, input_paths: List[str]) -> List[Path]:
+    def find_xml_files(self, input_paths: list[str]) -> list[Path]:
         """Find all XML files from input specifications."""
-        xml_files: Set[Path] = set()
+        xml_files: set[Path] = set()
 
         for input_path in input_paths:
             path = Path(input_path).expanduser().resolve()
@@ -709,7 +712,7 @@ class TestDetailsExtractor:
 
         return sorted(xml_files)
 
-    def process(self, input_paths: List[str], max_workers: int = None) -> bool:
+    def process(self, input_paths: list[str], max_workers: int = None) -> bool:
         """Process all XML files in parallel."""
         if max_workers is None:
             max_workers = int(max(1, os.cpu_count() / 2))
@@ -762,13 +765,13 @@ class TestDetailsExtractor:
 class ResultAnalyzer:
     """Analyze and compare test results between BASELINE and TARGET."""
 
-    def __init__(self, test_cases: List[TestCase]):
+    def __init__(self, test_cases: list[TestCase]):
         self.test_cases = test_cases
         self.df = self._create_dataframe()
-        self.issue_tracker: Optional[GitHubIssueTracker] = None
+        self.issue_tracker: GitHubIssueTracker | None = None
 
     def set_issue_tracker(self, issue_tracker: GitHubIssueTracker):
-        """Set GitHub issue tracker for enhanced analysis."""
+        """set GitHub issue tracker for enhanced analysis."""
         self.issue_tracker = issue_tracker
 
     def _create_dataframe(self) -> pd.DataFrame:
@@ -800,7 +803,7 @@ class ResultAnalyzer:
 
         return result.drop(columns=["_priority"]).reset_index(drop=True)
 
-    def split_by_device(self, df: Optional[pd.DataFrame] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def split_by_device(self, df: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Split DataFrame by device (BASELINE/TARGET)."""
         if df is None:
             df = self.df
@@ -850,7 +853,7 @@ class ResultAnalyzer:
 
         return merged_df
 
-    def find_target_changes(self, merged_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def find_target_changes(self, merged_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Find tests where status changed between BASELINE and TARGET.
         Returns two DataFrames: new_failures and new_passes.
@@ -1327,7 +1330,7 @@ class ResultAnalyzer:
 class ReportExporter:
     """Export comparison results to various formats."""
 
-    def __init__(self, markdown_output: Optional[Path] = None):
+    def __init__(self, markdown_output: Path | None = None):
         self.markdown_output = markdown_output
 
     def export_excel(self, analyzer: ResultAnalyzer, output_path: Path) -> None:
@@ -1459,7 +1462,7 @@ class ReportExporter:
         logger.info(f"Exported summary markdown to {summary_path}")
         logger.info(f"Exported details markdown to {details_path}")
 
-    def _split_markdown_summary(self, content: str) -> Tuple[str, str]:
+    def _split_markdown_summary(self, content: str) -> tuple[str, str]:
         """Split markdown content into summary (up to next ## heading after Overall Summary) and details."""
         lines = content.splitlines()
         summary_end_idx = len(lines)
@@ -1611,7 +1614,7 @@ def main() -> int:
     try:
         start_time = time.time()
 
-        # Set default workers if not specified
+        # set default workers if not specified
         if args.workers is None:
             args.workers = int(max(1, os.cpu_count() / 2))
             logger.info(f"Using {args.workers} workers (CPU count / 2)")

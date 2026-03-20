@@ -130,14 +130,6 @@ on:
         default: 'weekly,nightly'
         description: 'Comma-separated list of suffixes that identify a baseline run'
 
-    secrets:
-      HUGGING_FACE_HUB_TOKEN:
-        required: false
-        description: 'Hugging Face API token for model downloads'
-      DOCKER_HUB_TOKEN:
-        required: false
-        description: 'Docker Hub token for image pulls'
-
 permissions: read-all
 
 env:

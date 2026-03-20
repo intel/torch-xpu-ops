@@ -17,7 +17,7 @@ Usage:
 import argparse
 import re
 from pathlib import Path
-from typing import Dict, List, Any, Tuple, Optional
+from typing import dict, list, Any, tuple
 
 
 # ==============================================================================
@@ -78,7 +78,7 @@ def strip_command_lines(raw_log: str) -> str:
 # CollectEnv Parser
 # ==============================================================================
 
-def parse_collect_env_output(cleaned_text: str) -> Dict[str, Any]:
+def parse_collect_env_output(cleaned_text: str) -> dict[str, Any]:
     """
     Extract structured information from the collect_env.py output.
     Returns a dictionary with keys like 'PyTorch version', 'OS', etc.,
@@ -171,7 +171,7 @@ def parse_collect_env_output(cleaned_text: str) -> Dict[str, Any]:
 # Printenv Parser
 # ==============================================================================
 
-def parse_printenv_output(cleaned_text: str) -> Dict[str, str]:
+def parse_printenv_output(cleaned_text: str) -> dict[str, str]:
     """
     Extract environment variables from lines containing '='.
     Returns a dictionary of variable name → value.
@@ -190,7 +190,7 @@ def parse_printenv_output(cleaned_text: str) -> Dict[str, str]:
 # Specific Extractors
 # ==============================================================================
 
-def get_pip_version(pip_packages: List[tuple], package_name: str) -> str:
+def get_pip_version(pip_packages: list[tuple], package_name: str) -> str:
     """Return version of a pip package, or 'N/A' if not found."""
     for pkg, ver in pip_packages:
         if pkg == package_name:
@@ -207,7 +207,7 @@ def clean_version_string(version_str: str) -> str:
     return cleaned.strip()
 
 
-def extract_gpu_device_info(gpu_detected_text: str) -> Tuple[str, str]:
+def extract_gpu_device_info(gpu_detected_text: str) -> tuple[str, str]:
     """
     From the 'Intel GPU models detected' block, extract the name and total memory
     of the first GPU (index 0).
@@ -292,8 +292,8 @@ def extract_disk_info(cleaned_text: str) -> str:
 # ==============================================================================
 
 def generate_single_summary(
-    collect_data: Dict[str, Any],
-    env_vars: Dict[str, str],
+    collect_data: dict[str, Any],
+    env_vars: dict[str, str],
     raw_log: str
 ) -> str:
     """Create a Markdown summary for a single environment."""
@@ -404,7 +404,7 @@ def _format_value(val: Any) -> str:
 
 
 def _add_comparison_row(
-    lines: List[str],
+    lines: list[str],
     description: str,
     target_val: Any,      # Note: order swapped: target first, baseline second
     baseline_val: Any,
@@ -419,10 +419,10 @@ def _add_comparison_row(
 
 
 def generate_comparison_summary(
-    baseline_collect: Dict[str, Any],
-    target_collect: Dict[str, Any],
-    baseline_env: Dict[str, str],
-    target_env: Dict[str, str],
+    baseline_collect: dict[str, Any],
+    target_collect: dict[str, Any],
+    baseline_env: dict[str, str],
+    target_env: dict[str, str],
     raw_baseline: str,
     raw_target: str
 ) -> str:

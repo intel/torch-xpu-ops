@@ -12,7 +12,7 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import dict, list, tuple
 import logging
 
 logging.basicConfig(
@@ -92,13 +92,13 @@ def run_cmd(cmd, desc=None, env=None, cwd=None, check=True, capture=False, shell
             sys.exit(e.returncode)
 
 
-def get_env_version(pkg: str) -> Optional[str]:
+def get_env_version(pkg: str) -> str | None:
     """Return version from environment variable PKG_VERSION."""
     env_var = f"{pkg.upper().replace('-', '_')}_VERSION"
     return os.environ.get(env_var)
 
 
-def load_requirements(req_path: Path) -> Dict[str, Optional[str]]:
+def load_requirements(req_path: Path) -> dict[str, str | None]:
     """
     Parse a requirements.txt file and return a dict of {package: version}.
     Lines with extras (e.g., package[extra]==version) are simplified to the base package name.
@@ -136,7 +136,7 @@ def load_requirements(req_path: Path) -> Dict[str, Optional[str]]:
     return versions
 
 
-def get_package_spec(pkg: str, versions: Dict[str, Optional[str]]) -> str:
+def get_package_spec(pkg: str, versions: dict[str, str | None]) -> str:
     """Return package==version if version is known, else just package name."""
     env_ver = get_env_version(pkg)
     if env_ver:
@@ -238,7 +238,7 @@ class Environment:
     workspace: Path
     python_version: str
     pytorch_spec: str
-    versions: Dict[str, Optional[str]] = field(default_factory=lambda: DEFAULT_VERSIONS.copy())
+    versions: dict[str, str | None] = field(default_factory=lambda: DEFAULT_VERSIONS.copy())
     venv_path: Path = field(init=False)
     pytorch_dir: Path = field(init=False)
     benchmark_dir: Path = field(init=False)
@@ -453,7 +453,7 @@ class Environment:
             "Installing from requirements.txt",
         )
 
-    def install_benchmark_repo(self, torchbench_models: Optional[List[str]] = None, torchbench_commit: Optional[str] = None):
+    def install_benchmark_repo(self, torchbench_models: list[str] | None = None, torchbench_commit: str | None = None):
         """
         Clone benchmark repo and optionally install only specified TorchBench models.
         If torchbench_models is None, the entire suite is installed.
@@ -523,7 +523,7 @@ class BenchmarkRunner:
         # After all runs, generate summary CSV
         self._generate_summary()
 
-    def _expand_combinations(self) -> List[BenchmarkSpec]:
+    def _expand_combinations(self) -> list[BenchmarkSpec]:
         suites = self._expand_arg(self.args.suite, ALL_SUITES)
         dtypes = self._expand_arg(self.args.dt, ALL_DTYPES)
         modes = self._expand_arg(self.args.mode, ALL_MODES)
@@ -540,7 +540,7 @@ class BenchmarkRunner:
     def _expand_arg(value, all_list):
         return all_list if value == "all" else [value]
 
-    def _parse_benchmark_file(self, path: Path) -> List[BenchmarkSpec]:
+    def _parse_benchmark_file(self, path: Path) -> list[BenchmarkSpec]:
         specs = []
         for suite, dtype, mode, model, result in parse_benchmark_entries(path):
             # Determine scenario from result: if it's a number (possibly negative, decimal) -> performance
@@ -606,7 +606,7 @@ class BenchmarkRunner:
             }
             writer.writerow(row)
 
-    def _build_command(self, spec: BenchmarkSpec, log_dir: Path) -> Tuple[str, Path]:
+    def _build_command(self, spec: BenchmarkSpec, log_dir: Path) -> tuple[str, Path]:
         """Build shell command string and return output CSV path."""
         # Determine dtype and extra flags
         real_dt = spec.dtype
@@ -806,7 +806,7 @@ class BenchmarkRunner:
         logger.info(f"Summary written to {summary_path}")
 
 
-def check_torchbench_needed(args) -> Tuple[bool, Optional[List[str]]]:
+def check_torchbench_needed(args) -> tuple[bool, list[str] | None]:
     """
     Determine whether TorchBench models are needed and, if so,
     return (True, list_of_models) where list_of_models may be None (install all)

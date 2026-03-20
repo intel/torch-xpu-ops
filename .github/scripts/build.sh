@@ -210,6 +210,7 @@ clone_repo() {
     local target_dir="$3"
     local name="$4"
     local clone_args=("--recursive")
+    local actual_commit
 
     if [[ -n "${GIT_DEPTH:-}" && "$GIT_DEPTH" -gt 0 ]]; then
         clone_args+=("--depth" "$GIT_DEPTH")
@@ -240,7 +241,7 @@ clone_repo() {
     fi
 
     # Record actual commit hash
-    local actual_commit=$(git rev-parse HEAD)
+    actual_commit=$(git rev-parse HEAD)
     log_info "$name checked out at commit: $actual_commit"
     echo "$actual_commit" > "$WORKSPACE/${name}.commit"
 
@@ -424,6 +425,7 @@ build_pytorch() {
 # -------------------- Post-Build Processing --------------------
 post_build() {
     log_info "Post-build processing..."
+    local working_wheel
 
     local pytorch_dir="$WORKSPACE/pytorch"
     cd "$pytorch_dir"
@@ -450,8 +452,8 @@ post_build() {
             # We'll assume it modifies in place and then we use that file.
             if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$wheel_file" "$tmp_dir"; then
                 # If rpath.sh succeeded, install from the processed wheel
-                local working_wheel=($tmp_dir/torch-*.whl)
-                processed_wheel="$working_wheel"
+                working_wheel=($tmp_dir/torch-*.whl)
+                processed_wheel="${working_wheel[@]}"
             else
                 log_warning "rpath.sh failed, using original wheel"
                 processed_wheel="$wheel_file"

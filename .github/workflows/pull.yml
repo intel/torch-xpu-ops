@@ -88,9 +88,7 @@ jobs:
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
       is_scheduled_run: false
-    secrets:
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+    secrets: inherit
 
   windows-pr-tests:
     name: Windows PR Tests
@@ -118,6 +116,4 @@ jobs:
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
       is_scheduled_run: false
-    secrets:
-      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
-      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+    secrets: inherit

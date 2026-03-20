@@ -21,11 +21,12 @@ mkdir -p "$XML_OUTPUT_DIR"
 run_pytest() {
     local test_file="$1"
     shift
-    local extra_args="$@"
-    local test_name=$(basename "$test_file" .py)
-    local xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
+    local extra_args=("$@")
+    local test_name xml_file
+    test_name=$(basename "$test_file" .py)
+    xml_file="${XML_OUTPUT_DIR}/${XML_PREFIX}${test_name}_$(date +%s).xml"
     echo "Running pytest $test_file -> $xml_file"
-    pytest "$test_file" --junit-xml="$xml_file" $extra_args
+    pytest "$test_file" --junit-xml="$xml_file" ${extra_args[@]}
 }
 
 # -------------------- Test Groups --------------------
