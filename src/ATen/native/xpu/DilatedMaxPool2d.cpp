@@ -12,7 +12,6 @@
 #include <ATen/native/Pool.h>
 #include <ATen/native/utils/ParamUtils.h>
 #include <ATen/native/xpu/sycl/DilatedMaxPool2d.h>
-#include <comm/RegisterUtils.h>
 
 #include <ATen/ops/max.h>
 #include <ATen/ops/max_pool2d_with_indices_backward_native.h>
