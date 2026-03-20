@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -297,7 +297,8 @@ struct ReduceConfig {
   sycl::range<2> global_sz() const {
     return {
         (size_t)(groups_per_output * group_height),
-        (size_t)(group_width * div_up(num_outputs / output_vec_size, step_output))};
+        (size_t)(group_width *
+                 div_up(num_outputs / output_vec_size, step_output))};
   }
   sycl::range<2> n_groups() const {
     return {
@@ -609,8 +610,8 @@ struct ReduceOp {
       size_t numerator = sizeof(arg_t);
       size_t denominator = sizeof(out_scalar_t);
       reduce_fraction(numerator, denominator);
-      acc =
-          (arg_vec_t*)((char*)acc_buf + (base_offsets[0] * numerator / denominator));
+      acc = (arg_vec_t*)((char*)acc_buf +
+                         (base_offsets[0] * numerator / denominator));
     }
 
     if (config.should_global_reduce()) {

@@ -130,6 +130,14 @@ runs:
           cd benchmark
           git checkout ${TORCHBENCH_COMMIT_ID}
           sed -i 's/^ *pynvml.*//' requirements.txt
+          # Work around legacy deps (e.g. visdom) that still import
+          # pkg_resources during build on newer Python toolchains.
+          CONSTRAINT_FILE=/tmp/pip-constraints.txt
+          echo 'setuptools<81' > ${CONSTRAINT_FILE}
+          export PIP_CONSTRAINT=${CONSTRAINT_FILE}
+          export PIP_NO_BUILD_ISOLATION=1
+          pip install -U "pip" "setuptools<81" "wheel"
+          # Follow with standard installation path
           pip install -r requirements.txt
           if [ "${{ github.event_name }}" == "pull_request" ];then
             while read line; do

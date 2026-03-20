@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -223,42 +223,93 @@ struct UpsampleTrilinear3dBackwardKernelFunctor {
 
           atomicAdd(
               (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1, h1, w1)),
+                  scalar_t>)(idata_ptr_ +
+                             idx_3d(nc, depth1, height1, width1, t1, h1, w1)),
               static_cast<scalar_t>(t0lambda * h0lambda * w0lambda * d2val));
 
           atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1, h1, w1 + w1p)),
+              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
+                                          idx_3d(
+                                              nc,
+                                              depth1,
+                                              height1,
+                                              width1,
+                                              t1,
+                                              h1,
+                                              w1 + w1p)),
 
               static_cast<scalar_t>(t0lambda * h0lambda * w1lambda * d2val));
           atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1, h1 + h1p, w1)),
+              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
+                                          idx_3d(
+                                              nc,
+                                              depth1,
+                                              height1,
+                                              width1,
+                                              t1,
+                                              h1 + h1p,
+                                              w1)),
 
               static_cast<scalar_t>(t0lambda * h1lambda * w0lambda * d2val));
           atomicAdd(
               (sycl_global_ptr<scalar_t>)(sycl_global_ptr<
-                                          scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1, h1 + h1p, w1 + w1p)),
+                                          scalar_t>)(idata_ptr_ +
+                                                     idx_3d(
+                                                         nc,
+                                                         depth1,
+                                                         height1,
+                                                         width1,
+                                                         t1,
+                                                         h1 + h1p,
+                                                         w1 + w1p)),
 
               static_cast<scalar_t>(t0lambda * h1lambda * w1lambda * d2val));
           atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1 + t1p, h1, w1)),
+              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
+                                          idx_3d(
+                                              nc,
+                                              depth1,
+                                              height1,
+                                              width1,
+                                              t1 + t1p,
+                                              h1,
+                                              w1)),
 
               static_cast<scalar_t>(t1lambda * h0lambda * w0lambda * d2val));
           atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1 + t1p, h1, w1 + w1p)),
+              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
+                                          idx_3d(
+                                              nc,
+                                              depth1,
+                                              height1,
+                                              width1,
+                                              t1 + t1p,
+                                              h1,
+                                              w1 + w1p)),
 
               static_cast<scalar_t>(t1lambda * h0lambda * w1lambda * d2val));
           atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1 + t1p, h1 + h1p, w1)),
+              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
+                                          idx_3d(
+                                              nc,
+                                              depth1,
+                                              height1,
+                                              width1,
+                                              t1 + t1p,
+                                              h1 + h1p,
+                                              w1)),
 
               static_cast<scalar_t>(t1lambda * h1lambda * w0lambda * d2val));
           atomicAdd(
-              (sycl_global_ptr<
-                  scalar_t>)(idata_ptr_ + idx_3d(nc, depth1, height1, width1, t1 + t1p, h1 + h1p, w1 + w1p)),
+              (sycl_global_ptr<scalar_t>)(idata_ptr_ +
+                                          idx_3d(
+                                              nc,
+                                              depth1,
+                                              height1,
+                                              width1,
+                                              t1 + t1p,
+                                              h1 + h1p,
+                                              w1 + w1p)),
 
               static_cast<scalar_t>(t1lambda * h1lambda * w1lambda * d2val));
         }

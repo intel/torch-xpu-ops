@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1098,7 +1098,8 @@ OutputIt count_by_segment(
   sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
 
   // 2. get target positions with inclusive_scan
-  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
+  constexpr index_t ZERO_BASED_INDEX_OFFSET = static_cast<index_t>(-1);
+  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, ZERO_BASED_INDEX_OFFSET);
 
   // 3. calculate counts for each unique point
   Tensor range = at::empty({N + 1}, options);
