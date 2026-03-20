@@ -525,6 +525,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   std::mutex kvs_mutex_;
 };
 
+TORCH_API void reset_xccl_trace();
+
 // Dumps the comm traces and additional information about the ProcessGroup.
 TORCH_API std::string dump_xccl_trace(
     bool includeCollectives,

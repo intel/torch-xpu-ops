@@ -120,6 +120,10 @@ std::string dump_xccl_trace(
       xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
 }
 
+void reset_xccl_trace() {
+  FlightRecorderXCCL::get()->reset_all();
+}
+
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
