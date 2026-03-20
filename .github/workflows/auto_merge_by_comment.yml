@@ -16,7 +16,11 @@ jobs:
     if: >-
       github.event.issue.pull_request
       && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
-      && (startsWith(github.event.comment.body, '/merge -f') || startsWith(github.event.comment.body, '/merge'))
+      && (
+        startsWith(github.event.comment.body, '/merge-check')
+        || startsWith(github.event.comment.body, '/merge -f')
+        || startsWith(github.event.comment.body, '/merge')
+      )
     steps:
       - name: Get PR Info
         uses: actions/github-script@v7
@@ -34,6 +38,7 @@ jobs:
             core.setOutput('mergeable_state', pr.data.mergeable_state);
 
       - name: Check Reviews
+        if: ${{ !startsWith(github.event.comment.body, '/merge-check') }}
         uses: actions/github-script@v7
         id: reviews
         with:
@@ -71,6 +76,7 @@ jobs:
           script: |
             const prNumber = ${{ steps.prinfo.outputs.pr_number }};
             const sha = '${{ steps.prinfo.outputs.head_sha }}';
+            const dryRun = '${{ startsWith(github.event.comment.body, '/merge-check') }}' === 'true';
 
             // Check both Check Runs and Commit Statuses
             const [checks, statuses] = await Promise.all([
@@ -86,9 +92,29 @@ jobs:
               })
             ]);
 
+            core.info(`Evaluating CI for PR #${prNumber} at ${sha}`);
+            core.info(`Raw check runs (${checks.data.check_runs.length}): ${JSON.stringify(
+              checks.data.check_runs.map(c => ({
+                name: c.name,
+                status: c.status,
+                conclusion: c.conclusion,
+                started_at: c.started_at,
+                completed_at: c.completed_at,
+              }))
+            )}`);
+            core.info(`Combined status: ${statuses.data.state}`);
+            core.info(`Commit statuses (${statuses.data.statuses.length}): ${JSON.stringify(
+              statuses.data.statuses.map(s => ({
+                context: s.context,
+                state: s.state,
+                description: s.description,
+              }))
+            )}`);
+
             const pending = checks.data.check_runs.filter(c => c.status !== 'completed');
             if (pending.length > 0) {
               const names = pending.map(c => c.name).join(', ');
+              core.info(`Pending checks: ${names}`);
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -99,9 +125,34 @@ jobs:
               return;
             }
 
-            const failedChecks = checks.data.check_runs
+            const latestChecksByName = new Map();
+            for (const checkRun of checks.data.check_runs) {
+              const existing = latestChecksByName.get(checkRun.name);
+              if (!existing || checkRun.started_at > existing.started_at) {
+                latestChecksByName.set(checkRun.name, checkRun);
+              }
+            }
+            core.info(`Latest check runs by name (${latestChecksByName.size}): ${JSON.stringify(
+              [...latestChecksByName.values()].map(c => ({
+                name: c.name,
+                status: c.status,
+                conclusion: c.conclusion,
+                started_at: c.started_at,
+                completed_at: c.completed_at,
+              }))
+            )}`);
+            const failedChecks = [...latestChecksByName.values()]
               .filter(c => c.conclusion !== 'skipped' && c.conclusion !== 'success');
             const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
+
+            core.info(`Latest failed checks (${failedChecks.length}): ${JSON.stringify(
+              failedChecks.map(c => ({
+                name: c.name,
+                conclusion: c.conclusion,
+                started_at: c.started_at,
+              }))
+            )}`);
+            core.info(`Combined status failed: ${statusFailed}`);
 
             if (failedChecks.length > 0 || statusFailed) {
               const failedNames = failedChecks.map(c => `${c.name}: ${c.conclusion}`).join(', ');
@@ -113,12 +164,25 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: prNumber,
-                body: `❌ CI checks have not passed.\n${msg}\n\nUse \`/merge -f\` to force merge (maintainers only).`
+                body: dryRun
+                  ? `❌ Dry-run CI check failed.\n${msg}`
+                  : `❌ CI checks have not passed.\n${msg}\n\nUse \`/merge -f\` to force merge (maintainers only).`
               });
               core.setFailed('CI checks failed.');
+              return;
+            }
+
+            if (dryRun) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: '✅ Dry-run CI check passed. Merge was not attempted.'
+              });
             }
 
       - name: Check Merge Conflicts
+        if: ${{ !startsWith(github.event.comment.body, '/merge-check') }}
         uses: actions/github-script@v7
         id: conflict
         with:
@@ -156,6 +220,7 @@ jobs:
             }
 
       - name: Merge PR
+        if: ${{ !startsWith(github.event.comment.body, '/merge-check') }}
         uses: actions/github-script@v7
         env:
           FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
