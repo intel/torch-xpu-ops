@@ -51,6 +51,49 @@ on:
         default: ''
         description: Model. Will only run this one mode if set
 
+  workflow_call:
+    inputs:
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch version, or 'commit/branch', or 'repo@commit/repo@branch'
+      torch_xpu_ops:
+        type: string
+        default: ''
+        description: Torch-xpu-ops by default is the run triggered branch, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+      triton:
+        type: string
+        default: ''
+        description: Triton by default is pinned by pytorch, or 'commit/branch', or 'repo@commit/repo@branch'
+      python:
+        type: string
+        default: '3.10'
+        description: Python version by default is '3.10'
+      ut:
+        type: string
+        default: ''
+        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+      suite:
+        type: string
+        default: ''
+        description: Dynamo benchmarks test suite. 'huggingface,timm_models,torchbench,pt2e'. Delimiter is comma
+      dt:
+        type: string
+        default: ''
+        description: Data precision of the test. 'float32,bfloat16,float16,amp_bf16,amp_fp16,int8'. Delimiter is comma
+      mode:
+        type: string
+        default: ''
+        description: Test mode. 'inference,training'. Delimiter is comma
+      scenario:
+        type: string
+        default: ''
+        description: Test scenario. 'accuracy,performance'. Delimiter is comma
+      model:
+        type: string
+        default: ''
+        description: Model. Will only run this one mode if set
+
 permissions: read-all
 
 run-name: ${{ (contains(github.event.schedule, '13') && 'Nightly') || (contains(github.event.schedule, '16') && 'Weekly') || 'On-demand' }} / ${{ (contains(github.event.schedule, '10') && 'Build-from-source') || (contains(github.event.schedule, '30') && 'Nightly-wheel') || inputs.pytorch }}

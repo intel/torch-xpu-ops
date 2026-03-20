@@ -7,32 +7,60 @@ on:
         required: true
         type: string
         default: 'pvc_rolling'
-        description: Runner label
+        description: 'Runner label for build environment'
       pytorch:
         type: string
         default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        description: 'Pytorch version: main (default), commit/branch, or repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
         default: 'main'
-        description: Torch-xpu-ops main by default, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        description: 'Torch-xpu-ops version: main, commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
       triton:
         required: false
         type: string
         default: ''
-        description: Triton pinned by pytorch by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        description: 'Triton version: empty for pytorch pinned version, commit/branch, or repo@commit/repo@branch'
       python:
         type: string
         default: '3.10'
-        description: Python version
+        description: 'Python version'
+      should_build:
+        type: string
+        default: 'false'
+        description: 'Build from source or use nightly wheel'
+      component:
+        type: string
+        default: ''
+        description: 'Component name for comparison (e.g., oneapi, triton)'
+      component_version:
+        type: string
+        default: ''
+        description: 'Component version for comparison'
+      docker_image_name:
+        type: string
+        default: 'pytorch/manylinux2_28-builder:xpu-main'
+        description: 'Docker image for build environment'
+      test_role:
+        type: string
+        default: 'default'
+        description: 'Role for test comparison (used as subdirectory)'
 
 permissions: read-all
 
 defaults:
   run:
-    shell: bash -xe {0}
+    shell: bash -eo pipefail {0}
+
 env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+  WORKSPACE: ${{ github.workspace }}
+  PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  GCC_VERSION: 13
+  # Centralize important paths
+  BUILD_DIR: ${{ github.workspace }}/${{ inputs.test_role }}
+  PYTORCH_SRC: ${{ github.workspace }}/${{ inputs.test_role }}/pytorch
+  TORCH_XPU_OPS_SRC: ${{ github.workspace }}/torch-xpu-ops
 
 jobs:
   runner:
@@ -43,179 +71,342 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
+      runner_label: ${{ inputs.runner }}
     steps:
       - name: Cleanup workspace
         run: |
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          echo "=== Cleaning Workspace ==="
+          sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
+          echo "Workspace cleaned"
+
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          path: torch-xpu-ops
+
+      - name: Get runner information
         id: runner-info
-        uses: ./.github/actions/get-runner
+        uses: ./torch-xpu-ops/.github/actions/get-runner
 
   build:
-    name: ${{ inputs.pytorch }}
+    name: Build PyTorch XPU
     needs: runner
-    if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
+    if: ${{ !contains(inputs.pytorch, '_wheel') && inputs.should_build == 'true' }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    permissions:
+      checks: write
     container:
-      image: 'pytorch/manylinux2_28-builder:xpu-main'
+      image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      env:
-        PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PIP_CACHE_DIR: /tmp/xpu-tool/.pipcache
+      options: >-
+        --rm
+        --user root
+        --cap-add=SYS_PTRACE
+        --security-opt seccomp=unconfined
+        --security-opt apparmor=unconfined
     env:
       GH_TOKEN: ${{ github.token }}
+      USE_XCCL: 1
+      IS_XPU_CI: 1
+      # Only build PVC for CI in PR runs
+      TORCH_XPU_ARCH_LIST: ${{ github.event_name == 'pull_request' && 'pvc' || '' }}
     timeout-minutes: 300
+
     steps:
-      - name: Install gh-cli
+      # --------------------- Setup Phase ---------------------
+      - name: Verify environment and prepare workspace
         run: |
+          echo "=== Container Environment Verification ==="
+          echo "Container image: ${{ inputs.docker_image_name }}"
+          echo "Working directory: $(pwd)"
+          echo "User: $(whoami)"
+          echo "Build directory: ${{ env.BUILD_DIR }}"
+          echo ""
+          echo "=== OS Information ==="
           cat /etc/os-release
-          hostname && id
-          # install gh
+          echo ""
+          echo "=== Cleaning Workspace ==="
+          sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
+          mkdir -p ${{ env.BUILD_DIR }}
+          echo "Workspace ready"
+
+      - name: Install GitHub CLI
+        run: |
+          if command -v gh > /dev/null 2>&1; then
+            echo "GitHub CLI already installed: $(gh --version | head -1)"
+            exit 0
+          fi
           dnf install -y 'dnf-command(config-manager)'
           dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
           dnf install -y gh --repo gh-cli
-          gh --version
-          # cleanup files
-          rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
-      - name: Setup python-${{ inputs.python }}
+          echo "GitHub CLI installed: $(gh --version | head -1)"
+
+      - name: Setup Python ${{ inputs.python }}
         run: |
+          echo "=== Setting up Python ${{ inputs.python }} ==="
           rm -rf /tmp/xpu-tool/myvenv
-          local_python=$(echo ${{ inputs.python }} |awk -F. '{printf("cp%s%s-cp%s%s", $1, $2, $1, $2)}')
-          /opt/python/${local_python}/bin/python -m venv /tmp/xpu-tool/myvenv
-          which python && python -V
-          which pip && pip list
-          pip install -U pip wheel setuptools==81.0.0
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+          python_version="${{ inputs.python }}"
+          python_major_minor=$(echo "${python_version}" | awk -F. '{printf("%s%s", $1, $2)}')
+          python_pattern="cp${python_major_minor}-cp${python_major_minor}"
+          python_path=""
+          for dir in /opt/python/${python_pattern}*; do
+            if [ -d "${dir}" ] && [ -f "${dir}/bin/python" ]; then
+              python_path="${dir}/bin/python"
+              break
+            fi
+          done
+          if [ -z "${python_path}" ]; then
+            echo "Error: Python ${{ inputs.python }} not found in /opt/python/"
+            exit 1
+          fi
+          "${python_path}" -m venv /tmp/xpu-tool/myvenv
+          source /tmp/xpu-tool/myvenv/bin/activate
+          echo "Python version: $(python -V 2>&1)"
+          pip install -U pip wheel "setuptools<=81"
+
+      - name: Checkout torch-xpu-ops (again for build job)
+        uses: actions/checkout@v6
         with:
           path: torch-xpu-ops
-      - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
+          fetch-depth: 1
+
+      - name: Setup oneAPI DLE
+        if: ${{ inputs.component == 'oneapi' }}
         run: |
-          export USE_XCCL=1
-          export IS_XPU_CI=1
-          # only build pvc for CI
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            export TORCH_XPU_ARCH_LIST='pvc'
-          fi
-          if [[ "${{ inputs.pytorch }}" == *"https://"* ]];then
-            PYTORCH_REPO="$(echo ${{ inputs.pytorch }} |sed 's/@.*//')"
-            PYTORCH_COMMIT="$(echo ${{ inputs.pytorch }} |sed 's/.*@//')"
-          else
-            PYTORCH_REPO="https://github.com/pytorch/pytorch.git"
-            PYTORCH_COMMIT="${{ inputs.pytorch }}"
-          fi
-          if [[ "${{ inputs.torch_xpu_ops }}" == *"https://"* ]];then
-            TORCH_XPU_OPS_REPO="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/@.*//')"
-            TORCH_XPU_OPS_COMMIT="$(echo ${{ inputs.torch_xpu_ops }} |sed 's/.*@//')"
-          else
-            TORCH_XPU_OPS_REPO="https://github.com/intel/torch-xpu-ops.git"
-            TORCH_XPU_OPS_COMMIT="${{ inputs.torch_xpu_ops }}"
-          fi
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
-          source ${{ github.workspace }}/torch-xpu-ops/.github/scripts/env.sh
-          ${{ github.workspace }}/torch-xpu-ops/.github/scripts/build.sh \
-            --WORKSPACE="${{ github.workspace }}" \
-            --PYTORCH_REPO="${PYTORCH_REPO}" \
-            --PYTORCH_COMMIT="${PYTORCH_COMMIT}" \
-            --TORCH_XPU_OPS_REPO="${TORCH_XPU_OPS_REPO}" \
-            --TORCH_XPU_OPS_COMMIT="${TORCH_XPU_OPS_COMMIT}" \
-            2>&1 |tee ${{ github.workspace }}/build_pytorch_${PYTORCH_COMMIT//\//-}.log
-          if [ $(ls ${{ github.workspace }} |grep -c "torch-.*.whl") -eq 0 ];then
-            echo "Build pytorch got failed"
+          rm -rf ~/intel ~/.intel ${HOME}/intel /opt/intel
+          wget -q -O oneapi.sh "${{ inputs.component_version }}"
+          sudo bash oneapi.sh -a -s --eula accept --action remove || true
+          sudo bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
+          echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> ${GITHUB_ENV}
+
+      # --------------------- Core Build ---------------------
+      - name: Build PyTorch XPU
+        run: |
+          echo "=== Building PyTorch XPU ==="
+          echo "Runner: ${{ needs.runner.outputs.hostname }}"
+          source /opt/rh/gcc-toolset-${{ env.GCC_VERSION }}/enable
+          source "${TORCH_XPU_OPS_SRC}/.github/scripts/env.sh" || echo "Warning: env.sh not sourced"
+
+          # Build PyTorch (this will clone pytorch into $BUILD_DIR/pytorch)
+          BUILD_LOG_FILE="${BUILD_DIR}/build_pytorch_$(date +%Y%m%d%H%M%S).log"
+          "${TORCH_XPU_OPS_SRC}/.github/scripts/build.sh" \
+            --WORKSPACE="${BUILD_DIR}/" \
+            --PYTORCH="${{ inputs.pytorch }}" \
+            --TORCH_XPU_OPS="${{ inputs.torch_xpu_ops }}" \
+            --COMPONENT="${{ inputs.component }}" \
+            --COMPONENT_COMMIT="${{ inputs.component_version }}" \
+            2>&1 | tee "${BUILD_LOG_FILE}"
+
+          # Verify wheel
+          WHEEL_COUNT=$(find "${BUILD_DIR}/" -maxdepth 1 -name "torch-*.whl" -type f | wc -l)
+          echo "Found ${WHEEL_COUNT} wheel(s)"
+          if [ "${WHEEL_COUNT}" -ne 1 ]; then
+            echo "Error: PyTorch build failed - expected exactly one wheel"
             exit 1
           fi
-      - name: Build Torchvision and Torchaudio
+
+      # --------------------- Domain Libraries ---------------------
+      - name: Build TorchVision
         run: |
-          # gcc 13
-          source /opt/rh/gcc-toolset-13/enable
-          cd ./pytorch
-          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt)"
-          TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt)"
-          git clone --single-branch -b main https://github.com/pytorch/vision.git xpu-vision
-          cd xpu-vision && git checkout ${TORCHVISION_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_vision_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchvision-.*.whl") -eq 0 ];then
-            echo "Build torchvision got failed"
+          echo "=== Building TorchVision ==="
+          source /opt/rh/gcc-toolset-${{ env.GCC_VERSION }}/enable
+
+          # Ensure PyTorch source is available
+          if [ ! -d "${PYTORCH_SRC}" ]; then
+            echo "Error: PyTorch source not found at ${PYTORCH_SRC}"
             exit 1
           fi
-          pip install dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}
-          git clone --single-branch -b main https://github.com/pytorch/audio.git xpu-audio
-          cd xpu-audio && git checkout ${TORCHAUDIO_COMMIT_ID}
-          python setup.py bdist_wheel 2>&1 |tee ${{ github.workspace }}/build_audio_${TRITON_COMMIT_ID}.log
-          if [ $(ls dist/ |grep -c "torchaudio-.*.whl") -eq 0 ];then
-            echo "Build torchaudio got failed"
+
+          cd "${PYTORCH_SRC}"
+          # Install dependencies if needed (already in container, but ensure)
+          dnf install -y libpng-devel libjpeg-devel
+
+          # Get pinned vision commit
+          TORCHVISION_COMMIT_ID="$(cat .github/ci_commit_pins/vision.txt 2>/dev/null || echo 'main')"
+          echo "TorchVision commit: ${TORCHVISION_COMMIT_ID}"
+
+          # Clone vision
+          rm -rf vision-xpu
+          git clone --single-branch -b main https://github.com/pytorch/vision.git vision-xpu
+          cd vision-xpu
+          git checkout "${TORCHVISION_COMMIT_ID}"
+
+          BUILD_LOG_FILE="${BUILD_DIR}/build_vision_${TORCHVISION_COMMIT_ID}.log"
+          python setup.py bdist_wheel 2>&1 | tee "${BUILD_LOG_FILE}"
+
+          VISION_WHEEL=$(find dist/ -name "torchvision-*.whl" -type f)
+          if [ -z "${VISION_WHEEL}" ]; then
+            echo "Error: TorchVision build failed"
+            tail -50 "${BUILD_LOG_FILE}"
             exit 1
           fi
-          pip install dist/*.whl
-          cp dist/*.whl ${{ github.workspace }}
-      - name: Build Triton
+
+          pip install "${VISION_WHEEL}"
+          cp "${VISION_WHEEL}" "${BUILD_DIR}/"
+          echo "TorchVision wheel copied: $(basename "${VISION_WHEEL}")"
+
+      - name: Build TorchAudio
         run: |
-          cd ./pytorch
-          rm -rf triton_xpu-*.whl
-          if [ -z ${{ inputs.triton }} ] || [ "${{ inputs.triton }}" == "pinned" ];then
-            TRITON_COMMIT_ID="$(cat .ci/docker/ci_commit_pins/triton-xpu.txt)"
-          else
-            TRITON_COMMIT_ID="${{ inputs.triton }}"
+          echo "=== Building TorchAudio ==="
+          source /opt/rh/gcc-toolset-${{ env.GCC_VERSION }}/enable
+
+          if [ ! -d "${PYTORCH_SRC}" ]; then
+            echo "Error: PyTorch source not found"
+            exit 1
           fi
-          built_version="$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
-                  triton-xpu 2> /dev/null |awk -F '[ |,]' -v p="$(echo ${TRITON_COMMIT_ID} |awk '{print substr($1,0,7)}')" 'BEGIN{
-            v = "None";
-          }{
-            for (i=1;i<=NF;i++) {if ($i ~ p) {v = $i;}};
-          }END{
-            printf("%s", v);
-          }')"
-          if [ "${built_version}" != "None" ];then
-            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre triton-xpu==${built_version} --dest ${{ github.workspace }}/
-            pip install ${{ github.workspace }}/*triton*.whl
+
+          cd "${PYTORCH_SRC}"
+          TORCHAUDIO_COMMIT_ID="$(cat .github/ci_commit_pins/audio.txt 2>/dev/null || echo 'main')"
+          echo "TorchAudio commit: ${TORCHAUDIO_COMMIT_ID}"
+
+          rm -rf audio-xpu
+          git clone --single-branch -b main https://github.com/pytorch/audio.git audio-xpu
+          cd audio-xpu
+          git checkout "${TORCHAUDIO_COMMIT_ID}"
+
+          BUILD_LOG_FILE="${BUILD_DIR}/build_audio_${TORCHAUDIO_COMMIT_ID}.log"
+          python setup.py bdist_wheel 2>&1 | tee "${BUILD_LOG_FILE}"
+
+          AUDIO_WHEEL=$(find dist/ -name "torchaudio-*.whl" -type f)
+          if [ -z "${AUDIO_WHEEL}" ]; then
+            echo "Error: TorchAudio build failed"
+            tail -50 "${BUILD_LOG_FILE}"
+            exit 1
+          fi
+
+          pip install "${AUDIO_WHEEL}"
+          cp "${AUDIO_WHEEL}" "${BUILD_DIR}/"
+          echo "TorchAudio wheel copied: $(basename "${AUDIO_WHEEL}")"
+
+      # --------------------- Triton Handling ---------------------
+      - name: Build or Download Triton
+        run: |
+          echo "=== Processing Triton ==="
+          source /opt/rh/gcc-toolset-${{ env.GCC_VERSION }}/enable
+
+          # Determine Triton commit and repository
+          TRITON_REPO="intel/intel-xpu-backend-for-triton"   # default owner/repo
+          if [ "${{ inputs.component }}" == "triton" ] && [ -n "${{ inputs.component_version }}" ]; then
+            spec="${{ inputs.component_version }}"
+            if [[ "$spec" == *"@"* ]]; then
+              # Format: owner/repo@commit
+              TRITON_REPO="${spec%%@*}"
+              TRITON_COMMIT="${spec##*@}"
+            else
+              TRITON_COMMIT="$spec"
+            fi
+          elif [ -z "${{ inputs.triton }}" ] || [ "${{ inputs.triton }}" = "pinned" ]; then
+            # Use pinned version from PyTorch
+            if [ -f "${PYTORCH_SRC}/.ci/docker/ci_commit_pins/triton-xpu.txt" ]; then
+              TRITON_COMMIT="$(cat ${PYTORCH_SRC}/.ci/docker/ci_commit_pins/triton-xpu.txt)"
+            else
+              TRITON_COMMIT="main"
+            fi
+            echo "Using pinned Triton commit: ${TRITON_COMMIT}"
           else
-            TRITON_VERSION_NAME="$(
-              curl -sSL https://raw.githubusercontent.com/intel/intel-xpu-backend-for-triton/${TRITON_COMMIT_ID}/python/triton/__init__.py 2>&1 |\
-                      grep '__version__' |head -n 1 |awk -F "'" '{print $2}'
-            )"
-            # gcc 13
-            source /opt/rh/gcc-toolset-13/enable
+            TRITON_COMMIT="${{ inputs.triton }}"
+          fi
+
+          echo "Triton repository: ${TRITON_REPO}"
+          echo "Triton commit: ${TRITON_COMMIT}"
+
+          # Try to download pre-built wheel from nightly
+          TRITON_SHORT_COMMIT=$(echo "${TRITON_COMMIT}" | cut -c 1-7)
+          echo "Checking for pre-built Triton with commit hash ${TRITON_SHORT_COMMIT}..."
+
+          # Use pip index to list available versions
+          AVAILABLE_VERSIONS=$(pip index versions --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
+            triton-xpu 2>/dev/null | grep -o 'triton-xpu==[0-9a-zA-Z.-]*' || echo "")
+
+          TRITON_VERSION_TO_DOWNLOAD=""
+          if [ -n "${AVAILABLE_VERSIONS}" ]; then
+            while IFS= read -r version; do
+              if [[ "${version}" == *"${TRITON_SHORT_COMMIT}"* ]]; then
+                TRITON_VERSION_TO_DOWNLOAD=$(echo "${version}" | cut -d '=' -f 2)
+                break
+              fi
+            done <<< "${AVAILABLE_VERSIONS}"
+          fi
+
+          if [ -n "${TRITON_VERSION_TO_DOWNLOAD}" ]; then
+            echo "Found pre-built Triton version: ${TRITON_VERSION_TO_DOWNLOAD}"
+            pip download --no-deps --index-url https://download.pytorch.org/whl/nightly/xpu --pre \
+              "triton-xpu==${TRITON_VERSION_TO_DOWNLOAD}" --dest "${BUILD_DIR}/"
+            TRITON_WHEEL=$(find "${BUILD_DIR}" -name "triton*.whl" -type f | head -1)
+          else
+            echo "No pre-built wheel found; building from source..."
+
+            # Install build dependencies
             dnf install -y zlib-devel
             pip install cmake ninja pybind11
-            python .github/scripts/build_triton_wheel.py --device xpu --commit-hash ${TRITON_COMMIT_ID} --triton-version ${TRITON_VERSION_NAME} \
-              2>&1 |tee ${{ github.workspace }}/build_triton_${TRITON_COMMIT_ID}.log
-            if [ $(ls |grep -c "triton_xpu-.*.whl") -eq 0 ];then
-              echo "Build triton got failed"
+
+            # Get version from source (using the correct repo)
+            TRITON_VERSION_NAME=$(
+              curl -sSL "https://raw.githubusercontent.com/${TRITON_REPO}/${TRITON_COMMIT}/python/triton/__init__.py" 2>/dev/null | \
+                grep '__version__' | head -n1 | awk -F"'" '{print $2}' || echo "unknown"
+            )
+            echo "Triton version from source: ${TRITON_VERSION_NAME}"
+
+            # Use the build script (modify only if needed, but better to pass as arguments)
+            cd "${PYTORCH_SRC}"
+            # Patch the script if necessary (consider contributing a fix to accept repo)
+            sed -i "s+intel/intel-xpu-backend-for-triton+${TRITON_REPO}+g" .github/scripts/build_triton_wheel.py
+            BUILD_LOG_FILE="${BUILD_DIR}/build_triton_${TRITON_COMMIT}.log"
+            python .github/scripts/build_triton_wheel.py \
+              --device xpu \
+              --commit-hash "${TRITON_COMMIT}" \
+              --triton-version "${TRITON_VERSION_NAME}" \
+              2>&1 | tee "${BUILD_LOG_FILE}"
+
+            TRITON_WHEEL=$(find . -name "triton_xpu-*.whl" -type f | head -1)
+            if [ -z "${TRITON_WHEEL}" ]; then
+              echo "Error: Triton build failed"
               exit 1
             fi
-            pip install triton_xpu-*.whl
-            cp triton_xpu-*.whl ${{ github.workspace }}
+            cp "${TRITON_WHEEL}" "${BUILD_DIR}/"
           fi
-      - name: Torch Config
+
+          # Install Triton wheel
+          if [ -f "${TRITON_WHEEL}" ]; then
+            pip install "${TRITON_WHEEL}"
+            echo "Triton installed from $(basename "${TRITON_WHEEL}")"
+          else
+            echo "Warning: No Triton wheel found to install"
+          fi
+
+      # --------------------- Verification ---------------------
+      - name: Verify Build Results
         run: |
-          printenv
-          python -c "import torch; print(torch.__config__.show())"
-          python -c "import torch; print(torch.__config__.parallel_info())"
-          python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
-          python -c "import triton; print(triton.__version__)"
-          python -c "import torchvision; print(torchvision.__version__)"
-          python -c "import torchaudio; print(torchaudio.__version__)"
-          python pytorch/torch/utils/collect_env.py
-          pip list |grep -E 'torch|intel'
-      - name: Upload Torch XPU Wheel
-        if: ${{ success() }}
-        uses: actions/upload-artifact@v4
+          echo "=== Verifying Build Results ==="
+          source /tmp/xpu-tool/myvenv/bin/activate
+          python -c "import torch; print('PyTorch version:', torch.__version__)"
+          python -c "import torch; print('XPU device count:', torch.xpu.device_count())"
+          python -c "import triton; print('Triton version:', triton.__version__)"
+          python -c "import torchvision; print('TorchVision version:', torchvision.__version__)"
+          python -c "import torchaudio; print('TorchAudio version:', torchaudio.__version__)"
+          echo ""
+          echo "=== Installed Packages ==="
+          pip list | grep -E 'torch|triton|intel|xpu'
+          echo ""
+          echo "=== Generated Wheel Files ==="
+          find "${BUILD_DIR}" -name "*.whl" -type f -exec basename {} \;
+
+      # --------------------- Artifact Upload ---------------------
+      - name: Upload Build Artifacts (Wheels + Logs)
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: Torch-XPU-Wheel-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/*.whl
-      - name: Upload Build Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Torch-XPU-Build-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/build_*.log
+          name: Torch-XPU-Wheel-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ inputs.test_role }}/*.whl
+            ${{ inputs.test_role }}/build_*.log
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Cleanup workspace
-        if: ${{ always() }}
+        if: always()
         run: |
-          chmod 777 /__w /github ./ -R
+          echo "=== Cleaning Workspace ==="
+          chmod -R 777 "${WORKSPACE}" /__w /github 2>/dev/null || true

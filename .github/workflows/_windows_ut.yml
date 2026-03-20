@@ -46,26 +46,26 @@ on:
 
 permissions: read-all
 
-env: 
+env:
     USE_XPU: 1
     PYTORCH_EXTRA_INSTALL_REQUIREMENTS: >-
-      intel-cmplr-lib-rt==2025.3.2 | 
-      intel-cmplr-lib-ur==2025.3.2 | 
-      intel-cmplr-lic-rt==2025.3.2 | 
-      intel-sycl-rt==2025.3.2 | 
-      onemkl-license==2025.3.1 | 
-      onemkl-sycl-blas==2025.3.1 | 
-      onemkl-sycl-dft==2025.3.1 | 
-      onemkl-sycl-lapack==2025.3.1 | 
-      onemkl-sycl-rng==2025.3.1 | 
-      onemkl-sycl-sparse==2025.3.1 | 
-      dpcpp-cpp-rt==2025.3.2 | 
-      intel-opencl-rt==2025.3.2 | 
-      mkl==2025.3.1 | 
-      intel-openmp==2025.3.2 | 
-      tbb==2022.3.1 | 
-      tcmlib==1.4.1 | 
-      umf==1.0.3 | 
+      intel-cmplr-lib-rt==2025.3.2 |
+      intel-cmplr-lib-ur==2025.3.2 |
+      intel-cmplr-lic-rt==2025.3.2 |
+      intel-sycl-rt==2025.3.2 |
+      onemkl-license==2025.3.1 |
+      onemkl-sycl-blas==2025.3.1 |
+      onemkl-sycl-dft==2025.3.1 |
+      onemkl-sycl-lapack==2025.3.1 |
+      onemkl-sycl-rng==2025.3.1 |
+      onemkl-sycl-sparse==2025.3.1 |
+      dpcpp-cpp-rt==2025.3.2 |
+      intel-opencl-rt==2025.3.2 |
+      mkl==2025.3.1 |
+      intel-openmp==2025.3.2 |
+      tbb==2022.3.1 |
+      tcmlib==1.4.1 |
+      umf==1.0.3 |
       intel-pti==0.16.0
 
 jobs:
@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 1000
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install oneAPI
         shell: cmd
         run: |
@@ -155,8 +155,8 @@ jobs:
           git config --global core.symlinks true
           git config --global core.fsmonitor false
           powershell -Command "Set-ItemProperty -Path "HKLM:\\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1"
-          git status 
-          git show -s 
+          git status
+          git show -s
           git submodule sync && git submodule update --init --recursive
           if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
@@ -225,13 +225,13 @@ jobs:
           python -c "import torch; print(torch.__config__.torch.xpu.device_count())"
       - name: Upload Windows build log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Windows-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\build_torch_wheel_log.log'
       - name: Upload Windows binary
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
@@ -295,7 +295,7 @@ jobs:
           for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: "${{ github.workspace }}/ut_log"
@@ -309,13 +309,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python }}
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
@@ -353,7 +353,7 @@ jobs:
           fi
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
@@ -367,9 +367,9 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-*
           path: ${{ github.workspace }}/ut_log
@@ -419,7 +419,7 @@ jobs:
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-Windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log

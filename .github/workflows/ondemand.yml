@@ -1,0 +1,113 @@
+name: OnDemand Tests (Manual Trigger)
+
+on:
+  workflow_dispatch:
+    inputs:
+      # Basic configuration
+      pytorch:
+        required: true
+        type: string
+        description: |
+          PyTorch version:
+          - main (default for source builds)
+          - nightly_wheel, test_wheel, release_wheel (for wheel tests)
+          - commit/branch
+          - repo@commit/repo@branch
+      torch_xpu_ops:
+        type: string
+        description: |
+          Torch-xpu-ops version:
+          - main (default)
+          - pinned (use pytorch pin)
+          - commit/branch
+          - repo@commit/repo@branch
+      triton:
+        type: string
+        default: ''
+        description: |
+          Triton version:
+          - (empty): Use pytorch pinned version
+          - commit/branch
+          - repo@commit/repo@branch
+      python:
+        required: true
+        type: string
+        default: '3.10'
+        description: 'Python version'
+
+      # Test scope configuration
+      ut:
+        type: string
+        default: ''
+        description: |
+          Unit test scope (comma-separated):
+          - basic: op_regression, op_transformers, op_extended, op_regression_dev1
+          - op_regression, op_transformers, op_extended, op_regression_dev1
+          - op_ut, skipped_ut, torch_xpu, xpu_profiling, xpu_distributed
+          - microbench, windows (special flags)
+      suite:
+        type: string
+        default: ''
+        description: |
+          E2E test suite (comma-separated):
+          - huggingface, timm_models, torchbench, pt2e
+
+      # E2E test parameters
+      dt:
+        type: string
+        default: ''
+        description: |
+          Data precision for E2E tests (comma-separated):
+          - float32, bfloat16, float16, amp_bf16, amp_fp16 (for E2E)
+          - int8 (for PT2E)
+      mode:
+        type: string
+        default: ''
+        description: |
+          Test mode for E2E tests (comma-separated):
+          - inference, training
+      scenario:
+        type: string
+        default: ''
+        description: |
+          Test scenario for E2E tests (comma-separated):
+          - accuracy, performance
+      model:
+        type: string
+        default: ''
+        description: 'Specific model to test (if set, only this model runs)'
+
+permissions: read-all
+
+run-name: OnDemand / ${{ inputs.pytorch }}
+
+jobs:
+  execute-ondemand-tests:
+    name: Execute OnDemand Tests
+    uses: ./.github/workflows/_test_call.yml
+    permissions: write-all
+    with:
+      # Determine test type based on pytorch input
+      test_type: >-
+        ${{
+            contains(inputs.pytorch, '_wheel') && 'wheel-ondemand' || 'build-ondemand'
+        }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: >-
+        ${{
+            inputs.torch_xpu_ops == '' && github.ref_name || inputs.torch_xpu_ops
+        }}
+      triton: ${{ inputs.triton }}
+      python: ${{ inputs.python }}
+      ut: ${{ inputs.ut }}
+      suite: ${{ inputs.suite }}
+      dt: ${{ inputs.dt }}
+      mode: ${{ inputs.mode }}
+      scenario: ${{ inputs.scenario }}
+      model: ${{ inputs.model }}
+      runner: 'pvc_rolling'
+      windows_runner: 'Windows_CI'
+      is_scheduled_run: false
+    secrets:
+      HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+      DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}

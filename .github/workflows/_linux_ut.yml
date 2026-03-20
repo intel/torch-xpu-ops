@@ -6,29 +6,53 @@ on:
       runner:
         required: true
         type: string
-        description: Runner label
+        description: 'Runner label for test execution environment'
       pytorch:
         type: string
         default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        description: 'Pytorch version: main (default), commit/branch, or repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
         default: 'main'
-        description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        description: 'Torch-xpu-ops version: main (default), commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
       python:
         type: string
         default: '3.10'
-        description: Python version
+        description: 'Python version'
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+        description: |
+          UT scope to execute. Options:
+          - op_regression: Operation regression tests
+          - op_regression_dev1: Device 1 specific regression tests
+          - op_transformers: Transformer operation tests
+          - op_extended: Extended operation tests
+          - op_ut: All XPU operation unit tests
+          - skipped_ut: Skipped unit tests
+          - torch_xpu: PyTorch XPU tests
+          - basic: Basic tests (op_regression, op_transformers, op_extended, op_regression_dev1)
+          - xpu_distributed: XPU distributed tests
+          - xpu_profiling: XPU profiling tests
+      component:
+        type: string
+        default: ''
+        description: 'Component name for comparison'
+      component_version:
+        type: string
+        default: ''
+        description: 'Component version for comparison'
+      test_role:
+        type: string
+        default: 'default'
+        description: 'Role for test comparison'
 
 permissions: read-all
 
 defaults:
   run:
-    shell: bash -xe {0}
+    shell: bash -eo pipefail {0}
+
 env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -36,6 +60,7 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
   NEW_PASSED_ISSUE: 2333
+  WORKSPACE: ${{ github.workspace }}
 
 jobs:
   runner:
@@ -47,150 +72,195 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
+      ze_affinity_mask: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
+      - name: Checkout torch-xpu-ops repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Get runner information and configuration
         id: runner-info
         uses: ./.github/actions/get-runner
 
   test-in-container:
     needs: runner
-    timeout-minutes: 1440
-    if: ${{ ! contains(inputs.ut, 'distributed') }}
+    timeout-minutes: 1440  # 24 hours for container tests
+    if: ${{ !contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
-              -e ZE_AFFINITY_MASK
+        - /tmp/xpu-tool:/tmp/xpu-tool
+      options: >-
+        --rm
+        --device=/dev/mem
+        --device=/dev/dri
+        --group-add video
+        --security-opt seccomp=unconfined
+        --cap-add=SYS_PTRACE
+        --shm-size=8g
+        -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
-                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        WORKSPACE: ${{ github.workspace }}
+        ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+        PYTEST_ADDOPTS: >-
+          -v
+          --timeout 600 --timeout_method=thread
+          --max-worker-restart 1000000
+          --dist worksteal
+          ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env
+      - name: Checkout torch-xpu-ops repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Prepare test environment
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+          suite: ${{ contains(inputs.ut, 'transformers') && 'huggingface' || 'None' }}
+          component: ${{ inputs.component }}
+          component_version: ${{ inputs.component_version }}
+          test_role: ${{ inputs.test_role }}
+
+      - name: Run XPU Unit Tests
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+
+      - name: Collect and upload UT logs
+        id: upload-logs
+        if: ${{ !cancelled() }}
+        run: |
+          echo "=== Collecting UT Logs ==="
+
+          LOGS_DIR="${WORKSPACE}/ut_log"
+          UT_NAME="${{ inputs.ut }}"
+
+          # Check if logs exist
+          if [ ! -d "${LOGS_DIR}" ]; then
+            echo "Warning: No UT logs found at ${LOGS_DIR}"
+            exit 0
+          fi
+
+          # Count files
+          FILE_COUNT=$(find "${LOGS_DIR}" -type f | wc -l)
+          echo "Found ${FILE_COUNT} log files"
+
+          # List main log types
+          echo "Main log types:"
+          find "${LOGS_DIR}" -type f -name "*.log" | head -10 | while read -r file; do
+            echo "  $(basename "${file}")"
+          done
+
+          echo "Logs ready for upload"
+
+      - name: Upload UT Logs
+        if: ${{ !cancelled() && steps.upload-logs.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
+          retention-days: 7
           if-no-files-found: ignore
-      - name: Upload XPU UT Failure list
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          if-no-files-found: ignore
+
+      - name: Cleanup temporary files
+        if: always()
+        run: |
+          echo "=== Cleaning Temporary Files ==="
+
+          # Clean up temporary directories
+          rm -rf /tmp/*inductor* 2>/dev/null || true
+          rm -rf /tmp/tmp* 2>/dev/null || true
+
+          echo "Cleanup completed"
 
   test-in-baremetal:
     needs: runner
-    timeout-minutes: 600
+    timeout-minutes: 600  # 10 hours for baremetal tests
     if: ${{ contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      WORKSPACE: ${{ github.workspace }}
+      ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+      PYTEST_ADDOPTS: >-
+        -v
+        --timeout 3600
+        --timeout_method=thread
+        -n 1
+        --max-worker-restart 10000
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env
+      - name: Checkout torch-xpu-ops repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Prepare test environment
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+          suite: 'None'
+          component: ${{ inputs.component }}
+          component_version: ${{ inputs.component_version }}
+          test_role: ${{ inputs.test_role }}
+
+      - name: Run XPU Unit Tests (Baremetal)
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+
+      - name: Collect and upload UT logs (Baremetal)
+        id: upload-logs-baremetal
+        if: ${{ !cancelled() }}
+        run: |
+          echo "=== Collecting Baremetal UT Logs ==="
+
+          LOGS_DIR="${WORKSPACE}/ut_log"
+          UT_NAME="${{ inputs.ut }}"
+
+          # Check if logs exist
+          if [ ! -d "${LOGS_DIR}" ]; then
+            echo "Warning: No UT logs found at ${LOGS_DIR}"
+            exit 0
+          fi
+
+          # Count files
+          FILE_COUNT=$(find "${LOGS_DIR}" -type f | wc -l)
+          echo "Found ${FILE_COUNT} log files"
+
+          # List main log types
+          echo "Main log types:"
+          find "${LOGS_DIR}" -type f -name "*.log" | head -10 | while read -r file; do
+            echo "  $(basename "${file}")"
+          done
+
+          echo "Logs ready for upload"
+
+      - name: Upload UT Logs (Baremetal)
+        if: ${{ !cancelled() && steps.upload-logs-baremetal.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
-          if-no-files-found: ignore
-      - name: Upload XPU UT Failure list
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          retention-days: 7
           if-no-files-found: ignore
 
-  summary:
-    needs: [test-in-container, test-in-baremetal]
-    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      issues: write
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
-          path: ${{ github.workspace }}/ut_log
-      - name: Check UT Results
+      - name: Cleanup temporary files (Baremetal)
+        if: always()
         run: |
-          ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
-          cd "${latest_dir}/${{ inputs.ut }}"
-          find "${{ github.workspace }}/ut_log" -type f \
-              \( -name "failures_*.log" -o \
-                -name "passed_*.log" -o \
-                -name "category_*.log" -o \
-                -name "reproduce_*.log" \) \
-              -exec mv {} ./ \; || true
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          # get distributed known issues
-          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
-          # get skipped known issues
-          count=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
-          if [ "$count" -gt 0 ]; then
-            echo -e "$count issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
-              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          fi
-          if [ "${{ inputs.ut }}" == "basic" ];then
-            ut_list="op_regression op_transformers op_extended op_regression_dev1"
-          else
-            ut_list="${{ inputs.ut }}"
-          fi
-          for ut_name in ${ut_list}
-          do
-            cp Known_issue.log.tmp Known_issue.log
-            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
-              if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-              if ( print_row == 1 && $1 ~ r ) { print $0 };
-              if ( $0 ~ /Cases:/ ) { print_row = 1 };
-            }' issues.log >> Known_issue.log
-            sed -i 's/[[:space:]]*$//g' Known_issue.log
-            TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
-          done
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log
-          overwrite: true
+          echo "=== Cleaning Temporary Files (Baremetal) ==="
+
+          # Clean up temporary directories
+          rm -rf /tmp/*inductor* 2>/dev/null || true
+          rm -rf /tmp/tmp* 2>/dev/null || true
+
+          echo "Cleanup completed"

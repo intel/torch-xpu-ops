@@ -1,0 +1,145 @@
+name: 'Conditions Filter'
+description: 'Filter PR conditions and determine test configurations'
+
+inputs:
+  pr_number:
+    description: 'Pull request number'
+    required: true
+  base_ref:
+    description: 'Base branch reference'
+    required: true
+  repository:
+    description: 'Repository to check'
+    required: false
+    default: ''
+
+outputs:
+  src_changed:
+    description: 'Whether source files changed'
+    value: ${{ steps.check-files.outputs.src_changed }}
+  disabled_tests:
+    description: 'List of disabled tests from PR description'
+    value: ${{ steps.check-pr-desc.outputs.disabled_tests }}
+  pytorch_version:
+    description: 'PyTorch version to use'
+    value: ${{ steps.determine-config.outputs.pytorch_version }}
+  test_type:
+    description: 'Test type based on configuration'
+    value: ${{ steps.determine-config.outputs.test_type }}
+  torch_xpu_ops_version:
+    description: 'Torch-xpu-ops version to use'
+    value: ${{ steps.determine-config.outputs.torch_xpu_ops_version }}
+  ut_scope:
+    description: 'UT scope to test'
+    value: ${{ steps.determine-config.outputs.ut_scope }}
+  e2e_suites:
+    description: 'E2E suites to test'
+    value: ${{ steps.determine-config.outputs.e2e_suites }}
+  should_build:
+    description: 'Whether to run build'
+    value: ${{ steps.determine-config.outputs.should_build }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check source file changes
+      id: check-files
+      uses: dorny/paths-filter@v2
+      with:
+        base: ${{ github.base_ref }}
+        filters: |
+          src_changed:
+            - 'cmake/**'
+            - 'tools/**'
+            - 'src/**.cmake'
+            - 'CMakeLists.txt'
+            - 'test/sycl/CMakeLists.txt'
+            - 'src/xccl/CMakeLists.txt'
+            - 'src/ATen/CMakeLists.txt'
+            - 'src/CMakeLists.txt'
+            - '.github/workflows/_windows_ut.yml'
+
+    - name: Check PR description for disabled tests
+      id: check-pr-desc
+      shell: bash -eo pipefail {0}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        echo "=== Checking PR Description ==="
+
+        if [ -z "${{ inputs.repository }}" ]; then
+          REPO="${GITHUB_REPOSITORY}"
+        else
+          REPO="${{ inputs.repository }}"
+        fi
+
+        # Get PR description and extract disabled tests
+        disabled_tests="$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[].name')"
+
+        echo "disabled_tests=${DISABLED_LIST}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+
+    - name: Determine test configuration
+      id: determine-config
+      shell: bash -eo pipefail {0}
+      run: |
+        echo "=== Determining Test Configuration ==="
+
+        # Determine PyTorch version
+        if [[ "${disabled_tests}" == *"disable_build"* ]]; then
+          PYTORCH_VERSION="nightly_wheel"
+          echo "Build disabled, using nightly wheel"
+        else
+          PYTORCH_VERSION="${{ inputs.base_ref }}"
+          echo "Using base ref: ${PYTORCH_VERSION}"
+        fi
+
+        # Determine test type
+        if [ "${PYTORCH_VERSION}" = "nightly_wheel" ]; then
+          TEST_TYPE="wheel-cicd"
+          TORCH_XPU_OPS_VERSION="pinned"
+          SHOULD_BUILD="false"
+        else
+          TEST_TYPE="build-cicd"
+          TORCH_XPU_OPS_VERSION="main"
+          SHOULD_BUILD="true"
+        fi
+
+        # Determine UT scope (excluding disabled tests)
+        disabled_tests="${{ steps.check-pr-desc.outputs.disabled_tests }}"
+
+        # Default UT scope for PRs
+        UT_SCOPE="basic,op_ut,xpu_distributed"
+
+        # Remove disabled UTs from scope
+        if [[ "${disabled_tests}" == *"disable_ut"* ]]; then
+          echo "UT tests disabled"
+          UT_SCOPE=""
+        fi
+
+        if [[ "${disabled_tests}" == *"disable_distribute"* ]]; then
+          echo "Distributed tests disabled"
+          UT_SCOPE=$(echo "${UT_SCOPE}" | sed 's/,xpu_distributed//g;s/xpu_distributed,//g')
+        fi
+
+        # Determine E2E suites
+        E2E_SUITES="huggingface,timm_models,torchbench"
+        if [[ "${disabled_tests}" == *"disable_e2e"* ]]; then
+          echo "E2E tests disabled"
+          E2E_SUITES=""
+        fi
+
+        # Set outputs
+        echo "pytorch_version=${PYTORCH_VERSION}" >> "${GITHUB_OUTPUT}"
+        echo "test_type=${TEST_TYPE}" >> "${GITHUB_OUTPUT}"
+        echo "torch_xpu_ops_version=${TORCH_XPU_OPS_VERSION}" >> "${GITHUB_OUTPUT}"
+        echo "ut_scope=${UT_SCOPE}" >> "${GITHUB_OUTPUT}"
+        echo "e2e_suites=${E2E_SUITES}" >> "${GITHUB_OUTPUT}"
+        echo "should_build=${SHOULD_BUILD}" >> "${GITHUB_OUTPUT}"
+
+        echo "Configuration:"
+        echo "  PyTorch: ${PYTORCH_VERSION}"
+        echo "  Test Type: ${TEST_TYPE}"
+        echo "  Torch-xpu-ops: ${TORCH_XPU_OPS_VERSION}"
+        echo "  UT Scope: ${UT_SCOPE}"
+        echo "  E2E Suites: ${E2E_SUITES}"
+        echo "  Should Build: ${SHOULD_BUILD}"

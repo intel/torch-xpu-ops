@@ -67,7 +67,7 @@ jobs:
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
@@ -97,17 +97,17 @@ jobs:
       python: ${{ inputs.python != '' && inputs.python || '3.10' }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: torch-xpu-ops
       - name: Checkout Accelerate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: huggingface/accelerate
           ref: ${{ env.accelerate }}
           path: accelerate
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.python }}
       - name: Check python
@@ -187,7 +187,7 @@ jobs:
           pip_packages: 'accelerate transformers'
       - name: Upload Test log
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Torch-XPU-Accelerate-Log-${{ github.event.pull_request.number || github.sha }}
           path: |

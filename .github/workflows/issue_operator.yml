@@ -14,7 +14,7 @@ jobs:
     if: contains(github.event.issue.labels.*.name, 'skipped')
     steps:
       - name: Set milestone for skipped issues
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             // Look up milestone by name instead of hardcoding the ID

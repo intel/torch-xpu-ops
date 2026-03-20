@@ -118,7 +118,7 @@ jobs:
           echo "torchaudio=$torchaudio" | tee -a "$GITHUB_OUTPUT"
           echo "triton=$triton" | tee -a "$GITHUB_OUTPUT"
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
@@ -186,11 +186,11 @@ jobs:
             filter: 'not test_load_img_url_timeout'
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: torch-xpu-ops
       - name: Checkout Transformers
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: huggingface/transformers
           ref: ${{ env.transformers }}
@@ -223,7 +223,7 @@ jobs:
             if (( $SECONDS - start_time > 60 )); then false; fi
           done
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.python }}
       - name: Check python
@@ -296,13 +296,13 @@ jobs:
           fi
       - name: Upload reports
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/reports
       - name: Upload logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logs-${{ matrix.test.test_case }}-${{ github.event.pull_request.number || github.sha }}
           path: ${{ github.workspace }}/transformers/logs
@@ -313,25 +313,25 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Download reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'reports-*'
           path: 'transformers/reports/'
           merge-multiple: true
       - name: Download logs
         if: ${{ ! cancelled() }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: 'logs-*'
           path: 'transformers/logs/'
           merge-multiple: true
       - name: Checkout torch-xpu-ops
         if: ${{ ! cancelled() }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: torch-xpu-ops
       - name: Setup python-${{ env.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.python }}
       - name: Install pip deps
