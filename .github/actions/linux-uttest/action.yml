@@ -70,6 +70,16 @@ runs:
       if: ${{ inputs.ut_name == 'op_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
+        res="$(python -m threadpoolctl -i numpy)"
+        echo "$res"
+        if [[ "$res" == *'"internal_api": "openblas"'* ]]; then
+          if [[ "$res" == *'"architecture": "Cooperlake"'* ]]; then
+            if python -m pip list | awk '$1=="numpy"{print $2}' | grep -q '^1\.23\.'; then
+              export OPENBLAS_CORETYPE=SkylakeX
+              python -m threadpoolctl -i numpy
+            fi
+          fi
+        fi
         mkdir -p ut_log/op_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_test_with_skip.py \
