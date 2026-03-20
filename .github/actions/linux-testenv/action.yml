@@ -210,14 +210,14 @@ runs:
     - name: Download Pytorch wheel
       uses: actions/download-artifact@v4
       with:
-        name: manywheel-py3_10-xpu
+        name: triton-wheel-3.10-xpu-manylinux_2_28_x86_64
         github-token: ${{ github.token }}
         repository: pytorch/pytorch
-        run-id: 23175816273
+        run-id: 23289337952
         path: ${{ github.workspace }}/wheels
     - name: Install test target
       shell: bash -xe {0}
       run: |
-        pip uninstall -y torch && pip uninstall -y torch
-        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
+        pip uninstall -y triton triton-xpu pytorch-triton-xpu && pip uninstall -y triton triton-xpu pytorch-triton-xpu
+        pip install ${{ github.workspace }}/wheels/triton*.whl --no-deps
         pip list |grep -E 'intel|torch|triton'
