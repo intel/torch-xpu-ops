@@ -86,6 +86,12 @@ jobs:
               })
             ]);
 
+            function getRunTimestamp(run) {
+              const ts = run.started_at ?? run.created_at ?? run.completed_at;
+              const parsed = ts ? Date.parse(ts) : NaN;
+              return Number.isFinite(parsed) ? parsed : 0;
+            }
+
             const pending = checks.data.check_runs.filter(c => c.status !== 'completed');
             if (pending.length > 0) {
               const names = pending.map(c => c.name).join(', ');
@@ -102,10 +108,11 @@ jobs:
             const latestChecksByName = new Map();
             for (const checkRun of checks.data.check_runs) {
               const existing = latestChecksByName.get(checkRun.name);
-              if (!existing || checkRun.started_at > existing.started_at) {
+              if (!existing || getRunTimestamp(checkRun) > getRunTimestamp(existing)) {
                 latestChecksByName.set(checkRun.name, checkRun);
               }
             }
+
             const failedChecks = [...latestChecksByName.values()]
               .filter(c => c.conclusion !== 'skipped' && c.conclusion !== 'success');
             const statusFailed = statuses.data.state !== 'success' && statuses.data.total_count > 0;
