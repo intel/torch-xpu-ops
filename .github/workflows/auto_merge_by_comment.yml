@@ -86,12 +86,6 @@ jobs:
               })
             ]);
 
-            function getRunTimestamp(run) {
-              const ts = run.started_at ?? run.created_at ?? run.completed_at;
-              const parsed = ts ? Date.parse(ts) : NaN;
-              return Number.isFinite(parsed) ? parsed : 0;
-            }
-
             const pending = checks.data.check_runs.filter(c => c.status !== 'completed');
             if (pending.length > 0) {
               const names = pending.map(c => c.name).join(', ');
@@ -103,6 +97,12 @@ jobs:
               });
               core.setFailed(`Checks still in progress: ${names}`);
               return;
+            }
+
+            function getRunTimestamp(run) {
+              const ts = run.started_at ?? run.created_at ?? run.completed_at;
+              const parsed = ts ? Date.parse(ts) : NaN;
+              return Number.isFinite(parsed) ? parsed : 0;
             }
 
             const latestChecksByName = new Map();
