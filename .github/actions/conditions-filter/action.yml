@@ -51,16 +51,16 @@ outputs:
   # Flags
   has_ut_tests:
     description: 'E2E suites to test'
-    value: ${{ steps.determine-config.outputs.has_ut_tests }}
+    value: ${{ steps.determine-scope.outputs.has_ut_tests }}
   has_e2e_tests:
     description: 'Whether to run build'
-    value: ${{ steps.determine-config.outputs.has_e2e_tests }}
+    value: ${{ steps.determine-scope.outputs.has_e2e_tests }}
   has_microbench:
     description: 'Whether to run build'
-    value: ${{ steps.determine-config.outputs.has_microbench }}
+    value: ${{ steps.determine-scope.outputs.has_microbench }}
   has_windows:
     description: 'Whether to run build'
-    value: ${{ steps.determine-config.outputs.has_windows }}
+    value: ${{ steps.determine-scope.outputs.has_windows }}
   # Others
   python:
     description: 'Whether to run build'
@@ -299,3 +299,4 @@ runs:
         echo "has_ut_tests=${HAS_UT_TESTS}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
         echo "has_microbench=${HAS_MICROBENCH}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
         echo "has_windows=${HAS_WINDOWS}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
+        echo "model_only=${model}" |tee -a "${GITHUB_ENV}" >> "${GITHUB_OUTPUT}"
