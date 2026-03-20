@@ -121,7 +121,6 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
       python: ${{ needs.parse-test-inputs.outputs.python }}
       test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
       component: ${{ needs.parse-test-inputs.outputs.component }}
