@@ -1722,8 +1722,6 @@ class FakeTensorOperatorInvariants(TestCase):
 
         self.assertEqual(mode.count, 0)
 
-    # PropagateRealTensors installs weakrefs
-    @expectedFailurePropagateRealTensors
     @unittest.skipIf(not RUN_GPU, "requires cuda or xpu")
     def test_module_to(self):
         def _check_device(sd, device_type):
