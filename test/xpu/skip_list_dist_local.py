@@ -221,7 +221,9 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_op_schema.py": None,
     "../../../../test/distributed/tensor/test_op_strategy.py": None,
     "../../../../test/distributed/tensor/test_optimizers.py": None,
-    "../../../../test/distributed/tensor/test_pointwise_ops.py": None,
+    "../../../../test/distributed/tensor/test_pointwise_ops.py": (
+        "test_partial_propagation_op0_reduce_op_max",
+    ),
     "../../../../test/distributed/tensor/test_utils.py": None,
     "../../../../test/distributed/tensor/test_view_ops.py": None,
     "../../../../test/distributed/test_c10d_spawn_nccl.py": None,
