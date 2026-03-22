@@ -19,9 +19,9 @@ done
 
 # Set pytorch
 rm -rf ${WORKSPACE}/pytorch
-git clone https://github.com/daisyden/pytorch.git ${WORKSPACE}/pytorch
+git clone https://github.com/pytorch/pytorch.git ${WORKSPACE}/pytorch
 cd ${WORKSPACE}/pytorch
-git checkout ${PYTORCH_COMMIT}
+git checkout main
 git remote -v && git branch && git show -s
 git rev-parse HEAD > ${WORKSPACE}/pytorch.commit
 
@@ -46,7 +46,7 @@ cd ${WORKSPACE}/pytorch
 python -m pip install requests
 git submodule sync && git submodule update --init --recursive
 python -m pip install -r requirements.txt
-python -m pip install mkl-static mkl-include
+python -m pip install mkl-static==2025.2.0 mkl-include==2025.2.0
 export USE_STATIC_MKL=1
 if [ "${XPU_ONEAPI_PATH}" == "" ];then
     export PYTORCH_EXTRA_INSTALL_REQUIREMENTS=" \
