@@ -170,10 +170,10 @@ void apply_triu_tril(
       round_up<int64_t>(N_padded / elements_per_thread, local_range);
 
   // Increase number of elements per thread to make sure number of threads does
-  // not exceed max value of uint32, which was causing problems.
+  // not exceed max value of int32, which was causing problems.
   int elements_count = elements_per_thread;
-  constexpr int64_t MAX_UINT32 = std::numeric_limits<uint32_t>::max();
-  while (global_range > MAX_UINT32) {
+  constexpr int64_t MAX_INT32 = std::numeric_limits<int32_t>::max();
+  while (global_range > MAX_INT32) {
     elements_count *= 2;
     last_dim_padded = round_up<int64_t>(sizes.back(), elements_count);
     N_padded = c10::multiply_integers(sizes.begin(), sizes.end() - 1) *

@@ -46,22 +46,31 @@ macro(set_build_flags)
       set(CPP_STD c++17)
     endif()
     # -- Host flags (SYCL_CXX_FLAGS)
-    list(APPEND SYCL_HOST_FLAGS -fPIC)
-    list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
-    list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
-    # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
-    # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
-    # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
-    # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
-    # the issue we wrap paths to SYCL headers in `-isystem`.
-    if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
-      foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
-        list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
-      endforeach()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+      list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
+      list(APPEND SYCL_HOST_FLAGS /MD)
+      list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
+      # SYCL headers warnings
+      list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
+      list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      list(APPEND SYCL_HOST_FLAGS -fPIC)
+      list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
+      list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
+      # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
+      # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
+      # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
+      # We expect that this issue will be addressed in the later version of DPC++ compiler. To workaround
+      # the issue we wrap paths to SYCL headers in `-isystem`.
+      if(SYCL_COMPILER_VERSION VERSION_LESS 20250300)
+        foreach(FLAGS IN LISTS SYCL_INCLUDE_DIR)
+          list(APPEND SYCL_HOST_FLAGS "-isystem ${FLAGS}")
+        endforeach()
+      endif()
+      # Excluding warnings which flood the compilation output
+      # TODO: fix warnings in the source code and then reenable them in compilation
+      list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
     endif()
-    # Excluding warnings which flood the compilation output
-    # TODO: fix warnings in the source code and then reenable them in compilation
-    list(APPEND SYCL_HOST_FLAGS -Wno-sign-compare)
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)
       list(APPEND SYCL_HOST_FLAGS -g -fno-omit-frame-pointer -O0)
@@ -121,21 +130,7 @@ macro(set_build_flags)
       or a Native API failed error.")
     endif()
 
-    # TORCH_XPU_OPS_FLAGS is applied to all libs including non-SYCL ones (e.g. torch_xpu_ops).
-    # Note: icpx only compiles SYCL kernel files; non-SYCL files (e.g. ops.cpp) are compiled
-    # by CMAKE_CXX_COMPILER (GCC on Linux, MSVC on Windows), NOT the removed SYCL host compiler.
-    # On Linux CMAKE_CXX_COMPILER is GCC, so GCC/Clang-style SYCL_HOST_FLAGS apply.
-    # On Windows CMAKE_CXX_COMPILER is MSVC, so we must use MSVC-style flags instead.
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-      set(TORCH_XPU_OPS_FLAGS)
-      list(APPEND TORCH_XPU_OPS_FLAGS /std:${CPP_STD})
-      list(APPEND TORCH_XPU_OPS_FLAGS /MD)
-      list(APPEND TORCH_XPU_OPS_FLAGS /EHsc) # exception handling
-      list(APPEND TORCH_XPU_OPS_FLAGS /wd4996) # allow usage of deprecated functions
-      list(APPEND TORCH_XPU_OPS_FLAGS /wd4018) # allow signed and unsigned comparison
-    else()
-      set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
-    endif()
+    set(TORCH_XPU_OPS_FLAGS ${SYCL_HOST_FLAGS})
 
     # -- SYCL device object linkage flags
     include(ProcessorCount)
