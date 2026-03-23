@@ -69,7 +69,7 @@ env:
   suite: 'huggingface,timm_models,torchbench'
 
 jobs:
-  Get-Runner:
+  get-runner:
     runs-on: |
       (contains(inputs.runner, 'pvc') && 'pvc_rolling')
       ||
@@ -89,34 +89,37 @@ jobs:
         uses: ./.github/actions/get-runner
 
   # Run tests on target version
-  Target-Tests:
-    needs: Get-Runner
+  run-target-tests:
+    name: Run Tests (Target)
+    needs: get-runner
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
       test_role: 'target'
       all_inputs_json: ${{ toJSON(inputs) }}
-      runner: ${{ needs.Get-Runner.outputs.runner_id }}
+      runner: ${{ needs.get-runner.outputs.runner_id }}
       windows_runner: 'Windows_CI'
       is_scheduled_run: comparison-manually
     secrets: inherit
 
   # Run tests on baseline version
-  Baseline-Tests:
-    needs: Get-Runner
+  run-baseline-tests:
+    name: Run Tests (Baseline)
+    needs: get-runner
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
       test_role: 'baseline'
       all_inputs_json: ${{ toJSON(inputs) }}
-      runner: ${{ needs.Get-Runner.outputs.runner_id }}
+      runner: ${{ needs.get-runner.outputs.runner_id }}
       windows_runner: 'Windows_CI'
       is_scheduled_run: comparison-manually
     secrets: inherit
 
   # Job 4: Compare results and generate report
-  Compare-Results:
-    needs: [Target-Tests, Baseline-Tests]
+  compare-results:
+    name: Compare Results
+    needs: [run-target-tests, run-baseline-tests]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
