@@ -347,6 +347,8 @@ _cuda_xfail_xpu_pass = [
     ("rsqrt", "test_reference_numerics_large"),
     ("_batch_norm_with_update", "test_noncontiguous_samples"),
     ("_batch_norm_with_update", "test_dispatch_symbolic_meta_outplace_all_strides"),
+    ("_native_batch_norm_legit", "test_out"),
+    ("native_batch_norm", "test_out"),
     ("histc", "test_out"),
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
