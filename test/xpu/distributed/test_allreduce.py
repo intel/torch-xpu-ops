@@ -9,6 +9,7 @@ Usage:
     mpirun -n 8 python test_allreduce.py --impl cross_switch
     mpirun -n 8 python test_allreduce.py --impl cross_switch_pipeline --num_pipelines 2
     mpirun -n 8 python test_allreduce.py --impl cross_switch_pipeline --num_pipelines 4
+    mpirun -n 2 python test_allreduce.py --impl allreduce_low_latency
     mpirun -n 2 python test_allreduce.py --profile --impl symm_mem
     mpirun -n 2 python test_allreduce.py --accuracy --impl ring_pull
 """

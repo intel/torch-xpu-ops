@@ -536,58 +536,48 @@ def allreduce_low_latency(
         group: dist.ProcessGroup | None = None,
 ) -> torch.Tensor:
     """
-    Perform allreduce using symmetric memory with ring reduce-scatter + allgather.
+    Perform allreduce using the low-latency 64-bit data+flag transaction kernel.
+
+    Uses symm_mem workspace (get_symm_mem_workspace + get_buffer) to obtain
+    a P2P buffer, then calls torch.ops.symm_mem.all_reduce_low_latency.
+
+    Note: Only BFloat16 is supported.
 
     Args:
-        tensor: Input tensor to reduce (must be on XPU device)
+        tensor: Input tensor to reduce (must be on XPU device, dtype=bf16)
         op: Reduction operation (only "sum" is supported)
         group: Process group (default: None, uses WORLD group)
 
     Returns:
-        Reduced tensor with the same shape as input (in-place modification)
+        The input tensor, modified in-place with the all-reduced result.
     """
     if op != "sum":
         raise ValueError(f"Only 'sum' operation is supported, got '{op}'")
 
-    # Get group info
     if group is None:
         group = dist.group.WORLD
 
     group_name = group.group_name
     rank = dist.get_rank(group)
-    world_size = dist.get_world_size(group)
 
-    # Work with flattened view
-    tensor_flat = tensor.view(-1)
-    numel = tensor_flat.numel()
+    numel = tensor.numel()
 
-    # Check divisibility
-    if numel % world_size != 0:
-        raise ValueError(
-            f"Tensor size ({numel}) must be divisible by world_size ({world_size})"
-        )
-
-    chunk_size = numel // world_size
-
-    # Get symmetric memory workspace
-    workspace_size_bytes = chunk_size * world_size * tensor.element_size()
+    # Each 32-bit data word (2 bf16) becomes a 64-bit transaction (data+flag).
+    # For bf16: data_bytes = numel*2, transactions = numel/2,
+    # txn_bytes = numel/2 * 8 = numel*4.
+    # So workspace needs numel*4 bytes = numel*2 bf16 elements.
+    workspace_size_bytes = numel * tensor.element_size() * 2
     workspace = symm_mem.get_symm_mem_workspace(group_name, min_size=workspace_size_bytes)
 
-    workspace.get_buffer(rank, (numel,), tensor.dtype, storage_offset=0).copy_(tensor)
+    # Get a flat buffer view in the P2P workspace
+    symm_buf = workspace.get_buffer(rank, (numel,), tensor.dtype, storage_offset=0)
+    symm_buf.copy_(tensor.view(-1))
 
-    # Barrier to ensure previous allreduce is complete before writing
-    workspace.barrier()
+    result = torch.ops.symm_mem.all_reduce_low_latency(
+        symm_buf, op, group_name
+    )
 
-    for step in range(rank + 1, rank + world_size - 1):
-        remote_rank = step % world_size
-        remote_buffer = workspace.get_buffer(
-            remote_rank,
-            (numel,),
-            tensor.dtype,
-            storage_offset=0
-        )
-        tensor = tensor + remote_buffer
-    workspace.barrier()
+    tensor.view(-1).copy_(result)
     return tensor
 
 def allreduce_with_symm_mem(

@@ -4,6 +4,9 @@
 #include <c10/core/DeviceGuard.h>
 #include <torch/library.h>
 
+#include <mutex>
+#include <unordered_map>
+
 #include <xccl/Signal.hpp>
 #include <xccl/XPUSymmetricMemory.hpp>
 
@@ -593,10 +596,217 @@ at::Tensor two_shot_all_reduce_impl(
     return *output;
   }
 }
+// ============================================================================
+// Low-latency all-reduce using 64-bit data+flag transactions (BF16 only)
+// ============================================================================
+//
+// Each 32-bit data word (2 x bf16) is paired with a 32-bit flag to form
+// a 64-bit transaction.  A volatile 64-bit load from remote P2P memory
+// guarantees that if the flag is correct the data is too (same word).
+//
+// Optimizations over the generic path:
+//   - BF16 hardcoded: no type dispatch, reduction is always add_bf16x2.
+//   - Own-rank fast path: each thread wrote its own index in Phase 1,
+//     so it reads back without spinning in Phase 2.
+//   - k_world_size template for compile-time unrolling of the rank loop.
+
+constexpr size_t low_latency_all_reduce_max_num_blocks = 24;
+constexpr size_t low_latency_all_reduce_max_num_threads = 512;
+
+template <int k_world_size>
+struct LowLatencyAllReduceBF16Kernel {
+  const uint32_t* scratch_ptr;  // raw bf16 data (2 bf16 per uint32)
+  void** buffer_ptrs;           // P2P buffers (one per rank)
+  uint32_t* output_ptr;         // output (written as uint32, i.e. 2 bf16)
+  size_t input_offset;          // byte offset into each buffer
+  size_t num_transactions;      // number of 32-bit data words
+  size_t rank;
+  size_t world_size;
+  uint32_t flag_value;
+
+  LowLatencyAllReduceBF16Kernel(
+      const uint32_t* scratch_ptr_,
+      void** buffer_ptrs_,
+      uint32_t* output_ptr_,
+      size_t input_offset_,
+      size_t num_transactions_,
+      size_t rank_,
+      size_t world_size_,
+      uint32_t flag_value_)
+      : scratch_ptr(scratch_ptr_),
+        buffer_ptrs(buffer_ptrs_),
+        output_ptr(output_ptr_),
+        input_offset(input_offset_),
+        num_transactions(num_transactions_),
+        rank(rank_),
+        world_size(world_size_),
+        flag_value(flag_value_) {}
+
+  void operator()(sycl::nd_item<1> item) const {
+    const size_t global_id = item.get_global_id(0);
+    const size_t global_size = item.get_global_range(0);
+    const size_t ws =
+        k_world_size > 0 ? static_cast<size_t>(k_world_size) : world_size;
+
+    uint64_t* own_txn_buf = reinterpret_cast<uint64_t*>(
+        reinterpret_cast<char*>(buffer_ptrs[rank]) + input_offset);
+
+    for (size_t i = global_id; i < num_transactions; i += global_size) {
+      // --- Phase 1: pack own data + flag, write to P2P buffer ----------
+      uint32_t own_data = scratch_ptr[i];
+      uint64_t own_txn = static_cast<uint64_t>(own_data) |
+          (static_cast<uint64_t>(flag_value) << 32);
+      own_txn_buf[i] = own_txn;
+
+      // --- Phase 2: read all ranks, reduce -----------------------------
+      // Start with own rank directly (no spin needed — we just wrote it).
+      uint32_t reduced = own_data;
+
+      // Reduce from all other ranks with spin-read.
+#pragma unroll
+      for (size_t step = 1; step < ws; ++step) {
+        size_t r = (rank + step) % ws;
+        volatile uint64_t* remote_ptr = reinterpret_cast<uint64_t*>(
+            reinterpret_cast<char*>(buffer_ptrs[r]) + input_offset) + i;
+
+        uint64_t txn;
+        do {
+          txn = *remote_ptr;
+        } while (static_cast<uint32_t>(txn >> 32) != flag_value);
+
+        reduced = add_bf16x2(reduced, static_cast<uint32_t>(txn));
+      }
+
+      output_ptr[i] = reduced;
+    }
+  }
+};
+
+at::Tensor low_latency_all_reduce_impl(
+    at::Tensor input,
+    std::optional<at::Tensor> output,
+    std::string reduce_op,
+    std::string group_name) {
+  TORCH_CHECK(
+      input.is_contiguous(),
+      "low_latency_all_reduce: input must be contiguous.");
+  TORCH_CHECK(
+      reduce_op == "sum",
+      "low_latency_all_reduce: only sum is supported.");
+  TORCH_CHECK(
+      input.scalar_type() == at::kBFloat16,
+      "low_latency_all_reduce: only BFloat16 is supported.");
+
+  auto symm_mem = c10d::symmetric_memory::rendezvous(input, group_name);
+  TORCH_CHECK(
+      symm_mem != nullptr,
+      "low_latency_all_reduce: input must be allocated with "
+      "empty_strided_p2p().");
+
+  const size_t numel = input.numel();
+  const size_t data_bytes = numel * sizeof(at::BFloat16);
+  const size_t num_transactions =
+      at::ceil_div(data_bytes, sizeof(uint32_t));
+  const size_t input_offset_bytes =
+      input.storage_offset() * sizeof(at::BFloat16);
+
+  TORCH_CHECK(
+      symm_mem->get_buffer_size() >=
+          input_offset_bytes + num_transactions * sizeof(uint64_t),
+      "low_latency_all_reduce: symmetric memory buffer too small. Need ",
+      input_offset_bytes + num_transactions * sizeof(uint64_t),
+      " bytes, have ",
+      symm_mem->get_buffer_size(),
+      " bytes.");
+
+  const size_t rank = symm_mem->get_rank();
+  const size_t world_size = symm_mem->get_world_size();
+
+  at::Tensor result;
+  if (output.has_value()) {
+    TORCH_CHECK(
+        output->is_contiguous(),
+        "low_latency_all_reduce: output must be contiguous.");
+    TORCH_CHECK(
+        output->sizes() == input.sizes(),
+        "low_latency_all_reduce: input/output size mismatch.");
+    TORCH_CHECK(
+        output->scalar_type() == at::kBFloat16,
+        "low_latency_all_reduce: output must be BFloat16.");
+    result = *output;
+  } else {
+    result = input;
+  }
+
+  if (numel == 0) {
+    return result;
+  }
+
+  c10::Device device(c10::DeviceType::XPU, input.device().index());
+  c10::DeviceGuard guard(device);
+  auto stream = at::xpu::getCurrentXPUStream();
+  auto& queue = stream.queue();
+
+  // Scratch: preserve raw input while P2P buffer is overwritten.
+  auto scratch = at::empty_like(input);
+  scratch.copy_(input);
+
+  // Per-group monotonic flag counter (all ranks call in same order).
+  static std::mutex flag_mutex;
+  static std::unordered_map<std::string, uint32_t> flag_counters;
+  uint32_t flag_value;
+  {
+    std::lock_guard<std::mutex> lock(flag_mutex);
+    auto& counter = flag_counters[group_name];
+    ++counter;
+    if (counter == 0)
+      ++counter; // skip 0
+    flag_value = counter;
+  }
+
+  int num_blocks = 0, num_threads = 0;
+  init_elementwise_launch_config(
+      num_transactions,
+      sizeof(uint64_t),
+      sizeof(uint64_t),
+      1,
+      low_latency_all_reduce_max_num_blocks,
+      low_latency_all_reduce_max_num_threads,
+      num_blocks,
+      num_threads,
+      world_size);
+
+  DISPATCH_WORLD_SIZES(world_size, [&]() {
+    auto kfn = LowLatencyAllReduceBF16Kernel<k_world_size>(
+        reinterpret_cast<const uint32_t*>(scratch.data_ptr<at::BFloat16>()),
+        symm_mem->get_buffer_ptrs_dev(),
+        reinterpret_cast<uint32_t*>(result.data_ptr<at::BFloat16>()),
+        input_offset_bytes,
+        num_transactions,
+        rank,
+        static_cast<size_t>(world_size),
+        flag_value);
+    sycl_kernel_submit(
+        sycl::range<1>(num_blocks * num_threads),
+        sycl::range<1>(num_threads),
+        queue,
+        kfn);
+  });
+
+  return result;
+}
 
 // ============================================================================
 // Public API functions
 // ============================================================================
+
+at::Tensor all_reduce_low_latency(
+    at::Tensor input,
+    std::string reduce_op,
+    std::string group_name) {
+  return low_latency_all_reduce_impl(
+      input, std::nullopt, reduce_op, group_name);
+}
 
 at::Tensor two_shot_all_reduce_(
     at::Tensor input,
@@ -626,5 +836,8 @@ TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl(
       "two_shot_all_reduce_out",
       c10d::symmetric_memory::two_shot_all_reduce_out);
+  m.impl(
+      "all_reduce_low_latency",
+      c10d::symmetric_memory::all_reduce_low_latency);
 }
 
