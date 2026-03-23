@@ -1,5 +1,5 @@
 #!/bin/bash
-# XCCL Benchmark Runner
+# Collective Ops Benchmark Runner (CUDA/NCCL, XPU/XCCL, ...)
 #
 # Usage:
 #   ./run_benchmark.sh                          # defaults: ws=2,4,8  ops=all  dtype=bfloat16
@@ -22,7 +22,7 @@ OUTPUT_DIR=""                   # auto-generated if empty
 
 usage() {
     cat <<EOF
-XCCL Benchmark Runner
+Collective Ops Benchmark Runner (auto-detects CUDA/XPU)
 
 Options:
   -w, --world-sizes   Comma-separated world sizes          (default: 2,4,8)
@@ -73,11 +73,15 @@ if [ -z "${OUTPUT_DIR}" ]; then
 fi
 mkdir -p "${OUTPUT_DIR}"
 
-NUM_DEVICES=$(python3 -c "import torch; print(torch.xpu.device_count())")
+NUM_DEVICES=$(python3 -c "import torch; print(torch.accelerator.device_count())")
+DEVICE_TYPE=$(python3 -c "import torch; acc = torch.accelerator.current_accelerator(); print(acc.type if acc else 'unknown')")
+BACKEND=$(python3 -c "import torch, torch.distributed as d; dt = torch.accelerator.current_accelerator().type; print(d.get_default_backend_for_device(dt))")
 
 echo "============================================"
-echo "  XCCL Benchmark"
-echo "  XPU devices : ${NUM_DEVICES}"
+echo "  Collective Ops Benchmark"
+echo "  device type : ${DEVICE_TYPE}"
+echo "  backend     : ${BACKEND}"
+echo "  devices     : ${NUM_DEVICES}"
 echo "  world_sizes : ${WORLD_SIZES}"
 echo "  ops         : ${OPS:-all}"
 echo "  dtype       : ${DTYPE}"
@@ -100,7 +104,7 @@ for WS in "${WS_ARRAY[@]}"; do
         continue
     fi
 
-    CSV_FILE="${OUTPUT_DIR}/xccl_ws${WS}_${DTYPE}.csv"
+    CSV_FILE="${OUTPUT_DIR}/${BACKEND}_ws${WS}_${DTYPE}.csv"
     echo "========== world_size=${WS} =========="
     torchrun --standalone --nproc-per-node "${WS}" "${BENCH_SCRIPT}" \
         --dtype "${DTYPE}" \

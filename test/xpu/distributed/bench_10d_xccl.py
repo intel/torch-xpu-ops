@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# XCCL Collective & P2P Operations Benchmark
+# Collective & P2P Operations Benchmark (device-agnostic: CUDA/NCCL, XPU/XCCL, etc.)
 #
 # Usage:
-#   # Auto-detect all XPU devices as world_size:
+#   # Auto-detect accelerator and backend:
 #   torchrun --standalone --nproc-per-node <N> bench_c10d_xccl.py
 #
 #   # Sweep world sizes (launches sub-processes internally):
@@ -29,29 +29,53 @@ import torch.distributed as dist
 
 
 # ---------------------------------------------------------------------------
+# Device abstraction — works with any accelerator (CUDA, XPU, …)
+# ---------------------------------------------------------------------------
+
+def _get_device_type() -> str:
+    """Return the current accelerator device type string, e.g. 'cuda' or 'xpu'."""
+    acc = torch.accelerator.current_accelerator()
+    if acc is not None:
+        return acc.type
+    # Fallback: try common accelerators
+    for dt in ("cuda", "xpu"):
+        if hasattr(torch, dt) and getattr(torch, dt).is_available():
+            return dt
+    raise RuntimeError("No accelerator available")
+
+
+def _get_backend() -> str:
+    """Return the default dist backend for the current accelerator."""
+    return dist.get_default_backend_for_device(_get_device_type())
+
+
+def _device_count() -> int:
+    return torch.accelerator.device_count()
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _setup() -> Tuple[int, int]:
     """Initialize process group and return (rank, world_size)."""
-    rank = int(os.environ.get("LOCAL_RANK", os.environ.get("RANK", 0)))
-    world_size = int(os.environ.get("WORLD_SIZE", 1))
-
     if not dist.is_initialized():
-        dist.init_process_group(backend="xccl")
+        dist.init_process_group(backend=_get_backend())
 
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    torch.xpu.set_device(rank % torch.xpu.device_count())
+    local_rank = rank % _device_count()
+    torch.accelerator.set_device_index(local_rank)
     return rank, world_size
 
 
 def _device(rank: int) -> torch.device:
-    return torch.device(f"xpu:{rank % torch.xpu.device_count()}")
+    device_type = _get_device_type()
+    return torch.device(f"{device_type}:{rank % _device_count()}")
 
 
 def _sync_device(device: torch.device):
-    torch.xpu.synchronize(device)
+    torch.accelerator.synchronize(device)
 
 
 def _measure_time(
@@ -60,15 +84,16 @@ def _measure_time(
     num_warmup: int,
     device: torch.device,
 ) -> float:
-    """Measure average execution time in milliseconds using XPU events."""
+    """Measure average execution time in milliseconds using accelerator events."""
     # Warmup
     for _ in range(num_warmup):
         fn()
     _sync_device(device)
     dist.barrier()
 
-    start_event = torch.xpu.Event(enable_timing=True)
-    end_event = torch.xpu.Event(enable_timing=True)
+    device_module = getattr(torch, device.type)
+    start_event = device_module.Event(enable_timing=True)
+    end_event = device_module.Event(enable_timing=True)
 
     start_event.record()
     for _ in range(num_iters):
@@ -449,9 +474,13 @@ def run_benchmark(args):
 
     all_results = []
 
+    device_type = _get_device_type()
+    backend = _get_backend()
+
     if rank == 0:
         print(f"\n{'='*90}")
-        print(f"  XCCL Benchmark — world_size={world_size}, dtype={args.dtype}")
+        print(f"  Collective Benchmark — {device_type.upper()}/{backend.upper()}")
+        print(f"  world_size={world_size}, dtype={args.dtype}")
         print(f"  iters={args.num_iters}, warmup={args.num_warmup}")
         print(f"  message sizes: {len(sizes)} points from 2^{args.min_size} to 2^{args.max_size} bytes")
         print(f"  ops: {', '.join(ops)}")
@@ -474,6 +503,8 @@ def run_benchmark(args):
             for result in bench_fn(rank, world_size, device, 0, dtype, args.num_iters, args.num_warmup):
                 result["world_size"] = world_size
                 result["dtype"] = args.dtype
+                result["backend"] = backend
+                result["device_type"] = device_type
                 all_results.append(result)
                 if rank == 0:
                     _print_row(result)
@@ -482,6 +513,8 @@ def run_benchmark(args):
                 for result in bench_fn(rank, world_size, device, nbytes, dtype, args.num_iters, args.num_warmup):
                     result["world_size"] = world_size
                     result["dtype"] = args.dtype
+                    result["backend"] = backend
+                    result["device_type"] = device_type
                     all_results.append(result)
                     if rank == 0:
                         _print_row(result)
@@ -553,9 +586,9 @@ def sweep_world_sizes(args):
     script = os.path.abspath(__file__)
 
     for ws in world_sizes:
-        ndevices = torch.xpu.device_count()
+        ndevices = _device_count()
         if ws > ndevices:
-            print(f"[SKIP] world_size={ws} > available XPU devices ({ndevices})")
+            print(f"[SKIP] world_size={ws} > available devices ({ndevices})")
             continue
 
         csv_arg = []
@@ -591,13 +624,13 @@ def sweep_world_sizes(args):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="XCCL Collective & P2P Operations Benchmark",
+        description="Collective & P2P Operations Benchmark (NCCL / XCCL / …)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Available ops: {', '.join(ALL_OPS)}
 
 Examples:
-  # Run all ops with 2 GPUs:
+  # Run all ops with 2 GPUs (auto-detect CUDA/XPU):
   torchrun --standalone --nproc-per-node 2 bench_c10d_xccl.py
 
   # Only allreduce and allgather, export CSV:
