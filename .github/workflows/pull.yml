@@ -42,7 +42,7 @@ jobs:
         with:
           enable_clang: true
 
-  pr-tests:
+  preci-tests:
     if: github.event.pull_request.draft == false
     name: PR Tests
     needs: [preci-lint-check]

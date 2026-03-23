@@ -164,7 +164,7 @@ jobs:
   # Compare-results job
   # ----------------------------------------------------------------------
   compare-results:
-    name: Compare Results
+    name: Summary Output
     if: ${{ inputs.is_scheduled_run != 'comparison-manually' }}
     needs:
       - parse-test-inputs
