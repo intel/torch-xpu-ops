@@ -46,8 +46,7 @@ template <
     typename acc_scalar_t,
     typename index_t,
     typename res_t>
-struct SumVarOpsXPU
-    : public SumVarOps<scalar_t, acc_scalar_t, index_t, res_t> {
+struct SumVarOpsXPU : public SumVarOps<scalar_t, acc_scalar_t, index_t, res_t> {
   sycl::nd_item<1>& item;
 
  public:
@@ -64,8 +63,7 @@ struct SumVarOpsXPU
   }
 
   SumVarOpsXPU(bool take_sqrt, sycl::nd_item<1>& item)
-      : SumVarOps<scalar_t, acc_scalar_t, index_t, res_t>(
-            take_sqrt),
+      : SumVarOps<scalar_t, acc_scalar_t, index_t, res_t>(take_sqrt),
         item(item) {}
 };
 
@@ -73,8 +71,7 @@ template <typename T, int SIMD>
 struct GNRowwiseMomentsFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
   using SumVarType = SumVarData<T_ACC, int64_t>;
-  using SumVarOp =
-      SumVarOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  using SumVarOp = SumVarOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     const int64_t i = item.get_group(0);
@@ -119,8 +116,7 @@ struct GNRowwiseMomentsVectorizedFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   using T_ACC = acc_type_device<T, kXPU>;
   using SumVarType = SumVarData<T_ACC, int64_t>;
-  using SumVarOp =
-      SumVarOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
+  using SumVarOp = SumVarOpsXPU<T_ACC, T_ACC, int64_t, std::pair<T_ACC, T_ACC>>;
   using vec_t = memory::aligned_vector<T, VEC_SIZE>;
 
   SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {

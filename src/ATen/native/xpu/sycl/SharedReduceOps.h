@@ -116,10 +116,17 @@ struct SumVarData {
 
   SumVarData() : first_elem(0), sum(0), sum_of_squares(0), n(0), nf(0) {}
 
-  SumVarData(scalar_t first_elem, scalar_t sum, scalar_t sum_of_squares,
-             index_t n, scalar_t nf)
-      : first_elem(first_elem), sum(sum), sum_of_squares(sum_of_squares),
-        n(n), nf(nf) {}
+  SumVarData(
+      scalar_t first_elem,
+      scalar_t sum,
+      scalar_t sum_of_squares,
+      index_t n,
+      scalar_t nf)
+      : first_elem(first_elem),
+        sum(sum),
+        sum_of_squares(sum_of_squares),
+        n(n),
+        nf(nf) {}
 };
 
 template <
@@ -171,8 +178,7 @@ struct SumVarOps {
     return acc;
   }
 
-  SumVarOps(bool take_sqrt)
-      : take_sqrt(take_sqrt) {}
+  SumVarOps(bool take_sqrt) : take_sqrt(take_sqrt) {}
 };
 
 template <
