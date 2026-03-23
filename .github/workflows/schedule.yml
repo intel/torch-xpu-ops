@@ -25,8 +25,7 @@ env:
   suite: 'huggingface,timm_models,torchbench'
 
 jobs:
-  scheduled-tests:
-    name: Scheduled Tests
+  Scheduled-Tests:
     if: ${{ github.repository_owner == 'intel' }}
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
