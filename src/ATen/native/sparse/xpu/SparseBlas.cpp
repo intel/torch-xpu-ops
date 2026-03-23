@@ -25,6 +25,13 @@
 #include <ATen/ops/resize_as_sparse_native.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_sampled_addmm_native.h>
+#include <ATen/ops/repeat_interleave.h>
+#include <ATen/ops/arange.h>
+#include <ATen/ops/zeros.h>
+#include <ATen/ops/ones_like.h>
+#include <ATen/ops/add.h>
+#include <ATen/ops/mul.h>
+#include <ATen/ops/_sparse_csr_tensor_unsafe_native.h>
 #endif
 
 //#include <c10/util/MaybeOwned.h>
@@ -49,17 +56,19 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     Tensor& result) {
   at::native::sparse::sparse_sampled_addmm_check_inputs(
       self, mat1, mat2, beta, alpha, result);
-
+  std::cout << "mat1: " << mat1.to(Device(at::kCPU)) << std::endl;
+  std::cout << "mat2: " << mat2.to(Device(at::kCPU)) << std::endl;
   if (&result != &self) {
-    //printf(">>> Branch 1\n");
+    printf(">>> Branch 1\n");
     // We allow self to be a single matrix when mat1 and mat2 are batched
     auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
     result_sizes.push_back(self.size(-2));
     result_sizes.push_back(self.size(-1));
+    std::cout << "result_sizes: " << result_sizes << std::endl;
     at::sparse_csr::get_sparse_csr_impl(result)->resize_(self._nnz(), result_sizes);
     //printf(">>> Signal 0: %ld vs. %ld\n", result.numel(), self.numel());
     result.copy_(self);
-    //printf(">>> Signal 1\n");
+    printf(">>> Signal 1\n");
   }
 
   if (mat1.numel() == 0 || mat2.numel() == 0 || result._nnz() == 0) {
@@ -67,20 +76,65 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     return result;
   }
 
+  std::cout << "self.numel(): " << self.numel() << std::endl;
+  std::cout << "self.sizes(): " << self.sizes() << std::endl;
+  std::cout << "self.value(): " << self.values() << std::endl;
+  std::cout << "Values array: ";
+  auto values = self.values();
+  // auto val_ptr = values.data_ptr<float>();
+  // for (int i = 0; i < values.numel(); ++i) {
+  //     // Print each element with 2 decimal places
+  //     printf("%.10f ", val_ptr[i]);
+  // }
   Tensor self_dense;
   if (self.numel() != 0) {
     self_dense = self.to_dense();
   } else {
     self_dense = at::zeros_like(self);
   }
-  Tensor mask = at::abs(at::sgn(self_dense));
-  Tensor masked_mm = at::matmul(mat1, mat2) * mask;
-  // Tensor result_dense = at::addmm(self_dense, mat1, mat2, beta, alpha);
-  Tensor result_dense = self_dense * beta + masked_mm * alpha;
-  //printf(">>> Signal 2: %ld vs. %ld\n", result.numel(), result_dense.numel());
-  result.copy_(result_dense.to_sparse_csr());
-  //printf(">>> Signal 3\n");
+  std::cout << "self_dense: " << self_dense << std::endl;
 
+  auto crow_indices = self.crow_indices(); // (rows + 1)
+  std::cout << "crow_indices: " << crow_indices << std::endl;
+  auto col_indices = self.col_indices();   // (nnz)
+  std::cout << "col_indices: " << col_indices << std::endl;
+
+  auto num_rows = self.size(0);
+  // auto nnz = values.size(0);
+  auto row_indices = at::repeat_interleave(
+        at::arange(num_rows, crow_indices.options()),
+        crow_indices.diff()
+    );
+  // Tensor mask = at::zeros(self.sizes(), values.options());
+  // Tensor ones = at::ones_like(values);
+  // List<std::optional<Tensor>> indices;
+  // indices.emplace_back(row_indices);
+  // indices.emplace_back(col_indices);
+  // mask.index_put_(indices, ones);
+  // // Tensor mask = at::abs(at::sgn(self_dense));
+  // std::cout << "mask: " << mask.to(Device(at::kCPU)) << std::endl;
+  // Tensor masked_mm = at::matmul(mat1, mat2) * mask;
+  // // Tensor result_dense = at::addmm(self_dense, mat1, mat2, beta, alpha);
+  // Tensor result_dense = self_dense * beta + masked_mm * alpha;
+  // printf(">>> Signal 2: %ld vs. %ld\n", result.numel(), result_dense.numel());
+  // auto tmp = result_dense.to_sparse_csr();
+  // std::cout << "result_dense: " << result_dense << std::endl;
+  // std::cout << "result nnz: " << result._nnz() << std::endl;
+  // result.copy_(result_dense.to_sparse_csr());
+  // printf(">>> Signal 3\n");
+
+  auto a_sub = mat1.index_select(0, row_indices);
+  auto b_sub = mat2.t().index_select(0, col_indices);
+
+  auto sampled_product = (a_sub * b_sub).sum(1);
+  std::cout << "sampled_product: " << sampled_product << std::endl;
+
+  auto new_values = at::add(at::mul(sampled_product, alpha), values, beta);
+  std::cout << "new_values: " << new_values << std::endl;
+
+  auto result_temp = at::native::_sparse_csr_tensor_unsafe(
+        crow_indices, col_indices, new_values, self.sizes(), new_values.scalar_type(), self.layout(), new_values.device());
+  result.copy_(result_temp);
   return result;
 }
 
