@@ -137,14 +137,13 @@ void upsample_nearest2d_backward_frame(
 template <typename scalar_t, typename accscalar_t, typename index_bw_op_t>
 struct UpsampleNearest2dBackwardChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int64_t index = static_cast<int64_t>(item.get_global_linear_id());
-    const int64_t stride = static_cast<int64_t>(item.get_global_range(0));
+    int index = item.get_global_linear_id();
 
-    for (; index < static_cast<int64_t>(gi_numel_); index += stride) {
-      const int64_t c = index % channels_;
-      const int64_t w2 = (index / channels_) % width2_;
-      const int64_t h2 = (index / channels_ / width2_) % height2_;
-      const int64_t n = index / channels_ / width2_ / height2_;
+    if (index < gi_numel_) {
+      const int c = index % channels_;
+      const int w2 = (index / channels_) % width2_;
+      const int h2 = (index / channels_ / width2_) % height2_;
+      const int n = index / channels_ / width2_ / height2_;
 
       int h1 = index_bw_op_(height_scale_, h2, height1_);
       int h1_up = index_bw_op_(height_scale_, h2 + 1, height1_);
@@ -216,9 +215,6 @@ void upsample_nearest2d_backward_channels_last_frame(
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
   int64_t global_range =
       (gi_numel + work_group_size - 1) / work_group_size * work_group_size;
-  int64_t max_groups = syclMaxWorkItemsPerTile() / work_group_size;
-  max_groups = std::max<int64_t>(1, max_groups);
-  global_range = std::min<int64_t>(global_range, max_groups * work_group_size);
   auto caller = UpsampleNearest2dBackwardChannelsLastKernelFunctor<
       scalar_t,
       accscalar_t,
