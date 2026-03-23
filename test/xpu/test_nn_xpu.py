@@ -13561,9 +13561,11 @@ class TestNNDeviceType(NNTestCase):
         self, device, memory_format, align_corners, input_size, output_size
     ):
         # Non-regression test for https://github.com/pytorch/pytorch/pull/101403
-
-        if torch.device(device).type == "cuda":
-            raise SkipTest("CUDA implementation is not yet supporting uint8")
+        dev_type = torch.device(device).type
+        if dev_type in ("cuda", "xpu"):
+            raise SkipTest(
+                f"{dev_type.upper()} implementation is not yet supporting uint8"
+            )
 
         mode = "bilinear"
         input_ui8 = torch.randint(

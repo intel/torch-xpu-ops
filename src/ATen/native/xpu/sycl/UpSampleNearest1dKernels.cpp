@@ -86,7 +86,7 @@ void upsample_nearest1d_backward_frame(
     index_bw_op_t index_bw_op) {
   auto& queue = at::xpu::getCurrentSYCLQueue();
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
-  int global_range =
+  int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
   auto caller = UpsampleNearest1dBackwardKernelFunctor<
       scalar_t,
@@ -236,7 +236,7 @@ void upsample_nearest1d_frame(
   auto& queue = at::xpu::getCurrentSYCLQueue();
 
   auto work_group_size = syclMaxWorkItemsPerSubSlice();
-  int global_range =
+  int64_t global_range =
       (n + work_group_size - 1) / work_group_size * work_group_size;
 
   auto kfn = UpsampleNearest1dKernelFunctor<scalar_t, index_op_t>(
