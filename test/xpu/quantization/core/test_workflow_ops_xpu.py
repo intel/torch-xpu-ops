@@ -179,6 +179,7 @@ given_kwargs_dict2 = {
 }
 given_kwargs_dict3 = {
     "symmetric_quant": st.booleans(),
+    "use_bool": st.booleans(),
 }
 
 TestFakeQuantizeOps.test_forward_per_tensor = rewrap_hypothesis_test(
