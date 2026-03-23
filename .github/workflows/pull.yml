@@ -35,10 +35,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
       - name: Run comprehensive lint checks
         uses: ./.github/actions/lint-check
         with:
-          repository: ${{ github.repository }}
           enable_clang: true
 
   pr-tests:
