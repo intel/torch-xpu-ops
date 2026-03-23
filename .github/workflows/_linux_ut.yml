@@ -83,7 +83,7 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  test-in-container:
+  UT:
     needs: runner
     timeout-minutes: 1440  # 24 hours for container tests
     if: ${{ !contains(inputs.ut, 'distributed') }}
@@ -181,7 +181,7 @@ jobs:
 
           echo "Cleanup completed"
 
-  test-in-baremetal:
+  distributed:
     needs: runner
     timeout-minutes: 600  # 10 hours for baremetal tests
     if: ${{ contains(inputs.ut, 'distributed') }}

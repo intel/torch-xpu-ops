@@ -26,7 +26,6 @@ env:
 
 jobs:
   scheduled-tests:
-    name: Scheduled Tests
     if: ${{ github.repository_owner == 'intel' }}
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml

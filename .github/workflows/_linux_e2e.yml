@@ -92,7 +92,7 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  test:
+  E2E:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     needs: runner
     timeout-minutes: 3600

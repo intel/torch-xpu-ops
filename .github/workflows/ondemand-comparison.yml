@@ -89,8 +89,7 @@ jobs:
         uses: ./.github/actions/get-runner
 
   # Run tests on target version
-  run-target-tests:
-    name: Run Tests (Target)
+  target-tests:
     needs: get-runner
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
@@ -103,8 +102,7 @@ jobs:
     secrets: inherit
 
   # Run tests on baseline version
-  run-baseline-tests:
-    name: Run Tests (Baseline)
+  baseline-tests:
     needs: get-runner
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
@@ -118,8 +116,7 @@ jobs:
 
   # Job 4: Compare results and generate report
   compare-results:
-    name: Compare Results
-    needs: [run-target-tests, run-baseline-tests]
+    needs: [target-tests, baseline-tests]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}

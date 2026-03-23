@@ -93,8 +93,7 @@ permissions: read-all
 run-name: OnDemand / ${{ inputs.pytorch }}
 
 jobs:
-  execute-ondemand-tests:
-    name: Execute OnDemand Tests
+  ondemand-tests:
     uses: ./.github/workflows/_test_call.yml
     permissions: write-all
     with:

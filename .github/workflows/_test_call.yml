@@ -25,8 +25,7 @@ on:
 permissions: read-all
 
 jobs:
-  parse-test-inputs:
-    name: Parse Test Inputs
+  parse-inputs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -68,108 +67,102 @@ jobs:
           is_scheduled_run: ${{ inputs.is_scheduled_run }}
 
   linux-build:
-    name: Linux Build
-    needs: [parse-test-inputs]
+    needs: [parse-inputs]
     secrets: inherit
     permissions: write-all
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: ${{ inputs.runner }}
-      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
-      should_build: ${{ needs.parse-test-inputs.outputs.should_build }}
-      python: ${{ needs.parse-test-inputs.outputs.python }}
-      test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
-      component: ${{ needs.parse-test-inputs.outputs.component }}
-      component_version: ${{ needs.parse-test-inputs.outputs.component_version }}
+      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
+      should_build: ${{ needs.parse-inputs.outputs.should_build }}
+      python: ${{ needs.parse-inputs.outputs.python }}
+      test_role: ${{ needs.parse-inputs.outputs.test_role }}
+      component: ${{ needs.parse-inputs.outputs.component }}
+      component_version: ${{ needs.parse-inputs.outputs.component_version }}
 
-  linux-ut-tests:
-    name: Linux Unit Tests
+  linux-ut:
     needs:
-      - parse-test-inputs
+      - parse-inputs
       - linux-build
-    if: ${{ needs.parse-test-inputs.outputs.has_ut_tests == 'true' }}
+    if: ${{ needs.parse-inputs.outputs.has_ut_tests == 'true' }}
     secrets: inherit
     permissions: write-all
     strategy:
       fail-fast: false
       matrix:
-        ut_name: ${{ fromJSON(needs.parse-test-inputs.outputs.ut_list_json) }}
+        ut_name: ${{ fromJSON(needs.parse-inputs.outputs.ut_list_json) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ inputs.runner }}
-      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
-      python: ${{ needs.parse-test-inputs.outputs.python }}
-      test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
-      component: ${{ needs.parse-test-inputs.outputs.component }}
-      component_version: ${{ needs.parse-test-inputs.outputs.component_version }}
+      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
+      python: ${{ needs.parse-inputs.outputs.python }}
+      test_role: ${{ needs.parse-inputs.outputs.test_role }}
+      component: ${{ needs.parse-inputs.outputs.component }}
+      component_version: ${{ needs.parse-inputs.outputs.component_version }}
       ut: ${{ matrix.ut_name }}
 
-  linux-e2e-tests:
-    name: Linux E2E Tests
+  linux-e2e:
     needs:
-      - parse-test-inputs
+      - parse-inputs
       - linux-build
-    if: ${{ needs.parse-test-inputs.outputs.has_e2e_tests == 'true' }}
+    if: ${{ needs.parse-inputs.outputs.has_e2e_tests == 'true' }}
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(needs.parse-test-inputs.outputs.suite_list_json) }}
+        suite: ${{ fromJSON(needs.parse-inputs.outputs.suite_list_json) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ inputs.runner }}
-      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      python: ${{ needs.parse-test-inputs.outputs.python }}
-      test_role: ${{ needs.parse-test-inputs.outputs.test_role }}
-      component: ${{ needs.parse-test-inputs.outputs.component }}
-      component_version: ${{ needs.parse-test-inputs.outputs.component_version }}
+      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
+      python: ${{ needs.parse-inputs.outputs.python }}
+      test_role: ${{ needs.parse-inputs.outputs.test_role }}
+      component: ${{ needs.parse-inputs.outputs.component }}
+      component_version: ${{ needs.parse-inputs.outputs.component_version }}
       suite: ${{ matrix.suite }}
-      dt: ${{ needs.parse-test-inputs.outputs.dt }}
-      mode: ${{ needs.parse-test-inputs.outputs.mode }}
-      scenario: ${{ needs.parse-test-inputs.outputs.scenario }}
-      model: ${{ needs.parse-test-inputs.outputs.model_only }}
+      dt: ${{ needs.parse-inputs.outputs.dt }}
+      mode: ${{ needs.parse-inputs.outputs.mode }}
+      scenario: ${{ needs.parse-inputs.outputs.scenario }}
+      model: ${{ needs.parse-inputs.outputs.model_only }}
 
-  linux-microbench-tests:
-    name: Linux Microbenchmark Tests
+  linux-microbench:
     needs:
-      - parse-test-inputs
+      - parse-inputs
       - linux-build
-    if: ${{ needs.parse-test-inputs.outputs.has_microbench == 'true' }}
+    if: ${{ needs.parse-inputs.outputs.has_microbench == 'true' }}
     secrets: inherit
     uses: ./.github/workflows/_linux_op_benchmark.yml
     permissions: write-all
     with:
       runner: ${{ inputs.runner }}
-      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
-      python: ${{ needs.parse-test-inputs.outputs.python }}
+      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
+      python: ${{ needs.parse-inputs.outputs.python }}
 
-  windows-ut-tests:
-    name: Windows Unit Tests
-    needs: [parse-test-inputs]
-    if: ${{ needs.parse-test-inputs.outputs.has_windows == 'true' }}
+  windows-ut:
+    needs: [parse-inputs]
+    if: ${{ needs.parse-inputs.outputs.has_windows == 'true' }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut_windows'
-      python: ${{ needs.parse-test-inputs.outputs.python }}
+      python: ${{ needs.parse-inputs.outputs.python }}
       src_changed: false
       has_label: true
       runner: ${{ inputs.windows_runner }}
-      torch_xpu_ops: ${{ needs.parse-test-inputs.outputs.torch_xpu_ops }}
-      pytorch: ${{ needs.parse-test-inputs.outputs.pytorch }}
+      torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
+      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
 
   # ----------------------------------------------------------------------
   # Compare-results job
   # ----------------------------------------------------------------------
   compare-results:
-    name: Summary Output
     if: ${{ inputs.is_scheduled_run != 'comparison-manually' }}
     needs:
-      - parse-test-inputs
-      - linux-ut-tests
-      - linux-e2e-tests
+      - parse-inputs
+      - linux-ut
+      - linux-e2e
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
@@ -197,7 +190,7 @@ jobs:
       - name: Determine Baseline Artifact Type
         id: determine_type
         run: |
-          TEST_TYPE="${{ needs.parse-test-inputs.outputs.test_type }}"
+          TEST_TYPE="${{ needs.parse-inputs.outputs.test_type }}"
           EVENT_NAME="${{ github.event_name }}"
           IFS=',' read -ra SUFFIXES <<< "${{ env.BASELINE_SUFFIXES }}"
 
@@ -282,7 +275,7 @@ jobs:
       - name: Compare Test Results
         run: |
           source myvenv/bin/activate
-          echo "Comparing results for ${{ needs.parse-test-inputs.outputs.component }}..."
+          echo "Comparing results for ${{ needs.parse-inputs.outputs.component }}..."
           echo "Target: ${{ github.run_id }}"
           echo "Baseline: ${{ steps.baseline.outputs.BASELINE_RUN_ID }}"
           find results   # Debug: list downloaded files
@@ -346,7 +339,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.parse-test-inputs.outputs.component }}-test-summary
+          name: ${{ needs.parse-inputs.outputs.component }}-test-summary
           path: |
             *_comparison*.csv
             *_comparison*.xlsx

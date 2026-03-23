@@ -147,7 +147,7 @@ runs:
         torch_xpu_ops="${torch_xpu_ops:-}"
         python="${python:-3.10}"
         component="${component:-none}"
-        test_role="${test_role:-target}"
+        test_role="${test_role:-none}"
         target_version="${target_version:-}"
         baseline_version="${baseline_version:-}"
         component_version="${component_version:-}"
@@ -164,7 +164,7 @@ runs:
         elif [ "${{ github.event_name }}" == "pull_request" ]; then
           test_type="build-cicd"
           pytorch="main"
-          torch_xpu_ops="cicd"
+          torch_xpu_ops=""
           echo "Build PR, using merged torch-xpu-ops for CICD"
         elif [ "${{ inputs.is_scheduled_run }}" == "schedule" ]; then
           # Use explicit schedule type input instead of parsing cron

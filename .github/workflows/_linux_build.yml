@@ -164,7 +164,7 @@ jobs:
       - name: Checkout torch-xpu-ops (again for build job)
         uses: actions/checkout@v6
         with:
-          path: torch-xpu-ops
+          path: ${{ env.BUILD_DIR }}/torch-xpu-ops
           fetch-depth: 1
 
       - name: Setup oneAPI DLE
