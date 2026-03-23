@@ -73,24 +73,11 @@ runs:
         rm -rf inductor_log torch
 
         # Setup benchmark models for nightly runs
-        if [ "${{ github.event_name }}" != "pull_request" ]; then
+        if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ inputs.comparison_type }}" != "comparison" ]; then
           echo "Nightly run detected - setting up all benchmark models"
           BENCHMARK_SRC="../.ci/benchmarks/"
           BENCHMARK_DEST="benchmarks/dynamo/"
-
-          if [ -d "${BENCHMARK_SRC}" ]; then
-            rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}" || {
-              echo "Warning: Failed to sync benchmark models"
-            }
-            if [ "${{ inputs.comparison_type }}" == "comparison" ];then
-              BENCHMARK_SRC="../.ci/benchmarks/p0/"
-              rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}" || {
-                echo "Warning: Failed to sync benchmark models"
-              }
-            fi
-          else
-            echo "Warning: Benchmark source directory not found: ${BENCHMARK_SRC}"
-          fi
+          rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}"
         else
           echo "PR run detected - using limited model set"
         fi
