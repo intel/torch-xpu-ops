@@ -28,7 +28,6 @@ env:
 
 jobs:
   preci-lint-check:
-    if: github.repository_owner == 'intel'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -42,7 +41,7 @@ jobs:
           enable_clang: true
 
   preci-tests:
-    if: github.event.pull_request.draft == false
+    if: ${{ github.event.pull_request.draft == false }}
     needs: [preci-lint-check]
     uses: ./.github/workflows/_test_call.yml
     permissions: write-all
