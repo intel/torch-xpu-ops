@@ -444,16 +444,6 @@ Tensor& addmv_out_sparse_compressed_xpu(
   TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
   TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
 
-  c10::MaybeOwned<Tensor> self_ = expand_size(self, {mat.size(0)});
-  auto betaval = beta.toComplexDouble();
-
-  if (&result != &self) {
-    at::native::resize_output(result, self_->sizes());
-    if (betaval != 0.0) {
-      at::native::copy_(result, *self_);
-    }
-  }
-
   if (mat._nnz() == 0) {
     // shortcut for an empty matrix
     // By definition, when beta==0, values in self should be ignored. nans and
@@ -468,7 +458,7 @@ Tensor& addmv_out_sparse_compressed_xpu(
               beta,
               self.scalar_type(),
               std::nullopt /* layout */,
-              at::kXPU,
+              at::kCPU,
               std::nullopt /* pin_memory */));
     }
   }
