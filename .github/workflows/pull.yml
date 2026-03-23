@@ -1,4 +1,4 @@
-name: pull
+name: Pull Request
 
 on:
   pull_request:
@@ -28,6 +28,7 @@ env:
 
 jobs:
   preci-lint-check:
+    name: Lint Check
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -41,6 +42,7 @@ jobs:
           enable_clang: true
 
   preci-tests:
+    name: PreCI Tests
     if: ${{ github.event.pull_request.draft == false }}
     needs: [preci-lint-check]
     uses: ./.github/workflows/_test_call.yml
