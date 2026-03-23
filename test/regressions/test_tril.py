@@ -8,8 +8,8 @@
 
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
 from torch.testing._internal.common_device_type import largeTensorTest
+from torch.testing._internal.common_utils import TestCase
 
 
 @largeTensorTest("32GB")
