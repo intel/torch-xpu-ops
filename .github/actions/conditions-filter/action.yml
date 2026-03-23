@@ -127,7 +127,7 @@ runs:
       run: |
         echo "=== Checking PR labels ==="
         # Extract label names (skip if none)
-        pr_labels="$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[].name')"
+        pr_labels="$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[].name' | tr '\n' ' ')"
         echo "pr_labels=${pr_labels}" >> "${GITHUB_ENV}"
         echo "pr_labels=${pr_labels}" >> "${GITHUB_OUTPUT}"
 
