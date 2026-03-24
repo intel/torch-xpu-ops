@@ -33,7 +33,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Windows
   target_link_libraries(test_sycl_build_archive
   "-WHOLEARCHIVE:\"$<TARGET_FILE:sycl_simple_kernel_test>\"")
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   # Linux
   target_link_libraries(test_sycl_build_archive
     "-Wl,--whole-archive,\"$<TARGET_FILE:sycl_simple_kernel_test>\" -Wl,--no-whole-archive")
