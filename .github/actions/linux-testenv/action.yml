@@ -466,12 +466,10 @@ runs:
           pip uninstall -y fbgemm_gpu_nightly-cpu 2>/dev/null || true
 
           cd ../pytorch
-        fi
-
-        # Default dependencies if no specific suite
-        if [ "${SUITE_INPUT}" = "None" ]; then
+        else
           echo -e "\n=== Installing Default Dependencies ==="
           if [ -f ".ci/docker/requirements-ci.txt" ]; then
+            sed -i '/mkl/d' .ci/docker/requirements-ci.txt
             pip install -r .ci/docker/requirements-ci.txt || {
               echo "Warning: Failed to install CI requirements"
             }
