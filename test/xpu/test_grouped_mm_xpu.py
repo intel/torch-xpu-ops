@@ -5,29 +5,20 @@ Adapted from pytorch/test/test_matmul_cuda.py grouped_gemm tests.
 Tests all 4 input modes: 2D×2D, 2D×3D, 3D×3D, 3D×2D.
 """
 
-import unittest
 import torch
 import torch.nn.functional as F
-from torch.testing._internal.common_utils import (
-    TestCase,
-    run_tests,
-    parametrize,
-)
 from torch.testing._internal.common_device_type import (
     dtypes,
     instantiate_device_type_tests,
     onlyXPU,
 )
-
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 TEST_XPU = torch.xpu.is_available()
 
 
 class TestGroupedMMXPU(TestCase):
-
-    def grouped_mm_helper(
-        self, alist, blist, gOlist, agradlist, bgradlist, outlist
-    ):
+    def grouped_mm_helper(self, alist, blist, gOlist, agradlist, bgradlist, outlist):
         for a, b, gO, agrad, bgrad, out in zip(
             alist, blist, gOlist, agradlist, bgradlist, outlist
         ):
@@ -49,9 +40,7 @@ class TestGroupedMMXPU(TestCase):
 
         a.requires_grad_(True)
         b.requires_grad_(True)
-        offs = torch.arange(
-            k, n_groups * k + 1, k, device=device, dtype=torch.int32
-        )
+        offs = torch.arange(k, n_groups * k + 1, k, device=device, dtype=torch.int32)
 
         f = F.grouped_mm
         out = f(a, b.t(), offs=offs, out_dtype=dtype)
@@ -78,9 +67,7 @@ class TestGroupedMMXPU(TestCase):
         a.requires_grad_(True)
         b.requires_grad_(True)
 
-        offs = torch.arange(
-            m, n_groups * m + 1, m, device=device, dtype=torch.int32
-        )
+        offs = torch.arange(m, n_groups * m + 1, m, device=device, dtype=torch.int32)
 
         f = F.grouped_mm
         out = f(a, b.transpose(-2, -1), offs=offs, out_dtype=dtype)
@@ -95,9 +82,7 @@ class TestGroupedMMXPU(TestCase):
             outlist.append(out[start : offs_cpu[i]])
             gOlist.append(gO[start : offs_cpu[i]])
             start = offs_cpu[i]
-        self.grouped_mm_helper(
-            alist, b, gOlist, agradlist, b.grad, outlist
-        )
+        self.grouped_mm_helper(alist, b, gOlist, agradlist, b.grad, outlist)
 
     @onlyXPU
     @dtypes(torch.bfloat16)
@@ -125,9 +110,7 @@ class TestGroupedMMXPU(TestCase):
         a.requires_grad_(True)
         b.requires_grad_(True)
 
-        offs = torch.arange(
-            n, n_groups * n + 1, n, device=device, dtype=torch.int32
-        )
+        offs = torch.arange(n, n_groups * n + 1, n, device=device, dtype=torch.int32)
 
         f = F.grouped_mm
         out = f(a, b.transpose(-2, -1), offs=offs, out_dtype=dtype)
