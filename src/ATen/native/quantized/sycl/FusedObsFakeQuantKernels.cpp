@@ -117,49 +117,27 @@ void _calculate_moving_average(
 
   int64_t* observer_on_data = observer_on.data_ptr<int64_t>();
 
-  if (per_row_fake_quant) {
-    std::tie(x_min, x_max) = at::_aminmax(x, 1);
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
-          scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
-          scalar_t* x_max_data = x_max.data_ptr<scalar_t>();
-          scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
-          scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
+  auto local_range = per_row_fake_quant ? group_size : 1;
+  std::tie(x_min, x_max) = at::_aminmax(x, 1);
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
+        scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
+        scalar_t* x_max_data = x_max.data_ptr<scalar_t>();
+        scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
+        scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
 
-          // Moving Average Min/Max observer for activations
-          CalculateMovingAverageKernelFunctor<scalar_t> kfn(
-              observer_on_data,
-              x_min_data,
-              x_max_data,
-              running_min_data,
-              running_max_data,
-              averaging_const,
-              size);
-          sycl_kernel_submit(
-              num_groups * group_size, group_size, getCurrentSYCLQueue(), kfn);
-        });
-  } else {
-    std::tie(x_min, x_max) = at::_aminmax(x);
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
-          scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
-          scalar_t* x_max_data = x_max.data_ptr<scalar_t>();
-          scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
-          scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
-
-          // Moving Average Min/Max observer for activations
-          CalculateMovingAverageKernelFunctor<scalar_t> kfn(
-              observer_on_data,
-              x_min_data,
-              x_max_data,
-              running_min_data,
-              running_max_data,
-              averaging_const,
-              size);
-          sycl_kernel_submit(
-              num_groups * group_size, 1, getCurrentSYCLQueue(), kfn);
-        });
-  }
+        // Moving Average Min/Max observer for activations
+        CalculateMovingAverageKernelFunctor<scalar_t> kfn(
+            observer_on_data,
+            x_min_data,
+            x_max_data,
+            running_min_data,
+            running_max_data,
+            averaging_const,
+            size);
+        sycl_kernel_submit(
+            num_groups * group_size, local_range, getCurrentSYCLQueue(), kfn);
+      });
 }
 
 template <typename scalar_t>
@@ -304,8 +282,8 @@ void _calc_moving_avg_qparams_helper(
   auto group_size = std::get<2>(execution_policy);
 
   int64_t* fake_quant_on_data = fake_quant_on.data_ptr<int64_t>();
-  if (per_row_fq) {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
+  auto local_range = per_row_fq ? group_size : 1;
+  AT_DISPATCH_FLOATING_TYPES_AND2(
         at::kBFloat16,
         at::kHalf,
         x.scalar_type(),
@@ -325,32 +303,8 @@ void _calc_moving_avg_qparams_helper(
               scale_ptr,
               zp_ptr);
           sycl_kernel_submit(
-              num_groups * group_size, group_size, getCurrentSYCLQueue(), kfn);
+              num_groups * group_size, local_range, getCurrentSYCLQueue(), kfn);
         });
-  } else {
-    AT_DISPATCH_FLOATING_TYPES_AND2(
-        at::kBFloat16,
-        at::kHalf,
-        x.scalar_type(),
-        "ChooseQuantizationParams",
-        [&] {
-          scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
-          scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
-
-          CalcMovingAvgQparamsHelperKernelFunctor<scalar_t> kfn(
-              fake_quant_on_data,
-              running_min_data,
-              running_max_data,
-              qmin,
-              qmax,
-              1, // size
-              symmetric_quant, // preserve_sparsity
-              scale_ptr,
-              zp_ptr);
-          sycl_kernel_submit(
-              num_groups * group_size, 1, getCurrentSYCLQueue(), kfn);
-        });
-  }
 }
 
 } // namespace at::native::xpu

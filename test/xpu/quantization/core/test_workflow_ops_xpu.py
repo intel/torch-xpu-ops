@@ -184,7 +184,7 @@ given_kwargs_dict3 = {
 given_kwargs_dict4 = {
     "symmetric_quant": st.booleans(),
     "use_bool": st.booleans(),
-    "sampled_dtype": st.sampled_from(['bf16', 'fp16', 'fp32']),
+    "sampled_dtype": st.sampled_from(["bf16", "fp16", "fp32"]),
 }
 
 TestFakeQuantizeOps.test_forward_per_tensor = rewrap_hypothesis_test(
