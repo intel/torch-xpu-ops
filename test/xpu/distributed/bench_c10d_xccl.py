@@ -83,26 +83,76 @@ def _measure_time(
     num_iters: int,
     num_warmup: int,
     device: torch.device,
-) -> float:
-    """Measure average execution time in milliseconds using accelerator events."""
+    rank: int,
+) -> Tuple[float, float]:
+    """Measure average execution time in milliseconds.
+
+    Returns a tuple of:
+      1. Accelerator event time in milliseconds.
+      2. Host-side `fn()` call time in milliseconds.
+
+    Each iteration has its own start/end event pair. Per-iteration event times
+    are computed from the rank-local events, then the minimum across all ranks
+    is taken for each iteration. Host-side call times are measured with
+    `time.perf_counter()` around `fn()` and reduced with MAX across ranks so the
+    reported number reflects the slowest participant for each iteration. A
+    small matmul is issued immediately before and after each `fn()` call to
+    provide neighboring accelerator work without changing the measured region.
+    """
+    matmul_a = torch.randn((1024, 1024), dtype=torch.float16, device=device)
+    matmul_b = torch.randn((1024, 1024), dtype=torch.float16, device=device)
+    matmul_out = torch.empty((1024, 1024), dtype=torch.float16, device=device)
+
+    def _run_small_matmul() -> None:
+        torch.mm(matmul_a, matmul_b, out=matmul_out)
+
     # Warmup
     for _ in range(num_warmup):
+        _run_small_matmul()
         fn()
+        _run_small_matmul()
     _sync_device(device)
     dist.barrier()
 
     device_module = getattr(torch, device.type)
-    start_event = device_module.Event(enable_timing=True)
-    end_event = device_module.Event(enable_timing=True)
 
-    start_event.record()
-    for _ in range(num_iters):
-        fn()
-    end_event.record()
+    # Create one start/end event pair per iteration
+    start_events = [device_module.Event(enable_timing=True) for _ in range(num_iters)]
+    end_events = [device_module.Event(enable_timing=True) for _ in range(num_iters)]
+    call_times_ms = []
+    loop_collectives = num_iters * 2
+
+    for i in range(num_iters):
+        _run_small_matmul()
+        start_events[i].record()
+        call_start = time.perf_counter()
+        for j in range(loop_collectives):
+            fn()
+        call_end = time.perf_counter()
+        end_events[i].record()
+        _run_small_matmul()
+        call_times_ms.append((call_end - call_start) * 1e3)
+        dist.barrier()
+
     _sync_device(device)
 
-    elapsed_ms = start_event.elapsed_time(end_event) / num_iters
-    return elapsed_ms
+    # Compute per-iteration accelerator event times for this rank.
+    iter_event_times = torch.tensor(
+        [start_events[i].elapsed_time(end_events[i]) for i in range(num_iters)],
+        dtype=torch.float64,
+        device=device,
+    )
+    iter_call_times = torch.tensor(call_times_ms, dtype=torch.float64, device=device)
+
+    print(f"[RANK {rank}] Iter event time(ms) {iter_event_times} API call time(ms) {iter_call_times} \n", flush=True)
+
+    # Event time keeps the existing minimum-across-ranks behavior.
+    dist.all_reduce(iter_event_times, op=dist.ReduceOp.MIN)
+    dist.all_reduce(iter_call_times, op=dist.ReduceOp.MAX)
+
+    event_elapsed_ms = iter_event_times.mean().item() / loop_collectives
+    call_elapsed_ms = iter_call_times.mean().item() / loop_collectives
+    return event_elapsed_ms, call_elapsed_ms
 
 
 def _algbw(nbytes: int, time_ms: float) -> float:
@@ -146,11 +196,12 @@ def bench_broadcast(rank, world_size, device, nbytes, dtype, num_iters, num_warm
         def fn():
             dist.broadcast(tensor, src=root)
 
-        time_ms = _measure_time(fn, num_iters, num_warmup, device)
+        time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
         yield {
             "op": "broadcast",
             "root": root,
             "time_ms": time_ms,
+            "call_time_ms": call_time_ms,
             "nbytes": nbytes,
             "algbw_GBs": _algbw(nbytes, time_ms),
             "busbw_GBs": _busbw(nbytes, time_ms, world_size, "broadcast"),
@@ -164,10 +215,11 @@ def bench_allreduce(rank, world_size, device, nbytes, dtype, num_iters, num_warm
     def fn():
         dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     yield {
         "op": "allreduce",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": nbytes,
         "algbw_GBs": _algbw(nbytes, time_ms),
         "busbw_GBs": _busbw(nbytes, time_ms, world_size, "allreduce"),
@@ -182,11 +234,12 @@ def bench_reduce(rank, world_size, device, nbytes, dtype, num_iters, num_warmup)
         def fn(root=root):
             dist.reduce(tensor, dst=root, op=dist.ReduceOp.SUM)
 
-        time_ms = _measure_time(fn, num_iters, num_warmup, device)
+        time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
         yield {
             "op": "reduce",
             "root": root,
             "time_ms": time_ms,
+            "call_time_ms": call_time_ms,
             "nbytes": nbytes,
             "algbw_GBs": _algbw(nbytes, time_ms),
             "busbw_GBs": _busbw(nbytes, time_ms, world_size, "reduce"),
@@ -205,11 +258,12 @@ def bench_allgather(rank, world_size, device, nbytes, dtype, num_iters, num_warm
     def fn():
         dist.all_gather(output_tensors, input_tensor)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     total_bytes = numel_per_rank * world_size * dtype_size(dtype)
     yield {
         "op": "allgather",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": total_bytes,
         "algbw_GBs": _algbw(total_bytes, time_ms),
         "busbw_GBs": _busbw(total_bytes, time_ms, world_size, "allgather"),
@@ -224,11 +278,12 @@ def bench_reduce_scatter(rank, world_size, device, nbytes, dtype, num_iters, num
     def fn():
         dist.reduce_scatter_tensor(output_tensor, input_tensor, op=dist.ReduceOp.SUM)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     total_bytes = numel_per_rank * world_size * dtype_size(dtype)
     yield {
         "op": "reduce_scatter",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": total_bytes,
         "algbw_GBs": _algbw(total_bytes, time_ms),
         "busbw_GBs": _busbw(total_bytes, time_ms, world_size, "reduce_scatter"),
@@ -245,11 +300,12 @@ def bench_alltoall_single(rank, world_size, device, nbytes, dtype, num_iters, nu
     def fn():
         dist.all_to_all_single(output_tensor, input_tensor)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     total_bytes = numel * dtype_size(dtype)
     yield {
         "op": "alltoall_single",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": total_bytes,
         "algbw_GBs": _algbw(total_bytes, time_ms),
         "busbw_GBs": _busbw(total_bytes, time_ms, world_size, "alltoall_single"),
@@ -270,11 +326,12 @@ def bench_alltoall(rank, world_size, device, nbytes, dtype, num_iters, num_warmu
     def fn():
         dist.all_to_all(output_tensors, input_tensors)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     total_bytes = numel_per_rank * world_size * dtype_size(dtype)
     yield {
         "op": "alltoall",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": total_bytes,
         "algbw_GBs": _algbw(total_bytes, time_ms),
         "busbw_GBs": _busbw(total_bytes, time_ms, world_size, "alltoall"),
@@ -296,12 +353,13 @@ def bench_gather(rank, world_size, device, nbytes, dtype, num_iters, num_warmup)
     def fn():
         dist.gather(input_tensor, gather_list, dst=root)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     total_bytes = numel * world_size * dtype_size(dtype)
     yield {
         "op": "gather",
         "root": root,
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": total_bytes,
         "algbw_GBs": _algbw(total_bytes, time_ms),
         "busbw_GBs": _busbw(total_bytes, time_ms, world_size, "gather"),
@@ -323,12 +381,13 @@ def bench_scatter(rank, world_size, device, nbytes, dtype, num_iters, num_warmup
     def fn():
         dist.scatter(output_tensor, scatter_list, src=root)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     total_bytes = numel * world_size * dtype_size(dtype)
     yield {
         "op": "scatter",
         "root": root,
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": total_bytes,
         "algbw_GBs": _algbw(total_bytes, time_ms),
         "busbw_GBs": _busbw(total_bytes, time_ms, world_size, "scatter"),
@@ -360,10 +419,11 @@ def bench_send_recv(rank, world_size, device, nbytes, dtype, num_iters, num_warm
             dist.recv(tensor, src=peer)
             dist.send(tensor, dst=peer)
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     yield {
         "op": "send_recv",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": nbytes,
         "algbw_GBs": _algbw(nbytes, time_ms),
         "busbw_GBs": _busbw(nbytes, time_ms, world_size, "send_recv"),
@@ -388,10 +448,11 @@ def bench_batch_isend_irecv(rank, world_size, device, nbytes, dtype, num_iters, 
         for req in reqs:
             req.wait()
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     yield {
         "op": "batch_isend_irecv",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": nbytes,
         "algbw_GBs": _algbw(nbytes, time_ms),
         "busbw_GBs": _busbw(nbytes, time_ms, world_size, "batch_isend_irecv"),
@@ -402,10 +463,11 @@ def bench_barrier(rank, world_size, device, nbytes, dtype, num_iters, num_warmup
     def fn():
         dist.barrier()
 
-    time_ms = _measure_time(fn, num_iters, num_warmup, device)
+    time_ms, call_time_ms = _measure_time(fn, num_iters, num_warmup, device, rank)
     yield {
         "op": "barrier",
         "time_ms": time_ms,
+        "call_time_ms": call_time_ms,
         "nbytes": 0,
         "algbw_GBs": 0.0,
         "busbw_GBs": 0.0,
@@ -495,8 +557,10 @@ def run_benchmark(args):
         bench_fn = OP_REGISTRY[op_name]
 
         if rank == 0:
-            print(f"  {'Op':<22} {'Size':>12} {'Time(ms)':>12} {'AlgBW(GB/s)':>14} {'BusBW(GB/s)':>14}")
-            print(f"  {'-'*22} {'-'*12} {'-'*12} {'-'*14} {'-'*14}")
+            print(
+                f"  {'Op':<22} {'Size':>12} {'Event(ms)':>12} {'Call(ms)':>12} {'AlgBW(GB/s)':>14} {'BusBW(GB/s)':>14}"
+            )
+            print(f"  {'-'*22} {'-'*12} {'-'*12} {'-'*12} {'-'*14} {'-'*14}")
 
         # barrier op doesn't need size sweep
         if op_name == "barrier":
@@ -543,6 +607,7 @@ def _print_row(result: Dict[str, Any]):
     print(
         f"  {op + extra:<22} {size_str:>12} "
         f"{result['time_ms']:>12.4f} "
+        f"{result['call_time_ms']:>12.4f} "
         f"{result['algbw_GBs']:>14.3f} "
         f"{result['busbw_GBs']:>14.3f}"
     )
