@@ -174,7 +174,7 @@ def _test_to(self, device, dtype, module_info, training, swap, set_grad):
             # reset
             m.to(dtype=torch.float32)
 
-        prev_device, prev_dtype = device, dtype
+        prev_device, prev_dtype = torch.device(device).type, dtype
         for device_, dtype_ in product(devices, dtypes):
             # if device/dtype do not change, grad.to(device, dtype) is a no-op so
             # swapping will not change ._cdata
