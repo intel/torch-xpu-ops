@@ -325,20 +325,11 @@ class TORCH_API ProcessGroupXCCL : public Backend {
           // `xcclActiveGroupCounter_` is introduced to track group calls made
           // in the frontend. In this scenario, the `groupStart` wrap API is
           // used.
-
-          // Skip group API during graph recording: ccl::group_end() calls
-          // event.wait() internally which fails on graph-associated events.
-          auto status = c10::xpu::currentStreamCaptureStatusMayInitCtx();
-          if (status != c10::xpu::CaptureStatus::Recording) {
-            xccl::oneccl_group_start();
-          }
+          xccl::oneccl_group_start();
         },
         [](at::xpu::XPUStream&,
            c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>&) {
-          auto status = c10::xpu::currentStreamCaptureStatusMayInitCtx();
-          if (status != c10::xpu::CaptureStatus::Recording) {
-            xccl::oneccl_group_end();
-          }
+          xccl::oneccl_group_end();
         },
         opType,
         asyncOp,

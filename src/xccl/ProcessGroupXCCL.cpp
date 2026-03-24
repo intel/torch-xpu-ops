@@ -14,12 +14,10 @@
 
 #ifdef USE_C10D_XCCL
 
-#include <c10/xpu/XPUGraphsC10Utils.h>
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <torch/csrc/distributed/c10d/ParamCommsUtils.hpp>
 #include <xccl/NanCheck_XPU.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
-#include <cstdio>
 
 namespace c10d {
 
@@ -234,10 +232,7 @@ void ProcessGroupXCCL::WorkXCCL::synchronize() {
 
 void ProcessGroupXCCL::WorkXCCL::synchronizeStream() {
   auto currentStream = at::xpu::getCurrentXPUStream(device_.index());
-  auto capture_status = c10::xpu::currentStreamCaptureStatusMayInitCtx();
-  if (capture_status != c10::xpu::CaptureStatus::Recording) {
-    xcclEndEvent_->block(currentStream);
-  }
+  xcclEndEvent_->block(currentStream);
   stashed_for_allocator_safety_->unstash();
 }
 
@@ -697,12 +692,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     coalescedAsync_ = asyncOp;
   }
 
-  bool useAsync =
-      asyncOp && capture_status != c10::xpu::CaptureStatus::Recording;
-  auto stream = useAsync ? xcclStreamsMap_.at(key).xpuStream
-                         : at::xpu::getCurrentXPUStream(device.index());
+  auto stream = asyncOp ? xcclStreamsMap_.at(key).xpuStream
+                        : at::xpu::getCurrentXPUStream(device.index());
   std::unique_ptr<ccl::stream> cclstream;
-  if (useAsync) {
+  if (asyncOp) {
     cclstream =
         std::make_unique<ccl::stream>(xcclStreamsMap_.at(key).cclStream);
     syncStream(device, xcclEventsMap_[key], stream);
