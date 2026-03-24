@@ -373,18 +373,24 @@ def _compile_int4_mm(self, device, m, k, n):
 
     b_tmp, b_scales_and_zeros = _group_quantize_tensor(b, n_bit=4, q_group_size=q_group)
 
-    @torch.compile(fullgraph=True)
+    @torch.compile
     def int4_mm(a, b_tmp, b_scales_and_zeros):
         if self.device_type == "cpu":
             b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
+            self.assertTrue(b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dim() == 2)
             return torch._weight_int4pack_mm_for_cpu(
                 a, b_int4pack, q_group, b_scales_and_zeros
             )
         if self.device_type == "xpu":
             b_int4pack = b_tmp.view(torch.int32)
+            self.assertTrue(b_int4pack.dtype is torch.int32)
+            self.assertTrue(b_int4pack.dim() == 2)
             return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
 
         b_int4pack = torch._convert_weight_to_int4pack(b_tmp, inner_k_tiles)
+        self.assertTrue(b_int4pack.dtype is torch.int32)
+        self.assertTrue(b_int4pack.dim() == 4)
         return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
 
     res = int4_mm(a, b_tmp, b_scales_and_zeros)
