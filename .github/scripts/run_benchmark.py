@@ -337,17 +337,14 @@ class Environment:
             # Run a single command to get both values.
             # Use double braces to escape f-string literal inside the command.
             cmd = (
-                f"{self.python_exe} -c "
-                "'import torch, triton; "
-                "print(f\"{torch.version.git_version},{triton.__version__}\")'"
+                f"{self.python_exe} -c 'import torch; print(torch.version.git_version)'"
             )
-            output = run_cmd(cmd, capture=True).strip()
-            if output:  # Ensure output is not empty
-                parts = output.split(',')
-                # Expect two parts, but allow fallback if only one is present
-                torch_commit = parts[0] if len(parts) > 0 else "unknown"
-                triton_ver = parts[1] if len(parts) > 1 else "unknown"
-                return torch_commit, triton_ver
+            torch_commit = run_cmd(cmd, capture=True).strip()
+            cmd = (
+                f"{self.uv_cmd} pip list 2>&1 | grep triton-xpu | tail -n 1 | sed 's/.* //'"
+            )
+            triton_version = run_cmd(cmd, capture=True).strip()
+            return torch_commit, triton_version
         except Exception:  # Catch any error from run_cmd or subprocess
             pass
         # Fallback if anything went wrong

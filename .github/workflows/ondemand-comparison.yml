@@ -64,10 +64,6 @@ permissions: read-all
 run-name: >-
   Acceptance Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
 
-env:
-  ut: 'op_p0'
-  suite: 'huggingface,timm_models,torchbench'
-
 jobs:
   get-runner:
     runs-on: |
@@ -99,6 +95,8 @@ jobs:
       runner: ${{ needs.get-runner.outputs.runner_id }}
       windows_runner: 'Windows_CI'
       is_scheduled_run: comparison-manually
+      ut: 'op_p0'
+      suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
 
   # Run tests on baseline version
@@ -112,6 +110,8 @@ jobs:
       runner: ${{ needs.get-runner.outputs.runner_id }}
       windows_runner: 'Windows_CI'
       is_scheduled_run: comparison-manually
+      ut: 'op_p0'
+      suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
 
   # Job 4: Compare results and generate report

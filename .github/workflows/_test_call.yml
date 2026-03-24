@@ -8,6 +8,23 @@ on:
         type: string
         description: 'JSON string containing all inputs'
 
+      # Test scope configuration
+      ut:
+        type: string
+        default: ''
+        description: |
+          Unit test scope (comma-separated):
+          - basic: op_regression, op_transformers, op_extended, op_regression_dev1
+          - op_regression, op_transformers, op_extended, op_regression_dev1
+          - op_ut, skipped_ut, torch_xpu, xpu_profiling, xpu_distributed
+          - microbench, windows (special flags)
+      suite:
+        type: string
+        default: ''
+        description: |
+          E2E test suite (comma-separated):
+          - huggingface, timm_models, torchbench, pt2e
+
       # Advanced configuration
       runner:
         type: string
@@ -65,6 +82,8 @@ jobs:
           base_ref: ${{ github.base_ref || '' }}
           all_inputs_json: ${{ inputs.all_inputs_json || '' }}
           is_scheduled_run: ${{ inputs.is_scheduled_run }}
+          ut: ${{ inputs.ut }}
+          suite: ${{ inputs.suite }}
 
   linux-build:
     needs: [parse-inputs]

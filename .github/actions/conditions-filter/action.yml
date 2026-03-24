@@ -14,6 +14,13 @@ inputs:
   is_scheduled_run:
     description: 'Run type: "pull_request", "schedule", or "manually"'
     required: true
+  # Test scope configuration
+  ut:
+    description: 'Unit test scope (comma-separated)'
+    required: true
+  suite:
+    description: 'E2E test suite (comma-separated)'
+    required: true
 
 outputs:
   # Configuration
@@ -239,7 +246,10 @@ runs:
     # ------------------------------------------------------------
     - name: Determine test scope
       id: determine-scope
-      shell: bash -eo pipefail {0}
+      shell: bash -xeo pipefail {0}
+      env:
+        ut: ${{ inputs.ut }}
+        suite: ${{ inputs.suite }}
       run: |
         echo "=== Determining Test Scope ==="
 

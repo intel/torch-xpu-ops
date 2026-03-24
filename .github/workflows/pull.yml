@@ -23,8 +23,6 @@ env:
   GH_TOKEN: ${{ github.token }}
   WORKSPACE: ${{ github.workspace }}
   PR_NUMBER: ${{ github.event.pull_request.number }}
-  ut: 'basic,op_ut'
-  suite: 'huggingface,timm_models,torchbench'
 
 jobs:
   preci-lint-check:
@@ -49,4 +47,6 @@ jobs:
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
       is_scheduled_run: pull_request
+      ut: 'basic,op_ut'
+      suite: 'huggingface,timm_models,torchbench'
     secrets: inherit

@@ -101,4 +101,6 @@ jobs:
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
       is_scheduled_run: dispatch-manually
+      ut: ${{ inputs.ut }}
+      suite: ${{ inputs.suite }}
     secrets: inherit

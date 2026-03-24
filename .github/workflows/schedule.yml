@@ -20,10 +20,6 @@ run-name: |
     contains(github.event.schedule, '10') && 'Build-from-source' || 'Nightly-wheel'
   }}
 
-env:
-  ut: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,microbench,windows'
-  suite: 'huggingface,timm_models,torchbench'
-
 jobs:
   scheduled-tests:
     if: ${{ github.repository_owner == 'intel' }}
@@ -33,4 +29,6 @@ jobs:
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
       is_scheduled_run: schedule
+      ut: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,microbench,windows'
+      suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
