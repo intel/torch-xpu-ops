@@ -28,13 +28,17 @@ TEST_XPU = torch.xpu.is_available()
 
 
 class TestGroupedMMXPU(TestCase):
-    def grouped_mm_helper(self, alist, blist, gOlist, agradlist, bgradlist, outlist):
+    def grouped_mm_helper(
+        self, alist, blist, gOlist, agradlist, bgradlist, outlist,
+        transpose_b=True,
+    ):
         for a, b, gO, agrad, bgrad, out in zip(
             alist, blist, gOlist, agradlist, bgradlist, outlist
         ):
             a = a.clone().detach().requires_grad_()
             b = b.clone().detach().requires_grad_()
-            out_ref = torch.mm(a, b.t())
+            b_mm = b.t() if transpose_b else b
+            out_ref = torch.mm(a, b_mm)
             out_ref.backward(gO)
             self.assertEqual(out, out_ref)
             if agrad is not None:
@@ -80,7 +84,7 @@ class TestGroupedMMXPU(TestCase):
         offs = torch.arange(m, n_groups * m + 1, m, device=device, dtype=torch.int32)
 
         f = F.grouped_mm
-        out = f(a, b.transpose(-2, -1), offs=offs, out_dtype=dtype)
+        out = f(a, b, offs=offs, out_dtype=dtype)
         gO = torch.rand_like(out)
         out.backward(gO)
         offs_cpu = offs.cpu()
@@ -92,7 +96,9 @@ class TestGroupedMMXPU(TestCase):
             outlist.append(out[start : offs_cpu[i]])
             gOlist.append(gO[start : offs_cpu[i]])
             start = offs_cpu[i]
-        self.grouped_mm_helper(alist, b, gOlist, agradlist, b.grad, outlist)
+        self.grouped_mm_helper(
+            alist, b, gOlist, agradlist, b.grad, outlist, transpose_b=False
+        )
 
     @onlyXPU
     @dtypes(torch.bfloat16)
@@ -105,10 +111,10 @@ class TestGroupedMMXPU(TestCase):
         b.requires_grad_(True)
 
         f = F.grouped_mm
-        out = f(a, b.transpose(-2, -1), out_dtype=dtype)
+        out = f(a, b, out_dtype=dtype)
         gO = torch.rand_like(out)
         out.backward(gO)
-        self.grouped_mm_helper(a, b, gO, a.grad, b.grad, out)
+        self.grouped_mm_helper(a, b, gO, a.grad, b.grad, out, transpose_b=False)
 
     @onlyXPU
     @dtypes(torch.bfloat16)
@@ -150,7 +156,7 @@ class TestGroupedMMXPU(TestCase):
         self.assertEqual(out, ref, atol=0.5, rtol=0.1)
 
 
-instantiate_device_type_tests(TestGroupedMMXPU, globals(), only_for="xpu")
+instantiate_device_type_tests(TestGroupedMMXPU, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()
