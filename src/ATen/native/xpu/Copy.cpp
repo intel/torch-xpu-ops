@@ -131,8 +131,7 @@ void copy_device_to_device(
 
   if (memcpy_eligible) {
     // SYCL queue.memcpy performance is worse than SYCL copy kernel
-    // implementation. JIRA:
-    // https://jira.devtools.intel.com/browse/CMPLRLLVM-41292
+    // implementation.
     memcpyAsync(iter, copy_stream, p2p_enabled);
   } else {
     if (same_neg) {
