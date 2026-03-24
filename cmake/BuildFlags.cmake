@@ -101,6 +101,11 @@ macro(set_build_flags)
     # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
     # 4. Linkage:
     # gcc -shared host.o kernel.o device-code.o -o libxxx.so
+    # Force-include the override header before any source/header is parsed,
+    # disabling the host-side id-queries-fit-in-int runtime check.
+    # Use TORCH_XPU_OPS_ROOT (not CMAKE_CURRENT_SOURCE_DIR) so the path
+    # stays the same regardless of which CMakeLists.txt calls this macro.
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -include ${TORCH_XPU_OPS_ROOT}/src/comm/sycl_id_queries_override.h)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
