@@ -147,7 +147,7 @@
 | [#2662](https://github.com/intel/torch-xpu-ops/issues/2662) | [release/2.10][Windows][BMG] New failed test cases and 2.9 also failed but pvc passed | 🟢 Open | kdrozd-dev | os: Windows, hw: BMG, module: ut |
 | [#2661](https://github.com/intel/torch-xpu-ops/issues/2661) | [release/2.10][Windows][BMG] New failed test cases but 2.9 passed | 🔴 Closed | kdrozd-dev | os: Windows, hw: BMG, module: ut |
 | [#2660](https://github.com/intel/torch-xpu-ops/issues/2660) | [release/2.10][Windows][BMG] New failed test cases | 🟢 Open | — | os: Windows, hw: BMG, module: ut |
-| [#2299](https://github.com/intel/torch-xpu-ops/issues/2299) | [Windows][LNL][BMG]PyTorch 2.9 UT regression summary. | 🟢 Open | xuhancn, libohao1201 | os: Windows, hw : LNL, hw: BMG, module: ut |
+| [#2299](https://github.com/intel/torch-xpu-ops/issues/2299) | [Windows][LNL][BMG]PyTorch 2.9 UT regression summary. | 🟢 Open | xuhancn, libohao1201 | os: Windows, hw: LNL, hw: BMG, module: ut |
 | [#1819](https://github.com/intel/torch-xpu-ops/issues/1819) | [BMG-Windows][PT2.8]Torch-xpu-ops UT got TypeError | 🟢 Open | kdrozd-dev | os: Windows, hw: BMG, skipped |
 | [#2022](https://github.com/intel/torch-xpu-ops/issues/2022) | [Windows] [CI] [UT] AssertionError: Tensor-likes are not close! | 🟢 Open | — | os: Windows, module: ut, skipped_windows |
 
