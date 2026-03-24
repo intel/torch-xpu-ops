@@ -173,7 +173,9 @@ runs:
           pip uninstall -y fbgemm_gpu_nightly-cpu
           cd ../pytorch
         else
-          pip install -r ./.ci/docker/requirements-ci.txt
+          # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
+          sed -i '/mkl/d' .ci/docker/requirements-ci.txt
+          pip install -r .ci/docker/requirements-ci.txt
           pip install pytest pytest-timeout pytest-xdist
         fi
         # install the corresponding torchao
