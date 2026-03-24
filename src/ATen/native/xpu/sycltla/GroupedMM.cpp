@@ -7,9 +7,9 @@
  *
  * http://www.apache.org/licenses/LICENSE-2.0
  *
- * SYCL Grouped Matrix Multiplication kernel using sycl-tla (CUTLASS for Intel GPUs).
- * Supports BF16 inputs with FP32 accumulation and BF16 output.
- * Handles all 4 input modes: 3D×3D, 2D×3D, 3D×2D, 2D×2D.
+ * SYCL Grouped Matrix Multiplication kernel using sycl-tla (CUTLASS for Intel
+ * GPUs). Supports BF16 inputs with FP32 accumulation and BF16 output. Handles
+ * all 4 input modes: 3D×3D, 2D×3D, 3D×2D, 2D×2D.
  *
  * Reference: sycl-tla/examples/04_bmg_grouped_gemm/04_bmg_grouped_gemm.cpp
  */
@@ -17,21 +17,21 @@
 #include <ATen/ATen.h>
 #include <ATen/native/xpu/sycltla/GroupedMM.h>
 
-#include "cutlass/epilogue/collective/default_epilogue.hpp"
-#include "cutlass/epilogue/collective/xe_array_epilogue.hpp"
-#include "cutlass/epilogue/fusion/xe_callbacks.hpp"
-#include "cutlass/gemm/group_array_problem_shape.hpp"
-#include "cutlass/gemm/device/gemm_universal.h"
-#include "cutlass/gemm/device/gemm_universal_adapter.h"
-#include "cutlass/gemm/collective/collective_mma.hpp"
+#include <cutlass/epilogue/collective/default_epilogue.hpp>
+#include <cutlass/epilogue/collective/xe_array_epilogue.hpp>
+#include <cutlass/epilogue/fusion/xe_callbacks.hpp>
+#include <cutlass/gemm/collective/collective_mma.hpp>
+#include <cutlass/gemm/device/gemm_universal.h>
+#include <cutlass/gemm/device/gemm_universal_adapter.h>
+#include <cutlass/gemm/group_array_problem_shape.hpp>
 
 #include <cute/tensor.hpp>
 
-#include "cutlass/util/device_memory.h"
-#include "cutlass/util/packed_stride.hpp"
+#include <cutlass/util/device_memory.h>
+#include <cutlass/util/packed_stride.hpp>
 
-#include <vector>
 #include <iostream>
+#include <vector>
 
 using namespace cute;
 
@@ -42,11 +42,11 @@ namespace {
 // ---------------------------------------------------------------------------
 using ProblemShape = cutlass::gemm::GroupProblemShape<Shape<int, int, int>>;
 
-using ElementA           = bfloat16_t;
-using ElementB           = bfloat16_t;
-using ElementOutput      = bfloat16_t;
+using ElementA = bfloat16_t;
+using ElementB = bfloat16_t;
+using ElementOutput = bfloat16_t;
 using ElementAccumulator = float;
-using ElementComputeEpi  = float;
+using ElementComputeEpi = float;
 
 using LayoutA = cutlass::layout::RowMajor;
 using LayoutB = cutlass::layout::RowMajor;
@@ -64,21 +64,25 @@ using TileShape = Shape<_256, _256, _32>;
 using TiledMma = typename TiledMMAHelper<
     MMA_Atom<XE_DPAS_TT<8, ElementAccumulator, ElementA>>,
     Layout<TileShape>,
-    Layout<Shape<_8, _4, _1>, Stride<_4, _1, _0>>
->::TiledMMA;
+    Layout<Shape<_8, _4, _1>, Stride<_4, _1, _0>>>::TiledMMA;
 
 constexpr int PipelineStages = 2;
 
-using GEMMDispatchPolicy     = cutlass::gemm::MainloopXeL1StagedGroup<PipelineStages>;
+using GEMMDispatchPolicy =
+    cutlass::gemm::MainloopXeL1StagedGroup<PipelineStages>;
 using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeGenericGroup;
 
 using EpilogueOp = cutlass::epilogue::fusion::LinearCombination<
-    ElementOutput, ElementComputeEpi,
-    ElementAccumulator, ElementAccumulator,
+    ElementOutput,
+    ElementComputeEpi,
+    ElementAccumulator,
+    ElementAccumulator,
     cutlass::FloatRoundStyle::round_to_nearest>;
 
 using FusionCallBacks = cutlass::epilogue::fusion::FusionCallbacks<
-    EpilogueDispatchPolicy, EpilogueOp, TileShape,
+    EpilogueDispatchPolicy,
+    EpilogueOp,
+    TileShape,
     decltype(tile_shape(TiledMma()))>;
 
 using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue<
@@ -101,8 +105,14 @@ using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<
     ElementB,
     cutlass::gemm::TagToStrideB_t<LayoutB*>,
     TiledMma,
-    GmemTiledCopyA, void, void, cute::identity,
-    GmemTiledCopyB, void, void, cute::identity>;
+    GmemTiledCopyA,
+    void,
+    void,
+    cute::identity,
+    GmemTiledCopyB,
+    void,
+    void,
+    cute::identity>;
 
 using GemmKernel = cutlass::gemm::kernel::GemmUniversal<
     ProblemShape,
@@ -122,14 +132,14 @@ using StrideD = typename Gemm::GemmKernel::InternalStrideD;
 // ---------------------------------------------------------------------------
 cutlass::Status run_grouped_gemm(
     int group_count,
-    const std::vector<typename ProblemShape::UnderlyingProblemShape>& problem_sizes_host,
+    const std::vector<typename ProblemShape::UnderlyingProblemShape>&
+        problem_sizes_host,
     const std::vector<const ElementA*>& ptr_a_host,
     const std::vector<const ElementB*>& ptr_b_host,
-    const std::vector<ElementOutput*>&  ptr_d_host,
+    const std::vector<ElementOutput*>& ptr_d_host,
     const std::vector<StrideA>& stride_a_host,
     const std::vector<StrideB>& stride_b_host,
     const std::vector<StrideD>& stride_d_host) {
-
   cutlass::DeviceAllocation<typename ProblemShape::UnderlyingProblemShape>
       problem_sizes_device;
   problem_sizes_device.reset(group_count);
@@ -148,8 +158,7 @@ cutlass::Status run_grouped_gemm(
   ptr_C_device.reset(group_count);
   std::vector<const ElementAccumulator*> ptr_c_host(group_count);
   for (int i = 0; i < group_count; ++i) {
-    ptr_c_host[i] =
-        reinterpret_cast<const ElementAccumulator*>(ptr_d_host[i]);
+    ptr_c_host[i] = reinterpret_cast<const ElementAccumulator*>(ptr_d_host[i]);
   }
   ptr_C_device.copy_from_host(ptr_c_host.data());
 
@@ -178,8 +187,9 @@ cutlass::Status run_grouped_gemm(
       cutlass::KernelHardwareInfo::query_device_multiprocessor_count(
           hw_info.device_id);
 
-  using RasterOrderOptions = typename cutlass::gemm::kernel::detail::
-      PersistentTileSchedulerXeGroup<ProblemShape>::RasterOrderOptions;
+  using RasterOrderOptions =
+      typename cutlass::gemm::kernel::detail::PersistentTileSchedulerXeGroup<
+          ProblemShape>::RasterOrderOptions;
 
   typename Gemm::Arguments arguments;
   decltype(arguments.epilogue.thread) fusion_args;
@@ -195,10 +205,15 @@ cutlass::Status run_grouped_gemm(
   arguments = typename Gemm::Arguments{
       cutlass::gemm::GemmUniversalMode::kGrouped,
       {group_count, problem_sizes_device.get(), problem_sizes_host.data()},
-      {ptr_A_device.get(), stride_A_device.get(), ptr_B_device.get(),
+      {ptr_A_device.get(),
+       stride_A_device.get(),
+       ptr_B_device.get(),
        stride_B_device.get()},
-      {fusion_args, ptr_C_device.get(), stride_C_device.get(),
-       ptr_D_device.get(), stride_D_device.get()},
+      {fusion_args,
+       ptr_C_device.get(),
+       stride_C_device.get(),
+       ptr_D_device.get(),
+       stride_D_device.get()},
       hw_info,
       {1, RasterOrderOptions::AlongN}};
 
@@ -332,8 +347,7 @@ void bf16bf16_grouped_mm(
       ptr_a_vec.push_back(base_a + g * M * K);
       ptr_b_vec.push_back(
           reinterpret_cast<const ElementB*>(b_slice.data_ptr()));
-      ptr_d_vec.push_back(
-          reinterpret_cast<ElementOutput*>(d_slice.data_ptr()));
+      ptr_d_vec.push_back(reinterpret_cast<ElementOutput*>(d_slice.data_ptr()));
 
       stride_a_vec.push_back(
           cutlass::make_cute_packed_stride(StrideA{}, {M, K, 1}));
@@ -346,8 +360,14 @@ void bf16bf16_grouped_mm(
     }
 
     cutlass::Status status = run_grouped_gemm(
-        group_count, problem_sizes, ptr_a_vec, ptr_b_vec, ptr_d_vec,
-        stride_a_vec, stride_b_vec, stride_d_vec);
+        group_count,
+        problem_sizes,
+        ptr_a_vec,
+        ptr_b_vec,
+        ptr_d_vec,
+        stride_a_vec,
+        stride_b_vec,
+        stride_d_vec);
 
     TORCH_CHECK(
         status == cutlass::Status::kSuccess,
@@ -395,8 +415,14 @@ void bf16bf16_grouped_mm(
   }
 
   cutlass::Status status = run_grouped_gemm(
-      group_count, problem_sizes, ptr_a_vec, ptr_b_vec, ptr_d_vec,
-      stride_a_vec, stride_b_vec, stride_d_vec);
+      group_count,
+      problem_sizes,
+      ptr_a_vec,
+      ptr_b_vec,
+      ptr_d_vec,
+      stride_a_vec,
+      stride_b_vec,
+      stride_d_vec);
 
   TORCH_CHECK(
       status == cutlass::Status::kSuccess,
