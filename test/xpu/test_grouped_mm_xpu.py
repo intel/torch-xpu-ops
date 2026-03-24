@@ -29,7 +29,13 @@ TEST_XPU = torch.xpu.is_available()
 
 class TestGroupedMMXPU(TestCase):
     def grouped_mm_helper(
-        self, alist, blist, gOlist, agradlist, bgradlist, outlist,
+        self,
+        alist,
+        blist,
+        gOlist,
+        agradlist,
+        bgradlist,
+        outlist,
         transpose_b=True,
     ):
         for a, b, gO, agrad, bgrad, out in zip(
@@ -156,7 +162,9 @@ class TestGroupedMMXPU(TestCase):
         self.assertEqual(out, ref, atol=0.5, rtol=0.1)
 
 
-instantiate_device_type_tests(TestGroupedMMXPU, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestGroupedMMXPU, globals(), only_for="xpu", allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
