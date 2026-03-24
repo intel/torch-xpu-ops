@@ -118,7 +118,11 @@ void _calculate_moving_average(
   int64_t* observer_on_data = observer_on.data_ptr<int64_t>();
 
   auto local_range = per_row_fake_quant ? group_size : 1;
-  std::tie(x_min, x_max) = at::_aminmax(x, 1);
+  if (per_row_fake_quant) {
+    std::tie(x_min, x_max) = at::_aminmax(x, 1);
+  } else {
+    std::tie(x_min, x_max) = at::_aminmax(x);
+  }
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
         scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
