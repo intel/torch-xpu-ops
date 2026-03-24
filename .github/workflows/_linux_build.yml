@@ -85,7 +85,6 @@ jobs:
         uses: ./torch-xpu-ops/.github/actions/get-runner
 
   build:
-    name: Build PyTorch XPU
     needs: runner
     if: ${{ !contains(inputs.pytorch, '_wheel') && inputs.should_build == 'true' }}
     runs-on: ${{ needs.runner.outputs.runner_id }}

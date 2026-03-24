@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from glob import glob
 from datetime import datetime
-from typing import list, dict, tuple, Any
+from typing import Any
 
 # ----------------------------------------------------------------------
 # Constants – easily adjustable

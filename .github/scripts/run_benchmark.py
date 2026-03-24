@@ -12,8 +12,8 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import dict, list, tuple
 import logging
+from datetime import datetime
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -310,7 +310,7 @@ class Environment:
         channel = channel.lower()
         index_map = {
             "release": "https://download.pytorch.org/whl/xpu",
-            "nightly": "https://download.pytorch.org/whl/nightly/xpu",
+            "nightly": "https://download.pytorch.org/whl/nightly/xpu --pre",
             "rc": "https://download.pytorch.org/whl/test/xpu",
         }
         if channel not in index_map:
@@ -329,12 +329,29 @@ class Environment:
         run_cmd(cmd, f"Installing PyTorch ({channel}{version_spec})")
 
     def get_torch_commit(self) -> str:
-        """Return git commit hash of installed torch, or 'unknown' if not available."""
-        commit = run_cmd(
-            f"{self.python_exe} -c 'import torch; print(torch.version.git_version)'",
-            capture=True,
-        )
-        return commit if commit else "unknown"
+        """
+        Return a tuple (git_commit_hash_of_torch, triton_version).
+        Each value is 'unknown' if not available.
+        """
+        try:
+            # Run a single command to get both values.
+            # Use double braces to escape f-string literal inside the command.
+            cmd = (
+                f"{self.python_exe} -c "
+                "'import torch, triton; "
+                "print(f\"{torch.version.git_version},{triton.__version__}\")'"
+            )
+            output = run_cmd(cmd, capture=True).strip()
+            if output:  # Ensure output is not empty
+                parts = output.split(',')
+                # Expect two parts, but allow fallback if only one is present
+                torch_commit = parts[0] if len(parts) > 0 else "unknown"
+                triton_ver = parts[1] if len(parts) > 1 else "unknown"
+                return torch_commit, triton_ver
+        except Exception:  # Catch any error from run_cmd or subprocess
+            pass
+        # Fallback if anything went wrong
+        return "unknown", "unknown"
 
     def clone_pytorch(self, commit: str):
         """Clone PyTorch at exact commit and set up torch-xpu-ops."""
@@ -505,7 +522,6 @@ class BenchmarkRunner:
     def __init__(self, args, env: Environment):
         self.args = args
         self.env = env
-        self.torch_commit = env.get_torch_commit()
         self.log_base = env.workspace / INDUCTOR_LOG_BASE
 
     def run_all(self):
@@ -553,18 +569,16 @@ class BenchmarkRunner:
 
     def _run_single(self, spec: BenchmarkSpec):
         """Execute one benchmark and augment its CSV."""
-        log_dir = self.log_base / self.torch_commit / spec.suite / spec.dtype
+        log_dir = self.log_base / torch_commit / triton_version / spec.suite / spec.dtype
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Show installed torch for debugging using uv pip list
-        run_cmd(
-            f"{self.env.python_exe} -m pip list | grep -w 'torch '",
-            shell=True,
-            check=False,
-        )
-
         cmd, csv_path = self._build_command(spec, log_dir)
-        logger.info(f"Running: {cmd}")
+        logger.info("Checking: torch and triton")
+        torch_check, triton_check = self.env.get_torch_commit()
+        logger.info(f"Torch: {torch_check}, Triton: {triton_check}")
+        if torch_commit != torch_check or triton_version != triton_check:
+            logger.error(f"Torch or Triton has been re-installed! Torch: {torch_commit}/{torch_check}, Triton: {triton_version}/{triton_check}")
+            sys.exit(1)
         run_cmd(cmd, cwd=self.env.pytorch_dir, shell=True, check=False)  # Do not exit on benchmark failure
 
         # If the benchmark did not produce the expected CSV, create a fallback
@@ -587,7 +601,7 @@ class BenchmarkRunner:
             'calls_captured', 'unique_graphs', 'graph_breaks', 'unique_graph_breaks',
             'autograd_captures', 'autograd_compiles', 'cudagraph_skips', 'compilation_latency'
         ]
-        with open(csv_path, 'w', newline='') as f:
+        with open(csv_path, 'w+', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             row = {
@@ -642,7 +656,8 @@ class BenchmarkRunner:
                 model_extra = ["--only", spec.model]
 
         # Output files
-        csv_name = f"inductor_{spec.suite}_{spec.dtype}_{spec.mode}_{self.args.device}_{spec.scenario}.csv"
+        timestamp = datetime.now().timestamp()
+        csv_name = f"inductor_{spec.suite}_{spec.dtype}_{spec.mode}_{self.args.device}_{spec.scenario}_{timestamp}_{spec.scenario}.csv"
         csv_path = log_dir / csv_name
         log_path = log_dir / csv_name.replace(".csv", ".log")
 
@@ -711,7 +726,7 @@ class BenchmarkRunner:
                 logger.debug(f"Filtered {len(original_rows) - len(rows)} malformed row(s) from {csv_path}")
             # ----------------------------------------------------
 
-            with open(csv_path, 'w', newline='') as f:
+            with open(csv_path, 'w+', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(rows)
@@ -732,7 +747,6 @@ class BenchmarkRunner:
         for f in csv_files:
             if not f.name.endswith(('_accuracy.csv', '_performance.csv')):
                 continue
-            logger.debug(f"Summarizing {f.name}")
             filtered_files.append(f)
 
         if not filtered_files:
@@ -743,7 +757,7 @@ class BenchmarkRunner:
         target_fieldnames = [
             'suite', 'dt', 'mode', 'scenario', 'dev', 'name', 'batch_size',
             'accuracy', 'eager_latency', 'inductor_latency', 'speedup',
-            'torch_commit', 'shape'
+            'torch_commit', 'triton_version', 'shape'
         ]
 
         summary_rows = []
@@ -753,7 +767,7 @@ class BenchmarkRunner:
                     reader = csv.DictReader(f)
                     for row in reader:
                         # Build a new row with only the target columns
-                        new_row = {col: '' for col in target_fieldnames}
+                        new_row = dict.fromkeys(target_fieldnames, '')
 
                         # Copy values that exist in the original row
                         for key in row:
@@ -761,7 +775,8 @@ class BenchmarkRunner:
                                 new_row[key] = row[key]
 
                         # Add metadata
-                        new_row['torch_commit'] = self.torch_commit
+                        new_row['torch_commit'] = torch_commit
+                        new_row['triton_version'] = triton_version
                         new_row['shape'] = 'dynamic' if self.args.shape == 'dynamic' else 'static'
 
                         # Compute derived latency fields if this is a performance run
@@ -794,11 +809,13 @@ class BenchmarkRunner:
             r.get('scenario', ''),
             r.get('suite', ''),
             r.get('mode', ''),
-            r.get('dt', '')
+            r.get('dt', ''),
+            r.get('name', ''),
+            r.get('batch_size', '')
         ))
 
         summary_path = self.log_base / SUMMARY_CSV_NAME
-        with open(summary_path, "w", newline="") as f:
+        with open(summary_path, "w+", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=target_fieldnames)
             writer.writeheader()
             writer.writerows(summary_rows)
@@ -888,6 +905,7 @@ def main():
 
     args = parser.parse_args()
     workspace = Path(args.workspace).resolve()
+    global torch_commit, triton_version
 
     # Determine if we will run benchmarks (to know if we need benchmark repo)
     need_torchbench, torchbench_models = check_torchbench_needed(args)
@@ -931,7 +949,7 @@ def main():
             sys.exit(1)
 
         env.install_pytorch()
-        torch_commit = env.get_torch_commit()
+        torch_commit, triton_version = env.get_torch_commit()
         env.clone_pytorch(torch_commit)
 
         # Install additional packages
@@ -946,6 +964,8 @@ def main():
             env.install_benchmark_repo(torchbench_models, torchbench_commit=env.torchbench_commit if hasattr(env, 'torchbench_commit') else None)
         else:
             logger.info("TorchBench not required - skipping benchmark repo clone.")
+    else:
+        torch_commit, triton_version = env.get_torch_commit()
 
     # ------------------------------------------------------------------
     # 3. Run benchmarks (if requested implicitly)

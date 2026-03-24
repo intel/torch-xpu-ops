@@ -26,7 +26,7 @@ from datetime import datetime
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, dict, list, set, tuple
+from typing import Any
 from xml.etree import ElementTree as ET
 
 import numpy as np
