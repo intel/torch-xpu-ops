@@ -218,6 +218,38 @@ static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
       global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
 }
 
+template <typename func_t>
+struct ScatterGatherDeterministicKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    for (int i = 0; i < N_; ++i) {
+      f_(i);
+    }
+  }
+
+  ScatterGatherDeterministicKernelFunctor(int N, func_t f) : N_(N), f_(f) {}
+
+ private:
+  int N_;
+  func_t f_;
+};
+
+template <typename func_t>
+static void launch_scatter_gather_kernel_deterministic(
+    int64_t N,
+    const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+
+  using KernelFn = ScatterGatherDeterministicKernelFunctor<func_t>;
+  auto caller = KernelFn((int)N, f);
+  sycl::range<1> local_range(1);
+  sycl::range<1> global_range(1);
+  sycl_kernel_submit(
+      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+}
+
 template <
     bool is_scatter_like,
     typename scalar_t,
@@ -277,11 +309,12 @@ struct ScatterGatherInternalKernel {
       int64_t index_size,
       int64_t index_stride,
       int64_t numel,
-      func_t f) {
+      func_t f,
+      bool deterministic = false) {
     if (!iter.can_use_32bit_indexing()) {
       for (auto& sub_iter : iter.with_32bit_indexing()) {
         ScatterGatherInternalKernel<is_scatter_like, scalar_t, index_t>()(
-            sub_iter, index_size, index_stride, numel, f);
+            sub_iter, index_size, index_stride, numel, f, deterministic);
       }
       return;
     }
@@ -336,7 +369,11 @@ struct ScatterGatherInternalKernel {
         numel,
         f);
 
-    launch_scatter_gather_kernel(iter.numel(), loop);
+    if (deterministic) {
+      launch_scatter_gather_kernel_deterministic(iter.numel(), loop);
+    } else {
+      launch_scatter_gather_kernel(iter.numel(), loop);
+    }
   }
 };
 
@@ -348,7 +385,8 @@ struct ScatterGatherBaseKernel {
       const Tensor& index,
       const Tensor& src,
       const std::string& method_name,
-      const ReduceAdd& f) {
+      const ReduceAdd& f,
+      bool deterministic = false) {
     at::assert_no_internal_overlap(self);
 
     auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
@@ -400,7 +438,12 @@ struct ScatterGatherBaseKernel {
           AT_DISPATCH_INDEX_TYPES(
               index.scalar_type(), "scatter_gather_base_kernel_func", [&]() {
                 ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
-                    iter, index_size, index_stride, self.numel(), f);
+                    iter,
+                    index_size,
+                    index_stride,
+                    self.numel(),
+                    f,
+                    deterministic);
               });
         });
   }
@@ -411,7 +454,8 @@ struct ScatterGatherBaseKernel {
       const Tensor& index,
       const Tensor& src,
       const std::string& method_name,
-      const TensorAssign& f) {
+      const TensorAssign& f,
+      bool deterministic = false) {
     at::assert_no_internal_overlap(self);
 
     auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
@@ -460,7 +504,12 @@ struct ScatterGatherBaseKernel {
         AT_DISPATCH_INDEX_TYPES(
             index.scalar_type(), "xpu_scatter_gather_base_kernel_func", [&]() {
               ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
-                  iter, index_size, index_stride, self.numel(), f);
+                  iter,
+                  index_size,
+                  index_stride,
+                  self.numel(),
+                  f,
+                  deterministic);
             });
       });
     } else {
@@ -480,7 +529,12 @@ struct ScatterGatherBaseKernel {
                       is_scatter_like,
                       dtype,
                       index_t>()(
-                      iter, index_size, index_stride, self.numel(), f);
+                      iter,
+                      index_size,
+                      index_stride,
+                      self.numel(),
+                      f,
+                      deterministic);
                 });
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
@@ -500,7 +554,8 @@ struct ScatterGatherBaseKernel {
       const Tensor& index,
       const Tensor& src,
       const std::string& method_name,
-      const func_t& f) {
+      const func_t& f,
+      bool deterministic = false) {
     at::assert_no_internal_overlap(self);
 
     auto index_sizes = ensure_nonempty_vec(index.sizes().vec());
@@ -553,7 +608,12 @@ struct ScatterGatherBaseKernel {
               "xpu_scatter_gather_base_kernel_func",
               [&]() {
                 ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
-                    iter, index_size, index_stride, self.numel(), f);
+                    iter,
+                    index_size,
+                    index_stride,
+                    self.numel(),
+                    f,
+                    deterministic);
               });
         });
   }
@@ -764,6 +824,17 @@ void scatter_add_kernel(
     int64_t dim,
     const Tensor& index,
     const Tensor& src) {
+  if (globalContext().deterministicAlgorithms()) {
+    ScatterGatherBaseKernel</*is_scatter_like=*/true, /*cast_to_opaque=*/false>()(
+        self,
+        dim,
+        index,
+        src,
+        "scatter_add_kernel_deterministic",
+        reduce_add,
+        /*deterministic=*/true);
+    return;
+  }
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd usage
   globalContext().alertNotDeterministic("scatter_add_kernel");
@@ -777,6 +848,17 @@ void scatter_reduce_kernel(
     const Tensor& index,
     const Tensor& src,
     const ReductionType& reduce) {
+  if (reduce == ReductionType::SUM && globalContext().deterministicAlgorithms()) {
+    ScatterGatherBaseKernel<true, false>()(
+        self,
+        dim,
+        index,
+        src,
+        "scatter_reduce_kernel_add_deterministic",
+        reduce_add,
+        /*deterministic=*/true);
+    return;
+  }
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic because of atomicAdd/AtomicMul usage
   globalContext().alertNotDeterministic("scatter_reduce_kernel");
@@ -807,6 +889,17 @@ void scatter_reduce_two_kernel(
     const ReductionType& reduce) {
   switch (reduce) {
     case ReductionType::SUM:
+      if (globalContext().deterministicAlgorithms()) {
+        ScatterGatherBaseKernel<true, false>()(
+            self,
+            dim,
+            index,
+            src,
+            "scatter_reduce_kernel_sum_deterministic",
+            reduce_add,
+            /*deterministic=*/true);
+        break;
+      }
       globalContext().alertNotDeterministic("scatter_reduce_kernel_sum");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_sum", reduce_add);
@@ -825,6 +918,17 @@ void scatter_reduce_two_kernel(
           self, dim, index, src, "scatter_reduce_kernel_amin", reduce_minimum);
       break;
     case ReductionType::MEAN:
+      if (globalContext().deterministicAlgorithms()) {
+        ScatterGatherBaseKernel<true, false>()(
+            self,
+            dim,
+            index,
+            src,
+            "scatter_reduce_kernel_mean_deterministic",
+            reduce_add,
+            /*deterministic=*/true);
+        break;
+      }
       globalContext().alertNotDeterministic("scatter_reduce_kernel_mean");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_mean", reduce_mean);
