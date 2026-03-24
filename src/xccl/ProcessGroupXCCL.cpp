@@ -770,7 +770,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_->addCallback(
       [id, reset_epoch](at::ivalue::Future&) {
         FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ false);
+            id, reset_epoch, /*compute_duration*/ true);
       },
       /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
@@ -925,7 +925,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_->addCallback(
         [id, reset_epoch](at::ivalue::Future&) {
           FlightRecorderXCCL::get()->retire_id(
-              id, reset_epoch, /*compute_duration*/ false);
+              id, reset_epoch, /*compute_duration*/ true);
         },
         /*use_future*/ false);
     setEnqueuedPgStatus(work);
