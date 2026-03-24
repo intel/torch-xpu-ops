@@ -444,6 +444,8 @@ Tensor& addmv_out_sparse_compressed_xpu(
   TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
   TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
 
+  auto betaval = beta.toComplexDouble();
+
   if (mat._nnz() == 0) {
     // shortcut for an empty matrix
     // By definition, when beta==0, values in self should be ignored. nans and
