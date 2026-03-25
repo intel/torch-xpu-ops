@@ -82,7 +82,7 @@ struct OpDenseVectorizedFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (int64_t i = tid; i < cur_v_chunk_size; i += local_size) {
           slm_dense[i] = dense_vec[batch_idx * v_embedding_dim + v_d_start + i];
         }
-        item.barrier(sycl_local_fence);
+        sycl::group_barrier(item.get_group());
       }
 
       for (int64_t i = tid; i < cur_v_chunk_size; i += local_size) {
