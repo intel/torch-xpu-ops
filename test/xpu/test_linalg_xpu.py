@@ -575,12 +575,12 @@ def _int_mm_errors(self, device):
     )
     self.assertRaisesRegex(
         RuntimeError,
-        r"Expected self dtype to be of type int8",
+        r"expected scalar type Char but found Float",
         lambda: torch._int_mm(genf_int(17, 8).float(), genf_int(8, 32)),
     )
     self.assertRaisesRegex(
         RuntimeError,
-        r"Expected mat2 dtype to be of type int8",
+        r"expected scalar type Char but found Float",
         lambda: torch._int_mm(genf_int(17, 8), genf_int(8, 32).float()),
     )
     self.assertRaisesRegex(
