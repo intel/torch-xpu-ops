@@ -102,14 +102,21 @@ def _test_reference_1d(self, device, dtype, op):
 
 
 @ops(spectral_funcs, allowed_dtypes=(torch.half, torch.chalf))
-def _test_success_on_fft_half_and_chalf_not_power_of_two_error_path(self, device, dtype, op):
+def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     t = torch.randn(13, 13, device=device, dtype=dtype)
-    # Basic smoke test: op should run without error and return a complex tensor
+    # Basic smoke test: op should run without error and return a tensor on the correct device
+    # Some spectral ops (e.g., irfft/irfft2/irfftn/hfft) produce real outputs, so we cannot
+    # unconditionally assert that the result is complex.
+    real_output_transforms = {"irfft", "irfft2", "irfftn", "hfft"}
+    is_real_output = op.name in real_output_transforms
     result_default = op(t)
     self.assertIsInstance(result_default, torch.Tensor)
     self.assertEqual(result_default.device, t.device)
-    # FFT results should be complex; allow upcasting (e.g., half -> cfloat)
-    self.assertTrue(result_default.is_complex())
+    # For complex-output transforms, FFT results should be complex; allow upcasting (e.g., half -> cfloat)
+    if is_real_output:
+        self.assertFalse(result_default.is_complex())
+    else:
+        self.assertTrue(result_default.is_complex())
 
     if op.ndimensional in (SpectralFuncType.ND, SpectralFuncType.TwoD):
         kwargs = {"s": (12, 12)}
@@ -122,20 +129,24 @@ def _test_success_on_fft_half_and_chalf_not_power_of_two_error_path(self, device
     self.assertTrue(result.is_complex())
 
     # Verify that the requested size parameters affect the last dimension(s)
-    if "n" in kwargs:
-        expected_shape = list(t.shape)
-        expected_shape[-1] = kwargs["n"]
-    else:
-        expected_shape = list(t.shape)
-        s0, s1 = kwargs["s"]
-        expected_shape[-2] = s0
-        expected_shape[-1] = s1
-    self.assertEqual(result.shape, torch.Size(expected_shape))
+    # This simple shape rule (directly setting the last dim(s) to n/s) is only
+    # valid for complex-to-complex FFT variants such as fft/ifft/fft2/ifft2/fftn/ifftn.
+    complex_to_complex_ops = {"fft", "ifft", "fft2", "ifft2", "fftn", "ifftn"}
+    if op.name in complex_to_complex_ops:
+        if "n" in kwargs:
+            expected_shape = list(t.shape)
+            expected_shape[-1] = kwargs["n"]
+        else:
+            expected_shape = list(t.shape)
+            s0, s1 = kwargs["s"]
+            expected_shape[-2] = s0
+            expected_shape[-1] = s1
+        self.assertEqual(result.shape, torch.Size(expected_shape))
 
 
 TestFFT.test_reference_1d = _test_reference_1d
-TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
-    _test_success_on_fft_half_and_chalf_not_power_of_two_error_path
+TestFFT.test_fft_half_and_chalf_not_power_of_two = (
+    _test_fft_half_and_chalf_not_power_of_two
 )
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
