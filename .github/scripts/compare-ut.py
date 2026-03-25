@@ -1083,13 +1083,13 @@ class ResultAnalyzer:
                 pass_rate = row['Pass Rate']
 
                 if device == 'Baseline':
-                    new_failed = "/"
-                    new_passed = "/"
+                    new_failed = "0"
+                    new_passed = "0"
                 else:  # Target
                     # Shows New Failed = count of new failures on target
                     # Shows New Passed = count of new passes on target
-                    new_failed = new_failures_count if new_failures_count > 0 else "/"
-                    new_passed = new_passes_count if new_passes_count > 0 else "/"
+                    new_failed = new_failures_count if new_failures_count > 0 else "0"
+                    new_passed = new_passes_count if new_passes_count > 0 else "0"
 
                 md.append(
                     f"| {device} | {total} | {passed_non_failure} | {failed_total} | {new_failed} | {new_passed} | "

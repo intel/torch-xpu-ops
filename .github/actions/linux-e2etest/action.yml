@@ -139,12 +139,8 @@ runs:
             # PR runs use limited model list
             local model_list_file="benchmarks/dynamo/${suite//_models/}_models_list.txt"
             if [ -f "${model_list_file}" ]; then
-              # Read first model from list file
-              local first_model=$(head -n 1 "${model_list_file}" | awk -F '[,; ]' '{print $1}')
-              if [ -n "${first_model}" ]; then
-                models_list_args=" -k ${first_model} "
-                echo "PR run - using model: ${first_model}"
-              fi
+              models_list_args="$(awk -F '[,; ]' '{printf(" -k %s ", $1)}' ${model_list_file})"
+              echo "PR run - using model: ${model_list_file}"
             fi
           elif [ -n "${MODEL_ONLY_NAME:-}" ]; then
             # Specific model override

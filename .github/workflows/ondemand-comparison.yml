@@ -54,9 +54,9 @@ on:
       runner:
         type: choice
         options:
-          - pvc_rolling
-          - bmg-test
-        default: 'pvc_rolling'
+          - pvc-1100
+          - bmg-b60
+        default: 'pvc-1100'
         description: 'What runner to use'
 
 permissions: read-all

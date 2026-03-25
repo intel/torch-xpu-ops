@@ -19,11 +19,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-env:
-  GH_TOKEN: ${{ github.token }}
-  WORKSPACE: ${{ github.workspace }}
-  PR_NUMBER: ${{ github.event.pull_request.number }}
-
 jobs:
   preci-lint-check:
     runs-on: ubuntu-24.04

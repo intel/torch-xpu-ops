@@ -550,7 +550,7 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
             f.write("No overall summary data available.\n")
             return
 
-        f.write("| Type | tgt_ps | bsl_ps | total | new_fail | new_drop | new_pass | new_improve | tgt_pass% | bsl_pass% | ind_ratio | eag_ratio |\n")
+        f.write("| Type | total | tgt_ps | bsl_ps | new_fail | new_drop | new_pass | new_improve | tgt_pass% | bsl_pass% | ind_ratio | eag_ratio |\n")
         f.write("|------|--------|--------|-------|----------|----------|----------|-------------|-----------|-----------|-----------|-----------|\n")
         for _, row in overall.iterrows():
             type_label = row['Type']
@@ -571,7 +571,7 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
                 eag_ratio = _fmt_ratio(row.get('eag_ratio'), threshold)
             tgt_pass = row.get('tgt_pass%', '')
             bsl_pass = row.get('bsl_pass%', '')
-            f.write(f"| {type_label} | {tgt_ps} | {bsl_ps} | {total} | {new_fail} | {new_drop} | {new_pass} | {new_improve} | {tgt_pass} | {bsl_pass} | {ind_ratio} | {eag_ratio} |\n")
+            f.write(f"| {type_label} | {total} | {tgt_ps} | {bsl_ps} | {new_fail} | {new_drop} | {new_pass} | {new_improve} | {tgt_pass} | {bsl_pass} | {ind_ratio} | {eag_ratio} |\n")
         f.write("\n")
 
 
