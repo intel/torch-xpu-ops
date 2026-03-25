@@ -37,10 +37,10 @@
 #endif // oneCCL version >= 2021.15
 
 #if defined(CCL_MAJOR_VERSION) &&  \
-    ((CCL_MAJOR_VERSION > 2021) || \
-     (CCL_MAJOR_VERSION == 2021) && (CCL_MINOR_VERSION >= 17))
+    ((CCL_MAJOR_VERSION > 2022) || \
+     (CCL_MAJOR_VERSION == 2022) && (CCL_MINOR_VERSION >= 0))
 #define ENABLE_XCCL_PREMUL_SUM_SUPPORT
-#endif // oneCCL version >= 2021.17
+#endif // oneCCL version >= 2022.0
 
 inline std::string reduceOpToString(c10d::ReduceOp op) {
   switch (op) {
