@@ -248,7 +248,7 @@ def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> 
         tgt = row.get("accuracy_target")
         bsl = row.get("accuracy_baseline")
         if pd.isna(tgt) and pd.isna(bsl):
-            return ""
+            return "no_changed"
         if pd.isna(tgt):
             return "new_failed"
         if pd.isna(bsl):
@@ -314,15 +314,19 @@ def merge_performance(target_records: list[dict], baseline_records: list[dict],
     def compare_perf(row):
         # If both missing -> empty
         if pd.isna(row.get("inductor_target")) and pd.isna(row.get("inductor_baseline")):
-            return ""
+            return "no_changed"
         # If one side missing -> treat as new fail/pass
-        if pd.isna(row.get("inductor_target")):
-            return "new_passed"
         if pd.isna(row.get("inductor_baseline")):
+            return "new_passed"
+        if pd.isna(row.get("inductor_target")):
             return "new_failed"
         # If either ratio negative (unphysical) -> treat as fail/pass based on availability
-        if row["inductor_ratio"] < 0 or row["eager_ratio"] < 0:
-            return "new_failed" if pd.notna(row["inductor_target"]) else "new_passed"
+        if row["inductor_target"] <= 0 and row["inductor_baseline"] <= 0:
+            return "no_changed"
+        if row["inductor_target"] <= 0:
+            return "new_failed"
+        if row["inductor_baseline"] <= 0:
+            return "new_passed"
         # Check thresholds
         if row["inductor_ratio"] < 1 - threshold or row["eager_ratio"] < 1 - threshold:
             return "new_dropped"
@@ -349,13 +353,13 @@ def combine_results(acc_merged: pd.DataFrame, perf_merged: pd.DataFrame) -> pd.D
     perf_renamed = None
     if not acc_merged.empty:
         acc_renamed = acc_merged.rename(columns={
-            "batch_size_target": "batch_size_accuracy_target",
-            "batch_size_baseline": "batch_size_accuracy_baseline"
+            "batch_size_target": "bs_acc_tgt",
+            "batch_size_baseline": "bs_acc_bsl"
         })
     if not perf_merged.empty:
         perf_renamed = perf_merged.rename(columns={
-            "batch_size_target": "batch_size_performance_target",
-            "batch_size_baseline": "batch_size_performance_baseline"
+            "batch_size_target": "bs_perf_tgt",
+            "batch_size_baseline": "bs_perf_bsl"
         })
 
     if acc_renamed is not None and perf_renamed is not None:
