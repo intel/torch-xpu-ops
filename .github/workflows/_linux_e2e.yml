@@ -411,17 +411,17 @@ jobs:
 
             # List main file types
             echo "Main file types collected:"
-            find "${UPLOAD_DIR}" -type f -name "*.csv" | head -10 | while read -r file; do
-              echo "  CSV: $(basename "${file}")"
-            done
-
-            find "${UPLOAD_DIR}" -type f -name "*.log" | head -10 | while read -r file; do
-              echo "  LOG: $(basename "${file}")"
-            done
-
-            find "${UPLOAD_DIR}" -type f -name "*.html" | head -10 | while read -r file; do
-              echo "  HTML: $(basename "${file}")"
-            done
+            {
+              find "${UPLOAD_DIR}" -type f -name "*.csv" |grep -v "compilation_metrics.csv" | head -10 | while read -r file; do
+                echo "  CSV: $(basename "${file}")"
+              done
+              find "${UPLOAD_DIR}" -type f -name "*.log" | head -10 | while read -r file; do
+                echo "  LOG: $(basename "${file}")"
+              done
+              find "${UPLOAD_DIR}" -type f -name "*.html" | head -10 | while read -r file; do
+                echo "  HTML: $(basename "${file}")"
+              done
+            } || true
           else
             echo "Warning: No inductor logs found at ${LOGS_DIR}"
           fi
