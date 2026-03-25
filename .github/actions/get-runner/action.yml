@@ -213,8 +213,8 @@ runs:
 
         # Main execution
         cpu_num=$(get_cpu_count |tail -n 1)
-        total_xpu_num=$(get_total_xpu_count |tail -n 1)
         online_xpu_num=$(get_online_xpu_count |tail -n 1)
+        total_xpu_num=${online_xpu_num}
 
         echo "CPU cores: ${cpu_num}"
         echo "Total XPU devices: ${total_xpu_num}"
