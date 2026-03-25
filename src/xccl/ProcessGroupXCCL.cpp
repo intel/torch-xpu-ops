@@ -71,7 +71,7 @@ ReduceOp applyPreMulSumIfNeeded(
   auto newOp = applyScaleoutPreMulSum ? ReduceOp(ReduceOp::SUM) : reduceOp;
   if (applyScaleoutPreMulSum) {
     const auto* preMulSupplement =
-        reinterpret_cast<PreMulSumSupplement*>(reduceOp.supplement_.get());
+        reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
     if (preMulSupplement->tensor_factor.defined()) {
       input.mul_(preMulSupplement->tensor_factor);
     } else {
