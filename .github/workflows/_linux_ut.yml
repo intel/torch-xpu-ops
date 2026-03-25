@@ -84,6 +84,7 @@ jobs:
         uses: ./.github/actions/get-runner
 
   UT:
+    name: ${{ inputs.ut }}
     needs: runner
     timeout-minutes: 1440  # 24 hours for container tests
     if: ${{ !contains(inputs.ut, 'distributed') }}

@@ -177,7 +177,7 @@ jobs:
   # Compare-results job
   # ----------------------------------------------------------------------
   compare-results:
-    if: ${{ inputs.is_scheduled_run != 'comparison-manually' }}
+    if: ${{ inputs.is_scheduled_run != 'comparison-manually' && ! cancelled() }}
     needs:
       - parse-inputs
       - linux-ut

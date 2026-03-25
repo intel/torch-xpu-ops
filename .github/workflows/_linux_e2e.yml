@@ -93,6 +93,7 @@ jobs:
         uses: ./.github/actions/get-runner
 
   E2E:
+    name: ${{ inputs.suite }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     needs: runner
     timeout-minutes: 3600
@@ -424,22 +425,6 @@ jobs:
           else
             echo "Warning: No inductor logs found at ${LOGS_DIR}"
           fi
-
-          # Create a summary file
-          SUMMARY_FILE="${UPLOAD_DIR}/test_summary.txt"
-          {
-            echo "Test Execution Summary"
-            echo "====================="
-            echo "Timestamp: $(date)"
-            echo "Test Type: ${{ inputs.test_type }}"
-            echo "Suites: ${{ inputs.suite }}"
-            echo "Data Types: ${{ inputs.dt }}"
-            echo "Modes: ${{ inputs.mode }}"
-            echo "Scenarios: ${{ inputs.scenario }}"
-            echo "Specific Model: ${{ inputs.model }}"
-            echo ""
-            echo "Files Collected: ${FILE_COUNT:-0}"
-          } > "${SUMMARY_FILE}"
 
           echo "Artifacts prepared in: ${UPLOAD_DIR}"
 

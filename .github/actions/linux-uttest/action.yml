@@ -68,7 +68,7 @@ runs:
         # Run pytest with XML output and separate error logging
         pytest --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_regression.xml" \
           2> "${LOG_DIR}/op_regression_test_error.log" | \
-          tee "${LOG_DIR}/op_regression_test.log"
+          tee "${LOG_DIR}/op_regression_test.log" || true
 
         # Generate reproduction instructions
         REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_regression.log"
@@ -105,7 +105,7 @@ runs:
         timeout 180 pytest -v test_operation_on_device_1.py \
           --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_regression_dev1.xml" \
           2> "${LOG_DIR}/op_regression_dev1_test_error.log" | \
-          tee "${LOG_DIR}/op_regression_dev1_test.log"
+          tee "${LOG_DIR}/op_regression_dev1_test.log" || true
 
         # Check timeout exit code
         TIMEOUT_EXIT_CODE=$?
@@ -150,7 +150,7 @@ runs:
         pytest test/test_transformers.py -k xpu \
           --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_transformers.xml" \
           2> "${LOG_DIR}/op_transformers_test_error.log" | \
-          tee "${LOG_DIR}/op_transformers_test.log"
+          tee "${LOG_DIR}/op_transformers_test.log" || true
 
         # Generate reproduction instructions
         REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_transformers.log"
@@ -186,7 +186,7 @@ runs:
         # Run extended tests with skip handling
         python run_test_with_skip.py \
           2> "${LOG_DIR}/op_extended_test_error.log" | \
-          tee "${LOG_DIR}/op_extended_test.log"
+          tee "${LOG_DIR}/op_extended_test.log" || true
 
         # Copy XML reports
         echo "Collecting XML reports..."
@@ -235,7 +235,7 @@ runs:
         # Run all XPU tests with skip handling
         python run_test_with_skip.py \
           2> "${LOG_BASE}/op_ut_with_skip_test_error.log" | \
-          tee "${LOG_BASE}/op_ut_with_skip_test.log"
+          tee "${LOG_BASE}/op_ut_with_skip_test.log" || true
 
         # Find and copy XML reports
         echo "Collecting XML reports..."
@@ -276,7 +276,7 @@ runs:
         # Run only skipped tests
         python run_test_with_skip.py --test-cases skipped \
           2> "${LOG_BASE}/skipped_ut_with_skip_test_error.log" | \
-          tee "${LOG_BASE}/skipped_ut_with_skip_test.log"
+          tee "${LOG_BASE}/skipped_ut_with_skip_test.log" || true
 
         # Find and copy XML reports
         echo "Collecting XML reports..."
@@ -348,7 +348,7 @@ runs:
         # Run the tests
         eval "${TEST_CMD}" \
           2> "${LOG_BASE}/torch_xpu_test_error.log" | \
-          tee "${LOG_BASE}/torch_xpu_test.log"
+          tee "${LOG_BASE}/torch_xpu_test.log" || true
 
         echo "torch_xpu tests completed"
 
@@ -380,7 +380,7 @@ runs:
           -a resnet50 \
           --dummy ./ \
           --num-iterations 20 \
-          --xpu 0
+          --xpu 0 || true
 
         # Copy profiling output
         if [ -f "profiling.fp32.train.pt" ]; then
@@ -406,7 +406,7 @@ runs:
           if [ -f "${test_script}" ]; then
             test_name=$(basename "${test_script}" .py)
             echo "Running: ${test_name}"
-            python -u "${test_script}" | tee "${ISSUE_REPRODUCE_DIR}/${test_name}.log"
+            python -u "${test_script}" | tee "${ISSUE_REPRODUCE_DIR}/${test_name}.log" || true
           else
             echo "Warning: Test script not found: ${test_script}"
           fi
@@ -416,13 +416,13 @@ runs:
         pip install transformers --quiet
 
         if [ -f "test/profiling/llama.py" ]; then
-          python test/profiling/llama.py | tee "${LOG_BASE}/llama.log"
+          python test/profiling/llama.py | tee "${LOG_BASE}/llama.log" || true
 
           # Generate llama summary
           if [ -f ".github/scripts/llama_summary.py" ]; then
             python .github/scripts/llama_summary.py \
               -i "${LOG_BASE}/llama.log" \
-              -o "${LOG_BASE}/llama_summary.csv"
+              -o "${LOG_BASE}/llama_summary.csv" || true
           fi
         fi
 
@@ -445,7 +445,7 @@ runs:
           if [ -f "${test_file}" ]; then
             test_name=$(basename "${test_file}" .py)
             echo "Running profiler test: ${test_name}"
-            python -m pytest -s "${test_file}" | tee "${LOG_BASE}/${test_name}.log"
+            python -m pytest -s "${test_file}" | tee "${LOG_BASE}/${test_name}.log" || true
           fi
         done
 
@@ -493,7 +493,7 @@ runs:
         # Run distributed tests
         python run_distributed.py \
           2> "${LOG_BASE}/xpu_distributed_test_error.log" | \
-          tee "${LOG_BASE}/xpu_distributed_test.log"
+          tee "${LOG_BASE}/xpu_distributed_test.log" || true
 
         # Copy XML reports
         echo "Collecting XML reports..."
@@ -532,7 +532,7 @@ runs:
         # Run all XPU tests with skip handling
         ${GITHUB_WORKSPACE}/.ci/benchmarks/p0/run_ut.sh \
           2> "${LOG_BASE}/op_p0_with_skip_test_error.log" | \
-          tee "${LOG_BASE}/op_p0_with_skip_test.log"
+          tee "${LOG_BASE}/op_p0_with_skip_test.log" || true
 
         # Find and copy XML reports
         echo "Collecting XML reports..."
