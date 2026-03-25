@@ -421,8 +421,7 @@ void f8f8bf16_scaled_grouped_mm(
       ptr_a_vec.push_back(base_a + g * M * K);
       ptr_b_vec.push_back(
           reinterpret_cast<const ElementB*>(b_slice.data_ptr()));
-      ptr_d_vec.push_back(
-          reinterpret_cast<ElementOutput*>(d_slice.data_ptr()));
+      ptr_d_vec.push_back(reinterpret_cast<ElementOutput*>(d_slice.data_ptr()));
 
       stride_a_vec.push_back(
           cutlass::make_cute_packed_stride(StrideA{}, {M, K, 1}));
@@ -480,18 +479,16 @@ void f8f8bf16_scaled_grouped_mm(
 
       // A slice: columns [k_start, k_end) of (M, total_K), apply scale
       // sa_g: (M,) -> (M, 1) broadcasts over (M, K_g)
-      auto a_slice =
-          (a_bf16.slice(1, k_start, k_end) * sa_g.unsqueeze(-1))
-              .to(at::kBFloat16)
-              .contiguous();
+      auto a_slice = (a_bf16.slice(1, k_start, k_end) * sa_g.unsqueeze(-1))
+                         .to(at::kBFloat16)
+                         .contiguous();
       a_slices.push_back(a_slice);
 
       // B slice: rows [k_start, k_end) of (total_K, N), apply scale
       // sb_g: (N,) -> (1, N) broadcasts over (K_g, N)
-      auto b_slice =
-          (b_bf16.slice(0, k_start, k_end) * sb_g.unsqueeze(0))
-              .to(at::kBFloat16)
-              .contiguous();
+      auto b_slice = (b_bf16.slice(0, k_start, k_end) * sb_g.unsqueeze(0))
+                         .to(at::kBFloat16)
+                         .contiguous();
       b_slices.push_back(b_slice);
 
       problem_sizes.push_back({M, N, K_g});

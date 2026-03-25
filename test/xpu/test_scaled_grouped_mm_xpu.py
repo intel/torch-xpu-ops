@@ -70,18 +70,20 @@ class TestScaledGroupedMMXPU(TestCase):
         scale_a = self._make_scale(G, m, device=device)
         scale_b = self._make_scale(G, n, device=device)
 
-        out = torch._scaled_grouped_mm(
-            a, b_t, scale_a, scale_b)
+        out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b)
 
         self.assertEqual(out.shape, (G, m, n))
         self.assertEqual(out.dtype, torch.bfloat16)
 
         for g in range(G):
-            ref = reference_scaled_mm_per_group(
-                a[g], b_t[g], scale_a[g], scale_b[g])
+            ref = reference_scaled_mm_per_group(a[g], b_t[g], scale_a[g], scale_b[g])
             torch.testing.assert_close(
-                out[g], ref, atol=self.atol, rtol=self.rtol,
-                msg=f"3D x 3D group {g} mismatch")
+                out[g],
+                ref,
+                atol=self.atol,
+                rtol=self.rtol,
+                msg=f"3D x 3D group {g} mismatch",
+            )
 
     @onlyXPU
     @dtypes(torch.bfloat16)
@@ -97,11 +99,9 @@ class TestScaledGroupedMMXPU(TestCase):
         scale_a = self._make_scale(total_M, device=device)
         scale_b = self._make_scale(G, n, device=device)
 
-        offs = torch.arange(
-            m, total_M + 1, m, device=device, dtype=torch.int32)
+        offs = torch.arange(m, total_M + 1, m, device=device, dtype=torch.int32)
 
-        out = torch._scaled_grouped_mm(
-            a, b_t, scale_a, scale_b, offs=offs)
+        out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b, offs=offs)
 
         self.assertEqual(out.shape, (total_M, n))
         self.assertEqual(out.dtype, torch.bfloat16)
@@ -110,11 +110,15 @@ class TestScaledGroupedMMXPU(TestCase):
         for g in range(G):
             row_end = offs[g].item()
             ref = reference_scaled_mm_per_group(
-                a[row_start:row_end], b_t[g],
-                scale_a[row_start:row_end], scale_b[g])
+                a[row_start:row_end], b_t[g], scale_a[row_start:row_end], scale_b[g]
+            )
             torch.testing.assert_close(
-                out[row_start:row_end], ref, atol=self.atol, rtol=self.rtol,
-                msg=f"2D x 3D group {g} mismatch")
+                out[row_start:row_end],
+                ref,
+                atol=self.atol,
+                rtol=self.rtol,
+                msg=f"2D x 3D group {g} mismatch",
+            )
             row_start = row_end
 
     @onlyXPU
@@ -131,11 +135,9 @@ class TestScaledGroupedMMXPU(TestCase):
         scale_a = self._make_scale(G, m, device=device)
         scale_b = self._make_scale(total_N, device=device)
 
-        offs = torch.arange(
-            n, total_N + 1, n, device=device, dtype=torch.int32)
+        offs = torch.arange(n, total_N + 1, n, device=device, dtype=torch.int32)
 
-        out = torch._scaled_grouped_mm(
-            a, b_t, scale_a, scale_b, offs=offs)
+        out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b, offs=offs)
 
         self.assertEqual(out.shape, (m, total_N))
         self.assertEqual(out.dtype, torch.bfloat16)
@@ -144,11 +146,15 @@ class TestScaledGroupedMMXPU(TestCase):
         for g in range(G):
             col_end = offs[g].item()
             ref = reference_scaled_mm_per_group(
-                a[g], b_t[:, col_start:col_end],
-                scale_a[g], scale_b[col_start:col_end])
+                a[g], b_t[:, col_start:col_end], scale_a[g], scale_b[col_start:col_end]
+            )
             torch.testing.assert_close(
-                out[:, col_start:col_end], ref, atol=self.atol, rtol=self.rtol,
-                msg=f"3D x 2D group {g} mismatch")
+                out[:, col_start:col_end],
+                ref,
+                atol=self.atol,
+                rtol=self.rtol,
+                msg=f"3D x 2D group {g} mismatch",
+            )
             col_start = col_end
 
     @onlyXPU
@@ -165,11 +171,9 @@ class TestScaledGroupedMMXPU(TestCase):
         scale_a = self._make_scale(m * G, device=device)
         scale_b = self._make_scale(n * G, device=device)
 
-        offs = torch.arange(
-            k, total_K + 1, k, device=device, dtype=torch.int32)
+        offs = torch.arange(k, total_K + 1, k, device=device, dtype=torch.int32)
 
-        out = torch._scaled_grouped_mm(
-            a, b_t, scale_a, scale_b, offs=offs)
+        out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b, offs=offs)
 
         self.assertEqual(out.shape, (G, m, n))
         self.assertEqual(out.dtype, torch.bfloat16)
@@ -180,12 +184,16 @@ class TestScaledGroupedMMXPU(TestCase):
             a_g = a[:, k_start:k_end]
             b_g_phys = b_phys[:, k_start:k_end]
             b_g_t = b_g_phys.t()
-            sa_g = scale_a[g * m:(g + 1) * m]
-            sb_g = scale_b[g * n:(g + 1) * n]
+            sa_g = scale_a[g * m : (g + 1) * m]
+            sb_g = scale_b[g * n : (g + 1) * n]
             ref = reference_scaled_mm_per_group(a_g, b_g_t, sa_g, sb_g)
             torch.testing.assert_close(
-                out[g], ref, atol=self.atol, rtol=self.rtol,
-                msg=f"2D x 2D group {g} mismatch")
+                out[g],
+                ref,
+                atol=self.atol,
+                rtol=self.rtol,
+                msg=f"2D x 2D group {g} mismatch",
+            )
             k_start = k_end
 
     @onlyXPU
@@ -201,15 +209,17 @@ class TestScaledGroupedMMXPU(TestCase):
         scale_a = self._make_scale(G, m, device=device)
         scale_b = self._make_scale(G, n, device=device)
 
-        out = torch._scaled_grouped_mm(
-            a, b_t, scale_a, scale_b)
+        out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b)
 
         for g in range(G):
-            ref = reference_scaled_mm_per_group(
-                a[g], b_t[g], scale_a[g], scale_b[g])
+            ref = reference_scaled_mm_per_group(a[g], b_t[g], scale_a[g], scale_b[g])
             torch.testing.assert_close(
-                out[g], ref, atol=self.atol, rtol=self.rtol,
-                msg=f"Large shape group {g} mismatch")
+                out[g],
+                ref,
+                atol=self.atol,
+                rtol=self.rtol,
+                msg=f"Large shape group {g} mismatch",
+            )
 
 
 instantiate_device_type_tests(
