@@ -247,7 +247,7 @@ inline xcclRedOpRAIIV1 unpackPreMulSumV1(
     const ReduceOp& reduceOp,
     const ccl::communicator& comm) {
   const auto* preMulSupplement =
-      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+      reinterpret_cast<PreMulSumSupplement*>(reduceOp.supplement_.get());
   ccl::reduction preMulSum{};
   bool has_tensor = preMulSupplement->tensor_factor.defined();
   auto residence = has_tensor
@@ -271,7 +271,7 @@ inline xcclRedOpRAIIV2 unpackPreMulSumV2(
     const ReduceOp& reduceOp,
     onecclComm_t comm) {
   const auto* preMulSupplement =
-      reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+      reinterpret_cast<PreMulSumSupplement*>(reduceOp.supplement_.get());
   onecclRedOp_t preMulSum{};
   bool has_tensor = preMulSupplement->tensor_factor.defined();
   auto residence = has_tensor
