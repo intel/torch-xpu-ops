@@ -114,6 +114,7 @@ runs:
       id: all-inputs
       uses: actions/github-script@v8
       with:
+        github-token: ${{ github.token }}
         script: |
           const allInputs = JSON.parse('${{ inputs.all_inputs_json }}');
           for (const [key, value] of Object.entries(allInputs)) {
