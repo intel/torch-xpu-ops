@@ -970,8 +970,7 @@ class ContextManagerTests(TestBase):
         module = self.constructor(*self.constructor_args).to(**kwargs)
         if "Embedding" in self.get_name():
             kwargs["dtype"] = torch.long
-        # TestBase caches inputs, so clone/detach to avoid leaking autograd state across tests.
-        input = self._get_input().to(**kwargs).detach().clone()
+        input = self._get_input().detach().to(**kwargs)
         if len(input.shape) == 0 or input.shape[0] == 0:
             raise unittest.SkipTest(
                 "Can't get per sample gradients when no batch dim or batch dim is 0"
@@ -984,8 +983,7 @@ class ContextManagerTests(TestBase):
 
     def test_context_manager_multiple_inputs(self, test_case, device):
         module = self.constructor(*self.constructor_args).to(device)
-        # TestBase caches inputs, so clone/detach to avoid leaking autograd state across tests.
-        input = self._get_input().to(device).detach().clone()
+        input = self._get_input().detach().to(device)
         if len(input.shape) == 0 or input.shape[0] == 0:
             raise unittest.SkipTest(
                 "Can't get per sample gradients when no batch dim or batch dim is 0"
