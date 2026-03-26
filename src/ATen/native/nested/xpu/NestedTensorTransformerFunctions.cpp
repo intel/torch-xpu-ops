@@ -21,7 +21,7 @@ namespace {
 int64_t padded_tensor_numel(const Tensor& sizes) {
   const auto sizes_num_rows = sizes.sizes()[0];
   const auto sizes_row_length = sizes.sizes()[1];
-  const auto* sizes_data = sizes.data_ptr<int64_t>();
+  const auto* sizes_data = sizes.const_data_ptr<int64_t>();
   int64_t numel = 0;
   for (const auto row_num : c10::irange(sizes_num_rows)) {
     const auto* row_ptr = sizes_data + row_num * sizes_row_length;
@@ -120,7 +120,7 @@ Tensor nested_from_padded_xpu(
 }
 
 static Tensor batch_offsets_from_efficient_size(const Tensor& ef_sizes) {
-  int64_t* nt_sizes_ptr = ef_sizes.data_ptr<int64_t>();
+  int64_t* nt_sizes_ptr = ef_sizes.const_data_ptr<int64_t>();
   int64_t ef_sizes_size_0 = ef_sizes.sizes()[0];
   Tensor offsets = at::empty({1 + ef_sizes_size_0}, at::kLong);
   int64_t* offsets_ptr = offsets.mutable_data_ptr<int64_t>();

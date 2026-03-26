@@ -247,19 +247,19 @@ void compute_grad_weight_bags(
   auto grad_weight_per_segment_data =
       grad_weight_per_segment
           .template data_ptr<acc_type_device<scalar_t, kXPU>>();
-  auto indices_data = indices.template data_ptr<index_t>();
+  auto indices_data = indices.template const_data_ptr<index_t>();
   auto gradOutput_data = gradOutput.const_data_ptr<scalar_t>();
-  auto offset2bag_data = offset2bag.data_ptr<index_t>();
+  auto offset2bag_data = offset2bag.const_data_ptr<index_t>();
   auto count_data = count_defined
-      ? count.data_ptr<index_t>()
+      ? count.const_data_ptr<index_t>()
       : offset2bag_data; // use the offset2bag_data handler as the dummy
                          // buffer.
-  auto bag_size_data = bag_size.data_ptr<index_t>();
+  auto bag_size_data = bag_size.const_data_ptr<index_t>();
   auto per_sample_weights_data = per_sample_weight_defined
       ? per_sample_weights.const_data_ptr<scalar_t>()
       : gradOutput_data; // ise the gradOutput_data handler as the dummy
                          // buffer.
-  auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
+  auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
 
   int64_t max_sub_group_size = syclMaxSubGroupSize();
   int64_t stride_warped =
@@ -373,13 +373,13 @@ void compute_grad_weight(
   bool count_defined = count.defined();
 
   auto grad_weight_per_segment_data =
-      grad_weight_per_segment.data_ptr<acc_type_device<scalar_t, kXPU>>();
-  auto indices_data = indices.data_ptr<index_t>();
+      grad_weight_per_segment.const_data_ptr<acc_type_device<scalar_t, kXPU>>();
+  auto indices_data = indices.const_data_ptr<index_t>();
   auto grad_output_data = grad_output.const_data_ptr<scalar_t>();
   auto count_data = count_defined
-      ? count.data_ptr<index_t>()
+      ? count.const_data_ptr<index_t>()
       : indices_data; // use the indices_data handler as the dummy buffer.
-  auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
+  auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
 
   int64_t max_sub_group_size = syclMaxSubGroupSize();
   int64_t stride_warped =
@@ -490,12 +490,12 @@ void sum_and_scatter(
     const Tensor& segment_sizes_offsets,
     int64_t num_of_partial_segments,
     const int64_t padding_idx) {
-  auto grad_weight_data = grad_weight.data_ptr<scalar_t>();
-  auto input_data = input.data_ptr<index_t>();
-  auto segment_offsets_data = segment_offsets.data_ptr<index_t>();
+  auto grad_weight_data = grad_weight.const_data_ptr<scalar_t>();
+  auto input_data = input.const_data_ptr<index_t>();
+  auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
   auto grad_weight_per_segment_data =
-      grad_weight_per_segment.data_ptr<acc_type_device<scalar_t, kXPU>>();
-  auto segment_sizes_offsets_data = segment_sizes_offsets.data_ptr<index_t>();
+      grad_weight_per_segment.const_data_ptr<acc_type_device<scalar_t, kXPU>>();
+  auto segment_sizes_offsets_data = segment_sizes_offsets.const_data_ptr<index_t>();
 
   auto kfn = SumAndScatterKernelFunctor<scalar_t, index_t>(
       stride,
@@ -568,7 +568,7 @@ Tensor embedding_backward_deterministic_kernel(
     // sorted:          2 5 5 5 7 7 8 9 9
     // dummy:           1 1 0 0 1 0 1 1 0
     // segment_offsets: 0 1 - - 4 - 6 7 -
-    auto sorted_indices_begin = sorted_indices.data_ptr<index_t>();
+    auto sorted_indices_begin = sorted_indices.const_data_ptr<index_t>();
     auto dummy = at::empty_like(sorted_indices);
     auto dummy_begin = dummy.data_ptr<index_t>();
     auto idx_tensor = at::empty_like(sorted_indices);
@@ -587,7 +587,7 @@ Tensor embedding_backward_deterministic_kernel(
         at::empty({numel}, at::TensorOptions().device(kXPU).dtype(kLong));
     auto count_begin = count_tensor.data_ptr<int64_t>();
     pstl::itoa(count_begin, count_begin + numel, (int64_t)0);
-    auto segment_offsets_begin = segment_offsets.data_ptr<index_t>();
+    auto segment_offsets_begin = segment_offsets.const_data_ptr<index_t>();
     EmbeddingBackwardDeterministicKernelTransformFirstTrueFunctor
         transform_first_true_functor;
     pstl::transform_first_true<index_t>(
@@ -607,7 +607,7 @@ Tensor embedding_backward_deterministic_kernel(
 
   krn_partials_per_segment<index_t>(
       partials_per_segment.template data_ptr<index_t>(),
-      segment_offsets.data_ptr<index_t>(),
+      segment_offsets.const_data_ptr<index_t>(),
       num_of_segments,
       numel);
 
@@ -635,7 +635,7 @@ Tensor embedding_backward_deterministic_kernel(
       partial_segment_offset.template data_ptr<index_t>(),
       partials_per_segment.template data_ptr<index_t>(),
       partials_per_segment_offset.template data_ptr<index_t>(),
-      segment_offsets.data_ptr<index_t>(),
+      segment_offsets.const_data_ptr<index_t>(),
       num_of_segments);
 
   TensorOptions op;

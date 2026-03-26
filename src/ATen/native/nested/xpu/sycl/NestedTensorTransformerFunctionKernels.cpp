@@ -621,10 +621,10 @@ void add_padding_kernel(
       input.scalar_type(), "NestedTensor_to_padded_tensor_xpu", [&]() {
         add_padding_kernel_impl<scalar_t>(
             input.data_ptr<scalar_t>(),
-            output.data_ptr<scalar_t>(),
+            output.const_data_ptr<scalar_t>(),
             (scalar_t)(padding),
-            offsets.data_ptr<int>(),
-            nt_sizes.data_ptr<int>(),
+            offsets.const_data_ptr<int>(),
+            nt_sizes.const_data_ptr<int>(),
             input_dim,
             new_size,
             batch_size,

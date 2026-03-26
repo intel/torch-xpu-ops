@@ -194,7 +194,7 @@ void perform_blas_matmul(
 
   const T* A = reinterpret_cast<const T*>(a.const_data_ptr());
   const T* B = reinterpret_cast<const T*>(b.const_data_ptr());
-  T* C = reinterpret_cast<T*>(c.data_ptr());
+  T* C = reinterpret_cast<T*>(c.const_data_ptr());
   auto queue = c10::xpu::getCurrentXPUStream().queue();
 
   const oneapi::mkl::transpose transA = get_transpose_type(a, transpose_a);

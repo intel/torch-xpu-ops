@@ -237,14 +237,14 @@ void linear_int4_kernel(
             sycl::half,
             sycl::ext::oneapi::bfloat16>;
         const scalar_sycl_t* input_data =
-            reinterpret_cast<scalar_sycl_t*>(A.data_ptr<scalar_t>());
+            reinterpret_cast<scalar_sycl_t*>(A.const_data_ptr<scalar_t>());
         uint8_t* weight_data =
-            reinterpret_cast<uint8_t*>(B.data_ptr()); // int4x2 or int4x8
+            reinterpret_cast<uint8_t*>(B.const_data_ptr()); // int4x2 or int4x8
 
         scalar_sycl_t* output_data =
             reinterpret_cast<scalar_sycl_t*>(C.data_ptr<scalar_t>());
         scalar_sycl_t* scale_zeros_data = reinterpret_cast<scalar_sycl_t*>(
-            qScaleAndZeros.data_ptr<scalar_t>());
+            qScaleAndZeros.const_data_ptr<scalar_t>());
 
         switch (qGroupSize) {
           case 16: {

@@ -55,8 +55,8 @@ void weight_to_int4pack_kernel(
     int N,
     int K) {
   auto weight_packed_data =
-      reinterpret_cast<uint32_t*>(weight_packed.data_ptr());
-  const auto weight_data = weight.data_ptr<uint8_t>();
+      reinterpret_cast<uint32_t*>(weight_packed.const_data_ptr());
+  const auto weight_data = weight.const_data_ptr<uint8_t>();
   int K_div_8 = K / 8;
   size_t global_range = N * K_div_8;
   auto fn =

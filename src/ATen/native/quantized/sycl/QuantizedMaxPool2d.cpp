@@ -282,7 +282,7 @@ Tensor quantized_max_pool2d_kernel(
         input.scalar_type(), "quantized_max_pool2d_xpu", [&]() {
           launch_quantized_max_pool2d_kernel(
               output.data_ptr<scalar_t>(),
-              input.data_ptr<scalar_t>(),
+              input.const_data_ptr<scalar_t>(),
               nbatch,
               iC,
               iH,

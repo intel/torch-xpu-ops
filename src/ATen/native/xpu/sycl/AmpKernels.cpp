@@ -55,8 +55,8 @@ void amp_non_finite_check_and_unscale_kernel(
       iter.dtype(),
       "amp_non_finite_check_and_unscale_xpu",
       [&iter, &found_inf, &inv_scale] {
-        auto* found_inf_ptr = found_inf.data_ptr<float>();
-        auto* inv_scale_ptr = inv_scale.data_ptr<float>();
+        auto* found_inf_ptr = found_inf.const_data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         AmpNonFiniteCheckUnscaleFunctor<scalar_t> f(
             found_inf_ptr, inv_scale_ptr);
@@ -95,8 +95,8 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
       scaled_grads[0][0].scalar_type(),
       "amp_foreach_non_finite_check_and_unscale_xpu",
       [&scaled_grads, &found_inf, &inv_scale] {
-        auto* found_inf_ptr = found_inf.data_ptr<float>();
-        auto* inv_scale_ptr = inv_scale.data_ptr<float>();
+        auto* found_inf_ptr = found_inf.const_data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         using opmath_t = at::opmath_type<scalar_t>;
 

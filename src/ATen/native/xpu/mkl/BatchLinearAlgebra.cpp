@@ -196,8 +196,8 @@ static void apply_lu_xpu_(
   int64_t lda = m;
   int64_t stride_a = lda * n;
   int64_t stride_ipiv = (m < n) ? m : n;
-  scalar_t* a = reinterpret_cast<scalar_t*>(self_.data_ptr());
-  int64_t* ipiv = pivots_.data_ptr<int64_t>();
+  scalar_t* a = reinterpret_cast<scalar_t*>(self_.const_data_ptr());
+  int64_t* ipiv = pivots_.const_data_ptr<int64_t>();
   int64_t scratchpadsize = mkl_getrf_scratchpad<scalar_t>(
       queue, m, n, lda, stride_a, stride_ipiv, batch_size);
   Tensor scratchpad_at = at::empty({scratchpadsize}, self_.options());
@@ -245,8 +245,8 @@ static void apply_lu_solve_xpu_(
   Tensor pivots = pivots_;
   if (pivots_.scalar_type() == at::ScalarType::Int)
     pivots = pivots_.to(kLong);
-  int64_t* ipiv = pivots.data_ptr<int64_t>();
-  scalar_t* b = reinterpret_cast<scalar_t*>(b_.data_ptr());
+  int64_t* ipiv = pivots.const_data_ptr<int64_t>();
+  scalar_t* b = reinterpret_cast<scalar_t*>(b_.const_data_ptr());
 
   std::vector<int32_t> info_vec(batch_size, 0);
   int32_t* info_data = info_vec.data();
@@ -419,7 +419,7 @@ void apply_triangular_solve_mkl(
   const int64_t ldb = std::max<int64_t>(1, B.size(-2));
 
   const T* A_data = reinterpret_cast<const T*>(A.const_data_ptr());
-  T* B_data = reinterpret_cast<T*>(B.data_ptr());
+  T* B_data = reinterpret_cast<T*>(B.const_data_ptr());
 
   if (batch_size > 1) {
     const int64_t A_mat_stride = matrixStride(A);
