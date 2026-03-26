@@ -152,16 +152,18 @@ jobs:
           echo "Comparing results for ${{ inputs.component }}..."
           echo "Target: ${{ inputs.target_version }}"
           echo "Baseline: ${{ inputs.baseline_version }}"
-          find results
-          # UT
-          python .github/scripts/compare-ut.py --input results/ --output ut_comparison.xlsx --markdown --markdown-output ut_comparison.md
-          # E2E
-          python .github/scripts/compare-e2e.py -t results/target -b results/baseline -o e2e_comparison.xlsx -m e2e_comparison.md
-          # Summary Markdown
-          cat e2e_comparison.summary.md >> "${GITHUB_STEP_SUMMARY}"
-          cat ut_comparison.summary.md >> "${GITHUB_STEP_SUMMARY}"
-          cat e2e_comparison.details.md >> "${GITHUB_STEP_SUMMARY}"
-          cat ut_comparison.details.md >> "${GITHUB_STEP_SUMMARY}"
+          if [ -d ./results ]; then
+            find results
+            # UT
+            python .github/scripts/compare-ut.py --input results/ --output ut_comparison.xlsx --markdown --markdown-output ut_comparison.md
+            # E2E
+            python .github/scripts/compare-e2e.py -t results/target -b results/baseline -o e2e_comparison.xlsx -m e2e_comparison.md
+            # Summary Markdown
+            cat e2e_comparison.summary.md >> "${GITHUB_STEP_SUMMARY}"
+            cat ut_comparison.summary.md >> "${GITHUB_STEP_SUMMARY}"
+            cat e2e_comparison.details.md >> "${GITHUB_STEP_SUMMARY}"
+            cat ut_comparison.details.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
 
       - name: Upload Tests Summary
         if: always()
@@ -173,4 +175,4 @@ jobs:
             *_comparison*.xlsx
             *_comparison*.md
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn

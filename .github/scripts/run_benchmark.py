@@ -310,7 +310,7 @@ class Environment:
         channel = channel.lower()
         index_map = {
             "release": "https://download.pytorch.org/whl/xpu",
-            "nightly": "https://download.pytorch.org/whl/nightly/xpu --pre",
+            "nightly": "https://download.pytorch.org/whl/nightly/xpu",
             "rc": "https://download.pytorch.org/whl/test/xpu",
         }
         if channel not in index_map:
@@ -319,10 +319,12 @@ class Environment:
 
         packages = [
             f"torch{version_spec}",
-            f"torchvision{version_spec}",
-            f"torchaudio{version_spec}",
+            f"torchvision",
+            f"torchaudio",
             "torchao",
         ]
+        if channel == 'nightly':
+            packages.append("--pre")
         cmd = [self.uv_cmd, "pip", "install", "--python", str(self.python_exe)] + packages
         if index_url:
             cmd.extend(["--index-url", index_url])
@@ -341,7 +343,7 @@ class Environment:
             )
             torch_commit = run_cmd(cmd, capture=True).strip()
             cmd = (
-                f"{self.uv_cmd} pip list 2>&1 | grep triton-xpu | tail -n 1 | sed 's/.* //'"
+                f"{self.uv_cmd} pip list --python {self.python_exe} 2>&1 |grep triton-xpu |tail -n 1 |sed 's/.* //'"
             )
             triton_version = run_cmd(cmd, capture=True).strip()
             return torch_commit, triton_version
@@ -355,6 +357,7 @@ class Environment:
         if not self.pytorch_dir.exists():
             run_cmd(f"git clone {PYTORCH_REPO} {self.pytorch_dir}", "Cloning PyTorch")
         run_cmd("git reset --hard", cwd=self.pytorch_dir)
+        run_cmd("git fetch origin -a", cwd=self.pytorch_dir)
         run_cmd(f"git checkout {commit}", cwd=self.pytorch_dir)
         run_cmd("rm -rf ./torch", cwd=self.pytorch_dir, check=False)
 
@@ -566,7 +569,7 @@ class BenchmarkRunner:
 
     def _run_single(self, spec: BenchmarkSpec):
         """Execute one benchmark and augment its CSV."""
-        log_dir = self.log_base / torch_commit / triton_version / spec.suite / spec.dtype
+        log_dir = self.log_base / torch_commit / spec.suite / spec.dtype
         log_dir.mkdir(parents=True, exist_ok=True)
 
         cmd, csv_path = self._build_command(spec, log_dir)
@@ -576,6 +579,7 @@ class BenchmarkRunner:
         if torch_commit != torch_check or triton_version != triton_check:
             logger.error(f"Torch or Triton has been re-installed! Torch: {torch_commit}/{torch_check}, Triton: {triton_version}/{triton_check}")
             sys.exit(1)
+        run_cmd('rm -rf ~/.cache/ ~/.triton/ /tmp/torchinductor_*', shell=True, check=False)
         run_cmd(cmd, cwd=self.env.pytorch_dir, shell=True, check=False)  # Do not exit on benchmark failure
 
         # If the benchmark did not produce the expected CSV, create a fallback
@@ -654,7 +658,7 @@ class BenchmarkRunner:
 
         # Output files
         timestamp = datetime.now().timestamp()
-        csv_name = f"inductor_{spec.suite}_{spec.dtype}_{spec.mode}_{self.args.device}_{spec.scenario}_{timestamp}_{spec.scenario}.csv"
+        csv_name = f"inductor_{spec.suite}_{spec.dtype}_{spec.mode}_{self.args.device}_{timestamp}_{spec.scenario}.csv"
         csv_path = log_dir / csv_name
         log_path = log_dir / csv_name.replace(".csv", ".log")
 
