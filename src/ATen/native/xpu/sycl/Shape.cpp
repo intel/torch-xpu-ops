@@ -35,6 +35,7 @@
 namespace at::native::xpu {
 
 constexpr int CAT_ARRAY_BATCH_SIZE = 64;
+constexpr int CAT_ARRAY_BATCH_SIZE_STRIDED = 16;
 constexpr int CAT_ARRAY_MAX_INPUT_DIMS = 4;
 constexpr int ALIGNED_VEC_LOAD_BYTES_16 = 16;
 constexpr int ALIGNED_VEC_LOAD_BYTES_8 = 8;
@@ -378,6 +379,7 @@ void parallel_cat(
   // If all batches are contiguous we can call a specialized implementation
   // which requires the input tensor addresses to be aligned to a
   // 16 Byte boundary.
+  constexpr int kAlignedKernelBytes = 16;
 
   const int64_t logical_dimension = dimension;
   int64_t mapped_dimension = logical_dimension;
@@ -392,6 +394,11 @@ void parallel_cat(
         mapped_dimension--;
     }
   }
+  bool isOutputAligned = is_aligned_vec4(data) &&
+      (logical_dimension == 0 ||
+       (outputParam.tensorStride[mapped_dimension] * sizeof(scalar_t)) %
+               kAlignedKernelBytes ==
+           0);
 
   // Now we loop
   int batchCounter = 0;
@@ -424,9 +431,23 @@ void parallel_cat(
       if (stride_size > 1) {
         auto strides = inputs[i + batchCounter].get().strides();
         auto sizes = inputs[i + batchCounter].get().sizes();
-        for (int j = 0; j < nDims; j++) {
-          catMetaData.tensorStride[batchCounter].tensorSize[j] = sizes[j];
-          catMetaData.tensorStride[batchCounter].tensorStride[j] = strides[j];
+        if (memory_format == c10::MemoryFormat::Contiguous) {
+          for (int j = 0; j < nDims; j++) {
+            catMetaData.tensorStride[batchCounter].tensorSize[j] = sizes[j];
+            catMetaData.tensorStride[batchCounter].tensorStride[j] = strides[j];
+          }
+        } else {
+          catMetaData.tensorStride[batchCounter].tensorSize[0] = sizes[0];
+          catMetaData.tensorStride[batchCounter].tensorStride[0] = strides[0];
+          for (int j = 1; j < nDims - 1; ++j) {
+            catMetaData.tensorStride[batchCounter].tensorSize[j] = sizes[j + 1];
+            catMetaData.tensorStride[batchCounter].tensorStride[j] =
+                strides[j + 1];
+          }
+          catMetaData.tensorStride[batchCounter].tensorSize[nDims - 1] =
+              sizes[1];
+          catMetaData.tensorStride[batchCounter].tensorStride[nDims - 1] =
+              strides[1];
         }
         catMetaData.isContiguous[batchCounter] = false;
         isContig = false;
@@ -462,7 +483,7 @@ void parallel_cat(
 
 // Template Declarations for dim = 1, 2, 3, 4
 #define HANDLE_CASE(DIMS)                                                      \
-  if (isContig && isAligned && sizeof(scalar_t) > 2 &&                         \
+  if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) > 2 &&      \
       sizeof(scalar_t) <= 8) {                                                 \
     CatArrayBatchedCopy_alignedK_contig<                                       \
         scalar_t,                                                              \
@@ -478,7 +499,7 @@ void parallel_cat(
             outputParam.tensorStride[mapped_dimension]);                       \
     auto& q = getCurrentSYCLQueue();                                           \
     sycl_kernel_submit(catRange, applyGroup, q, kfn);                          \
-  } else if (isContig && isAligned && sizeof(scalar_t) == 2) {                 \
+  } else if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) { \
     CatArrayBatchedCopy_alignedK_contig<                                       \
         scalar_t,                                                              \
         unsigned int,                                                          \
@@ -613,11 +634,16 @@ void cat_out_kernel(
       canUse32BitIndexMath(result) && nDims <= CAT_ARRAY_MAX_INPUT_DIMS &&
       all32BitIndexable && all_same_dtype &&
       (materialized[valid].get().scalar_type() == result.scalar_type()) &&
-      memory_format == c10::MemoryFormat::Contiguous) {
+      (memory_format == c10::MemoryFormat::Contiguous ||
+       memory_format == c10::MemoryFormat::ChannelsLast ||
+       memory_format == c10::MemoryFormat::ChannelsLast3d)) {
     if (isBitsType(result.scalar_type())) {
       AT_DISPATCH_BIT_TYPES(result.scalar_type(), "cat_xpu", [&]() {
         using dtype = OpaqueType<sizeof(scalar_t)>;
-        parallel_cat<dtype, CAT_ARRAY_BATCH_SIZE / 2, CAT_ARRAY_BATCH_SIZE / 2>(
+        parallel_cat<
+            dtype,
+            CAT_ARRAY_BATCH_SIZE_STRIDED,
+            CAT_ARRAY_BATCH_SIZE_STRIDED>(
             result, materialized, dim, nDims, memory_format);
       });
     } else {
@@ -628,8 +654,8 @@ void cat_out_kernel(
             using dtype = OpaqueType<sizeof(scalar_t)>;
             parallel_cat<
                 dtype,
-                CAT_ARRAY_BATCH_SIZE / 2,
-                CAT_ARRAY_BATCH_SIZE / 2>(
+            CAT_ARRAY_BATCH_SIZE_STRIDED,
+            CAT_ARRAY_BATCH_SIZE_STRIDED>(
                 result, materialized, dim, nDims, memory_format);
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
