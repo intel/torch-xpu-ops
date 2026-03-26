@@ -199,21 +199,16 @@ runs:
         }
 
         cd pytorch
-        git checkout "${PYTORCH_COMMIT}" || {
-          echo "Warning: Failed to checkout commit ${PYTORCH_COMMIT}, trying as branch"
-          git checkout -b temp_branch "${PYTORCH_COMMIT}" || true
-        }
+        git checkout "${PYTORCH_COMMIT}"
 
         echo -e "\n=== Applying Pytorch Patches ==="
         pip install requests
-
         if [ -f "../torch-xpu-ops/.github/scripts/apply_torch_pr.py" ]; then
-          python "../torch-xpu-ops/.github/scripts/apply_torch_pr.py" || {
-            echo "Warning: Failed to apply pytorch patches"
-          }
+          python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
         else
           echo "Patch script not found, skipping"
         fi
+        sed -i 's+choices=range(1, 16),+choices=range(1, 17),+g' benchmarks/dynamo/common.py
 
         echo -e "\n=== Repository Status ==="
         git status --short

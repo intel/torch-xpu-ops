@@ -93,7 +93,6 @@ runs:
       id: check-files
       uses: dorny/paths-filter@v4
       with:
-        base: ${{ github.base_ref }}
         filters: |
           src_changed:
             - 'cmake/**'

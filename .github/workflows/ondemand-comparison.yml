@@ -152,17 +152,92 @@ jobs:
           echo "Comparing results for ${{ inputs.component }}..."
           echo "Target: ${{ inputs.target_version }}"
           echo "Baseline: ${{ inputs.baseline_version }}"
-          if [ -d ./results ]; then
-            find results
-            # UT
-            python .github/scripts/compare-ut.py --input results/ --output ut_comparison.xlsx --markdown --markdown-output ut_comparison.md
-            # E2E
-            python .github/scripts/compare-e2e.py -t results/target -b results/baseline -o e2e_comparison.xlsx -m e2e_comparison.md
-            # Summary Markdown
-            cat e2e_comparison.summary.md >> "${GITHUB_STEP_SUMMARY}"
-            cat ut_comparison.summary.md >> "${GITHUB_STEP_SUMMARY}"
-            cat e2e_comparison.details.md >> "${GITHUB_STEP_SUMMARY}"
-            cat ut_comparison.details.md >> "${GITHUB_STEP_SUMMARY}"
+
+          # Check for results directory
+          if [ ! -d "./results" ]; then
+              echo "Error: No results directory found after test!"
+              exit 1
+          fi
+
+          # Debug: list downloaded files
+          find results
+
+          # Function: run unit test comparison
+          # Returns: 0 if no new failures, 1 otherwise
+          run_ut_comparison() {
+              echo "Running unit test comparison..."
+              python .github/scripts/compare-ut.py \
+                  --input results/ \
+                  --output ut_comparison.csv \
+                  --markdown \
+                  --markdown-output ut_comparison.md || true
+
+              if [ -f "ut_comparison_new_failures.csv" ]; then
+                  # Count failures (skip header row)
+                  local ut_failed_count
+                  ut_failed_count=$(tail -n +2 ut_comparison_new_failures.csv 2>/dev/null | wc -l)
+                  if [ "$ut_failed_count" -gt 0 ]; then
+                      echo "Unit test failures detected: $ut_failed_count new failed cases."
+                      # Print the failing lines for visibility
+                      tail -n +2 ut_comparison_new_failures.csv
+                      return 1
+                  fi
+              fi
+              return 0
+          }
+
+          # Function: run end-to-end comparison
+          # Returns: 0 if no new failures or drops, 1 otherwise
+          run_e2e_comparison() {
+              echo "Running E2E comparison..."
+              python .github/scripts/compare-e2e.py \
+                  -t results/target \
+                  -b results/baseline \
+                  -o e2e_comparison.csv \
+                  -m e2e_comparison.md || true
+
+              if [ -f "e2e_comparison.details.md" ]; then
+                  local e2e_failed_count e2e_dropped_count
+                  e2e_failed_count=$(grep -c ',new_failed,' e2e_comparison.details.md 2>/dev/null || true)
+                  e2e_dropped_count=$(grep -c ',new_dropped,' e2e_comparison.details.md 2>/dev/null || true)
+
+                  if [ "$e2e_failed_count" -ne 0 ]; then
+                      echo "E2E failures detected: $e2e_failed_count new failed cases."
+                      grep ',new_failed,' e2e_comparison.details.md || true
+                      return 1
+                  fi
+
+                  if [ "$e2e_dropped_count" -ne 0 ]; then
+                      echo "E2E dropped cases detected: $e2e_dropped_count new dropped cases."
+                      grep ',new_dropped,' e2e_comparison.details.md || true
+                      return 1
+                  fi
+              fi
+              return 0
+          }
+
+          # Run comparisons and capture exit status
+          ut_failed=0
+          e2e_failed=0
+          run_ut_comparison || ut_failed=1
+          run_e2e_comparison || e2e_failed=1
+
+          # Aggregate summary files (always do this, even if comparisons failed)
+          echo "Aggregating summary files..."
+          for file in e2e_comparison.summary.md ut_comparison.summary.md \
+                      e2e_comparison.details.md ut_comparison.details.md; do
+              if [ -f "$file" ]; then
+                  cat "$file" >> "${GITHUB_STEP_SUMMARY}"
+              fi
+          done
+
+          # Final verdict
+          if [ "$ut_failed" -eq 0 ] && [ "$e2e_failed" -eq 0 ]; then
+              echo "All comparisons passed."
+              exit 0
+          else
+              echo "Comparisons failed. See details above."
+              exit 1
           fi
 
       - name: Upload Tests Summary

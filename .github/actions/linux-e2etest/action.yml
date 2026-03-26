@@ -180,7 +180,7 @@ runs:
             mkdir -p "${log_dir}"
 
             # Build command
-            local cmd="${numactl_cmd} bash -x inductor_xpu_test.sh \
+            local cmd="${numactl_cmd} bash -xe inductor_xpu_test.sh \
                 ${suite} ${dt} ${mode} ${scenario} \
                 xpu ${xpu_id} static ${instance_count} ${i} \
                 \"${models_list_args}\""

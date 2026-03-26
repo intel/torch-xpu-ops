@@ -285,7 +285,7 @@ class Environment:
             "Base packages",
         )
 
-    def install_pytorch(self):
+    def install_pytorch(self, args):
         """Install PyTorch family from channel, wheels, or local directory."""
         logger.info(f"Installing PyTorch from spec: {self.pytorch_spec}")
 
@@ -309,9 +309,9 @@ class Environment:
 
         channel = channel.lower()
         index_map = {
-            "release": "https://download.pytorch.org/whl/xpu",
-            "nightly": "https://download.pytorch.org/whl/nightly/xpu",
-            "rc": "https://download.pytorch.org/whl/test/xpu",
+            "release": f"https://download.pytorch.org/whl/{args.device}",
+            "nightly": f"https://download.pytorch.org/whl/nightly/{args.device}",
+            "rc": f"https://download.pytorch.org/whl/test/{args.device}",
         }
         if channel not in index_map:
             raise ValueError(f"Unknown channel: {channel}")
@@ -949,7 +949,7 @@ def main():
             logger.error(f"Python interpreter not found: {env.python_exe}")
             sys.exit(1)
 
-        env.install_pytorch()
+        env.install_pytorch(args)
         torch_commit, triton_version = env.get_torch_commit()
         env.clone_pytorch(torch_commit)
 
