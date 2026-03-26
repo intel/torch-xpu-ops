@@ -3467,7 +3467,7 @@ class TestSparseCSR(TestCase):
                 if bcast_c and len(b) == 0:
                     continue
                 nnz = random.randint(0, m * n)
-                c_batch = () if bcast_c else b                
+                c_batch = () if bcast_c else b
                 c = self.genSparseCSRTensor(
                     (*c_batch, m, n),
                     nnz,
