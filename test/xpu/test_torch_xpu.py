@@ -269,14 +269,10 @@ class TestBasicVitalSigns(TestCase):
 
 # FIXME: document or deprecate whatever this is
 class TestVitalSignsCuda(TestCase):
-    @onlyXPU
+    @onlyCUDA  # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
     def test_cuda_vitals_gpu_only(self, device):
-        if TEST_XPU:
-            with torch_vital_set("ON"):
-                self.assertIn("XPU.used\t\t true", torch.read_vitals())
-        else:
-            with torch_vital_set("ON"):
-                self.assertIn("CUDA.used\t\t true", torch.read_vitals())
+        with torch_vital_set("ON"):
+            self.assertIn("CUDA.used\t\t true", torch.read_vitals())
 
 
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
