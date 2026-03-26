@@ -499,7 +499,8 @@ void parallel_cat(
             outputParam.tensorStride[mapped_dimension]);                       \
     auto& q = getCurrentSYCLQueue();                                           \
     sycl_kernel_submit(catRange, applyGroup, q, kfn);                          \
-  } else if (isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) { \
+  } else if (                                                                  \
+      isContig && isAligned && isOutputAligned && sizeof(scalar_t) == 2) {     \
     CatArrayBatchedCopy_alignedK_contig<                                       \
         scalar_t,                                                              \
         unsigned int,                                                          \
