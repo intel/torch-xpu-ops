@@ -677,7 +677,7 @@ void cat_out_kernel(
         continue;
       int64_t dimSize = t.size(dim);
       Tensor nt = at::narrow(result, dim, offset, dimSize);
-      copy_(nt, t);
+      nt.copy_(t, /*non_blocking=*/false);
       offset += dimSize;
     }
   }
