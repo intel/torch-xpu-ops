@@ -196,20 +196,20 @@ jobs:
                   -o e2e_comparison.csv \
                   -m e2e_comparison.md || true
 
-              if [ -f "e2e_comparison.details.md" ]; then
+              if [ -f "e2e_comparison_*_details.csv" ]; then
                   local e2e_failed_count e2e_dropped_count
-                  e2e_failed_count=$(grep -c ',new_failed,' e2e_comparison.details.md 2>/dev/null || true)
-                  e2e_dropped_count=$(grep -c ',new_dropped,' e2e_comparison.details.md 2>/dev/null || true)
+                  e2e_failed_count=$(grep -c ',new_failed,' e2e_comparison_*_details.csv 2>/dev/null || true)
+                  e2e_dropped_count=$(grep -c ',new_dropped,' e2e_comparison_performance_details.csv 2>/dev/null || true)
 
                   if [ "$e2e_failed_count" -ne 0 ]; then
                       echo "E2E failures detected: $e2e_failed_count new failed cases."
-                      grep ',new_failed,' e2e_comparison.details.md || true
+                      grep ',new_failed,' e2e_comparison_*_details.csv || true
                       return 1
                   fi
 
                   if [ "$e2e_dropped_count" -ne 0 ]; then
                       echo "E2E dropped cases detected: $e2e_dropped_count new dropped cases."
-                      grep ',new_dropped,' e2e_comparison.details.md || true
+                      grep ',new_dropped,' e2e_comparison_performance_details.csv || true
                       return 1
                   fi
               fi

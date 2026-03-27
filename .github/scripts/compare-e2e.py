@@ -27,39 +27,6 @@ SUMMARY_LEVELS = [
     ("By Suite+DataType+Mode", ["suite", "data_type", "mode"], 2)
 ]
 
-# Column renaming for output (shortened headers)
-COLUMN_RENAME_MAP = {
-    # Common
-    'data_type': 'dtype',
-    # Accuracy details
-    'batch_size_target': 'bs_tgt',
-    'batch_size_baseline': 'bs_bsl',
-    'accuracy_target': 'acc_tgt',
-    'accuracy_baseline': 'acc_bsl',
-    'comparison_acc': 'cmp_acc',
-    # Performance details
-    'inductor_target': 'ind_tgt',
-    'inductor_baseline': 'ind_bsl',
-    'eager_target': 'eag_tgt',
-    'eager_baseline': 'eag_bsl',
-    'inductor_ratio': 'ind_ratio',
-    'eager_ratio': 'eag_ratio',
-    'comparison_perf': 'cmp_perf',
-    'comparison': 'cmp',
-    # Summary specific (with spaces)
-    'target passed': 'tgt_ps',
-    'baseline passed': 'bsl_ps',
-    'total': 'total',
-    'target passrate': 'tgt_pass%',
-    'baseline passrate': 'bsl_pass%',
-    'new_fail': 'new_fail',
-    'new_drop': 'new_drop',
-    'new_pass': 'new_pass',
-    'new_improve': 'new_improve',
-    'ind_ratio': 'ind_ratio',
-    'eag_ratio': 'eag_ratio',
-}
-
 # ----------------------------------------------------------------------
 # File discovery and parsing
 # ----------------------------------------------------------------------
@@ -205,8 +172,9 @@ def load_results(file_list: list[str], result_type_filter: str) -> list[dict]:
                     "mode": mode,
                     "model": row["name"],
                     "batch_size": row["batch_size"],
+                    "eager": eager,
                     "inductor": inductor,
-                    "eager": eager
+                    "speedup": speedup
                 }
 
             key = (suite, data_type, mode, row["name"])
@@ -344,52 +312,6 @@ def merge_performance(target_records: list[dict], baseline_records: list[dict],
         if c not in merged.columns:
             merged[c] = None
     return merged[cols].sort_values(by=["suite", "data_type", "mode", "model"])
-
-
-def combine_results(acc_merged: pd.DataFrame, perf_merged: pd.DataFrame) -> pd.DataFrame:
-    """Combine accuracy and performance merged DataFrames into one details table."""
-    # Rename batch_size columns to avoid conflict
-    acc_renamed = None
-    perf_renamed = None
-    if not acc_merged.empty:
-        acc_renamed = acc_merged.rename(columns={
-            "batch_size_target": "bs_acc_tgt",
-            "batch_size_baseline": "bs_acc_bsl"
-        })
-    if not perf_merged.empty:
-        perf_renamed = perf_merged.rename(columns={
-            "batch_size_target": "bs_perf_tgt",
-            "batch_size_baseline": "bs_perf_bsl"
-        })
-
-    if acc_renamed is not None and perf_renamed is not None:
-        merge_keys = ["suite", "data_type", "mode", "model"]
-        combined = pd.merge(acc_renamed, perf_renamed, on=merge_keys, how="outer")
-
-        def compare_result(row):
-            acc = row.get("comparison_acc")
-            perf = row.get("comparison_perf")
-            if pd.isna(acc) and pd.isna(perf):
-                return ""
-            if pd.isna(acc):
-                return perf
-            if pd.isna(perf):
-                return acc
-            # Prioritise fail/drop over improve/pass
-            if any(x in [acc, perf] for x in ("new_failed", "new_dropped")):
-                return "new_failed"
-            if any(x in [acc, perf] for x in ("new_passed", "new_improved")):
-                return "new_improved"
-            return "no_changed"
-
-        combined["comparison"] = combined.apply(compare_result, axis=1)
-        return combined.sort_values(by=merge_keys)
-    elif acc_renamed is not None:
-        return acc_renamed.sort_values(by=["suite", "data_type", "mode", "model"])
-    elif perf_renamed is not None:
-        return perf_renamed.sort_values(by=["suite", "data_type", "mode", "model"])
-    else:
-        return pd.DataFrame()
 
 
 # ----------------------------------------------------------------------
@@ -550,8 +472,8 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
         f.write("|----------|-------|----------------|---------------------|-------------|--------------|-------------|-----------------|-----------|-----------|\n")
         for _, row in overall.iterrows():
             type_label = row['Type']
-            tgt_ps = row.get('tgt_ps', '')
-            bsl_ps = row.get('bsl_ps', '')
+            tgt_ps = row.get('target passed', '')
+            bsl_ps = row.get('baseline passed', '')
             total = row.get('total', '')
             if type_label == 'Accuracy':
                 # For accuracy, new_drop and new_improve are not applicable -> show "/"
@@ -565,8 +487,8 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
                 new_improve = row.get('new_improve')
                 ind_ratio = _fmt_ratio(row.get('ind_ratio'), threshold)
                 eag_ratio = _fmt_ratio(row.get('eag_ratio'), threshold)
-            tgt_pass = row.get('tgt_pass%', '')
-            bsl_pass = row.get('bsl_pass%', '')
+            tgt_pass = row.get('target passrate', '')
+            bsl_pass = row.get('baseline passrate', '')
             f.write(f"| {type_label} | {total} | {tgt_ps} / {bsl_ps} | {tgt_pass}% / {bsl_pass}% | {new_fail} | {new_drop} | {new_pass} | {new_improve} | {ind_ratio} | {eag_ratio} |\n")
         f.write("\n")
 
@@ -574,11 +496,11 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
 def _write_html_table(rows: pd.DataFrame, columns: list[str], condition_col: str,
                       fail_color: str, pass_color: str, file_handle):
     """Write an HTML table with row background colors based on condition_col."""
-    file_handle.write('<table>\n')
-    file_handle.write('<thead><tr>')
+    file_handle.write('緣\n')
+    file_handle.write('<thead>')
     for col in columns:
         file_handle.write(f'<th>{col}</th>')
-    file_handle.write('</tr></thead>\n')
+    file_handle.write('</thead>\n')
     file_handle.write('<tbody>\n')
     for _, row in rows.iterrows():
         val = row.get(condition_col, '')
@@ -596,68 +518,69 @@ def _write_html_table(rows: pd.DataFrame, columns: list[str], condition_col: str
     file_handle.write('</table>\n\n')
 
 
-def write_details_markdown(details_df: pd.DataFrame, threshold: float, filename: str):
+def write_details_markdown(acc_df: pd.DataFrame, perf_df: pd.DataFrame,
+                           threshold: float, filename: str):
     """Write a Markdown file with suite overview and tables for new failures/improvements."""
-    if details_df.empty:
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write("# Detailed Report\n\nNo detailed data available.\n")
-        return
-
     with open(filename, 'w', encoding='utf-8') as f:
         f.write("\n\n# Dynamo Benchmark Test Results - Details\n\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
         # ----- Overview by Suite -----
-        if 'suite' in details_df.columns:
-            f.write("## 📊 Overview by Suite\n\n")
-            suite_rows = []
-            for suite in details_df['suite'].dropna().unique():
-                suite_df = details_df[details_df['suite'] == suite]
+        f.write("## 📊 Overview by Suite\n\n")
 
-                # Accuracy totals & counts
-                if 'cmp_acc' in suite_df.columns:
-                    acc_total = suite_df['model'].notna().sum()
-                    acc_fail = (suite_df['cmp_acc'] == 'new_failed').sum()
-                    acc_pass = (suite_df['cmp_acc'] == 'new_passed').sum()
+        # Collect all suites from both dataframes
+        suites = set()
+        if not acc_df.empty:
+            suites.update(acc_df['suite'].dropna().unique())
+        if not perf_df.empty:
+            suites.update(perf_df['suite'].dropna().unique())
+
+        if not suites:
+            f.write("No suite information available.\n\n")
+        else:
+            suite_rows = []
+            for suite in sorted(suites):
+                # Accuracy metrics for this suite
+                if not acc_df.empty:
+                    acc_sub = acc_df[acc_df['suite'] == suite]
+                    acc_total = len(acc_sub)
+                    acc_fail = (acc_sub['comparison_acc'] == 'new_failed').sum()
+                    acc_pass = (acc_sub['comparison_acc'] == 'new_passed').sum()
+                    # Absolute pass rate (target)
+                    if 'accuracy_target' in acc_sub.columns:
+                        acc_pass_rate = (
+                            acc_sub['accuracy_target'].astype(str).str.contains('pass', na=False).sum() / acc_total * 100
+                            if acc_total > 0 else 0
+                        )
+                        acc_pass_rate = f"{acc_pass_rate:.1f}%"
+                    else:
+                        acc_pass_rate = ""
                 else:
                     acc_total = acc_fail = acc_pass = 0
+                    acc_pass_rate = ""
 
-                # Performance totals & counts
-                if 'cmp_perf' in suite_df.columns:
-                    perf_total = suite_df['model'].notna().sum()
-                    perf_fail = (suite_df['cmp_perf'] == 'new_failed').sum()
-                    perf_drop = (suite_df['cmp_perf'] == 'new_dropped').sum()
-                    perf_pass = (suite_df['cmp_perf'] == 'new_passed').sum()
-                    perf_improve = (suite_df['cmp_perf'] == 'new_improved').sum()
+                # Performance metrics for this suite
+                if not perf_df.empty:
+                    perf_sub = perf_df[perf_df['suite'] == suite]
+                    perf_total = len(perf_sub)
+                    perf_fail = (perf_sub['comparison_perf'] == 'new_failed').sum()
+                    perf_drop = (perf_sub['comparison_perf'] == 'new_dropped').sum()
+                    perf_pass = (perf_sub['comparison_perf'] == 'new_passed').sum()
+                    perf_improve = (perf_sub['comparison_perf'] == 'new_improved').sum()
+                    # Geometric means
+                    ind_ratio = ""
+                    if 'inductor_ratio' in perf_sub.columns:
+                        gm = np.exp(np.log(perf_sub['inductor_ratio'].dropna().replace(0, np.nan)).mean()) if not perf_sub['inductor_ratio'].dropna().empty else None
+                        if gm is not None:
+                            ind_ratio = f"{gm:.3f}"
+                    eag_ratio = ""
+                    if 'eager_ratio' in perf_sub.columns:
+                        gm = np.exp(np.log(perf_sub['eager_ratio'].dropna().replace(0, np.nan)).mean()) if not perf_sub['eager_ratio'].dropna().empty else None
+                        if gm is not None:
+                            eag_ratio = f"{gm:.3f}"
                 else:
                     perf_total = perf_fail = perf_drop = perf_pass = perf_improve = 0
-
-                # Accuracy pass rate (absolute, not change)
-                acc_pass_rate = ""
-                if 'acc_tgt' in suite_df.columns:
-                    acc_rows = suite_df['acc_tgt'].dropna()
-                    if len(acc_rows) > 0:
-                        pass_count = acc_rows.astype(str).str.contains('pass', na=False).sum()
-                        acc_pass_rate = f"{(pass_count / acc_total * 100):.1f}%"
-
-                # Performance ratios (geometric mean)
-                def geomean(series):
-                    vals = series.dropna()
-                    vals = vals[vals > 0]
-                    if len(vals) == 0:
-                        return None
-                    return np.exp(np.log(vals).mean())
-
-                ind_ratio = ""
-                if 'ind_ratio' in suite_df.columns:
-                    gm = geomean(suite_df['ind_ratio'])
-                    if gm is not None:
-                        ind_ratio = f"{gm:.3f}"
-                eag_ratio = ""
-                if 'eag_ratio' in suite_df.columns:
-                    gm = geomean(suite_df['eag_ratio'])
-                    if gm is not None:
-                        eag_ratio = f"{gm:.3f}"
+                    ind_ratio = eag_ratio = ""
 
                 suite_rows.append({
                     'suite': suite,
@@ -674,83 +597,68 @@ def write_details_markdown(details_df: pd.DataFrame, threshold: float, filename:
                     'eag_ratio': eag_ratio,
                 })
 
-            if suite_rows:
-                f.write("| Suite | Acc Total | ❌ Acc Fail | ✅ Acc Pass | Acc Pass Rate | Perf Total | ❌ Perf Fail | 📉 Perf Drop | ✅ Perf Pass | 📈 Perf Improve | Ind Ratio | Eag Ratio |\n")
-                f.write("|-------|-----------|-------------|--------------|---------------|------------|--------------|---------------|---------------|-----------------|-----------|-----------|\n")
-                for s in suite_rows:
-                    row = [
-                        s['suite'],
-                        str(s['acc_total']),
-                        s['acc_fail'],
-                        s['acc_pass'],
-                        s['acc_pass_rate'],
-                        str(s['perf_total']),
-                        s['perf_fail'],
-                        s['perf_drop'],
-                        s['perf_pass'],
-                        s['perf_improve'],
-                        _fmt_ratio(s['ind_ratio'], threshold),
-                        _fmt_ratio(s['eag_ratio'], threshold),
-                    ]
-                    f.write("| " + " | ".join(row) + " |\n")
-                f.write("\n")
-            else:
-                f.write("No suite information available.\n\n")
-        else:
-            f.write("## 📊 Overview by Suite\n\nNo suite information available.\n\n")
+            f.write("| Suite | Acc Total | ❌ Acc Fail | ✅ Acc Pass | Acc Pass Rate | Perf Total | ❌ Perf Fail | 📉 Perf Drop | ✅ Perf Pass | 📈 Perf Improve | Ind Ratio | Eag Ratio |\n")
+            f.write("|-------|-----------|-------------|--------------|---------------|------------|--------------|---------------|---------------|-----------------|-----------|-----------|\n")
+            for s in suite_rows:
+                # Convert all values to strings to avoid TypeError
+                row = [
+                    str(s['suite']),
+                    str(s['acc_total']),
+                    str(s['acc_fail']),
+                    str(s['acc_pass']),
+                    str(s['acc_pass_rate']),
+                    str(s['perf_total']),
+                    str(s['perf_fail']),
+                    str(s['perf_drop']),
+                    str(s['perf_pass']),
+                    str(s['perf_improve']),
+                    _fmt_ratio(s['ind_ratio'], threshold),
+                    _fmt_ratio(s['eag_ratio'], threshold),
+                ]
+                f.write("| " + " | ".join(row) + " |\n")
+            f.write("\n")
 
         # ----- New Failures & Regressions -----
-        # Only attempt if columns exist
-        if 'cmp_acc' in details_df.columns:
-            acc_fail = details_df[details_df['cmp_acc'] == 'new_failed']
-        else:
-            acc_fail = pd.DataFrame()
+        f.write("## ❌ New Failures & Regressions\n\n")
 
-        if 'cmp_perf' in details_df.columns:
-            perf_regress = details_df[details_df['cmp_perf'].isin(['new_dropped', 'new_failed'])]
-        else:
-            perf_regress = pd.DataFrame()
-
-        if not acc_fail.empty or not perf_regress.empty:
-            f.write("## ❌ New Failures & Regressions\n\n")
-
+        if not acc_df.empty:
+            acc_fail = acc_df[acc_df['comparison_acc'] == 'new_failed']
             if not acc_fail.empty:
                 f.write("### 🧪 Accuracy Failures\n\n")
-                cols = ['suite', 'dtype', 'mode', 'model', 'bs_tgt', 'acc_tgt', 'bs_bsl', 'acc_bsl', 'cmp_acc']
+                cols = ['suite', 'data_type', 'mode', 'model', 'batch_size_target', 'accuracy_target',
+                        'batch_size_baseline', 'accuracy_baseline', 'comparison_acc']
                 available = [c for c in cols if c in acc_fail.columns]
-                _write_html_table(acc_fail, available, 'cmp_acc', "#f8d7da", "#d4edda", f)
+                _write_html_table(acc_fail, available, 'comparison_acc', "#f8d7da", "#d4edda", f)
 
+        if not perf_df.empty:
+            perf_regress = perf_df[perf_df['comparison_perf'].isin(['new_dropped', 'new_failed'])]
             if not perf_regress.empty:
                 f.write(f"### ⏱️ Performance Regressions (ratio < {((1 - threshold) * 100):.0f}%)\n\n")
-                cols = ['suite', 'dtype', 'mode', 'model', 'ind_tgt', 'eag_tgt', 'ind_bsl', 'eag_bsl', 'ind_ratio', 'eag_ratio', 'cmp_perf']
+                cols = ['suite', 'data_type', 'mode', 'model', 'inductor_target', 'eager_target',
+                        'inductor_baseline', 'eager_baseline', 'inductor_ratio', 'eager_ratio', 'comparison_perf']
                 available = [c for c in cols if c in perf_regress.columns]
-                _write_html_table(perf_regress, available, 'cmp_perf', "#f8d7da", "#d4edda", f)
+                _write_html_table(perf_regress, available, 'comparison_perf', "#f8d7da", "#d4edda", f)
 
         # ----- New Passes & Improvements -----
-        if 'cmp_acc' in details_df.columns:
-            acc_pass = details_df[details_df['cmp_acc'] == 'new_passed']
-        else:
-            acc_pass = pd.DataFrame()
+        f.write("## ✅ New Passes & Improvements\n\n")
 
-        if 'cmp_perf' in details_df.columns:
-            perf_impr = details_df[details_df['cmp_perf'].isin(['new_improved', 'new_passed'])]
-        else:
-            perf_impr = pd.DataFrame()
-
-        if not acc_pass.empty or not perf_impr.empty:
-            f.write("## ✅ New Passes & Improvements\n\n")
-
+        if not acc_df.empty:
+            acc_pass = acc_df[acc_df['comparison_acc'] == 'new_passed']
             if not acc_pass.empty:
                 f.write("### 🧪 Accuracy New Passes\n\n")
-                cols = ['suite', 'dtype', 'mode', 'model', 'bs_tgt', 'acc_tgt', 'bs_bsl', 'acc_bsl', 'cmp_acc']
+                cols = ['suite', 'data_type', 'mode', 'model', 'batch_size_target', 'accuracy_target',
+                        'batch_size_baseline', 'accuracy_baseline', 'comparison_acc']
                 available = [c for c in cols if c in acc_pass.columns]
-                _write_html_table(acc_pass, available, 'cmp_acc', "#f8d7da", "#d4edda", f)
+                _write_html_table(acc_pass, available, 'comparison_acc', "#f8d7da", "#d4edda", f)
 
+        if not perf_df.empty:
+            perf_impr = perf_df[perf_df['comparison_perf'].isin(['new_improved', 'new_passed'])]
             if not perf_impr.empty:
                 f.write(f"### ⏱️ Performance Improvements (ratio > {(1 + threshold) * 100:.0f}%)\n\n")
-                cols = ['suite', 'dtype', 'mode', 'model', 'ind_tgt', 'eag_tgt', 'ind_bsl', 'eag_bsl', 'ind_ratio', 'eag_ratio', 'cmp_perf']
+                cols = ['suite', 'data_type', 'mode', 'model', 'inductor_target', 'eager_target',
+                        'inductor_baseline', 'eager_baseline', 'inductor_ratio', 'eager_ratio', 'comparison_perf']
                 available = [c for c in cols if c in perf_impr.columns]
-                _write_html_table(perf_impr, available, 'cmp_perf', "#f8d7da", "#d4edda", f)
+                _write_html_table(perf_impr, available, 'comparison_perf', "#f8d7da", "#d4edda", f)
 
 
 # ----------------------------------------------------------------------
@@ -786,6 +694,21 @@ Examples:
     print(f"Found {len(target_files)} CSV files in target directory.")
     print(f"Found {len(baseline_files)} CSV files in baseline directory.")
 
+    # Check for existence of accuracy/performance files
+    target_acc_files = [f for f in target_files if '_accuracy.csv' in f]
+    target_perf_files = [f for f in target_files if '_performance.csv' in f]
+    baseline_acc_files = [f for f in baseline_files if '_accuracy.csv' in f]
+    baseline_perf_files = [f for f in baseline_files if '_performance.csv' in f]
+
+    if not target_acc_files:
+        print("Warning: No accuracy CSV files found in target directory.")
+    if not target_perf_files:
+        print("Warning: No performance CSV files found in target directory.")
+    if not baseline_acc_files:
+        print("Warning: No accuracy CSV files found in baseline directory.")
+    if not baseline_perf_files:
+        print("Warning: No performance CSV files found in baseline directory.")
+
     target_acc = load_results(target_files, "accuracy")
     target_perf = load_results(target_files, "performance")
     baseline_acc = load_results(baseline_files, "accuracy")
@@ -800,11 +723,6 @@ Examples:
     perf_merged = merge_performance(target_perf, baseline_perf, args.threshold)
 
     combined_summary = generate_all_summaries(acc_merged, perf_merged)
-    details = combine_results(acc_merged, perf_merged)
-
-    # Apply column renaming for output
-    combined_summary.rename(columns={k: v for k, v in COLUMN_RENAME_MAP.items() if k in combined_summary.columns}, inplace=True)
-    details.rename(columns={k: v for k, v in COLUMN_RENAME_MAP.items() if k in details.columns}, inplace=True)
 
     # Generate markdown files if requested
     if args.markdown:
@@ -812,35 +730,56 @@ Examples:
         summary_file = md_base + ".summary.md"
         details_file = md_base + ".details.md"
         write_summary_markdown(combined_summary, args.threshold, summary_file)
-        write_details_markdown(details, args.threshold, details_file)
+        write_details_markdown(acc_merged, perf_merged, args.threshold, details_file)
         print(f"Markdown summary written to {summary_file}")
         print(f"Markdown details written to {details_file}")
 
+    # Write output files (Excel or CSV)
     if out_ext == '.xlsx':
         with pd.ExcelWriter(args.output, engine="openpyxl") as writer:
+            # Summary sheet
             if not combined_summary.empty:
                 combined_summary.to_excel(writer, sheet_name="Summary", index=False)
             else:
                 pd.DataFrame({"Info": ["No summary data available"]}).to_excel(writer, sheet_name="Summary", index=False)
-            if not details.empty:
-                details.to_excel(writer, sheet_name="Details", index=False)
+
+            # Accuracy details sheet
+            if not acc_merged.empty:
+                acc_merged.to_excel(writer, sheet_name="Accuracy Details", index=False)
             else:
-                pd.DataFrame({"Info": ["No detailed data available"]}).to_excel(writer, sheet_name="Details", index=False)
-        print(f"Excel written to {args.output} (sheets: Summary, Details)")
+                pd.DataFrame({"Info": ["No accuracy data available"]}).to_excel(writer, sheet_name="Accuracy Details", index=False)
+
+            # Performance details sheet
+            if not perf_merged.empty:
+                perf_merged.to_excel(writer, sheet_name="Performance Details", index=False)
+            else:
+                pd.DataFrame({"Info": ["No performance data available"]}).to_excel(writer, sheet_name="Performance Details", index=False)
+
+        print(f"Excel written to {args.output} (sheets: Summary, Accuracy Details, Performance Details)")
 
     else:  # .csv
         summary_file = out_base + "_summary.csv"
-        details_file = out_base + "_details.csv"
         if not combined_summary.empty:
             combined_summary.to_csv(summary_file, index=False, na_rep='')
             print(f"Summary written to {summary_file}")
         else:
             print("No summary data to write.")
-        if not details.empty:
-            details.to_csv(details_file, index=False, na_rep='')
-            print(f"Details written to {details_file}")
+
+        # Accuracy details CSV
+        acc_file = out_base + "_accuracy_details.csv"
+        if not acc_merged.empty:
+            acc_merged.to_csv(acc_file, index=False, na_rep='')
+            print(f"Accuracy details written to {acc_file}")
         else:
-            print("No detailed data to write.")
+            print("No accuracy data to write.")
+
+        # Performance details CSV
+        perf_file = out_base + "_performance_details.csv"
+        if not perf_merged.empty:
+            perf_merged.to_csv(perf_file, index=False, na_rep='')
+            print(f"Performance details written to {perf_file}")
+        else:
+            print("No performance data to write.")
 
     return 0
 
