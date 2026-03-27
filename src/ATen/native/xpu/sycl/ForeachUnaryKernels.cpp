@@ -413,7 +413,9 @@ template <>
 struct Rsqrt<c10::complex<float>> {
   c10::complex<float> operator()(c10::complex<float> t) const {
     const auto one = c10::complex<float>(1.0, 0);
-    return one / sycl::sqrt(t);
+    return one /
+        static_cast<c10::complex<float>>(
+            std::sqrt(static_cast<std::complex<float>>(t)));
   }
 };
 
@@ -421,7 +423,9 @@ template <>
 struct Rsqrt<c10::complex<double>> {
   c10::complex<double> operator()(c10::complex<double> t) const {
     const auto one = c10::complex<double>(1.0, 0);
-    return one / sycl::sqrt(t);
+    return one /
+        static_cast<c10::complex<double>>(
+            std::sqrt(static_cast<std::complex<double>>(t)));
   }
 };
 

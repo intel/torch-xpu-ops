@@ -241,15 +241,15 @@ Tensor& linspace_kernel(
 template <typename scalar_t, typename step_type>
 struct LogspaceFunctor {
   scalar_t operator()(int64_t ind) const {
+    const auto base = static_cast<scalar_t>(scalar_base_);
     if (ind < halfway_) {
-      return sycl::pow(
-          static_cast<scalar_t>(scalar_base_),
-          static_cast<scalar_t>(scalar_start_ + step_ * ind));
+      const auto exp = static_cast<scalar_t>(scalar_start_ + step_ * ind);
+      return sycl::pow(base, exp);
     }
 
-    return sycl::pow(
-        static_cast<scalar_t>(scalar_base_),
-        static_cast<scalar_t>(scalar_end_ - step_ * (steps_ - ind - 1)));
+    const auto exp =
+        static_cast<scalar_t>(scalar_end_ - step_ * (steps_ - ind - 1));
+    return sycl::pow(base, exp);
   }
   LogspaceFunctor(
       scalar_t scalar_start,
