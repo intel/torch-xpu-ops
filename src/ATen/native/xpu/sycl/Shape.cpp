@@ -636,8 +636,7 @@ void cat_out_kernel(
       all32BitIndexable && all_same_dtype &&
       (materialized[valid].get().scalar_type() == result.scalar_type()) &&
       (memory_format == c10::MemoryFormat::Contiguous ||
-       memory_format == c10::MemoryFormat::ChannelsLast ||
-       memory_format == c10::MemoryFormat::ChannelsLast3d)) {
+       memory_format == c10::MemoryFormat::ChannelsLast)) {
     if (isBitsType(result.scalar_type())) {
       AT_DISPATCH_BIT_TYPES(result.scalar_type(), "cat_xpu", [&]() {
         using dtype = OpaqueType<sizeof(scalar_t)>;
