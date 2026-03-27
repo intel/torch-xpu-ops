@@ -37,6 +37,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyCUDA,
     onlyOn,
+    onlyXPU,
     tol as xtol,
     toleranceOverride,
 )
@@ -431,7 +432,7 @@ class TestMatmulCuda(InductorTestCase):
         # cross comparison
         self.assertEqual(out1_gpu, out2_gpu[0])
 
-    @onlyOn(["cuda", "xpu"])
+    @onlyCUDA
     @skipIfRocm
     @parametrize("shape", [2**i for i in range(5, 14)])
     @dtypes(torch.float, torch.half, torch.bfloat16)
@@ -440,6 +441,19 @@ class TestMatmulCuda(InductorTestCase):
         first = torch.matmul(inp, inp)
         for _ in range(10):
             self.assertEqual(first, torch.matmul(inp, inp), atol=0.0, rtol=0.0)
+
+    @onlyXPU
+    @parametrize("shape", [513, 767])
+    def test_matmul_deterministic_mode(self, device, shape):
+        original_deterministic = torch.are_deterministic_algorithms_enabled()
+        try:
+            torch.use_deterministic_algorithms(True)
+            input = torch.randn(shape, shape, device=device, dtype=torch.float32)
+            first = torch.matmul(input, input)
+            for _ in range(10):
+                self.assertEqual(first, torch.matmul(input, input), atol=0.0, rtol=0.0)
+        finally:
+            torch.use_deterministic_algorithms(original_deterministic)
 
     def grouped_mm_helper(self, alist, blist, gOlist, agradlist, bgradlist, outlist):
         for a, b, gO, agrad, bgrad, out in zip(
