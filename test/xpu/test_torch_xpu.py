@@ -242,12 +242,15 @@ def torch_vital_set(value):
 # Tests Vital Signs for Torch
 # FIXME: document or deprecate whatever this is
 class TestBasicVitalSigns(TestCase):
+    # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
+    @onlyCUDA
     def test_basic_vitals(self):
         with torch_vital_set(""):
             self.assertFalse(torch.vitals_enabled())
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
 
+    @onlyCUDA
     def test_basic_vitals_read_write(self):
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
@@ -258,6 +261,7 @@ class TestBasicVitalSigns(TestCase):
             self.assertIn("TEST_VALUE_STRING", torch.read_vitals())
             self.assertIn("CUDA.used", torch.read_vitals())
 
+    @onlyCUDA
     def test_dataloader_vitals(self):
         with torch_vital_set("ON"):
             inps = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
