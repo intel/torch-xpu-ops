@@ -416,9 +416,8 @@ void parallel_cat(
       if (inputs[i + batchCounter].get().numel() > 0) {
         dimSize = inputs[i + batchCounter].get().size(logical_dimension);
       }
-
       catMetaData.input[batchCounter] = static_cast<const scalar_t*>(
-        inputs[i + batchCounter].get().const_data_ptr());
+          inputs[i + batchCounter].get().const_data_ptr());
       catMetaData.offset[batchCounter] = offset;
       catMetaData.dimSize[batchCounter] = dimSize;
       catMetaData.nElements[batchCounter] =
