@@ -319,8 +319,8 @@ class Environment:
 
         packages = [
             f"torch{version_spec}",
-            f"torchvision",
-            f"torchaudio",
+            "torchvision",
+            "torchaudio",
             "torchao",
         ]
         if channel == 'nightly':
