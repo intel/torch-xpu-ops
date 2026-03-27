@@ -1070,8 +1070,8 @@ class ResultAnalyzer:
 
         # Create the enhanced summary table with New Failed and New Passed columns
         if not stats_df.empty:
-            md.append("| Device | Total | Passed | Failed | ❌ New Failed | ✅ New Passed | ⏭️ Skipped | ⚠️ XFAIL | 📈 Pass Rate |")
-            md.append("|--------|-------|--------|--------|----------------|---------------|-----------|---------|--------------|")
+            md.append("| Category | Total | Passed | Failed | ❌ New Failed | ✅ New Passed | ⏭️ Skipped | ⚠️ XFAIL | Pass Rate |")
+            md.append("|----------|-------|--------|--------|----------------|---------------|------------|-----------|-----------|")
 
             for _, row in stats_df.iterrows():
                 device = row['Device']

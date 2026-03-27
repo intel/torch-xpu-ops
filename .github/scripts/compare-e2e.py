@@ -522,14 +522,6 @@ def generate_all_summaries(acc_merged: pd.DataFrame, perf_merged: pd.DataFrame) 
 # ----------------------------------------------------------------------
 # Markdown output
 # ----------------------------------------------------------------------
-def _fmt_count(val: Any, good: bool = False) -> str:
-    """Format a count with emoji if >0."""
-    if pd.notna(val) and val > 0:
-        emoji = "🟢" if good else "🔴"
-        return f"{val} {emoji}"
-    return str(val) if pd.notna(val) else ""
-
-
 def _fmt_ratio(val: Any, threshold: float) -> str:
     """Format ratio with emoji if below/above threshold."""
     if pd.notna(val):
@@ -554,8 +546,8 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
             f.write("No overall summary data available.\n")
             return
 
-        f.write("| Type | total | tgt_ps | bsl_ps | new_fail | new_drop | new_pass | new_improve | tgt_pass% | bsl_pass% | ind_ratio | eag_ratio |\n")
-        f.write("|------|--------|--------|-------|----------|----------|----------|-------------|-----------|-----------|-----------|-----------|\n")
+        f.write("| Category | Total | Tgt / Bsl Pass | Tgt / Bsl Pass Rate | ❌ New Fail | 📉 New Drop | ✅ New Pass | 📈 New Improve | IND Ratio | EAG Ratio |\n")
+        f.write("|----------|-------|----------------|---------------------|-------------|--------------|-------------|-----------------|-----------|-----------|\n")
         for _, row in overall.iterrows():
             type_label = row['Type']
             tgt_ps = row.get('tgt_ps', '')
@@ -563,19 +555,19 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
             total = row.get('total', '')
             if type_label == 'Accuracy':
                 # For accuracy, new_drop and new_improve are not applicable -> show "/"
-                new_fail = _fmt_count(row.get('new_fail'), good=False)
-                new_pass = _fmt_count(row.get('new_pass'), good=True)
+                new_fail = row.get('new_fail')
+                new_pass = row.get('new_pass')
                 new_drop = new_improve = ind_ratio = eag_ratio = "/"
             else:
-                new_fail = _fmt_count(row.get('new_fail'), good=False)
-                new_pass = _fmt_count(row.get('new_pass'), good=True)
-                new_drop = _fmt_count(row.get('new_drop'), good=False)
-                new_improve = _fmt_count(row.get('new_improve'), good=True)
+                new_fail = row.get('new_fail')
+                new_pass = row.get('new_pass')
+                new_drop = row.get('new_drop')
+                new_improve = row.get('new_improve')
                 ind_ratio = _fmt_ratio(row.get('ind_ratio'), threshold)
                 eag_ratio = _fmt_ratio(row.get('eag_ratio'), threshold)
             tgt_pass = row.get('tgt_pass%', '')
             bsl_pass = row.get('bsl_pass%', '')
-            f.write(f"| {type_label} | {total} | {tgt_ps} | {bsl_ps} | {new_fail} | {new_drop} | {new_pass} | {new_improve} | {tgt_pass} | {bsl_pass} | {ind_ratio} | {eag_ratio} |\n")
+            f.write(f"| {type_label} | {total} | {tgt_ps} / {bsl_ps} | {tgt_pass}% / {bsl_pass}% | {new_fail} | {new_drop} | {new_pass} | {new_improve} | {ind_ratio} | {eag_ratio} |\n")
         f.write("\n")
 
 
@@ -683,27 +675,20 @@ def write_details_markdown(details_df: pd.DataFrame, threshold: float, filename:
                 })
 
             if suite_rows:
-                # Helper to format a number with emoji
-                def fmt_count(val, good=False):
-                    if val > 0:
-                        emoji = "🟢" if good else "🔴"
-                        return f"{val} {emoji}"
-                    return str(val)
-
-                f.write("| Suite | 🧪 Acc Total | 🧪 Acc Fail | 🧪 Acc Pass | 🧪 Acc Pass Rate | ⏱️ Perf Total | ⏱️ Perf Fail | ⏱️ Perf Drop | ⏱️ Perf Pass | ⏱️ Perf Improve | ⏱️ Ind Ratio | ⏱️ Eag Ratio |\n")
-                f.write("|-------|--------------|-------------|--------------|------------------|---------------|--------------|---------------|---------------|-----------------|--------------|--------------|\n")
+                f.write("| Suite | Acc Total | ❌ Acc Fail | ✅ Acc Pass | Acc Pass Rate | Perf Total | ❌ Perf Fail | 📉 Perf Drop | ✅ Perf Pass | 📈 Perf Improve | Ind Ratio | Eag Ratio |\n")
+                f.write("|-------|-----------|-------------|--------------|---------------|------------|--------------|---------------|---------------|-----------------|-----------|-----------|\n")
                 for s in suite_rows:
                     row = [
                         s['suite'],
                         str(s['acc_total']),
-                        fmt_count(s['acc_fail'], good=False),
-                        fmt_count(s['acc_pass'], good=True),
+                        s['acc_fail'],
+                        s['acc_pass'],
                         s['acc_pass_rate'],
                         str(s['perf_total']),
-                        fmt_count(s['perf_fail'], good=False),
-                        fmt_count(s['perf_drop'], good=False),
-                        fmt_count(s['perf_pass'], good=True),
-                        fmt_count(s['perf_improve'], good=True),
+                        s['perf_fail'],
+                        s['perf_drop'],
+                        s['perf_pass'],
+                        s['perf_improve'],
                         _fmt_ratio(s['ind_ratio'], threshold),
                         _fmt_ratio(s['eag_ratio'], threshold),
                     ]
