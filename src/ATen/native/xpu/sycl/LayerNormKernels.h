@@ -39,6 +39,25 @@ TORCH_XPU_API void layer_norm_backward_kernel(
     Tensor* dgamma,
     Tensor* dbeta);
 
+TORCH_XPU_API void rms_norm_kernel(
+    const Tensor& X,
+    const Tensor& gamma,
+    int64_t M,
+    int64_t N,
+    double eps,
+    Tensor* Y,
+    Tensor* rstd);
+
+TORCH_XPU_API void rms_norm_backward_kernel(
+    const Tensor& dY,
+    const Tensor& X,
+    const Tensor& rstd,
+    const Tensor& gamma,
+    int64_t M,
+    int64_t N,
+    Tensor* dX,
+    Tensor* dgamma);
+
 } // namespace xpu
 } // namespace native
 } // namespace at
