@@ -81,6 +81,14 @@ jobs:
           gh --version
           # cleanup files
           rm -rf ${{ github.workspace }}/*.whl ${{ github.workspace }}/*.log
+          #
+          # rm -rf /etc/yum.repos.d/intel-gpu-*
+          . /etc/os-release
+          dnf install -y 'dnf-command(config-manager)'
+          # dnf config-manager --add-repo https://repositories.intel.com/gpu/rhel/${VERSION_ID}/lts/2523/unified/intel-gpu-${VERSION_ID}.repo
+          dnf clean all
+          dnf reinstall -y kernel-headers flex bison xpu-smi intel-opencl intel-media libmfxgen1 libvpl2 level-zero intel-level-zero-gpu mesa-dri-drivers mesa-vulkan-drivers mesa-vdpau-drivers libdrm mesa-libEGL mesa-libgbm mesa-libGL mesa-libxatracker libvpl-tools intel-metrics-discovery intel-metrics-library intel-igc-core intel-igc-cm libva libva-utils intel-gmmlib libmetee intel-gsc intel-ocloc --refresh intel-igc-opencl-devel level-zero-devel intel-gsc-devel libmetee-devel
+          dnf update -y
       - name: Setup python-${{ inputs.python }}
         run: |
           rm -rf /tmp/xpu-tool/myvenv
