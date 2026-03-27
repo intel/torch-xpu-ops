@@ -353,6 +353,10 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
+    ("nn.LazyConv2d", "test_memory_format"),
+    ("nn.Conv2d", "test_memory_format"),
+    ("nn.ConvTranspose2d", "test_memory_format"),
+    ("nn.LazyConvTranspose2d", "test_memory_format"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),
@@ -361,6 +365,7 @@ _cuda_xfail_xpu_pass = [
     ("_refs.pow", "test_python_ref"),
     ("_refs.pow", "test_python_ref_torch_fallback"),
     ("_refs.mul", "test_python_ref_executor"),
+    ("_refs.pow", "test_python_ref_executor"),
     (
         "_refs.div",
         "test_python_ref_torch_fallback",
@@ -373,6 +378,19 @@ _cuda_xfail_xpu_pass = [
     ("_refs.true_divide", "test_python_ref_torch_fallback"),
     ("argsort", "test_non_standard_bool_values"),
     ("sort", "test_non_standard_bool_values"),
+]
+
+# Subset of _cuda_xfail_xpu_pass where an unscoped (device_type=None)
+# expectedFailure should also be stripped for XPU.  Derived from
+# _cuda_xfail_xpu_pass to keep a single source of truth.  Kept separate so
+# that unscoped xfails that genuinely fail on XPU (e.g. complex-dtype
+# memory-format tests for ConvTranspose2d) are preserved.
+_none_device_xfail_xpu_pass = [
+    e for e in _cuda_xfail_xpu_pass
+    if e in (
+        ("_refs.mul", "test_python_ref_executor"),
+        ("_refs.pow", "test_python_ref_executor"),
+    )
 ]
 
 # some case should adjust tolerance to pass.
@@ -1016,6 +1034,13 @@ class XPUPatchForImport:
                         else:
                             wrapper.device_type = "xpu"
                             replaced = True
+                    elif (
+                        wrapper.device_type is None
+                        and unittest.expectedFailure in wrapper.decorators
+                        and (op_name, wrapper.test_name) in _none_device_xfail_xpu_pass
+                    ):
+                        replaced = True
+                        continue
                     wrapper_xpu.append(wrapper)
                 elif self.only_cuda_fn == wrapper:
                     wrapper_xpu.append(common_device_type.onlyCUDA)
