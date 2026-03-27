@@ -448,10 +448,10 @@ class TestMatmulCuda(InductorTestCase):
         original_deterministic = torch.are_deterministic_algorithms_enabled()
         try:
             torch.use_deterministic_algorithms(True)
-            input = torch.randn(shape, shape, device=device, dtype=torch.float32)
-            first = torch.matmul(input, input)
+            inp = torch.randn(shape, shape, device=device, dtype=torch.float32)
+            first = torch.matmul(inp, inp)
             for _ in range(10):
-                self.assertEqual(first, torch.matmul(input, input), atol=0.0, rtol=0.0)
+                self.assertEqual(first, torch.matmul(inp, inp), atol=0.0, rtol=0.0)
         finally:
             torch.use_deterministic_algorithms(original_deterministic)
 
