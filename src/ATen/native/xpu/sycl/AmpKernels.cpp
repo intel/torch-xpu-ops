@@ -35,12 +35,14 @@ struct AmpNonFiniteCheckUnscaleFunctor {
         inv_scale_val == 1.f ? val : val * inv_scale_val);
   }
 
-  AmpNonFiniteCheckUnscaleFunctor(float* found_inf_ptr, float* inv_scale_ptr)
+  AmpNonFiniteCheckUnscaleFunctor(
+      float* found_inf_ptr,
+      const float* inv_scale_ptr)
       : found_inf_ptr_(found_inf_ptr), inv_scale_ptr_(inv_scale_ptr) {}
 
  private:
   float* found_inf_ptr_;
-  float* inv_scale_ptr_;
+  const float* inv_scale_ptr_;
 };
 
 void amp_non_finite_check_and_unscale_kernel(
@@ -55,7 +57,7 @@ void amp_non_finite_check_and_unscale_kernel(
       iter.dtype(),
       "amp_non_finite_check_and_unscale_xpu",
       [&iter, &found_inf, &inv_scale] {
-        auto* found_inf_ptr = found_inf.const_data_ptr<float>();
+        auto* found_inf_ptr = found_inf.data_ptr<float>();
         auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         AmpNonFiniteCheckUnscaleFunctor<scalar_t> f(
@@ -77,12 +79,12 @@ struct AmpForeachNonFiniteCheckUnscaleFunctor {
 
   AmpForeachNonFiniteCheckUnscaleFunctor(
       float* found_inf_ptr,
-      float* inv_scale_ptr)
+      const float* inv_scale_ptr)
       : found_inf_ptr_(found_inf_ptr), inv_scale_ptr_(inv_scale_ptr) {}
 
  private:
   float* found_inf_ptr_;
-  float* inv_scale_ptr_;
+  const float* inv_scale_ptr_;
 };
 
 void amp_foreach_non_finite_check_and_unscale_kernel(
@@ -95,7 +97,7 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
       scaled_grads[0][0].scalar_type(),
       "amp_foreach_non_finite_check_and_unscale_xpu",
       [&scaled_grads, &found_inf, &inv_scale] {
-        auto* found_inf_ptr = found_inf.const_data_ptr<float>();
+        auto* found_inf_ptr = found_inf.data_ptr<float>();
         auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         using opmath_t = at::opmath_type<scalar_t>;

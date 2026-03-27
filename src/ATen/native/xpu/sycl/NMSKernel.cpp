@@ -89,7 +89,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   NMSKernelFunctor(
       int dets_num,
       float iou_threshold,
-      scalar_t* dets_sorted_ptr,
+      const scalar_t* dets_sorted_ptr,
       unsigned long long* mask_ptr)
       : dets_num_(dets_num),
         iou_threshold_(iou_threshold),
@@ -103,7 +103,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   int dets_num_;
   float iou_threshold_;
-  scalar_t* dets_sorted_ptr_;
+  const scalar_t* dets_sorted_ptr_;
   unsigned long long* mask_ptr_;
   sycl_local_acc_t<acc_t> slm_;
 };

@@ -37,14 +37,14 @@ struct WeightToInt4PackKernelFunctor {
 
   WeightToInt4PackKernelFunctor(
       uint32_t* weight_packed,
-      uint8_t* weight,
+      const uint8_t* weight,
       int N,
       int K)
       : weight_packed_(weight_packed), weight_(weight), N_(N), K_(K) {}
 
  private:
   uint32_t* weight_packed_;
-  uint8_t* weight_;
+  const uint8_t* weight_;
   int N_;
   int K_;
 };
@@ -55,7 +55,7 @@ void weight_to_int4pack_kernel(
     int N,
     int K) {
   auto weight_packed_data =
-      reinterpret_cast<uint32_t*>(weight_packed.const_data_ptr());
+      reinterpret_cast<uint32_t*>(weight_packed.data_ptr());
   const auto weight_data = weight.const_data_ptr<uint8_t>();
   int K_div_8 = K / 8;
   size_t global_range = N * K_div_8;

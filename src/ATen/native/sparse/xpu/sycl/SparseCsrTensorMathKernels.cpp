@@ -144,7 +144,7 @@ Tensor reduce_sparse_csr_dim0_xpu_template(
 
   AT_DISPATCH_INDEX_TYPES(
       col_indices.scalar_type(), "reduce_sparse_csr_dim0_xpu_indices", [&]() {
-        index_t* col_indices_ptr = col_indices.const_data_ptr<index_t>();
+        const index_t* col_indices_ptr = col_indices.const_data_ptr<index_t>();
         index_t* new_col_indices_ptr = new_col_indices.data_ptr<index_t>();
         using KernelFn = ReduceSparseCsrDim0KernelFunctor<
             scalar_t,
@@ -285,7 +285,7 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
         int64_t work_group_num =
             (nrows + work_group_size - 1) / work_group_size;
 
-        index_t* crow_indices_ptr = crow_indices.const_data_ptr<index_t>();
+        const index_t* crow_indices_ptr = crow_indices.const_data_ptr<index_t>();
         index_t* new_crow_indices_ptr = new_crow_indices.data_ptr<index_t>();
         index_t* row_map_ptr = row_map.data_ptr<index_t>();
         ReduceCrowIndicesDim1KernelFunctor<index_t> kfn_crow(
@@ -511,7 +511,7 @@ void launch_convert_indices_from_coo_to_csr_xpu_kernel(
   }
 
   const input_t* data_in = input.const_data_ptr<input_t>();
-  output_t* data_out = result.const_data_ptr<output_t>();
+  output_t* data_out = result.data_ptr<output_t>();
 
   auto functor = ConvertIndicesFromCooToCsrXPUFunctor<input_t, output_t>(
       numel, data_in, data_out, size);

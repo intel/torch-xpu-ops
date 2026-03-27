@@ -58,7 +58,7 @@ std::vector<Tensor> foreach_binary_op(
           /* r_args_depth */ 1,
           /* res_arg_index */ 1>(),
       Op<opmath_t>(),
-      scalar.const_data_ptr<T>(),
+      scalar.data_ptr<T>(),
       alpha.to<opmath_t>());
   return tensor_lists[1];
 }
@@ -93,7 +93,7 @@ void foreach_binary_op_(
           /* r_args_depth */ 1,
           /* res_arg_index */ 0>(),
       Op<opmath_t>(),
-      scalar.const_data_ptr<T>(),
+      scalar.data_ptr<T>(),
       alpha.to<opmath_t>());
   increment_version(tensors);
 }

@@ -68,7 +68,7 @@ Tensor compute_inverse(
     not_equal_t not_equal) {
   // inverse indices
   Tensor inverse_indices;
-  input_t* data = sorted.const_data_ptr<input_t>();
+  const input_t* data = sorted.const_data_ptr<input_t>();
   auto data_begin = data;
   if (!return_inverse) {
     inverse_indices = at::empty({0}, index_options);
@@ -76,7 +76,7 @@ Tensor compute_inverse(
     TORCH_INTERNAL_ASSERT(
         sorted_indices.defined(),
         "return_inverse is set to true, but sorted_indices is undefined. Send a bug report!");
-    index_t* sorted_indices_ptr = sorted_indices.const_data_ptr<index_t>();
+    index_t* sorted_indices_ptr = sorted_indices.data_ptr<index_t>();
     Tensor inv_loc = at::empty({num_inp}, index_options);
     inverse_indices = at::empty({num_inp}, index_options);
     index_t* inv_loc_ptr = inv_loc.data_ptr<index_t>();
@@ -158,7 +158,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
   Tensor sorted_indices = at::empty({num_inp}, index_options);
   Tensor inverse_indices = at::empty({num_inp}, index_options);
   Tensor counts = at::empty({num_inp}, index_options);
-  auto sorted_indices_begin = sorted_indices.const_data_ptr<int64_t>();
+  auto sorted_indices_begin = sorted_indices.data_ptr<int64_t>();
   at::native::xpu::pstl::iota(
       sorted_indices_begin, sorted_indices_begin + num_inp, (int64_t)0);
 
@@ -166,7 +166,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
     at::native::xpu::pstl::sort<scalar_t, int64_t>(
         self_c.const_data_ptr<scalar_t>(),
         output.data_ptr<scalar_t>(),
-        sorted_indices.const_data_ptr<int64_t>(),
+      sorted_indices.data_ptr<int64_t>(),
         num_inp,
         false);
   }

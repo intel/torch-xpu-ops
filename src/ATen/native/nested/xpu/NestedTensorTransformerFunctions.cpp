@@ -120,7 +120,7 @@ Tensor nested_from_padded_xpu(
 }
 
 static Tensor batch_offsets_from_efficient_size(const Tensor& ef_sizes) {
-  int64_t* nt_sizes_ptr = ef_sizes.const_data_ptr<int64_t>();
+  const int64_t* nt_sizes_ptr = ef_sizes.const_data_ptr<int64_t>();
   int64_t ef_sizes_size_0 = ef_sizes.sizes()[0];
   Tensor offsets = at::empty({1 + ef_sizes_size_0}, at::kLong);
   int64_t* offsets_ptr = offsets.mutable_data_ptr<int64_t>();

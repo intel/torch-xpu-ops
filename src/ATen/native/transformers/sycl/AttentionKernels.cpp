@@ -398,7 +398,7 @@ static Tensor collapse_dims_1_and_2(const Tensor& sizes) {
 static Tensor NestedTensor_batch_offsets_from_size_tensor(
     const Tensor& sizes,
     int64_t extra_elements) {
-  int64_t* const sizes_ptr = sizes.const_data_ptr<int64_t>();
+  const int64_t* const sizes_ptr = sizes.const_data_ptr<int64_t>();
   Tensor offsets = at::empty({1 + sizes.size(0) + extra_elements}, at::kInt);
   int32_t* const offsets_ptr = offsets.mutable_data_ptr<int32_t>();
   offsets_ptr[0] = 0;
