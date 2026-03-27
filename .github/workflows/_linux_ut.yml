@@ -69,6 +69,7 @@ jobs:
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
+                        --only-rerun 'crashed while running' --reruns 2
                         --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops

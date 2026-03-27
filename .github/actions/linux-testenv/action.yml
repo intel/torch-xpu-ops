@@ -176,7 +176,7 @@ runs:
           # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           pip install -r .ci/docker/requirements-ci.txt
-          pip install pytest pytest-timeout pytest-xdist
+          pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
         fi
         # install the corresponding torchao
         pip uninstall -y torchao
