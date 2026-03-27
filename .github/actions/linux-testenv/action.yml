@@ -456,7 +456,6 @@ runs:
 
           cd ../pytorch
         else
-<<<<<<< mengfeil/refactor
           echo -e "\n=== Installing Default Dependencies ==="
           if [ -f ".ci/docker/requirements-ci.txt" ]; then
             sed -i '/mkl/d' .ci/docker/requirements-ci.txt
@@ -464,13 +463,7 @@ runs:
               echo "Warning: Failed to install CI requirements"
             }
           fi
-          pip install pytest pytest-timeout pytest-xdist
-=======
-          # Remove mkl hardcode installation to avoid potential conflicts with torch xpu wheel 
-          sed -i '/mkl/d' .ci/docker/requirements-ci.txt
-          pip install -r .ci/docker/requirements-ci.txt
           pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
->>>>>>> main
         fi
 
         echo -e "\n=== Installing TorchAO ==="
