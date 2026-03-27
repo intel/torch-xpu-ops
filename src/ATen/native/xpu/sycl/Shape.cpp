@@ -655,8 +655,8 @@ void cat_out_kernel(
             using dtype = OpaqueType<sizeof(scalar_t)>;
             parallel_cat<
                 dtype,
-            CAT_ARRAY_BATCH_SIZE_STRIDED,
-            CAT_ARRAY_BATCH_SIZE_STRIDED>(
+                CAT_ARRAY_BATCH_SIZE_STRIDED,
+                CAT_ARRAY_BATCH_SIZE_STRIDED>(
                 result, materialized, dim, nDims, memory_format);
           }),
           AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
