@@ -23,7 +23,7 @@ namespace xpu {
 template <typename scalar_t>
 struct Atan2Functor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::atan2(a, b);
+    return sycl::atan2(a, b);
   }
 };
 
@@ -39,7 +39,7 @@ void atan2_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct HypotFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::hypot(a, b);
+    return sycl::hypot(a, b);
   }
 };
 

@@ -130,10 +130,10 @@ struct RoiAlignForwardKernel : public __SYCL_KER_CONFIG_CONVENTION__ {
       // We use roi_bin_grid to sample the grid and mimic integral
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : sycl::ceil(roi_height / pooled_height_); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : sycl::ceil(roi_width / pooled_width_);
 
       // We do average (integral) pooling inside a bin
       // When the grid is empty, output zeros.
@@ -316,10 +316,10 @@ struct RoiAlignBackwardKernel {
       // We use roi_bin_grid to sample the grid and mimic integral
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : sycl::ceil(roi_height / pooled_height_); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : sycl::ceil(roi_width / pooled_width_);
 
       // We do average (integral) pooling inside a bin
       const T count = roi_bin_grid_h * roi_bin_grid_w; // e.g. = 4

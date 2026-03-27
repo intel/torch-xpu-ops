@@ -18,7 +18,7 @@ namespace at::native::xpu {
 template <typename scalar_t, typename acc_t = scalar_t>
 struct AcosFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::acos(static_cast<acc_t>(a));
+    return sycl::acos(static_cast<acc_t>(a));
   }
 };
 

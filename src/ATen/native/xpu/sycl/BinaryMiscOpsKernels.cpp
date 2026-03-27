@@ -113,7 +113,7 @@ struct XlogyFunctor {
     if (x == 0) {
       return 0;
     }
-    return x * std::log(y);
+    return x * sycl::log(y);
   }
 };
 
@@ -135,7 +135,7 @@ struct Xlog1pyFunctor {
     if (x == 0) {
       return 0;
     }
-    return x * std::log1p(y);
+    return x * sycl::log1p(y);
   }
 };
 

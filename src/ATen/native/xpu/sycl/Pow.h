@@ -27,12 +27,12 @@ namespace {
 // pow for at::Half
 static inline at::Half pow_(at::Half base, at::Half exp) {
   return static_cast<at::Half>(
-      std::pow(static_cast<float>(base), static_cast<float>(exp)));
+      sycl::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
 // pow for at::BFloat16
 static inline at::BFloat16 pow_(at::BFloat16 base, at::BFloat16 exp) {
   return static_cast<at::BFloat16>(
-      std::pow(static_cast<float>(base), static_cast<float>(exp)));
+      sycl::pow(static_cast<float>(base), static_cast<float>(exp)));
 }
 // pow (floating, floating/int)
 template <typename Base_type, typename Exp_type>
@@ -42,7 +42,7 @@ static inline typename std::enable_if<
          std::is_same<Exp_type, int>::value),
     Base_type>::type
 pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  return sycl::pow(base, static_cast<Base_type>(exp));
 }
 // pow (Otherwise)
 template <typename Base_type, typename Exp_type>
@@ -52,12 +52,12 @@ static inline typename std::enable_if<
     Base_type>::type
 pow_(Base_type base, Exp_type exp) {
   return static_cast<Base_type>(
-      std::pow(static_cast<double>(base), static_cast<double>(exp)));
+      sycl::pow(static_cast<double>(base), static_cast<double>(exp)));
 }
 #else
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  return sycl::pow(base, static_cast<Base_type>(exp));
 }
 #endif
 

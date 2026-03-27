@@ -21,14 +21,14 @@ template <typename scalar_t>
 struct CoshComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t a) const {
-    return std::cosh(static_cast<opmath_t>(a));
+    return sycl::cosh(static_cast<opmath_t>(a));
   }
 };
 
 template <typename scalar_t>
 struct CoshFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::cosh(a);
+    return sycl::cosh(a);
   }
 };
 

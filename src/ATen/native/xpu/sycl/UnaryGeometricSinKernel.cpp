@@ -22,7 +22,7 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct SinFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::sin(a);
+    return sycl::sin(a);
   }
 };
 

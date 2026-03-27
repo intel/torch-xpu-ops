@@ -30,7 +30,7 @@ namespace impl {
 
 template <typename Base_type, typename Exp_type>
 static inline Base_type pow_(Base_type base, Exp_type exp) {
-  return std::pow(base, exp);
+  return sycl::pow(base, static_cast<Base_type>(exp));
 }
 
 template <typename T>
@@ -88,10 +88,10 @@ struct PowScalarTensorFunctor {
 template <typename T>
 struct PowScalarTensorFunctor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> exp) const {
-    return std::exp(fct_ * exp);
+    return sycl::exp(fct_ * exp);
   }
   PowScalarTensorFunctor(c10::complex<T> base) {
-    fct_ = std::log(base);
+    fct_ = sycl::log(base);
   }
 
  private:
@@ -102,10 +102,10 @@ template <>
 struct PowScalarTensorFunctor<c10::complex<at::Half>> {
   using opmath_t = at::opmath_type<c10::complex<at::Half>>;
   c10::complex<at::Half> operator()(c10::complex<at::Half> exp) const {
-    return std::exp(fct_ * opmath_t{exp});
+    return sycl::exp(fct_ * opmath_t{exp});
   }
   PowScalarTensorFunctor(c10::complex<at::Half> base) {
-    fct_ = std::log(opmath_t{base});
+    fct_ = sycl::log(opmath_t{base});
   }
 
  private:
@@ -121,7 +121,7 @@ void pow_scalar_tensor_impl(TensorIteratorBase& iter, scalar_t base) {
 template <typename scalar_t, typename opmath_t>
 struct PowChalfTensorScalarFunctor {
   scalar_t operator()(scalar_t base) const {
-    return std::pow(opmath_t{base}, exp_);
+    return sycl::pow(opmath_t{base}, exp_);
   }
   PowChalfTensorScalarFunctor(opmath_t exp) : exp_(exp) {}
 

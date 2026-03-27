@@ -21,14 +21,14 @@ template <typename scalar_t>
 struct AtanComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(const scalar_t a) const {
-    return std::atan(static_cast<opmath_t>(a));
+    return sycl::atan(static_cast<opmath_t>(a));
   }
 };
 
 template <typename scalar_t>
 struct AtanFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::atan(a);
+    return sycl::atan(a);
   }
 };
 

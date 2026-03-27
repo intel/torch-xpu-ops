@@ -33,7 +33,7 @@ template <typename scalar_t>
 struct RemainderFloatingFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const
       __ubsan_ignore_float_divide_by_zero__ {
-    auto mod = std::fmod(a, b);
+    auto mod = sycl::fmod(a, b);
     if (mod != 0 && c10::signs_differ(b, mod)) {
       mod += b;
     }
@@ -52,7 +52,7 @@ template <typename scalar_t>
 struct FmodFloatingFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const
       __ubsan_ignore_float_divide_by_zero__ {
-    return std::fmod(a, b);
+    return sycl::fmod(a, b);
   }
 };
 

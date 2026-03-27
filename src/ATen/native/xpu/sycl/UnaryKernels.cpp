@@ -27,7 +27,15 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct SqrtFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::sqrt(a);
+    return sycl::sqrt(a);
+  }
+};
+
+template <typename T>
+struct SqrtFunctor<c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> a) const {
+    return static_cast<c10::complex<T>>(
+        std::sqrt(static_cast<std::complex<T>>(a)));
   }
 };
 
@@ -57,7 +65,14 @@ struct RsqrtFunctor<c10::complex<T>> {
 template <typename scalar_t, typename acc_t = scalar_t>
 struct ExpFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::exp(static_cast<acc_t>(a));
+    return sycl::exp(static_cast<acc_t>(a));
+  }
+};
+
+template <typename T>
+struct ExpFunctor<c10::complex<T>, c10::complex<T>> {
+  c10::complex<T> operator()(c10::complex<T> a) const {
+    return std::exp(a);
   }
 };
 
@@ -240,16 +255,16 @@ void nan_to_num_kernel(
 template <typename scalar_t>
 struct Expm1Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::expm1(a);
+    return sycl::expm1(a);
   }
 };
 
 template <typename T>
 struct Expm1Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
-    auto a = std::sin(T(.5) * x.imag());
-    auto re = std::expm1(x.real()) * std::cos(x.imag()) - T(2) * a * a;
-    auto im = std::exp(x.real()) * std::sin(x.imag());
+    auto a = sycl::sin(T(.5) * x.imag());
+    auto re = sycl::expm1(x.real()) * sycl::cos(x.imag()) - T(2) * a * a;
+    auto im = sycl::exp(x.real()) * sycl::sin(x.imag());
     return c10::complex<T>(re, im);
   }
 };

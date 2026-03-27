@@ -26,7 +26,7 @@ struct DivTruncScalarFunctor {
   DivTruncScalarFunctor(accscalar_t inv_b) : inv_b_(inv_b) {}
 
   scalar_t operator()(scalar_t a) const {
-    return std::trunc(a * inv_b_);
+    return sycl::trunc(a * inv_b_);
   }
 
  private:
@@ -36,7 +36,7 @@ struct DivTruncScalarFunctor {
 template <typename scalar_t>
 struct DivTruncFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
-    return std::trunc(c10::xpu::compat::div(a, b));
+    return sycl::trunc(c10::xpu::compat::div(a, b));
   }
 };
 

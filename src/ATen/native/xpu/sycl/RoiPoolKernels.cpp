@@ -38,10 +38,10 @@ struct RoiPoolForwardKernel {
 
       const T* offset_rois = rois_ + n * 5;
       int roi_batch_ind = offset_rois[0];
-      int roi_start_w = std::round(offset_rois[1] * spatial_scale_);
-      int roi_start_h = std::round(offset_rois[2] * spatial_scale_);
-      int roi_end_w = std::round(offset_rois[3] * spatial_scale_);
-      int roi_end_h = std::round(offset_rois[4] * spatial_scale_);
+      int roi_start_w = sycl::round(offset_rois[1] * spatial_scale_);
+      int roi_start_h = sycl::round(offset_rois[2] * spatial_scale_);
+      int roi_end_w = sycl::round(offset_rois[3] * spatial_scale_);
+      int roi_end_h = sycl::round(offset_rois[4] * spatial_scale_);
 
       // Force malformed ROIs to be 1x1
       int roi_width = std::max(roi_end_w - roi_start_w + 1, 1);
@@ -51,13 +51,13 @@ struct RoiPoolForwardKernel {
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width_);
 
       int hstart =
-          static_cast<int>(std::floor(static_cast<T>(ph) * bin_size_h));
+          static_cast<int>(sycl::floor(static_cast<T>(ph) * bin_size_h));
       int wstart =
-          static_cast<int>(std::floor(static_cast<T>(pw) * bin_size_w));
+          static_cast<int>(sycl::floor(static_cast<T>(pw) * bin_size_w));
       int hend =
-          static_cast<int>(std::ceil(static_cast<T>(ph + 1) * bin_size_h));
+          static_cast<int>(sycl::ceil(static_cast<T>(ph + 1) * bin_size_h));
       int wend =
-          static_cast<int>(std::ceil(static_cast<T>(pw + 1) * bin_size_w));
+          static_cast<int>(sycl::ceil(static_cast<T>(pw + 1) * bin_size_w));
 
       // Add roi offsets and clip to input boundaries
       hstart = std::min(std::max(hstart + roi_start_h, 0), height_);

@@ -116,10 +116,10 @@ struct PsRoiAlignForwardKernel {
       // We use roi_bin_grid to sample the grid and mimic integral
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : sycl::ceil(roi_height / pooled_height_); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : sycl::ceil(roi_width / pooled_width_);
       const T count = roi_bin_grid_h * roi_bin_grid_w;
 
       const T* offset_input =
@@ -282,10 +282,10 @@ struct PsRoiAlignBackwardKernel {
       // We use roi_bin_grid to sample the grid and mimic integral
       int roi_bin_grid_h = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_height / pooled_height_); // e.g., = 2
+          : sycl::ceil(roi_height / pooled_height_); // e.g., = 2
       int roi_bin_grid_w = (sampling_ratio_ > 0)
           ? sampling_ratio_
-          : std::ceil(roi_width / pooled_width_);
+          : sycl::ceil(roi_width / pooled_width_);
       const T count = roi_bin_grid_h * roi_bin_grid_w;
 
       const int offset = (roi_batch_ind * channels_ + c_in) * height_ * width_;

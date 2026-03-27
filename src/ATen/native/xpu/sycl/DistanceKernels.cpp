@@ -20,7 +20,7 @@ namespace at::native::xpu {
 
 template <typename scalar_t>
 static double device_sqrt(scalar_t val) {
-  return std::sqrt(val);
+  return sycl::sqrt(val);
 };
 
 template <typename scalar_t>
@@ -77,8 +77,8 @@ struct DistsLtTwo {
     return (dist == 0.0f || (diff == 0.0f && p < 1.f))
         ? static_cast<scalar_t>(0)
         : static_cast<scalar_t>(
-              Dists<scalar_t>::sign(diff) * std::pow(std::abs(diff), p - 1) *
-              grad / std::pow(dist, p - 1));
+              Dists<scalar_t>::sign(diff) * sycl::pow(sycl::fabs(diff), p - 1) *
+              grad / sycl::pow(dist, p - 1));
   }
 };
 
@@ -107,11 +107,11 @@ struct DistsTwo {
 template <typename scalar_t>
 struct DistsP {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
-    agg += static_cast<scalar_t>(std::pow(static_cast<scalar_t>(diff), p));
+    agg += static_cast<scalar_t>(sycl::pow(static_cast<scalar_t>(diff), p));
   }
   static scalar_t finish(const scalar_t agg, const scalar_t p) {
     return static_cast<scalar_t>(
-        std::pow(static_cast<scalar_t>(agg), 1.0f / p));
+        sycl::pow(static_cast<scalar_t>(agg), 1.0f / p));
   }
   static void agg(scalar_t& update, const scalar_t other) {
     update += other;
@@ -124,8 +124,8 @@ struct DistsP {
       const scalar_t p) {
     return dist == 0.0f ? static_cast<scalar_t>(0)
                         : static_cast<scalar_t>(
-                              diff * std::pow(std::abs(diff), p - 2) * grad /
-                              std::pow(dist, p - 1));
+                              diff * sycl::pow(sycl::fabs(diff), p - 2) * grad /
+                              sycl::pow(dist, p - 1));
   }
 };
 
@@ -150,7 +150,7 @@ struct DistsInf {
       const scalar_t grad,
       const scalar_t dist,
       const scalar_t p) {
-    return grad * Dists<scalar_t>::sign(diff) * (std::abs(diff) == dist);
+    return grad * Dists<scalar_t>::sign(diff) * (sycl::fabs(diff) == dist);
   }
 };
 
@@ -282,7 +282,7 @@ struct CdistForwardKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (; a < end; a += stride, b += stride) {
       F::inc(
           agg,
-          std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
+          sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
           p_val_);
     }
     agg =
@@ -750,7 +750,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (; a < end; a += stride, b += stride) {
       F::inc(
           agg,
-          std::abs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
+          sycl::fabs(static_cast<scalar_t>(*a) - static_cast<scalar_t>(*b)),
           p_val_);
     }
 

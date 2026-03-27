@@ -101,7 +101,7 @@ void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
 template <typename T>
 inline T sigmoid(T in) {
   T one = static_cast<T>(1.0);
-  return one / (one + std::exp(-in));
+  return one / (one + sycl::exp(-in));
 }
 
 template <
@@ -167,11 +167,11 @@ struct LstmCellForwardFunctor {
 
       ig = sigmoid(H2F(iig) + H2F(hig) + H2F(b1i) + H2F(b2i));
       fg = sigmoid(H2F(ifg) + H2F(hfg) + H2F(b1f) + H2F(b2f));
-      cg = std::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
+      cg = sycl::tanh(H2F(icg) + H2F(hcg) + H2F(b1c) + H2F(b2c));
       og = sigmoid(H2F(iog) + H2F(hog) + H2F(b1o) + H2F(b2o));
 
       f_cy = (fg * H2F(cx)) + (ig * cg);
-      f_hy = og * std::tanh(f_cy);
+      f_hy = og * sycl::tanh(f_cy);
 
       *hy = F2H(f_hy);
       *cy = F2H(f_cy);
@@ -258,7 +258,7 @@ struct LstmCellBackwardFunctor {
           ? H2F(DEVICE_LINEAR_GET(gradoutputcell_, linearIndex))
           : 0.f;
 
-      accscalar_t gcx = std::tanh(H2F(cy));
+      accscalar_t gcx = sycl::tanh(H2F(cy));
 
       accscalar_t gog = go * gcx;
       gcx = go * H2F(og) * (1 - gcx * gcx) + goc;
@@ -366,7 +366,7 @@ struct GruCellForwardFunctor {
       ig = sigmoid<accscalar_t>(H2F(ii) + H2F(hi) + H2F(b1i) + H2F(b2i));
 
       ng = H2F(in) + H2F(b1n) + rg * (H2F(hn) + H2F(b2n));
-      ng = std::tanh(ng);
+      ng = sycl::tanh(ng);
       *hy = F2H(ng + ig * (H2F(hx) - ng));
 
       // SAVE FOR BACKWARDS
