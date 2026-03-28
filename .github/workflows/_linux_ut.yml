@@ -108,7 +108,7 @@ jobs:
         WORKSPACE: ${{ github.workspace }}
         ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
         PYTEST_ADDOPTS: >-
-          -v
+          -sq -q --tb=short
           --timeout 600 --timeout_method=thread
           --max-worker-restart 1000000
           --dist worksteal
