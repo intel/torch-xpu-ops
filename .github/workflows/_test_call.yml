@@ -330,6 +330,13 @@ jobs:
       # ------------------------------------------------------------
       # Step 6: Run comparison scripts and append summaries
       # ------------------------------------------------------------
+      - name: Setup python env
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+          uv venv myvenv --python 3.12 --clear
+          source myvenv/bin/activate
+          uv pip install pip numpy 'setuptools<81' wheel
+          uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
       - name: Compare Test Results
         run: |
           # Activation & environment info
@@ -396,6 +403,12 @@ jobs:
                       echo "E2E dropped cases detected: $e2e_dropped_count new dropped cases."
                       grep ',new_dropped,' e2e_comparison_performance_details.csv || true
                       return 1
+                  fi
+                  bash -e ./.github/scripts/e2e_summary.sh ./target ./baseline
+                  if [ -e /tmp/tmp-acc-result.txt ];then
+                    acc_failed=$(awk 'BEGIN{sum=0}{if($2>0){sum++}}END{print sum}' /tmp/tmp-acc-result.txt)
+                    grep -E "(Real failed|to passed|Warning timeout).*: [1-9]|Summary for" /tmp/tmp-*.txt |grep -E "failed|passed|timeout" -B 1
+                    return ${acc_failed}
                   fi
               fi
               return 0

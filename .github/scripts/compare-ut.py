@@ -8,6 +8,7 @@ and GitHub issue tracking integration.
 Usage:
     python compare_tests.py --input "results/*.xml" --output comparison.xlsx
     python compare_tests.py --input file1.xml file2.xml --output comparison.csv --markdown
+    python compare_tests.py --input ... --output results.xlsx --untracked-failures
 """
 
 from __future__ import annotations
@@ -171,6 +172,9 @@ class TestCase:
 
     # Metadata
     message: str = ""
+    raw_file: str = ""
+    raw_class: str = ""
+    raw_name: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for DataFrame creation."""
@@ -184,6 +188,9 @@ class TestCase:
             "status": self.status.value,
             "time": float(self.time),
             "message": self.message,
+            "raw_file": self.raw_file,
+            "raw_class": self.raw_class,
+            "raw_name": self.raw_name,
         }
 
 
@@ -209,6 +216,9 @@ class Comparison:
     status_target: str = ""
     time_target: float = 0.0
     message_target: str = ""
+    raw_file_target: str = ""
+    raw_class_target: str = ""
+    raw_name_target: str = ""
 
     # GitHub issue fields
     issue_ids: str = ""  # |-separated issue IDs
@@ -227,8 +237,7 @@ class Comparison:
 class GitHubIssueTracker:
     """Fetches and parses GitHub issues using PyGithub, with local caching."""
 
-    CASES_PATTERN = re.compile(r'Cases:\s*\n(.*?)(?:\n\n|\Z)', re.DOTALL | re.IGNORECASE)
-    TEST_CASE_SPLIT_PATTERN = re.compile(r'[\n]+')
+    CASES_PATTERN = re.compile(r'(?:Cases|Test Cases):\s*\n(.*?)(?:\n\n|\Z)', re.DOTALL | re.IGNORECASE)
 
     def __init__(self, repo: str = None, token: str = None, cache_path: str = None, pattern_matcher: FilePatternMatcher | None = None):
         self.repo_name = repo or os.environ.get('GITHUB_REPOSITORY', '')
@@ -396,15 +405,16 @@ class GitHubIssueTracker:
             })
 
     def _extract_test_cases(self, body: str) -> list[str]:
+        """Extract test cases from issue body using flexible parsing."""
         if not body:
             return []
         match = self.CASES_PATTERN.search(body)
         if not match:
             return []
         cases_text = match.group(1).strip()
-        cases = self.TEST_CASE_SPLIT_PATTERN.split(cases_text)
-        logger.debug(f"{cases}")
-        return [case.strip() for case in cases if case.strip()]
+        # Split by commas or newlines, then strip each part
+        parts = re.split(r'[,\n]+', cases_text)
+        return [p.strip() for p in parts if p.strip()]
 
     def find_issues_for_test(self, test_uniqname: str) -> list[dict[str, Any]]:
         return self.test_to_issues.get(test_uniqname, [])
@@ -477,6 +487,7 @@ class FilePatternMatcher:
     TEST_TYPE_PATTERNS = {
         "xpu-target": [r"/target/"],
         "xpu-baseline": [r"/baseline/"],
+        # No default catch-all; files that don't match will be "unknown"
     }
 
     # File replacements
@@ -622,16 +633,15 @@ class TestDetailsExtractor:
 
         return TestStatus.PASSED, ""
 
-    def _parse_testcase(self, testcase: ET.Element, xml_file: Path) -> TestCase | None:
-        """Parse a single testcase element."""
+    def _parse_testcase(self, testcase: ET.Element, xml_file: Path, test_type: str) -> TestCase | None:
+        """Parse a single testcase element using pre-determined test type."""
         try:
             classname = testcase.get("classname", "")
             filename = testcase.get("file", "")
             name = testcase.get("name", "")
             time_str = testcase.get("time", "0")
 
-            # Determine test type and device
-            test_type = self.pattern_matcher.determine_test_type(xml_file)
+            # Determine device from test type
             device = TestDevice.from_test_type(test_type)
 
             # Skip if not BASELINE or TARGET
@@ -667,6 +677,9 @@ class TestDetailsExtractor:
                 status=status,
                 time=time_val,
                 message=message,
+                raw_file=filename,
+                raw_class=classname,
+                raw_name=name,
             )
 
         except Exception as e:
@@ -676,12 +689,14 @@ class TestDetailsExtractor:
     def process_xml(self, xml_file: Path) -> list[TestCase]:
         """Process a single XML file and return test cases."""
         try:
+            # Determine test type once per file
+            test_type = self.pattern_matcher.determine_test_type(xml_file)
             test_cases = []
 
             # Use iterparse for memory efficiency
             for event, elem in ET.iterparse(xml_file, events=('end',)):
                 if elem.tag == 'testcase':
-                    test_case = self._parse_testcase(elem, xml_file)
+                    test_case = self._parse_testcase(elem, xml_file, test_type)
                     if test_case:
                         test_cases.append(test_case)
                     elem.clear()
@@ -768,6 +783,7 @@ class ResultAnalyzer:
     def __init__(self, test_cases: list[TestCase]):
         self.test_cases = test_cases
         self.df = self._create_dataframe()
+        self._deduped_df: pd.DataFrame | None = None
         self.issue_tracker: GitHubIssueTracker | None = None
 
     def set_issue_tracker(self, issue_tracker: GitHubIssueTracker):
@@ -775,33 +791,39 @@ class ResultAnalyzer:
         self.issue_tracker = issue_tracker
 
     def _create_dataframe(self) -> pd.DataFrame:
-        """Create DataFrame from test cases."""
+        """Create DataFrame from test cases with categorical status."""
         if not self.test_cases:
             return pd.DataFrame()
 
         # Convert test cases to DataFrame
         data = [tc.to_dict() for tc in self.test_cases]
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        if not df.empty:
+            df['status'] = pd.Categorical(df['status'], categories=[e.value for e in TestStatus])
+        return df
 
     def deduplicate_by_priority(self) -> pd.DataFrame:
         """
         Deduplicate test cases keeping highest priority status.
         Priority: PASSED > XFAIL > FAILED > ERROR > SKIPPED > UNKNOWN
         """
+        if self._deduped_df is not None:
+            return self._deduped_df
+
         if self.df.empty:
-            return pd.DataFrame()
+            self._deduped_df = pd.DataFrame()
+            return self._deduped_df
 
         # Add priority column
         df = self.df.copy()
-        df["_priority"] = df["status"].apply(
-            lambda x: TestStatus.from_string(x).priority
-        )
+        df["_priority"] = df["status"].apply(lambda x: TestStatus.from_string(x).priority)
 
         # Sort by priority (highest first) and deduplicate
         df_sorted = df.sort_values("_priority", ascending=False)
         result = df_sorted.drop_duplicates(subset=["device", "uniqname"], keep="first")
 
-        return result.drop(columns=["_priority"]).reset_index(drop=True)
+        self._deduped_df = result.drop(columns=["_priority"]).reset_index(drop=True)
+        return self._deduped_df
 
     def split_by_device(self, df: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Split DataFrame by device (BASELINE/TARGET)."""
@@ -821,18 +843,25 @@ class ResultAnalyzer:
         if baseline_df.empty and target_df.empty:
             return pd.DataFrame()
 
-        # Prepare dataframes with consistent naming
-        baseline_clean = baseline_df.add_suffix("_baseline").rename(columns={"uniqname_baseline": "uniqname"})
-        target_clean = target_df.add_suffix("_target").rename(columns={"uniqname_target": "uniqname"})
-
-        # Merge
+        # Merge using suffixes directly
         merged = pd.merge(
-            baseline_clean,
-            target_clean,
-            on="uniqname",
-            how="outer",
-            suffixes=("", "_dup"),
-        ).fillna("")
+            baseline_df,
+            target_df,
+            on='uniqname',
+            how='outer',
+            suffixes=('_baseline', '_target'),
+        )
+
+        # Identify status columns (categorical)
+        status_cols = [col for col in merged.columns if col.startswith('status_')]
+
+        # Fill missing status with 'unknown' (which is in categories)
+        for col in status_cols:
+            merged[col] = merged[col].fillna('unknown')
+
+        # Fill all other columns with empty string
+        other_cols = [col for col in merged.columns if col not in status_cols]
+        merged[other_cols] = merged[other_cols].fillna('')
 
         # Select and order columns for easy comparison
         columns = [
@@ -841,6 +870,7 @@ class ResultAnalyzer:
             "testfile_target", "classname_target", "name_target",
             "device_baseline", "testtype_baseline", "status_baseline", "time_baseline", "message_baseline",
             "device_target", "testtype_target", "status_target", "time_target", "message_target",
+            "raw_file_target", "raw_class_target", "raw_name_target",
         ]
 
         # Keep only existing columns
@@ -861,18 +891,14 @@ class ResultAnalyzer:
         if merged_df.empty:
             return pd.DataFrame(), pd.DataFrame()
 
-        # Convert status strings to TestStatus for comparison
-        merged_df = merged_df.copy()
-
-        # Define conditions for new failures (baseline passed, target didn't pass)
+        # Precompute boolean masks
         baseline_passed = merged_df["status_baseline"].isin(["passed", "xfail"])
-        target_not_passed = ~merged_df["status_target"].isin(["passed", "xfail"])
-        new_failures = merged_df[baseline_passed & target_not_passed].copy()
-
-        # Define conditions for new passes (baseline didn't pass, target passed)
-        baseline_not_passed = ~merged_df["status_baseline"].isin(["passed", "xfail"])
         target_passed = merged_df["status_target"].isin(["passed", "xfail"])
-        new_passes = merged_df[baseline_not_passed & target_passed].copy()
+        baseline_failed = ~baseline_passed
+        target_failed = ~target_passed
+
+        new_failures = merged_df[baseline_passed & target_failed].copy()
+        new_passes = merged_df[baseline_failed & target_passed].copy()
 
         if not new_failures.empty:
             # Add reason column for new failures
@@ -913,7 +939,7 @@ class ResultAnalyzer:
     def generate_file_summary(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Generate summary statistics grouped by testfile.
-        Shows comparison between baseline and target for each test file.
+        Uses pandas groupby for vectorized computation.
         """
         if df.empty:
             return pd.DataFrame()
@@ -924,62 +950,45 @@ class ResultAnalyzer:
         if baseline_df.empty or target_df.empty:
             return pd.DataFrame()
 
-        # Get unique test files from both
-        all_testfiles = sorted(set(baseline_df["testfile"].unique()) | set(target_df["testfile"].unique()))
+        # Compute baseline stats per file
+        baseline_stats = baseline_df.groupby('testfile').agg(
+            Baseline_Total=('status', 'count'),
+            Baseline_Passed=('status', lambda x: (x.isin(['passed', 'xfail'])).sum()),
+            Baseline_Failed=('status', lambda x: (x == 'failed').sum()),
+            Baseline_Error=('status', lambda x: (x == 'error').sum()),
+            Baseline_Skipped=('status', lambda x: (x == 'skipped').sum())
+        ).reset_index().rename(columns={'testfile': 'Test File'})
 
-        file_summaries = []
+        # Compute target stats per file
+        target_stats = target_df.groupby('testfile').agg(
+            Target_Total=('status', 'count'),
+            Target_Passed=('status', lambda x: (x.isin(['passed', 'xfail'])).sum()),
+            Target_Failed=('status', lambda x: (x == 'failed').sum()),
+            Target_Error=('status', lambda x: (x == 'error').sum()),
+            Target_Skipped=('status', lambda x: (x == 'skipped').sum())
+        ).reset_index().rename(columns={'testfile': 'Test File'})
 
-        for testfile in all_testfiles:
-            # Get data for this test file
-            baseline_file_df = baseline_df[baseline_df["testfile"] == testfile]
-            target_file_df = target_df[target_df["testfile"] == testfile]
+        # Merge
+        summary = pd.merge(baseline_stats, target_stats, on='Test File', how='outer').fillna(0)
 
-            summary = {
-                "Test File": testfile,
+        # Convert counts to int after fillna
+        for col in ['Baseline_Total', 'Baseline_Passed', 'Baseline_Failed', 'Baseline_Error', 'Baseline_Skipped',
+                    'Target_Total', 'Target_Passed', 'Target_Failed', 'Target_Error', 'Target_Skipped']:
+            summary[col] = summary[col].astype(int)
 
-                # Baseline stats
-                "Baseline Total": len(baseline_file_df),
-                "Baseline Passed": len(baseline_file_df[baseline_file_df["status"].isin(["passed", "xfail"])]),
-                "Baseline Failed": len(baseline_file_df[baseline_file_df["status"] == "failed"]),
-                "Baseline Error": len(baseline_file_df[baseline_file_df["status"] == "error"]),
-                "Baseline Skipped": len(baseline_file_df[baseline_file_df["status"] == "skipped"]),
+        # Add pass rates and delta
+        summary['Baseline Pass Rate'] = summary.apply(
+            lambda r: f"{r['Baseline_Passed']/r['Baseline_Total']*100:.2f}%" if r['Baseline_Total'] > 0 else 'N/A', axis=1
+        )
+        summary['Target Pass Rate'] = summary.apply(
+            lambda r: f"{r['Target_Passed']/r['Target_Total']*100:.2f}%" if r['Target_Total'] > 0 else 'N/A', axis=1
+        )
+        summary['Pass Rate Delta'] = summary.apply(
+            lambda r: f"{(r['Target_Passed']/r['Target_Total'] - r['Baseline_Passed']/r['Baseline_Total'])*100:+.2f}%"
+            if r['Baseline_Total'] > 0 and r['Target_Total'] > 0 else 'N/A', axis=1
+        )
 
-                # Target stats
-                "Target Total": len(target_file_df),
-                "Target Passed": len(target_file_df[target_file_df["status"].isin(["passed", "xfail"])]),
-                "Target Failed": len(target_file_df[target_file_df["status"] == "failed"]),
-                "Target Error": len(target_file_df[target_file_df["status"] == "error"]),
-                "Target Skipped": len(target_file_df[target_file_df["status"] == "skipped"]),
-            }
-
-            # Calculate pass rates (excluding failed and error)
-            baseline_total = summary["Baseline Total"]
-            if baseline_total > 0:
-                baseline_passed_count = summary["Baseline Passed"]
-                summary["Baseline Pass Rate"] = f"{(baseline_passed_count / baseline_total * 100):.2f}%"
-            else:
-                summary["Baseline Pass Rate"] = "N/A"
-
-            target_total = summary["Target Total"]
-            if target_total > 0:
-                target_passed_count = summary["Target Passed"]
-                summary["Target Pass Rate"] = f"{(target_passed_count / target_total * 100):.2f}%"
-            else:
-                summary["Target Pass Rate"] = "N/A"
-
-            # Calculate delta (Target - Baseline)
-            if baseline_total > 0 and target_total > 0:
-                baseline_passed_count = summary["Baseline Passed"]
-                target_passed_count = summary["Target Passed"]
-                baseline_passed_pct = baseline_passed_count / baseline_total * 100
-                target_passed_pct = target_passed_count / target_total * 100
-                summary["Pass Rate Delta"] = f"{(target_passed_pct - baseline_passed_pct):+.2f}%"
-            else:
-                summary["Pass Rate Delta"] = "N/A"
-
-            file_summaries.append(summary)
-
-        return pd.DataFrame(file_summaries)
+        return summary
 
     def generate_summary_stats(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate summary statistics by device."""
@@ -1043,13 +1052,22 @@ class ResultAnalyzer:
         md.append("")
         return "\n".join(md)
 
-    def generate_markdown_summary(self, df: pd.DataFrame, new_failures_df: pd.DataFrame = None, new_passes_df: pd.DataFrame = None) -> str:
+    def generate_markdown_summary(self, df: pd.DataFrame, new_failures_df: pd.DataFrame = None,
+                                new_passes_df: pd.DataFrame = None,
+                                untracked_failures_df: pd.DataFrame = None) -> str:
         """
         Generate a comprehensive markdown summary for GitHub issues.
         Includes only sections that have actual data (empty sections are omitted).
         """
         if df.empty:
             return "\n\n# Unit Test Results\n\nNo test data available."
+
+        # Helper to get the first non-empty value
+        def _get_non_empty(*values: str, default: str = "Unknown") -> str:
+            for v in values:
+                if v and str(v).strip():
+                    return v
+            return default
 
         # Get summary stats
         stats_df = self.generate_summary_stats(df)
@@ -1137,9 +1155,9 @@ class ResultAnalyzer:
                 md.append("| Test File | Test Name | Status | Issue IDs | Message |")
                 md.append("|-----------|-----------|--------|-----------|---------|")
 
-                for _, issue in reason_issues.head(10).iterrows():  # Limit to 10 per category
-                    test_file = issue.get('testfile_target', issue.get('testfile_baseline', 'Unknown'))
-                    test_name = issue.get('name_target', issue.get('name_baseline', 'Unknown'))
+                for _, issue in reason_issues.head(10).iterrows():
+                    test_file = _get_non_empty(issue.get('testfile_target', ''), issue.get('testfile_baseline', ''), default='Unknown')
+                    test_name = _get_non_empty(issue.get('name_target', ''), issue.get('name_baseline', ''), default='Unknown')
                     status = issue['status_target']
 
                     # Get status emoji
@@ -1168,6 +1186,34 @@ class ResultAnalyzer:
 
                 md.append("")
 
+            # Add a subsection for untracked failures if provided
+            if untracked_failures_df is not None and not untracked_failures_df.empty:
+                md.append("### Untracked Failures (No Associated GitHub Issue)\n")
+                md.append("The following new failures have no matching GitHub issue. These may require new issue creation.\n")
+
+                md.append("| Test File | Test Name | Status | Message |")
+                md.append("|-----------|-----------|--------|---------|")
+
+                for _, issue in untracked_failures_df.head(20).iterrows():
+                    test_file = _get_non_empty(issue.get('testfile_target', ''), issue.get('testfile_baseline', ''), default='Unknown')
+                    test_name = _get_non_empty(issue.get('name_target', ''), issue.get('name_baseline', ''), default='Unknown')
+                    status = issue['status_target']
+
+                    # Get status emoji
+                    status_emoji = TestStatus.from_string(status).emoji
+
+                    # Truncate message
+                    message = issue.get('message_target', '')
+                    if len(message) > 100:
+                        message = message[:97] + "..."
+                    message = message.replace('\n', ' ').replace('|', '\\|')
+
+                    md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {message} |")
+
+                if len(untracked_failures_df) > 20:
+                    md.append(f"| ... | ... | ... | *{len(untracked_failures_df) - 20} more untracked failures* |")
+                md.append("")
+
         # New Passes Section – only if there are any
         if new_passes_df is not None and not new_passes_df.empty:
             md.append("## ✨ New Passes on Target\n")
@@ -1189,9 +1235,9 @@ class ResultAnalyzer:
                 md.append("| Test File | Test Name | Baseline Status | Issue IDs |")
                 md.append("|-----------|-----------|-----------------|-----------|")
 
-                for _, issue in reason_passes.head(10).iterrows():  # Limit to 10 per category
-                    test_file = issue.get('testfile_target', issue.get('testfile_baseline', 'Unknown'))
-                    test_name = issue.get('name_target', issue.get('name_baseline', 'Unknown'))
+                for _, issue in reason_passes.head(10).iterrows():
+                    test_file = _get_non_empty(issue.get('testfile_target', ''), issue.get('testfile_baseline', ''), default='Unknown')
+                    test_name = _get_non_empty(issue.get('name_target', ''), issue.get('name_baseline', ''), default='Unknown')
                     baseline_status = issue['status_baseline']
 
                     # Get status emoji
@@ -1223,15 +1269,15 @@ class ResultAnalyzer:
 
             # Calculate failure score for sorting (Baseline Failed + Baseline Error)
             file_summary_sorted['Baseline Failures'] = (
-                file_summary_sorted['Baseline Failed'].astype(int) +
-                file_summary_sorted['Baseline Error'].astype(int)
+                file_summary_sorted['Baseline_Failed'].astype(int) +
+                file_summary_sorted['Baseline_Error'].astype(int)
             )
 
             # Sort by:
             # 1. Baseline Failures (descending) - files with most baseline failures first
             # 2. Baseline Total (descending) - then by total tests
             file_summary_sorted = file_summary_sorted.sort_values(
-                by=['Baseline Failures', 'Baseline Total'],
+                by=['Baseline Failures', 'Baseline_Total'],
                 ascending=[False, False]
             )
 
@@ -1243,7 +1289,7 @@ class ResultAnalyzer:
             md.append("| Test File | Baseline Stats | Target Stats | Delta | Details |")
             md.append("|-----------|---------------|--------------|-------|---------|")
 
-            for _, row in file_summary_sorted.head(10).iterrows():  # Limit to 10 files
+            for _, row in file_summary_sorted.head(10).iterrows():
                 test_file = row['Test File']
                 baseline_rate = row['Baseline Pass Rate']
                 target_rate = row['Target Pass Rate']
@@ -1259,21 +1305,21 @@ class ResultAnalyzer:
                         delta_emoji = "🔺"
 
                 # Create baseline stats string with failures highlighted
-                baseline_failures = int(row['Baseline Failed']) + int(row['Baseline Error'])
-                baseline_stats = f"✅:{row['Baseline Passed']}"
+                baseline_failures = int(row['Baseline_Failed']) + int(row['Baseline_Error'])
+                baseline_stats = f"✅:{row['Baseline_Passed']}"
                 if baseline_failures > 0:
-                    baseline_stats += f" ❌:{row['Baseline Failed']} 💥:{row['Baseline Error']}"
-                baseline_stats += f" ⏭️:{row['Baseline Skipped']}"
+                    baseline_stats += f" ❌:{row['Baseline_Failed']} 💥:{row['Baseline_Error']}"
+                baseline_stats += f" ⏭️:{row['Baseline_Skipped']}"
 
                 # Create target stats string
-                target_failures = int(row['Target Failed']) + int(row['Target Error'])
-                target_stats = f"✅:{row['Target Passed']}"
+                target_failures = int(row['Target_Failed']) + int(row['Target_Error'])
+                target_stats = f"✅:{row['Target_Passed']}"
                 if target_failures > 0:
-                    target_stats += f" ❌:{row['Target Failed']} 💥:{row['Target Error']}"
-                target_stats += f" ⏭️:{row['Target Skipped']}"
+                    target_stats += f" ❌:{row['Target_Failed']} 💥:{row['Target_Error']}"
+                target_stats += f" ⏭️:{row['Target_Skipped']}"
 
                 # Create details string
-                details = f"Total: {row['Baseline Total']} tests"
+                details = f"Total: {row['Baseline_Total']} tests"
 
                 md.append(
                     f"| `{test_file}` | {baseline_stats} | {target_stats} | {delta_emoji} {delta} | {details} |"
@@ -1291,20 +1337,20 @@ class ResultAnalyzer:
         # Top failures section – only if there are failures on target
         target_failures_exist = False
         if not file_summary_df.empty:
-            target_failures_total = (file_summary_df['Target Failed'].astype(int) + file_summary_df['Target Error'].astype(int)).sum()
+            target_failures_total = (file_summary_df['Target_Failed'].astype(int) + file_summary_df['Target_Error'].astype(int)).sum()
             target_failures_exist = target_failures_total > 0
 
         if target_failures_exist:
             md.append("## 🔥 Top Failures by File\n")
             # Find files with most failures on target
-            target_failures = file_summary_df.nlargest(5, 'Target Failed')[['Test File', 'Target Failed', 'Target Error']]
+            target_failures = file_summary_df.nlargest(5, 'Target_Failed')[['Test File', 'Target_Failed', 'Target_Error']]
 
             md.append("| Test File | Failed | Error |")
             md.append("|-----------|--------|-------|")
 
             for _, row in target_failures.iterrows():
-                if row['Target Failed'] > 0 or row['Target Error'] > 0:
-                    md.append(f"| `{row['Test File']}` | {row['Target Failed']} | {row['Target Error']} |")
+                if row['Target_Failed'] > 0 or row['Target_Error'] > 0:
+                    md.append(f"| `{row['Test File']}` | {row['Target_Failed']} | {row['Target_Error']} |")
             md.append("")
 
         # Top improvements section – only if there are new passes
@@ -1335,7 +1381,7 @@ class ReportExporter:
 
     def export_excel(self, analyzer: ResultAnalyzer, output_path: Path) -> None:
         """Export results to Excel with comparison sheets."""
-        # Get unique test cases
+        # Get unique test cases (cached)
         unique_df = analyzer.deduplicate_by_priority()
 
         if unique_df.empty:
@@ -1346,7 +1392,7 @@ class ReportExporter:
             # Split and compare
             baseline_df, target_df = analyzer.split_by_device(unique_df)
 
-            if not baseline_df.empty and not target_df.empty:
+            if not baseline_df.empty or not target_df.empty:
                 # Merge results (includes GitHub issue info if available)
                 merged_df = analyzer.merge_results(baseline_df, target_df)
 
@@ -1382,7 +1428,7 @@ class ReportExporter:
 
     def export_csv(self, analyzer: ResultAnalyzer, output_path: Path) -> None:
         """Export results to CSV files."""
-        # Get unique test cases
+        # Get unique test cases (cached)
         unique_df = analyzer.deduplicate_by_priority()
 
         if unique_df.empty:
@@ -1394,7 +1440,7 @@ class ReportExporter:
         # Split and compare
         baseline_df, target_df = analyzer.split_by_device(unique_df)
 
-        if not baseline_df.empty and not target_df.empty:
+        if not baseline_df.empty or not target_df.empty:
             # Merge results (includes GitHub issue info if available)
             merged_df = analyzer.merge_results(baseline_df, target_df)
 
@@ -1429,7 +1475,8 @@ class ReportExporter:
 
         logger.info(f"Exported comparison results to {output_path}")
 
-    def export_markdown(self, analyzer: ResultAnalyzer, output_path: Path) -> None:
+    def export_markdown(self, analyzer: ResultAnalyzer, output_path: Path,
+                        untracked_failures_df: pd.DataFrame = None) -> None:
         """Export results to Markdown format, split into summary and details files."""
         unique_df = analyzer.deduplicate_by_priority()
         if unique_df.empty:
@@ -1443,7 +1490,10 @@ class ReportExporter:
             merged_df = analyzer.merge_results(baseline_df, target_df)
             new_failures_df, new_passes_df = analyzer.find_target_changes(merged_df)
 
-        full_content = analyzer.generate_markdown_summary(unique_df, new_failures_df, new_passes_df)
+        # Pass untracked failures to the markdown generator
+        full_content = analyzer.generate_markdown_summary(
+            unique_df, new_failures_df, new_passes_df, untracked_failures_df
+        )
 
         # Split the content into summary and details parts
         summary_part, details_part = self._split_markdown_summary(full_content)
@@ -1514,6 +1564,7 @@ class ReportExporter:
             })
 
         return pd.DataFrame(rows)
+
 
 # ============================================================================
 # MAIN FUNCTION
@@ -1605,6 +1656,14 @@ def main() -> int:
         action="store_true",
         help="Force refresh GitHub issues even if cache exists",
     )
+
+    # New argument for untracked failures
+    parser.add_argument(
+        "--untracked-failures",
+        action="store_true",
+        help="Generate a separate file/sheet with target failures that have no associated GitHub issues, and include them in markdown",
+    )
+
     args = parser.parse_args()
 
     # Configure logging
@@ -1671,7 +1730,47 @@ def main() -> int:
         else:
             exporter.export_csv(analyzer, output_path)
 
-        # Export markdown if requested
+        # Compute untracked failures (only if requested, for markdown and separate file)
+        untracked_failures_df = None
+        if args.untracked_failures:
+            unique_df = analyzer.deduplicate_by_priority()
+            baseline_df, target_df = analyzer.split_by_device(unique_df)
+            if not baseline_df.empty or not target_df.empty:
+                merged_df = analyzer.merge_results(baseline_df, target_df)
+                # Ensure issue_ids column exists (it may be missing if no GitHub integration)
+                if 'issue_ids' not in merged_df.columns:
+                    merged_df['issue_ids'] = ''
+
+                # Filter for failures that are actually failed/error and have no issue IDs
+                untracked_failures_df = merged_df[
+                    merged_df['status_target'].isin(['failed', 'error']) &
+                    ~merged_df['issue_statuses'].str.contains('open', na=False)
+                ].copy()
+
+                # Export separate file for untracked failures (Excel or CSV) with only desired columns
+                if not untracked_failures_df.empty:
+                    # Define the columns we want to export
+                    cols = ['raw_file_target', 'raw_class_target', 'raw_name_target',
+                            'status_target', 'time_target', 'message_target',
+                            'issue_ids', 'issue_labels', 'issue_statuses']
+                    # Ensure columns exist (reindex to include missing ones with NaN)
+                    export_df = untracked_failures_df.reindex(columns=cols)
+                    export_df['message_target'] = export_df['message_target'].astype(str).str[:50]
+
+                    if output_path.suffix.lower() in ['.xlsx', '.xls']:
+                        untracked_path = output_path.parent / f"{output_path.stem}_untracked_failures.xlsx"
+                        with pd.ExcelWriter(untracked_path, engine='openpyxl') as writer:
+                            export_df.to_excel(writer, sheet_name='Untracked Failures', index=False)
+                    else:
+                        untracked_path = output_path.parent / f"{output_path.stem}_untracked_failures.csv"
+                        export_df.to_csv(untracked_path, index=False)
+                    logger.error(f"Unexpected failures: {len(untracked_failures_df)} to {untracked_path}")
+                else:
+                    logger.info("No untracked failures found")
+            else:
+                logger.info("Skipping untracked failures export: no baseline or target data")
+
+        # Export markdown if requested (pass untracked failures if available)
         if args.markdown:
             # Determine markdown output path
             if args.markdown_output:
@@ -1680,7 +1779,7 @@ def main() -> int:
                 # Default: same as output but with _report.md suffix
                 markdown_path = output_path.parent / f"{output_path.stem}_report.md"
 
-            exporter.export_markdown(analyzer, markdown_path)
+            exporter.export_markdown(analyzer, markdown_path, untracked_failures_df)
 
         # Print summary
         elapsed = time.time() - start_time
