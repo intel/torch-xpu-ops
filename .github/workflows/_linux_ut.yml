@@ -193,7 +193,7 @@ jobs:
       WORKSPACE: ${{ github.workspace }}
       ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
       PYTEST_ADDOPTS: >-
-        -v
+        -sq -q --tb=short
         --timeout 3600
         --timeout_method=thread
         -n 1
