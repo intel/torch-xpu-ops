@@ -115,4 +115,5 @@ skip_dict = {
     "profiler/test_memory_profiler.py": None,
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo.py": None,
+    "test/xpu/functorch/test_aotdispatch_xpu.py": None,
 }
