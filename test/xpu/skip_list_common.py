@@ -114,4 +114,5 @@ skip_dict = {
     "functorch/test_control_flow_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
     "export/test_hop_xpu.py": None,
+    "export/test_export_opinfo.py": None,
 }
