@@ -32,7 +32,6 @@ from torch.testing._internal.hop_db import (
     hop_db,
 )
 
-
 hop_tests = []
 
 for op_info in hop_db:

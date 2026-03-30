@@ -24,16 +24,11 @@ from torch.testing._internal.common_device_type import (
     ops,
 )
 from torch.testing._internal.common_methods_invocations import (
-    onlyCUDA,
     op_db,
-    skip,
-    skipOps,
     xfail,
 )
 from torch.testing._internal.common_utils import (
-    IS_FBCODE,
     run_tests,
-    skipIfRocm,
     TestCase,
 )
 from torch.utils import _pytree as pytree
@@ -233,7 +228,7 @@ for op in ops:
 
     @unittest.skipIf(not torch.backends.cuda.is_built(), "requires CUDA build")
     def test_preserve_original_behavior(self):
-        test_script = f"""\
+        test_script = """\
 import torch
 from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
 
@@ -295,7 +290,9 @@ xpu_calls_behavior_unchanged()
         self.assertEqual(r, "")
 
 
-instantiate_device_type_tests(TestExportOnFakeCuda, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestExportOnFakeCuda, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

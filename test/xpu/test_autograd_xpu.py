@@ -578,12 +578,12 @@ def _set_device_index(target_device):
 
 
 def default_streams(self, num_devices=1):
-        out = []
-        for i in range(num_devices):
-            with _set_device_index(i):
-                acc = torch.accelerator.current_accelerator()
-                out.append(torch.get_device_module(acc).current_stream())
-        return tuple(out)
+    out = []
+    for i in range(num_devices):
+        with _set_device_index(i):
+            acc = torch.accelerator.current_accelerator()
+            out.append(torch.get_device_module(acc).current_stream())
+    return tuple(out)
 
 
 def _get_device_name(idx):
@@ -593,25 +593,25 @@ def _get_device_name(idx):
 def _test_consumer_to_single_producer_case_3_correctness(
         self, non_default_ambient_stream
     ):
-        #                          Device    Stream
-        # Consumer (MulBackward):  cuda:0    s0
-        # Producer              :  cuda:1    cuda:1 default
-        # Gradient              :  cuda:0    cuda:0 default
-        class Producer(torch.autograd.Function):
-            @staticmethod
-            def forward(ctx, x):
-                # The node's canonical stream is the current stream
-                # of the device of the first output.
-                ctx.node_stream = torch.accelerator.current_stream(1)
-                return x.to(_get_device_name(1))
+    #                          Device    Stream
+    # Consumer (MulBackward):  cuda:0    s0
+    # Producer              :  cuda:1    cuda:1 default
+    # Gradient              :  cuda:0    cuda:0 default
+    class Producer(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, x):
+            # The node's canonical stream is the current stream
+            # of the device of the first output.
+            ctx.node_stream = torch.accelerator.current_stream(1)
+            return x.to(_get_device_name(1))
 
-            @staticmethod
-            def backward(ctx, gO):
-                out = gO.to(_get_device_name(0))
-                # It's the node's responsibility to sync back to its canonical stream.
-                out.add_(1)
-                ctx.node_stream.wait_stream(torch.accelerator.current_stream(0))
-                return out
+        @staticmethod
+        def backward(ctx, gO):
+            out = gO.to(_get_device_name(0))
+            # It's the node's responsibility to sync back to its canonical stream.
+            out.add_(1)
+            ctx.node_stream.wait_stream(torch.accelerator.current_stream(0))
+            return out
 
         def test():
             self.synchronize_all_devices(2)

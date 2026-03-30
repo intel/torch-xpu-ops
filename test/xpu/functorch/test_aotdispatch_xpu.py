@@ -22,17 +22,11 @@ from functools import partial, wraps
 from typing import Any
 from unittest.mock import patch
 
-from common_utils import (
-    decorate,
-    saved_tensors_hooks_to_gm,
-    skip,
-    xfail,
-)
-
 import torch
 import torch._dynamo as torchdynamo
 import torch.nn as nn
 import torch.utils._pytree as pytree
+from common_utils import decorate, saved_tensors_hooks_to_gm, skip, xfail
 from functorch import make_fx
 from functorch.compile import (
     aot_function,
@@ -65,10 +59,7 @@ from torch._subclasses.fake_tensor import DynamicOutputShapeException, FakeTenso
 from torch.fx.experimental.symbolic_shapes import GuardOnDataDependentSymNode, ShapeEnv
 from torch.nn.utils.rnn import PackedSequence
 # from torch.testing._internal.common_cuda import SM80OrLater
-from torch.testing._internal.common_device_type import (
-    tol,
-    toleranceOverride,
-)
+from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_utils import (
     compare_equal_outs_and_grads,
     instantiate_parametrized_tests,
@@ -85,30 +76,17 @@ from torch.testing._internal.common_utils import (
     xfailIfTorchDynamo,
 )
 from torch.testing._internal.custom_tensor import ConstantExtraMetadataTensor
-from torch.testing._internal.hop_db import hop_db
 from torch.testing._internal.optests import (
     _test_aot_autograd_forwards_backwards_helper,
     aot_autograd_check,
 )
-from torch.testing._internal.subclasses import WrapperSubclass
 from torch.testing._internal.two_tensor import TwoTensor, TwoTensorMode
 from torch.utils._python_dispatch import TorchDispatchMode
 
 SM80OrLater = True  # XPU equivalent, assume compatible
 
 
-USE_TORCHVISION = False
-try:
-    import torchvision
-
-    USE_TORCHVISION = True
-except ImportError:
-    warnings.warn(
-        "Couldn't import torchvision. Some of our tests use it, try "
-        "to install it with commands from pytorch.org, post-fixed with "
-        "`--no-deps` to avoid overwriting the pytorch installation",
-        UserWarning,
-    )
+USE_TORCHVISION = True
 
 USE_NETWORKX = False
 try:
@@ -163,7 +141,9 @@ def _pack_fp8_wrap(x):
     if type(x) is not torch.Tensor:
         # Check only during compilation
         # Test calls hooks to get reference output
-        ctx = torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        ctx = (
+            torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        )
         if ctx["_fw_graph"] is None:
             raise AssertionError("Expected _fw_graph to not be None")
         if ctx["_bw_graph"] is None:
@@ -183,7 +163,9 @@ def _unpack_fp8_wrap(x):
     if type(tensor) is not torch.Tensor:
         # Check only during compilation
         # Test calls hooks to get reference output
-        ctx = torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        ctx = (
+            torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        )
         if ctx["_fw_graph"] is None:
             raise AssertionError("Expected _fw_graph to not be None")
         if ctx["_bw_graph"] is None:
