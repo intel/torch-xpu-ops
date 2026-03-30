@@ -22,7 +22,6 @@ from torch.nn.functional import scaled_dot_product_attention
 from torch.nn.parameter import Parameter
 from torch.testing._internal.common_cuda import (
     IS_JETSON,
-    PLATFORM_SUPPORTS_CUDNN_ATTENTION,
     PLATFORM_SUPPORTS_FLASH_ATTENTION,
     PLATFORM_SUPPORTS_FUSED_ATTENTION,
     PLATFORM_SUPPORTS_MEM_EFF_ATTENTION,
@@ -260,6 +259,10 @@ def query_key_value_clones(
     return query_ref, key_ref, value_ref
 
 
+# Workaround in order to align XPU test with cuda
+PLATFORM_SUPPORTS_CUDNN_ATTENTION = True
+
+
 def get_platform_specific_sdpa():
     ret = []
     if PLATFORM_SUPPORTS_FLASH_ATTENTION:
@@ -279,6 +282,10 @@ PLATFORM_SPECIFIC_SDPA = get_platform_specific_sdpa()
 # 1. sequence longher than 512
 # 2. head dimsion larger than 64
 MEM_EFF_CAPABILITY_MATCHES_SM80 = SM80OrLater or TEST_WITH_ROCM
+
+# Workaround in order to align XPU test with cuda
+if TEST_XPU:
+    MEM_EFF_CAPABILITY_MATCHES_SM80 = True
 
 
 def rand_sdpa_tensor(
