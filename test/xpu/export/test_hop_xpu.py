@@ -44,7 +44,7 @@ for op_info in hop_db:
 @unittest.skipIf(IS_WINDOWS, "Windows isn't supported for this case")
 @unittest.skipIf(not torchdynamo.is_dynamo_supported(), "dynamo isn't supported")
 class TestHOP(TestCase):
-    def _compare(self, eager_model, export, args, kwargs):
+    def _compare(self, eager_model, exported_program, args, kwargs):
         eager_args = copy.deepcopy(args)
         eager_kwargs = copy.deepcopy(kwargs)
         export_args = copy.deepcopy(args)
@@ -52,7 +52,7 @@ class TestHOP(TestCase):
 
         flat_orig_outputs = pytree.tree_leaves(eager_model(*eager_args, **eager_kwargs))
         flat_loaded_outputs = pytree.tree_leaves(
-            export.module()(*export_args, **export_kwargs)
+            exported_program.module()(*export_args, **export_kwargs)
         )
 
         for orig, loaded in zip(flat_orig_outputs, flat_loaded_outputs):

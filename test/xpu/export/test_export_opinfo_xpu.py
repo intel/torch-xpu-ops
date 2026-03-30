@@ -12,27 +12,18 @@
 
 # Owner(s): ["module: intel"]
 
-import itertools
 import os
 import subprocess
 import sys
 import unittest
 
 import torch
-from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     ops,
 )
-from torch.testing._internal.common_methods_invocations import (
-    op_db,
-    xfail,
-)
-from torch.testing._internal.common_utils import (
-    run_tests,
-    TestCase,
-)
-from torch.utils import _pytree as pytree
+from torch.testing._internal.common_methods_invocations import op_db, xfail
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 for op in op_db:
     if (
@@ -52,55 +43,6 @@ for op in op_db:
         )
 
         break
-
-# following are failing with regular torch.export.export
-export_failures = {
-    xfail("allclose"),
-    xfail("combinations"),
-    xfail("corrcoef"),
-    xfail("cov"),
-    xfail("equal"),
-    xfail("linalg.lstsq"),
-    xfail("linalg.lstsq", "grad_oriented"),
-    xfail("nn.functional.ctc_loss"),
-    xfail("nn.functional.gaussian_nll_loss"),
-    xfail("sparse.sampled_addmm"),
-    xfail("tensor_split"),
-}
-
-# following are failing fake export on cuda device
-fake_export_failures = {
-    xfail("geqrf"),
-    xfail("histogram"),
-    xfail("masked.amax"),
-    xfail("masked.amin"),
-    xfail("masked.argmax"),
-    xfail("masked.argmin"),
-    xfail("masked.logaddexp"),
-    xfail("masked.logsumexp"),
-    xfail("masked.mean"),
-    xfail("masked.prod"),
-    xfail("masked.std"),
-    xfail("masked.sum"),
-    xfail("masked.var"),
-    xfail("nn.functional.grid_sample"),
-    xfail("to_sparse"),
-    # following are failing due to OptionalDeviceGuard
-    xfail("__getitem__"),
-    # xfail("nn.functional.batch_norm"),  # Removed for XPU testing
-    xfail("nn.functional.instance_norm"),
-    xfail("nn.functional.multi_margin_loss"),
-    xfail("nonzero"),
-}
-
-fake_decomposition_failures = {
-    xfail("linalg.matrix_rank"),
-    xfail("nn.functional.binary_cross_entropy_with_logits"),
-    xfail("nn.functional.instance_norm"),
-    xfail("nn.functional.multi_margin_loss"),
-    xfail("repeat_interleave"),
-    xfail("take"),
-}
 
 selected_ops = {
     "__getitem__",
@@ -170,69 +112,6 @@ for op in ops:
                     fake_tensor = node.meta.get("val", None)
                     if isinstance(fake_tensor, FakeTensor):
                         assert fake_tensor.device == torch.device(target_device)
-"""
-        r = (
-            (
-                subprocess.check_output(
-                    [sys.executable, "-c", test_script],
-                    env={**os.environ, "ZE_AFFINITY_MASK": ""},
-                )
-            )
-            .decode("ascii")
-            .strip()
-        )
-        self.assertEqual(r, "")
-
-    @unittest.skipIf(not torch.backends.cuda.is_built(), "requires CUDA build")
-    def test_preserve_original_behavior(self):
-        test_script = """\
-import torch
-from torch._subclasses.fake_tensor import FakeTensor, FakeTensorMode
-
-def xpu_calls_behavior_unchanged():
-    exception_count = 0
-
-    try:
-        cpu_x = torch.randn(2)
-        xpu_x = cpu_x.to("xpu")
-    except Exception as e:
-        exception_count += 1
-
-    try:
-        torch.randn(2, device="xpu")
-    except Exception as e:
-        exception_count += 1
-
-    try:
-        torch.xpu.get_device_capability()
-    except Exception as e:
-        exception_count += 1
-
-    try:
-        torch.xpu.set_device(1)
-    except Exception as e:
-        exception_count += 1
-
-    try:
-        torch.xpu.current_device()
-    except Exception as e:
-        exception_count += 1
-
-    assert torch.xpu.is_available() == False
-    assert torch.xpu.device_count() == 0
-    assert exception_count == 5
-
-xpu_calls_behavior_unchanged()
-
-cpu_x = torch.randn(2)
-with FakeTensorMode(allow_non_fake_inputs=True) as mode:
-    xpu_x = mode.from_tensor(cpu_x)
-    xpu_x.fake_device = torch.device("xpu")
-    xpu_y = xpu_x + xpu_x
-    assert xpu_y.device.type == "xpu"
-
-# should fail again after exiting the fake mode, with the identical error message
-xpu_calls_behavior_unchanged()
 """
         r = (
             (

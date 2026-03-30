@@ -591,12 +591,12 @@ def _get_device_name(idx):
 
 
 def _test_consumer_to_single_producer_case_3_correctness(
-        self, non_default_ambient_stream
+    self, non_default_ambient_stream
     ):
     #                          Device    Stream
-    # Consumer (MulBackward):  cuda:0    s0
-    # Producer              :  cuda:1    cuda:1 default
-    # Gradient              :  cuda:0    cuda:0 default
+    # Consumer (MulBackward):  xpu:0    s0
+    # Producer              :  xpu:1    xpu:1 default
+    # Gradient              :  xpu:0    xpu:0 default
     class Producer(torch.autograd.Function):
         @staticmethod
         def forward(ctx, x):
@@ -613,37 +613,37 @@ def _test_consumer_to_single_producer_case_3_correctness(
             ctx.node_stream.wait_stream(torch.accelerator.current_stream(0))
             return out
 
-        def test():
-            self.synchronize_all_devices(2)
-            self.assert_all_streams_default(2)
+    def test(self):
+        self.synchronize_all_devices(2)
+        self.assert_all_streams_default(2)
 
-            (default_stream_0,) = self.get_default_streams()
+        (default_stream_0,) = self.get_default_streams()
 
-            # Ensure consumer node happens on non-default stream so that
-            # when FuncBackward produces a gradient on a default stream
-            # a sync is necessary.
-            with torch.Stream(0) as s0:
-                a = torch.ones(256, 256, requires_grad=True, device="xpu")
-                b = a * 2
+        # Ensure consumer node happens on non-default stream so that
+        # when FuncBackward produces a gradient on a default stream
+        # a sync is necessary.
+        with torch.Stream(0) as s0:
+            a = torch.ones(256, 256, requires_grad=True, device="xpu")
+            b = a * 2
 
-            default_stream_0.wait_stream(s0)
-            out = Producer.apply(b)
+        default_stream_0.wait_stream(s0)
+        out = Producer.apply(b)
 
-            def call_backward(x):
-                with torch.autograd.grad_mode.set_multithreading_enabled(False):
-                    x.sum().backward()
+        def call_backward(x):
+            with torch.autograd.grad_mode.set_multithreading_enabled(False):
+                x.sum().backward()
 
-            if non_default_ambient_stream:
-                with torch.Stream(0) as s1:
-                    s1.wait_stream(default_stream_0)
-                    call_backward(out)
-            else:
+        if non_default_ambient_stream:
+            with torch.Stream(0) as s1:
+                s1.wait_stream(default_stream_0)
                 call_backward(out)
+        else:
+            call_backward(out)
 
-            self.synchronize_all_devices(2)
+        self.synchronize_all_devices(2)
 
-            # Expected result: a.grad = (grad_out + 1) * 2 = 4
-            self.assertEqual(a.grad, torch.full_like(a, 4))
+        # Expected result: a.grad = (grad_out + 1) * 2 = 4
+        self.assertEqual(a.grad, torch.full_like(a, 4))
 
         # Run an extra time to warm up
         for _ in range(2):
