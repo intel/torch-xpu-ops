@@ -111,16 +111,34 @@ runs:
     - name: Process all inputs
       if: contains(inputs.is_scheduled_run, 'manually')
       id: all-inputs
-      uses: actions/github-script@v8
-      with:
-        github-token: ${{ github.token }}
-        script: |
-          const allInputs = JSON.parse('${{ inputs.all_inputs_json }}');
-          for (const [key, value] of Object.entries(allInputs)) {
-            console.log(`Input: ${key} = ${value}`);
-            core.exportVariable(key, value);        // Make available as env var
-            core.setOutput(key, value);             // Make available as step output
-          }
+      shell: bash -eo pipefail {0}
+      run: |
+        # Get the JSON input
+        RAW_JSON='${{ inputs.all_inputs_json }}'
+
+        # Check if empty
+        if [[ -z "$RAW_JSON" ]]; then
+          echo "No all_inputs_json provided, skipping"
+          exit 0
+        fi
+
+        # Validate and parse JSON with jq
+        if ! echo "$RAW_JSON" | jq empty 2>/dev/null; then
+          echo "Failed to parse JSON: Invalid JSON"
+          echo "Raw input: $RAW_JSON"
+          exit 1
+        fi
+
+        # Iterate over keys and values
+        echo "$RAW_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value)"' | while IFS='=' read -r key value; do
+          echo "Input: $key = $value"
+
+          # Set environment variable for all subsequent steps
+          echo "$key=$value" >> $GITHUB_ENV
+
+          # Set step output
+          echo "$key=$value" >> $GITHUB_OUTPUT
+        done
 
     # ------------------------------------------------------------
     # Step 3: Check PR labels (only for pull requests)

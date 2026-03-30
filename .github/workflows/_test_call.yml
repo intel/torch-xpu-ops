@@ -25,6 +25,12 @@ on:
           E2E test suite (comma-separated):
           - huggingface, timm_models, torchbench, pt2e
 
+      # Comparison configuration
+      test_role:
+        type: string
+        default: 'none'
+        description: 'What type actor'
+
       # Advanced configuration
       runner:
         type: string
