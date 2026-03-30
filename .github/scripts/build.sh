@@ -76,6 +76,11 @@ fi
 
 # Build
 sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeLists.txt
+# Fix inductor error: "both a fallback and a decomp for same op: aten.index_add.default"
+# Ops in FALLBACK_ALLOW_LIST should override decompositions when the decomposition
+# returns NotImplemented (e.g. index_add for bfloat16).
+# TODO: Remove this once the upstream fix is merged into PyTorch.
+sed -i 's/make_fallback(target, warn=False, get_decomp_fn=self.get_decomp_fn)/make_fallback(target, warn=False, override_decomp=True, get_decomp_fn=self.get_decomp_fn)/g' torch/_inductor/graph.py
 git diff
 WERROR=1 python setup.py bdist_wheel
 
