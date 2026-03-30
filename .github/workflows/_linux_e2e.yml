@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         description: 'Runner label for test execution environment'
+      docker_image_name:
+        type: string
+        default: 'intelgpu/ubuntu-24.04-lts2:2523.40'
+        description: 'Docker image for test environment'
       test_type:
         type: string
         default: "build-cicd"
@@ -45,6 +49,10 @@ on:
         type: string
         default: ''
         description: 'Specific model to test. If set, only this model will be tested'
+      test_role:
+        type: string
+        default: 'default'
+        description: 'Role for test comparison'
       component:
         type: string
         default: ''
@@ -53,10 +61,6 @@ on:
         type: string
         default: ''
         description: 'Component version for comparison'
-      test_role:
-        type: string
-        default: 'default'
-        description: 'Role for test comparison'
 
 permissions: read-all
 
@@ -98,7 +102,7 @@ jobs:
     needs: runner
     timeout-minutes: 3600
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
         - /tmp/xpu-tool:/tmp/xpu-tool

@@ -92,10 +92,10 @@ jobs:
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: ${{ inputs.runner }}
+      python: ${{ needs.parse-inputs.outputs.python }}
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
       should_build: ${{ needs.parse-inputs.outputs.should_build }}
-      python: ${{ needs.parse-inputs.outputs.python }}
       test_role: ${{ inputs.test_role }}
       component: ${{ needs.parse-inputs.outputs.component }}
       component_version: ${{ needs.parse-inputs.outputs.component_version }}
@@ -117,10 +117,10 @@ jobs:
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
       python: ${{ needs.parse-inputs.outputs.python }}
+      ut: ${{ matrix.ut_name }}
       test_role: ${{ inputs.test_role }}
       component: ${{ needs.parse-inputs.outputs.component }}
       component_version: ${{ needs.parse-inputs.outputs.component_version }}
-      ut: ${{ matrix.ut_name }}
 
   linux-e2e:
     needs:
@@ -135,16 +135,17 @@ jobs:
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ inputs.runner }}
+      test_type: ${{ needs.parse-inputs.outputs.test_type }}
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
       python: ${{ needs.parse-inputs.outputs.python }}
-      test_role: ${{ inputs.test_role }}
-      component: ${{ needs.parse-inputs.outputs.component }}
-      component_version: ${{ needs.parse-inputs.outputs.component_version }}
       suite: ${{ matrix.suite }}
       dt: ${{ needs.parse-inputs.outputs.dt }}
       mode: ${{ needs.parse-inputs.outputs.mode }}
       scenario: ${{ needs.parse-inputs.outputs.scenario }}
       model: ${{ needs.parse-inputs.outputs.model }}
+      test_role: ${{ inputs.test_role }}
+      component: ${{ needs.parse-inputs.outputs.component }}
+      component_version: ${{ needs.parse-inputs.outputs.component_version }}
 
   linux-microbench:
     needs:
