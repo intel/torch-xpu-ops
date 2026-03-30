@@ -13,6 +13,7 @@
 # Owner(s): ["module: intel"]
 
 import copy
+import sys
 import itertools
 import unittest
 import warnings
@@ -21,6 +22,8 @@ from contextlib import ContextDecorator, nullcontext
 from functools import partial, wraps
 from typing import Any
 from unittest.mock import patch
+
+sys.path.append("../../../../test/functorch")
 
 import torch
 import torch._dynamo as torchdynamo
