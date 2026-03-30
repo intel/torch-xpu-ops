@@ -1635,7 +1635,7 @@ def main() -> int:
     parser.add_argument(
         "--github-labels",
         nargs="+",
-        default="skipped",
+        default=["skipped"],
         help="Filter issues by labels",
     )
 
