@@ -64,8 +64,8 @@ jobs:
 
       # Test scope
       what_to_run: ${{ steps.parse-config.outputs.what_to_run }}
-      ut_json_array: ${{ fromJSON(steps.parse-config.outputs.ut_json_array) }}
-      suite_json_array: ${{ fromJSON(steps.parse-config.outputs.suite_json_array) }}
+      ut_json_array: ${{ steps.parse-config.outputs.ut_json_array }}
+      suite_json_array: ${{ steps.parse-config.outputs.suite_json_array }}
 
       # Others
       python: ${{ steps.parse-config.outputs.python }}
