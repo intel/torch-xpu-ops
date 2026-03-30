@@ -662,10 +662,7 @@ void cat_out_kernel(
           kHalf,
           kBool,
           kBFloat16,
-          kFloat8_e4m3fn,
-          kFloat8_e4m3fnuz,
-          kFloat8_e5m2,
-          kFloat8_e5m2fnuz,
+          AT_EXPAND(AT_FLOAT8_TYPES),
           AT_EXPAND(AT_BAREBONES_UNSIGNED_TYPES),
           kFloat4_e2m1fn_x2);
     }
