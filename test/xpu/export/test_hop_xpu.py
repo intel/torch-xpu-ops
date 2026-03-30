@@ -42,7 +42,7 @@ for op_info in hop_db:
 
 
 @unittest.skipIf(IS_WINDOWS, "Windows isn't supported for this case")
-@unittest.skipIf(not torchdynamo.is_dynamo_supported(), "dynamo isn't support")
+@unittest.skipIf(not torchdynamo.is_dynamo_supported(), "dynamo isn't supported")
 class TestHOP(TestCase):
     def _compare(self, eager_model, export, args, kwargs):
         eager_args = copy.deepcopy(args)

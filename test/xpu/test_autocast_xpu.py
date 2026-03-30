@@ -8,8 +8,6 @@
 
 # Owner(s): ["module: intel"]
 
-# Owner(s): ["module: unknown"]
-
 import unittest
 
 import torch
@@ -398,7 +396,7 @@ class TestTorchAutocast(TestCase):
         """Test that `autocast` throws a ValueError when provided a `torch.device` object for `device_type` instead of a string"""
         dev = torch.device("cpu")
         msg = f"Expected `device_type` of type `str`, got: `{type(dev)}`"
-        with self.assertRaisesRegex(expected_exception=ValueError, expected_regex=msg):
+        with self.assertRaisesRegex(ValueError, msg):
             torch.autocast(device_type=dev)
 
     def _test_autocast_nograd_caching_issue_158232_impl(self, device, dtype):
