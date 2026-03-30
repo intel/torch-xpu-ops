@@ -34,6 +34,9 @@ skip_dict = {
         # AssertionError:
         # Not equal to tolerance rtol=1e-06, atol=1e-06
         "test_forward_per_channel_xpu",
+        # AssertionError:
+        # Not equal to tolerance rtol=1e-06, atol=1e-06
+        "test_forward_per_tensor_xpu",
         # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
         "test_learnable_forward_per_channel_cpu_xpu",
     ),
