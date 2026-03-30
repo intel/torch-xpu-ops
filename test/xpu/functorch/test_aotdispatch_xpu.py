@@ -13,8 +13,8 @@
 # Owner(s): ["module: intel"]
 
 import copy
-import sys
 import itertools
+import sys
 import unittest
 import warnings
 from collections.abc import Callable
