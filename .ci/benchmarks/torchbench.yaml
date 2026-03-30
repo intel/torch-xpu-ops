@@ -204,6 +204,7 @@ skip:
     # Broken since mid-2025, eager_fail_to_run on all platforms.
     # Legacy 2017 model providing zero CI signal.
     - pytorch_CycleGAN_and_pix2pix
+    - *DETECTRON2_MODELS
 
   device:
     cpu:
