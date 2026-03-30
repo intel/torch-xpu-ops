@@ -253,7 +253,7 @@ template <typename scalar_t>
 struct UniqueDimLessFunctor {
   bool operator()(int64_t a, int64_t b) const {
     // this is a must to bypass padding comparison in bitonic sort.
-    if (a < 0 || b < 0 || a >= num_inp_ || b >= num_inp_)
+    if (a >= num_inp_ || b >= num_inp_)
       return a < b;
     // calculate the dictionary order
     for (int64_t i = 0; i < n_; ++i) {
