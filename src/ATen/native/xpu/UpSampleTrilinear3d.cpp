@@ -9,8 +9,8 @@
  */
 
 #include <ATen/core/Tensor.h>
+#include <ATen/Context.h>
 #include <ATen/native/xpu/sycl/UpSampleTrilinear3dKernels.h>
-#include <comm/SYCLContext.h>
 
 #include <ATen/ops/upsample_trilinear3d_backward_native.h>
 #include <ATen/ops/upsample_trilinear3d_native.h>
