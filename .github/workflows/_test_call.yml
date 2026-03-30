@@ -82,8 +82,6 @@ jobs:
         id: parse-config
         uses: ./.github/actions/conditions-filter
         with:
-          pr_number: ${{ github.event.pull_request.number || '' }}
-          base_ref: ${{ github.base_ref || '' }}
           all_inputs_json: ${{ inputs.all_inputs_json || '' }}
           is_scheduled_run: ${{ inputs.is_scheduled_run }}
 
