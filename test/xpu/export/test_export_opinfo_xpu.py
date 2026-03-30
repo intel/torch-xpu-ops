@@ -15,14 +15,13 @@
 import os
 import subprocess
 import sys
-import unittest
 
 import torch
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     ops,
 )
-from torch.testing._internal.common_methods_invocations import op_db, xfail
+from torch.testing._internal.common_methods_invocations import op_db
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 for op in op_db:

@@ -592,7 +592,7 @@ def _get_device_name(idx):
 
 def _test_consumer_to_single_producer_case_3_correctness(
     self, non_default_ambient_stream
-    ):
+):
     #                          Device    Stream
     # Consumer (MulBackward):  xpu:0    s0
     # Producer              :  xpu:1    xpu:1 default
