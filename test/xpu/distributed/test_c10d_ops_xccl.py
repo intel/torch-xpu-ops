@@ -190,8 +190,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
                 tensors = [
                     torch.tensor([self.rank + 1]).xpu(local_device_id).to(dtype=dtype)
                 ]
-
-                allreduce(tensors, c10d._make_xccl_premul_sum(factor))
+                allreduce(tensors, c10d.ReduceOp.PREMUL_SUM(factor))
                 self.assertEqual(
                     factor
                     * torch.tensor(
@@ -226,6 +225,18 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         ):
             with self.assertRaisesRegex(ValueError, "Cannot use " + err + " with XCCL"):
                 allreduce(tensors, op)
+
+        # Test that PREMUL_SUM is callable and returns a ReduceOp
+        premul_op = c10d.ReduceOp.PREMUL_SUM(2.0)
+        self.assertIsInstance(premul_op, c10d.ReduceOp)
+
+        # Test equality comparison
+        premul_op1 = c10d.ReduceOp.PREMUL_SUM(2.0)
+        premul_op2 = c10d.ReduceOp.PREMUL_SUM(2.0)
+        self.assertEqual(premul_op1, premul_op2)
+
+        # Like other ReduceOps, PREMUL_SUM should have a unique integer value.
+        self.assertEqual(c10d.ReduceOp.PREMUL_SUM, 8)
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
@@ -312,7 +323,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         #     ]
 
         #     reduce(float_tensors_ref, rt, 0)
-        #     reduce(float_tensors, rt, 0, c10d._make_xccl_premul_sum(factor))
+        #     reduce(float_tensors, rt, 0, c10d.ReduceOp.PREMUL_SUM(factor))
         #     if self.rank == rt:
         #         self.assertEqual(float_tensors_ref[0], float_tensors[0])
 
@@ -780,7 +791,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             tensor_lists_ref = [
                 [t.float() * factor_ref for t in tl] for tl in tensor_lists
             ]
-            reduce_scatter(output, tensor_lists, c10d._make_xccl_premul_sum(factor))
+            reduce_scatter(output, tensor_lists, c10d.ReduceOp.PREMUL_SUM(factor))
             reduce_scatter(output_ref, tensor_lists_ref, c10d.ReduceOp.SUM)
             self.assertEqual(output_ref, output)
 

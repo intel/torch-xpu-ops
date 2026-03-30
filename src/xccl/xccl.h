@@ -369,7 +369,7 @@ inline xcclRedOpRAIIV1 getXcclReduceOpV1(
               "PreMulSum Data type must be half, float, bfloat16 or double");
       }
 #else
-      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2022.0");
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
     }
     return xcclRedOpRAIIV1(xcclOpsV1.at(reduceOp));
@@ -416,7 +416,7 @@ inline xcclRedOpRAIIV2 getXcclReduceOpV2(
               "PreMulSum Data type must be half, float, bfloat16 or double");
       }
 #else
-      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2021.17");
+      C10_THROW_ERROR(ValueError, "PreMulSum requires oneCCL>=2022.0");
 #endif // ENABLE_XCCL_PREMUL_SUM_SUPPORT
     }
     return xcclRedOpRAIIV2(xcclOpsV2.at(reduceOp));
