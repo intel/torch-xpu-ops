@@ -16,6 +16,7 @@ import contextlib
 import itertools
 import math
 import unittest
+import warnings
 from functools import partial
 
 import torch
@@ -27,6 +28,7 @@ from torch.testing._internal.common_device_type import (
     precisionOverride,
 )
 from torch.testing._internal.common_dtype import (
+    floating_and_complex_types,
     floating_and_complex_types_and,
     floating_types_and,
 )
@@ -488,6 +490,75 @@ def __tunableop_ctx(self):
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
+
+@dtypes(*floating_and_complex_types())
+def pinv_errors_and_warnings(self, device, dtype):
+    # pinv requires at least 2D tensor
+    a = torch.randn(1, device=device, dtype=dtype)
+    with self.assertRaisesRegex(
+        RuntimeError, "expected a tensor with 2 or more dimensions"
+    ):
+        torch.linalg.pinv(a)
+
+    # if non-empty out tensor with wrong shape is passed a warning is given
+    a = torch.randn(3, 3, dtype=dtype, device=device)
+    out = torch.empty(7, 7, dtype=dtype, device=device)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*Aten Op fallback from XPU to CPU happends.*",
+            category=UserWarning,
+        )
+        torch.linalg.pinv(a, out=out)
+        self.assertEqual(len(w), 1)
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[-1].message)
+        )
+
+    # dtypes of out and input should be safely castable
+    out = torch.empty_like(a).to(torch.int)
+    with self.assertRaisesRegex(RuntimeError, "but got result with dtype Int"):
+        torch.linalg.pinv(a, out=out)
+
+    if torch.xpu.is_available():
+        # device of out and input should match
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        out = torch.empty_like(a).to(wrong_device)
+        with self.assertRaisesRegex(
+            RuntimeError, "Expected result and input tensors to be on the same device"
+        ):
+            torch.linalg.pinv(a, out=out)
+
+        # device of rcond and input should match
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        rcond = torch.full((), 1e-2, device=wrong_device)
+        with self.assertRaisesRegex(
+            RuntimeError, "Expected all tensors to be on the same device"
+        ):
+            torch.linalg.pinv(a, rcond=rcond)
+
+    # rcond can't be complex
+    rcond = torch.full((), 1j, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "rcond tensor of complex type is not supported"
+    ):
+        torch.linalg.pinv(a, rcond=rcond)
+
+    # atol can't be complex
+    atol = torch.full((), 1j, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "atol tensor of complex type is not supported"
+    ):
+        torch.linalg.pinv(a, atol=atol)
+
+    # rtol can't be complex
+    rtol = torch.full((), 1j, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "rtol tensor of complex type is not supported"
+    ):
+        torch.linalg.pinv(a, rtol=rtol)
+
+
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_preferred_blas_library = preferred_blas_library
@@ -504,6 +575,7 @@ TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
+TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
 TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True
