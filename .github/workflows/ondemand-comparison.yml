@@ -49,7 +49,7 @@ on:
       # Environment
       python:
         type: string
-        default: '3.10'
+        default: '3.12'
         description: 'Python version'
       runner:
         type: choice
@@ -89,7 +89,7 @@ jobs:
       all_inputs_json: ${{ toJSON(inputs) }}
       runner: ${{ needs.get-runner.outputs.runner_id }}
       windows_runner: 'Windows_CI'
-      is_scheduled_run: comparison-manually
+      is_scheduled_run: target-manually
       ut: 'op_p0'
       suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
@@ -104,7 +104,7 @@ jobs:
       all_inputs_json: ${{ toJSON(inputs) }}
       runner: ${{ needs.get-runner.outputs.runner_id }}
       windows_runner: 'Windows_CI'
-      is_scheduled_run: comparison-manually
+      is_scheduled_run: baseline-manually
       ut: 'op_p0'
       suite: 'huggingface,timm_models,torchbench'
     secrets: inherit

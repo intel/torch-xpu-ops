@@ -365,7 +365,7 @@ jobs:
 
       # On-demand Test Comparison
       - name: Execute On-demand Training tests
-        if: ${{ contains(inputs.test_type, 'target') || contains(inputs.test_type, 'baseline') }}
+        if: ${{ contains(inputs.test_role, 'target') || contains(inputs.test_role, 'baseline') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
@@ -374,7 +374,7 @@ jobs:
           scenario: accuracy,performance
           comparison_type: comparison
       - name: Execute On-demand Inference tests
-        if: ${{ contains(inputs.test_type, 'target') || contains(inputs.test_type, 'baseline') }}
+        if: ${{ contains(inputs.test_role, 'target') || contains(inputs.test_role, 'baseline') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}

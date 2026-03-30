@@ -51,6 +51,10 @@ jobs:
   parse-inputs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      test_role: ${{ inputs.test_role }}
+      ut: ${{ inputs.ut }}
+      suite: ${{ inputs.suite }}
     outputs:
       # Configuration
       test_type: ${{ steps.parse-config.outputs.test_type }}
@@ -59,24 +63,18 @@ jobs:
       should_build: ${{ steps.parse-config.outputs.should_build }}
 
       # Test scope
-      ut_list_json: ${{ steps.parse-config.outputs.ut_list_json }}
-      suite_list_json: ${{ steps.parse-config.outputs.suite_list_json }}
-      dt: ${{ steps.parse-config.outputs.dt }}
-      mode: ${{ steps.parse-config.outputs.mode }}
-      scenario: ${{ steps.parse-config.outputs.scenario }}
-      model_only: ${{ steps.parse-config.outputs.model_only }}
-
-      # Flags
-      has_ut_tests: ${{ steps.parse-config.outputs.has_ut_tests }}
-      has_e2e_tests: ${{ steps.parse-config.outputs.has_e2e_tests }}
-      has_microbench: ${{ steps.parse-config.outputs.has_microbench }}
-      has_windows: ${{ steps.parse-config.outputs.has_windows }}
+      what_to_run: ${{ steps.parse-config.outputs.what_to_run }}
+      ut_json_array: ${{ toJson(steps.parse-config.outputs.ut_json_array) }}
+      suite_json_array: ${{ toJson(steps.parse-config.outputs.suite_json_array) }}
 
       # Others
       python: ${{ steps.parse-config.outputs.python }}
-      test_role: ${{ steps.parse-config.outputs.test_role }}
       component: ${{ steps.parse-config.outputs.component }}
       component_version: ${{ steps.parse-config.outputs.component_version }}
+      dt: ${{ steps.parse-config.outputs.dt }}
+      mode: ${{ steps.parse-config.outputs.mode }}
+      scenario: ${{ steps.parse-config.outputs.scenario }}
+      model: ${{ steps.parse-config.outputs.model }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -88,8 +86,6 @@ jobs:
           base_ref: ${{ github.base_ref || '' }}
           all_inputs_json: ${{ inputs.all_inputs_json || '' }}
           is_scheduled_run: ${{ inputs.is_scheduled_run }}
-          ut: ${{ inputs.ut }}
-          suite: ${{ inputs.suite }}
 
   linux-build:
     needs: [parse-inputs]
@@ -102,7 +98,7 @@ jobs:
       torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
       should_build: ${{ needs.parse-inputs.outputs.should_build }}
       python: ${{ needs.parse-inputs.outputs.python }}
-      test_role: ${{ needs.parse-inputs.outputs.test_role }}
+      test_role: ${{ inputs.test_role }}
       component: ${{ needs.parse-inputs.outputs.component }}
       component_version: ${{ needs.parse-inputs.outputs.component_version }}
 
@@ -110,20 +106,20 @@ jobs:
     needs:
       - parse-inputs
       - linux-build
-    if: ${{ needs.parse-inputs.outputs.has_ut_tests == 'true' }}
+    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'ut') }}
     secrets: inherit
     permissions: write-all
     strategy:
       fail-fast: false
       matrix:
-        ut_name: ${{ fromJSON(needs.parse-inputs.outputs.ut_list_json) }}
+        ut_name: ${{ fromJSON(needs.parse-inputs.outputs.ut_json_array) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
       torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
       python: ${{ needs.parse-inputs.outputs.python }}
-      test_role: ${{ needs.parse-inputs.outputs.test_role }}
+      test_role: ${{ inputs.test_role }}
       component: ${{ needs.parse-inputs.outputs.component }}
       component_version: ${{ needs.parse-inputs.outputs.component_version }}
       ut: ${{ matrix.ut_name }}
@@ -132,31 +128,31 @@ jobs:
     needs:
       - parse-inputs
       - linux-build
-    if: ${{ needs.parse-inputs.outputs.has_e2e_tests == 'true' }}
+    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'e2e') }}
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(needs.parse-inputs.outputs.suite_list_json) }}
+        suite: ${{ fromJSON(needs.parse-inputs.outputs.suite_json_array) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
       python: ${{ needs.parse-inputs.outputs.python }}
-      test_role: ${{ needs.parse-inputs.outputs.test_role }}
+      test_role: ${{ inputs.test_role }}
       component: ${{ needs.parse-inputs.outputs.component }}
       component_version: ${{ needs.parse-inputs.outputs.component_version }}
       suite: ${{ matrix.suite }}
       dt: ${{ needs.parse-inputs.outputs.dt }}
       mode: ${{ needs.parse-inputs.outputs.mode }}
       scenario: ${{ needs.parse-inputs.outputs.scenario }}
-      model: ${{ needs.parse-inputs.outputs.model_only }}
+      model: ${{ needs.parse-inputs.outputs.model }}
 
   linux-microbench:
     needs:
       - parse-inputs
       - linux-build
-    if: ${{ needs.parse-inputs.outputs.has_microbench == 'true' }}
+    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'microbench') }}
     secrets: inherit
     uses: ./.github/workflows/_linux_op_benchmark.yml
     permissions: write-all
@@ -167,7 +163,7 @@ jobs:
 
   windows-ut:
     needs: [parse-inputs]
-    if: ${{ needs.parse-inputs.outputs.has_windows == 'true' }}
+    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'windows') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
