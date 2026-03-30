@@ -545,18 +545,3 @@ runs:
         echo "Reproduce Command: pytest -sv failed_case" | tee -a "${REPRODUCE_FILE}"
 
         echo "op_p0 tests completed"
-
-    - name: Check Results
-      shell: timeout 1800 bash -eo pipefail {0}
-      if: ${{ always() }}
-      run: |
-        # Set test environment
-        pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
-        mkdir -p /tmp/results/target/
-        rsync -avz --delete ${GITHUB_WORKSPACE}/ut_log/ /tmp/results/target/
-        python .github/scripts/compare-ut.py --input /tmp/results/target/ --output ut_comparison.csv --untracked-failures
-        if [ -f ut_comparison_untracked_failures.csv ];then
-          echo "New failures found:"
-          cat ut_comparison_untracked_failures.csv
-          exit 1
-        fi

@@ -266,3 +266,31 @@ jobs:
           rm -rf /tmp/tmp* 2>/dev/null || true
 
           echo "Cleanup completed"
+
+  summary:
+    name: '${{ inputs.ut }} summary'
+    needs: [distributed, UT]
+    timeout-minutes: 30
+    if: ${{ ! cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout torch-xpu-ops repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+      - name: Download XPU UT Logs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Inductor-XPU-UT-Data-*
+          path: ut_log/target/
+          merge-multiple: true
+      - name: Check Results
+        run: |
+          # Set test environment
+          pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
+          python .github/scripts/compare-ut.py --input ut_log/target/ --output ut_comparison.csv --untracked-failures
+          if [ -f ut_comparison_untracked_failures.csv ];then
+            echo "New failures found:"
+            cat ut_comparison_untracked_failures.csv
+            exit 1
+          fi
