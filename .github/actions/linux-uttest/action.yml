@@ -552,6 +552,7 @@ runs:
       run: |
         # Set test environment
         pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
+        mkdir -p /tmp/results/target/
         rsync -avz --delete ${GITHUB_WORKSPACE}/ut_log/ /tmp/results/target/
         python .github/scripts/compare-ut.py --input /tmp/results/target/ --output ut_comparison.csv --untracked-failures
         if [ -f ut_comparison_untracked_failures.csv ];then
