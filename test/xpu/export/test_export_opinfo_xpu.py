@@ -13,6 +13,7 @@
 # Owner(s): ["module: intel"]
 
 import itertools
+import os
 import subprocess
 import sys
 import unittest
@@ -174,7 +175,7 @@ for op in ops:
             (
                 subprocess.check_output(
                     [sys.executable, "-c", test_script],
-                    env={"ZE_AFFINITY_MASK": ""},
+                    env={**os.environ, "ZE_AFFINITY_MASK": ""},
                 )
             )
             .decode("ascii")
@@ -237,7 +238,7 @@ xpu_calls_behavior_unchanged()
             (
                 subprocess.check_output(
                     [sys.executable, "-c", test_script],
-                    env={"ZE_AFFINITY_MASK": ""},
+                    env={**os.environ, "ZE_AFFINITY_MASK": ""},
                 )
             )
             .decode("ascii")
