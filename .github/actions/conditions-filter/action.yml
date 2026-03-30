@@ -176,8 +176,8 @@ runs:
         # Determine configuration based on run type
         if [ "${{ inputs.is_scheduled_run }}" == "pull_request" ]; then
           # PR run: decide based on labels
-          if [[ "${pr_labels}" != *"disable_build"* ]]; then
-            pytorch="nightly"
+          if [[ "${pr_labels}" == *"disable_build"* ]]; then
+            pytorch="nightly_wheel"
             torch_xpu_ops="pull_request"
             should_build="false"
             test_type="wheel-cicd"
