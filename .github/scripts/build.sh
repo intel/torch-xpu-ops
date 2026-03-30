@@ -80,7 +80,12 @@ sed -i "s/checkout --quiet \${TORCH_XPU_OPS_COMMIT}/log -n 1/g" caffe2/CMakeList
 # Ops in FALLBACK_ALLOW_LIST should override decompositions when the decomposition
 # returns NotImplemented (e.g. index_add for bfloat16).
 # TODO: Remove this once the upstream fix is merged into PyTorch.
-sed -i 's/make_fallback(target, warn=False, get_decomp_fn=self.get_decomp_fn)/make_fallback(target, warn=False, override_decomp=True, get_decomp_fn=self.get_decomp_fn)/g' torch/_inductor/graph.py
+if grep -q 'make_fallback(target, warn=False, get_decomp_fn=self.get_decomp_fn)' torch/_inductor/graph.py; then
+    sed -i 's/make_fallback(target, warn=False, get_decomp_fn=self.get_decomp_fn)/make_fallback(target, warn=False, override_decomp=True, get_decomp_fn=self.get_decomp_fn)/g' torch/_inductor/graph.py
+    echo "Applied FALLBACK_ALLOW_LIST override_decomp fix to torch/_inductor/graph.py"
+else
+    echo "WARNING: FALLBACK_ALLOW_LIST fix pattern not found in torch/_inductor/graph.py, upstream may have resolved this"
+fi
 git diff
 WERROR=1 python setup.py bdist_wheel
 
