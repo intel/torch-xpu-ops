@@ -182,13 +182,13 @@ struct ComputeGradWeightBagsKernelFunctor {
       bool count_defined,
       int64_t per_sample_weights_stride,
       acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
-      index_t* indices_data,
+      const index_t* indices_data,
       const scalar_t* gradoutput_data,
-      index_t* offset2bag_data,
-      index_t* count_data,
-      index_t* bag_size_data,
+      const index_t* offset2bag_data,
+      const index_t* count_data,
+      const index_t* bag_size_data,
       const scalar_t* per_sample_weights_data,
-      index_t* segment_offsets_data)
+      const index_t* segment_offsets_data)
       : numel_(numel),
         stride_(stride),
         mode_mean_(mode_mean),
@@ -216,13 +216,13 @@ struct ComputeGradWeightBagsKernelFunctor {
   bool count_defined_;
   int64_t per_sample_weights_stride_;
   acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
-  index_t* indices_data_;
+  const index_t* indices_data_;
   const scalar_t* gradoutput_data_;
-  index_t* offset2bag_data_;
-  index_t* count_data_;
-  index_t* bag_size_data_;
+  const index_t* offset2bag_data_;
+  const index_t* count_data_;
+  const index_t* bag_size_data_;
   const scalar_t* per_sample_weights_data_;
-  index_t* segment_offsets_data_;
+  const index_t* segment_offsets_data_;
 };
 
 template <typename scalar_t, typename index_t>
@@ -332,10 +332,10 @@ struct ComputeGradWeightKernelFunctor {
       int64_t stride_warped,
       bool count_defined,
       acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
-      index_t* indices_data,
+      const index_t* indices_data,
       const scalar_t* grad_output_data,
-      index_t* count_data,
-      index_t* segment_offsets_data)
+      const index_t* count_data,
+      const index_t* segment_offsets_data)
       : numel_(numel),
         stride_(stride),
         num_of_segments_(num_of_segments),
@@ -354,10 +354,10 @@ struct ComputeGradWeightKernelFunctor {
   int64_t stride_warped_;
   bool count_defined_;
   acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
-  index_t* indices_data_;
+  const index_t* indices_data_;
   const scalar_t* grad_output_data_;
-  index_t* count_data_;
-  index_t* segment_offsets_data_;
+  const index_t* count_data_;
+  const index_t* segment_offsets_data_;
 };
 
 template <typename scalar_t, typename index_t>
@@ -373,7 +373,7 @@ void compute_grad_weight(
   bool count_defined = count.defined();
 
   auto grad_weight_per_segment_data =
-      grad_weight_per_segment.const_data_ptr<acc_type_device<scalar_t, kXPU>>();
+      grad_weight_per_segment.data_ptr<acc_type_device<scalar_t, kXPU>>();
   auto indices_data = indices.const_data_ptr<index_t>();
   auto grad_output_data = grad_output.const_data_ptr<scalar_t>();
   auto count_data = count_defined
@@ -447,10 +447,10 @@ struct SumAndScatterKernelFunctor {
       const int64_t padding_idx,
       int64_t stride_warped,
       scalar_t* grad_weight_data,
-      index_t* input_data,
-      index_t* segment_offsets_data,
-      acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
-      index_t* segment_sizes_offsets_data)
+      const index_t* input_data,
+      const index_t* segment_offsets_data,
+      const acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data,
+      const index_t* segment_sizes_offsets_data)
       : stride_(stride),
         num_of_segments_(num_of_segments),
         num_of_partial_segments_(num_of_partial_segments),
@@ -473,10 +473,10 @@ struct SumAndScatterKernelFunctor {
   const int64_t padding_idx_;
   int64_t stride_warped_;
   scalar_t* grad_weight_data_;
-  index_t* input_data_;
-  index_t* segment_offsets_data_;
-  acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
-  index_t* segment_sizes_offsets_data_;
+  const index_t* input_data_;
+  const index_t* segment_offsets_data_;
+  const acc_type_device<scalar_t, kXPU>* grad_weight_per_segment_data_;
+  const index_t* segment_sizes_offsets_data_;
 };
 
 template <typename scalar_t, typename index_t>
@@ -490,7 +490,7 @@ void sum_and_scatter(
     const Tensor& segment_sizes_offsets,
     int64_t num_of_partial_segments,
     const int64_t padding_idx) {
-  auto grad_weight_data = grad_weight.const_data_ptr<scalar_t>();
+  auto grad_weight_data = grad_weight.data_ptr<scalar_t>();
   auto input_data = input.const_data_ptr<index_t>();
   auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
   auto grad_weight_per_segment_data =
@@ -587,7 +587,7 @@ Tensor embedding_backward_deterministic_kernel(
         at::empty({numel}, at::TensorOptions().device(kXPU).dtype(kLong));
     auto count_begin = count_tensor.data_ptr<int64_t>();
     pstl::itoa(count_begin, count_begin + numel, (int64_t)0);
-    auto segment_offsets_begin = segment_offsets.const_data_ptr<index_t>();
+    auto segment_offsets_begin = segment_offsets.data_ptr<index_t>();
     EmbeddingBackwardDeterministicKernelTransformFirstTrueFunctor
         transform_first_true_functor;
     pstl::transform_first_true<index_t>(
