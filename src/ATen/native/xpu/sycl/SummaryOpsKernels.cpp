@@ -13,6 +13,10 @@
 // Avoid SYCL compiler return-type error
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
+#ifdef _MSC_VER
+  #pragma warning(push)
+  #pragma warning(disable : 4715)
+#endif
 
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -334,3 +338,6 @@ Tensor bincount_kernel(
 
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
+#ifdef _MSC_VER
+  #pragma warning(pop)
+#endif
