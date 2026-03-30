@@ -54,9 +54,9 @@ on:
       runner:
         type: choice
         options:
-          - pvc-1100
-          - bmg-b60
-        default: 'pvc-1100'
+          - PVC
+          - BMG
+        default: 'PVC'
         description: 'What runner to use'
 
 permissions: read-all
@@ -66,12 +66,7 @@ run-name: >-
 
 jobs:
   get-runner:
-    runs-on: |
-      (contains(inputs.runner, 'pvc') && 'pvc_rolling')
-      ||
-      (contains(inputs.runner, 'bmg') && 'bmg-test')
-      ||
-      inputs.runner
+    runs-on: ${{ contains(inputs.runner, 'BMG') && 'bmg-test' || 'pvc_rolling' }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
     steps:
