@@ -495,7 +495,8 @@ void sum_and_scatter(
   auto segment_offsets_data = segment_offsets.const_data_ptr<index_t>();
   auto grad_weight_per_segment_data =
       grad_weight_per_segment.const_data_ptr<acc_type_device<scalar_t, kXPU>>();
-  auto segment_sizes_offsets_data = segment_sizes_offsets.const_data_ptr<index_t>();
+  auto segment_sizes_offsets_data =
+      segment_sizes_offsets.const_data_ptr<index_t>();
 
   auto kfn = SumAndScatterKernelFunctor<scalar_t, index_t>(
       stride,
