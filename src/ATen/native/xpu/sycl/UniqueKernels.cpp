@@ -166,7 +166,7 @@ std::tuple<Tensor, Tensor, Tensor> unique_template(
     at::native::xpu::pstl::sort<scalar_t, int64_t>(
         self_c.const_data_ptr<scalar_t>(),
         output.data_ptr<scalar_t>(),
-      sorted_indices.data_ptr<int64_t>(),
+        sorted_indices.data_ptr<int64_t>(),
         num_inp,
         false);
   }

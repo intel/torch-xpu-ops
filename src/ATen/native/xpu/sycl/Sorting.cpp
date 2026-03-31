@@ -153,9 +153,9 @@ void sort_stable_kernel(
         int nsegments = numel / nsort;
         segmented_sort_pairs<scalar_t, int64_t>(
             self_ptr,
-        values_tensor.data_ptr<scalar_t>(),
+            values_tensor.data_ptr<scalar_t>(),
             nullptr,
-        indices_tensor.data_ptr<int64_t>(),
+            indices_tensor.data_ptr<int64_t>(),
             nsegments,
             nsort,
             descending);
