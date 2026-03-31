@@ -80,14 +80,10 @@ def _test_max_pool2d_pt2e(self):
 @given(
     X=hu.tensor(
         shapes=hu.array_shapes(min_dims=3, max_dims=4, min_side=1, max_side=10),
-        # cudnn's support for quantized pooling is limited to
-        # int8 currently
         qparams=hu.qparams(dtypes=[torch.qint8]),
     ),
     kernel=st.sampled_from((3, 5, 7)),
     stride=st.sampled_from((None, 1, 2)),
-    # currently there is no support for dilation for cudnn
-    # pooling
     dilation=st.integers(1, 1),
     padding=st.integers(0, 2),
     ceil_mode=st.booleans(),
