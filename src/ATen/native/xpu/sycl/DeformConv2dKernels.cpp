@@ -79,8 +79,8 @@
 #pragma clang diagnostic ignored "-Wreturn-type"
 #pragma GCC diagnostic ignored "-Wreturn-type"
 #ifdef _MSC_VER
-  #pragma warning(push)
-  #pragma warning(disable : 4715)
+#pragma warning(push)
+#pragma warning(disable : 4715)
 #endif
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
@@ -1506,5 +1506,5 @@ deform_conv2d_backward_kernel(
 #pragma GCC diagnostic pop
 #pragma clang diagnostic pop
 #ifdef _MSC_VER
-  #pragma warning(pop)
+#pragma warning(pop)
 #endif
