@@ -4827,6 +4827,7 @@ class TestSDPACudaOnly(NNTestCase):
                 ):
                     raise AssertionError("expected EFFICIENT_ATTENTION backend")
 
+    @skipIfXpu(msg="XPU has different implementations, skip the performance check.")
     @onlyAccelerator
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_CUDNN_ATTENTION,
@@ -4872,14 +4873,14 @@ class TestSDPACudaOnly(NNTestCase):
             else:
                 with sdpa_kernel(order, set_priority=True):
                     scaled_dot_product_attention(q, q, q)
-            torch.cuda.synchronize()
+            torch.accelerator.synchronize()
             t0 = time.perf_counter()
             if use_compile:
                 compiled_func(order)
             else:
                 with sdpa_kernel(order, set_priority=True):
                     scaled_dot_product_attention(q, q, q)
-            torch.cuda.synchronize()
+            torch.accelerator.synchronize()
             t1 = time.perf_counter()
             times.append(t1 - t0)
         self.assertTrue(
