@@ -1188,9 +1188,10 @@ at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
   Tensor padded_values_view =
       D_folded ? padded_values.unsqueeze(-1) : padded_values;
 
-  AT_DISPATCH_ALL_TYPES_AND2(
+  AT_DISPATCH_ALL_TYPES_AND3(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
       [&] {
