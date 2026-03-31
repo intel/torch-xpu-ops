@@ -110,8 +110,16 @@ macro(set_build_flags)
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -Wno-absolute-value)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-fast-math)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fma)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
+      # -fma which we used before is an alias used for -ffp-contract=fast for compatibility reasons
+      # with very old version of the ICX compiler. The -ffp-contract=fast is supported by both closed
+      # source and open source DPC++ compiler versions.
+      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -ffp-contract=fast)
+      # -no-ftz is supported only by ICX compiler shipped with oneAPI Toolkits. For the
+      # DPCLANG open source compiler that's the default mode and no option is needed.
+      CHECK_SYCL_FLAG("-no-ftz" SUPPORTS_NO_FTZ)
+      if(SUPPORTS_NO_FTZ)
+        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -no-ftz)
+      endif()
     endif()
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)

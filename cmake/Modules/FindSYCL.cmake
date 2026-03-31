@@ -463,6 +463,9 @@ macro(SYCL_ADD_LIBRARY sycl_target)
       ${_cxx_sources})
   endif()
 
+  target_link_directories(${sycl_target}
+    PUBLIC ${SYCL_LIBRARY_DIR})
+
   target_link_libraries(
     ${sycl_target}
     ${SYCL_LINK_LIBRARIES_KEYWORD}
@@ -521,6 +524,9 @@ macro(SYCL_ADD_EXECUTABLE sycl_target)
       ${_cmake_options}
       ${_cxx_sources})
   endif()
+
+  target_link_directories(${sycl_target}
+    PUBLIC ${SYCL_LIBRARY_DIR})
 
   target_link_libraries(
     ${sycl_target}
