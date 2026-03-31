@@ -16107,11 +16107,16 @@ if __name__ == '__main__':
     run_tests()
         """
         )
-        # CUDA says "device-side assert triggered", ROCm says "unspecified launch failure"
+        # CUDA says "device-side assert triggered"
+        # ROCm says "unspecified launch failure"
+        # XPU says "Assertion `<condition>` failed"
         has_cuda_assert = "CUDA error: device-side assert triggered" in stderr
         has_hip_assert = "HIP error" in stderr and "launch failure" in stderr
+        has_xpu_assert = (
+            "Assertion `cur_target >= 0 && cur_target < n_classes` failed" in stderr
+        )
         self.assertTrue(
-            has_cuda_assert or has_hip_assert,
+            has_cuda_assert or has_hip_assert or has_xpu_assert,
             f"Expected device assert error in stderr, got: {stderr}",
         )
 
