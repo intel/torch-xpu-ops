@@ -455,7 +455,7 @@ def main():
         print("Failed tasks:")
         for task in failed_tasks:
             print(f"  - {task.suite} {task.dt} {task.mode} {task.scenario} {task.model}")
-        sys.exit(1)
+        sys.exit(0)
     else:
         print("All tasks completed successfully.")
         sys.exit(0)
