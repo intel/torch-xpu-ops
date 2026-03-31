@@ -1,4 +1,5 @@
 name: Linux E2E Test
+description: Linux E2E Test
 
 inputs:
   suite:
@@ -80,6 +81,10 @@ runs:
           done
           wait
         }
+        delimiter=";"
+        IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
+        export NUM_GPUS=${#numactl_args_list[@]}
+        cp ${GITHUB_WORKSPACE}/.github/scripts/run_dynamo.py .
         for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
         do
           if ! contains "huggingface,timm_models,torchbench" "$suite"; then
@@ -100,12 +105,8 @@ runs:
                 if ! contains "accuracy,performance" "$scenario"; then
                   continue
                 fi
-                run_with_shard
-                # summarize pass rate
-                LOG_DIR="inductor_log/${suite}/${dt}"
-                LOG_NAME=inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log
-                rm -f ${LOG_DIR}/${LOG_NAME}
-                find ${LOG_DIR}/ -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" |xargs cat >> ${LOG_DIR}/${LOG_NAME} 2>&1
+                # run_with_shard
+                python ./run_dynamo.py --suite ${suite} --dt ${dt} --mode ${mode} --scenario ${scenario}
               done
             done
           done

@@ -62,6 +62,7 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
       numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
+      ZE_AFFINITY_MASK: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -81,6 +82,7 @@ jobs:
               -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         numactl_args: ${{ needs.runner.outputs.numactl_args }}
+        ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ZE_AFFINITY_MASK }}
         MODEL_ONLY_NAME: ${{ inputs.model }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     steps:
