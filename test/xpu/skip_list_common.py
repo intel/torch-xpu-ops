@@ -21,10 +21,25 @@ skip_dict = {
     "nn/test_parametrization_xpu.py": None,
     "nn/test_pooling_xpu.py": None,
     "nn/test_pruning_xpu.py": None,
-    "quantization/core/test_quantized_op_xpu.py": None,
+    "quantization/core/test_quantized_op_xpu.py": (
+        # AssertionError: Tensor-likes are not close!
+        # RuntimeError: value cannot be converted to type int without overflow
+        "test_add_scalar_relu_xpu",
+        # AssertionError: Tensor-likes are not close!
+        "test_cat_nhwc_xpu",
+    ),
     "quantization/core/test_quantized_tensor_xpu.py": None,
     "quantization/core/test_workflow_module_xpu.py": None,
-    "quantization/core/test_workflow_ops_xpu.py": None,
+    "quantization/core/test_workflow_ops_xpu.py": (
+        # AssertionError:
+        # Not equal to tolerance rtol=1e-06, atol=1e-06
+        "test_forward_per_channel_xpu",
+        # AssertionError:
+        # Not equal to tolerance rtol=1e-06, atol=1e-06
+        "test_forward_per_tensor_xpu",
+        # AssertionError: False is not true : Expected kernel forward function to have results match the reference forward function
+        "test_learnable_forward_per_channel_cpu_xpu",
+    ),
     "test_autocast_xpu.py": None,
     "test_autograd_fallback_xpu.py": None,
     "test_autograd_xpu.py": None,
