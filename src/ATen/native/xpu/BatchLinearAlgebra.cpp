@@ -135,13 +135,13 @@ void triangular_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
-
-TORCH_IMPL_FUNC(linalg_cholesky_ex_xpu_out)(const Tensor& A,
-    bool upper,
-    bool check_errors,
-    const Tensor& L,
-    const Tensor& info) {
-      xpu::linalg_cholesky_ex_kernel(A, upper, check_errors, L, info);
+TORCH_IMPL_FUNC(linalg_cholesky_ex_xpu_out)
+(const Tensor& A,
+ bool upper,
+ bool check_errors,
+ const Tensor& L,
+ const Tensor& info) {
+  xpu::linalg_cholesky_ex_kernel(A, upper, check_errors, L, info);
 }
 
 } // namespace at::native
