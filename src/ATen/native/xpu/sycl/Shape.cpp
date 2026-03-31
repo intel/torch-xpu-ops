@@ -580,14 +580,6 @@ void cat_out_kernel(
 
   auto materialized = tensors.materialize();
 
-  // We parallelize the copy if all 6 conditions pass:
-  //
-  // 1. There is more than one input tensor
-  // 2. The out tensor is 32-bit indexable
-  // 3. The number of dimensions is <= 4
-  // 4. All input tensors are contiguous (output tensor may be non-contig)
-  // 5. All input tensors can use 32-bit indexing
-
   const bool all32BitIndexable = std::all_of(
       materialized.begin(), materialized.end(), [](const Tensor& t) {
         return canUse32BitIndexMath(t);
