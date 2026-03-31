@@ -55,7 +55,7 @@ env:
   # Centralize important paths
   BUILD_DIR: ${{ github.workspace }}/${{ inputs.test_role }}
   PYTORCH_SRC: ${{ github.workspace }}/${{ inputs.test_role }}/pytorch
-  TORCH_XPU_OPS_SRC: ${{ github.workspace }}/torch-xpu-ops
+  TORCH_XPU_OPS_SRC: ${{ github.workspace }}/${{ inputs.test_role }}/torch-xpu-ops
 
 jobs:
   runner:
@@ -163,7 +163,7 @@ jobs:
       - name: Checkout torch-xpu-ops (again for build job)
         uses: actions/checkout@v6
         with:
-          path: ${{ env.BUILD_DIR }}/torch-xpu-ops
+          path: ${{ env.TORCH_XPU_OPS_SRC }}
           fetch-depth: 1
 
       - name: Setup oneAPI DLE
