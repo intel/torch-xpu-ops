@@ -37,13 +37,11 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyCUDA,
     onlyOn,
-    onlyXPU,
     tol as xtol,
     toleranceOverride,
 )
 from torch.testing._internal.common_utils import (
     decorateIf,
-    DeterministicGuard,
     getRocmVersion,
     IS_JETSON,
     IS_WINDOWS,
@@ -442,15 +440,6 @@ class TestMatmulCuda(InductorTestCase):
         first = torch.matmul(inp, inp)
         for _ in range(10):
             self.assertEqual(first, torch.matmul(inp, inp), atol=0.0, rtol=0.0)
-
-    @onlyXPU
-    @parametrize("shape", [513, 767])
-    def test_matmul_deterministic_mode(self, device, shape):
-        with DeterministicGuard(True):
-            inp = torch.randn(shape, shape, device=device, dtype=torch.float32)
-            first = torch.matmul(inp, inp)
-            for _ in range(10):
-                self.assertEqual(first, torch.matmul(inp, inp), atol=0.0, rtol=0.0)
 
     def grouped_mm_helper(self, alist, blist, gOlist, agradlist, bgradlist, outlist):
         for a, b, gO, agrad, bgrad, out in zip(
