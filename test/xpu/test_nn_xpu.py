@@ -6640,10 +6640,7 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         x = torch.empty((2, 2), dtype=torch.float64).fill_(float("inf"))
         for device in device_():
             result = F.pdist(x.to(device), p=0.0)
-            if device == "cpu":  # CPU returns NaN and CUDA/XPU returns 2.0
-                self.assertTrue(
-                    torch.isnan(result).item(), "Expected NaN in pdist output"
-                )
+            self.assertTrue(torch.isnan(result).item(), "Expected NaN in pdist output")
 
     def test_cosine_embedding_loss_with_diff_type(self):
         for device in device_():
