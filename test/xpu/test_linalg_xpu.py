@@ -523,7 +523,7 @@ def matrix_rank_out_errors_and_warnings(self, device, dtype):
 
     # device should match
     if torch.xpu.is_available():
-        wrong_device = 'cpu' if self.device_type != 'cpu' else 'xpu'
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         out = torch.empty(0, dtype=dtype, device=wrong_device)
         with self.assertRaisesRegex(RuntimeError, "tensors to be on the same device"):
             torch.linalg.matrix_rank(a, out=out)
