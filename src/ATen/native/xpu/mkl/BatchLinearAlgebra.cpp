@@ -518,6 +518,7 @@ void linalg_cholesky_ex_kernel_impl(
   } catch (const oneapi::mkl::lapack::exception& e) {
     info_data[0] = e.info();
   }
+  queue.wait_and_throw();
   info.copy_(info_cpu);
   sycl::free(buffer, queue);
 
