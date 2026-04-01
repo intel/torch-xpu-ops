@@ -1,15 +1,26 @@
-// Copyright 2020-2026 Intel Corporation
-// Licensed under the Apache License, Version 2.0
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
 #include <ATen/ATen.h>
 #include <ATen/xpu/XPUContext.h>
 #include <sycl/sycl.hpp>
 
-// sycl-tla headers (same as research kernel)
+// sycl-tla (CUTLASS for Intel Xe GPU) headers
 #include <cute/tensor.hpp>
 #include <cutlass/epilogue/collective/default_epilogue.hpp>
 #include <cutlass/epilogue/collective/xe_epilogue.hpp>
+#include <cutlass/epilogue/fusion/sm90_callbacks_tma_warpspecialized.hpp>
 #include <cutlass/epilogue/fusion/xe_callbacks.hpp>
+#include <cutlass/epilogue/thread/activation.h>
+#include <cutlass/fast_math.h>
+#include <cutlass/functional.h>
 #include <cutlass/gemm/collective/collective_mma.hpp>
 #include <cutlass/gemm/device/gemm_universal.h>
 #include <cutlass/gemm/device/gemm_universal_adapter.h>
@@ -48,15 +59,14 @@ using LayoutC = cutlass::layout::RowMajor;
 using LayoutD = cutlass::layout::RowMajor;
 using ElementAccumulator = float;
 
-// ── GEMM template ────────────────────────────────────────────────────────────
+// ── Gate GEMM with SiLU activation epilogue ─────────────────────────────────
 //
+// Uses LinCombEltAct<SiLu>: D = SiLU(alpha * acc + beta * C)
+// With alpha=1, beta=0 this computes D = SiLU(acc).
 // GEMM outputs fp16/bf16 directly (v0.7 auto-deduces 16-bit store copy atom).
-// Beta=0, no C source load needed.  Each GEMM writes to its own contiguous
-// [M, N] buffer (ldd=N), ensuring PyTorch-allocated 64-byte-aligned base
-// addresses for 2D block store compatibility on both PVC and BMG.
 
 template <typename Element, typename TileShape_, typename SubGroupLayout_>
-static void run_sycl_tla_gemm_impl(
+static void run_gate_gemm_silu_impl(
     const void* input_ptr,
     const void* weight_ptr,
     void* output_ptr,
@@ -71,16 +81,15 @@ static void run_sycl_tla_gemm_impl(
 
   using GEMMDispatchPolicy = cutlass::gemm::MainloopXeL1Staged<3>;
   using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeGeneric;
-
-  // 16-bit output: v0.7 auto-deduces correct store copy atom for ElementD
-  // bitwidth.
   using ElementOutput = Element;
 
-  using EpilogueOp = cutlass::epilogue::fusion::LinearCombination<
+  // LinCombEltAct<SiLu>: D = SiLu(alpha * acc + beta * C)
+  using EpilogueOp = cutlass::epilogue::fusion::LinCombEltAct<
+      cutlass::epilogue::thread::SiLu,
       ElementOutput,
       float,
-      ElementAccumulator,
-      ElementAccumulator,
+      void,
+      float,
       cutlass::FloatRoundStyle::round_to_nearest>;
 
   using FusionCallbacks = cutlass::epilogue::fusion::FusionCallbacks<
@@ -98,8 +107,8 @@ static void run_sycl_tla_gemm_impl(
       ElementOutput, // ElementD (fp16/bf16)
       cutlass::gemm::TagToStrideC_t<LayoutD>, // StrideD
       FusionCallbacks,
-      void, // CopyOpG2R (auto-deduce, no C load)
-      void>; // CopyOpR2G (auto-deduce → 16-bit store)
+      void, // CopyOpG2R (auto-deduce)
+      void>; // CopyOpR2G (auto-deduce)
 
   using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<
       GEMMDispatchPolicy,
@@ -161,7 +170,7 @@ static void run_sycl_tla_gemm_impl(
   Gemm gemm_op;
   TORCH_CHECK(
       gemm_op.can_implement(arguments) == cutlass::Status::kSuccess,
-      "fused_gate_up_silu: problem size M=",
+      "fused_gate_up_silu: gate GEMM+SiLU problem size M=",
       M,
       " N=",
       N,
@@ -172,10 +181,143 @@ static void run_sycl_tla_gemm_impl(
   SYCL_TLA_CHECK(gemm_op.run(&queue));
 }
 
-// ── M-based tile dispatch ───────────────────────────────────────────────────
+// ── Up GEMM with multiply epilogue ──────────────────────────────────────────
+//
+// EVT epilogue: D = acc * aux_load(silu_buf)
+// Uses Sm90EVT<Sm90Compute<multiplies>, Sm90AccFetch, XeAuxLoad>.
+// Loads SiLU(gate) result from global memory during epilogue and multiplies
+// with up GEMM accumulator, writing the final fused output directly.
+
+template <typename Element, typename TileShape_, typename SubGroupLayout_>
+static void run_up_gemm_mul_impl(
+    const void* input_ptr,
+    const void* weight_ptr,
+    const void* aux_ptr,
+    void* output_ptr,
+    int M,
+    int N,
+    int K,
+    sycl::queue& queue) {
+  using MmaAtom = MMA_Atom<XE_DPAS_TT<8, float, Element>>;
+  using TiledMma =
+      typename TiledMMAHelper<MmaAtom, Layout<TileShape_>, SubGroupLayout_>::
+          TiledMMA;
+
+  using GEMMDispatchPolicy = cutlass::gemm::MainloopXeL1Staged<3>;
+  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeGeneric;
+
+  using ElementOutput = Element;
+  using ElementCompute = float;
+  constexpr auto RoundStyle = cutlass::FloatRoundStyle::round_to_nearest;
+
+  // EVT tree: multiplies(AccFetch, AuxLoad)
+  using StrideAux = cutlass::gemm::TagToStrideC_t<LayoutD>;
+  using EVT = cutlass::epilogue::fusion::Sm90EVT<
+      cutlass::epilogue::fusion::Sm90Compute<
+          cutlass::multiplies,
+          ElementOutput,
+          ElementCompute,
+          RoundStyle>,
+      cutlass::epilogue::fusion::Sm90AccFetch,
+      cutlass::epilogue::fusion::XeAuxLoad<Element, StrideAux>>;
+
+  using CollectiveEpilogue = cutlass::epilogue::collective::CollectiveEpilogue<
+      EpilogueDispatchPolicy,
+      TileShape_,
+      void, // EpilogueTile (auto-deduce)
+      void, // ElementC (unused)
+      cutlass::gemm::TagToStrideC_t<LayoutC>, // StrideC
+      ElementOutput, // ElementD (fp16/bf16)
+      cutlass::gemm::TagToStrideC_t<LayoutD>, // StrideD
+      EVT,
+      void, // CopyOpG2R (auto-deduce)
+      void>; // CopyOpR2G (auto-deduce)
+
+  using CollectiveMainloop = cutlass::gemm::collective::CollectiveMma<
+      GEMMDispatchPolicy,
+      TileShape_,
+      Element,
+      cutlass::gemm::TagToStrideA_t<LayoutA>,
+      Element,
+      cutlass::gemm::TagToStrideB_t<LayoutB>,
+      TiledMma,
+      void,
+      void,
+      void,
+      cute::identity,
+      void,
+      void,
+      void,
+      cute::identity>;
+
+  using GemmKernel = cutlass::gemm::kernel::GemmUniversal<
+      Shape<int, int, int, int>,
+      CollectiveMainloop,
+      CollectiveEpilogue>;
+  using Gemm = cutlass::gemm::device::GemmUniversalAdapter<GemmKernel>;
+
+  using StrideA = typename Gemm::GemmKernel::StrideA;
+  using StrideB = typename Gemm::GemmKernel::StrideB;
+  using StrideC = typename Gemm::GemmKernel::StrideC;
+  using StrideD = typename Gemm::GemmKernel::StrideD;
+
+  StrideA stride_A =
+      cutlass::make_cute_packed_stride(StrideA{}, make_shape(M, K, 1));
+  StrideB stride_B =
+      cutlass::make_cute_packed_stride(StrideB{}, make_shape(N, K, 1));
+  StrideC stride_C =
+      cutlass::make_cute_packed_stride(StrideC{}, make_shape(M, N, 1));
+  StrideD stride_D =
+      cutlass::make_cute_packed_stride(StrideD{}, make_shape(M, N, 1));
+  StrideAux stride_aux =
+      cutlass::make_cute_packed_stride(StrideAux{}, make_shape(M, N, 1));
+
+  const Element* A_ptr = reinterpret_cast<const Element*>(input_ptr);
+  const Element* B_ptr = reinterpret_cast<const Element*>(weight_ptr);
+  const Element* aux = reinterpret_cast<const Element*>(aux_ptr);
+  Element* D_ptr = reinterpret_cast<Element*>(output_ptr);
+
+  cutlass::KernelHardwareInfo hw_info;
+  hw_info.sm_count =
+      cutlass::KernelHardwareInfo::query_device_multiprocessor_count(
+          hw_info.device_id);
+
+  // EVT arguments: {AccFetch args, AuxLoad args, Compute args}
+  using AuxLoadArgs = typename cutlass::epilogue::fusion::
+      XeAuxLoad<Element, StrideAux>::Arguments;
+  AuxLoadArgs aux_args;
+  aux_args.ptr_aux = aux;
+  aux_args.null_default = Element(0);
+  aux_args.dAux = stride_aux;
+
+  typename EVT::Arguments evt_args;
+  evt_args.op_1 = aux_args;
+
+  typename Gemm::GemmKernel::Arguments arguments{
+      cutlass::gemm::GemmUniversalMode::kGemm,
+      {M, N, K, 1},
+      {A_ptr, stride_A, B_ptr, stride_B},
+      {evt_args, nullptr, stride_C, D_ptr, stride_D},
+      hw_info};
+
+  Gemm gemm_op;
+  TORCH_CHECK(
+      gemm_op.can_implement(arguments) == cutlass::Status::kSuccess,
+      "fused_gate_up_silu: up GEMM*mul problem size M=",
+      M,
+      " N=",
+      N,
+      " K=",
+      K,
+      " not supported by compiled tile config");
+  SYCL_TLA_CHECK(gemm_op.initialize(arguments, nullptr, &queue));
+  SYCL_TLA_CHECK(gemm_op.run(&queue));
+}
+
+// ── M-based tile dispatch — gate GEMM + SiLU ───────────────────────────────
 
 template <typename Element>
-static void dispatch_sycl_tla_gemm(
+static void dispatch_gate_gemm_silu(
     const void* input_ptr,
     const void* weight_ptr,
     void* output_ptr,
@@ -184,56 +326,50 @@ static void dispatch_sycl_tla_gemm(
     int K,
     sycl::queue& queue) {
   if (M <= 32) {
-    run_sycl_tla_gemm_impl<Element, TileShapeSmall, SGLayoutSmall>(
+    run_gate_gemm_silu_impl<Element, TileShapeSmall, SGLayoutSmall>(
         input_ptr, weight_ptr, output_ptr, M, N, K, queue);
   } else if (M <= 64) {
-    run_sycl_tla_gemm_impl<Element, TileShapeMedium, SGLayoutMedium>(
+    run_gate_gemm_silu_impl<Element, TileShapeMedium, SGLayoutMedium>(
         input_ptr, weight_ptr, output_ptr, M, N, K, queue);
   } else {
-    run_sycl_tla_gemm_impl<Element, TileShapeLarge, SGLayoutLarge>(
+    run_gate_gemm_silu_impl<Element, TileShapeLarge, SGLayoutLarge>(
         input_ptr, weight_ptr, output_ptr, M, N, K, queue);
   }
 }
 
-// ── SiLU * mul kernel ───────────────────────────────────────────────────────
-//
-// Reads separate gate[M,N] and up[M,N] GEMM outputs, applies SiLU*mul in
-// fp32, writes fp16/bf16.  2D nd_range eliminates integer division.
+// ── M-based tile dispatch — up GEMM * aux_load ─────────────────────────────
 
 template <typename Element>
-struct SiluMulKernel {};
-
-template <typename Element>
-static void launch_silu_mul_impl(
-    const void* gate_ptr,
-    const void* up_ptr,
+static void dispatch_up_gemm_mul(
+    const void* input_ptr,
+    const void* weight_ptr,
+    const void* aux_ptr,
     void* output_ptr,
     int M,
     int N,
+    int K,
     sycl::queue& queue) {
-  const Element* gate_in = reinterpret_cast<const Element*>(gate_ptr);
-  const Element* up_in = reinterpret_cast<const Element*>(up_ptr);
-  Element* out = reinterpret_cast<Element*>(output_ptr);
-
-  constexpr int WG_N = 256;
-  int N_padded = ((N + WG_N - 1) / WG_N) * WG_N;
-
-  queue.parallel_for<SiluMulKernel<Element>>(
-      sycl::nd_range<2>(sycl::range<2>(M, N_padded), sycl::range<2>(1, WG_N)),
-      [=](sycl::nd_item<2> item) {
-        int row = item.get_global_id(0);
-        int col = item.get_global_id(1);
-        if (col >= N)
-          return;
-        int idx = row * N + col;
-        float gate = static_cast<float>(gate_in[idx]);
-        float up = static_cast<float>(up_in[idx]);
-        float silu = gate / (1.0f + sycl::exp(-gate));
-        out[idx] = static_cast<Element>(silu * up);
-      });
+  if (M <= 32) {
+    run_up_gemm_mul_impl<Element, TileShapeSmall, SGLayoutSmall>(
+        input_ptr, weight_ptr, aux_ptr, output_ptr, M, N, K, queue);
+  } else if (M <= 64) {
+    run_up_gemm_mul_impl<Element, TileShapeMedium, SGLayoutMedium>(
+        input_ptr, weight_ptr, aux_ptr, output_ptr, M, N, K, queue);
+  } else {
+    run_up_gemm_mul_impl<Element, TileShapeLarge, SGLayoutLarge>(
+        input_ptr, weight_ptr, aux_ptr, output_ptr, M, N, K, queue);
+  }
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
+//
+// Two-kernel EVT pipeline:
+//   1. Gate GEMM + SiLU(acc)           → silu_buf[M, N]  (LinCombEltAct)
+//   2. Up GEMM + acc * aux(silu_buf)   → output[M, N]    (EVT multiplies)
+//
+// Eliminates the separate SiLU*mul kernel by fusing activation and multiply
+// into GEMM epilogues via sycl-tla v0.7 Epilogue Visitor Tree (EVT).
+// Halves scratch memory (1x [M,N]) vs the 3-kernel approach (2x [M,N]).
 
 namespace sycltla {
 
@@ -265,53 +401,53 @@ at::Tensor fused_gate_up_silu_sycltla(
   const int K = input.size(1);
   const int N = gate_weight.size(0);
 
-  // Separate GEMM output buffers ensure each base address is PyTorch-allocated
-  // (64-byte aligned), avoiding 2D block store alignment issues that occur when
-  // writing to ptr+N offsets within a combined [M, 2N] buffer.
-  auto gate_out = at::empty({M, N}, input.options());
-  auto up_out = at::empty({M, N}, input.options());
+  // silu_buf holds gate GEMM + SiLU result; the up GEMM epilogue reads it
+  // via XeAuxLoad and multiplies with up accumulator to produce final output.
+  auto silu_buf = at::empty({M, N}, input.options());
   auto output = at::empty({M, N}, input.options());
 
   auto& queue = at::xpu::getCurrentXPUStream(input.device().index()).queue();
 
   if (dtype == at::kHalf) {
-    dispatch_sycl_tla_gemm<cutlass::half_t>(
+    // Step 1: gate GEMM + SiLU → silu_buf
+    dispatch_gate_gemm_silu<cutlass::half_t>(
         input.data_ptr(),
         gate_weight.data_ptr(),
-        gate_out.data_ptr(),
+        silu_buf.data_ptr(),
         M,
         N,
         K,
         queue);
-    dispatch_sycl_tla_gemm<cutlass::half_t>(
+    // Step 2: up GEMM * silu_buf → output
+    dispatch_up_gemm_mul<cutlass::half_t>(
         input.data_ptr(),
         up_weight.data_ptr(),
-        up_out.data_ptr(),
+        silu_buf.data_ptr(),
+        output.data_ptr(),
         M,
         N,
         K,
         queue);
-    launch_silu_mul_impl<cutlass::half_t>(
-        gate_out.data_ptr(), up_out.data_ptr(), output.data_ptr(), M, N, queue);
   } else {
-    dispatch_sycl_tla_gemm<cutlass::bfloat16_t>(
+    // Step 1: gate GEMM + SiLU → silu_buf
+    dispatch_gate_gemm_silu<cutlass::bfloat16_t>(
         input.data_ptr(),
         gate_weight.data_ptr(),
-        gate_out.data_ptr(),
+        silu_buf.data_ptr(),
         M,
         N,
         K,
         queue);
-    dispatch_sycl_tla_gemm<cutlass::bfloat16_t>(
+    // Step 2: up GEMM * silu_buf → output
+    dispatch_up_gemm_mul<cutlass::bfloat16_t>(
         input.data_ptr(),
         up_weight.data_ptr(),
-        up_out.data_ptr(),
+        silu_buf.data_ptr(),
+        output.data_ptr(),
         M,
         N,
         K,
         queue);
-    launch_silu_mul_impl<cutlass::bfloat16_t>(
-        gate_out.data_ptr(), up_out.data_ptr(), output.data_ptr(), M, N, queue);
   }
 
   return output;
