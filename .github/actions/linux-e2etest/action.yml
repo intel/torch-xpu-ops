@@ -111,24 +111,3 @@ runs:
             done
           done
         done
-
-    - name: Summary E2E Test (${{ inputs.suite }} ${{ inputs.dt }} ${{ inputs.mode }} ${{ inputs.scenario }})
-      shell: bash -xe {0}
-      run: |
-        cd ./pytorch
-        rm -f inductor_log/summary_accuracy.csv
-        for var in $(find inductor_log/ -name "inductor_*_xpu_accuracy.csv")
-        do
-          sed -i "s/$/,$(basename $var)/" $var
-          cat $var >> inductor_log/summary_accuracy.csv
-        done
-        cp ${{ github.workspace }}/.github/scripts/inductor_summary.py ./
-        csv_file="$(find inductor_log/ -name "inductor_*_xpu_*.csv" |tail -n 1)"
-        if [ -f "${csv_file}" ];then
-          pip install styleFrame scipy pandas
-          dt=$(echo ${{ inputs.dt }} |sed 's/,/ /g')
-          mode=$(echo ${{ inputs.mode }} |sed 's/,/ /g')
-          suite=$(echo ${{ inputs.suite }} |sed 's/,/ /g')
-          scenario=$(echo ${{ inputs.scenario }} |sed 's/,/ /g')
-          python inductor_summary.py -p ${dt} -s ${suite} -m ${mode} -sc ${scenario}
-        fi
