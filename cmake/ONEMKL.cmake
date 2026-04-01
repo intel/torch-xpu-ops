@@ -27,6 +27,21 @@ set(TORCH_XPU_OPS_ONEMKL_INCLUDE_DIR ${ONEMKL_INCLUDE_DIR})
 
 set(TORCH_XPU_OPS_ONEMKL_LIBRARIES ${ONEMKL_LIBRARIES})
 
+# mkl_intel_thread requires libiomp5 (Intel OpenMP runtime), which is shipped
+# with the compiler, not MKL.  Find it from the SYCL compiler library directory.
+if(NOT WIN32)
+  find_library(
+    IOMP5_LIBRARY
+    NAMES libiomp5.so
+    HINTS ${SYCL_LIBRARY_DIR}
+    NO_DEFAULT_PATH)
+  if(NOT IOMP5_LIBRARY)
+    message(FATAL_ERROR "libiomp5.so not found in ${SYCL_LIBRARY_DIR}; "
+      "ensure the Intel compiler environment is set up correctly.")
+  endif()
+  list(APPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES ${IOMP5_LIBRARY})
+endif()
+
 # --start-group/--end-group are GNU ld options; MSVC link does not know them.
 if(NOT WIN32)
   list(PREPEND TORCH_XPU_OPS_ONEMKL_LIBRARIES "-Wl,--start-group")
