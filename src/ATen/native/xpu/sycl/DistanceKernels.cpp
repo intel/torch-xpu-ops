@@ -657,7 +657,7 @@ void cdist_backward_kernel(
               r1 * m,
               r2 * m);
         } else if (p < 2.0) {
-          cdist_backward_kernel_impl<scalar_t, DistsTwo<scalar_t>, 1>(
+          cdist_backward_kernel_impl<scalar_t, DistsLtTwo<scalar_t>, 1>(
               buffer,
               grad,
               x1,
