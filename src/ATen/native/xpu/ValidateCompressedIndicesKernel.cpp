@@ -9,7 +9,7 @@
  */
 
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
-#include <ATen/native/sparse/ValidateCompressedIndicesCommon.h>
+#include <ATen/native/sparse/xpu/ValidateCompressedIndicesCommon.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
 namespace at::native {
@@ -20,6 +20,7 @@ template <typename func_t>
 struct XPUKernelLauncher {
   static void launch(TensorIteratorBase& iter, const func_t& f) {
     std::cout << "call xpu::gpu_kernel(iter, f)" << std::endl;
+    // std::cout << "f: " << f << std::endl;
     xpu::gpu_kernel(iter, f);
   }
 };
@@ -34,7 +35,7 @@ void _validate_compressed_sparse_indices_xpu(
     const int64_t dim,
     const int64_t nnz) {
   std::cout << "call _validate_compressed_sparse_indices_xpu" << std::endl;
-  validate_compressed_sparse_indices_kernel<XPUKernelLauncher>(
+  validate_compressed_sparse_indices_kernel_xpu<XPUKernelLauncher>(
       is_crow, cidx, idx, cdim, dim, nnz);
 }
 
