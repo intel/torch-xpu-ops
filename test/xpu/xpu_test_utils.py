@@ -385,7 +385,7 @@ _cuda_xfail_xpu_pass = [
 # _cuda_xfail_xpu_pass to keep a single source of truth.  Kept separate so
 # that unscoped xfails that genuinely fail on XPU (e.g. complex-dtype
 # memory-format tests for ConvTranspose2d) are preserved.
-_none_device_xfail_xpu_pass = [
+_none_device_xfail_xpu_pass = frozenset(
     e
     for e in _cuda_xfail_xpu_pass
     if e
@@ -393,7 +393,7 @@ _none_device_xfail_xpu_pass = [
         ("_refs.mul", "test_python_ref_executor"),
         ("_refs.pow", "test_python_ref_executor"),
     )
-]
+)
 
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
