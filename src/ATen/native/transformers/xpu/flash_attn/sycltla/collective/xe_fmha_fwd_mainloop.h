@@ -278,8 +278,7 @@ struct FMHAFwdMainloop<
     }
     // Compute how many K blocks are actually available for this tile/range,
     // and cap the initial K prefetch to that count to avoid out-of-bounds.
-    int prefetch_k_stages =
-        (total_blk < Stages ? total_blk : Stages);
+    int prefetch_k_stages = (total_blk < Stages ? total_blk : Stages);
     for (int D = 0; D < size<4>(pKgK); D++) {
       CUTLASS_PRAGMA_UNROLL
       for (int K = blk_k0; K < blk_k0 + prefetch_k_stages; K++) {
