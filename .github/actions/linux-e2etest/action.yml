@@ -85,29 +85,4 @@ runs:
         IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
         export NUM_GPUS=${#numactl_args_list[@]}
         cp ${GITHUB_WORKSPACE}/.github/scripts/run_dynamo.py .
-        for suite in $(echo ${{ inputs.suite }} |sed 's/,/ /g')
-        do
-          if ! contains "huggingface,timm_models,torchbench" "$suite"; then
-            continue
-          fi
-          for dt in $(echo ${{ inputs.dt }} |sed 's/,/ /g')
-          do
-            if ! contains "float32,bfloat16,float16,amp_bf16,amp_fp16" "$dt"; then
-              continue
-            fi
-            for mode in $(echo ${{ inputs.mode }} |sed 's/,/ /g')
-            do
-              if ! contains "inference,training" "$mode"; then
-                continue
-              fi
-              for scenario in $(echo ${{ inputs.scenario }} |sed 's/,/ /g')
-              do
-                if ! contains "accuracy,performance" "$scenario"; then
-                  continue
-                fi
-                # run_with_shard
-                python ./run_dynamo.py --suite ${suite} --dt ${dt} --mode ${mode} --scenario ${scenario}
-              done
-            done
-          done
-        done
+        python ./run_dynamo.py --suite "${{ inputs.suite }}" --dt "${{ inputs.dt }}" --mode "${{ inputs.mode }}" --scenario "${{ inputs.scenario }}" || true
