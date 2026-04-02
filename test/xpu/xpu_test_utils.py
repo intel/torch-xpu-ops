@@ -1041,7 +1041,16 @@ class XPUPatchForImport:
                         and unittest.expectedFailure in wrapper.decorators
                         and (op_name, wrapper.test_name) in _none_device_xfail_xpu_pass
                     ):
+                        # For tests that are expected to fail on some devices but pass on XPU,
+                        # create an XPU-specific variant of the wrapper without expectedFailure.
                         replaced = True
+                        new_wrapper = copy.copy(wrapper)
+                        new_wrapper.decorators = tuple(
+                            d for d in new_wrapper.decorators
+                            if d is not unittest.expectedFailure
+                        )
+                        new_wrapper.device_type = "xpu"
+                        wrapper_xpu.append(new_wrapper)
                         continue
                     wrapper_xpu.append(wrapper)
                 elif self.only_cuda_fn == wrapper:
