@@ -316,8 +316,9 @@ void gemm_kernel(
   if constexpr (clear_acc)
     clear(acc);
   /* Warm up loops with prefetch to L1 */
+  int prefetch_warmup = prefetch_dist < k_tile_count ? prefetch_dist : k_tile_count;
   CUTE_UNROLL
-  for (; k_tile_prefetch < prefetch_dist; k_tile_prefetch++) {
+  for (; k_tile_prefetch < prefetch_warmup; k_tile_prefetch++) {
     prefetch(prefetch_a, pAgA(_, _, _, k_tile_prefetch));
     prefetch(prefetch_b, pBgB(_, _, _, k_tile_prefetch));
   }
@@ -331,8 +332,10 @@ void gemm_kernel(
     copy(copy_b, tBgB(_, _, _, k_tile), tBrB);
 
     /* Prefetch A/B tiles to L1 */
-    prefetch(prefetch_a, pAgA(_, _, _, k_tile_prefetch));
-    prefetch(prefetch_b, pBgB(_, _, _, k_tile_prefetch));
+    if (k_tile_prefetch < k_tile_count) {
+      prefetch(prefetch_a, pAgA(_, _, _, k_tile_prefetch));
+      prefetch(prefetch_b, pBgB(_, _, _, k_tile_prefetch));
+    }
 
     /* Shuffle data from copy fragments to MMA fragments */
     reorder(tArA, tCrA);
@@ -593,7 +596,6 @@ void dq_dk_dv_1colblock(
   constexpr int kBlockN = Trait::kBlockN;
   constexpr int kNSGs = Trait::kNSGs;
   constexpr int SubgroupSize = Trait::SubgroupSize;
-  constexpr int AtomLayoutMdQ = Trait::AtomLayoutMdQ;
   constexpr bool is_causal = Trait::is_causal;
   auto local_id = int(compat::get_nd_item<1>().get_local_id(0));
   auto group = compat::get_nd_item<1>().get_group();
@@ -863,14 +865,11 @@ void convert_dq(
     int bidb,
     int bidh) {
   constexpr int kBlockM = T::kBlockM;
-  constexpr int kBlockN = T::kBlockN;
   constexpr int kHeadDim = T::kHeadDim;
   constexpr int kNSGs = T::kNSGs;
   constexpr int SubgroupSize = T::SubgroupSize;
   using DType = typename T::DType;
   using VType = typename T::VType;
-  auto sg = compat::get_nd_item<1>().get_sub_group();
-  auto first_thread_in_sg_idx = sg.get_group_linear_id() * trait.SubgroupSize;
 
   auto bofst = Boffset(param);
   const index_t dq_offset = bofst.dq_offset(bidb, bidh, m_block * kBlockM);
