@@ -52,8 +52,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         dets_num_ - col_start * nms_items_per_group, nms_items_per_group);
 
     auto block_boxes =
-        (scalar_t*)(slm_.template get_multi_ptr<sycl::access::decorated::no>()
-                        .get()); // nms_items_per_group * 4
+        slm_.template get_multi_ptr<sycl::access::decorated::no>(); // nms_items_per_group * 4
     if (item.get_local_id(1) < col_size) {
       block_boxes[item.get_local_id(1) * 4 + 0] = dets_sorted_ptr_
           [(nms_items_per_group * col_start + item.get_local_id(1)) * 4 + 0];
@@ -77,7 +76,14 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         start = item.get_local_id(1) + 1;
       }
       for (i = start; i < col_size; i++) {
-        if (dev_iou<scalar_t>(cur_box, block_boxes + i * 4, iou_threshold_)) {
+        // Copy from local memory to private memory to avoid generic address
+        // space operations that cause additional control flow in IGC.
+        const scalar_t other_box[4] = {
+            block_boxes[i * 4 + 0],
+            block_boxes[i * 4 + 1],
+            block_boxes[i * 4 + 2],
+            block_boxes[i * 4 + 3]};
+        if (dev_iou<scalar_t>(cur_box, other_box, iou_threshold_)) {
           t |= 1ULL << i;
         }
       }
@@ -97,7 +103,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         mask_ptr_(mask_ptr) {}
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<acc_t>(nms_items_per_group * 4, cgh);
+    slm_ = sycl_local_acc_t<scalar_t>(nms_items_per_group * 4, cgh);
   }
 
  private:
@@ -105,7 +111,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   float iou_threshold_;
   scalar_t* dets_sorted_ptr_;
   unsigned long long* mask_ptr_;
-  sycl_local_acc_t<acc_t> slm_;
+  sycl_local_acc_t<scalar_t> slm_;
 };
 
 struct GatherKeepFromMask : public __SYCL_KER_CONFIG_CONVENTION__ {
