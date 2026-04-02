@@ -155,7 +155,14 @@ class TestCommon(TestCase):
             )
 
             if has_inexact_output:
-                if kwargs.get("atol", 0) == 0 and kwargs.get("rtol", 0) == 0:
+                atol = kwargs.get("atol")
+                rtol = kwargs.get("rtol")
+                if (
+                    atol is not None
+                    and rtol is not None
+                    and atol == 0
+                    and rtol == 0
+                ):
                     kwargs["atol"] = 1e-3
                     kwargs["rtol"] = 1e-3
             return original_assert_equal(a, b, *args, **kwargs)
