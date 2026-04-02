@@ -764,9 +764,6 @@ void scatter_add_kernel(
     int64_t dim,
     const Tensor& index,
     const Tensor& src) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("scatter_add_kernel");
   ScatterGatherBaseKernel</*is_scatter_like=*/true, /*cast_to_opaque=*/false>()(
       self, dim, index, src, "scatter_add_kernel", reduce_add);
 }
@@ -807,7 +804,6 @@ void scatter_reduce_two_kernel(
     const ReductionType& reduce) {
   switch (reduce) {
     case ReductionType::SUM:
-      globalContext().alertNotDeterministic("scatter_reduce_kernel_sum");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_sum", reduce_add);
       break;
@@ -825,7 +821,6 @@ void scatter_reduce_two_kernel(
           self, dim, index, src, "scatter_reduce_kernel_amin", reduce_minimum);
       break;
     case ReductionType::MEAN:
-      globalContext().alertNotDeterministic("scatter_reduce_kernel_mean");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_mean", reduce_mean);
       break;
