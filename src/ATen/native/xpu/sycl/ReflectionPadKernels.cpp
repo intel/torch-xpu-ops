@@ -8,15 +8,10 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4715)
-#endif
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
@@ -1081,8 +1076,6 @@ void reflection_pad3d_backward_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on

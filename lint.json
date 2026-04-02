@@ -1,0 +1,1 @@
+{"path":null,"line":null,"char":null,"code":"CLANGFORMAT","severity":"error","name":"init-error","description":"Could not find clang-format binary at .lintbin/clang-format, did you forget to run `lintrunner init`?"}
