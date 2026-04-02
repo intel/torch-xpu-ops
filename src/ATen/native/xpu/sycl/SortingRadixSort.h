@@ -209,7 +209,10 @@ class GroupRadixSort {
   }
 
   template <typename ValueOutPtr>
-  inline void store_values(ValueOutPtr out, int offset_select, int num_selected) {
+  inline void store_values(
+      ValueOutPtr out,
+      int offset_select,
+      int num_selected) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       if (ranks_[ITEM] < offset_select) {
@@ -355,8 +358,8 @@ class GroupRadixSort {
         sub_counter = PACKING_RATIO - 1 - sub_counter;
         counter_lane = COUNTER_LANES - 1 - counter_lane;
       }
-      digit_counters[ITEM] =
-          &local_storage_->rank_storage.buckets[counter_lane][lid_][sub_counter];
+      digit_counters[ITEM] = &local_storage_->rank_storage
+                                  .buckets[counter_lane][lid_][sub_counter];
       ranks_[ITEM] = *digit_counters[ITEM];
       *digit_counters[ITEM] = ranks_[ITEM] + 1;
     }

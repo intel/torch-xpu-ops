@@ -350,14 +350,28 @@ inline T group_cumsum(StoragePtr storage, sycl::nd_item<1>& item) {
   return group_all_sum;
 }
 
-template <typename T, int COUNTER_LANES, int GROUP_SIZE, int SUBGROUP_SIZE, typename StoragePtr>
-inline T group_exclusive_cumsum(StoragePtr slm_storage, sycl::nd_item<1>& item) {
+template <
+    typename T,
+    int COUNTER_LANES,
+    int GROUP_SIZE,
+    int SUBGROUP_SIZE,
+    typename StoragePtr>
+inline T group_exclusive_cumsum(
+    StoragePtr slm_storage,
+    sycl::nd_item<1>& item) {
   return group_cumsum<T, COUNTER_LANES, GROUP_SIZE, SUBGROUP_SIZE, true>(
       slm_storage, item);
 }
 
-template <typename T, int COUNTER_LANES, int GROUP_SIZE, int SUBGROUP_SIZE, typename StoragePtr>
-inline T group_inclusive_cumsum(StoragePtr slm_storage, sycl::nd_item<1>& item) {
+template <
+    typename T,
+    int COUNTER_LANES,
+    int GROUP_SIZE,
+    int SUBGROUP_SIZE,
+    typename StoragePtr>
+inline T group_inclusive_cumsum(
+    StoragePtr slm_storage,
+    sycl::nd_item<1>& item) {
   return group_cumsum<T, COUNTER_LANES, GROUP_SIZE, SUBGROUP_SIZE, false>(
       slm_storage, item);
 }
