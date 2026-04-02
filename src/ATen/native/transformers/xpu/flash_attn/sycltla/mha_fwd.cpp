@@ -86,7 +86,7 @@ struct FA2Runner {
         syclex::sub_group_size<cute::intel::sg_size>, intelex::grf_size<256>};
     compat::experimental::launch_policy policy{
         sycl_grid, sycl_block, launch_props, kernel_props};
-    auto event = compat::experimental::launch<
+    compat::experimental::launch<
         cutlass::device_kernel<FMHAPrefillKernel>,
         MhaName<FMHAPrefillKernel>>(policy, queue, params);
   }
@@ -205,9 +205,14 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
         make_gmem_ptr(&val),
         make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
   };
-  using TensorQ = decltype(make_dummy_tensor(ElementQ{}, StrideQ{}));
-  using TensorK = decltype(make_dummy_tensor(ElementK{}, StrideK{}));
-  using TensorV = decltype(make_dummy_tensor(ElementV{}, StrideV{}));
+  auto make_const_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<const decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  using TensorQ = decltype(make_const_dummy_tensor(ElementQ{}, StrideQ{}));
+  using TensorK = decltype(make_const_dummy_tensor(ElementK{}, StrideK{}));
+  using TensorV = decltype(make_const_dummy_tensor(ElementV{}, StrideV{}));
   using TensorO = decltype(make_dummy_tensor(ElementO{}, StrideO{}));
 
   static constexpr int SGTileQ =
@@ -284,9 +289,9 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
 
   constexpr int PipelineStages = 2;
   if (headdim == 64) {
-    int batch_size = params.batch_size;
-    int num_heads_qo = params.num_heads_qo;
-    int seqlen_qo = params.seqlen_qo;
+    int64_t batch_size = params.batch_size;
+    int64_t num_heads_qo = params.num_heads_qo;
+    int64_t seqlen_qo = params.seqlen_qo;
     if (batch_size * num_heads_qo * seqlen_qo <= 8192) {
       using TileShapeQK = Shape<_64, _64, _32>;
       using TileShapePV = Shape<_64, _32, _64>;

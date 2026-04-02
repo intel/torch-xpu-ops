@@ -31,7 +31,7 @@ struct XeFMHAIndividualTileScheduler {
   template <class ProblemShape, class TileShape>
   static Params to_underlying_arguments(
       ProblemShape const& shape,
-      KernelHardwareInfo hw_info,
+      KernelHardwareInfo,
       TileShape const& tile_shape) {
     using namespace cute;
 

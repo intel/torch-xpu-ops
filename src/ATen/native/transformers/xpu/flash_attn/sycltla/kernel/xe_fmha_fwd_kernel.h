@@ -235,7 +235,6 @@ class XeFMHAFwdKernel {
     int head_group_q = s.num_heads_q / s.num_heads_kv;
 
     int thr_id = int(ThreadIdxX());
-    int sub_group_id = thr_id / intel::sg_size;
     int q_sg_tile = get<0>(shape_div(TileShapeQK{}, shape(SubgroupLayoutQK{})));
 
     auto cS = make_identity_tensor(take<0, 2>(TiledMMAQK{}.tile_mnk()));
@@ -254,7 +253,8 @@ class XeFMHAFwdKernel {
       int head = head_q / head_group_q;
 
       auto sequence_length_shape = get_sequence_length_shape(s, idx_b);
-      auto [seq_len_qo, seq_len_kv, seq_len_kv_cache] = sequence_length_shape;
+      auto seq_len_qo = get<0>(sequence_length_shape);
+      auto seq_len_kv = get<1>(sequence_length_shape);
       if (blk_q * get<0>(TileShapeQK{}) >= seq_len_qo)
         continue;
 
@@ -280,7 +280,6 @@ class XeFMHAFwdKernel {
       const int k_blocks = cute::ceil_div(seq_len, get<1>(TileShapeQK{}));
 
       int offset_q = 0, offset_k = 0, offset_v = 0, offset_o = 0;
-      int offset_k_cache = 0, offset_v_cache = 0;
       if constexpr (is_var_len) {
         auto qo_cumulative = s.seq_len_qo.cumulative_length;
         auto kv_cumulative = s.seq_len_kv.cumulative_length;
@@ -304,9 +303,9 @@ class XeFMHAFwdKernel {
       auto shape_O =
           make_shape(seq_len_qo, s.head_size_vo, s.num_heads_q, batch_dim);
 
-      auto dcQ = const_cast<ElementQ*>(p.Q + offset_q);
-      auto dcK = const_cast<ElementK*>(p.K + offset_k);
-      auto dcV = const_cast<ElementV*>(p.V + offset_v);
+      auto dcQ = p.Q + offset_q;
+      auto dcK = p.K + offset_k;
+      auto dcV = p.V + offset_v;
       auto ptrO = p.O + offset_o;
       auto dpLSE = p.pLSE;
 
