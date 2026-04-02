@@ -52,7 +52,8 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         dets_num_ - col_start * nms_items_per_group, nms_items_per_group);
 
     auto block_boxes =
-        slm_.template get_multi_ptr<sycl::access::decorated::no>(); // nms_items_per_group * 4
+        slm_.template get_multi_ptr<sycl::access::decorated::no>(); // nms_items_per_group
+                                                                    // * 4
     if (item.get_local_id(1) < col_size) {
       block_boxes[item.get_local_id(1) * 4 + 0] = dets_sorted_ptr_
           [(nms_items_per_group * col_start + item.get_local_id(1)) * 4 + 0];
