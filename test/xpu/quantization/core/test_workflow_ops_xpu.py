@@ -174,6 +174,12 @@ given_kwargs_dict2 = {
 }
 given_kwargs_dict3 = {
     "symmetric_quant": st.booleans(),
+    "use_bool": st.booleans(),
+}
+given_kwargs_dict4 = {
+    "symmetric_quant": st.booleans(),
+    "use_bool": st.booleans(),
+    "sampled_dtype": st.sampled_from(["bf16", "fp16", "fp32"]),
 }
 
 TestFakeQuantizeOps.test_forward_per_tensor = rewrap_hypothesis_test(
@@ -230,7 +236,7 @@ TestFakeQuantizeOps.test_fixed_qparams_fq_module = rewrap_hypothesis_test(
 
 TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg = rewrap_hypothesis_test(
     TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg,
-    extra_given_kwargs=given_kwargs_dict3,
+    extra_given_kwargs=given_kwargs_dict4,
 )
 TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel = (
     rewrap_hypothesis_test(
