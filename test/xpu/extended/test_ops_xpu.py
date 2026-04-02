@@ -133,7 +133,7 @@ class TestCommon(TestCase):
     def _iter_tensors(self, x):
         if isinstance(x, torch.Tensor):
             yield x
-        elif isinstance(x, Sequence):
+        elif isinstance(x, Sequence) and not isinstance(x, (str, bytes, bytearray)):
             for y in x:
                 yield from self._iter_tensors(y)
 
