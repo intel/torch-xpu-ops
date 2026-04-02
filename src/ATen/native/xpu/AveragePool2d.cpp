@@ -13,7 +13,6 @@
 #include <comm/xpu_aten.h>
 
 #include <ATen/native/xpu/sycl/AveragePool2dKernels.h>
-#include <comm/RegisterUtils.h>
 
 #include <ATen/ops/avg_pool2d_backward_native.h>
 #include <ATen/ops/avg_pool2d_native.h>

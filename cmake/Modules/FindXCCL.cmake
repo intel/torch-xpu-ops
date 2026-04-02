@@ -52,7 +52,7 @@ find_file(
 # Find XCCL library fullname.
 find_library(
   XCCL_LIBRARY
-  NAMES ccl
+  NAMES libccl.so.1
   HINTS ${XCCL_LIBRARY_DIR}
   NO_DEFAULT_PATH
 )

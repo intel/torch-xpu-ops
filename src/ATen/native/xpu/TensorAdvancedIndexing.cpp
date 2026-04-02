@@ -30,7 +30,6 @@
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/zeros_like.h>
-#include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 

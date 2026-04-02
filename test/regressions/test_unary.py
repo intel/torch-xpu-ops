@@ -83,6 +83,18 @@ class TestSimpleUnary(TestCase):
     def test_tanh_out(self, dtype):
         self._test_unary_out_ops("tanh", dtype)
 
+    # Regression test for TanhBackwardFunctor precision bug (bf16/half).
+    # The XPU kernel must use float32 intermediates (opmath_type) for b*b,
+    # otherwise a 1-ULP rounding error in `b*b` propagates to the gradient.
+    @Dtypes([torch.bfloat16, torch.float16])
+    def test_tanh_backward_reduced_precision(self, dtype):
+        z_vals = [0.5, 1.0, 1.5, 2.0, 2.5, -0.5, -1.5, -2.5]
+        z_cpu = torch.tensor(z_vals, dtype=dtype, requires_grad=True)
+        z_xpu = torch.tensor(z_vals, dtype=dtype, device="xpu", requires_grad=True)
+        torch.tanh(z_cpu).backward(torch.ones_like(z_cpu))
+        torch.tanh(z_xpu).backward(torch.ones_like(z_xpu))
+        self.assertEqual(z_cpu.grad, z_xpu.grad.cpu())
+
     @Dtypes(all_basic_and_complex_types, [torch.bool])
     def test_neg_out(self, dtype):
         self._test_unary_out_ops("neg", dtype)
