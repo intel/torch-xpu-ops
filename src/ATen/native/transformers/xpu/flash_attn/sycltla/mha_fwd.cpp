@@ -288,27 +288,27 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
     int num_heads_qo = params.num_heads_qo;
     int seqlen_qo = params.seqlen_qo;
     if (batch_size * num_heads_qo * seqlen_qo <= 8192) {
-        using TileShapeQK = Shape<_64, _64, _32>;
-        using TileShapePV = Shape<_64, _32, _64>;
-        using TileShapeOutPut = Shape<_64, _64>;
-        using SubgroupLayoutQK = Layout<Shape<_16, _1, _1>>;
-        run_mha_fwd_specialized(
-            TileShapeQK,
-            TileShapePV,
-            TileShapeOutPut,
-            SubgroupLayoutQK,
-            PipelineStages);
+      using TileShapeQK = Shape<_64, _64, _32>;
+      using TileShapePV = Shape<_64, _32, _64>;
+      using TileShapeOutPut = Shape<_64, _64>;
+      using SubgroupLayoutQK = Layout<Shape<_16, _1, _1>>;
+      run_mha_fwd_specialized(
+          TileShapeQK,
+          TileShapePV,
+          TileShapeOutPut,
+          SubgroupLayoutQK,
+          PipelineStages);
     } else {
-        using TileShapeQK = Shape<_128, _64, _32>;
-        using TileShapePV = Shape<_128, _32, _64>;
-        using TileShapeOutPut = Shape<_128, _64>;
-        using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
-        run_mha_fwd_specialized(
-            TileShapeQK,
-            TileShapePV,
-            TileShapeOutPut,
-            SubgroupLayoutQK,
-            PipelineStages);
+      using TileShapeQK = Shape<_128, _64, _32>;
+      using TileShapePV = Shape<_128, _32, _64>;
+      using TileShapeOutPut = Shape<_128, _64>;
+      using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+      run_mha_fwd_specialized(
+          TileShapeQK,
+          TileShapePV,
+          TileShapeOutPut,
+          SubgroupLayoutQK,
+          PipelineStages);
     }
   } else if (headdim == 96) {
     using TileShapeQK = Shape<_128, _64, _32>;
