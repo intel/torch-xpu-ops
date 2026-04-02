@@ -97,6 +97,19 @@ skip_dict = {
         "test_broadcast_fn_map_xpu",
         # RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
+        # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
+        # UntypedStorage paired with torch.dtype. XPU does not provide typed storage classes
+        # (e.g., torch.xpu.FloatStorage, torch.xpu.BFloat16Storage). See NOTE in
+        # torch.storage._dtype_to_storage_type_map() upstream:
+        # https://github.com/pytorch/pytorch/blob/main/torch/storage.py
+        "test_storage_setitem_xpu",
+        "test_storage_error",
+        # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
+        # under pytest -k substring semantics used by the XPU skip runner.
+        "test_typed_storage_deprecation_warning",
+        "test_print",
+        "test_tensor_storage_type_xpu",
+        "test_typed_storage_internal_no_warning",
     ),
     "test_transformers_xpu.py": None,
     "test_type_promotion_xpu.py": None,
