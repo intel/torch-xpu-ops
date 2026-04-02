@@ -153,7 +153,7 @@ class FMHAFwdEpilogue {
     if (!active)
       return;
 
-    auto non_recipocal_rAsum = rA_sum(0);
+    auto non_reciprocal_rAsum = rA_sum(0);
     /* Complete softmax, dividing out sums. */
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA_sum.size(); i++)
@@ -214,7 +214,7 @@ class FMHAFwdEpilogue {
       // Need to divide it to restore the value
       double kLog2e = 1.4426950408889634074;
       tA_max[0] = tA_max[0] / kLog2e;
-      float lse_val = tA_max[0] + logf(non_recipocal_rAsum);
+      float lse_val = tA_max[0] + logf(non_reciprocal_rAsum);
       *(pLSE + lse_offset + tile_row_idx) = lse_val == -INFINITY ? 0 : lse_val;
     }
   }

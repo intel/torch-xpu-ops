@@ -115,7 +115,7 @@ class XeFMHAFwdKernel {
     const int64_t o_batch_stride;
     const int64_t o_head_stride;
     const int64_t o_row_stride;
-    const float* pLSE;
+    float* pLSE;
   };
   using KernelParams = KernelArguments;
 
@@ -308,7 +308,7 @@ class XeFMHAFwdKernel {
       auto dcK = const_cast<ElementK*>(p.K + offset_k);
       auto dcV = const_cast<ElementV*>(p.V + offset_v);
       auto ptrO = p.O + offset_o;
-      auto dpLSE = const_cast<float*>(p.pLSE);
+      auto dpLSE = p.pLSE;
 
       auto stride_q = cutlass::make_stride(
           p.q_row_stride, Int<1>{}, p.q_head_stride, p.q_batch_stride);

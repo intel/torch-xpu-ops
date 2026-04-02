@@ -16,7 +16,7 @@
 
 namespace cutlass::fmha::kernel {
 
-struct XeFHMAIndividualTileScheduler {
+struct XeFMHAIndividualTileScheduler {
   struct Params {
     dim3 grid;
     FastDivmod divmod_num_heads;
@@ -26,7 +26,7 @@ struct XeFHMAIndividualTileScheduler {
   Params params;
 
   CUTLASS_DEVICE
-  XeFHMAIndividualTileScheduler(Params const& params) : params(params) {}
+  XeFMHAIndividualTileScheduler(Params const& params) : params(params) {}
 
   template <class ProblemShape, class TileShape>
   static Params to_underlying_arguments(
@@ -62,7 +62,7 @@ struct XeFHMAIndividualTileScheduler {
   }
 
   CUTLASS_DEVICE
-  XeFHMAIndividualTileScheduler& operator++() {
+  XeFMHAIndividualTileScheduler& operator++() {
     valid_ = false;
     return *this;
   }

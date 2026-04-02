@@ -251,7 +251,7 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
   using CollectiveEpilogue = cutlass::fmha::collective::
       FMHAFwdEpilogue<CollectiveMainloop, TileShapeOutPut, TensorO>;
 
-  using Scheduler = cutlass::fmha::kernel::XeFHMAIndividualTileScheduler;
+  using Scheduler = cutlass::fmha::kernel::XeFMHAIndividualTileScheduler;
   using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
   using FMHAPrefillKernel = cutlass::fmha::kernel::XeFMHAFwdKernel<
       ProblemShapeType,

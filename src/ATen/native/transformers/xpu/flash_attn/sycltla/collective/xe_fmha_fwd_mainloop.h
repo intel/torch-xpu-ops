@@ -276,9 +276,13 @@ struct FMHAFwdMainloop<
     for (int D = 0; D < size<3>(pQgQ); D++) {
       prefetch(prefetch_q, pQgQ(_, _, _, D));
     }
+    // Compute how many K blocks are actually available for this tile/range,
+    // and cap the initial K prefetch to that count to avoid out-of-bounds.
+    int prefetch_k_stages =
+        (total_blk < Stages ? total_blk : Stages);
     for (int D = 0; D < size<4>(pKgK); D++) {
       CUTLASS_PRAGMA_UNROLL
-      for (int K = 0; K < Stages; K++) {
+      for (int K = blk_k0; K < blk_k0 + prefetch_k_stages; K++) {
         prefetch(prefetch_k, pKgK(_, _, _, K, D));
       }
     }
@@ -374,9 +378,11 @@ struct FMHAFwdMainloop<
 
       /* K prefetch */
       int K_next = K + Stages;
-      for (int D = 0; D < size<4>(pKgK); D++) {
-        int K_next = K + Stages;
-        prefetch(prefetch_k, pKgK(_, _, _, K_next, D));
+      if (K_next < blk_k1) {
+        CUTLASS_PRAGMA_UNROLL
+        for (int D = 0; D < size<4>(pKgK); D++) {
+          prefetch(prefetch_k, pKgK(_, _, _, K_next, D));
+        }
       }
     }
 
