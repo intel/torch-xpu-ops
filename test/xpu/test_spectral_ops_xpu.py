@@ -126,7 +126,11 @@ def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     result = op(t, **kwargs)
     self.assertIsInstance(result, torch.Tensor)
     self.assertEqual(result.device, t.device)
-    self.assertTrue(result.is_complex())
+    # Match the real-vs-complex expectations used for result_default above.
+    if is_real_output:
+        self.assertFalse(result.is_complex())
+    else:
+        self.assertTrue(result.is_complex())
 
     # Verify that the requested size parameters affect the last dimension(s)
     # This simple shape rule (directly setting the last dim(s) to n/s) is only
