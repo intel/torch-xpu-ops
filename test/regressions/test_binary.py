@@ -302,9 +302,7 @@ class TestSimpleBinary(TestCase):
             torch.ldexp(x_cpu, e_cpu), torch.ldexp(x_xpu, e_xpu).to(cpu_device)
         )
         # Tensor.ldexp
-        self.assertEqual(
-            x_cpu.ldexp(e_cpu), x_xpu.ldexp(e_xpu).to(cpu_device)
-        )
+        self.assertEqual(x_cpu.ldexp(e_cpu), x_xpu.ldexp(e_xpu).to(cpu_device))
         # inplace
         x_cpu_clone = x_cpu.clone()
         x_xpu_clone = x_xpu.clone()
