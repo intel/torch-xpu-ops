@@ -105,6 +105,7 @@ jobs:
       image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+        - ${HOME}/.cache:/github/.cache
         - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
         --rm
@@ -440,15 +441,3 @@ jobs:
           path: ${{ github.workspace }}/upload_files
           retention-days: 7
           if-no-files-found: warn
-
-      - name: Cleanup temporary files
-        if: always()
-        run: |
-          echo "=== Cleaning Temporary Files ==="
-
-          # Clean up temporary directories
-          rm -rf "${WORKSPACE}/upload_files" 2>/dev/null || true
-          rm -rf /tmp/*inductor* 2>/dev/null || true
-          rm -rf /tmp/tmp* 2>/dev/null || true
-
-          echo "Cleanup completed"

@@ -174,9 +174,7 @@ jobs:
       torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
 
-  # ----------------------------------------------------------------------
   # Compare-results job
-  # ----------------------------------------------------------------------
   compare-results:
     if: ${{ inputs.is_scheduled_run != 'comparison-manually' && ! cancelled() }}
     needs:
@@ -194,19 +192,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      # ------------------------------------------------------------
       # Step 0: Download target logs
-      # ------------------------------------------------------------
       - name: Download Target Logs
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*'
           path: ${{ github.workspace }}/results/target
-          merge-multiple: true
 
-      # ------------------------------------------------------------
       # Step 1: Determine baseline artifact type and if this run is itself a baseline
-      # ------------------------------------------------------------
       - name: Determine Baseline Artifact Type
         id: determine_type
         run: |
@@ -237,9 +230,7 @@ jobs:
           echo "artifact_type=${artifact_type}" >> $GITHUB_OUTPUT
           echo "Derived artifact type: ${artifact_type}"
 
-      # ------------------------------------------------------------
       # Step 2: Fetch baseline run ID from the issue (continues if not found)
-      # ------------------------------------------------------------
       - name: Fetch Baseline Run ID from Issue
         id: baseline
         continue-on-error: true   # Job continues even if issue fetch fails
@@ -266,21 +257,16 @@ jobs:
 
           echo "BASELINE_RUN_ID=${BASELINE_RUN_ID}" >> $GITHUB_OUTPUT
 
-      # ------------------------------------------------------------
       # Step 3: Download baseline logs only if a run ID was found
-      # ------------------------------------------------------------
       - name: Download Baseline Logs
         if: steps.baseline.outputs.BASELINE_RUN_ID != ''
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*'
           path: ${{ github.workspace }}/results/baseline
-          merge-multiple: true
           run-id: ${{ steps.baseline.outputs.BASELINE_RUN_ID }}
 
-      # ------------------------------------------------------------
       # Step 4: Set up Python environment (unchanged)
-      # ------------------------------------------------------------
       - name: Setup Python Environment
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
@@ -289,9 +275,7 @@ jobs:
           uv pip install pip numpy 'setuptools<81' wheel
           uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
 
-      # ------------------------------------------------------------
       # Step 5: Update baseline issue if this run is itself a baseline
-      # ------------------------------------------------------------
       - name: Update Baseline Run ID
         if: steps.determine_type.outputs.is_baseline == 'true' && success()
         env:
@@ -328,9 +312,7 @@ jobs:
 
           echo "Successfully updated baseline run ID for ${ARTIFACT_TYPE} in issue #${BASELINE_ISSUE_ID}"
 
-      # ------------------------------------------------------------
       # Step 6: Run comparison scripts and append summaries
-      # ------------------------------------------------------------
       - name: Setup python env
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
@@ -351,9 +333,6 @@ jobs:
               echo "Error: No results directory found after test!"
               exit 1
           fi
-
-          # Debug: list downloaded files
-          find results
 
           # Function: run unit test comparison
           # Returns: 0 if no new failures, 1 otherwise
@@ -439,9 +418,7 @@ jobs:
               exit 1
           fi
 
-      # ------------------------------------------------------------
       # Step 7: Upload comparison summaries (always)
-      # ------------------------------------------------------------
       - name: Upload Tests Summary
         if: always()
         uses: actions/upload-artifact@v7

@@ -124,14 +124,12 @@ jobs:
         with:
           pattern: 'Inductor-*target*'
           path: ${{ github.workspace }}/results/target
-          merge-multiple: true
 
       - name: Download Baseline Logs
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*baseline*'
           path: ${{ github.workspace }}/results/baseline
-          merge-multiple: true
 
       - name: Setup python env
         run: |
@@ -153,9 +151,6 @@ jobs:
               echo "Error: No results directory found after test!"
               exit 1
           fi
-
-          # Debug: list downloaded files
-          find results
 
           # Function: run unit test comparison
           # Returns: 0 if no new failures, 1 otherwise

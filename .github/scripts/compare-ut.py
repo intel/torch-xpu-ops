@@ -224,6 +224,7 @@ class Comparison:
     issue_ids: str = ""  # |-separated issue IDs
     issue_labels: str = ""  # |-separated labels
     issue_statuses: str = ""  # |-separated statuses (open/closed)
+    case_statuses: str = ""  # |-separated statuses (open/closed)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -256,11 +257,12 @@ class GitHubIssueTracker:
 
     def load_cache(self) -> bool:
         """Load issues from local cache file."""
-        if not self.cache_path or not self.cache_path.exists():
+        one_cache_path = (sorted(glob.glob(f"./**/{self.cache_path.name}", recursive=True), reverse=True) or [None])[-1]
+        if one_cache_path is None or not Path(one_cache_path).exists():
             return False
 
         try:
-            with open(self.cache_path, encoding='utf-8') as f:
+            with open(Path(one_cache_path), encoding='utf-8') as f:
                 data = json.load(f)
 
             self.issues_cache = {int(k): v for k, v in data.get('issues_cache', {}).items()}
@@ -268,11 +270,11 @@ class GitHubIssueTracker:
             logger.info(
                 "Loaded %d issues from cache: %s",
                 len(self.issues_cache),
-                self.cache_path
+                one_cache_path
             )
             return True
         except Exception as e:
-            logger.warning(f"Failed to load cache from {self.cache_path}: {e}")
+            logger.warning(f"Failed to load cache from {one_cache_path}: {e}")
             return False
 
     def save_cache(self) -> bool:
@@ -383,6 +385,7 @@ class GitHubIssueTracker:
         test_cases = self._extract_test_cases(issue_body)
         for test_case in test_cases:
             # Safely split the test case string
+            case_state = "close" if re.match(r'^~~.*~~$', test_case.strip()) else "open"
             parts = test_case.split(',')
             if len(parts) < 3:
                 logger.debug(f"Issue #{issue_id}: test case '{test_case}' has fewer than 3 comma-separated parts, skipping")
@@ -401,6 +404,7 @@ class GitHubIssueTracker:
             self.test_to_issues.setdefault(uniqname, []).append({
                 'id': issue_id,
                 'state': issue_state,
+                'case_state': case_state,
                 'labels': issue_labels
             })
 
@@ -413,7 +417,7 @@ class GitHubIssueTracker:
             return []
         cases_text = match.group(1).strip()
         # Split by commas or newlines, then strip each part
-        parts = re.split(r'[,\n]+', cases_text)
+        parts = re.split(r'[\n]+', cases_text)
         return [p.strip() for p in parts if p.strip()]
 
     def find_issues_for_test(self, test_uniqname: str) -> list[dict[str, Any]]:
@@ -427,6 +431,7 @@ class GitHubIssueTracker:
         enhanced_df['issue_ids'] = ''
         enhanced_df['issue_labels'] = ''
         enhanced_df['issue_statuses'] = ''
+        enhanced_df['case_statuses'] = ''
 
         for idx, row in enhanced_df.iterrows():
             uniqname = row.get('uniqname', '')
@@ -437,12 +442,14 @@ class GitHubIssueTracker:
                 logger.debug(f"{issues}")
                 issue_ids = [str(issue['id']) for issue in issues]
                 issue_statuses = [issue['state'] for issue in issues]
+                case_statuses = [issue['case_state'] for issue in issues]
                 all_labels = set()
                 for issue in issues:
                     all_labels.update(issue['labels'])
                 enhanced_df.at[idx, 'issue_ids'] = '|'.join(issue_ids)
                 enhanced_df.at[idx, 'issue_labels'] = '|'.join(sorted(all_labels))
                 enhanced_df.at[idx, 'issue_statuses'] = '|'.join(issue_statuses)
+                enhanced_df.at[idx, 'case_statuses'] = '|'.join(case_statuses)
 
         return enhanced_df
 
@@ -485,9 +492,8 @@ class FilePatternMatcher:
 
     # Test type detection patterns
     TEST_TYPE_PATTERNS = {
-        "xpu-target": [r"/target/"],
         "xpu-baseline": [r"/baseline/"],
-        # No default catch-all; files that don't match will be "unknown"
+        "xpu-target": [r".*"],
     }
 
     # File replacements
@@ -1389,17 +1395,18 @@ class ReportExporter:
             return
 
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+
+            # Add summary statistics
+            stats_df = analyzer.generate_summary_stats(unique_df)
+            if not stats_df.empty:
+                stats_df.to_excel(writer, sheet_name="Summary", index=False)
+
             # Split and compare
             baseline_df, target_df = analyzer.split_by_device(unique_df)
 
             if not baseline_df.empty or not target_df.empty:
                 # Merge results (includes GitHub issue info if available)
                 merged_df = analyzer.merge_results(baseline_df, target_df)
-
-                # Write comparison
-                merged_df.to_excel(writer, sheet_name="Comparison", index=False)
-
-                # Find target changes (New fail/pass)
                 new_failures_df, new_passes_df = analyzer.find_target_changes(merged_df)
 
                 if not new_failures_df.empty:
@@ -1408,15 +1415,13 @@ class ReportExporter:
                 if not new_passes_df.empty:
                     new_passes_df.to_excel(writer, sheet_name="New passes", index=False)
 
+                # Write comparison
+                merged_df.to_excel(writer, sheet_name="Comparison Details", index=False)
+
             # Generate and write file summary
             file_summary_df = analyzer.generate_file_summary(unique_df)
             if not file_summary_df.empty:
                 file_summary_df.to_excel(writer, sheet_name="Files summary", index=False)
-
-            # Add summary statistics
-            stats_df = analyzer.generate_summary_stats(unique_df)
-            if not stats_df.empty:
-                stats_df.to_excel(writer, sheet_name="Summary", index=False)
 
             # Export case-to-issue mapping if available
             case_issue_df = self._generate_case_issue_df(analyzer)
@@ -1540,12 +1545,14 @@ class ReportExporter:
             # Collect information for all issues of this test
             issue_ids = [str(issue['id']) for issue in issues]
             issue_states = [issue['state'] for issue in issues]
+            case_states = [issue['case_state'] for issue in issues]
             # Labels are stored as a list per issue; join them for display
             issue_labels_list = [', '.join(issue.get('labels', [])) for issue in issues]
 
             # Combine multiple issues into readable strings
             combined_ids = '| '.join(issue_ids)
             combined_states = '| '.join(issue_states)
+            combined_case_states = '| '.join(case_states)
             combined_labels = ' | '.join(issue_labels_list)  # separate issues with a pipe
 
             # Build GitHub URLs if repo name is known
@@ -1559,6 +1566,7 @@ class ReportExporter:
                 'Test Case (uniqname)': uniqname,
                 'Issue IDs': combined_ids,
                 'Issue States': combined_states,
+                'Case States': combined_case_states,
                 'Issue Labels': combined_labels,
                 'Issue URLs': combined_urls,
             })
@@ -1659,7 +1667,7 @@ def main() -> int:
 
     # New argument for untracked failures
     parser.add_argument(
-        "--untracked-failures",
+        "--check-changes",
         action="store_true",
         help="Generate a separate file/sheet with target failures that have no associated GitHub issues, and include them in markdown",
     )
@@ -1730,45 +1738,75 @@ def main() -> int:
         else:
             exporter.export_csv(analyzer, output_path)
 
-        # Compute untracked failures (only if requested, for markdown and separate file)
+        # Compute untracked failures and tracked passes (only if requested)
         untracked_failures_df = None
-        if args.untracked_failures:
+        tracked_passed_df = None
+
+        if args.check_changes:
             unique_df = analyzer.deduplicate_by_priority()
             baseline_df, target_df = analyzer.split_by_device(unique_df)
-            if not baseline_df.empty or not target_df.empty:
+
+            # No data to compare – early exit
+            if baseline_df.empty and target_df.empty:
+                logger.info("Skipping untracked failures export: no baseline or target data")
+            else:
                 merged_df = analyzer.merge_results(baseline_df, target_df)
-                # Ensure issue_ids column exists (it may be missing if no GitHub integration)
-                if 'issue_ids' not in merged_df.columns:
-                    merged_df['issue_ids'] = ''
 
-                # Filter for failures that are actually failed/error and have no issue IDs
-                untracked_failures_df = merged_df[
+                # Ensure required columns exist (GitHub integration may be missing)
+                for col in ['issue_ids', 'issue_labels', 'issue_statuses', 'case_statuses']:
+                    if col not in merged_df.columns:
+                        merged_df[col] = ''
+
+                # Case‑insensitive 'open' detection
+                def contains_open(series):
+                    return series.str.contains('open', case=False, na=False)
+
+                # Untracked failures: failed/error and no open issues anywhere
+                untracked_mask = (
                     merged_df['status_target'].isin(['failed', 'error']) &
-                    ~merged_df['issue_statuses'].str.contains('open', na=False)
-                ].copy()
+                    ~contains_open(merged_df['issue_statuses']) & ~contains_open(merged_df['case_statuses'])
+                )
+                untracked_failures_df = merged_df[untracked_mask].copy()
 
-                # Export separate file for untracked failures (Excel or CSV) with only desired columns
-                if not untracked_failures_df.empty:
-                    # Define the columns we want to export
-                    cols = ['raw_file_target', 'raw_class_target', 'raw_name_target',
-                            'status_target', 'time_target', 'message_target',
-                            'issue_ids', 'issue_labels', 'issue_statuses']
-                    # Ensure columns exist (reindex to include missing ones with NaN)
-                    export_df = untracked_failures_df.reindex(columns=cols)
-                    export_df['message_target'] = export_df['message_target'].astype(str).str[:50]
+                # Tracked passes: passed and at least one open issue (issue or case)
+                tracked_mask = (
+                    merged_df['status_target'].str.contains('pass', case=False, na=False) &
+                    (contains_open(merged_df['issue_statuses']) & contains_open(merged_df['case_statuses']))
+                )
+                tracked_passed_df = merged_df[tracked_mask].copy()
+
+                # Common export columns
+                export_columns = [
+                    'raw_file_target', 'raw_class_target', 'raw_name_target',
+                    'status_target', 'time_target', 'message_target',
+                    'issue_ids', 'issue_labels', 'issue_statuses', 'case_statuses'
+                ]
+
+                def export_dataframe(df, suffix, sheet_or_label, truncate_message=False):
+                    """Export DataFrame to Excel or CSV based on output_path suffix."""
+                    if df.empty:
+                        return
+                    # Ensure all export columns exist (missing become NaN)
+                    export_df = df.reindex(columns=export_columns)
+                    if truncate_message and 'message_target' in export_df.columns:
+                        export_df['message_target'] = export_df['message_target'].astype(str).str[:50]
 
                     if output_path.suffix.lower() in ['.xlsx', '.xls']:
-                        untracked_path = output_path.parent / f"{output_path.stem}_untracked_failures.xlsx"
-                        with pd.ExcelWriter(untracked_path, engine='openpyxl') as writer:
-                            export_df.to_excel(writer, sheet_name='Untracked Failures', index=False)
+                        export_path = output_path.parent / f"{output_path.stem}{suffix}.xlsx"
+                        with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
+                            export_df.to_excel(writer, sheet_name=sheet_or_label, index=False)
                     else:
-                        untracked_path = output_path.parent / f"{output_path.stem}_untracked_failures.csv"
-                        export_df.to_csv(untracked_path, index=False)
-                    logger.error(f"Unexpected failures: {len(untracked_failures_df)} to {untracked_path}")
-                else:
-                    logger.info("No untracked failures found")
-            else:
-                logger.info("Skipping untracked failures export: no baseline or target data")
+                        export_path = output_path.parent / f"{output_path.stem}{suffix}.csv"
+                        export_df.to_csv(export_path, index=False)
+                    logger.info(f"Exported {len(export_df)} rows to {export_path}")
+
+                # Export tracked passes
+                export_dataframe(tracked_passed_df, "_tracked_passes", "Tracked Passes")
+                # Export untracked failures (truncate long messages)
+                export_dataframe(untracked_failures_df, "_untracked_failures", "Untracked Failures", truncate_message=True)
+
+                if tracked_passed_df.empty and untracked_failures_df.empty:
+                    logger.info("No tracked passes or untracked failures found after filtering")
 
         # Export markdown if requested (pass untracked failures if available)
         if args.markdown:

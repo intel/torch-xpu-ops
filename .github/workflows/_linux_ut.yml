@@ -97,6 +97,7 @@ jobs:
       image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+        - ${HOME}/.cache:/github/.cache
         - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
         --rm
@@ -275,7 +276,7 @@ jobs:
     name: '${{ inputs.ut }} summary'
     needs: [distributed, UT]
     timeout-minutes: 30
-    if: ${{ ! cancelled() }}
+    if: ${{ ! cancelled() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout torch-xpu-ops repository
@@ -290,11 +291,53 @@ jobs:
           merge-multiple: true
       - name: Check Results
         run: |
-          # Set test environment
+          set -e  # Exit on any error
+
+          # Install dependencies
           pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
-          python .github/scripts/compare-ut.py --input ut_log/target/ --output ut_comparison.csv --untracked-failures
-          if [ -f ut_comparison_untracked_failures.csv ];then
-            echo "New failures found:"
-            cat ut_comparison_untracked_failures.csv
+
+          # Run comparison script (generates CSV files)
+          python .github/scripts/compare-ut.py --input ut_log/target/ --output ut_comparison.csv --check-changes
+
+          # Helper: count actual data rows in a CSV (skip header and empty lines)
+          count_data_rows() {
+            local file="$1"
+            if [ ! -f "$file" ]; then
+              echo 0
+              return
+            fi
+            tail -n +2 "$file" | grep -v '^[[:space:]]*$' | wc -l
+          }
+
+          # Helper: show first few data rows for context
+          show_sample() {
+            local file="$1"
+            local max_lines="${2:-5}"
+            echo "First up to $max_lines entries:"
+            head -n $((max_lines + 1)) "$file" | tail -n +2 | head -n "$max_lines"
+          }
+
+          # Check for new passes (tracked passes)
+          PASSES_FILE="ut_comparison_tracked_passes.csv"
+          PASSES_COUNT=$(count_data_rows "$PASSES_FILE")
+          if [ "$PASSES_COUNT" -gt 0 ]; then
+            echo -e "\033[0;32m✅ New Passes Found: $PASSES_COUNT\033[0m"
+            show_sample "$PASSES_FILE" 5
             exit 1
+          elif [ -f "$PASSES_FILE" ]; then
+            echo -e "\033[0;32mℹ️ No new passes detected (file present but empty).\033[0m"
           fi
+
+          # Check for new failures (untracked failures)
+          FAILURES_FILE="ut_comparison_untracked_failures.csv"
+          FAILURES_COUNT=$(count_data_rows "$FAILURES_FILE")
+          if [ "$FAILURES_COUNT" -gt 0 ]; then
+            echo -e "\033[0;31m❌ New Failures Found: $FAILURES_COUNT\033[0m"
+            show_sample "$FAILURES_FILE" 5
+            exit 1
+          elif [ -f "$FAILURES_FILE" ]; then
+            echo -e "\033[0;32mℹ️ No new untracked failures detected.\033[0m"
+          fi
+
+          # All good
+          echo -e "\033[0;32m✅ All UT checks passed: no new failures or unexpected passes.\033[0m"
