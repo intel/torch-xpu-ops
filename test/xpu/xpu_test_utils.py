@@ -1046,7 +1046,8 @@ class XPUPatchForImport:
                         replaced = True
                         new_wrapper = copy.copy(wrapper)
                         new_wrapper.decorators = tuple(
-                            d for d in new_wrapper.decorators
+                            d
+                            for d in new_wrapper.decorators
                             if d is not unittest.expectedFailure
                         )
                         new_wrapper.device_type = "xpu"
