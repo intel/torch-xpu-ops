@@ -10,14 +10,14 @@
 
 #ifdef USE_C10D_XCCL
 
-// Suppress deprecation warnings from oneAPI SYCL headers.
-// These are not from our code and would otherwise fail the build under -Werror.
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUEvent.h>
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
-#pragma GCC diagnostic pop
+DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
