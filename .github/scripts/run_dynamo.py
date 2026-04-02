@@ -169,7 +169,7 @@ def run_benchmark_with_prefix(
     reader_thread.start()
 
     def error_monitor():
-        timeout = 300  # seconds
+        timeout = 10800  # seconds
         start = time.time()
         while proc.poll() is None and (time.time() - start) < timeout:
             try:
@@ -182,7 +182,7 @@ def run_benchmark_with_prefix(
                             return
             except Exception:
                 pass
-            time.sleep(10)
+            time.sleep(30)
 
     monitor_thread = threading.Thread(target=error_monitor, daemon=True)
     monitor_thread.start()
