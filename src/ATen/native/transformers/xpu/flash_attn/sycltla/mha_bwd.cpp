@@ -316,7 +316,8 @@ void gemm_kernel(
   if constexpr (clear_acc)
     clear(acc);
   /* Warm up loops with prefetch to L1 */
-  int prefetch_warmup = prefetch_dist < k_tile_count ? prefetch_dist : k_tile_count;
+  int prefetch_warmup =
+      prefetch_dist < k_tile_count ? prefetch_dist : k_tile_count;
   CUTE_UNROLL
   for (; k_tile_prefetch < prefetch_warmup; k_tile_prefetch++) {
     prefetch(prefetch_a, pAgA(_, _, _, k_tile_prefetch));
