@@ -101,14 +101,14 @@ struct Param {
         k_ptr(k),
         v_ptr(v),
         lse_ptr(lse),
+        scale_softmax(softmax_scale),
+        scale_softmax_log2(softmax_scale * M_LOG2E),
         odo_ptr(odo),
         dqaccum_ptr(dqaccum),
         dq_ptr(dq),
         dk_ptr(dk),
         dv_ptr(dv),
-        pb_ptr(pb),
-        scale_softmax(softmax_scale),
-        scale_softmax_log2(softmax_scale * M_LOG2E) {}
+        pb_ptr(pb) {}
   // read only
   const T* do_ptr;
   const T* o_ptr;

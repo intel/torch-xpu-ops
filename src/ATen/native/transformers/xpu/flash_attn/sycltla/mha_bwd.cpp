@@ -401,7 +401,7 @@ void gemm_dQ(
     Trait& trait,
     Tensor<Engine0, Layout0> const& A, // (M,K)
     Tensor<Engine1, Layout1> const& B, // (N,K)
-    Tensor<Engine2, Layout2> const& C, // (M,N)
+    Tensor<Engine2, Layout2>& C, // (M,N)
     TiledMMA const& mma) {
   auto local_id = int(compat::get_nd_item<1>().get_local_id(0));
   auto tile_mnk = mma.tile_mnk();
@@ -529,7 +529,7 @@ CUTLASS_DEVICE void scale_apply_exp2(
     for (int ni = 0; ni < size<1>(tensor); ++ni) {
       int n = get<1>(rC_2d(0, ni));
       const float max_scaled =
-          ((max(n) == -INFINITY) or (n >= tail_m)) ? 0.f : max(n) * M_LOG2E;
+          ((n >= tail_m) || (max(n) == -INFINITY)) ? 0.f : max(n) * M_LOG2E;
       CUTLASS_PRAGMA_UNROLL
       for (int mi = 0; mi < size<0>(tensor); ++mi) {
         tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
