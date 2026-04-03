@@ -11,43 +11,15 @@ on:
 permissions: read-all
 
 env:
-  aaa: 2
+  aaa: 1
 
 jobs:
-  get-params:
+  test:
     runs-on: build
-    outputs:
-      node_name: ${{ steps.params.outputs.node_name }}
-    steps:
-      - name: Get params
-        id: params
-        run: |
-          set -xe
-          node_node="$(echo ${{ inputs.node_name }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
-          echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
-  check-nodes:
-    runs-on: ${{ matrix.node_name }}
-    if: ${{ ! cancelled() }}
     env:
-      abc: 1
-    needs: [get-params]
-    container:
-      image: ubuntu:24.04
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-        - ${{ github.workspace }}/../../.cache:/github/.cache
-        - /tmp/xpu-tool:/tmp/xpu-tool
-      options: >-
-        --rm
-    strategy:
-      fail-fast: false
-      matrix:
-        node_name: ${{ fromJSON(needs.get-params.outputs.node_name) }}
+      bbb: 2
     steps:
-      - name: Check env
-        run: |
-          set -xe
-
-          realpath /github/.cache
-
-          printenv
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare test env
+        uses: ./.github/workflows/_linux_e2e.yml
