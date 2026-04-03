@@ -477,4 +477,104 @@ void triangular_solve_mkl(
       });
 }
 
+template <typename scalar_t>
+static void apply_svd_mkl(
+    const Tensor& A,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info,
+    bool full_matrices,
+    bool compute_uv) {
+  using value_t = typename c10::scalar_value_type<scalar_t>::type;
+
+  auto& queue = at::xpu::getCurrentSYCLQueue();
+  const auto m = A.size(-2);
+  const auto n = A.size(-1);
+  const auto lda = m; // column-major
+
+  auto jobu = oneapi::mkl::jobsvd::novec;
+  auto jobvt = oneapi::mkl::jobsvd::novec;
+  int64_t ldu = 1;
+  int64_t ldvt = 1;
+
+  if (compute_uv) {
+    jobu = full_matrices ? oneapi::mkl::jobsvd::vectors
+                         : oneapi::mkl::jobsvd::somevec;
+    jobvt = full_matrices ? oneapi::mkl::jobsvd::vectors
+                          : oneapi::mkl::jobsvd::somevec;
+    ldu = U.stride(-1); // F-contiguous: stride(-1) is the leading dimension
+    ldvt = Vh.stride(-1);
+  }
+
+  const auto batch_size = batchCount(A);
+  const auto A_stride = matrixStride(A);
+  const auto S_stride = S.size(-1);
+  const auto U_stride = compute_uv ? matrixStride(U) : 1;
+  const auto Vh_stride = compute_uv ? matrixStride(Vh) : 1;
+
+  auto* A_data = reinterpret_cast<scalar_t*>(A.data_ptr());
+  auto* S_data = reinterpret_cast<value_t*>(S.data_ptr());
+  auto* U_data =
+      compute_uv ? reinterpret_cast<scalar_t*>(U.data_ptr()) : nullptr;
+  auto* Vh_data =
+      compute_uv ? reinterpret_cast<scalar_t*>(Vh.data_ptr()) : nullptr;
+  auto* info_data = info.data_ptr<int>();
+
+  auto scratchpad_size =
+      oneapi::mkl::lapack::gesvd_scratchpad_size<scalar_t>(
+          queue, jobu, jobvt, m, n, lda, ldu, ldvt);
+  auto scratchpad_at = at::empty({scratchpad_size}, A.options());
+  auto* scratchpad_data =
+      reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr());
+
+  for (const auto i : c10::irange(batch_size)) {
+    auto* A_ptr = &A_data[i * A_stride];
+    auto* S_ptr = &S_data[i * S_stride];
+    auto* U_ptr = compute_uv ? &U_data[i * U_stride] : nullptr;
+    auto* Vh_ptr = compute_uv ? &Vh_data[i * Vh_stride] : nullptr;
+
+    try {
+      SYCL_ONEMKL_SUBMIT(
+          queue,
+          oneapi::mkl::lapack::gesvd,
+          queue,
+          jobu,
+          jobvt,
+          m,
+          n,
+          A_ptr,
+          lda,
+          S_ptr,
+          U_ptr,
+          ldu,
+          Vh_ptr,
+          ldvt,
+          scratchpad_data,
+          scratchpad_size);
+    } catch (const oneapi::mkl::lapack::exception& e) {
+      info_data[i] = e.info();
+    }
+  }
+}
+
+void svd_mkl(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& [[maybe_unused]] driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
+      A.scalar_type(), "svd_xpu", [&] {
+        using T = get_mkl_type<scalar_t>::type;
+        apply_svd_mkl<T>(
+            cloneBatchedColumnMajor(A),
+            U, S, Vh, info,
+            full_matrices, compute_uv);
+      });
+}
+
 } // namespace at::native::xpu

@@ -12,6 +12,8 @@
 
 #include <ATen/core/Tensor.h>
 #include <ATen/native/TransposeType.h>
+#include <optional>
+#include <string_view>
 
 namespace at::native::xpu {
 
@@ -35,4 +37,13 @@ TORCH_XPU_API void triangular_solve_mkl(
     TransposeType transpose,
     bool unitriangular);
 
+TORCH_XPU_API void svd_mkl(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info);
 } // namespace at::native::xpu

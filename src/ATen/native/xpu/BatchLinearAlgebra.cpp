@@ -134,4 +134,34 @@ void triangular_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
+void svd_kernel_xpu(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+#if defined(USE_ONEMKL_XPU)
+  native::xpu::svd_mkl(A, full_matrices, compute_uv, driver, U, S, Vh, info);
+#else
+  auto A_cpu = cloneBatchedColumnMajor(A.to(A.options().device(kCPU)));
+  auto U_cpu = compute_uv ? U.to(U.options().device(kCPU)) : at::Tensor();
+  auto S_cpu = S.to(S.options().device(kCPU));
+  auto Vh_cpu = compute_uv ? Vh.to(Vh.options().device(kCPU)) : at::Tensor();
+  auto info_cpu = info.to(info.options().device(kCPU));
+
+  svd_stub(at::kCPU, A_cpu, full_matrices, compute_uv, driver, U_cpu, S_cpu, Vh_cpu, info_cpu);
+
+  S.copy_(S_cpu);
+  info.copy_(info_cpu);
+  if (compute_uv) {
+    U.copy_(U_cpu);
+    Vh.copy_(Vh_cpu);
+  }
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(svd_stub, &svd_kernel_xpu);
 } // namespace at::native
