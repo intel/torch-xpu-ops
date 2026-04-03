@@ -10,6 +10,9 @@ on:
 
 permissions: read-all
 
+env:
+  aaa: 2
+
 jobs:
   get-params:
     runs-on: build
@@ -22,21 +25,11 @@ jobs:
           set -xe
           node_node="$(echo ${{ inputs.node_name }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
           echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
-      - name: Dump runner context
-        env:
-          RUNNER_CONTEXT: ${{ toJson(runner) }}
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-          ENV_CONTEXT: ${{ toJson(env) }}
-          JOB_CONTEXT: ${{ toJson(job) }}
-          JOBS_CONTEXT: ${{ toJson(vars) }}
-          S_CONTEXT: ${{ toJson(strategy) }}
-          M_CONTEXT: ${{ toJson(matrix) }}
-          STEPS_CONTEXT: ${{ toJson(steps) }}
-        run: printenv
-
   check-nodes:
     runs-on: ${{ matrix.node_name }}
     if: ${{ ! cancelled() }}
+    env:
+      abc: 1
     needs: [get-params]
     container:
       image: ubuntu:24.04
@@ -54,9 +47,5 @@ jobs:
       - name: Check env
         run: |
           set -xe
-
-          uname -a
-          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
-          clinfo --list
 
           realpath /github/.cache
