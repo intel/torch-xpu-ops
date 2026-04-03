@@ -97,6 +97,7 @@ jobs:
       image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
+        - ${{ github.workspace }}/../../.cache:/github/.cache
       options: >-
         --rm
         --device=/dev/mem
