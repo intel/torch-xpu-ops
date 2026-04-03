@@ -85,4 +85,8 @@ runs:
         IFS="${delimiter}" read -ra numactl_args_list <<< "${numactl_args}"
         export NUM_GPUS=${#numactl_args_list[@]}
         cp ${GITHUB_WORKSPACE}/.github/scripts/run_dynamo.py .
-        python ./run_dynamo.py --suite "${{ inputs.suite }}" --dt "${{ inputs.dt }}" --mode "${{ inputs.mode }}" --scenario "${{ inputs.scenario }}" || true
+        python ./run_dynamo.py --suite "${{ inputs.suite }}" \
+                               --dt "${{ inputs.dt }}" \
+                               --mode "${{ inputs.mode }}" \
+                               --scenario "${{ inputs.scenario }}" \
+                               --model-only ${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt || true
