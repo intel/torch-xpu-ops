@@ -25,7 +25,14 @@ jobs:
       - name: Dump runner context
         env:
           RUNNER_CONTEXT: ${{ toJson(runner) }}
-        run: echo "$RUNNER_CONTEXT"
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+          ENV_CONTEXT: ${{ toJson(env) }}
+          JOB_CONTEXT: ${{ toJson(job) }}
+          JOBS_CONTEXT: ${{ toJson(vars) }}
+          S_CONTEXT: ${{ toJson(strategy) }}
+          M_CONTEXT: ${{ toJson(matrix) }}
+          STEPS_CONTEXT: ${{ toJson(steps) }}
+        run: printenv
 
   check-nodes:
     runs-on: ${{ matrix.node_name }}
@@ -47,7 +54,6 @@ jobs:
       - name: Check env
         run: |
           set -xe
-          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
 
           uname -a
           dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
