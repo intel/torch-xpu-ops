@@ -366,6 +366,39 @@ def checkpointing_without_reentrant_memory_savings(self):
     self.assertTrue(mem_no_reentrant_checkpoint < mem_no_checkpoint)
 
 
+def forward_traceback_preserves_exception_with_checkpoint(self):
+    with torch.library._scoped_library("_test_autograd", "FRAGMENT"):
+
+        @torch.library.custom_op("_test_autograd::sin_op", mutates_args=())
+        def sin_op(x: torch.Tensor) -> torch.Tensor:
+            return x.sin()
+
+        def setup_context(ctx, inputs, output):
+            (x,) = inputs
+            ctx.save_for_backward(x)
+
+        def backward(ctx, grad):
+            (x,) = ctx.saved_tensors
+            return grad * x.cos()
+
+        torch.library.register_autograd(
+            "_test_autograd::sin_op",
+            backward,
+            setup_context=setup_context,
+        )
+
+        def fn(x):
+            return torch.ops._test_autograd.sin_op(x)
+
+        try:
+            torch.xpu.memory._record_memory_history("all", stacks="python")
+            x = torch.randn(4, device="xpu", requires_grad=True)
+            y = checkpoint(fn, x, use_reentrant=False)
+            y.sum().backward()
+        finally:
+            torch.xpu.memory._record_memory_history(None)
+
+
 def gradcheck_default_device_placement_context(self):
     # During gradcheck with fast_mode=True, we create a random vector on the CPU device using a CPU generator.
     # This test ensures that this still works when the default device is set to something else by the user.
@@ -631,6 +664,9 @@ with XPUPatchForImport(False):
     )
     TestAutograd.test_checkpointing_without_reentrant_memory_savings = (
         checkpointing_without_reentrant_memory_savings
+    )
+    TestAutograd.test_forward_traceback_preserves_exception_with_checkpoint = (
+        forward_traceback_preserves_exception_with_checkpoint
     )
     TestAutograd.test_gradcheck_default_device_placement_context = (
         gradcheck_default_device_placement_context
