@@ -195,7 +195,7 @@ def run_benchmark_with_prefix(
     reader_thread.join(timeout=1)
     monitor_thread.join(timeout=1)
     log_f.close()
-    log_crash_entry(log_csv, tmp_log_csv, device, task)
+    collect_csv_results(log_csv, tmp_log_csv, device, task)
 
     # Determine success based on last non-empty line of log file
     def check_success_from_log(log_path: Path) -> tuple[str, bool]:
@@ -225,7 +225,7 @@ def run_benchmark_with_prefix(
     return exit_code, success, test_result
 
 
-def log_crash_entry(
+def collect_csv_results(
     log_csv: Path,
     tmp_log_csv: str,
     device: str,
@@ -234,8 +234,8 @@ def log_crash_entry(
     """Append a crash row to the CSV file."""
     import csv
 
-    header = None
-    last_match = None
+    header = []
+    last_match = []
 
     def condition(row: list[str]) -> bool:
         return row and row[0] == device
@@ -247,7 +247,7 @@ def log_crash_entry(
                 # Find first non-empty row as header
                 for row in reader:
                     if row:  # skip empty rows
-                        header = ["scenario", "suite", "dtype", "mode"] + row
+                        header = row
                         break
                 # Continue scanning for matching row
                 for row in reader:
@@ -256,15 +256,18 @@ def log_crash_entry(
         except Exception as e:
             raise RuntimeError(f"Error reading source file: {e}") from e
 
-    if last_match is None:
+    if not last_match:
         if task.scenario == "accuracy":
+            header = ["dev","name","batch_size","accuracy"]
             last_match = [device, task.model, 0, "crashed"]
         elif task.scenario == "performance":
+            header = ["dev","name","batch_size","speedup","abs_latency"]
             last_match = [device, task.model, 0, 0, 0]
         else:
             raise ValueError(f"Unknown task.scenario: {task.scenario}")
 
     # Build the final row
+    final_header = ["scenario", "suite", "dtype", "mode"] + header
     final_row = [task.scenario, task.suite, task.dt, task.mode] + last_match
 
     try:
@@ -272,8 +275,8 @@ def log_crash_entry(
         mode = 'a' if exists else 'w'
         with open(log_csv, mode, newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            if not exists and header is not None:
-                writer.writerow(header)
+            if not exists:
+                writer.writerow(final_header)
             writer.writerow(final_row)
     except Exception as e:
         raise RuntimeError(f"Error writing to destination file: {e}") from e
