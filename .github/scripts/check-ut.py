@@ -42,13 +42,20 @@ error_types = [
     "NotImplementedError",
 ]
 
+def _normalize_text(value):
+    if not value:
+        return ''
+    return ' '.join(str(value).split())
+
 def get_classname(case):
-    return ' '.join(case.classname.split()) if hasattr(case, 'classname') else case.get('classname', '')
+    if isinstance(case, dict):
+        return _normalize_text(case.get('classname', ''))
+    return _normalize_text(getattr(case, 'classname', ''))
 
 def get_name(case):
     if isinstance(case, dict):
-        return case.get('name', '')
-    return ' '.join(case.name.split())
+        return _normalize_text(case.get('name', ''))
+    return _normalize_text(getattr(case, 'name', ''))
 
 def get_category_from_case(case):
     if isinstance(case, dict):
@@ -105,7 +112,13 @@ def get_message(case):
                 indent_level = 0
                 break
 
-    return " ; ".join(error_messages) if error_messages else f"{case.result[0].message.splitlines()[0]}"
+    if error_messages:
+        return " ; ".join(error_messages)
+
+    message = getattr(case.result[0], 'message', '') or ''
+    if message:
+        return message.splitlines()[0]
+    return ""
 
 def print_md_row(row, print_header=False, failure_list=None):
     if print_header:
