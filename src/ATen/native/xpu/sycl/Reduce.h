@@ -1352,15 +1352,20 @@ inline void gpu_reduce_kernel(
   // XXX: Avoid all WIs in a work group contributes on one output. If so,
   // It is inefficient to store output, each work group stores only one
   // output. It is not friendly to collapse memory request in an EU.
-  if (config.values_per_item() >= group_height * 16 ||
-      config.values_per_item() >= 512) {
-    // Divide the input across SGs in a work group, if that leaves at least
-    // 16 elements to be summed by each WI. This will require inter-SG
-    // reduction using shared memory.
-    config.input_mult[1] = config.split_input(group_height);
-  } else {
-    // Otherwise, each SG handles a separate output.
-    config.output_mult[1] = config.split_output(group_height);
+  //
+  // When input is vectorized, each work-item processes input_vec_size
+  // elements per load.  Scale the threshold proportionally so that each
+  // work-item gets enough vector loads to amortize the inter-SG reduction
+  // overhead via shared local memory.  For non-vectorized paths the factor
+  // is 1 and the condition is unchanged.
+  {
+    int vf = config.vectorize_input ? config.input_vec_size : 1;
+    if (config.values_per_item() >= group_height * 16 * vf ||
+        config.values_per_item() >= 512 * vf) {
+      config.input_mult[1] = config.split_input(group_height);
+    } else {
+      config.output_mult[1] = config.split_output(group_height);
+    }
   }
 
   // We are finding a general rountine to work out target max WI number on dev
