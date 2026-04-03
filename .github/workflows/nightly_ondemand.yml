@@ -22,6 +22,11 @@ jobs:
           set -xe
           node_node="$(echo ${{ inputs.node_name }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
           echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
+      - name: Dump runner context
+        env:
+          RUNNER_CONTEXT: ${{ toJson(runner) }}
+        run: echo "$RUNNER_CONTEXT"
+
   check-nodes:
     runs-on: ${{ matrix.node_name }}
     if: ${{ ! cancelled() }}
@@ -30,7 +35,7 @@ jobs:
       image: ubuntu:24.04
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - ${{ env.HOME }}/.cache:/github/.cache
+        - ${{ github.workspace }}/../../.cache:/github/.cache
         - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
         --rm
@@ -47,3 +52,5 @@ jobs:
           uname -a
           dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
           clinfo --list
+
+          realpath /github/.cache
