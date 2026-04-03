@@ -49,3 +49,5 @@ jobs:
           set -xe
 
           realpath /github/.cache
+
+          printenv
