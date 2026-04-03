@@ -147,12 +147,27 @@ void svd_kernel_xpu(
   native::xpu::svd_mkl(A, full_matrices, compute_uv, driver, U, S, Vh, info);
 #else
   auto A_cpu = cloneBatchedColumnMajor(A.to(A.options().device(kCPU)));
-  auto U_cpu = compute_uv ? U.to(U.options().device(kCPU)) : at::Tensor();
-  auto S_cpu = S.to(S.options().device(kCPU));
-  auto Vh_cpu = compute_uv ? Vh.to(Vh.options().device(kCPU)) : at::Tensor();
-  auto info_cpu = info.to(info.options().device(kCPU));
+  auto U_cpu = compute_uv
+      ? at::empty_strided(U.sizes(), U.strides(), U.options().device(kCPU))
+      : at::Tensor();
+  auto S_cpu =
+      at::empty_strided(S.sizes(), S.strides(), S.options().device(kCPU));
+  auto Vh_cpu = compute_uv
+      ? at::empty_strided(Vh.sizes(), Vh.strides(), Vh.options().device(kCPU))
+      : at::Tensor();
+  auto info_cpu = at::empty_strided(
+      info.sizes(), info.strides(), info.options().device(kCPU));
 
-  svd_stub(at::kCPU, A_cpu, full_matrices, compute_uv, driver, U_cpu, S_cpu, Vh_cpu, info_cpu);
+  svd_stub(
+      at::kCPU,
+      A_cpu,
+      full_matrices,
+      compute_uv,
+      driver,
+      U_cpu,
+      S_cpu,
+      Vh_cpu,
+      info_cpu);
 
   S.copy_(S_cpu);
   info.copy_(info_cpu);

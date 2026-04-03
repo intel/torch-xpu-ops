@@ -521,12 +521,10 @@ static void apply_svd_mkl(
       compute_uv ? reinterpret_cast<scalar_t*>(Vh.data_ptr()) : nullptr;
   auto* info_data = info.data_ptr<int>();
 
-  auto scratchpad_size =
-      oneapi::mkl::lapack::gesvd_scratchpad_size<scalar_t>(
-          queue, jobu, jobvt, m, n, lda, ldu, ldvt);
+  auto scratchpad_size = oneapi::mkl::lapack::gesvd_scratchpad_size<scalar_t>(
+      queue, jobu, jobvt, m, n, lda, ldu, ldvt);
   auto scratchpad_at = at::empty({scratchpad_size}, A.options());
-  auto* scratchpad_data =
-      reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr());
+  auto* scratchpad_data = reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr());
 
   for (const auto i : c10::irange(batch_size)) {
     auto* A_ptr = &A_data[i * A_stride];
@@ -567,14 +565,11 @@ void svd_mkl(
     const Tensor& S,
     const Tensor& Vh,
     const Tensor& info) {
-  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(
-      A.scalar_type(), "svd_xpu", [&] {
-        using T = get_mkl_type<scalar_t>::type;
-        apply_svd_mkl<T>(
-            cloneBatchedColumnMajor(A),
-            U, S, Vh, info,
-            full_matrices, compute_uv);
-      });
+  AT_DISPATCH_FLOATING_AND_COMPLEX_TYPES(A.scalar_type(), "svd_xpu", [&] {
+    using T = get_mkl_type<scalar_t>::type;
+    apply_svd_mkl<T>(
+        cloneBatchedColumnMajor(A), U, S, Vh, info, full_matrices, compute_uv);
+  });
 }
 
 } // namespace at::native::xpu
