@@ -11,6 +11,7 @@ import argparse
 import tempfile
 import queue
 from packaging import version
+import pandas as pd
 
 
 # Data structures
@@ -36,24 +37,27 @@ def parse_string_list(s: str) -> list[str]:
 
 
 # Model list extraction
-def get_model_list(suite: str, model_only: str | None = None) -> list[str]:
-    """Get list of model names."""
-    if model_only:
+def get_model_list(suite: str, mode: str, model_only: str) -> list[str]:
+    """Retrieve a list of model names from either a CSV file, a string list, or a default text file."""
+    if model_only is not None:
+        if os.path.isfile(model_only):
+            df = pd.read_csv(model_only)
+            col_header = suite if suite != "torchbench" else f"{suite} {mode}"
+            return df[col_header].dropna().astype(str).tolist()
+
         return parse_string_list(model_only)
 
-    # Case 2: fallback to file
     base = suite.replace('_models', '')
     list_file = Path(f"benchmarks/dynamo/{base}_models_list.txt")
     if not list_file.exists():
         raise FileNotFoundError(f"Model list file not found: {list_file}")
 
-    models: list[str] = []
+    models = []
     with list_file.open() as f:
         for line in f:
             line = line.split('#', 1)[0].strip()
             if not line:
                 continue
-            # Use parse_string_list to get all tokens on the line
             parts = parse_string_list(line)
             if parts:
                 model_name = parts[0].strip()
@@ -419,10 +423,10 @@ def main():
     # Build task list
     tasks: list[TestTask] = []
     for suite in suites:
-        models = get_model_list(suite, args.model_only)
-        for dt in dts:
-            for mode in modes:
+        for mode in modes:
+            for dt in dts:
                 for scenario in scenarios:
+                    models = get_model_list(suite, mode, args.model_only)
                     for model in sorted(set(models)):
                         tasks.append(TestTask(suite, dt, mode, scenario, model))
 
