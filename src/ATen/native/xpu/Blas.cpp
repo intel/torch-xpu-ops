@@ -450,9 +450,12 @@ Tensor dot_xpu(const Tensor& self, const Tensor& other) {
   }
 
 #if defined(USE_ONEMKL_XPU)
+  if (self.scalar_type() == at::ScalarType::Long) {
+    return at::mul(self, other).sum();
+  }
   return at::native::xpu::dot_xpu_mkl(self, other);
 #else
-  return at::native::dot(self.cpu(), other.cpu()).to(self.device());
+  return at::mul(self, other).sum();
 #endif
 }
 
