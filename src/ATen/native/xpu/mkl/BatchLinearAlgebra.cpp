@@ -509,12 +509,17 @@ static void apply_svd_mkl(
 
   const auto batch_size = batchCount(A);
   const auto A_stride = matrixStride(A);
-  const auto S_stride = S.size(-1);
+  auto S_out = S;
+  const bool use_packed_s_buffer = !S_out.is_contiguous();
+  auto S_working = use_packed_s_buffer
+      ? at::empty({batch_size, S_out.size(-1)}, S_out.options())
+      : S_out;
+  const auto S_stride = S_working.size(-1);
   const auto U_stride = compute_uv ? matrixStride(U) : 1;
   const auto Vh_stride = compute_uv ? matrixStride(Vh) : 1;
 
   auto* A_data = reinterpret_cast<scalar_t*>(A.data_ptr());
-  auto* S_data = reinterpret_cast<value_t*>(S.data_ptr());
+  auto* S_data = reinterpret_cast<value_t*>(S_working.data_ptr());
   auto* U_data =
       compute_uv ? reinterpret_cast<scalar_t*>(U.data_ptr()) : nullptr;
   auto* Vh_data =
@@ -553,6 +558,9 @@ static void apply_svd_mkl(
     } catch (const oneapi::mkl::lapack::exception& e) {
       info_data[i] = e.info();
     }
+  }
+  if (use_packed_s_buffer) {
+    S_out.copy_(S_working.view(S_out.sizes()));
   }
 }
 
