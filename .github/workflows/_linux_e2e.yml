@@ -105,8 +105,6 @@ jobs:
       image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - ${HOME}/.cache:/github/.cache
-        - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
         --rm
         --device=/dev/mem

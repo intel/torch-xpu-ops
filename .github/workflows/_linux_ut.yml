@@ -97,8 +97,6 @@ jobs:
       image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-        - ${HOME}/.cache:/github/.cache
-        - /tmp/xpu-tool:/tmp/xpu-tool
       options: >-
         --rm
         --device=/dev/mem
@@ -112,8 +110,9 @@ jobs:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
         WORKSPACE: ${{ github.workspace }}
         ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+        PYTHONPATH: ${{ github.workspace }}/.github
         PYTEST_ADDOPTS: >-
-          -sq -q --tb=short
+          -sq -q --tb=short -p scripts.conftest
           --timeout 600 --timeout_method=thread
           --max-worker-restart 1000000
           --dist worksteal
@@ -197,8 +196,9 @@ jobs:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
       WORKSPACE: ${{ github.workspace }}
       ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+      PYTHONPATH: ${{ github.workspace }}/.github
       PYTEST_ADDOPTS: >-
-        -sq -q --tb=short
+        -sq -q --tb=short -p scripts.conftest
         --timeout 3600
         --timeout_method=thread
         -n 1

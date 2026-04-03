@@ -31,15 +31,6 @@ runs:
         echo "=== PIP Environment ==="
         pip --version
         pip list --format=columns
-
-        echo -e "\n=== Copying Test Configuration ==="
-        CONFTEST_SRC="${GITHUB_WORKSPACE}/.github/scripts/conftest.py"
-        CONFTEST_DEST="${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/"
-        if [ -f "${CONFTEST_SRC}" ]; then
-          cp "${CONFTEST_SRC}" "${CONFTEST_DEST}" && echo "Copied conftest.py successfully"
-        else
-          echo "Warning: conftest.py not found at ${CONFTEST_SRC}"
-        fi
         printenv | sort |tee -a ${GITHUB_WORKSPACE}/test_info.log
 
     - name: Run op_regression tests

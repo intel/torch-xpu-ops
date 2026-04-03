@@ -1,6 +1,6 @@
 #!/bin/bash
-# Enhanced test runner for PyTorch XPU tests
-# Usage: ./script.sh [group1 group2 ...]
+# PyTorch XPU tests
+# Usage: ./run_ut.sh [group1 group2 ...]
 
 set +e -x # not exit on error
 
