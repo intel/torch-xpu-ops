@@ -202,7 +202,7 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
   using StrideO = Stride<int64_t, _1, int64_t, int64_t>;
   auto make_dummy_tensor = [&](auto val, auto stride) {
     return make_tensor(
-        make_gmem_ptr(&val),
+        make_gmem_ptr(static_cast<decltype(val)*>(nullptr)),
         make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
   };
   auto make_const_dummy_tensor = [&](auto val, auto stride) {
@@ -217,6 +217,7 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
 
   static constexpr int SGTileQ =
       get<0>(shape_div(TileShapeQK{}, shape(SubgroupLayoutQK{})))();
+  static_assert(SGTileQ <= 16, "Subgroup tile in Q dimension must be <= 16");
   using MMAOperation = XE_DPAS_TT<cute::gcd(SGTileQ, 8), float, T>;
   using SubgroupLayoutPV =
       decltype(cutlass::fmha::collective::get_sg_layout_pv(SubgroupLayoutQK{}));
@@ -233,12 +234,7 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
       "Output tile and P*V tile have different sizes in Q dimension");
   constexpr int VTiles = get<1>(TileShapeOutPut{}) / get<1>(TileShapePV{});
 
-  // The KernelHardwareInfo struct holds the number of EUs on the GPU with a
-  // given device ID. This information is used by the underlying kernel.
   cutlass::KernelHardwareInfo hw_info;
-  hw_info.sm_count =
-      cutlass::KernelHardwareInfo::query_device_multiprocessor_count(
-          hw_info.device_id);
 
   // Mainloop
   using MainloopDispatchPolicy = cutlass::fmha::XeDefault<PipelineStages>;

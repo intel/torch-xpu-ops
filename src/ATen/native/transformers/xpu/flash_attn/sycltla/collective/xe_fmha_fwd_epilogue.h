@@ -159,8 +159,6 @@ class FMHAFwdEpilogue {
     for (int i = 0; i < rA_sum.size(); i++)
       rA_sum(i) = ElementA(1) / rA_sum(i);
 
-    // rA_sum(i) == cur_scale
-
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < rA.size(); i++) {
       rA(i) *= broadcast<0>(rA_sum, rA, i);

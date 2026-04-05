@@ -176,19 +176,17 @@ class XeFMHAFwdKernel {
   }
 
   CUTLASS_DEVICE
-  Shape<int, int, int> get_sequence_length_shape(
+  Shape<int, int> get_sequence_length_shape(
       ProblemShape const& problem_shape,
       int const& batch) {
     if constexpr (is_var_len) {
       return cutlass::fmha::collective::apply_variable_length(
-          Shape<VariableLength, VariableLength, VariableLength>{
-              problem_shape.seq_len_qo,
-              problem_shape.seq_len_kv,
-              problem_shape.seq_len_kv_cache},
+          Shape<VariableLength, VariableLength>{
+              problem_shape.seq_len_qo, problem_shape.seq_len_kv},
           batch);
     } else {
-      return Shape<int, int, int>{
-          problem_shape.seq_len_qo, problem_shape.seq_len_kv, 0};
+      return Shape<int, int>{
+          problem_shape.seq_len_qo, problem_shape.seq_len_kv};
     }
   }
 
@@ -252,9 +250,7 @@ class XeFMHAFwdKernel {
       auto blk_qv = make_coord(blk_q, blk_v);
       int head = head_q / head_group_q;
 
-      auto sequence_length_shape = get_sequence_length_shape(s, idx_b);
-      auto seq_len_qo = get<0>(sequence_length_shape);
-      auto seq_len_kv = get<1>(sequence_length_shape);
+      auto [seq_len_qo, seq_len_kv] = get_sequence_length_shape(s, idx_b);
       if (blk_q * get<0>(TileShapeQK{}) >= seq_len_qo)
         continue;
 

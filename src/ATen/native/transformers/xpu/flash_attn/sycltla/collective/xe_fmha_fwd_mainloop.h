@@ -294,6 +294,11 @@ struct FMHAFwdMainloop<
     /* Check if */
     bool check_remainder_k = (seq_len % get<1>(TileShapeQK{}) != 0);
 
+    /* Masking coordinate tensor (hoisted from inner loop) */
+    Tensor cPgP = make_identity_tensor(make_shape(seq_len_qo, seq_len_kv));
+    Tensor gP_all = local_tile(
+        cPgP, take<0, 2>(TileShapeQK{}), make_coord(get<0>(blk_qv), _));
+
     /* Main loop, blocked in k. */
     for (int K = blk_k0; K < blk_k1; K++) {
       /* GEMM 1: S = K * Q */
@@ -315,10 +320,7 @@ struct FMHAFwdMainloop<
       }
 
       /* Masking */
-      Tensor cPgP = make_identity_tensor(make_shape(seq_len_qo, seq_len_kv));
-      Tensor gP = local_tile(
-          cPgP, take<0, 2>(TileShapeQK{}), make_coord(get<0>(blk_qv), K));
-      auto cS_thread = thr_mma_qk.partition_C(gP);
+      auto cS_thread = thr_mma_qk.partition_C(gP_all(_, _, K));
 
       /* Masking for remainder tiles */
       if (check_remainder_k && K == blk_k1 - 1) {
