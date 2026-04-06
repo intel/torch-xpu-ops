@@ -32,17 +32,6 @@ namespace xpu {
 
 namespace impl {
 
-// Use sycl::native::exp for float in softmax forward (matching CUDA __expf),
-// fall back to sycl::exp for double.
-template <typename T>
-inline T softmax_exp(T val) {
-  if constexpr (std::is_same_v<T, float>) {
-    return sycl::native::exp(val);
-  } else {
-    return sycl::exp(val);
-  }
-}
-
 #define MIN_WG_NUM 32768
 #define SIMD32 32
 #define SIMD16 16
@@ -303,7 +292,7 @@ struct DispatchSoftmaxForwardKernelFunctor
          ++i) {
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        sum_value += softmax_exp(reg_in[i][j] - max_value);
+        sum_value += sycl::exp(reg_in[i][j] - max_value);
       }
     }
     if (local_size_ > 1) {
@@ -343,7 +332,7 @@ struct DispatchSoftmaxForwardKernelFunctor
             reg_in[i][j] = nan_;
           } else {
             reg_in[i][j] = static_cast<outscalar_t>(
-                softmax_exp(reg_in[i][j] - max_value) * sum_value);
+                sycl::exp(reg_in[i][j] - max_value) * sum_value);
           }
         } else {
           if constexpr (LogSoftMax) {
@@ -357,7 +346,7 @@ struct DispatchSoftmaxForwardKernelFunctor
             out_data_point[j] = static_cast<outscalar_t>(nan_);
           } else {
             out_data_point[j] = static_cast<outscalar_t>(
-                softmax_exp(reg_in[i][j] - max_value) * sum_value);
+                sycl::exp(reg_in[i][j] - max_value) * sum_value);
           }
         }
       }
@@ -598,7 +587,7 @@ struct SoftmaxForwardKernelFunctor {
       for (int j = 0; j < vec_size; ++j) {
         IndexType linear_idx = i * vec_size + j - start;
         if (linear_idx >= 0 && linear_idx < dim_size_)
-          sum_value += softmax_exp(accscalar_t(in_val[j]) - max_value);
+          sum_value += sycl::exp(accscalar_t(in_val[j]) - max_value);
       }
     }
     sum_value = sycl::reduce_over_group(
@@ -626,7 +615,7 @@ struct SoftmaxForwardKernelFunctor {
                   static_cast<outscalar_t>(0);
             else
               out_data_[group_offset + linear_idx] = static_cast<outscalar_t>(
-                  softmax_exp(in_data_[group_offset + linear_idx] - max_value) *
+                  sycl::exp(in_data_[group_offset + linear_idx] - max_value) *
                   sum_value);
           }
         }
@@ -646,7 +635,7 @@ struct SoftmaxForwardKernelFunctor {
             out_data_p[j] = static_cast<outscalar_t>(0);
           else
             out_data_p[j] = static_cast<outscalar_t>(
-                softmax_exp(in_val[j] - max_value) * sum_value);
+                sycl::exp(in_val[j] - max_value) * sum_value);
         }
       }
     }
@@ -767,7 +756,7 @@ struct SpatialSoftmaxForwardKernelFunctor
     value = *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
     for (int j = 0; j < vec_size; ++j) {
-      sum_value[j] = softmax_exp(value[j] - max_value[j]);
+      sum_value[j] = sycl::exp(value[j] - max_value[j]);
     }
     for (int i = local_row_id + block_row_; i < dim_size_; i += block_row_) {
       offset = i * inner_size_ + global_col * vec_size;
@@ -775,7 +764,7 @@ struct SpatialSoftmaxForwardKernelFunctor
           *(reinterpret_cast<const vec_t*>(in_data_ + group_offset + offset));
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
-        sum_value[j] += softmax_exp(value[j] - max_value[j]);
+        sum_value[j] += sycl::exp(value[j] - max_value[j]);
       }
     }
     if (block_row_ > 1) {
@@ -821,7 +810,7 @@ struct SpatialSoftmaxForwardKernelFunctor
               in_val[j] = static_cast<inscalar_t>(0);
             else
               in_val[j] = static_cast<inscalar_t>(
-                  softmax_exp(in_val[j] - max_value[j]) * sum_value[j]);
+                  sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
           } else {
             if (LogSoftMax)
               out_data_point[j] = static_cast<outscalar_t>(
@@ -832,7 +821,7 @@ struct SpatialSoftmaxForwardKernelFunctor
               out_data_point[j] = static_cast<outscalar_t>(0);
             else
               out_data_point[j] = static_cast<outscalar_t>(
-                  softmax_exp(in_val[j] - max_value[j]) * sum_value[j]);
+                  sycl::exp(in_val[j] - max_value[j]) * sum_value[j]);
           }
         }
         if constexpr (is_same_dtype)
