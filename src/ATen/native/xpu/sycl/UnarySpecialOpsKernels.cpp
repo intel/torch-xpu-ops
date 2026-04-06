@@ -323,7 +323,11 @@ struct SincFunctor {
     } else {
       using opmath_t = at::opmath_type<scalar_t>;
       opmath_t product = c10::detail::pi<opmath_t>() * opmath_t{a};
-      return static_cast<scalar_t>(std::sin(product) / product);
+      if constexpr (c10::is_complex<opmath_t>::value) {
+        return static_cast<scalar_t>(std::sin(product) / product);
+      } else {
+        return static_cast<scalar_t>(sycl::sin(product) / product);
+      }
     }
   }
 };

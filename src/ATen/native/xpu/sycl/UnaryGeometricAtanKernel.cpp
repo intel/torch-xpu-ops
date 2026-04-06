@@ -28,7 +28,12 @@ struct AtanComplexFunctor {
 template <typename scalar_t>
 struct AtanFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::atan(a);
+    if constexpr (c10::is_complex<scalar_t>::value) {
+      return std::atan(a);
+    } else {
+      using opmath_t = at::opmath_type<scalar_t>;
+      return sycl::atan(static_cast<opmath_t>(a));
+    }
   }
 };
 

@@ -9,6 +9,7 @@
  */
 
 #include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 
@@ -16,10 +17,14 @@
 
 namespace at::native::xpu {
 
-template <typename scalar_t, typename acc_t = scalar_t>
+template <typename scalar_t, typename acc_t = at::opmath_type<scalar_t>>
 struct AcoshFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::acosh(static_cast<acc_t>(a));
+    if constexpr (c10::is_complex<acc_t>::value) {
+      return std::acosh(static_cast<acc_t>(a));
+    } else {
+      return sycl::acosh(static_cast<acc_t>(a));
+    }
   }
 };
 
