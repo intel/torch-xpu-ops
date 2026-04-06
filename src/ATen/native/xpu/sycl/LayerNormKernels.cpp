@@ -360,7 +360,7 @@ WelfordDataLN WelfordOnlineSum(const U val, const WelfordDataLN& curr_sum) {
     U delta = val - curr_sum.mean;
     U new_count = curr_sum.count + 1.f;
     // proper division is slow, this is less accurate but noticeably faster
-    U new_mean = curr_sum.mean + delta * (1.f / new_count);
+    U new_mean = curr_sum.mean + delta * sycl::native::recip(new_count);
     return {
         static_cast<float>(new_mean),
         static_cast<float>(curr_sum.sigma2 + delta * (val - new_mean)),
@@ -380,9 +380,7 @@ WelfordDataLN WelfordCombine(
     U count = dataA.count + dataB.count;
     U mean, sigma2;
     if (count > decltype(dataB.count){0}) {
-      // NB we don't use --use_fast_math, but this is emulation, 1./count goes
-      // to intrinsic, `* coef` is multiplication, instead of slow fp division
-      auto coef = 1.f / count;
+      auto coef = sycl::native::recip(count);
       auto nA = dataA.count * coef;
       auto nB = dataB.count * coef;
       mean = nA * dataA.mean + nB * dataB.mean;
