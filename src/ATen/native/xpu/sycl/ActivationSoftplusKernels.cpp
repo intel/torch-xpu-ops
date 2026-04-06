@@ -25,7 +25,7 @@ struct SoftplusFunctor {
     opmath_t aop = static_cast<opmath_t>(a);
     return (aop * beta_) > threshold_
         ? aop
-        : (std::log1p(std::exp(aop * beta_))) / beta_;
+        : (std::log1p(sycl::exp(aop * beta_))) / beta_;
   }
 
   SoftplusFunctor(opmath_t beta, opmath_t threshold)
@@ -60,7 +60,7 @@ struct SoftplusBackwardFunctor {
   scalar_t operator()(scalar_t a, scalar_t b) const {
     opmath_t aop = static_cast<opmath_t>(a);
     opmath_t bop = static_cast<opmath_t>(b);
-    opmath_t z = std::exp(bop * beta_);
+    opmath_t z = sycl::exp(bop * beta_);
     return (bop * beta_) > threshold_ ? aop : aop * z / (z + opmath_t(1.));
   }
 

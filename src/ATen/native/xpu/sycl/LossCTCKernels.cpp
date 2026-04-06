@@ -28,6 +28,7 @@
 #pragma GCC diagnostic ignored "-Wreturn-type"
 
 #include <ATen/ATen.h>
+#include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/Atomics.h>
 #include <ATen/native/xpu/sycl/LossCTCKernels.h>
@@ -173,8 +174,8 @@ struct CTCLossLogAlphaKernelFunctor {
           log_alpha_data_
               [la_batch_offset + la_input_stride_ * t + la_target_stride_ * s] =
                   std::log(
-                      std::exp(la1 - lamax) + std::exp(la2 - lamax) +
-                      std::exp(la3 - lamax)) +
+                      sycl::exp(static_cast<at::opmath_type<scalar_t>>(la1 - lamax)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(la2 - lamax)) +
+                      sycl::exp(static_cast<at::opmath_type<scalar_t>>(la3 - lamax))) +
               lamax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
@@ -206,7 +207,7 @@ struct CTCLossLogAlphaKernelFunctor {
       scalar_t m = ((l1 > l2) ? l1 : l2);
       m = ((m == neginf) ? 0 : m);
       scalar_t log_likelihood =
-          std::log(std::exp(l1 - m) + std::exp(l2 - m)) + m;
+          std::log(sycl::exp(static_cast<at::opmath_type<scalar_t>>(l1 - m)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(l2 - m))) + m;
       neg_log_likelihood_data_[b] = -log_likelihood;
     }
   }
@@ -555,8 +556,8 @@ struct CTCLossBackwardLogBetaKernelFunctor {
             lbmax = 0;
 
           scalar_t lb = std::log(
-                            std::exp(lb1 - lbmax) + std::exp(lb2 - lbmax) +
-                            std::exp(lb3 - lbmax)) +
+                            sycl::exp(static_cast<at::opmath_type<scalar_t>>(lb1 - lbmax)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(lb2 - lbmax)) +
+                            sycl::exp(static_cast<at::opmath_type<scalar_t>>(lb3 - lbmax))) +
               lbmax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
@@ -671,14 +672,14 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
           &gradient_data_
               [gr_batch_offset + t * gr_input_stride_ +
                gr_char_stride_ * target],
-          -std::exp(
+          -sycl::exp(static_cast<at::opmath_type<scalar_t>>(
               log_alpha_data_
                   [la_batch_offset + la_input_stride_ * t +
                    la_target_stride_ * (s * 2 + 1)] +
               log_beta_data_
                   [lb_batch_offset + lb_input_stride_ * t +
                    lb_target_stride_ * (s * 2 + 1)] +
-              nll - lp) *
+              nll - lp)) *
               gr);
     }
   }
@@ -808,7 +809,7 @@ struct CTCLossBackwardCollectKernelFunctor {
         } else {
           scalar_t max = ((lcab > log_alpha_beta) ? lcab : log_alpha_beta);
           lcab =
-              std::log(std::exp(lcab - max) + std::exp(log_alpha_beta - max)) +
+              std::log(sycl::exp(static_cast<at::opmath_type<scalar_t>>(lcab - max)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(log_alpha_beta - max))) +
               max;
         }
       }
@@ -823,7 +824,7 @@ struct CTCLossBackwardCollectKernelFunctor {
       if (t < input_length && (!zero_infinity_ || nll != INFINITY)) {
         scalar_t lp = log_probs_data_
             [lp_batch_offset + t * lp_input_stride_ + lp_char_stride_ * c];
-        res = (std::exp(lp) - std::exp(res + nll - lp)) * gr;
+        res = (sycl::exp(static_cast<at::opmath_type<scalar_t>>(lp)) - sycl::exp(static_cast<at::opmath_type<scalar_t>>(res + nll - lp))) * gr;
       } else {
         res = 0.;
       }
