@@ -34,6 +34,17 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   return true;
 }
 
+struct OnecclGroupGuard {
+  OnecclGroupGuard() {
+    xccl::oneccl_group_start();
+  }
+
+  ~OnecclGroupGuard() noexcept {
+    // Ensure the group is always closed, even if a prior call threw.
+    xccl::oneccl_group_end();
+  }
+};
+
 void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
@@ -912,9 +923,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
       tensor.storage().data_ptr(), stream);
 
   if (!batchP2P) {
-    xccl::oneccl_group_start();
+    OnecclGroupGuard group_guard;
     fn(tensor, *comm, stream, cclstream, p2pTargetRank);
-    xccl::oneccl_group_end();
   } else {
     fn(tensor, *comm, stream, cclstream, p2pTargetRank);
   }
