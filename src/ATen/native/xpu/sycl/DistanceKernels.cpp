@@ -35,7 +35,11 @@ class Dists {
 template <typename scalar_t>
 struct DistsZero {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
-    agg += diff != 0.0f;
+    if (diff != diff) { // NaN
+      agg = diff;
+    } else if (diff != 0.0) {
+      agg += 1.0;
+    }
   }
   static scalar_t finish(const scalar_t agg, const scalar_t p) {
     return agg;
