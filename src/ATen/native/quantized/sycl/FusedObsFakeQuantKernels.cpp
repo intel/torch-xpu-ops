@@ -8,6 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+#include <ATen/Dispatch.h>
+#include <ATen/OpMathType.h>
 #include <ATen/core/Tensor.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
@@ -22,12 +24,13 @@
 
 namespace at::native::xpu {
 
+template <typename scalar_t>
 void MovingAverageMinMax(
     const int64_t* observer_on,
-    const float* x_min,
-    const float* x_max,
-    float* running_min,
-    float* running_max,
+    const scalar_t* x_min,
+    const scalar_t* x_max,
+    scalar_t* running_min,
+    scalar_t* running_max,
     const float averaging_const,
     const int size,
     sycl::nd_item<1>& item) {
@@ -35,16 +38,22 @@ void MovingAverageMinMax(
 
   if (*observer_on == 1) {
     if (i < size) {
-      float curr_min = x_min[i];
-      float curr_max = x_max[i];
+      scalar_t curr_min = x_min[i];
+      scalar_t curr_max = x_max[i];
 
-      float adjusted_min = std::isinf(running_min[i])
+      scalar_t averaging_const_t = static_cast<scalar_t>(averaging_const);
+
+      scalar_t adjusted_min =
+          std::isinf(static_cast<at::opmath_type<scalar_t>>(running_min[i]))
           ? curr_min
-          : (running_min[i]) + averaging_const * (curr_min - (running_min[i]));
+          : (running_min[i]) +
+              averaging_const_t * (curr_min - (running_min[i]));
 
-      float adjusted_max = std::isinf(running_max[i])
+      scalar_t adjusted_max =
+          std::isinf(static_cast<at::opmath_type<scalar_t>>(running_max[i]))
           ? curr_max
-          : (running_max[i]) + averaging_const * (curr_max - (running_max[i]));
+          : (running_max[i]) +
+              averaging_const_t * (curr_max - (running_max[i]));
 
       running_min[i] = adjusted_min;
       running_max[i] = adjusted_max;
@@ -52,9 +61,10 @@ void MovingAverageMinMax(
   }
 }
 
+template <typename scalar_t>
 struct CalculateMovingAverageKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    MovingAverageMinMax(
+    MovingAverageMinMax<scalar_t>(
         observer_on_data_,
         x_min_data_,
         x_max_data_,
@@ -66,10 +76,10 @@ struct CalculateMovingAverageKernelFunctor {
   }
   CalculateMovingAverageKernelFunctor(
       const int64_t* observer_on_data,
-      const float* x_min_data,
-      const float* x_max_data,
-      float* running_min_data,
-      float* running_max_data,
+      const scalar_t* x_min_data,
+      const scalar_t* x_max_data,
+      scalar_t* running_min_data,
+      scalar_t* running_max_data,
       const float averaging_const,
       const int64_t size)
       : observer_on_data_(observer_on_data),
@@ -82,10 +92,10 @@ struct CalculateMovingAverageKernelFunctor {
 
  private:
   const int64_t* observer_on_data_;
-  const float* x_min_data_;
-  const float* x_max_data_;
-  float* running_min_data_;
-  float* running_max_data_;
+  const scalar_t* x_min_data_;
+  const scalar_t* x_max_data_;
+  scalar_t* running_min_data_;
+  scalar_t* running_max_data_;
   const float averaging_const_;
   const int64_t size_;
 };
@@ -106,47 +116,39 @@ void _calculate_moving_average(
   at::Tensor x_min, x_max;
 
   int64_t* observer_on_data = observer_on.data_ptr<int64_t>();
-  float* running_min_data = running_min.data_ptr<float>();
-  float* running_max_data = running_max.data_ptr<float>();
 
+  auto local_range = per_row_fake_quant ? group_size : 1;
   if (per_row_fake_quant) {
-    std::tie(x_min, x_max) = at::_aminmax(x, 1);
-    float* x_min_data = x_min.data_ptr<float>();
-    float* x_max_data = x_max.data_ptr<float>();
-
-    // Moving Average Min/Max observer for activations
-    CalculateMovingAverageKernelFunctor kfn(
-        observer_on_data,
-        x_min_data,
-        x_max_data,
-        running_min_data,
-        running_max_data,
-        averaging_const,
-        size);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), kfn);
+    std::tie(x_min, x_max) = at::aminmax(x, 1);
   } else {
-    std::tie(x_min, x_max) = at::_aminmax(x);
-    float* x_min_data = x_min.data_ptr<float>();
-    float* x_max_data = x_max.data_ptr<float>();
-
-    // Moving Average Min/Max observer for activations
-    CalculateMovingAverageKernelFunctor kfn(
-        observer_on_data,
-        x_min_data,
-        x_max_data,
-        running_min_data,
-        running_max_data,
-        averaging_const,
-        size);
-    sycl_kernel_submit(num_groups * group_size, 1, getCurrentSYCLQueue(), kfn);
+    std::tie(x_min, x_max) = at::aminmax(x);
   }
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::kBFloat16, at::kHalf, x.scalar_type(), "MovingAverageMinMax", [&] {
+        scalar_t* x_min_data = x_min.data_ptr<scalar_t>();
+        scalar_t* x_max_data = x_max.data_ptr<scalar_t>();
+        scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
+        scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
+
+        // Moving Average Min/Max observer for activations
+        CalculateMovingAverageKernelFunctor<scalar_t> kfn(
+            observer_on_data,
+            x_min_data,
+            x_max_data,
+            running_min_data,
+            running_max_data,
+            averaging_const,
+            size);
+        sycl_kernel_submit(
+            num_groups * group_size, local_range, getCurrentSYCLQueue(), kfn);
+      });
 }
 
+template <typename scalar_t>
 void ChooseQuantizationParamsKernelImpl(
     const int64_t* fake_quant_on,
-    const float* x_min,
-    const float* x_max,
+    const scalar_t* x_min,
+    const scalar_t* x_max,
     int32_t qmin,
     int32_t qmax,
     int size,
@@ -176,7 +178,7 @@ void ChooseQuantizationParamsKernelImpl(
     // representable value.
     min_val = std::min(min_val, 0.f);
     max_val = std::max(max_val, 0.f);
-    scale[i] = (max_val - min_val) / (qmax - qmin);
+    scale[i] = (static_cast<double>(max_val) - min_val) / (qmax - qmin);
 
     // Moving this check outside this function would result in extra Device to
     // Host copy of the min and max val which would result in a perf hit.
@@ -184,13 +186,13 @@ void ChooseQuantizationParamsKernelImpl(
       scale[i] = 0.1;
     }
 
-    float zero_point_from_min = qmin - min_val / scale[i];
-    float zero_point_from_max = qmax - max_val / scale[i];
-    float zero_point_from_min_error =
-        std::abs(qmin) + std::abs(min_val / scale[i]);
-    float zero_point_from_max_error =
-        std::abs(qmax) + std::abs(max_val / scale[i]);
-    float initial_zero_point =
+    double zero_point_from_min = qmin - min_val / static_cast<double>(scale[i]);
+    double zero_point_from_max = qmax - max_val / static_cast<double>(scale[i]);
+    double zero_point_from_min_error =
+        std::abs(qmin) + std::abs(min_val / static_cast<double>(scale[i]));
+    double zero_point_from_max_error =
+        std::abs(qmax) + std::abs(max_val / static_cast<double>(scale[i]));
+    double initial_zero_point =
         zero_point_from_min_error < zero_point_from_max_error
         ? zero_point_from_min
         : zero_point_from_max;
@@ -200,7 +202,7 @@ void ChooseQuantizationParamsKernelImpl(
     // to be a middle value between qmin and qmax.
     // If either min or max is 0, then we just use 0 as zero_point.
     if (min_val < 0 && max_val > 0 && preserve_sparsity) {
-      initial_zero_point = static_cast<float>(qmin + qmax) / 2;
+      initial_zero_point = static_cast<double>(qmin + qmax) / 2;
     }
     // Now we need to nudge the zero point to be an integer
     // (our zero points are integer, and this is motivated by the
@@ -219,9 +221,10 @@ void ChooseQuantizationParamsKernelImpl(
   }
 }
 
+template <typename scalar_t>
 struct CalcMovingAvgQparamsHelperKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    ChooseQuantizationParamsKernelImpl(
+    ChooseQuantizationParamsKernelImpl<scalar_t>(
         fake_quant_on_data_,
         running_min_data_,
         running_max_data_,
@@ -235,8 +238,8 @@ struct CalcMovingAvgQparamsHelperKernelFunctor {
   }
   CalcMovingAvgQparamsHelperKernelFunctor(
       const int64_t* fake_quant_on_data,
-      const float* running_min_data,
-      const float* running_max_data,
+      const scalar_t* running_min_data,
+      const scalar_t* running_max_data,
       int32_t qmin,
       int32_t qmax,
       int size,
@@ -255,8 +258,8 @@ struct CalcMovingAvgQparamsHelperKernelFunctor {
 
  private:
   const int64_t* fake_quant_on_data_;
-  const float* running_min_data_;
-  const float* running_max_data_;
+  const scalar_t* running_min_data_;
+  const scalar_t* running_max_data_;
   int32_t qmin_;
   int32_t qmax_;
   int size_;
@@ -283,37 +286,29 @@ void _calc_moving_avg_qparams_helper(
   auto group_size = std::get<2>(execution_policy);
 
   int64_t* fake_quant_on_data = fake_quant_on.data_ptr<int64_t>();
-  if (per_row_fq) {
-    float* running_min_data = running_min.data_ptr<float>();
-    float* running_max_data = running_max.data_ptr<float>();
+  auto local_range = per_row_fq ? group_size : 1;
+  AT_DISPATCH_FLOATING_TYPES_AND2(
+      at::kBFloat16,
+      at::kHalf,
+      x.scalar_type(),
+      "ChooseQuantizationParams",
+      [&] {
+        scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
+        scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
 
-    CalcMovingAvgQparamsHelperKernelFunctor kfn(
-        fake_quant_on_data,
-        running_min_data,
-        running_max_data,
-        qmin,
-        qmax,
-        size,
-        symmetric_quant,
-        scale_ptr,
-        zp_ptr);
-    sycl_kernel_submit(
-        num_groups * group_size, group_size, getCurrentSYCLQueue(), kfn);
-  } else {
-    float* running_min_data = running_min.data_ptr<float>();
-    float* running_max_data = running_max.data_ptr<float>();
-    CalcMovingAvgQparamsHelperKernelFunctor kfn(
-        fake_quant_on_data,
-        running_min_data,
-        running_max_data,
-        qmin,
-        qmax,
-        1, // size
-        symmetric_quant, // preserve_sparsity
-        scale_ptr,
-        zp_ptr);
-    sycl_kernel_submit(num_groups * group_size, 1, getCurrentSYCLQueue(), kfn);
-  }
+        CalcMovingAvgQparamsHelperKernelFunctor<scalar_t> kfn(
+            fake_quant_on_data,
+            running_min_data,
+            running_max_data,
+            qmin,
+            qmax,
+            size,
+            symmetric_quant,
+            scale_ptr,
+            zp_ptr);
+        sycl_kernel_submit(
+            num_groups * group_size, local_range, getCurrentSYCLQueue(), kfn);
+      });
 }
 
 } // namespace at::native::xpu
