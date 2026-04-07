@@ -41,7 +41,12 @@ struct OnecclGroupGuard {
 
   ~OnecclGroupGuard() noexcept {
     // Ensure the group is always closed, even if a prior call threw.
-    xccl::oneccl_group_end();
+    // Suppress any exception here so that none can escape this noexcept
+    // destructor and trigger std::terminate during stack unwinding.
+    try {
+      xccl::oneccl_group_end();
+    } catch (...) {
+    }
   }
 };
 
