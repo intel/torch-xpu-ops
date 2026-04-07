@@ -267,7 +267,7 @@ jobs:
       - name: Download Torch Wheel
         uses: actions/download-artifact@v4
         with:
-          name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/wheel_artifact
       - name: Install oneAPI (for UT runtime)
         shell: cmd
