@@ -58,6 +58,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.driver }}-${{ inputs.ubuntu }}-${{ inputs.gcc }}-${{ inputs.tag }}
+  cancel-in-progress: true
+
 defaults:
   run:
     shell: bash -xe {0}
