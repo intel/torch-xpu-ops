@@ -31,7 +31,7 @@ on:
       build_runner:
         required: false
         type: string
-        default: 'Windows_CI'
+        default: 'Windows_CI_Build'
         description: Runner label for build job (can be different from ut runner)
       xpu_version:
         required: false
