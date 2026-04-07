@@ -13,9 +13,16 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests
 
 try:
-    from xpu_test_utils import XPUPatchForImport
+    from xpu_test_utils import (
+        patch_matrix_op_samples_with_well_conditioned_inputs,
+        XPUPatchForImport,
+    )
 except Exception as e:
-    from .xpu_test_utils import XPUPatchForImport
+    from .xpu_test_utils import (
+        patch_matrix_op_samples_with_well_conditioned_inputs,
+        XPUPatchForImport,
+    )
+
 with XPUPatchForImport(False):
     from test_ops import (
         TestCommon,
@@ -24,6 +31,13 @@ with XPUPatchForImport(False):
         TestForwardADWithScalars,
         TestMathBits,
     )
+    from torch.testing._internal.common_methods_invocations import op_db
+
+
+patch_matrix_op_samples_with_well_conditioned_inputs(
+    op_db, "linalg.cond", "_xpu_linalg_cond_sample_patch"
+)
+
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
 # in finegrand

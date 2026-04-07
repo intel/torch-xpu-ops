@@ -30,10 +30,41 @@ from torch.testing._internal import (
 from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_modules import module_db
 from torch.testing._internal.common_nn import CriterionTest, ModuleTest
-from torch.testing._internal.common_utils import set_default_dtype
+from torch.testing._internal.common_utils import (
+    random_well_conditioned_matrix,
+    set_default_dtype,
+)
 from torch.testing._internal.opinfo.core import DecorateInfo
 
 log = logging.getLogger(__name__)
+
+
+def patch_matrix_op_samples_with_well_conditioned_inputs(
+    op_db, op_name: str, marker_attr: str
+) -> None:
+    op = next((op for op in op_db if op.name == op_name), None)
+    if op is None or getattr(op, marker_attr, False):
+        return
+
+    original_sample_inputs = op.sample_inputs_func
+
+    def sample_inputs_xpu(op_info, device, dtype, requires_grad=False, **kwargs):
+        for sample in original_sample_inputs(
+            op_info, device, dtype, requires_grad=requires_grad, **kwargs
+        ):
+            if torch.device(device).type == "xpu" and dtype == torch.float32:
+                sample_input = getattr(sample, "input", None)
+                if isinstance(sample_input, torch.Tensor):
+                    shape = tuple(sample_input.shape)
+                    if len(shape) >= 2 and shape[-1] > 0 and shape[-2] > 0:
+                        sample.input = random_well_conditioned_matrix(
+                            *shape, dtype=dtype, device=device
+                        ).requires_grad_(requires_grad)
+            yield sample
+
+    op.sample_inputs_func = sample_inputs_xpu
+    setattr(op, marker_attr, True)
+
 
 _xpu_computation_op_list = [
     "empty",

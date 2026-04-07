@@ -559,6 +559,177 @@ def pinv_errors_and_warnings(self, device, dtype):
         torch.linalg.pinv(a, rtol=rtol)
 
 
+@dtypes(*floating_and_complex_types())
+@parametrize("batch_shape", [(), (4,), (2, 3), (0,)])
+def svdvals_out_noncontiguous_strided(self, device, dtype, batch_shape):
+    m, n = 5, 3
+    A = torch.randn(*batch_shape, m, n, device=device, dtype=dtype)
+    expected = torch.linalg.svdvals(A)
+
+    sentinel = 123
+    out_storage = torch.full(
+        expected.shape + (2,), sentinel, dtype=expected.dtype, device=device
+    )
+    out = out_storage[..., 0]
+    if out.numel() > 0:
+        self.assertFalse(out.is_contiguous())
+
+    torch.linalg.svdvals(A, out=out)
+
+    self.assertEqual(out, expected)
+    self.assertEqual(
+        out_storage[..., 1],
+        torch.full_like(out_storage[..., 1], sentinel),
+    )
+
+
+@dtypes(*floating_and_complex_types())
+@parametrize("batch_shape", [(), (4,), (2, 3), (0,)])
+def svd_out_noncontiguous_s_strided(self, device, dtype, batch_shape):
+    m, n = 5, 3
+    k = min(m, n)
+    A = torch.randn(*batch_shape, m, n, device=device, dtype=dtype)
+    expected_s = torch.linalg.svdvals(A)
+
+    U = torch.empty(*batch_shape, m, k, device=device, dtype=dtype)
+    sentinel = 321
+    s_storage = torch.full(
+        expected_s.shape + (2,), sentinel, dtype=expected_s.dtype, device=device
+    )
+    S = s_storage[..., 0]
+    Vh = torch.empty(*batch_shape, k, n, device=device, dtype=dtype)
+    if S.numel() > 0:
+        self.assertFalse(S.is_contiguous())
+
+    torch.linalg.svd(A, full_matrices=False, out=(U, S, Vh))
+
+    self.assertEqual(S, expected_s)
+    self.assertEqual(
+        s_storage[..., 1],
+        torch.full_like(s_storage[..., 1], sentinel),
+    )
+    self.assertTrue(torch.isfinite(U).all())
+    self.assertTrue(torch.isfinite(Vh).all())
+
+
+@dtypes(*floating_and_complex_types())
+@parametrize("shape", [(5, 3), (3, 5), (2, 5, 3)])
+@parametrize("full_matrices", [False, True])
+def svd_correctness_full_and_reduced(self, device, dtype, shape, full_matrices):
+    torch.manual_seed(0)
+    A = torch.randn(*shape, device=device, dtype=dtype)
+
+    U, S, Vh = torch.linalg.svd(A, full_matrices=full_matrices)
+
+    m, n = shape[-2], shape[-1]
+    k = min(m, n)
+    batch_shape = shape[:-2]
+
+    self.assertEqual(
+        U.shape,
+        torch.Size((*batch_shape, m, m if full_matrices else k)),
+    )
+    self.assertEqual(S.shape, torch.Size((*batch_shape, k)))
+    self.assertEqual(Vh.shape, torch.Size((*batch_shape, n if full_matrices else k, n)))
+
+    if dtype in (torch.float32, torch.complex64):
+        sv_atol = sv_rtol = 5e-5
+        rec_atol = rec_rtol = 1e-4
+    else:
+        sv_atol = sv_rtol = 1e-10
+        rec_atol = rec_rtol = 1e-10
+
+    S_ref = torch.linalg.svdvals(A.cpu()).to(device=device)
+    self.assertEqual(S, S_ref, atol=sv_atol, rtol=sv_rtol)
+
+    A_reconstructed = (
+        U[..., :, :k] @ torch.diag_embed(S).to(dtype=A.dtype) @ Vh[..., :k, :]
+    )
+    self.assertEqual(A_reconstructed, A, atol=rec_atol, rtol=rec_rtol)
+
+
+@dtypes(torch.complex128)
+def svd_ops_do_not_emit_xpu_fallback_warning(self, device, dtype):
+    A = torch.randn(4, 4, device=device, dtype=dtype)
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        torch.linalg.svd(A)
+        torch.linalg.svdvals(A)
+        torch.linalg.cond(A)
+
+    fallback_warnings = [
+        str(x.message)
+        for x in w
+        if "Aten Op fallback from XPU to CPU happends" in str(x.message)
+    ]
+    self.assertEqual(len(fallback_warnings), 0)
+
+
+@dtypes(*floating_and_complex_types())
+def svd_driver_argument_behavior_on_xpu(self, device, dtype):
+    A = torch.randn(6, 4, device=device, dtype=dtype)
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "keyword argument `driver=` is only supported on CUDA inputs with cuSOLVER backend",
+    ):
+        torch.linalg.svd(A, driver="gesvd")
+
+    with self.assertRaisesRegex(
+        RuntimeError,
+        "keyword argument `driver=` is only supported on CUDA inputs with cuSOLVER backend",
+    ):
+        torch.linalg.svdvals(A, driver="gesvd")
+
+
+@dtypes(*floating_and_complex_types())
+@parametrize("shape", [(5, 3), (3, 5), (2, 5, 3)])
+@parametrize("full_matrices", [False, True])
+@parametrize("compute_uv", [False, True])
+def svd_internal_parameter_combinations(
+    self, device, dtype, shape, full_matrices, compute_uv
+):
+    torch.manual_seed(0)
+    A = torch.randn(*shape, device=device, dtype=dtype)
+
+    U, S, Vh = torch._linalg_svd(A, full_matrices, compute_uv)
+
+    m, n = shape[-2], shape[-1]
+    k = min(m, n)
+    batch_shape = shape[:-2]
+
+    self.assertEqual(S.shape, torch.Size((*batch_shape, k)))
+
+    if dtype in (torch.float32, torch.complex64):
+        sv_atol = sv_rtol = 5e-5
+        rec_atol = rec_rtol = 1e-4
+    else:
+        sv_atol = sv_rtol = 1e-10
+        rec_atol = rec_rtol = 1e-10
+
+    S_ref = torch.linalg.svdvals(A)
+    self.assertEqual(S, S_ref, atol=sv_atol, rtol=sv_rtol)
+
+    if compute_uv:
+        self.assertEqual(
+            U.shape,
+            torch.Size((*batch_shape, m, m if full_matrices else k)),
+        )
+        self.assertEqual(
+            Vh.shape,
+            torch.Size((*batch_shape, n if full_matrices else k, n)),
+        )
+
+        A_reconstructed = (
+            U[..., :, :k] @ torch.diag_embed(S).to(dtype=A.dtype) @ Vh[..., :k, :]
+        )
+        self.assertEqual(A_reconstructed, A, atol=rec_atol, rtol=rec_rtol)
+    else:
+        self.assertEqual(U.numel(), 0)
+        self.assertEqual(Vh.numel(), 0)
+
+
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_preferred_blas_library = preferred_blas_library
@@ -576,6 +747,18 @@ TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
+TestLinalg.test_svdvals_out_noncontiguous_strided = svdvals_out_noncontiguous_strided
+TestLinalg.test_svd_out_noncontiguous_s_strided = svd_out_noncontiguous_s_strided
+TestLinalg.test_svd_correctness_full_and_reduced = svd_correctness_full_and_reduced
+TestLinalg.test_svd_ops_do_not_emit_xpu_fallback_warning = (
+    svd_ops_do_not_emit_xpu_fallback_warning
+)
+TestLinalg.test_svd_driver_argument_behavior_on_xpu = (
+    svd_driver_argument_behavior_on_xpu
+)
+TestLinalg.test_svd_internal_parameter_combinations = (
+    svd_internal_parameter_combinations
+)
 TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True

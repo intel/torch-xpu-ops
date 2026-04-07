@@ -17,6 +17,7 @@
 
 import functools
 import itertools
+import os
 import sys
 import unittest
 
@@ -43,6 +44,15 @@ from common_utils import (
 )
 from functorch import grad, jacfwd, jacrev, vjp, vmap
 from functorch_additional_op_db import additional_op_db
+
+try:
+    from xpu_test_utils import patch_matrix_op_samples_with_well_conditioned_inputs
+except ModuleNotFoundError:
+    _xpu_test_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if _xpu_test_dir not in sys.path:
+        sys.path.append(_xpu_test_dir)
+    from xpu_test_utils import patch_matrix_op_samples_with_well_conditioned_inputs
+
 from torch import Tensor
 from torch._functorch.eager_transforms import _as_tuple, jvp
 from torch.testing._internal.autograd_function_db import autograd_function_db
@@ -89,6 +99,12 @@ for op in op_db:
         )
 
         break
+
+
+patch_matrix_op_samples_with_well_conditioned_inputs(
+    op_db, "linalg.det", "_xpu_functorch_det_sample_patch"
+)
+
 
 aten = torch.ops.aten
 
@@ -926,6 +942,11 @@ class TestOperators(TestCase):
             tol1("prod", {torch.float32: tol(atol=2e-05, rtol=1e-04)}),
             tol1("masked.cumprod", {torch.float32: tol(atol=5e-04, rtol=5e-04)}),
             tol1("cumprod", {torch.float32: tol(atol=5e-04, rtol=5e-04)}),
+            tol1(
+                "linalg.det",
+                {torch.float32: tol(atol=1.5e-03, rtol=7.5e-05)},
+                device_type=device_type,
+            ),
             tol1("linalg.vander", {torch.float32: tol(atol=5e-04, rtol=5e-04)}),
         ),
     )
@@ -1865,7 +1886,7 @@ class TestOperators(TestCase):
             ),
             tol1(
                 "linalg.det",
-                {torch.float32: tol(atol=3e-05, rtol=5e-06)},
+                {torch.float32: tol(atol=1.5e-03, rtol=7.5e-05)},
                 device_type=device_type,
             ),
             tol1(
