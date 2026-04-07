@@ -600,6 +600,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
 
   auto comm = coalescedComm_;
   auto device = coalescedDevice_;
+  c10::OptionalDeviceGuard gpuGuard(device);
 
   const auto key = std::to_string(device.index());
   auto stream = xcclStreamsMap_.at(key).xpuStream;
@@ -651,6 +652,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     bool nanCheck) {
   nanCheck &= enableNanCheck_;
   auto device = inputs[0].device();
+  c10::OptionalDeviceGuard gpuGuard(device);
   const auto key = std::to_string(device.index());
   std::shared_ptr<xcclComm_t> comm = getXCCLComm(key);
   if (comm == nullptr) {
@@ -743,8 +745,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
-  c10::OptionalDeviceGuard gpuGuard(device);
-
   if (nanCheck) {
     for (const auto& input : inputs) {
       checkForNan(input, stream);
@@ -806,6 +806,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     PostProcess post,
     const char* profilingTitle) {
   auto device = tensor.device();
+  c10::OptionalDeviceGuard gpuGuard(device);
   std::string key;
   int p2pRank = 0, p2pTargetRank = 0;
   bool isSendRecvSelf = false;
@@ -906,7 +907,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
 
     pre(stream, work);
   }
-  c10::OptionalDeviceGuard gpuGuard(device);
 
   c10::xpu::XPUCachingAllocator::recordStream(
       tensor.storage().data_ptr(), stream);
