@@ -275,6 +275,9 @@ jobs:
           echo "C:\ProgramData\miniforge3\Scripts" >> "$GITHUB_PATH"
           echo "C:\ProgramData\miniforge3\Library\bin" >> "$GITHUB_PATH"
           call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          rmdir /s /q "C:\ProgramData\miniforge3\envs\windows_ut"
+          call conda clean -ay
+          call conda remove --all -y -n windows_ut
           call conda create -n windows_ut python=${{ inputs.python }} -y
           call conda activate windows_ut
           pip install pyyaml requests pytest-timeout pytest pytest-xdist
