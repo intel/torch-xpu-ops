@@ -334,6 +334,9 @@ _ops_without_cuda_support = [
 ]
 
 _ops_dtype_different_cuda_support = {
+    "dot": {"forward": {torch.int64}},
+    "inner": {"forward": {torch.int64}},
+    "vdot": {"forward": {torch.int64}},
     "histc": {"forward": {torch.bfloat16, torch.float16}},
     "stft": {"forward": {torch.float16}, "backward": {torch.float16}},
 }
