@@ -14,37 +14,10 @@
 
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 #include <ATen/native/xpu/sycl/Pow.h>
-
-#include <cmath>
-#include <functional>
-#include <type_traits>
+#include <ATen/native/xpu/sycl/PointwiseFMAHelper.h>
 
 namespace at::native::xpu {
 
-// Computes input + alpha * op(tensor1, tensor2).
-// Uses std::fma for real floating-point types to ensure consistent
-// FMA behavior matching CUDA's pointwise_op_impl.
-template <typename opmath_t, typename Op>
-inline opmath_t pointwise_op_impl(
-    opmath_t input,
-    opmath_t tensor1,
-    opmath_t tensor2,
-    opmath_t alpha,
-    Op op) {
-  if (alpha == opmath_t(1)) {
-    if constexpr (std::is_same_v<Op, std::multiplies<opmath_t>> &&
-                  std::is_floating_point_v<opmath_t>) {
-      return std::fma(tensor1, tensor2, input);
-    } else {
-      return input + op(tensor1, tensor2);
-    }
-  }
-  if constexpr (std::is_floating_point_v<opmath_t>) {
-    return std::fma(alpha, op(tensor1, tensor2), input);
-  } else {
-    return input + alpha * op(tensor1, tensor2);
-  }
-}
 namespace {
 
 inline void increment_version(TensorList tensors) {

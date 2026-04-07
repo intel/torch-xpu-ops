@@ -17,9 +17,7 @@
 
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
 
-#include <cmath>
-#include <functional>
-#include <type_traits>
+#include <ATen/native/xpu/sycl/PointwiseFMAHelper.h>
 
 namespace at::native::xpu {
 
@@ -30,18 +28,8 @@ struct AddcmulFunctor {
     auto input = static_cast<accscalar_t>(a);
     auto t1 = static_cast<accscalar_t>(b);
     auto t2 = static_cast<accscalar_t>(c);
-    if (alpha_ == accscalar_t(1)) {
-      if constexpr (std::is_floating_point_v<accscalar_t>) {
-        return std::fma(t1, t2, input);
-      } else {
-        return input + t1 * t2;
-      }
-    }
-    if constexpr (std::is_floating_point_v<accscalar_t>) {
-      return std::fma(alpha_, t1 * t2, input);
-    } else {
-      return input + alpha_ * t1 * t2;
-    }
+    return static_cast<scalar_t>(pointwise_op_impl(
+        input, t1, t2, alpha_, std::multiplies<accscalar_t>{}));
   }
 
   AddcmulFunctor(accscalar_t alpha) : alpha_(alpha) {}
