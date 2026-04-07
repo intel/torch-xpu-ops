@@ -17,14 +17,31 @@
 
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
 
+#include <cmath>
+#include <functional>
+#include <type_traits>
+
 namespace at::native::xpu {
 
 template <typename scalar_t>
 struct AddcmulFunctor {
   using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   scalar_t operator()(scalar_t a, scalar_t b, scalar_t c) const {
-    return static_cast<accscalar_t>(a) +
-        alpha_ * static_cast<accscalar_t>(b) * static_cast<accscalar_t>(c);
+    auto input = static_cast<accscalar_t>(a);
+    auto t1 = static_cast<accscalar_t>(b);
+    auto t2 = static_cast<accscalar_t>(c);
+    if (alpha_ == accscalar_t(1)) {
+      if constexpr (std::is_floating_point_v<accscalar_t>) {
+        return std::fma(t1, t2, input);
+      } else {
+        return input + t1 * t2;
+      }
+    }
+    if constexpr (std::is_floating_point_v<accscalar_t>) {
+      return std::fma(alpha_, t1 * t2, input);
+    } else {
+      return input + alpha_ * t1 * t2;
+    }
   }
 
   AddcmulFunctor(accscalar_t alpha) : alpha_(alpha) {}
