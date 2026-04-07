@@ -170,7 +170,7 @@ struct SumVarOps {
     const auto mean = static_cast<scalar_t>(acc.sum / acc.nf);
     const auto var = (acc.sum_of_squares / acc.nf) -
         (mean - acc.first_elem) * (mean - acc.first_elem);
-    const auto safe_var = var < acc_scalar_t(0) ? acc_scalar_t(0) : var;
+    const auto safe_var = var < acc_scalar_t{0} ? acc_scalar_t{0} : var;
     res_t results(take_sqrt ? device_sqrt(safe_var) : safe_var, mean);
     return results;
   }
