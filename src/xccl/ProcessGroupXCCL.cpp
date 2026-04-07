@@ -48,6 +48,11 @@ struct OnecclGroupGuard {
     } catch (...) {
     }
   }
+
+  OnecclGroupGuard(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard& operator=(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard(OnecclGroupGuard&&) = delete;
+  OnecclGroupGuard& operator=(OnecclGroupGuard&&) = delete;
 };
 
 void checkSingleTensor(
