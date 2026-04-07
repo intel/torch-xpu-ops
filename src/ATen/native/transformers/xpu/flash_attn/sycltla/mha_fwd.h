@@ -13,11 +13,7 @@
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
 #include <cutlass/util/packed_stride.hpp>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/sycl.hpp>
 
-#include <flash_attention_v2/collective/fmha_fusion.hpp>
-#include <sycltla/collective/xe_flash_attn_sdpa_fwd_epilogue.h>
-#include <sycltla/collective/xe_flash_attn_sdpa_fwd_mma.h>
-#include <sycltla/collective/xe_flash_attn_sdpa_fwd_softmax_epilogue.h>
-#include <sycltla/kernel/tile_scheduler_sdpa_fwd.h>
-#include <sycltla/kernel/xe_sdpa_fwd.h>
+#include <sycltla/kernel/xe_fmha_fwd_kernel.h>
