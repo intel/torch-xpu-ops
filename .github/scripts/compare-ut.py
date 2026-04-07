@@ -6,9 +6,9 @@ Compares test results between target and baseline with GitHub markdown reporting
 and GitHub issue tracking integration.
 
 Usage:
-    python compare_tests.py --input "results/*.xml" --output comparison.xlsx
-    python compare_tests.py --input file1.xml file2.xml --output comparison.csv --markdown
-    python compare_tests.py --input ... --output results.xlsx --untracked-failures
+    python compare-ut.py --input "results/*.xml" --output comparison.xlsx
+    python compare-ut.py --input file1.xml file2.xml --output comparison.csv --markdown
+    python compare-ut.py --input ... --output comparison.xlsx --check-changes
 """
 
 from __future__ import annotations

@@ -31,9 +31,9 @@ outputs:
     description: 'Whether a build step should be performed (true/false)'
     value: ${{ steps.determine-outputs.outputs.should_build }}
   # Test scope
-  what_to_run:
+  test_scope:
     description: 'What tests to run'
-    value: ${{ steps.determine-outputs.outputs.what_to_run }}
+    value: ${{ steps.determine-outputs.outputs.test_scope }}
   ut_json_array:
     description: 'Unit tests list'
     value: ${{ steps.determine-outputs.outputs.ut_json_array }}
@@ -124,7 +124,7 @@ runs:
         pr_labels="$(echo '${{ toJson(github.event.pull_request.labels) }}' | jq -r '.[].name' | tr '\n' ' ')"
 
         # Start with base scope
-        what_to_run="ut,e2e"
+        test_scope="ut,e2e"
 
         # Check if Windows tests should be added
         src_changed="${{ steps.pr-scope.outputs.src_changed }}"
@@ -132,44 +132,44 @@ runs:
            ( [[ "${ut}" == *"windows"* ]] || \
              [[ "${pr_labels}" == *"windows_ci"* ]] || \
              [[ "${src_changed}" == "true" ]] ); then
-          what_to_run="${what_to_run},windows"
+          test_scope="${test_scope},windows"
         fi
 
         echo "pr_labels=${pr_labels}" >> "$GITHUB_ENV"
-        echo "what_to_run=${what_to_run}" >> "$GITHUB_ENV"
+        echo "test_scope=${test_scope}" >> "$GITHUB_ENV"
 
     - name: Determine test scope (Scheduled)
       if: inputs.is_scheduled_run == 'schedule'
       shell: bash -eo pipefail {0}
       run: |
-        what_to_run="ut,e2e,windows,microbench"
-        echo "what_to_run=${what_to_run}" >> "$GITHUB_ENV"
+        test_scope="ut,e2e,windows,microbench"
+        echo "test_scope=${test_scope}" >> "$GITHUB_ENV"
 
     - name: Determine test scope (Manual)
       if: contains(inputs.is_scheduled_run, 'manually')
       shell: bash -eo pipefail {0}
       run: |
-        # Build what_to_run based on ut and suite variables
-        what_to_run=""
+        # Build test_scope based on ut and suite variables
+        test_scope=""
         # Add ut if present and matches basic/op/xpu/ut
         if [[ -n "${ut}" ]] && echo "${ut}" | grep -qE "basic|op|xpu|ut"; then
-          what_to_run="${what_to_run},ut"
+          test_scope="${test_scope},ut"
         fi
         # Add e2e if suite is non-empty
         if [[ -n "${suite}" ]]; then
-          what_to_run="${what_to_run},e2e"
+          test_scope="${test_scope},e2e"
         fi
         # Add windows if ut contains 'windows'
         if [[ "${ut}" == *"windows"* ]]; then
-          what_to_run="${what_to_run},windows"
+          test_scope="${test_scope},windows"
         fi
         # Add microbench if ut contains 'microbench'
         if [[ "${ut}" == *"microbench"* ]]; then
-          what_to_run="${what_to_run},microbench"
+          test_scope="${test_scope},microbench"
         fi
         # Remove leading comma if present
-        what_to_run="${what_to_run#,}"
-        echo "what_to_run=${what_to_run}" >> "$GITHUB_ENV"
+        test_scope="${test_scope#,}"
+        echo "test_scope=${test_scope}" >> "$GITHUB_ENV"
 
     # ------------------------------------------------------------
     # Step 3: Determine test configuration
@@ -275,7 +275,7 @@ runs:
         echo "torch_xpu_ops=${torch_xpu_ops}" >> "${GITHUB_OUTPUT}"
         echo "should_build=${should_build}" >> "${GITHUB_OUTPUT}"
         echo "test_type=${test_type}" >> "${GITHUB_OUTPUT}"
-        echo "what_to_run=${what_to_run}" >> "${GITHUB_OUTPUT}"
+        echo "test_scope=${test_scope}" >> "${GITHUB_OUTPUT}"
         echo "ut_json_array=${ut_json_array}" >> "${GITHUB_OUTPUT}"
         echo "suite_json_array=${suite_json_array}" >> "${GITHUB_OUTPUT}"
 

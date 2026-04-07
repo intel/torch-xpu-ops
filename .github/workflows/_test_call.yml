@@ -27,9 +27,13 @@ on:
 
       # Comparison configuration
       test_role:
-        type: string
+        type: choice
+        options:
+          - target
+          - baseline
+          - none
         default: 'none'
-        description: 'What type actor'
+        description: 'What type actor, target, baseline or none by default'
 
       # Advanced configuration
       runner:
@@ -63,7 +67,7 @@ jobs:
       should_build: ${{ steps.parse-config.outputs.should_build }}
 
       # Test scope
-      what_to_run: ${{ steps.parse-config.outputs.what_to_run }}
+      test_scope: ${{ steps.parse-config.outputs.test_scope }}
       ut_json_array: ${{ steps.parse-config.outputs.ut_json_array }}
       suite_json_array: ${{ steps.parse-config.outputs.suite_json_array }}
 
@@ -104,7 +108,7 @@ jobs:
     needs:
       - parse-inputs
       - linux-build
-    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'ut') }}
+    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'ut') }}
     secrets: inherit
     permissions: write-all
     strategy:
@@ -126,7 +130,7 @@ jobs:
     needs:
       - parse-inputs
       - linux-build
-    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'e2e') }}
+    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'e2e') }}
     secrets: inherit
     strategy:
       fail-fast: false
@@ -151,7 +155,7 @@ jobs:
     needs:
       - parse-inputs
       - linux-build
-    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'microbench') }}
+    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'microbench') }}
     secrets: inherit
     uses: ./.github/workflows/_linux_op_benchmark.yml
     permissions: write-all
@@ -162,7 +166,7 @@ jobs:
 
   windows-ut:
     needs: [parse-inputs]
-    if: ${{ contains(needs.parse-inputs.outputs.what_to_run, 'windows') }}
+    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'windows') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:

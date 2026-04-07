@@ -8,10 +8,10 @@ a concise Markdown summary with emojis.
 
 Usage:
     # Single file mode
-    ./summary.py --input combined.log --output summary.md
+    ./summarize-env.py --input combined.log --output summary.md
 
     # Comparison mode (baseline vs target)
-    ./summary.py --baseline baseline.log --target target.log --output comparison.md
+    ./summarize-env.py --baseline baseline.log --target target.log --output comparison.md
 """
 
 import argparse

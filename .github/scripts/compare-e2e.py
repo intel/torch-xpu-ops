@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Comparison tool for PyTorch inductor test results (target vs baseline).
+Comparison tool for PyTorch Dynamo Benchmark test results (target vs baseline).
 Supports comparing two directories, or generating a report from a single
 directory (treating missing side as empty).
+Usage:
+    python compare-e2e.py -t "results/target/" -b "results/baseline/" --output comparison.xlsx
+    python compare-e2e.py -t "results/target/" -b "results/baseline/" --output comparison.csv --markdown
+    python compare-e2e.py -t "results/target/" --output comparison.xlsx
 """
 
 import os

@@ -25,7 +25,7 @@ logger = logging.getLogger("dynamo_bench")
 # ----------------------------------------------------------------------
 # Constants and defaults
 # ----------------------------------------------------------------------
-DEFAULT_PYTHON_VERSION = "3.10"
+DEFAULT_PYTHON_VERSION = "3.12"
 UV_INSTALL_URL = "https://astral.sh/uv/install.sh"
 UV_INSTALL_DIR_DEFAULT = ".uv"
 
@@ -869,7 +869,7 @@ def main():
 
     # Setup flags
     parser.add_argument("--setup-python", nargs="?", const=DEFAULT_PYTHON_VERSION, default=None,
-                        help="Create Python virtual environment. Optionally specify Python version (default: 3.10). If omitted, system Python is used.")
+                        help="Create Python virtual environment. Optionally specify Python version (default: 3.12). If omitted, system Python is used.")
     parser.add_argument("--setup-deps", action="store_true",
                         help="Install PyTorch, dependencies, and clone repositories (benchmark repo only if TorchBench is needed).")
     parser.add_argument("--pytorch", default="release",

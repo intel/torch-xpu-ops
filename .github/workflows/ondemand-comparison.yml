@@ -23,9 +23,7 @@ on:
           - sycltla
           - triton
           - oneapi
-          - pytorch
-          - torch-xpu-ops
-        default: 'pytorch'
+        default: 'onednn'
         description: 'Component to compare'
 
       # Version configuration

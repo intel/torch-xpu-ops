@@ -177,7 +177,7 @@ def main():
     parser.add_argument("--gcc", type=str,
                        help="GCC version, such as 11")
     parser.add_argument("--python", type=str,
-                       help="Python version, such as 3.10")
+                       help="Python version, such as 3.12")
     parser.add_argument("--pytorch", type=str,
                        help="PyTorch version")
     parser.add_argument("--torch-xpu-ops", type=str,

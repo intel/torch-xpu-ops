@@ -9,7 +9,7 @@ inputs:
     default: 'main'
     description: 'Torch-xpu-ops version: main (default), commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
   python:
-    default: '3.10'
+    default: '3.12'
     description: 'Python version'
   suite:
     required: true
