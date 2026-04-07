@@ -27,11 +27,7 @@ on:
 
       # Comparison configuration
       test_role:
-        type: choice
-        options:
-          - target
-          - baseline
-          - none
+        type: string
         default: 'none'
         description: 'What type actor, target, baseline or none by default'
 
