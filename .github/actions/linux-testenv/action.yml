@@ -12,8 +12,13 @@ inputs:
     default: '3.10'
     description: 'Python version'
   suite:
-    default: 'None'
-    description: 'Dynamo benchmarks test suite. Options: huggingface,timm_models,torchbench,pt2e (comma-separated)'
+    required: true
+    type: string
+    options:
+      - huggingface
+      - timm_models
+      - torchbench
+    description: 'Dynamo benchmarks test suite.'
   component:
     default: ''
     description: 'Component name for comparison'

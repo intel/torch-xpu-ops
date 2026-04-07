@@ -4,20 +4,36 @@ description: Linux E2E Test
 inputs:
   suite:
     required: true
-    default: 'huggingface'
-    description: 'Dynamo benchmarks test suite. Options: huggingface,timm_models,torchbench (comma-separated)'
+    type: string
+    options:
+      - huggingface
+      - timm_models
+      - torchbench
+    description: 'Dynamo benchmarks test suite.'
   dt:
     required: true
-    default: 'float32'
-    description: 'Data precision of the test. Options: float32,bfloat16,float16,amp_bf16,amp_fp16 (comma-separated)'
+    type: string
+    options:
+      - float32
+      - bfloat16
+      - float16
+      - amp_bf16
+      - amp_fp16
+    description: 'Data precision of the test.'
   mode:
     required: true
-    default: 'inference'
-    description: 'Test mode. Options: inference,training (comma-separated)'
+    type: string
+    options:
+      - inference
+      - training
+    description: 'Test mode.'
   scenario:
     required: true
-    default: 'accuracy'
-    description: 'Test scenario. Options: accuracy,performance (comma-separated)'
+    type: string
+    options:
+      - accuracy
+      - performance
+    description: 'Test scenario.'
   comparison_type:
     default: 'default'
     description: 'Test type: comparison or others'

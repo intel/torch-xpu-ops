@@ -4,12 +4,18 @@ description: inductor-xpu-pt2e-test
 inputs:
   dt:
     required: true
-    default: 'float32'
-    description: 'Data precision of the test. Options: float32,int8 (comma-separated)'
+    type: string
+    options:
+      - float32
+      - int8
+    description: 'Data precision of the test.'
   scenario:
     required: true
-    default: 'accuracy'
-    description: 'Test scenario. Options: accuracy,performance (comma-separated)'
+    type: string
+    options:
+      - accuracy
+      - performance
+    description: 'Test scenario.'
   pytorch:
     required: false
     default: 'main'

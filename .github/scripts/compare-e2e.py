@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Comparison tool for PyTorch inductor test results (target vs baseline).
+Supports comparing two directories, or generating a report from a single
+directory (treating missing side as empty).
 """
 
 import os
@@ -31,9 +33,9 @@ SUMMARY_LEVELS = [
 # File discovery and parsing
 # ----------------------------------------------------------------------
 def find_result_files(root_dir: str) -> list[str]:
-    """Recursively find all *_performance.csv and *_accuracy.csv files."""
-    perf_files = glob(os.path.join(root_dir, "**", "*_performance.csv"), recursive=True)
-    acc_files = glob(os.path.join(root_dir, "**", "*_accuracy.csv"), recursive=True)
+    """Recursively find all *performance.csv and *accuracy.csv files."""
+    perf_files = glob(os.path.join(root_dir, "**", "*performance.csv"), recursive=True)
+    acc_files = glob(os.path.join(root_dir, "**", "*accuracy.csv"), recursive=True)
     return perf_files + acc_files
 
 
@@ -44,6 +46,14 @@ def _parse_filename_components(filename: str) -> tuple[str, str, str, str]:
     """
     if not filename.endswith(".csv"):
         raise ValueError("Not a CSV file")
+
+    if "test-results-" in filename:
+        base = filename.split("test-results-")[-1][:-4]
+        parts = base.split('-')
+        if len(parts) >= 5:
+            suite, data_type, mode, _, result_type = parts[:5]
+            return suite, data_type, mode, result_type
+
     base = filename[:-4]
     if not base.startswith("inductor_"):
         raise ValueError(f"Filename does not start with 'inductor_': {filename}")
@@ -125,6 +135,12 @@ def load_results(file_list: list[str], result_type_filter: str) -> list[dict]:
     """
     raw_by_key: dict[tuple, list[dict]] = {}
 
+    # Define required columns based on type
+    if result_type_filter == "accuracy":
+        usecols = ['dev', 'name', 'batch_size', 'accuracy']
+    else:  # performance
+        usecols = ['dev', 'name', 'batch_size', 'speedup', 'abs_latency']
+
     for fpath in file_list:
         try:
             suite, data_type, mode, res_type = _parse_filename_components(os.path.basename(fpath))
@@ -135,10 +151,30 @@ def load_results(file_list: list[str], result_type_filter: str) -> list[dict]:
             continue
 
         try:
-            df = pd.read_csv(fpath)
+            # Try reading with modern pandas (skip bad lines)
+            df = pd.read_csv(
+                fpath,
+                usecols=usecols,
+                on_bad_lines='skip',
+                engine='c',
+                encoding='utf-8'
+            )
         except Exception as e:
-            print(f"Error reading {fpath}: {e}")
-            continue
+            # Fallback for older pandas or if engine='c' fails
+            print(f"Warning: {fpath} - {e}, trying fallback parser...")
+            try:
+                df = pd.read_csv(
+                    fpath,
+                    usecols=usecols,
+                    error_bad_lines=False,   # deprecated but works in older versions
+                    warn_bad_lines=True,
+                    engine='python',         # more robust for irregular quoting
+                    encoding='utf-8'
+                )
+                print(f"Loaded {fpath} with fallback ({len(df)} rows)")
+            except Exception as e2:
+                print(f"Failed to read {fpath}: {e2}")
+                continue
 
         for _, row in df.iterrows():
             if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
@@ -157,7 +193,6 @@ def load_results(file_list: list[str], result_type_filter: str) -> list[dict]:
                 speedup = row.get("speedup")
                 abs_latency = row.get("abs_latency")
 
-                # Include row even if speedup/abs_latency are missing (set to NaN)
                 if pd.isna(speedup) or pd.isna(abs_latency):
                     print(f"Warning: Missing speedup/abs_latency for {suite}/{data_type}/{mode}/{row.get('name')} in {fpath}, including with NaN.")
                     inductor = np.nan
@@ -200,9 +235,58 @@ def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> 
     """Merge target and baseline accuracy DataFrames and compute comparison column."""
     target_df = pd.DataFrame(target_records)
     baseline_df = pd.DataFrame(baseline_records)
+
+    # If both are empty, return empty DataFrame
     if target_df.empty and baseline_df.empty:
         return pd.DataFrame()
 
+    # If target is empty, all baseline entries become new_failed
+    if target_df.empty:
+        # Add target columns with None
+        baseline_df["batch_size_target"] = pd.NA
+        baseline_df["accuracy_target"] = pd.NA
+        baseline_df["comparison_acc"] = "new_failed"
+        # Rename baseline columns to match output schema
+        baseline_df.rename(columns={
+            "batch_size": "batch_size_baseline",
+            "accuracy": "accuracy_baseline"
+        }, inplace=True)
+        # Ensure all expected columns exist
+        for col in ["suite", "data_type", "mode", "model", "batch_size_target", "accuracy_target",
+                    "batch_size_baseline", "accuracy_baseline", "comparison_acc"]:
+            if col not in baseline_df.columns:
+                baseline_df[col] = None
+        # Select and order columns
+        result = baseline_df[["suite", "data_type", "mode", "model",
+                              "batch_size_target", "accuracy_target",
+                              "batch_size_baseline", "accuracy_baseline",
+                              "comparison_acc"]].copy()
+        result["batch_size_target"] = pd.to_numeric(result["batch_size_target"], errors='coerce').astype('Int64')
+        result["batch_size_baseline"] = pd.to_numeric(result["batch_size_baseline"], errors='coerce').astype('Int64')
+        return result.sort_values(by=["suite", "data_type", "mode", "model"])
+
+    # If baseline is empty, all target entries become new_passed
+    if baseline_df.empty:
+        target_df["batch_size_baseline"] = pd.NA
+        target_df["accuracy_baseline"] = pd.NA
+        target_df["comparison_acc"] = "new_passed"
+        target_df.rename(columns={
+            "batch_size": "batch_size_target",
+            "accuracy": "accuracy_target"
+        }, inplace=True)
+        for col in ["suite", "data_type", "mode", "model", "batch_size_target", "accuracy_target",
+                    "batch_size_baseline", "accuracy_baseline", "comparison_acc"]:
+            if col not in target_df.columns:
+                target_df[col] = None
+        result = target_df[["suite", "data_type", "mode", "model",
+                            "batch_size_target", "accuracy_target",
+                            "batch_size_baseline", "accuracy_baseline",
+                            "comparison_acc"]].copy()
+        result["batch_size_target"] = pd.to_numeric(result["batch_size_target"], errors='coerce').astype('Int64')
+        result["batch_size_baseline"] = pd.to_numeric(result["batch_size_baseline"], errors='coerce').astype('Int64')
+        return result.sort_values(by=["suite", "data_type", "mode", "model"])
+
+    # Both non-empty: perform merge as before
     merge_keys = ["suite", "data_type", "mode", "model"]
     merged = pd.merge(target_df, baseline_df, on=merge_keys, how="outer",
                       suffixes=("_target", "_baseline"), indicator=True)
@@ -247,9 +331,63 @@ def merge_performance(target_records: list[dict], baseline_records: list[dict],
     """Merge target and baseline performance DataFrames, compute ratios and comparison."""
     target_df = pd.DataFrame(target_records)
     baseline_df = pd.DataFrame(baseline_records)
+
     if target_df.empty and baseline_df.empty:
         return pd.DataFrame()
 
+    # If target is empty, all baseline entries become new_failed
+    if target_df.empty:
+        baseline_df["batch_size_target"] = pd.NA
+        baseline_df["inductor_target"] = pd.NA
+        baseline_df["eager_target"] = pd.NA
+        baseline_df["inductor_ratio"] = pd.NA
+        baseline_df["eager_ratio"] = pd.NA
+        baseline_df["comparison_perf"] = "new_failed"
+        baseline_df.rename(columns={
+            "batch_size": "batch_size_baseline",
+            "inductor": "inductor_baseline",
+            "eager": "eager_baseline"
+        }, inplace=True)
+        # Ensure all expected columns exist
+        cols = ["suite", "data_type", "mode", "model",
+                "batch_size_target", "inductor_target", "eager_target",
+                "batch_size_baseline", "inductor_baseline", "eager_baseline",
+                "inductor_ratio", "eager_ratio", "comparison_perf"]
+        for c in cols:
+            if c not in baseline_df.columns:
+                baseline_df[c] = None
+        result = baseline_df[cols].copy()
+        # Convert batch sizes to nullable integers
+        for col in ["batch_size_target", "batch_size_baseline"]:
+            result[col] = pd.to_numeric(result[col], errors='coerce').astype('Int64')
+        return result.sort_values(by=["suite", "data_type", "mode", "model"])
+
+    # If baseline is empty, all target entries become new_passed
+    if baseline_df.empty:
+        target_df["batch_size_baseline"] = pd.NA
+        target_df["inductor_baseline"] = pd.NA
+        target_df["eager_baseline"] = pd.NA
+        target_df["inductor_ratio"] = pd.NA
+        target_df["eager_ratio"] = pd.NA
+        target_df["comparison_perf"] = "new_passed"
+        target_df.rename(columns={
+            "batch_size": "batch_size_target",
+            "inductor": "inductor_target",
+            "eager": "eager_target"
+        }, inplace=True)
+        cols = ["suite", "data_type", "mode", "model",
+                "batch_size_target", "inductor_target", "eager_target",
+                "batch_size_baseline", "inductor_baseline", "eager_baseline",
+                "inductor_ratio", "eager_ratio", "comparison_perf"]
+        for c in cols:
+            if c not in target_df.columns:
+                target_df[c] = None
+        result = target_df[cols].copy()
+        for col in ["batch_size_target", "batch_size_baseline"]:
+            result[col] = pd.to_numeric(result[col], errors='coerce').astype('Int64')
+        return result.sort_values(by=["suite", "data_type", "mode", "model"])
+
+    # Both non-empty: perform merge as before
     merge_keys = ["suite", "data_type", "mode", "model"]
     merged = pd.merge(target_df, baseline_df, on=merge_keys, how="outer",
                       suffixes=("_target", "_baseline"), indicator=True)
@@ -671,48 +809,56 @@ def main():
         epilog="""
 Examples:
   %(prog)s -t target_dir -b baseline_dir -o comparison.xlsx
-  %(prog)s -t target_dir -b baseline_dir -o comparison.csv
+  %(prog)s -t target_dir -o comparison.xlsx   # only target, baseline treated as empty
+  %(prog)s -b baseline_dir -o comparison.csv  # only baseline, target treated as empty
   %(prog)s -t target_dir -b baseline_dir -o comparison.xlsx -m report --threshold 0.15
         """
     )
-    parser.add_argument("-t", "--target_dir", required=True, help="Directory containing target (test) result CSV files (searched recursively)")
-    parser.add_argument("-b", "--baseline_dir", required=True, help="Directory containing baseline (reference) result CSV files (searched recursively)")
+    parser.add_argument("-t", "--target_dir", help="Directory containing target (test) result CSV files (searched recursively)")
+    parser.add_argument("-b", "--baseline_dir", help="Directory containing baseline (reference) result CSV files (searched recursively)")
     parser.add_argument("-o", "--output", required=True, help="Output file name (without extension). Use .xlsx for Excel, .csv for CSV files.")
     parser.add_argument("-m", "--markdown", help="Base name for Markdown reports (e.g., report -> report.summary.md, report.details.md)")
     parser.add_argument("--threshold", type=float, default=DEFAULT_PERFORMANCE_THRESHOLD,
                         help=f"Performance change threshold (default: {DEFAULT_PERFORMANCE_THRESHOLD})")
     args = parser.parse_args()
 
+    # At least one of target_dir or baseline_dir must be provided
+    if not args.target_dir and not args.baseline_dir:
+        print("Error: At least one of -t/--target_dir or -b/--baseline_dir must be provided.")
+        return 1
+
     out_base, out_ext = os.path.splitext(args.output)
     if out_ext not in ('.xlsx', '.csv'):
         print("Output file must end with .xlsx or .csv")
         return 1
 
-    target_files = find_result_files(args.target_dir)
-    baseline_files = find_result_files(args.baseline_dir)
+    # Load target data if directory provided and exists
+    target_acc = []
+    target_perf = []
+    if args.target_dir:
+        if not os.path.isdir(args.target_dir):
+            print(f"Error: Target directory '{args.target_dir}' does not exist.")
+            return 1
+        target_files = find_result_files(args.target_dir)
+        print(f"Found {len(target_files)} CSV files in target directory.")
+        target_acc = load_results(target_files, "accuracy")
+        target_perf = load_results(target_files, "performance")
+    else:
+        print("No target directory provided. Treating target as empty.")
 
-    print(f"Found {len(target_files)} CSV files in target directory.")
-    print(f"Found {len(baseline_files)} CSV files in baseline directory.")
-
-    # Check for existence of accuracy/performance files
-    target_acc_files = [f for f in target_files if '_accuracy.csv' in f]
-    target_perf_files = [f for f in target_files if '_performance.csv' in f]
-    baseline_acc_files = [f for f in baseline_files if '_accuracy.csv' in f]
-    baseline_perf_files = [f for f in baseline_files if '_performance.csv' in f]
-
-    if not target_acc_files:
-        print("Warning: No accuracy CSV files found in target directory.")
-    if not target_perf_files:
-        print("Warning: No performance CSV files found in target directory.")
-    if not baseline_acc_files:
-        print("Warning: No accuracy CSV files found in baseline directory.")
-    if not baseline_perf_files:
-        print("Warning: No performance CSV files found in baseline directory.")
-
-    target_acc = load_results(target_files, "accuracy")
-    target_perf = load_results(target_files, "performance")
-    baseline_acc = load_results(baseline_files, "accuracy")
-    baseline_perf = load_results(baseline_files, "performance")
+    # Load baseline data if directory provided and exists
+    baseline_acc = []
+    baseline_perf = []
+    if args.baseline_dir:
+        if not os.path.isdir(args.baseline_dir):
+            print(f"Error: Baseline directory '{args.baseline_dir}' does not exist.")
+            return 1
+        baseline_files = find_result_files(args.baseline_dir)
+        print(f"Found {len(baseline_files)} CSV files in baseline directory.")
+        baseline_acc = load_results(baseline_files, "accuracy")
+        baseline_perf = load_results(baseline_files, "performance")
+    else:
+        print("No baseline directory provided. Treating baseline as empty.")
 
     print(f"Target accuracy records: {len(target_acc)}")
     print(f"Target performance records: {len(target_perf)}")

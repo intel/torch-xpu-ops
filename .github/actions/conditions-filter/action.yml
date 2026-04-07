@@ -7,6 +7,13 @@ inputs:
     required: true
   is_scheduled_run:
     required: true
+    type: string
+    options:
+      - pull_request  # for PreCI
+      - schedule  # for scheduled tests
+      - dispatch-manually # for trigger manually
+      - target-manually # for acceptance target
+      - baseline-manually # for acceptance baseline
     description: 'Set to true for scheduled runs (affects build behavior)'
 
 outputs:
