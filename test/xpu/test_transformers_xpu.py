@@ -22,7 +22,6 @@ from torch.nn.functional import scaled_dot_product_attention
 from torch.nn.parameter import Parameter
 from torch.testing._internal.common_cuda import (
     IS_JETSON,
-    PLATFORM_SUPPORTS_CUDNN_ATTENTION,
     PLATFORM_SUPPORTS_FLASH_ATTENTION,
     PLATFORM_SUPPORTS_FUSED_ATTENTION,
     PLATFORM_SUPPORTS_MEM_EFF_ATTENTION,
@@ -260,6 +259,10 @@ def query_key_value_clones(
     return query_ref, key_ref, value_ref
 
 
+# Workaround in order to align XPU test with cuda
+PLATFORM_SUPPORTS_CUDNN_ATTENTION = True
+
+
 def get_platform_specific_sdpa():
     ret = []
     if PLATFORM_SUPPORTS_FLASH_ATTENTION:
@@ -278,7 +281,7 @@ PLATFORM_SPECIFIC_SDPA = get_platform_specific_sdpa()
 # Indicate the Efficient attention backend can support:
 # 1. sequence longher than 512
 # 2. head dimsion larger than 64
-MEM_EFF_CAPABILITY_MATCHES_SM80 = SM80OrLater or TEST_WITH_ROCM
+MEM_EFF_CAPABILITY_MATCHES_SM80 = SM80OrLater or TEST_WITH_ROCM or TEST_XPU
 
 
 def rand_sdpa_tensor(
@@ -4820,6 +4823,7 @@ class TestSDPACudaOnly(NNTestCase):
                 ):
                     raise AssertionError("expected EFFICIENT_ATTENTION backend")
 
+    @skipIfXpu(msg="XPU has different implementations, skip the performance check.")
     @onlyAccelerator
     @unittest.skipIf(
         not PLATFORM_SUPPORTS_CUDNN_ATTENTION,
@@ -4865,14 +4869,14 @@ class TestSDPACudaOnly(NNTestCase):
             else:
                 with sdpa_kernel(order, set_priority=True):
                     scaled_dot_product_attention(q, q, q)
-            torch.cuda.synchronize()
+            torch.accelerator.synchronize()
             t0 = time.perf_counter()
             if use_compile:
                 compiled_func(order)
             else:
                 with sdpa_kernel(order, set_priority=True):
                     scaled_dot_product_attention(q, q, q)
-            torch.cuda.synchronize()
+            torch.accelerator.synchronize()
             t1 = time.perf_counter()
             times.append(t1 - t0)
         self.assertTrue(
