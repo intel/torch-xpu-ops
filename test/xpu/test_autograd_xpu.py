@@ -14,6 +14,8 @@
 
 import threading
 import contextlib
+import time
+import gc
 import warnings
 from copy import deepcopy
 from functools import partial
@@ -739,6 +741,32 @@ with XPUPatchForImport(False):
 
         self.assertEqual(executed, ["B", "A"])
 
+    def xpu_test_reentrant_parent_error_on_cpu(self, device):
+        def _get_xpu_memory_usage():
+            # we don't need XPU synchronize because the statistics are not tracked at
+            # actual freeing, but at when marking the block as free.
+            num_devices = torch.xpu.device_count()
+            gc.collect()
+            return tuple(torch.xpu.memory_allocated(i) for i in range(num_devices))
+
+        before = _get_xpu_memory_usage()
+
+        # Run as separate function so that gc can clean up everything when we
+        # check for memory usage.
+        self._test_reentrant_parent_error_on_cpu(device)
+
+        # Wait for autograd thread to cleanup failed tasks.
+        after = _get_xpu_memory_usage()
+        start = time.time()
+        while before != after and time.time() - start < 30:
+            time.sleep(0.1)
+            after = _get_xpu_memory_usage()
+
+        self.assertEqual(before, after)
+
+    TestAutogradDeviceType.test_reentrant_parent_error_on_cpu = (
+        xpu_test_reentrant_parent_error_on_cpu
+    )
     TestAutograd.test_checkpointing_without_reentrant_dataparallel = (
         checkpointing_without_reentrant_dataparallel
     )
