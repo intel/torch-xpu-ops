@@ -63,10 +63,6 @@ macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(SYCL_${_name} ${SYCL_${_name}} CACHE INTERNAL "Location of ${_full_name}" FORCE)
 endmacro()
 
-# SYCL_HOST_COMPILER
-set(SYCL_HOST_COMPILER "${CMAKE_CXX_COMPILER}"
-  CACHE FILEPATH "Host side compiler used by SYCL")
-
 # SYCL_EXECUTABLE
 set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
 

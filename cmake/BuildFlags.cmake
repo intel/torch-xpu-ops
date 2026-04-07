@@ -45,7 +45,7 @@ macro(set_build_flags)
     else()
       set(CPP_STD c++17)
     endif()
-    # # -- Host flags (SYCL_CXX_FLAGS)
+    # -- Host flags (SYCL_CXX_FLAGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS /MD)
@@ -57,7 +57,6 @@ macro(set_build_flags)
       list(APPEND SYCL_HOST_FLAGS -fPIC)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
       list(APPEND SYCL_HOST_FLAGS -Wunused-variable)
-      list(APPEND SYCL_HOST_FLAGS -Wno-interference-size)
       # Some versions of DPC++ compiler pass paths to SYCL headers as user include paths (`-I`) rather
       # than system paths (`-isystem`). This makes host compiler to report warnings encountered in the
       # SYCL headers, such as deprecated warnings, even if warned API is not actually used in the program.
@@ -93,15 +92,20 @@ macro(set_build_flags)
     # to be replaced with an approximately equivalent set of instructions or
     # alternative math function calls, which have great errors.
     #
-    # PSEUDO of separate compilation with DPCPP compiler.
-    # 1. Kernel source compilation:
-    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} -fsycl-host-compiler=gcc -fsycl-host-compiler-options='${CMAKE_HOST_FLAGS}' kernel.cpp -o kernel.o
+    # PSEUDO of pure icpx compilation (no separate host compiler).
+    # 1. Kernel source compilation (icpx handles both host and device code):
+    # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} ${SYCL_KERNEL_OPTIONS} kernel.cpp -o kernel.o
     # 2. Device code linkage:
     # icpx -fsycl -fsycl-target=${SYCL_TARGETS_OPTION} -fsycl-link ${SYCL_DEVICE_LINK_FLAGS} -Xs '${SYCL_OFFLINE_COMPILER_FLAGS}' kernel.o -o device-code.o
     # 3. Host only source compilation:
     # gcc ${CMAKE_HOST_FLAGS} host.cpp -o host.o
     # 4. Linkage:
     # gcc -shared host.o kernel.o device-code.o -o libxxx.so
+    # Force-include the override header before any source/header is parsed,
+    # disabling the host-side id-queries-fit-in-int runtime check.
+    # Use TORCH_XPU_OPS_ROOT (not CMAKE_CURRENT_SOURCE_DIR) so the path
+    # stays the same regardless of which CMakeLists.txt calls this macro.
+    set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -include ${TORCH_XPU_OPS_ROOT}/src/comm/sycl_id_queries_override.h)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-sycl-unnamed-lambda)
     set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -sycl-std=2020)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
@@ -188,7 +192,7 @@ macro(set_build_flags)
       message(STATUS "Compile Intel GPU AOT Targets for ${AOT_TARGETS}")
     endif()
 
-    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_KERNEL_OPTIONS})
+    set(SYCL_COMPILE_FLAGS ${SYCL_COMPILE_FLAGS} ${SYCL_HOST_FLAGS} ${SYCL_KERNEL_OPTIONS})
 
     set(SYCL_OFFLINE_COMPILER_FLAGS "${SYCL_OFFLINE_COMPILER_AOT_OPTIONS}${SYCL_OFFLINE_COMPILER_CG_OPTIONS}")
   else()
