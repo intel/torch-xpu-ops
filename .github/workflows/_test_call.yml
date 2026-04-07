@@ -333,6 +333,7 @@ jobs:
               echo "Error: No results directory found after test!"
               exit 1
           fi
+          ls results/*/
 
           # Function: run unit test comparison
           # Returns: 0 if no new failures, 1 otherwise

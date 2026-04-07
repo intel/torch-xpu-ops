@@ -310,21 +310,12 @@ jobs:
             tail -n +2 "$file" | grep -v '^[[:space:]]*$' | wc -l
           }
 
-          # Helper: show first few data rows for context
-          show_sample() {
-            local file="$1"
-            local max_lines="${2:-5}"
-            echo "First up to $max_lines entries:"
-            head -n $((max_lines + 1)) "$file" | tail -n +2 | head -n "$max_lines"
-          }
-
           # Check for new passes (tracked passes)
           PASSES_FILE="ut_comparison_tracked_passes.csv"
           PASSES_COUNT=$(count_data_rows "$PASSES_FILE")
           if [ "$PASSES_COUNT" -gt 0 ]; then
             echo -e "\033[0;32m✅ New Passes Found: $PASSES_COUNT\033[0m"
-            show_sample "$PASSES_FILE" 5
-            exit 1
+            cat "$PASSES_FILE"
           elif [ -f "$PASSES_FILE" ]; then
             echo -e "\033[0;32mℹ️ No new passes detected (file present but empty).\033[0m"
           fi
@@ -334,7 +325,7 @@ jobs:
           FAILURES_COUNT=$(count_data_rows "$FAILURES_FILE")
           if [ "$FAILURES_COUNT" -gt 0 ]; then
             echo -e "\033[0;31m❌ New Failures Found: $FAILURES_COUNT\033[0m"
-            show_sample "$FAILURES_FILE" 5
+            cat "$FAILURES_FILE"
             exit 1
           elif [ -f "$FAILURES_FILE" ]; then
             echo -e "\033[0;32mℹ️ No new untracked failures detected.\033[0m"
