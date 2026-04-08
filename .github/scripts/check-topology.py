@@ -53,9 +53,9 @@ if ret == 0:
         start_cpu = int(value.split("-")[0])
         end_cpu = int(value.split("-")[1])
         threads = end_cpu - start_cpu + 1
-        pytest_extra_args = pytest_extra_args + \
-            ' --tx popen//env:ZE_AFFINITY_MASK=%s//env:OMP_NUM_THREADS=%d//python="numactl -l -C %s python"'\
-            %(key, threads, value)
+        pytest_extra_args = pytest_extra_args + (
+            f' --tx popen//env:ZE_AFFINITY_MASK={key}//env:OMP_NUM_THREADS={threads}//python="numactl -l -C {value} python"')
+
     print(pytest_extra_args)
 
 else:

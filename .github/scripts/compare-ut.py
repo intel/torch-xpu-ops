@@ -666,6 +666,7 @@ class TestDetailsExtractor:
 
             # Determine status
             status, message = self._determine_test_status(testcase)
+            short_message = message[:200].replace('\r\n', ';').replace('\n', ';').replace('\r', ';')
 
             # Convert time
             try:
@@ -682,7 +683,7 @@ class TestDetailsExtractor:
                 testtype=test_type,
                 status=status,
                 time=time_val,
-                message=message,
+                message=short_message,
                 raw_file=filename,
                 raw_class=classname,
                 raw_name=name,
@@ -909,6 +910,7 @@ class ResultAnalyzer:
         if not new_failures.empty:
             # Add reason column for new failures
             new_failures["change_type"] = "failure"
+            new_failures["message_target"] = new_failures["message_target"].str[:50]
             new_failures["reason"] = np.select(
                 [
                     new_failures["status_target"].isin(["skipped"]),
@@ -926,6 +928,7 @@ class ResultAnalyzer:
         if not new_passes.empty:
             # Add reason column for new passes
             new_passes["change_type"] = "pass"
+            new_passes["message_baseline"] = new_passes["message_baseline"].str[:50]
             new_passes["reason"] = np.select(
                 [
                     new_passes["status_baseline"].isin(["skipped"]),
@@ -1181,9 +1184,7 @@ class ResultAnalyzer:
 
                     # Truncate message if too long
                     message = issue.get('message_target', '')
-                    if len(message) > 100:
-                        message = message[:97] + "..."
-                    message = message.replace('\n', ' ').replace('|', '\\|')
+                    message = message[:50] + "..."
 
                     md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {issue_display} | {message} |")
 
@@ -1210,9 +1211,7 @@ class ResultAnalyzer:
 
                     # Truncate message
                     message = issue.get('message_target', '')
-                    if len(message) > 100:
-                        message = message[:97] + "..."
-                    message = message.replace('\n', ' ').replace('|', '\\|')
+                    message = message[:50] + "..."
 
                     md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {message} |")
 
@@ -1746,11 +1745,26 @@ def main() -> int:
             unique_df = analyzer.deduplicate_by_priority()
             baseline_df, target_df = analyzer.split_by_device(unique_df)
 
+            def classify_row(row):
+                # Patterns in priority order (most specific first)
+                patterns = [
+                    ('test/regressions/', 'op_regression'),
+                    ('test/xpu/extended/', 'op_extended'),
+                    ('test/distributed/', 'xpu_distributed'),
+                    ('test/xpu/', 'op_ut'),
+                ]
+                for pattern, label in patterns:
+                    if (pattern in str(row['testfile_target']).lower() or
+                        pattern in str(row['testfile_baseline']).lower()):
+                        return label
+                return 'stock_ut'
+
             # No data to compare – early exit
             if baseline_df.empty and target_df.empty:
                 logger.info("Skipping untracked failures export: no baseline or target data")
             else:
                 merged_df = analyzer.merge_results(baseline_df, target_df)
+                merged_df['raw_file_target'] = merged_df.apply(classify_row, axis=1)
 
                 # Ensure required columns exist (GitHub integration may be missing)
                 for col in ['issue_ids', 'issue_labels', 'issue_statuses', 'case_statuses']:
@@ -1792,9 +1806,13 @@ def main() -> int:
                         export_df['message_target'] = export_df['message_target'].astype(str).str[:50]
 
                     if output_path.suffix.lower() in ['.xlsx', '.xls']:
-                        export_path = output_path.parent / f"{output_path.stem}{suffix}.xlsx"
-                        with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
-                            export_df.to_excel(writer, sheet_name=sheet_or_label, index=False)
+                        export_path = Path(output_path)
+                        if export_path.exists():
+                            with pd.ExcelWriter(export_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
+                                export_df.to_excel(writer, sheet_name=sheet_or_label, index=False)
+                        else:
+                            with pd.ExcelWriter(export_path, engine='openpyxl') as writer:
+                                export_df.to_excel(writer, sheet_name=sheet_or_label, index=False)
                     else:
                         export_path = output_path.parent / f"{output_path.stem}{suffix}.csv"
                         export_df.to_csv(export_path, index=False)
@@ -1823,7 +1841,7 @@ def main() -> int:
         elapsed = time.time() - start_time
 
         print("\n" + "=" * 60)
-        print("COMPARISON COMPLETE")
+        print(" " * 20 + "UT SUMMARY")
         print("=" * 60)
         print(f"📊 Files processed: {extractor.stats['files_processed']}")
         print(f"🧪 Test cases found: {extractor.stats['test_cases_found']}")

@@ -51,16 +51,16 @@ def _parse_filename_components(filename: str) -> tuple[str, str, str, str]:
     if not filename.endswith(".csv"):
         raise ValueError("Not a CSV file")
 
-    if "test-results-" in filename:
-        base = filename.split("test-results-")[-1][:-4]
+    if "inductor-results-" in filename:
+        base = filename.split("inductor-results-")[-1][:-4]
         parts = base.split('-')
         if len(parts) >= 5:
             suite, data_type, mode, _, result_type = parts[:5]
             return suite, data_type, mode, result_type
 
     base = filename[:-4]
-    if not base.startswith("inductor_"):
-        raise ValueError(f"Filename does not start with 'inductor_': {filename}")
+    if not base.startswith("inductor"):
+        raise ValueError(f"Filename does not start with 'inductor': {filename}")
     rest = base[len("inductor_"):]
 
     # Identify suite (longest match first)
@@ -306,9 +306,9 @@ def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> 
         if pd.isna(tgt) and pd.isna(bsl):
             return "no_changed"
         if pd.isna(tgt):
-            return "new_failed"
+            return "not_run"
         if pd.isna(bsl):
-            return "new_passed"
+            return "new_case"
         # Both present: check pass/fail status
         tgt_pass = 'pass' in str(tgt)
         bsl_pass = 'pass' in str(bsl)
@@ -318,7 +318,7 @@ def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> 
             return "new_passed"
         return "no_changed"
 
-    merged["comparison_acc"] = merged.apply(compare_acc, axis=1)
+    merged["comparison_acc"] = merged.replace(r'^\s*$', np.nan, regex=True).apply(compare_acc, axis=1)
 
     cols = ["suite", "data_type", "mode", "model",
             "batch_size_target", "accuracy_target",
@@ -427,9 +427,9 @@ def merge_performance(target_records: list[dict], baseline_records: list[dict],
             return "no_changed"
         # If one side missing -> treat as new fail/pass
         if pd.isna(row.get("inductor_baseline")):
-            return "new_passed"
+            return "new_case"
         if pd.isna(row.get("inductor_target")):
-            return "new_failed"
+            return "not_run"
         # If either ratio negative (unphysical) -> treat as fail/pass based on availability
         if row["inductor_target"] <= 0 and row["inductor_baseline"] <= 0:
             return "no_changed"
@@ -444,7 +444,7 @@ def merge_performance(target_records: list[dict], baseline_records: list[dict],
             return "new_improved"
         return "no_changed"
 
-    merged["comparison_perf"] = merged.apply(compare_perf, axis=1)
+    merged["comparison_perf"] = merged.replace(r'^\s*$', np.nan, regex=True).apply(compare_perf, axis=1)
 
     cols = ["suite", "data_type", "mode", "model",
             "batch_size_target", "inductor_target", "eager_target",
@@ -864,13 +864,18 @@ Examples:
     else:
         print("No baseline directory provided. Treating baseline as empty.")
 
-    print(f"Target accuracy records: {len(target_acc)}")
-    print(f"Target performance records: {len(target_perf)}")
-    print(f"Baseline accuracy records: {len(baseline_acc)}")
-    print(f"Baseline performance records: {len(baseline_perf)}")
-
     acc_merged = merge_accuracy(target_acc, baseline_acc)
     perf_merged = merge_performance(target_perf, baseline_perf, args.threshold)
+
+    failed_acc = acc_merged.query("comparison_acc == 'new_failed'").copy()
+    failed_perf = perf_merged.query("comparison_perf == 'new_failed'").copy()
+    passed_acc = acc_merged.query("comparison_acc == 'new_passed'").copy()
+    passed_perf = perf_merged.query("comparison_perf == 'new_passed'").copy()
+    dropped_cases = perf_merged.query("comparison_perf == 'new_dropped'").copy()
+    improved_cases = perf_merged.query("comparison_perf == 'new_improved'").copy()
+
+    failed_cases = pd.concat([failed_acc, failed_perf], ignore_index=True)
+    passed_cases = pd.concat([passed_acc, passed_perf], ignore_index=True)
 
     combined_summary = generate_all_summaries(acc_merged, perf_merged)
 
@@ -886,6 +891,7 @@ Examples:
 
     # Write output files (Excel or CSV)
     if out_ext == '.xlsx':
+        summary_file = args.output
         with pd.ExcelWriter(args.output, engine="openpyxl") as writer:
             # Summary sheet
             if not combined_summary.empty:
@@ -911,7 +917,6 @@ Examples:
         summary_file = out_base + "_summary.csv"
         if not combined_summary.empty:
             combined_summary.to_csv(summary_file, index=False, na_rep='')
-            print(f"Summary written to {summary_file}")
         else:
             print("No summary data to write.")
 
@@ -930,6 +935,20 @@ Examples:
             print(f"Performance details written to {perf_file}")
         else:
             print("No performance data to write.")
+
+    print("\n" + "=" * 60)
+    print(" " * 20 + "E2E SUMMARY")
+    print("=" * 60)
+    print(f"🎯 Target accuracy records: {len(target_acc)}")
+    print(f"⚡ Target performance records: {len(target_perf)}")
+    print(f"📉 Baseline accuracy records: {len(baseline_acc)}")
+    print(f"🐢 Baseline performance records: {len(baseline_perf)}")
+    print(f"🐢 New failed cases: {len(failed_cases)}")
+    print(f"🐢 New passed cases: {len(passed_cases)}")
+    print(f"🐢 New dropped cases: {len(dropped_cases)}")
+    print(f"🐢 New improved cases: {len(improved_cases)}")
+    print(f"📁 Output: {summary_file}")
+    print("=" * 60)
 
     return 0
 

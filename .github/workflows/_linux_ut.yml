@@ -177,17 +177,6 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Cleanup temporary files
-        if: always()
-        run: |
-          echo "=== Cleaning Temporary Files ==="
-
-          # Clean up temporary directories
-          rm -rf /tmp/*inductor* 2>/dev/null || true
-          rm -rf /tmp/tmp* 2>/dev/null || true
-
-          echo "Cleanup completed"
-
   distributed:
     needs: runner
     timeout-minutes: 600  # 10 hours for baremetal tests
@@ -261,75 +250,3 @@ jobs:
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Cleanup temporary files (Baremetal)
-        if: always()
-        run: |
-          echo "=== Cleaning Temporary Files (Baremetal) ==="
-
-          # Clean up temporary directories
-          rm -rf /tmp/*inductor* 2>/dev/null || true
-          rm -rf /tmp/tmp* 2>/dev/null || true
-
-          echo "Cleanup completed"
-
-  summary:
-    name: '${{ inputs.ut }} summary'
-    needs: [distributed, UT]
-    timeout-minutes: 30
-    if: ${{ ! cancelled() && github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout torch-xpu-ops repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-      - name: Download XPU UT Logs
-        uses: actions/download-artifact@v8
-        with:
-          pattern: Inductor-XPU-UT-Data-*
-          path: ut_log/target/
-          merge-multiple: true
-      - name: Check Results
-        run: |
-          set -e  # Exit on any error
-
-          # Install dependencies
-          pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
-
-          # Run comparison script (generates CSV files)
-          python .github/scripts/compare-ut.py --input ut_log/target/ --output ut_comparison.csv --check-changes
-
-          # Helper: count actual data rows in a CSV (skip header and empty lines)
-          count_data_rows() {
-            local file="$1"
-            if [ ! -f "$file" ]; then
-              echo 0
-              return
-            fi
-            tail -n +2 "$file" | grep -v '^[[:space:]]*$' | wc -l
-          }
-
-          # Check for new passes (tracked passes)
-          PASSES_FILE="ut_comparison_tracked_passes.csv"
-          PASSES_COUNT=$(count_data_rows "$PASSES_FILE")
-          if [ "$PASSES_COUNT" -gt 0 ]; then
-            echo -e "\033[0;32m✅ New Passes Found: $PASSES_COUNT\033[0m"
-            cat "$PASSES_FILE"
-          elif [ -f "$PASSES_FILE" ]; then
-            echo -e "\033[0;32mℹ️ No new passes detected (file present but empty).\033[0m"
-          fi
-
-          # Check for new failures (untracked failures)
-          FAILURES_FILE="ut_comparison_untracked_failures.csv"
-          FAILURES_COUNT=$(count_data_rows "$FAILURES_FILE")
-          if [ "$FAILURES_COUNT" -gt 0 ]; then
-            echo -e "\033[0;31m❌ New Failures Found: $FAILURES_COUNT\033[0m"
-            cat "$FAILURES_FILE"
-            exit 1
-          elif [ -f "$FAILURES_FILE" ]; then
-            echo -e "\033[0;32mℹ️ No new untracked failures detected.\033[0m"
-          fi
-
-          # All good
-          echo -e "\033[0;32m✅ All UT checks passed: no new failures or unexpected passes.\033[0m"

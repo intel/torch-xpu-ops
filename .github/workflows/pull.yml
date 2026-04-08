@@ -42,6 +42,6 @@ jobs:
       runner: 'pvc_rolling'
       windows_runner: 'Windows_CI'
       is_scheduled_run: pull_request
-      ut: 'basic,op_ut'
+      ut: 'basic,op_ut,xpu_distributed'
       suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
