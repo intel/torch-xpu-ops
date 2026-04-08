@@ -315,21 +315,6 @@ permute_1D_sparse_data_xpu(
                       lengths_contig.data_ptr<index_t>(),
                       permute_contig.data_ptr<int32_t>(),
                       permuted_lengths.data_ptr<index_t>()));
-
-                // queue.submit([&](sycl::handler& cgh) {
-                //     cgh.parallel_for<Permute1DLengthsKernel<index_t>>(
-                //         sycl::nd_range<1>(
-                //             sycl::range<1>(global_size),
-                //             sycl::range<1>(LOCAL_SIZE)
-                //         ),
-                //         Permute1DLengthsKernel<index_t>(
-                //             permuted_lengths_size,
-                //             lengths_contig.data_ptr<index_t>(),
-                //             permute_contig.data_ptr<int32_t>(),
-                //             permuted_lengths.data_ptr<index_t>()
-                //         )
-                //     );
-                // });
             }
         );
     }
@@ -392,23 +377,6 @@ permute_1D_sparse_data_xpu(
                                           output_offsets.data_ptr<offsets_t>(),
                                           permuted_indices.data_ptr<indices_t>(),
                                           permuted_weights->data_ptr<weights_t>()));
-
-                                // queue.submit([&](sycl::handler& cgh) {
-                                //     cgh.parallel_for<Permute1DDataWithWeightsKernel<offsets_t, indices_t, weights_t>>(
-                                //         sycl::nd_range<2>(global_range, local_range),
-                                //         Permute1DDataWithWeightsKernel<offsets_t, indices_t, weights_t>(
-                                //             permuted_indices_size,
-                                //             permuted_lengths_size,
-                                //             indices_contig.data_ptr<indices_t>(),
-                                //             weights_contig.data_ptr<weights_t>(),
-                                //             permute_contig.data_ptr<int32_t>(),
-                                //             input_offsets.data_ptr<offsets_t>(),
-                                //             output_offsets.data_ptr<offsets_t>(),
-                                //             permuted_indices.data_ptr<indices_t>(),
-                                //             permuted_weights->data_ptr<weights_t>()
-                                //         )
-                                //     );
-                                // });
                             }
                         );
                     }
@@ -436,20 +404,6 @@ permute_1D_sparse_data_xpu(
                                   input_offsets.data_ptr<offsets_t>(),
                                   output_offsets.data_ptr<offsets_t>(),
                                   permuted_indices.data_ptr<indices_t>()));
-                        // queue.submit([&](sycl::handler& cgh) {
-                        //     cgh.parallel_for<Permute1DDataKernel<offsets_t, indices_t>>(
-                        //         sycl::nd_range<2>(global_range, local_range),
-                        //         Permute1DDataKernel<offsets_t, indices_t>(
-                        //             permuted_indices_size,
-                        //             permuted_lengths_size,
-                        //             indices_contig.data_ptr<indices_t>(),
-                        //             permute_contig.data_ptr<int32_t>(),
-                        //             input_offsets.data_ptr<offsets_t>(),
-                        //             output_offsets.data_ptr<offsets_t>(),
-                        //             permuted_indices.data_ptr<indices_t>()
-                        //         )
-                        //     );
-                        // });
                     }
                 );
             }
