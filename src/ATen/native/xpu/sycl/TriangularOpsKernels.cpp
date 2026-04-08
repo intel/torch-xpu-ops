@@ -87,12 +87,11 @@ void apply_triu_tril_kernel(
   if constexpr (inplace) {
 #pragma unroll
     for (int i = 0;
-          i < elements_per_thread && col + i < self_info.sizes[dims - 1];
-          i++) {
+         i < elements_per_thread && col + i < self_info.sizes[dims - 1];
+         i++) {
       bool mask = upper ? (col + i - row >= k) : (col + i - row <= k);
       if (!mask)
-        result_info
-            .data[result_offset + i * result_info.strides[dims - 1]] =
+        result_info.data[result_offset + i * result_info.strides[dims - 1]] =
             scalar_t(0);
     }
   } else {
@@ -102,10 +101,9 @@ void apply_triu_tril_kernel(
     if (has_mask) {
 #pragma unroll
       for (int i = 0;
-            i < elements_per_thread && col + i < self_info.sizes[dims - 1];
-            i++)
-        frag[i] =
-            self_info.data[self_offset + i * self_info.strides[dims - 1]];
+           i < elements_per_thread && col + i < self_info.sizes[dims - 1];
+           i++)
+        frag[i] = self_info.data[self_offset + i * self_info.strides[dims - 1]];
 
 #pragma unroll
       for (int i = 0; i < elements_per_thread; i++) {
@@ -116,27 +114,31 @@ void apply_triu_tril_kernel(
 
 #pragma unroll
     for (int i = 0;
-          i < elements_per_thread && col + i < self_info.sizes[dims - 1];
-          i++)
+         i < elements_per_thread && col + i < self_info.sizes[dims - 1];
+         i++)
       result_info.data[result_offset + i * result_info.strides[dims - 1]] =
           frag[i];
   }
 }
 
-#define LAUNCH_KERNEL(elements_per_thread, inplace_condition)      \
-  BOOL_SWITCH(inplace_condition, inplace, [&] {                    \
-    constexpr auto kfn = apply_triu_tril_kernel<                   \
-                                            scalar_t,              \
-                                            IndexType,             \
-                                            upper,                 \
-                                            elements_per_thread,   \
-                                            inplace>;              \
-    sycl_kernel_submit<kfn>(                                       \
-        sycl::range<1>(global_range),                              \
-        sycl::range<1>(local_range),                               \
-        getCurrentSYCLQueue(),                                     \
-        0,                                                         \
-        result_info, self_info, k, N_padded, last_dim_padded);     \
+#define LAUNCH_KERNEL(elements_per_thread, inplace_condition) \
+  BOOL_SWITCH(inplace_condition, inplace, [&] {               \
+    constexpr auto kfn = apply_triu_tril_kernel<              \
+        scalar_t,                                             \
+        IndexType,                                            \
+        upper,                                                \
+        elements_per_thread,                                  \
+        inplace>;                                             \
+    sycl_kernel_submit<kfn>(                                  \
+        sycl::range<1>(global_range),                         \
+        sycl::range<1>(local_range),                          \
+        getCurrentSYCLQueue(),                                \
+        0,                                                    \
+        result_info,                                          \
+        self_info,                                            \
+        k,                                                    \
+        N_padded,                                             \
+        last_dim_padded);                                     \
   })
 
 template <typename scalar_t, typename IndexType, bool upper>
