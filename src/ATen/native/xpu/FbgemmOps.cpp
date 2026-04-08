@@ -7,6 +7,7 @@
 
 #include <ATen/native/xpu/sycl/FbgemmKernels.h>
 #include <ATen/native/xpu/sycl/Permute1DSparseData.h>
+#include <ATen/native/xpu/sycl/JaggedIndexSelect2D.h>
 
 namespace at {
 namespace native {
@@ -618,6 +619,7 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
       &at::native::reorder_batched_ad_indices_xpu);
   m.impl("permute_2D_sparse_data", &at::native::permute_2D_sparse_data_xpu);
   m.impl("permute_1D_sparse_data", &at::native::xpu::permute_1D_sparse_data_xpu);
+  m.impl("jagged_index_select_2d_forward", &at::native::xpu::jagged_index_select_2d_forward_xpu);
 }
 
 } // namespace
