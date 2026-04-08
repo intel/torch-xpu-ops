@@ -113,4 +113,7 @@ skip_dict = {
     "test/xpu/dynamo/test_ctx_manager_xpu.py": None,
     "functorch/test_control_flow_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
+    "export/test_hop_xpu.py": None,
+    "export/test_export_opinfo_xpu.py": None,
+    "functorch/test_aotdispatch_xpu.py": None,
 }
