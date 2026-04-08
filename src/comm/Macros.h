@@ -16,7 +16,6 @@
 #define RESTRICT __restrict__
 #endif
 
-
 // Suppress -Wdeprecated-declarations warnings from oneAPI SYCL headers
 // (files compiled without -fsycl). MSVC: C4996.
 // Usage: wrap the offending #include(s) with BEGIN/END.
