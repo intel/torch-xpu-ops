@@ -20,7 +20,8 @@
 
 namespace at::native::xpu {
 
-// WR (replace enum class) due to https://jira.devtools.intel.com/browse/CMPLRLLVM-72438
+// WR (replace enum class) due to
+// https://jira.devtools.intel.com/browse/CMPLRLLVM-72438
 const int ADAM_MODE_ORIGINAL = 0;
 const int ADAM_MODE_ADAMW = 1;
 

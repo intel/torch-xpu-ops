@@ -79,19 +79,14 @@ static inline int64_t multi_tensor_apply_fused_kernel_get_chunk_size() {
 
 template <typename T, typename Y, typename U, typename... ArgTypes>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void multiTensorApplyKernel(
+void multi_tensor_apply_kernel(
     int64_t kChunkSize,
     T tlAddressMeta,
     Y tlWGMeta,
     U callable,
     ArgTypes... args) {
   auto item = syclext::this_work_item::get_nd_item<1>();
-  callable(
-        kChunkSize,
-        tlAddressMeta,
-        tlWGMeta,
-        item,
-        args...);
+  callable(kChunkSize, tlAddressMeta, tlWGMeta, item, args...);
 }
 
 template <
@@ -116,14 +111,18 @@ void launch_multi_tensor_apply_kernel(
     kChunkSize = multi_tensor_apply_fused_kernel_get_chunk_size();
   }
 
-  constexpr auto kfn = multiTensorApplyKernel<T, Y, U, ArgTypes...>;
+  constexpr auto kfn = multi_tensor_apply_kernel<T, Y, U, ArgTypes...>;
 
   sycl_kernel_submit<kfn>(
       sycl::range<1>(num_wg * max_wg_size),
       sycl::range<1>(max_wg_size),
       q,
       0,
-      kChunkSize, tlAddressMeta, tlWGMeta, callable, args...);
+      kChunkSize,
+      tlAddressMeta,
+      tlWGMeta,
+      callable,
+      args...);
 }
 
 template <int depth, typename scalar_t, typename T, typename... ArgTypes>
