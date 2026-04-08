@@ -59,6 +59,7 @@ template <typename scalar_t, typename target_t>
 struct CTCLossLogAlphaKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     constexpr scalar_t neginf = -INFINITY;
+    using opmath_t = at::opmath_type<scalar_t>;
 
     auto tid_x = item.get_local_id(1);
     auto tid_y = item.get_local_id(0);
@@ -171,11 +172,12 @@ struct CTCLossLogAlphaKernelFunctor {
                                // neginf, but we can pretend)
             lamax = 0;
 
+          opmath_t exp_la1 = sycl::exp(static_cast<opmath_t>(la1 - lamax));
+          opmath_t exp_la2 = sycl::exp(static_cast<opmath_t>(la2 - lamax));
+          opmath_t exp_la3 = sycl::exp(static_cast<opmath_t>(la3 - lamax));
           log_alpha_data_
               [la_batch_offset + la_input_stride_ * t + la_target_stride_ * s] =
-                  std::log(
-                      sycl::exp(static_cast<at::opmath_type<scalar_t>>(la1 - lamax)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(la2 - lamax)) +
-                      sycl::exp(static_cast<at::opmath_type<scalar_t>>(la3 - lamax))) +
+                  std::log(exp_la1 + exp_la2 + exp_la3) +
               lamax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
@@ -206,8 +208,9 @@ struct CTCLossLogAlphaKernelFunctor {
           : neginf;
       scalar_t m = ((l1 > l2) ? l1 : l2);
       m = ((m == neginf) ? 0 : m);
-      scalar_t log_likelihood =
-          std::log(sycl::exp(static_cast<at::opmath_type<scalar_t>>(l1 - m)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(l2 - m))) + m;
+      opmath_t exp_l1 = sycl::exp(static_cast<opmath_t>(l1 - m));
+      opmath_t exp_l2 = sycl::exp(static_cast<opmath_t>(l2 - m));
+      scalar_t log_likelihood = std::log(exp_l1 + exp_l2) + m;
       neg_log_likelihood_data_[b] = -log_likelihood;
     }
   }
@@ -448,6 +451,7 @@ template <typename scalar_t, typename target_t>
 struct CTCLossBackwardLogBetaKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     constexpr scalar_t neginf = -INFINITY;
+    using opmath_t = at::opmath_type<scalar_t>;
 
     auto tid_x = item.get_local_id(1);
     auto tid_y = item.get_local_id(0);
@@ -555,9 +559,10 @@ struct CTCLossBackwardLogBetaKernelFunctor {
           if (lbmax == neginf)
             lbmax = 0;
 
-          scalar_t lb = std::log(
-                            sycl::exp(static_cast<at::opmath_type<scalar_t>>(lb1 - lbmax)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(lb2 - lbmax)) +
-                            sycl::exp(static_cast<at::opmath_type<scalar_t>>(lb3 - lbmax))) +
+          opmath_t exp_lb1 = sycl::exp(static_cast<opmath_t>(lb1 - lbmax));
+          opmath_t exp_lb2 = sycl::exp(static_cast<opmath_t>(lb2 - lbmax));
+          opmath_t exp_lb3 = sycl::exp(static_cast<opmath_t>(lb3 - lbmax));
+          scalar_t lb = std::log(exp_lb1 + exp_lb2 + exp_lb3) +
               lbmax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
@@ -637,6 +642,7 @@ struct CTCLossBackwardLogBetaKernelFunctor {
 template <typename scalar_t, typename target_t>
 struct CTCLossBackwardCollectNonblankKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
+    using opmath_t = at::opmath_type<scalar_t>;
     int64_t b =
         item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
     int64_t s = item.get_local_id(1) +
@@ -668,19 +674,19 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
     for (int64_t t = 0; t < input_length; t++) {
       scalar_t lp = log_probs_data_
           [lp_batch_offset + t * lp_input_stride_ + lp_char_stride_ * target];
+      opmath_t exp_val = sycl::exp(static_cast<opmath_t>(
+          log_alpha_data_
+              [la_batch_offset + la_input_stride_ * t +
+               la_target_stride_ * (s * 2 + 1)] +
+          log_beta_data_
+              [lb_batch_offset + lb_input_stride_ * t +
+               lb_target_stride_ * (s * 2 + 1)] +
+          nll - lp));
       atomicAdd(
           &gradient_data_
               [gr_batch_offset + t * gr_input_stride_ +
                gr_char_stride_ * target],
-          -sycl::exp(static_cast<at::opmath_type<scalar_t>>(
-              log_alpha_data_
-                  [la_batch_offset + la_input_stride_ * t +
-                   la_target_stride_ * (s * 2 + 1)] +
-              log_beta_data_
-                  [lb_batch_offset + lb_input_stride_ * t +
-                   lb_target_stride_ * (s * 2 + 1)] +
-              nll - lp)) *
-              gr);
+          -exp_val * gr);
     }
   }
   CTCLossBackwardCollectNonblankKernelFunctor(
@@ -773,6 +779,7 @@ template <typename scalar_t, typename target_t>
 struct CTCLossBackwardCollectKernelFunctor {
   void operator()(sycl::nd_item<2> item) const {
     constexpr scalar_t neginf = -INFINITY;
+    using opmath_t = at::opmath_type<scalar_t>;
     int64_t b =
         item.get_local_id(0) + item.get_group(0) * item.get_local_range(0);
     int64_t t =
@@ -808,9 +815,9 @@ struct CTCLossBackwardCollectKernelFunctor {
           lcab = log_alpha_beta;
         } else {
           scalar_t max = ((lcab > log_alpha_beta) ? lcab : log_alpha_beta);
-          lcab =
-              std::log(sycl::exp(static_cast<at::opmath_type<scalar_t>>(lcab - max)) + sycl::exp(static_cast<at::opmath_type<scalar_t>>(log_alpha_beta - max))) +
-              max;
+          opmath_t exp_lcab = sycl::exp(static_cast<opmath_t>(lcab - max));
+          opmath_t exp_lab = sycl::exp(static_cast<opmath_t>(log_alpha_beta - max));
+          lcab = std::log(exp_lcab + exp_lab) + max;
         }
       }
     }
@@ -824,7 +831,9 @@ struct CTCLossBackwardCollectKernelFunctor {
       if (t < input_length && (!zero_infinity_ || nll != INFINITY)) {
         scalar_t lp = log_probs_data_
             [lp_batch_offset + t * lp_input_stride_ + lp_char_stride_ * c];
-        res = (sycl::exp(static_cast<at::opmath_type<scalar_t>>(lp)) - sycl::exp(static_cast<at::opmath_type<scalar_t>>(res + nll - lp))) * gr;
+        opmath_t exp_lp = sycl::exp(static_cast<opmath_t>(lp));
+        opmath_t exp_res = sycl::exp(static_cast<opmath_t>(res + nll - lp));
+        res = (exp_lp - exp_res) * gr;
       } else {
         res = 0.;
       }

@@ -1006,12 +1006,13 @@ struct DispatchSoftmaxBackwardKernelFunctor
 #pragma unroll(vec_size)
       for (int j = 0; j < vec_size; ++j) {
         if (LogSoftMax) {
+          auto exp_out = sycl::exp(static_cast<accscalar_t>(reg_out[i][j]));
           if constexpr (is_same_dtype) {
             reg_out[i][j] = static_cast<outscalar_t>(
-                reg_gradout[i][j] - sycl::exp(static_cast<accscalar_t>(reg_out[i][j])) * sum_value);
+                reg_gradout[i][j] - exp_out * sum_value);
           } else {
             gradInput_[offset + j] = static_cast<inscalar_t>(
-                reg_gradout[i][j] - sycl::exp(static_cast<accscalar_t>(reg_out[i][j])) * sum_value);
+                reg_gradout[i][j] - exp_out * sum_value);
           }
         } else {
           if constexpr (is_same_dtype) {
@@ -1263,8 +1264,8 @@ struct SoftmaxBackwardKernelFunctor {
           if (linear_idx >= 0 && linear_idx < dim_size_) {
             auto offset = group_offset + linear_idx;
             if (LogSoftMax) {
-              gradInput_[offset] =
-                  gradOutput_[offset] - sycl::exp(static_cast<accscalar_t>(output_[offset])) * sum_value;
+              auto exp_out = sycl::exp(static_cast<accscalar_t>(output_[offset]));
+              gradInput_[offset] = gradOutput_[offset] - exp_out * sum_value;
             } else {
               gradInput_[offset] =
                   output_[offset] * (gradOutput_[offset] - sum_value);
@@ -1278,15 +1279,16 @@ struct SoftmaxBackwardKernelFunctor {
         for (int j = 0; j < vec_size; ++j) {
           if constexpr (is_same_dtype) {
             if (LogSoftMax) {
-              out_val[j] = grad_val[j] - sycl::exp(static_cast<accscalar_t>(out_val[j])) * sum_value;
+              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
+              out_val[j] = grad_val[j] - exp_out * sum_value;
             } else {
               out_val[j] = out_val[j] * (grad_val[j] - sum_value);
             }
           } else {
             auto offset = group_offset - start + i * vec_size + j;
             if (LogSoftMax) {
-              gradInput_[offset] =
-                  grad_val[j] - sycl::exp(static_cast<accscalar_t>(out_val[j])) * sum_value;
+              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
+              gradInput_[offset] = grad_val[j] - exp_out * sum_value;
             } else {
               gradInput_[offset] = out_val[j] * (grad_val[j] - sum_value);
             }
@@ -1423,16 +1425,18 @@ struct SpatialSoftmaxBackwardKernelFunctor
         for (int j = 0; j < vec_size; ++j) {
           if constexpr (is_same_dtype) {
             if (LogSoftMax) {
+              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
               out_val[j] = static_cast<outscalar_t>(
-                  gradout_val[j] - sycl::exp(static_cast<accscalar_t>(out_val[j])) * sum_value[j]);
+                  gradout_val[j] - exp_out * sum_value[j]);
             } else {
               out_val[j] = static_cast<outscalar_t>(
                   out_val[j] * (gradout_val[j] - sum_value[j]));
             }
           } else {
             if (LogSoftMax) {
+              auto exp_out = sycl::exp(static_cast<accscalar_t>(out_val[j]));
               gradin_ptr[offset + j] = static_cast<inscalar_t>(
-                  gradout_val[j] - sycl::exp(static_cast<accscalar_t>(out_val[j])) * sum_value[j]);
+                  gradout_val[j] - exp_out * sum_value[j]);
             } else {
               gradin_ptr[offset + j] = static_cast<inscalar_t>(
                   out_val[j] * (gradout_val[j] - sum_value[j]));
