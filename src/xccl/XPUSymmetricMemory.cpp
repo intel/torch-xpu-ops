@@ -9,6 +9,7 @@
 #include <c10/xpu/XPUCachingAllocator.h>
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 
+#include <cstdlib>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -16,6 +17,18 @@ namespace c10d {
 namespace symmetric_memory {
 
 static StoreExchange storeExchange = StoreExchange("XPUSymmetricMemory");
+
+namespace {
+
+bool use_signal_barrier_enabled() {
+  static const bool cached_value = []() {
+    const char* env = std::getenv("USE_SIGNAL_BARRIER");
+    return env != nullptr && std::string(env) == "1";
+  }();
+  return cached_value;
+}
+
+} // namespace
 
 AllocationRef::AllocationRef(
     void* ptr,
@@ -165,54 +178,51 @@ void XPUSymmetricMemory::barrier(int channel, size_t timeout_ms) {
 
   c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
   c10::DeviceGuard guard(local_device);
-  auto stream = at::xpu::getCurrentXPUStream();
+  if (use_signal_barrier_enabled()) {
+    auto stream = at::xpu::getCurrentXPUStream();
+    barrier_impl_xpu(
+        reinterpret_cast<uint32_t**>(signal_pads_dev_),
+        channel,
+        rank_,
+        world_size_,
+        timeout_ms,
+        stream);
+    return;
+  }
 
-  barrier_impl_xpu(
-      reinterpret_cast<uint32_t**>(signal_pads_dev_),
-      channel,
-      rank_,
-      world_size_,
-      timeout_ms,
-      stream);
-  // Currently, we leverage oneCCL for barrier. Later, we may move to SYCL
-  // implementation.
-  // auto group = c10d::resolve_process_group(group_name_);
-  // if (group == nullptr) {
-  //   TORCH_WARN(
-  //       "Process group '",
-  //       group_name_,
-  //       "' not found, please init process group first before calling "
-  //       "SymmetricMemory");
-  //   throw std::runtime_error("Process group not found");
-  // }
-  // auto backend = group->getBackend(c10::DeviceType::XPU);
+  auto group = c10d::resolve_process_group(group_name_);
+  TORCH_CHECK(
+      group != nullptr,
+      "Process group '",
+      group_name_,
+      "' not found, please init process group first before calling "
+      "SymmetricMemory");
 
-  // c10::Device local_device(c10::DeviceType::XPU, local_device_idx_);
-  // c10::DeviceGuard guard(local_device);
+  auto backend = group->getBackend(c10::DeviceType::XPU);
 
-  // static thread_local at::Tensor barrier_tensor;
-  // if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
-  //   barrier_tensor = at::zeros(
-  //       {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
-  // } else {
-  //   barrier_tensor.zero_();
-  // }
+  static thread_local at::Tensor barrier_tensor;
+  if (!barrier_tensor.defined() || barrier_tensor.device() != local_device) {
+    barrier_tensor = at::zeros(
+        {1}, at::TensorOptions().device(local_device).dtype(at::kFloat));
+  } else {
+    barrier_tensor.zero_();
+  }
 
-  // c10d::AllreduceOptions arOpts;
-  // arOpts.asyncOp = false;
-  // std::vector<at::Tensor> tensors = {barrier_tensor};
-  // auto work = backend->allreduce(tensors, arOpts);
+  c10d::AllreduceOptions arOpts;
+  arOpts.asyncOp = false;
+  std::vector<at::Tensor> tensors = {barrier_tensor};
+  auto work = backend->allreduce(tensors, arOpts);
 
-  // if (work) {
-  //   bool success = work->wait(std::chrono::milliseconds(timeout_ms));
-  //   TORCH_CHECK(
-  //       success,
-  //       "Barrier timeout after ",
-  //       timeout_ms,
-  //       " ms for group '",
-  //       group_name_,
-  //       "'");
-  // }
+  if (work) {
+    bool success = work->wait(std::chrono::milliseconds(timeout_ms));
+    TORCH_CHECK(
+        success,
+        "Barrier timeout after ",
+        timeout_ms,
+        " ms for group '",
+        group_name_,
+        "'");
+  }
 }
 
 void XPUSymmetricMemory::put_signal(
