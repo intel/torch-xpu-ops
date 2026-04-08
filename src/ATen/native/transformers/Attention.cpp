@@ -126,9 +126,6 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
   // query shape: [B, T, D]
   // qkv_weight shape: [3 * D, D]
 
-  TORCH_CHECK(
-      !mask || !query.is_nested(),
-      "NestedTensor with mask is not supported yet");
   const auto D = embed_dim;
   TORCH_CHECK(
       query.dim() == 3, "expected 3-D `query`, got ", query.dim(), "-D tensor");
