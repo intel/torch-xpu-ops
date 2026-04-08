@@ -5,6 +5,8 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+# Owner(s): ["module: functorch"]
+
 import copy
 import math
 import os
@@ -3003,7 +3005,7 @@ class TestLinearize(TestCase):
         with self.assertRaisesRegex(
             RuntimeError, "in flattened pytree doesn't match the device"
         ):
-            jvp_fn(x_t.to(torch.device(device)))
+            jvp_fn(x_t.to(self.device_type))
 
 
 # The tests here follow the cases in [Forward Grad View/inplace]

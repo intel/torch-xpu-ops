@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -131,8 +131,7 @@ void copy_device_to_device(
 
   if (memcpy_eligible) {
     // SYCL queue.memcpy performance is worse than SYCL copy kernel
-    // implementation. JIRA:
-    // https://jira.devtools.intel.com/browse/CMPLRLLVM-41292
+    // implementation.
     memcpyAsync(iter, copy_stream, p2p_enabled);
   } else {
     if (same_neg) {

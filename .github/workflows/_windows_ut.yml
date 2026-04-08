@@ -249,6 +249,22 @@ jobs:
 
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
           copy op_extended.xml %GITHUB_WORKSPACE%\ut_log /Y
+      - name: Run CPP Extensions AOT SYCL UT
+        if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
+        shell: cmd
+        continue-on-error: true
+        run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\compiler\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
+          call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
+          call conda activate windows_ci
+          cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
+          python -m pytest test_cpp_extensions_aot_xpu.py -v --junit-xml=test_cpp_extensions_aot_xpu.xml
+
+          if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
+          copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
       - name: Run Test XPU UT
         if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
         shell: cmd
@@ -263,7 +279,7 @@ jobs:
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
           copy test_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
       - name: Run OP UT
-        if: contains(inputs.ut, 'op_ut_windows') || github.event_name == 'schedule'
+        if: contains(inputs.ut, 'op_ut') || github.event_name == 'schedule'
         shell: cmd
         continue-on-error: true
         run: |
@@ -276,7 +292,7 @@ jobs:
           cd ../pytorch/third_party/torch-xpu-ops/test/xpu/
           python run_test_with_windows_nighltly.py
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
-          for /r . %%f in (test*.xml op_ut_windows_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
+          for /r . %%f in (test*.xml op_ut_with_*.xml) do move "%%f" "%GITHUB_WORKSPACE%\ut_log\" >nul 2>&1 || echo "File move completed"
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -399,7 +415,7 @@ jobs:
             else
               echo "Info: issues.log not found or empty, using empty Known_issue.log"
             fi
-            bash ut_result_check.sh ${ut_name}
+            TEST_PLATFORM=windows bash ut_result_check.sh ${ut_name}
           done
       - name: Upload Inductor XPU UT Log
         if: ${{ ! cancelled() }}

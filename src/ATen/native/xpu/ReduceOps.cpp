@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/ReduceOpsKernels.h>
 #include <ATen/native/xpu/sycl/ScanUtils.h>
-#include <comm/ReduceOpsUtils.h>
 #include <torch/library.h>
 
 #include <ATen/ops/add.h>

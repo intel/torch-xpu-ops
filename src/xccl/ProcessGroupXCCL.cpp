@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,6 +59,26 @@ void checkSingleTensor(
       C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
     }
   }
+}
+
+ReduceOp applyPreMulSumIfNeeded(
+    const at::Tensor& input,
+    const ReduceOp& reduceOp) {
+  // Although premul_sum is supported in oneCCL, it is only for scale-up,
+  // not scale-out, and there is no foolproof way to detect scale-out scenario,
+  // so we always apply premul sum here to be safe.
+  bool applyScaleoutPreMulSum = reduceOp == ReduceOp::PREMUL_SUM;
+  auto newOp = applyScaleoutPreMulSum ? ReduceOp(ReduceOp::SUM) : reduceOp;
+  if (applyScaleoutPreMulSum) {
+    const auto* preMulSupplement =
+        reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+    if (preMulSupplement->tensor_factor.defined()) {
+      input.mul_(preMulSupplement->tensor_factor);
+    } else {
+      input.mul_(preMulSupplement->double_factor);
+    }
+  }
+  return newOp;
 }
 
 int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
@@ -1196,8 +1216,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1285,8 +1306,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1689,8 +1711,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
+          auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
           xccl::onecclReduceScatter(
-              input, output, comm, opts.reduceOp, xcclStream, stream);
+              input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
@@ -1776,8 +1799,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1827,8 +1851,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();

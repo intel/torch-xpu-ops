@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@
 namespace at::native {
 
 Scalar _local_scalar_dense_xpu(const Tensor& self) {
+  TORCH_CHECK(
+      self.numel() > 0, "_local_scalar_dense: Empty tensor not supported");
   Scalar r;
   AT_DISPATCH_V2(
       self.scalar_type(),

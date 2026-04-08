@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,19 +14,30 @@
 
 import os
 import sys
-import unittest
 
 import torch
 from torch import multiprocessing as mp
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import parametrize, run_tests
-from torch.utils.data import DataLoader, IterDataPipe
+from torch.testing._internal.common_utils import parametrize, run_tests, TEST_XPU
+from torch.utils.data import DataLoader, Dataset, IterDataPipe
 from torch.utils.data.datapipes.iter import IterableWrapper
 
 try:
     from xpu_test_utils import XPUPatchForImport
 except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
+
+
+class CountingDataset(Dataset):
+    def __init__(self, n):
+        super().__init__()
+        self.n = n
+
+    def __getitem__(self, i):
+        return i
+
+    def __len__(self):
+        return self.n
 
 
 test_package = (
@@ -50,10 +61,10 @@ with XPUPatchForImport(False):
         row_processor,
         self_module,
         supported_multiprocessing_contexts,
-        TEST_CUDA_IPC,
         TestCustomPinFn,
         TestDataLoader,
         TestDataLoaderDeviceType,
+        TestDataLoaderPersistentWorkers,
         TestDictDataLoader,
         TestStringDataLoader,
     )
@@ -184,7 +195,6 @@ with XPUPatchForImport(False):
         "context",
         [ctx for ctx in supported_multiprocessing_contexts if ctx is not None],
     )
-    @unittest.skipIf(not TEST_CUDA_IPC, "CUDA IPC not available")
     def nested_tensor_multiprocessing(self, device, context):
         # The 'fork' multiprocessing context doesn't work for CUDA so skip it
         if "xpu" in device and context == "fork":
@@ -227,16 +237,84 @@ with XPUPatchForImport(False):
 
             next(iter(loader))
 
-    TestDataLoader._test_multiprocessing_iterdatapipe = (
-        _test_multiprocessing_iterdatapipe
-    )
+    def multiple_dataloaders(self):
+        for multiprocessing_context in supported_multiprocessing_contexts:
+            loader1_it = iter(self._get_data_loader(self.dataset, num_workers=1))
+            loader2_it = iter(
+                self._get_data_loader(
+                    self.dataset,
+                    num_workers=2,
+                    multiprocessing_context=multiprocessing_context,
+                )
+            )
+            next(loader1_it)
+            next(loader1_it)
+            next(loader2_it)
+            next(loader2_it)
+            next(loader1_it)
+            next(loader2_it)
+            del loader1_it
+            del loader2_it
+
+    def multiprocessing_contexts(self):
+        reference = [
+            torch.arange(3),
+            torch.arange(3, 6),
+            torch.arange(6, 9),
+            torch.arange(9, 11),
+        ]
+        counting_ds_n = 11
+        dl_common_args = dict(num_workers=3, batch_size=3, pin_memory=(not TEST_XPU))
+        for ctx in supported_multiprocessing_contexts:
+            # windows and jetson devices don't support sharing cuda tensor; ROCm does not yet fully support IPC
+            ds_cls = CountingDataset
+            self.assertEqual(
+                reference,
+                list(
+                    self._get_data_loader(
+                        ds_cls(counting_ds_n),
+                        multiprocessing_context=ctx,
+                        **dl_common_args,
+                    )
+                ),
+            )
+            if ctx is not None:
+                # test ctx object
+                ctx = mp.get_context(ctx)
+                self.assertEqual(
+                    reference,
+                    list(
+                        self._get_data_loader(
+                            ds_cls(counting_ds_n),
+                            multiprocessing_context=ctx,
+                            **dl_common_args,
+                        )
+                    ),
+                )
+
+    def multiprocessing_iterdatapipe(self):
+        self._test_multiprocessing_iterdatapipe(with_dill=False)
+
     TestDataLoader.test_sequential_pin_memory = sequential_pin_memory
     TestDataLoader.test_shuffle_pin_memory = shuffle_pin_memory
+    TestDataLoader.test_multiple_dataloaders = multiple_dataloaders
+    TestDataLoader.test_multiprocessing_contexts = multiprocessing_contexts
+    TestDataLoader.test_multiprocessing_iterdatapipe = multiprocessing_iterdatapipe
     TestStringDataLoader.test_shuffle_pin_memory = string_shuffle_pin_memory
     TestDictDataLoader.test_pin_memory = pin_memory
     TestDictDataLoader.test_pin_memory_device = pin_memory_device
     TestDictDataLoader.test_pin_memory_with_only_device = pin_memory_with_only_device
     TestCustomPinFn.test_custom_batch_pin = custom_batch_pin
+    TestCustomPinFn.test_custom_batch_pin_worker = custom_batch_pin_worker
+    TestDataLoaderPersistentWorkers.test_multiple_dataloaders = multiple_dataloaders
+    TestDataLoaderPersistentWorkers.test_multiprocessing_contexts = (
+        multiprocessing_contexts
+    )
+    TestDataLoaderPersistentWorkers.test_multiprocessing_iterdatapipe = (
+        multiprocessing_iterdatapipe
+    )
+    TestDataLoaderPersistentWorkers.test_sequential_pin_memory = sequential_pin_memory
+    TestDataLoaderPersistentWorkers.test_shuffle_pin_memory = shuffle_pin_memory
     TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = (
         nested_tensor_multiprocessing
     )
