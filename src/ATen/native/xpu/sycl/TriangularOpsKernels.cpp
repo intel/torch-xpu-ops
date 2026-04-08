@@ -42,7 +42,7 @@ template <
     int elements_per_thread,
     bool inplace>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void applyTriuTrilKernel(
+void apply_triu_tril_kernel(
     at::xpu::detail::TensorInfo<scalar_t, IndexType> result_info,
     at::xpu::detail::TensorInfo<const scalar_t, IndexType> self_info,
     const int64_t k,
@@ -125,7 +125,7 @@ void applyTriuTrilKernel(
 
 #define LAUNCH_KERNEL(elements_per_thread, inplace_condition)      \
   BOOL_SWITCH(inplace_condition, inplace, [&] {                    \
-    constexpr auto kfn = applyTriuTrilKernel<                      \
+    constexpr auto kfn = apply_triu_tril_kernel<                   \
                                             scalar_t,              \
                                             IndexType,             \
                                             upper,                 \
