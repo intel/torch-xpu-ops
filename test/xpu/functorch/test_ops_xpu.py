@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -63,12 +63,32 @@ from torch.testing._internal.common_utils import (
     skipIfRocm,
     TEST_WITH_ASAN,
     TEST_WITH_ROCM,
+    TEST_XPU,
     TestCase,
     unMarkDynamoStrictTest,
 )
 from torch.testing._internal.opinfo.core import SampleInput
 from torch.utils import _pytree as pytree
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
+
+for op in op_db:
+    if (
+        op.name == "nn.functional.batch_norm"
+        and op.variant_test_name == "without_cudnn"
+    ):
+        # Assign XPU-specific dtypes
+        if hasattr(op, "_dispatch_dtypes"):
+            cuda_dtypes = op._dispatch_dtypes.get("cuda")
+            if cuda_dtypes:
+                op._dispatch_dtypes["xpu"] = cuda_dtypes
+        # Keep others like 'disablecuDNN' which are usually harmless or handled
+        if hasattr(op, "supported_device_types"):
+            op.supported_device_types = op.supported_device_types.union({"xpu"})
+        op.decorators = tuple(
+            d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d))
+        )
+
+        break
 
 aten = torch.ops.aten
 
@@ -477,8 +497,8 @@ class TestOperators(TestCase):
                 # Fused attention kernels require last dim to be contiguous
                 decorate(
                     "nn.functional.scaled_dot_product_attention",
-                    decorator=expectedFailureIf(not TEST_WITH_ROCM),
-                ),  # Works on ROCm
+                    decorator=expectedFailureIf(not (TEST_WITH_ROCM or TEST_XPU)),
+                ),  # Works on ROCm and XPU
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
             }
@@ -780,8 +800,8 @@ class TestOperators(TestCase):
                 # The fused attention kernels require the last dim to be contiguous
                 decorate(
                     "nn.functional.scaled_dot_product_attention",
-                    decorator=expectedFailureIf(not TEST_WITH_ROCM),
-                ),  # Works on ROCm
+                    decorator=expectedFailureIf(not (TEST_WITH_ROCM or TEST_XPU)),
+                ),  # Works on ROCm and XPU
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
                 # BUG
@@ -1199,7 +1219,7 @@ class TestOperators(TestCase):
             xfail("chalf", ""),
             xfail("scatter_reduce", "prod"),  # item call
             # Batching rule not implemented for aten::_use_cudnn_ctc_loss.Tensor
-            xfail("nn.functional.ctc_loss", device_type=device_type),
+            xfail("nn.functional.ctc_loss", device_type="cuda"),
             # NYI: querying is_contiguous inside of vmap for memory_format other than torch.contiguous_format
             xfail("nn.functional.max_unpool2d"),
             xfail("nn.functional.max_unpool2d", "grad"),

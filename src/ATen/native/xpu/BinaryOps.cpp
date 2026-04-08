@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,6 +77,7 @@ REGISTER_XPU_DISPATCH(lshift_stub, &xpu::lshift_kernel);
 REGISTER_XPU_DISPATCH(rshift_stub, &xpu::rshift_kernel);
 REGISTER_XPU_DISPATCH(xlogy_stub, &xpu::xlogy_kernel);
 REGISTER_XPU_DISPATCH(xlog1py_stub, &xpu::xlog1py_kernel);
+REGISTER_XPU_DISPATCH(ldexp_stub, &xpu::ldexp_kernel);
 REGISTER_XPU_DISPATCH(zeta_stub, &xpu::zeta_kernel);
 REGISTER_XPU_DISPATCH(
     hermite_polynomial_h_stub,

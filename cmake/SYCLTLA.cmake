@@ -1,4 +1,4 @@
-# Copyright 2020-2025 Intel Corporation
+# Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ if(NOT __SYCLTLA_INCLUDED)
   FetchContent_Declare(
       repo-sycl-tla
       GIT_REPOSITORY https://github.com/intel/sycl-tla.git
-      GIT_TAG        v0.6
+      GIT_TAG        v0.7
       GIT_SHALLOW    OFF
   )
   FetchContent_GetProperties(repo-sycl-tla)

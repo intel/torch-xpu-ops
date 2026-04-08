@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 #include <ATen/native/xpu/sycl/ReduceMinValuesKernels.h>
 #include <ATen/native/xpu/sycl/TensorCompareKernels.h>
 #include <ATen/native/xpu/sycl/TensorModeKernel.h>
-#include <comm/ReduceOpsUtils.h>
 
 #include <ATen/ops/result_type_native.h>
 
