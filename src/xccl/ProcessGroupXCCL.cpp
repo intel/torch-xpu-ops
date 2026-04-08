@@ -249,7 +249,7 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
       auto currentTimepoint = std::chrono::steady_clock::now();
       auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
           currentTimepoint - workStartTime_);
-      if (timeElapsed >= timeout) {
+      if (timeout != kNoTimeout && timeElapsed >= timeout) {
         std::string exceptionMsg = c10::str(
             "Work ran time out after ", timeElapsed.count(), " milliseconds.");
         LOG(ERROR) << exceptionMsg;
@@ -389,11 +389,9 @@ const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
 }
 
 bool ProcessGroupXCCL::isInitialized() {
-  if (devXCCLCommMap_.empty()) {
-    return false;
-  }
+  std::lock_guard<std::mutex> lock(mutex_);
   // Unlike PGNCCL, all comms are initialized (or we fail)
-  return true;
+  return !devXCCLCommMap_.empty();
 }
 
 void ProcessGroupXCCL::setEnqueuedPgStatus(
