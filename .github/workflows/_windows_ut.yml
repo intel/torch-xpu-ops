@@ -328,6 +328,7 @@ jobs:
           )
           git clone %PYTORCH_REPO% pytorch
           cd pytorch && git checkout %PYTORCH_COMMIT%
+          pip install -r .ci\docker\requirements-ci.txt
           if %TORCH_XPU_OPS_COMMIT% == 'pinned' (
             echo "Don't replace torch-xpu-ops!"
           ) else (
@@ -359,7 +360,6 @@ jobs:
           
           for %%f in ("%GITHUB_WORKSPACE%\wheel_artifact\*.whl") do set TORCH_WHL=%%f
           pip install "%TORCH_WHL%"
-          pip install -r .ci\docker\requirements-ci.txt
       - name: Torch Config Check
         shell: cmd
         run: |
