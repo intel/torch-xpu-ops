@@ -37,7 +37,7 @@
 #else
 #define DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 #define DISABLE_SYCL_DEPRECATED_WARNING_END
-
+#endif
 // Suppress "not all control paths return a value" warning in SYCL kernel files.
 // MSVC: C4715, GCC/Clang: -Wreturn-type
 #if defined(_MSC_VER)
