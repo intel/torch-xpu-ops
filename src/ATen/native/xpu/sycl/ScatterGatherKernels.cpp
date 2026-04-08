@@ -24,6 +24,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
@@ -315,6 +316,67 @@ struct ScatterGatherInternalKernelLoopFunctor {
   func_t f_;
 };
 
+// Fast 2D gather functor: bypasses OffsetCalculator for 2D contiguous tensors.
+// Uses IntDivider for efficient divmod and uint32_t strides to match
+// OffsetCalculator's use of 32-bit arithmetic (avoiding expensive 64-bit
+// multiply on GPU).
+// gathered_is_outer=true: gathered dim is outer iter dimension (dim=0 gather)
+// gathered_is_outer=false: gathered dim is inner iter dimension (dim=1 gather)
+template <bool gathered_is_outer, typename scalar_t, typename index_t>
+struct GatherContiguousFunctor {
+  void operator()(int i) const {
+    auto dm = inner_size_divider_.divmod(static_cast<unsigned int>(i));
+    unsigned int outer_idx = dm.div;
+    unsigned int inner_idx = dm.mod;
+    index_t idx_val = *(index_t*)(index_ptr_ +
+        outer_idx * idx_outer_stride_ + inner_idx * idx_inner_stride_);
+    SYCL_KERNEL_ASSERT(
+        idx_val >= 0 && idx_val < index_size_ &&
+        "gather kernel index out of bounds");
+    scalar_t val;
+    if constexpr (gathered_is_outer) {
+      val = *(scalar_t*)(src_ptr_ +
+          static_cast<unsigned int>(idx_val) * src_gathered_stride_ +
+          inner_idx * src_other_stride_);
+    } else {
+      val = *(scalar_t*)(src_ptr_ +
+          outer_idx * src_other_stride_ +
+          static_cast<unsigned int>(idx_val) * src_gathered_stride_);
+    }
+    *(scalar_t*)(self_ptr_ + i * (uint32_t)sizeof(scalar_t)) = val;
+  }
+  GatherContiguousFunctor(
+      char* self_ptr,
+      char* src_ptr,
+      char* index_ptr,
+      unsigned int inner_size,
+      int64_t index_size,
+      uint32_t src_gathered_stride,
+      uint32_t src_other_stride,
+      uint32_t idx_outer_stride,
+      uint32_t idx_inner_stride)
+      : self_ptr_(self_ptr),
+        src_ptr_(src_ptr),
+        index_ptr_(index_ptr),
+        inner_size_divider_(inner_size),
+        index_size_(index_size),
+        src_gathered_stride_(src_gathered_stride),
+        src_other_stride_(src_other_stride),
+        idx_outer_stride_(idx_outer_stride),
+        idx_inner_stride_(idx_inner_stride) {}
+
+ private:
+  char* self_ptr_;
+  char* src_ptr_;
+  char* index_ptr_;
+  at::detail::IntDivider<unsigned int> inner_size_divider_;
+  int64_t index_size_;
+  uint32_t src_gathered_stride_;
+  uint32_t src_other_stride_;
+  uint32_t idx_outer_stride_;
+  uint32_t idx_inner_stride_;
+};
+
 template <bool is_scatter_like, typename scalar_t, typename index_t>
 struct ScatterGatherInternalKernel {
   template <typename func_t>
@@ -362,6 +424,47 @@ struct ScatterGatherInternalKernel {
             inp_stride_bytes,
             out_stride_bytes);
         return;
+      }
+
+      // 2D contiguous gather fast path: when result (self) is contiguous and
+      // the iterator is 2D, bypass OffsetCalculator with direct address
+      // computation using a single IntDivider divmod.
+      // Handles both orientations:
+      //   gathered_is_outer (dim=0): strides(1)[1]==0 (src outer stride restrided)
+      //   gathered_is_inner (dim=1): strides(1)[0]==0 (src inner stride restrided)
+      if (iter.ndim() == 2 &&
+          static_cast<size_t>(iter.strides(0)[0]) == element_size &&
+          static_cast<size_t>(iter.strides(0)[1]) ==
+              element_size * iter.shape()[0]) {
+        bool gathered_is_outer = (iter.strides(1)[1] == 0);
+        bool gathered_is_inner = (iter.strides(1)[0] == 0);
+        if (gathered_is_outer || gathered_is_inner) {
+          unsigned int inner_size = iter.shape()[0];
+          uint32_t src_gathered_stride =
+              static_cast<uint32_t>(index_stride * element_size);
+          uint32_t src_other_stride = static_cast<uint32_t>(
+              gathered_is_outer ? iter.strides(1)[0] : iter.strides(1)[1]);
+          uint32_t idx_outer_stride =
+              static_cast<uint32_t>(iter.strides(2)[1]);
+          uint32_t idx_inner_stride =
+              static_cast<uint32_t>(iter.strides(2)[0]);
+          if (iter.numel() == 0)
+            return;
+          if (gathered_is_outer) {
+            auto loop = GatherContiguousFunctor<true, scalar_t, index_t>(
+                self_ptr, src_ptr, index_ptr, inner_size, index_size,
+                src_gathered_stride, src_other_stride,
+                idx_outer_stride, idx_inner_stride);
+            launch_gather_kernel(iter.numel(), loop);
+          } else {
+            auto loop = GatherContiguousFunctor<false, scalar_t, index_t>(
+                self_ptr, src_ptr, index_ptr, inner_size, index_size,
+                src_gathered_stride, src_other_stride,
+                idx_outer_stride, idx_inner_stride);
+            launch_gather_kernel(iter.numel(), loop);
+          }
+          return;
+        }
       }
     }
 
