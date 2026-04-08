@@ -1963,6 +1963,10 @@ class TestSparse(TestSparseBase):
         self.assertEqual(ab, torch.zeros((2, 1, 1), device=device))
 
     @onlyOn(["xpu"])
+    @unittest.skipIf(
+        not IS_WINDOWS,
+        "Windows-specific error check; skipping on non-Windows",
+    )
     @dtypes(torch.double)
     def test_bmm_windows_error(self, device, dtype):
         self.assertTrue(device.startswith("xpu"))
