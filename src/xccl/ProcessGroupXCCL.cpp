@@ -251,7 +251,7 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
           currentTimepoint - workStartTime_);
       if (timeout != kNoTimeout && timeElapsed >= timeout) {
         std::string exceptionMsg = c10::str(
-            "Work ran time out after ", timeElapsed.count(), " milliseconds.");
+            "Work timed out after ", timeElapsed.count(), " milliseconds.");
         LOG(ERROR) << exceptionMsg;
         // todo: abort comm and exit
         C10_THROW_ERROR(DistBackendError, exceptionMsg);
