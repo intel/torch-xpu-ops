@@ -13470,8 +13470,11 @@ class TestNNDeviceType(NNTestCase):
         batch_size,
     ):
         # Check output value consistency between resized_input_uint8 and resized input_float
-        if torch.device(device).type == "cuda":
-            raise SkipTest("CUDA implementation is not yet supporting uint8")
+        dev_type = torch.device(device).type
+        if dev_type in ("cuda", "xpu"):
+            raise SkipTest(
+                f"{dev_type.upper()} implementation is not yet supporting uint8"
+            )
 
         torch.manual_seed(0)
 
@@ -13558,9 +13561,11 @@ class TestNNDeviceType(NNTestCase):
         self, device, memory_format, align_corners, input_size, output_size
     ):
         # Non-regression test for https://github.com/pytorch/pytorch/pull/101403
-
-        if torch.device(device).type == "cuda":
-            raise SkipTest("CUDA implementation is not yet supporting uint8")
+        dev_type = torch.device(device).type
+        if dev_type in ("cuda", "xpu"):
+            raise SkipTest(
+                f"{dev_type.upper()} implementation is not yet supporting uint8"
+            )
 
         mode = "bilinear"
         input_ui8 = torch.randint(
@@ -15006,7 +15011,7 @@ class TestNNDeviceType(NNTestCase):
             # (Issue is filed at https://github.com/pytorch/pytorch/issues/21875)
             mw[0][0] = 5
             self.assertTrue(mw[0][0].device.type == "cpu")
-            self.assertTrue(mw._base[0][0].device.type == device)
+            self.assertTrue(mw._base[0][0].device.type == torch.device(device).type)
 
         try:
             torch.__future__.set_overwrite_module_params_on_conversion(True)

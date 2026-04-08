@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,7 +12,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Kernel for fast unfold+copy
- * (borrowed from Caffe: https://github.com/BVLC/caffe/blob/master/src/caffe/layers/conv_layer.cu)
+ * (borrowed from Caffe:
+ * https://github.com/BVLC/caffe/blob/master/src/caffe/layers/conv_layer.cu)
  */
 
 #include <ATen/Dispatch.h>

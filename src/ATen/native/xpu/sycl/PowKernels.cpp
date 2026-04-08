@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -242,6 +242,10 @@ void pow_tensor_scalar_kernel(
       return;
     }
     AT_DISPATCH_COMPLEX_TYPES(iter.common_dtype(), "pow_xpu", [&]() {
+      if (exp_scalar.equal(2.0)) {
+        gpu_kernel(iter, PowImplUnaryFunctor1<scalar_t>());
+        return;
+      }
       const auto exp = exp_scalar.to<scalar_t>();
       gpu_kernel(iter, PowScalarTensorFunctor2<scalar_t>(exp));
     });

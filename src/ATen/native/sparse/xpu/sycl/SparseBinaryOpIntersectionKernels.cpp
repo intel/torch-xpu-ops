@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2025 Intel Corporation
+ * Copyright 2020-2026 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -358,8 +358,9 @@ void _sparse_binary_op_intersection_kernel_impl(
   using OptTensor = std::optional<Tensor>;
 
   // If the op and sum are not distributive, coalesce is required.
-  const auto coalesce_if_not_distributive = [distributive_with_sum](
-      const Tensor& t, const OptTensor& t_hash_opt) -> auto {
+  const auto coalesce_if_not_distributive =
+      [distributive_with_sum](
+          const Tensor& t, const OptTensor& t_hash_opt) -> auto {
     // No need to coalesce in such a case.
     if (distributive_with_sum) {
       return std::make_tuple(t, t_hash_opt);
@@ -405,8 +406,7 @@ void _sparse_binary_op_intersection_kernel_impl(
         return x._nnz() >= y._nnz()
             ? std::make_tuple(x, x_hash_opt, y, y_hash_opt)
             : std::make_tuple(y, y_hash_opt, x, x_hash_opt);
-      }
-      ();
+      }();
 
       // If under a uniform distribution it is likely to hit many elements in
       // larger, it is best to coalesce it for better performance.
@@ -434,8 +434,7 @@ void _sparse_binary_op_intersection_kernel_impl(
                 smaller_hash_opt)
           : std::make_tuple(larger, larger_hash_opt, smaller, smaller_hash_opt);
     }
-  }
-  ();
+  }();
 
   // The employed hash function maps a d-dim index to a linear offset
   // into a contiguous memory that is sufficient to fit a dense tensor
@@ -457,8 +456,7 @@ void _sparse_binary_op_intersection_kernel_impl(
     auto strides = c10::contiguous_strides(broadcasted_sparse_dim_shape);
     return at::sparse::TensorGeometryHolder<max_static_len>(
         strides, strides, probably_coalesced.options());
-  }
-  ();
+  }();
 
   const auto hash_coeffs = std::get<0>(*hash_coeffs_storage);
 
