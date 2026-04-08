@@ -143,8 +143,9 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
       query.is_nested() || key.is_nested() || value.is_nested() ||
           (query.sizes() == key.sizes() && key.sizes() == value.sizes()),
       "expected `query`/`key`/`value` shapes to match");
+  // This aligns with CUDA
   TORCH_CHECK(
-      qkv_weight.dim() == 2,
+      qkv_weight.dim() == 4,
       "expected 2-D `qkv_weight`, got ",
       qkv_weight.dim(),
       "-D tensor");
