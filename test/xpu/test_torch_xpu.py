@@ -6678,12 +6678,6 @@ else:
                     if torch.cuda.amp.common.amp_definitely_not_available()
                     else a.is_enabled()
                 )
-            elif device.type == "xpu":
-                self.assertTrue(
-                    not a.is_enabled()
-                    if torch.xpu.amp.common.amp_definitely_not_available()
-                    else a.is_enabled()
-                )
             else:
                 self.assertTrue(a.is_enabled())
             if lazy_init_scale:
