@@ -22,7 +22,8 @@
 
 namespace at::native::xpu {
 
-// WR (replace enum class) due to https://jira.devtools.intel.com/browse/CMPLRLLVM-72438
+// WR (replace enum class) due to
+// https://jira.devtools.intel.com/browse/CMPLRLLVM-72438
 const int NormType_L1 = 0;
 const int NormType_L2 = 1;
 const int NormType_LInf = 2;
@@ -39,7 +40,8 @@ template <
     int r_args_depth = 1,
     int res_arg_index = 0>
 struct LpNormFunctor {
-  template <typename TLA, typename TLW> void operator()(
+  template <typename TLA, typename TLW>
+  void operator()(
       const int64_t chunk_size,
       TLA tlAddress,
       TLW tlWGMeta,
@@ -72,9 +74,9 @@ struct LpNormFunctor {
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
-          if constexpr (norm_type == NormType::LInf) {
+          if constexpr (norm_type == NormType_LInf) {
             vals[ii] = max_impl(vals[ii], sycl::fabs((opmath_t)next));
-          } else if constexpr (norm_type == NormType::L1) {
+          } else if constexpr (norm_type == NormType_L1) {
             vals[ii] += static_cast<opmath_t>(sycl::fabs((opmath_t)next));
           } else {
             vals[ii] += static_cast<opmath_t>(next * next);
@@ -89,10 +91,10 @@ struct LpNormFunctor {
           int i = i_start + item_idx + ii * item_range;
           if (i < n && i < chunk_size) {
             opmath_t next = static_cast<opmath_t>(x[i]);
-            if constexpr (norm_type == NormType::LInf) {
+            if constexpr (norm_type == NormType_LInf) {
               vals[ii] =
                   max_impl(vals[ii], sycl::fabs(sycl::fabs((opmath_t)next)));
-            } else if constexpr (norm_type == NormType::L1) {
+            } else if constexpr (norm_type == NormType_L1) {
               vals[ii] += static_cast<opmath_t>(sycl::fabs((opmath_t)next));
             } else {
               vals[ii] += static_cast<opmath_t>(next * next);
@@ -111,14 +113,14 @@ struct LpNormFunctor {
       }
     }
 
-    opmath_t sum_val;
-    if constexpr (norm_type == NormType::L1 || norm_type == NormType::L2) {
-      sum_val =
-          GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
-    } else {
-      sum_val =
-          GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
-    }
+    constexpr int slm_size = get_group_reduce_group_size(SIMD);
+    syclexp::work_group_static<opmath_t[slm_size]> shared_;
+
+    auto sum_val = norm_type == NormType_L1 || norm_type == NormType_L2
+        ? GroupReduceSumWithoutBroadcast_StaticSlm<opmath_t, SIMD, slm_size>(
+              item_id, val, shared_)
+        : GroupReduceMaxWithoutBroadcast_StaticSlm<opmath_t, SIMD, slm_size>(
+              item_id, val, shared_);
 
     if (item_idx == 0) {
       output_per_tensor[tensor_loc * max_chunks_per_tensor + chunk_idx] =
@@ -130,8 +132,7 @@ struct LpNormFunctor {
 template <typename out_t, int norm_type, typename opmath_t, int SIMD>
 struct lpnormChunkReduceKernelFunctor {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
-  void operator()(
-      sycl::nd_item<1> item_id) const {
+  void operator()(sycl::nd_item<1> item_id) const {
     auto lid = item_id.get_local_linear_id();
     auto group_id = item_id.get_group(0);
 
@@ -146,7 +147,7 @@ struct lpnormChunkReduceKernelFunctor {
       }
     }
     opmath_t sum_val;
-    if constexpr (norm_type == NormType::L1 || norm_type == NormType::L2) {
+    if constexpr (norm_type == NormType_L1 || norm_type == NormType_L2) {
       sum_val =
           GroupReduceSumWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
     } else {
@@ -154,7 +155,7 @@ struct lpnormChunkReduceKernelFunctor {
           GroupReduceMaxWithoutBroadcast<opmath_t, SIMD>(item_id, val, shared_);
     }
     if (lid == 0) {
-      if constexpr (norm_type == NormType::L1 || norm_type == NormType::LInf) {
+      if constexpr (norm_type == NormType_L1 || norm_type == NormType_LInf) {
         *(ret_per_tensor_[group_id]) = sum_val;
       } else {
         *(ret_per_tensor_[group_id]) = sycl::sqrt((opmath_t)sum_val);
@@ -497,7 +498,8 @@ std::vector<Tensor> foreach_norm_kernel(
 
 template <typename T, int SIMD>
 struct LpMaxFunctor {
-  template <typename TLA, typename TLW> void operator()(
+  template <typename TLA, typename TLW>
+  void operator()(
       int64_t chunk_size,
       TLA tlAddressMeta,
       TLW tlWGMeta,
@@ -553,8 +555,8 @@ struct LpMaxFunctor {
     for (int i = 0; i < kILP; i++) {
       val = max_impl(val, vals[i]);
     }
-    auto final_val =
-        GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, SIMD>(item, val, shared_);
+    auto final_val = GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, SIMD>(
+        item, val, shared_);
 
     if (item_id == 0) {
       output_per_tensor_ptr[tensor_loc * max_chunks_per_tensor + chunk_idx] =
@@ -566,8 +568,7 @@ struct LpMaxFunctor {
 template <typename T, int SIMD>
 struct LpmaxChunkReduceKernelFunctor {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
-  void operator()(
-      sycl::nd_item<1> item_id) const {
+  void operator()(sycl::nd_item<1> item_id) const {
     auto local_range = item_id.get_local_range(0);
     auto lid = item_id.get_local_linear_id();
     auto group_id = item_id.get_group(0);
@@ -580,8 +581,8 @@ struct LpmaxChunkReduceKernelFunctor {
       val = max_impl(val, output_this_tensor[i]);
     }
     syclexp::work_group_static<T[SIMD]> shared_;
-    T final_value =
-        GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, SIMD>(item_id, val, shared_);
+    T final_value = GroupReduceMaxWithoutBroadcast_StaticSlm<T, SIMD, SIMD>(
+        item_id, val, shared_);
     if (lid == 0) {
       *(ret_per_tensor_[group_id]) = final_value;
     }
