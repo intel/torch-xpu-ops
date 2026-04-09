@@ -432,7 +432,7 @@ def addmm_relu_tunableop_rocm(self, device, dtype):
 
 @unittest.skip("xpu does not support TunableOp rotating buffer API")
 @dtypes(torch.float)
-def rotating_buffer_tunableop_xpu_skip(self, device, dtype):
+def rotating_buffer_tunableop(self, device, dtype):
     pass
 
 
@@ -590,7 +590,7 @@ TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
 TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
-TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop_xpu_skip
+TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True
