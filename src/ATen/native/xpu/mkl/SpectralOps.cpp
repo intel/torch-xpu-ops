@@ -256,6 +256,16 @@ Tensor& _exec_fft(
 
   out.resize_(batched_out_sizes, MemoryFormat::Contiguous);
 
+  // Fix oneAPI MKL DFT issue: zero strides cause FFT_INVALID_DESCRIPTOR
+  // when NUMBER_OF_TRANSFORMS > 1, as overlapping data is not allowed.
+  // See https://github.com/pytorch/pytorch/issues/154477
+  for (const auto& stride : input.strides()) {
+    if (stride == 0) {
+      input = input.clone(MemoryFormat::Contiguous);
+      break;
+    }
+  }
+
   // run the FFT
   _fft_with_size(
       out,
