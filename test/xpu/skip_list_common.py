@@ -92,9 +92,6 @@ skip_dict = {
     "test_spectral_ops_xpu.py": None,
     "test_tensor_creation_ops_xpu.py": None,
     "test_torch_xpu.py": (
-        # TypeError: map2_ is only implemented on CPU tensors
-        "test_broadcast_fn_map2_xpu",
-        "test_broadcast_fn_map_xpu",
         # RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
     ),
@@ -110,7 +107,7 @@ skip_dict = {
     "test_fake_tensor_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
-    "test/xpu/dynamo/test_ctx_manager_xpu.py": None,
+    "dynamo/test_ctx_manager_xpu.py": None,
     "functorch/test_control_flow_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
     "export/test_hop_xpu.py": None,

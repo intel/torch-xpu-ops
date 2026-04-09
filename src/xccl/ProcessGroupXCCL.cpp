@@ -34,6 +34,27 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   return true;
 }
 
+struct OnecclGroupGuard {
+  OnecclGroupGuard() {
+    xccl::oneccl_group_start();
+  }
+
+  ~OnecclGroupGuard() noexcept {
+    // Ensure the group is always closed, even if a prior call threw.
+    // Suppress any exception here so that none can escape this noexcept
+    // destructor and trigger std::terminate during stack unwinding.
+    try {
+      xccl::oneccl_group_end();
+    } catch (...) {
+    }
+  }
+
+  OnecclGroupGuard(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard& operator=(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard(OnecclGroupGuard&&) = delete;
+  OnecclGroupGuard& operator=(OnecclGroupGuard&&) = delete;
+};
+
 void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
@@ -911,7 +932,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   c10::xpu::XPUCachingAllocator::recordStream(
       tensor.storage().data_ptr(), stream);
 
-  fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  if (!batchP2P) {
+    OnecclGroupGuard group_guard;
+    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  } else {
+    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  }
 
   if (!coalescing_state_) {
     post(stream);
