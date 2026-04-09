@@ -1970,8 +1970,8 @@ class TestSparse(TestSparseBase):
     @dtypes(torch.double)
     def test_bmm_windows_error(self, device, dtype):
         self.assertTrue(device.startswith("xpu"))
-        a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device_type)
-        b = torch.rand(2, 2, 2, dtype=dtype).to(device_type)
+        a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device)
+        b = torch.rand(2, 2, 2, dtype=dtype).to(device)
         # XPU supports sparse-dense bmm; verify result matches dense reference
         ab = a.bmm(b)
         self.assertEqual(ab, torch.bmm(a.to_dense(), b))
