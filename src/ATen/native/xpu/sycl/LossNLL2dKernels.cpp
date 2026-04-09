@@ -206,6 +206,7 @@ void nll_loss2d_forward_kernel(
     int64_t count = batch_size * H * W;
 
     at::native::resize_output(output, {batch_size, H, W});
+    total_weight.zero_();
     if (count == 0) {
       // This guards from unnecessary operations and launching CUDA kernel with
       // 0 blocks.
