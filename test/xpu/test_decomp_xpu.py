@@ -16,6 +16,7 @@ import unittest
 from collections import defaultdict
 from functools import partial
 
+import pytest
 import torch._inductor.decomposition
 import torch.autograd
 from torch import Tensor
@@ -591,6 +592,7 @@ class TestDecomp(TestCase):
     @skipIfCrossRef
     @suppress_warnings
     @ops(_decomp_test_ops_core_autograd, allowed_dtypes=(torch.float64,))
+    @pytest.mark.timeout(2160)
     def test_quick_core_backward(self, device, dtype, op):
         test_keys = [
             (torch.device(device).type, dtype, op.name),
