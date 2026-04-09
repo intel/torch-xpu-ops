@@ -358,7 +358,7 @@ jobs:
           call "C:\Program Files (x86)\Intel\oneAPI\ocloc\latest\env\vars.bat"
           call "C:\Program Files (x86)\Intel\oneAPI\pti\latest\env\vars.bat"
           
-          for %%f in ("%GITHUB_WORKSPACE%\wheel_artifact\*.whl") do set TORCH_WHL=%%f
+          for /r "%GITHUB_WORKSPACE%\wheel_artifact" %%f in (*.whl) do set "TORCH_WHL=%%f"
           pip install "%TORCH_WHL%"
       - name: Torch Config Check
         shell: cmd
