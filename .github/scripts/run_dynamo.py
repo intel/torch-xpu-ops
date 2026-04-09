@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import argparse
 import tempfile
 import queue
+import shutil
 from packaging import version
 import pandas as pd
 
@@ -359,6 +360,55 @@ def generate_command_prefixes(num_gpus: int) -> list[tuple[int, str, dict]]:
     return prefixes
 
 
+# Earlyoom handling
+def start_earlyoom() -> subprocess.Popen | None:
+    """Start earlyoom process if available. Return Popen object or None."""
+    earlyoom_path = shutil.which("earlyoom")
+    if not earlyoom_path:
+        print("INFO: earlyoom not found in PATH. Memory pressure monitoring disabled.")
+        return None
+
+    # Arguments as requested: -m 3 -s 100 -r 3600 --prefer '^(python|pytest)'
+    cmd = [
+        earlyoom_path,
+        "-m", "3",
+        "-s", "100",
+        "-r", "3600",
+        "--prefer", "^(python|pytest)"
+    ]
+    try:
+        # Start earlyoom; redirect stdout/stderr to /dev/null to avoid clutter,
+        # but we could also let it print to console for visibility. We'll keep it quiet.
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,  # so it can be killed cleanly later
+        )
+        print(f"Started earlyoom (PID {proc.pid}) to monitor memory pressure.")
+        return proc
+    except Exception as e:
+        print(f"WARNING: Failed to start earlyoom: {e}. Continuing without it.")
+        return None
+
+
+def stop_earlyoom(proc: subprocess.Popen | None) -> None:
+    """Terminate earlyoom process if it is running."""
+    if proc is None:
+        return
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+        print("earlyoom process terminated.")
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        print("earlyoom process killed (timeout).")
+    except Exception as e:
+        print(f"Warning while stopping earlyoom: {e}")
+
+
 # Main orchestrator
 def main():
     parser = argparse.ArgumentParser(description="Run E2E tests with per‑GPU job queue and hang detection")
@@ -453,6 +503,9 @@ def main():
         workers = generate_command_prefixes(num_gpus)
         print(f"Auto-generated {len(workers)} workers from ZE_AFFINITY_MASK")
 
+    # Start earlyoom if available
+    earlyoom_proc = start_earlyoom()
+
     # Job queue
     task_queue = queue.Queue()
     for task in tasks:
@@ -490,13 +543,13 @@ def main():
             prefix = f"[Tasks {new_completed}/{total_tasks}]"
 
             if success:
-                print(f"  {prefix} [Worker {worker_id}] successfully and Model {task.model} successfully {test_result}.")
+                print(f"  {prefix} [Worker {worker_id}] {task} successfully {test_result}.")
             elif exit_code == 0:
-                print(f"  {prefix} [Worker {worker_id}] successfully but Model {task.model} failed {test_result}.")
+                print(f"  {prefix} [Worker {worker_id}] {task} failed {test_result}.")
             elif exit_code == -9:
-                print(f"  {prefix} [Worker {worker_id}] failed and Model {task.model} killed due to hang issue.")
+                print(f"  {prefix} [Worker {worker_id}] {task} killed due to hang issue.")
             else:
-                print(f"  {prefix} [Worker {worker_id}] failed and Model {task.model} failed with exit code {exit_code}.")
+                print(f"  {prefix} [Worker {worker_id}] {task} failed with exit code {exit_code}.")
 
             results_queue.put((task, success))
 
@@ -514,6 +567,9 @@ def main():
 
     for t in threads:
         t.join()
+
+    # Stop earlyoom after all workers finished
+    stop_earlyoom(earlyoom_proc)
 
     # Collect results
     failed_tasks = []
