@@ -85,8 +85,8 @@ def run_benchmark_with_prefix(
     scenario = task.scenario
 
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / f"test-logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
-    log_csv = log_dir / f"test-results-{suite}-{dt}-{mode}-{device}-{scenario}.csv"
+    log_file = log_dir / f"inductor-logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
+    log_csv = log_dir / f"inductor-results-{suite}-{dt}-{mode}-{device}-{scenario}.csv"
     tmp_file = tempfile.NamedTemporaryFile(delete=True, prefix='tmp_', suffix='.csv')
     tmp_log_csv = tmp_file.name
     tmp_file.close()
