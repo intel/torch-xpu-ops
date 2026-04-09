@@ -291,3 +291,21 @@ class TestSimpleBinary(TestCase):
         self.assertEqual(
             torch.fmod(y_cpu1, y_cpu2), torch.fmod(y_xpu1, y_xpu2).to(cpu_device)
         )
+
+    def test_ldexp(self):
+        x_cpu = torch.tensor([1.0, 2.0, 3.0, 0.5])
+        e_cpu = torch.tensor([1, 2, 3, -1], dtype=torch.int32)
+        x_xpu = x_cpu.to(xpu_device)
+        e_xpu = e_cpu.to(xpu_device)
+        # torch.ldexp
+        self.assertEqual(
+            torch.ldexp(x_cpu, e_cpu), torch.ldexp(x_xpu, e_xpu).to(cpu_device)
+        )
+        # Tensor.ldexp
+        self.assertEqual(x_cpu.ldexp(e_cpu), x_xpu.ldexp(e_xpu).to(cpu_device))
+        # inplace
+        x_cpu_clone = x_cpu.clone()
+        x_xpu_clone = x_xpu.clone()
+        x_cpu_clone.ldexp_(e_cpu)
+        x_xpu_clone.ldexp_(e_xpu)
+        self.assertEqual(x_cpu_clone, x_xpu_clone.to(cpu_device))

@@ -48,24 +48,14 @@ namespace cute {
 template <class...>
 class MhaName;
 
-template <class FMHAPrefillKernel>
+template <class FMHAPrefillKernel, bool isVarLen>
 struct FA2Runner {
-  using StrideQ = typename FMHAPrefillKernel::StrideQ;
-  using StrideK = typename FMHAPrefillKernel::StrideK;
-  using StrideV = typename FMHAPrefillKernel::StrideV;
-  using StrideO = typename FMHAPrefillKernel::StrideO;
-
   using ElementQ = typename FMHAPrefillKernel::ElementQ;
   using ElementK = typename FMHAPrefillKernel::ElementK;
   using ElementV = typename FMHAPrefillKernel::ElementV;
-  using ElementAcc = typename FMHAPrefillKernel::ElementAccumulator;
+  using ElementO = typename FMHAPrefillKernel::ElementO;
 
-  using CollectiveEpilogue = typename FMHAPrefillKernel::CollectiveEpilogue;
-  using ElementOutput = typename CollectiveEpilogue::ElementOutput;
-  using ElementCompute = typename CollectiveEpilogue::ElementCompute;
-  using ElementAccumulator = typename CollectiveEpilogue::ElementAccumulator;
-
-  using ProblemShapeType = typename FMHAPrefillKernel::ProblemShape;
+  using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
 
   //
   // Methods
@@ -75,6 +65,9 @@ struct FA2Runner {
   // attention, which is why this secondary `run` function is required to launch
   // the kernel.
   void run(sycl::queue& queue, typename FMHAPrefillKernel::Params params) {
+    namespace syclex = sycl::ext::oneapi::experimental;
+    namespace intelex = sycl::ext::intel::experimental;
+
     dim3 const block = FMHAPrefillKernel::get_block_shape();
     dim3 const grid = FMHAPrefillKernel::get_grid_shape(params);
 
@@ -84,34 +77,18 @@ struct FA2Runner {
     const auto sycl_block = compat::dim3(block.x, block.y, block.z);
     const auto sycl_grid = compat::dim3(grid.x, grid.y, grid.z);
 
-// Launch parameters depend on whether SYCL compiler supports work-group scratch
-// memory extension
-#if !defined(SYCL_EXT_ONEAPI_WORK_GROUP_SCRATCH_MEMORY)
-    using namespace compat::experimental;
-    auto event = launch<
-        cutlass::device_kernel<FMHAPrefillKernel>,
-        MhaName<FMHAPrefillKernel>>(
-        launch_policy{
-            sycl_grid,
-            sycl_block,
-            local_mem_size{static_cast<std::size_t>(smem_size)},
-            kernel_properties{sycl_exp::sub_group_size<
-                FMHAPrefillKernel::DispatchPolicy::SubgroupSize>}},
-        queue,
-        params);
-#else
+    // Launch parameters depend on whether SYCL compiler supports work-group
+    // scratch memory extension
     compat::experimental::launch_properties launch_props{
-        sycl::ext::oneapi::experimental::work_group_scratch_size(smem_size),
+        syclex::work_group_scratch_size(smem_size),
     };
     compat::experimental::kernel_properties kernel_props{
-        sycl::ext::oneapi::experimental::sub_group_size<
-            FMHAPrefillKernel::DispatchPolicy::SubgroupSize>};
+        syclex::sub_group_size<cute::intel::sg_size>, intelex::grf_size<256>};
     compat::experimental::launch_policy policy{
         sycl_grid, sycl_block, launch_props, kernel_props};
-    auto event = compat::experimental::launch<
+    compat::experimental::launch<
         cutlass::device_kernel<FMHAPrefillKernel>,
         MhaName<FMHAPrefillKernel>>(policy, queue, params);
-#endif
   }
 
   void run(
@@ -126,45 +103,46 @@ struct FA2Runner {
     int head_size_qk = params.head_size_qk;
     int head_size_vo = params.head_size_vo;
 
-    ProblemShapeType problem_size{
-        batch,
-        num_heads_qo,
-        num_heads_kv,
-        seq_len_qo,
-        seq_len_kv,
-        head_size_qk,
-        head_size_vo};
+    ProblemShapeType shape;
+    shape.batch = batch;
+    shape.num_heads_q = num_heads_qo;
+    shape.num_heads_kv = num_heads_kv;
+    shape.seq_len_qo = seq_len_qo;
+    shape.seq_len_kv = seq_len_kv;
+    shape.head_size_qk = head_size_qk;
+    shape.head_size_vo = head_size_vo;
 
-    const ElementQ* inputQ = static_cast<const ElementQ*>(params.q_ptr);
-    const ElementK* inputK = static_cast<const ElementK*>(params.k_ptr);
-    const ElementV* inputV = static_cast<const ElementV*>(params.v_ptr);
-    ElementOutput* output = static_cast<ElementOutput*>(params.o_ptr);
-    float* logsumexp = static_cast<float*>(params.lse_ptr);
+    const ElementQ* q_ptr = static_cast<const ElementQ*>(params.q_ptr);
+    const ElementK* k_ptr = static_cast<const ElementK*>(params.k_ptr);
+    const ElementV* v_ptr = static_cast<const ElementV*>(params.v_ptr);
+    ElementO* o_ptr = static_cast<ElementO*>(params.o_ptr);
+    float* lse_ptr = static_cast<float*>(params.lse_ptr);
     float softmax_scale = params.scale;
 
     typename FMHAPrefillKernel::Arguments arguments{
-        cutlass::gemm::GemmUniversalMode::kGemm,
-        problem_size,
-        {inputQ,
-         params.q_batch_stride,
-         params.q_head_stride,
-         params.q_row_stride,
-         inputK,
-         params.k_batch_stride,
-         params.k_head_stride,
-         params.k_row_stride,
-         inputV,
-         params.v_batch_stride,
-         params.v_head_stride,
-         params.v_row_stride},
+        {
+            shape,
+            q_ptr,
+            params.q_batch_stride,
+            params.q_head_stride,
+            params.q_row_stride,
+            k_ptr,
+            params.k_batch_stride,
+            params.k_head_stride,
+            params.k_row_stride,
+            v_ptr,
+            params.v_batch_stride,
+            params.v_head_stride,
+            params.v_row_stride,
+            o_ptr,
+            params.o_batch_stride,
+            params.o_head_stride,
+            params.o_row_stride,
+            lse_ptr,
+        },
         {softmax_scale},
-        {output,
-         params.o_batch_stride,
-         params.o_head_stride,
-         params.o_row_stride,
-         logsumexp},
-        hw_info,
-        softmax_scale};
+        {},
+        hw_info};
 
     // Define device-global scratch memory
     size_t workspace_size = FMHAPrefillKernel::get_workspace_size(arguments);
@@ -210,83 +188,79 @@ template <
     typename TileShapeQK,
     typename TileShapePV,
     typename TileShapeOutPut,
-    typename SubgroupLayout,
-    int PipelineStages>
+    typename SubgroupLayoutQK,
+    int PipelineStages,
+    bool isVarLen = false>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
+  using ElementQ = T;
+  using ElementK = T;
+  using ElementV = T;
+  using ElementO = T;
+  using StrideQ = Stride<int64_t, _1, int64_t, int64_t>;
+  using StrideK = Stride<int64_t, _1, int64_t, int64_t>;
+  using StrideV = Stride<_1, int64_t, int64_t, int64_t>;
+  using StrideO = Stride<int64_t, _1, int64_t, int64_t>;
+  auto make_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  auto make_const_dummy_tensor = [&](auto val, auto stride) {
+    return make_tensor(
+        make_gmem_ptr(static_cast<const decltype(val)*>(nullptr)),
+        make_layout(repeat<rank_v<decltype(stride)>>(1), stride));
+  };
+  using TensorQ = decltype(make_const_dummy_tensor(ElementQ{}, StrideQ{}));
+  using TensorK = decltype(make_const_dummy_tensor(ElementK{}, StrideK{}));
+  using TensorV = decltype(make_const_dummy_tensor(ElementV{}, StrideV{}));
+  using TensorO = decltype(make_dummy_tensor(ElementO{}, StrideO{}));
+
+  static constexpr int SGTileQ =
+      get<0>(shape_div(TileShapeQK{}, shape(SubgroupLayoutQK{})))();
+  static_assert(SGTileQ <= 16, "Subgroup tile in Q dimension must be <= 16");
+  using MMAOperation = XE_DPAS_TT<cute::gcd(SGTileQ, 8), float, T>;
+  using SubgroupLayoutPV =
+      decltype(cutlass::fmha::collective::get_sg_layout_pv(SubgroupLayoutQK{}));
+  using TiledMMAQK = typename TiledMMAHelper<
+      MMA_Atom<MMAOperation>,
+      Layout<TileShapeQK>,
+      SubgroupLayoutQK>::TiledMMA;
+  using TiledMMAPV = typename TiledMMAHelper<
+      MMA_Atom<MMAOperation>,
+      Layout<TileShapePV>,
+      SubgroupLayoutPV>::TiledMMA;
+  static_assert(
+      get<0>(TileShapeOutPut{}) == get<0>(TileShapePV{}),
+      "Output tile and P*V tile have different sizes in Q dimension");
+  constexpr int VTiles = get<1>(TileShapeOutPut{}) / get<1>(TileShapePV{});
+
   cutlass::KernelHardwareInfo hw_info;
 
-  using LayoutQ = cutlass::layout::RowMajor;
-  using LayoutK = cutlass::layout::ColumnMajor;
-  using LayoutV = cutlass::layout::RowMajor;
-  using LayoutO = cutlass::layout::RowMajor;
-
-  using ElementInputQ = T;
-  using ElementInputKV = T;
-  using ElementOutput = T;
-  using ElementAccumulator = float;
-  using ElementComputeEpilogue = float;
-
-  using MMAOperation = std::conditional_t<
-      std::is_same_v<T, bfloat16_t>,
-      XE_8x16x16_F32BF16BF16F32_TT,
-      XE_8x16x16_F32F16F16F32_TT>;
-  using GmemTiledCopyQ = XE_2D_U16x8x32_LD_N;
-  using GmemTiledCopyK =
-      XE_2D_U16x16x16_LD_T; // _T designates a transposed block load operation
-  using GmemTiledCopyV = XE_2D_U16x16x32_LD_V;
-  using GmemTiledCopyStore = XE_2D_U16x8x16_ST_N; // Change to output BF16
-
-  using GEMMDispatchPolicy =
-      cutlass::gemm::MainloopIntelXeXMX16<PipelineStages>;
-  using EpilogueDispatchPolicy = cutlass::epilogue::IntelXeXMX16;
-  using CollectiveEpilogue =
-      cutlass::flash_attention::collective::FlashPrefillEpilogue<
-          EpilogueDispatchPolicy,
-          MMAOperation,
-          TileShapeOutPut,
-          SubgroupLayout,
-          ElementComputeEpilogue,
-          ElementOutput,
-          cutlass::gemm::TagToStrideC_t<LayoutO>,
-          ElementOutput,
-          GmemTiledCopyStore>;
-  using CollectiveSoftmaxEpilogue =
-      cutlass::flash_attention::collective::FlashPrefillSoftmaxEpilogue<
-          IS_CAUSAL,
-          EpilogueDispatchPolicy,
-          ElementAccumulator>;
-
-  using namespace cutlass::fmha::collective;
-
-  using ProblemShapeType = ProblemShapeRegular;
-
   // Mainloop
-  using CollectiveMainloop =
-      cutlass::flash_attention::collective::FlashPrefillMma<
-          GEMMDispatchPolicy,
-          ProblemShapeType,
-          ElementInputQ,
-          cutlass::gemm::TagToStrideA_t<LayoutQ>,
-          ElementInputKV,
-          cutlass::gemm::TagToStrideB_t<LayoutK>,
-          ElementInputKV,
-          cutlass::gemm::TagToStrideB_t<LayoutV>,
-          MMAOperation,
-          TileShapeQK,
-          TileShapePV,
-          SubgroupLayout,
-          GmemTiledCopyQ, // Q
-          GmemTiledCopyK, // K
-          GmemTiledCopyV, // V,
-          IS_CAUSAL>;
-  using FMHAPrefillKernel = cutlass::flash_attention::kernel::FMHAPrefill<
+  using MainloopDispatchPolicy = cutlass::fmha::XeDefault<PipelineStages>;
+  using CollectiveMainloop = cutlass::fmha::collective::FMHAFwdMainloop<
+      MainloopDispatchPolicy,
+      IS_CAUSAL,
+      TiledMMAQK,
+      TiledMMAPV,
+      VTiles,
+      TensorQ,
+      TensorK,
+      TensorV>;
+
+  // Epilogue
+  using CollectiveEpilogue = cutlass::fmha::collective::
+      FMHAFwdEpilogue<CollectiveMainloop, TileShapeOutPut, TensorO>;
+
+  using Scheduler = cutlass::fmha::kernel::XeFMHAIndividualTileScheduler;
+  using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<isVarLen>;
+  using FMHAPrefillKernel = cutlass::fmha::kernel::XeFMHAFwdKernel<
       ProblemShapeType,
       CollectiveMainloop,
-      CollectiveSoftmaxEpilogue,
       CollectiveEpilogue,
-      cutlass::flash_attention::IndividualScheduler>;
+      Scheduler>;
 
-  FA2Runner<FMHAPrefillKernel> runner;
+  FA2Runner<FMHAPrefillKernel, isVarLen> runner;
   runner.run(queue, params, hw_info);
 }
 
@@ -298,7 +272,7 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
     TileShapeQK_,                \
     TileShapePV_,                \
     TileShapeOutPut_,            \
-    SubgroupLayout_,             \
+    SubgroupLayoutQK_,           \
     PipelineStages_)             \
   run_mha_fwd_<                  \
       T,                         \
@@ -306,77 +280,69 @@ void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
       TileShapeQK_,              \
       TileShapePV_,              \
       TileShapeOutPut_,          \
-      SubgroupLayout_,           \
+      SubgroupLayoutQK_,         \
       PipelineStages_>(queue, params);
 
+  constexpr int PipelineStages = 2;
   if (headdim == 64) {
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_128, _64, _64>;
-    using TileShapePV = Shape<_128, _32, _64>;
-    using TileShapeOutPut = Shape<_128, _64, _64>;
-    using SubgroupLayout = Layout<Shape<_8, _1, _1>, Stride<_1, _1, _1>>;
-    run_mha_fwd_specialized(
-        TileShapeQK,
-        TileShapePV,
-        TileShapeOutPut,
-        SubgroupLayout,
-        PipelineStages);
-  } else if (headdim == 96) {
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_128, _64, _32>;
-    using TileShapePV = Shape<_128, _32, _64>;
-    using TileShapeOutPut = Shape<_128, _96, _64>;
-    using SubgroupLayout = Layout<Shape<_8, _1, _1>, Stride<_1, _1, _1>>;
-    run_mha_fwd_specialized(
-        TileShapeQK,
-        TileShapePV,
-        TileShapeOutPut,
-        SubgroupLayout,
-        PipelineStages);
-  } else if (headdim == 128) {
-    auto device_architecture =
-        queue.get_device()
-            .get_info<
-                sycl::ext::oneapi::experimental::info::device::architecture>();
-    if (device_architecture ==
-            sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc ||
-        device_architecture ==
-            sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg) {
-      constexpr int PipelineStages = 1;
-      using TileShapeQK = Shape<_64, _32, _64>;
-      using TileShapePV = Shape<_64, _32, _32>;
-      using TileShapeOutPut = Shape<_64, _128, _32>;
-      using SubgroupLayout = Layout<Shape<_4, _1, _1>, Stride<_1, _1, _1>>;
+    int64_t batch_size = params.batch_size;
+    int64_t num_heads_qo = params.num_heads_qo;
+    int64_t seqlen_qo = params.seqlen_qo;
+    if (batch_size * num_heads_qo * seqlen_qo <= 8192) {
+      using TileShapeQK = Shape<_64, _64, _32>;
+      using TileShapePV = Shape<_64, _32, _64>;
+      using TileShapeOutPut = Shape<_64, _64>;
+      using SubgroupLayoutQK = Layout<Shape<_16, _1, _1>>;
       run_mha_fwd_specialized(
           TileShapeQK,
           TileShapePV,
           TileShapeOutPut,
-          SubgroupLayout,
+          SubgroupLayoutQK,
           PipelineStages);
     } else {
-      constexpr int PipelineStages = 2;
-      using TileShapeQK = Shape<_256, _32, _64>;
-      using TileShapePV = Shape<_256, _32, _32>;
-      using TileShapeOutPut = Shape<_256, _128, _32>;
-      using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+      using TileShapeQK = Shape<_128, _64, _32>;
+      using TileShapePV = Shape<_128, _32, _64>;
+      using TileShapeOutPut = Shape<_128, _64>;
+      using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
       run_mha_fwd_specialized(
           TileShapeQK,
           TileShapePV,
           TileShapeOutPut,
-          SubgroupLayout,
+          SubgroupLayoutQK,
           PipelineStages);
     }
-  } else if (headdim == 192) {
-    constexpr int PipelineStages = 2;
-    using TileShapeQK = Shape<_256, _64, _64>;
-    using TileShapePV = Shape<_256, _32, _64>;
-    using TileShapeOutPut = Shape<_256, _192, _64>;
-    using SubgroupLayout = Layout<Shape<_16, _1, _1>, Stride<_1, _1, _1>>;
+  } else if (headdim == 96) {
+    using TileShapeQK = Shape<_128, _64, _32>;
+    using TileShapePV = Shape<_128, _32, _64>;
+    using TileShapeOutPut = Shape<_128, _96>;
+    using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
     run_mha_fwd_specialized(
         TileShapeQK,
         TileShapePV,
         TileShapeOutPut,
-        SubgroupLayout,
+        SubgroupLayoutQK,
+        PipelineStages);
+  } else if (headdim == 128) {
+    using TileShapeQK = Shape<_128, _32, _32>;
+    using TileShapePV = Shape<_128, _32, _32>;
+    using TileShapeOutPut = Shape<_128, _128>;
+    using SubgroupLayoutQK = Layout<Shape<_8, _1, _1>>;
+    run_mha_fwd_specialized(
+        TileShapeQK,
+        TileShapePV,
+        TileShapeOutPut,
+        SubgroupLayoutQK,
+        PipelineStages);
+  } else if (headdim == 192) {
+    using TileShapeQK = Shape<_256, _64, _32>;
+    using TileShapePV = Shape<_256, _32, _64>;
+    using TileShapeOutPut = Shape<_256, _192>;
+    using SubgroupLayoutQK = Layout<Shape<_32, _1, _1>>;
+    run_mha_fwd_specialized(
+        TileShapeQK,
+        TileShapePV,
+        TileShapeOutPut,
+        SubgroupLayoutQK,
         PipelineStages);
   } else {
     TORCH_CHECK(
