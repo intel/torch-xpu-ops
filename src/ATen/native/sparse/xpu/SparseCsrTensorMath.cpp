@@ -14,6 +14,7 @@
 #include <ATen/native/Resize.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
+#include <ATen/native/sparse/xpu/sycl/SparseCsrTensorAddKernels.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
 #include <ATen/ops/_convert_indices_from_coo_to_csr_native.h>
 #include <ATen/ops/_convert_indices_from_csr_to_coo_native.h>
@@ -28,6 +29,7 @@
 #include <ATen/ops/baddbmm.h>
 #include <ATen/ops/copy_native.h>
 #include <ATen/ops/mul.h>
+#include <ATen/ops/resize_as_sparse_native.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
 #include <ATen/ops/triangular_solve.h>
@@ -432,17 +434,9 @@ Tensor& add_out_sparse_compressed_xpu(
       return out;
     }
 
-    // Preserve the index dtype from self (int32 or int64)
-    auto index_dtype = self.crow_indices().scalar_type();
-    Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-    Tensor out_csr = out_dense.to_sparse_csr();
-    Tensor result = at::sparse_compressed_tensor(
-        out_csr.crow_indices().to(index_dtype),
-        out_csr.col_indices().to(index_dtype),
-        out_csr.values(),
-        out_csr.sizes(),
-        out_csr.options().layout(at::kSparseCsr));
-    out.copy_(result);
+    at::native::resize_as_sparse_compressed_(out, self);
+    TORCH_INTERNAL_ASSERT(out.is_sparse_csr());
+    xpu::add_out_sparse_csr_kernel(self, other, alpha, out);
   }
   return out;
 }
