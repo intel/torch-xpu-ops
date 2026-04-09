@@ -4656,14 +4656,11 @@ class TestAsArray(TestCase):
         if device.index is not None:
             self.assertEqual(device.index, result.device.index)
 
-        # 4. requires_grad: by default torch.asarray propagates from tensor inputs when copy=False
-        #    (PyTorch change a97dcf9c584 / PR https://github.com/pytorch/pytorch/pull/170897 made
-        #    requires_grad optional and inheriting when copy=False)
+        # 4. requires_grad: by default torch.asarray inherits requires_grad from tensor
+        #    inputs regardless of copy. See PyTorch PR #170897 / commit a97dcf9c584.
         expected_requires_grad = kwargs.get(
             "requires_grad",
-            inp.requires_grad
-            if isinstance(inp, torch.Tensor) and kwargs.get("copy", False) is False
-            else False,
+            inp.requires_grad if isinstance(inp, torch.Tensor) else False,
         )
         self.assertEqual(result.requires_grad, expected_requires_grad)
 
@@ -4852,7 +4849,10 @@ class TestAsArray(TestCase):
 
         def check(**kwargs):
             a = torch.asarray(cloned, **kwargs)
-            requires_grad = kwargs.get("requires_grad", False)
+            # torch.asarray now always inherits requires_grad from the input tensor
+            # when requires_grad is not explicitly specified, regardless of copy.
+            # See PyTorch PR #170897 / commit a97dcf9c584.
+            requires_grad = kwargs.get("requires_grad", cloned.requires_grad)
             self.assertEqual(a.requires_grad, requires_grad)
             # Autograd history shouldn't be retained when requires_grad is False
             self.assertEqual(a.grad_fn is None, not requires_grad)
