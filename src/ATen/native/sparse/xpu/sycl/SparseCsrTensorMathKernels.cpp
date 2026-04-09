@@ -285,7 +285,8 @@ Tensor reduce_sparse_csr_dim1_xpu_template(
         int64_t work_group_num =
             (nrows + work_group_size - 1) / work_group_size;
 
-        const index_t* crow_indices_ptr = crow_indices.const_data_ptr<index_t>();
+        const index_t* crow_indices_ptr =
+            crow_indices.const_data_ptr<index_t>();
         index_t* new_crow_indices_ptr = new_crow_indices.data_ptr<index_t>();
         index_t* row_map_ptr = row_map.data_ptr<index_t>();
         ReduceCrowIndicesDim1KernelFunctor<index_t> kfn_crow(
