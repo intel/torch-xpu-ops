@@ -80,6 +80,9 @@ skip_dict = {
         "_efficient_attention_",
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
         "test_dtypes_linalg_multi_dot_xpu",
+        # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
+        "test_out_histc_xpu_float32",
+        "test_out_mean_xpu_float32",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
@@ -92,9 +95,6 @@ skip_dict = {
     "test_spectral_ops_xpu.py": None,
     "test_tensor_creation_ops_xpu.py": None,
     "test_torch_xpu.py": (
-        # TypeError: map2_ is only implemented on CPU tensors
-        "test_broadcast_fn_map2_xpu",
-        "test_broadcast_fn_map_xpu",
         # RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
     ),
