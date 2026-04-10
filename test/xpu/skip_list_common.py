@@ -107,7 +107,11 @@ skip_dict = {
     "functorch/test_eager_transforms_xpu.py": None,
     "test_cpp_api_parity_xpu.py": None,
     "test_expanded_weights_xpu.py": None,
-    "test_fake_tensor_xpu.py": None,
+    "test_fake_tensor_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2472
+        # aten::_cudnn_rnn/aten::miopen_rnn not supported
+        "test_cudnn_rnn",
+    ),
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": None,
