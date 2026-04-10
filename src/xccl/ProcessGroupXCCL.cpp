@@ -326,8 +326,9 @@ ProcessGroupXCCL::ProcessGroupXCCL(
   const std::string OFF = "OFF";
   std::string torch_distributed_debug =
       getCvarString({"TORCH_DISTRIBUTED_DEBUG"}, OFF.c_str());
-  LOG(INFO) << logPrefix() << "ProcessGroupXCCL initialization options: "
-            << "size: " << size << ", global rank: " << globalRank()
+  LOG(INFO) << logPrefix()
+            << "ProcessGroupXCCL initialization options: " << "size: " << size
+            << ", global rank: " << globalRank()
             << ", USE_HIGH_PRIORITY_STREAM: "
             << options_->is_high_priority_stream
             << ", PG Name: " << options_->group_name;

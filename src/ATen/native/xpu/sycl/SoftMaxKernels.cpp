@@ -1264,7 +1264,8 @@ struct SoftmaxBackwardKernelFunctor {
           if (linear_idx >= 0 && linear_idx < dim_size_) {
             auto offset = group_offset + linear_idx;
             if (LogSoftMax) {
-              auto exp_out = sycl::exp(static_cast<accscalar_t>(output_[offset]));
+              auto exp_out =
+                  sycl::exp(static_cast<accscalar_t>(output_[offset]));
               gradInput_[offset] = gradOutput_[offset] - exp_out * sum_value;
             } else {
               gradInput_[offset] =
