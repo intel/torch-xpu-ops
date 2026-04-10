@@ -141,7 +141,12 @@ jobs:
         run: |
           # Activation & environment info
           source myvenv/bin/activate
-          python .github/scripts/check-results.py
+          python .github/scripts/check-results.py \
+              --results-dir ${{ github.workspace }}/results \
+              --check \
+                  ut_new_fail \
+                  acc_new_fail \
+                  perf_new_fail perf_dropped
 
       - name: Upload Tests Summary
         if: always()

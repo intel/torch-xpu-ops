@@ -222,7 +222,7 @@ jobs:
           if [[ "${TEST_TYPE}" =~ $REGEX ]]; then
             # If test_type already ends with a known suffix, use it as-is
             artifact_type="${TEST_TYPE}"
-          elif [ "${EVENT_NAME}" == "pull_request" ]; then
+          elif [ "${{ inputs.is_scheduled_run }}" == "pull_request" ]; then
             artifact_type="${base}-nightly"
           else
             artifact_type="${base}-weekly"
@@ -325,7 +325,16 @@ jobs:
         run: |
           # Activation & environment info
           source myvenv/bin/activate
-          python .github/scripts/check-results.py
+          if [ "${{ inputs.is_scheduled_run }}" == "pull_request" ];then
+            python .github/scripts/check-results.py --results-dir ${{ github.workspace }}/results
+          else
+            python .github/scripts/check-results.py
+                --results-dir ${{ github.workspace }}/results \
+                --check \
+                    ut_new_fail ut_untracked_fail ut_tracked_pass \
+                    acc_new_fail acc_untracked_fail \
+                    perf_new_fail perf_dropped
+          fi
 
       # Step 7: Upload comparison summaries (always)
       - name: Upload Tests Summary
