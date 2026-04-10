@@ -493,14 +493,14 @@ void upsample_nearest2d_frame(
 template <typename scalar_t, typename index_op_t>
 struct UpsampleNearest2dChannelsLastKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int64_t index = static_cast<int64_t>(item.get_global_linear_id());
-    const int64_t stride = static_cast<int64_t>(item.get_global_range(0));
+    size_t index = item.get_global_linear_id();
+    const size_t stride = item.get_global_range(0);
 
-    for (; index < static_cast<int64_t>(out_numel_); index += stride) {
-      const int64_t c = index % channels_;
-      const int64_t w2 = (index / channels_) % width2_;
-      const int64_t h2 = (index / channels_ / width2_) % height2_;
-      const int64_t n = index / channels_ / width2_ / height2_;
+    for (; index < out_numel_; index += stride) {
+      const size_t c = index % channels_;
+      const size_t w2 = (index / channels_) % width2_;
+      const size_t h2 = (index / channels_ / width2_) % height2_;
+      const size_t n = index / channels_ / width2_ / height2_;
 
       const size_t h1 =
           height1_ == height2_ ? h2 : index_op_(height_scale_, h2, height1_);
