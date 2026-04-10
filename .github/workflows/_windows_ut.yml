@@ -214,6 +214,8 @@ jobs:
           )
           echo "[INFO] the torch version is %TORCH_WHL%"
           python -m pip install %TORCH_WHL%
+          REM Remove hardcoded MKL installation to avoid potential conflicts with Torch XPU wheel (PowerShell)
+          powershell -Command "(Get-Content '.ci\docker\requirements-ci.txt') | Where-Object { $_ -notmatch 'mkl' } | Set-Content '.ci\docker\requirements-ci.txt'"
           pip install -r .ci\docker\requirements-ci.txt
       - name: Torch Config
         shell: cmd
