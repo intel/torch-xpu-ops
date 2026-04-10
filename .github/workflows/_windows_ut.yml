@@ -287,6 +287,8 @@ jobs:
           call conda create -n windows_ut python=${{ inputs.python }} -y
           call conda activate windows_ut
           pip install pyyaml requests pytest-timeout pytest pytest-xdist
+          call conda install -y libuv
+          call conda install -y rust
           cd ..
           if exist "pytorch" (
             rmdir /s /q pytorch
@@ -363,6 +365,7 @@ jobs:
       - name: Torch Config Check
         shell: cmd
         run: |
+          call "C:\ProgramData\miniforge3\Scripts\activate.bat"
           call conda activate windows_ut
           python -c "import torch; print(torch.__config__.show())"
           python -c "import torch; print(torch.__config__.parallel_info())"
