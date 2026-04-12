@@ -24,16 +24,34 @@ set(XPU_AOTI_INSTALL_DIR ${TORCH_ROOT}/torch/csrc/inductor/aoti_torch/generated/
 set(XPU_AOTI_SHIM_HEADER ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.h)
 set(XPU_AOTI_SHIM_SOURCE ${XPU_AOTI_INSTALL_DIR}/c_shim_xpu.cpp)
 set(CODEGEN_XPU_YAML_DIR ${TORCH_XPU_OPS_ROOT}/yaml)
+set(XPU_TEMPLATE_SRC_DIR ${TORCH_ROOT}/aten/src/ATen/templates)
+set(XPU_TEMPLATE_DST_DIR ${CODEGEN_XPU_YAML_DIR}/templates)
+set(XPU_TEMPLATE_STAMP ${BUILD_TORCH_XPU_ATEN_GENERATED}/xpu_codegen_templates.stamp)
 
 # Codegen prepare process
 if(WIN32)
-  file(TO_NATIVE_PATH "${CODEGEN_XPU_YAML_DIR}/templates" DestPATH)
-  file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}/aten/src/ATen/templates" SrcPATH)
-  # Copy pytorch templates
-  execute_process(COMMAND cmd /c xcopy ${SrcPATH} ${DestPATH} /E /H /C /I /Y > nul)
+  # on Windows, sync pytorch templates on every build (including incremental builds)
+  add_custom_command(
+    OUTPUT ${XPU_TEMPLATE_STAMP}
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${XPU_TEMPLATE_DST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${XPU_TEMPLATE_SRC_DIR}" "${XPU_TEMPLATE_DST_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${XPU_TEMPLATE_STAMP}"
+    DEPENDS
+      ${TORCH_ROOT}/aten/src/ATen/templates/RegisterDispatchDefinitions.ini
+      ${TORCH_ROOT}/aten/src/ATen/templates/RegisterDispatchKey.cpp
+    COMMENT "Syncing ATen templates for torch-xpu-ops codegen"
+  )
+
+  # prepare templates for configure-time dry-run generation
+  if(NOT EXISTS ${XPU_TEMPLATE_DST_DIR}/RegisterDispatchDefinitions.ini)
+    file(COPY ${XPU_TEMPLATE_SRC_DIR} DESTINATION ${CODEGEN_XPU_YAML_DIR})
+  endif()
+
+  set(XPU_TEMPLATE_SYNC_DEPENDS ${XPU_TEMPLATE_STAMP})
 else()
   # soft link to pytorch templates
   execute_process(COMMAND ln -sf ${CMAKE_SOURCE_DIR}/aten/src/ATen/templates ${CODEGEN_XPU_YAML_DIR})
+  set(XPU_TEMPLATE_SYNC_DEPENDS)
 endif()
 
 set(XPU_CODEGEN_COMMAND
@@ -119,6 +137,7 @@ add_custom_command(
   COMMAND
     ${XPU_INSTALL_HEADER_COMMAND}
   DEPENDS
+    ${XPU_TEMPLATE_SYNC_DEPENDS}
     torch_cpu
     ATEN_CPU_FILES_GEN_TARGET
     ATEN_XPU_FILES_GEN_TARGET
@@ -132,16 +151,6 @@ add_custom_command(
   WORKING_DIRECTORY ${TORCH_ROOT}
 )
 
-# Codegen post progress
-if(WIN32)
-  add_custom_target(DELETE_TEMPLATES ALL DEPENDS ${OUTPUT_LIST})
-  # Delete the copied templates folder only on Windows.
-  add_custom_command(
-    TARGET DELETE_TEMPLATES
-    POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E remove_directory "${DestPATH}"
-  )
-endif()
 
 # Ensure that all generated ATen XPU op files are built before compiling the
 # torch-xpu-ops library.
