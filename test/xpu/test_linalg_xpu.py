@@ -68,9 +68,22 @@ def large_bmm_backward(self, device):
 
 
 @setBlasBackendsToDefaultFinally
-@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    pass
+    m1 = torch.randint(2, 5, (2048, 2400), device='xpu', dtype=torch.float)
+    m2 = torch.randint(2, 5, (128, 2400), device='xpu', dtype=torch.float)
+
+    torch.backends.cuda.preferred_blas_library('cublaslt')
+    out1 = torch.nn.functional.linear(m1, m2)
+
+    torch.backends.cuda.preferred_blas_library('cublas')
+    out2 = torch.nn.functional.linear(m1, m2)
+
+    # Although blas preferred flags doesn't affect CPU currently,
+    # we set this to make sure the flag can switch back to default normally.
+    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
+
+    self.assertEqual(out1, out2)
+    self.assertEqual(out_ref, out2.cpu())
 
 
 @dtypes(torch.float, torch.double)
@@ -251,9 +264,9 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [1, 32, 1024])
+@parametrize("m", [1, 32, 64, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
