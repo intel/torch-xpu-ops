@@ -28,13 +28,13 @@ from typing import *  # noqa: F403
 from unittest.mock import patch
 
 import numpy as np
-import yaml
-
 import torch._custom_ops as custom_ops
 import torch.distributed
 import torch.testing._internal.optests as optests
 import torch.utils._pytree as pytree
 import torch.utils.cpp_extension
+
+import yaml
 from torch import Tensor
 from torch._custom_op.impl import CustomOp, infer_schema
 from torch._library.fake_profile import (
@@ -72,7 +72,6 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.custom_op_db import numpy_nonzero
 from torch.testing._internal.two_tensor import TwoTensor
-
 
 # Shadowed by `torch.testing._internal.common_utils.custom_op`
 from torch._custom_op.impl import custom_op  # usort: skip
@@ -456,7 +455,8 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
 
     def test_opcheck_fails_basic(self, device):
         @custom_op(f"{self.test_ns}::foo")
-        def foo(x: torch.Tensor) -> torch.Tensor: ...
+        def foo(x: torch.Tensor) -> torch.Tensor:
+            ...
 
         @foo.impl(["cpu", "cuda"])
         def foo_impl(x):
@@ -5078,7 +5078,7 @@ class TestOpProfiles(TestCase):
             loaded = read_profiles_from_yaml(yaml_str)
 
 
-only_for = ("xpu")
+only_for = "xpu"
 instantiate_device_type_tests(
     TestCustomOpTesting, globals(), only_for=only_for, allow_xpu=True
 )

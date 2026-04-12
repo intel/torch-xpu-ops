@@ -8,16 +8,17 @@
 
 # Owner(s): ["module: intel"]
 
+from itertools import product
+
+import numpy as np
+from torch.testing import make_tensor
 from torch.testing._internal.common_device_type import (
     dtypes,
-    instantiate_device_type_tests,
     dtypesIfXPU,
+    instantiate_device_type_tests,
 )
-from torch.testing._internal.common_utils import DeterministicGuard, run_tests
-from torch.testing import make_tensor
 from torch.testing._internal.common_dtype import all_types_complex_float8_and
-from itertools import product
-import numpy as np
+from torch.testing._internal.common_utils import DeterministicGuard, run_tests
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -178,8 +179,8 @@ with XPUPatchForImport(False):
     TestIndexing.test_index_put_deterministic_with_optional_tensors = (
         __test_index_put_deterministic_with_optional_tensors
     )
-    TestIndexing.test_index_put_src_datatype = (index_put_src_datatype)
-    TestIndexing.test_index_select = (index_select)
+    TestIndexing.test_index_put_src_datatype = index_put_src_datatype
+    TestIndexing.test_index_select = index_select
 
 instantiate_device_type_tests(NumpyTests, globals(), only_for=("xpu"), allow_xpu=True)
 

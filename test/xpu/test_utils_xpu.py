@@ -60,7 +60,6 @@ from torch.utils.checkpoint import (
 )
 from torch.utils.data import DataLoader
 
-
 # load_tests from torch.testing._internal.common_utils is used to automatically filter tests for
 # sharding on sandcastle. This line silences flake warnings
 load_tests = load_tests  # noqa: PLW0127
@@ -71,7 +70,6 @@ device_type = (
 TEST_GPU = torch.xpu.is_available() or torch.cuda.is_available()
 
 from torch.testing._internal.common_utils import run_tests, TestCase
-
 
 # mypy: disable-error-code="name-defined"
 
@@ -966,7 +964,9 @@ class TestDeviceUtils(TestCase):
             self.assertTrue(tree_all_only(torch.Tensor, is_meta_device, r))
 
 
-instantiate_device_type_tests(TestDeviceUtils, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(
+    TestDeviceUtils, globals(), only_for=("xpu"), allow_xpu=True
+)
 
 
 class TestCppExtensionUtils(TestCase):

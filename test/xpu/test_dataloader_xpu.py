@@ -245,10 +245,14 @@ with XPUPatchForImport(False):
             # Force sparse tensor invariants checks. check_pinning=True
             # reproduces gh-153143.
             torch._validate_sparse_coo_tensor_args(
-                t._indices(), t._values(), t.size(), t.is_coalesced(), check_pinning=False
+                t._indices(),
+                t._values(),
+                t.size(),
+                t.is_coalesced(),
+                check_pinning=False,
             )
         return lst
-    
+
     @parametrize(
         "context",
         [ctx for ctx in supported_multiprocessing_contexts if ctx is not None],

@@ -16,8 +16,6 @@ import contextlib
 import unittest
 import unittest.mock as mock
 
-from parameterized import parameterized_class
-
 import torch
 import torch._dynamo
 import torch._functorch
@@ -25,6 +23,7 @@ import torch._inductor
 import torch._inductor.decomposition
 import torch.utils._pytree as pytree
 from functorch.compile import aot_function, nop
+from parameterized import parameterized_class
 from torch._dynamo.functional_export import dynamo_graph_capture_for_export
 from torch._dynamo.testing import (
     AotEagerAndRecordGraphs,
@@ -40,7 +39,6 @@ from torch._inductor.pattern_matcher import (
     PatternMatcherPass,
     register_graph_pattern,
 )
-from torch.testing._internal.common_cuda import SM80OrLater
 from torch.testing._internal.common_utils import (
     run_tests,
     skipIfTorchDynamo,
@@ -48,8 +46,7 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
-from torch.testing._internal.triton_utils import requires_cuda_and_triton, requires_gpu
-
+from torch.testing._internal.triton_utils import requires_gpu
 
 nested_compile_region = torch.compiler.nested_compile_region
 
@@ -327,9 +324,7 @@ class TestInvokeSubgraphCompile(TestCase):
         x_clone = x.detach().clone().requires_grad_(True)
         y_clone = y.detach().clone().requires_grad_(True)
         backend = EagerAndRecordGraphs()
-        with (
-            torch.no_grad(),
-        ):
+        with (torch.no_grad(),):
             res = torch.compile(fn, backend=backend, fullgraph=True)(
                 mod, x_clone, y_clone
             )
@@ -1322,9 +1317,7 @@ class GraphModule(torch.nn.Module):
 
         opt_fn = torch.compile(fn, backend="inductor", fullgraph=True)
 
-        with (
-            torch.no_grad(),
-        ):
+        with (torch.no_grad(),):
             out = opt_fn(x, y)
         exp_out = fn(x_clone, y)
         self.assertEqual(exp_out, out)
@@ -3105,7 +3098,9 @@ class TestInvokeSubgraphReuse(TestCase):
     @contextlib.contextmanager
     def _count_speculate_calls(self):
         count = 0
-        orig = torch._dynamo.variables.higher_order_ops.speculate_subgraph_with_auto_output_flattening
+        orig = (
+            torch._dynamo.variables.higher_order_ops.speculate_subgraph_with_auto_output_flattening
+        )
 
         def _counting(*args, **kwargs):
             nonlocal count
@@ -3921,9 +3916,7 @@ class GraphModule(torch.nn.Module):
         {"strict": False},
         {"strict": True},
     ],
-    class_name_func=lambda cls,
-    _,
-    params: f"{cls.__name__}{'Strict' if params['strict'] else 'Nonstrict'}",
+    class_name_func=lambda cls, _, params: f"{cls.__name__}{'Strict' if params['strict'] else 'Nonstrict'}",
 )
 class TestInvokeSubgraphExport(TestCase):
     def test_simple_func(self):

@@ -24,7 +24,6 @@ from torch._vmap_internals import vmap
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests, skipIfTorchDynamo, TestCase
 
-
 FALLBACK_REGEX = r"There is a performance drop"
 
 
@@ -2854,7 +2853,9 @@ class TestVmapBatchedGradientLegacy(Namespace.TestVmapBaseLegacy):
         self.assertEqual(result, torch.zeros(B0, *x.shape, device=device))
 
 
-instantiate_device_type_tests(TestVmapBatchedGradientLegacy, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(
+    TestVmapBatchedGradientLegacy, globals(), only_for=("xpu"), allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
