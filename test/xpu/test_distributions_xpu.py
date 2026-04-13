@@ -155,6 +155,7 @@ def _test_poisson_gpu_sample(self):
             failure_rate=1e-3,
         )
 
+
 def _test_torch_binomial_dtype_errors(self):
     dtypes = [torch.int, torch.long, torch.short]
     devices = ["cpu", "xpu"]
@@ -179,6 +180,7 @@ def _test_torch_binomial_dtype_errors(self):
                 "binomial only supports floating-point dtypes for prob.*",
             ):
                 torch.binomial(total_count, total_prob)
+
 
 TestDistributions.test_beta_underflow_gpu = _test_beta_underflow_gpu
 TestDistributions.test_zero_excluded_binomial = _test_zero_excluded_binomial
