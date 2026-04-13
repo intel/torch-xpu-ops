@@ -373,7 +373,7 @@ def start_earlyoom() -> subprocess.Popen | None:
         earlyoom_path,
         "-m", "3",
         "-s", "100",
-        "-r", "3600",
+        "-r", "600",
         "--prefer", "^(python|pytest)"
     ]
     try:
@@ -431,13 +431,11 @@ def main():
     args = parser.parse_args()
 
     # Check required environment variables
-    if "NUM_GPUS" not in os.environ:
-        print("ERROR: Environment variable NUM_GPUS is not set.")
-        sys.exit(1)
-    if "ZE_AFFINITY_MASK" not in os.environ:
-        print("ERROR: Environment variable ZE_AFFINITY_MASK is not set.")
-        sys.exit(1)
-    num_gpus = int(os.environ.get("NUM_GPUS", "8"))
+    num_gpus = os.getenv('NUM_GPUS')
+    if num_gpus is None:
+        sys.exit("ERROR: Environment variable NUM_GPUS is not set.")
+    num_gpus = int(num_gpus)
+
     print(f"NUM_GPUS = {num_gpus}")
 
     # Change to pytorch directory (workflow already cd's there)
