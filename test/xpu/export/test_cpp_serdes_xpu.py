@@ -11,20 +11,14 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # Owner(s): ["module: intel"]
-import sys
-
 import torch
 from torch._export.serde.serialize import deserialize, serialize
 
-sys.path.append("../../../../test/export")
-
 try:
-    import testing
-
-    from . import test_export_xpu
+    from . import test_export_xpu, testing_xpu
 except ImportError:
     import test_export_xpu  # @manual=fbcode//caffe2/test:test_export-library
-    import testing  # @manual=fbcode//caffe2/test:test_export-library
+    import testing_xpu  # @manual=fbcode//caffe2/test:test_export-library
 
 from torch.export import export
 
@@ -47,7 +41,7 @@ def mocked_cpp_serdes_export(*args, **kwargs):
 def make_dynamic_cls(cls):
     cls_prefix = "CppSerdes"
 
-    test_class = testing.make_test_cls_with_mocked_export(
+    test_class = testing_xpu.make_test_cls_with_mocked_export(
         cls,
         cls_prefix,
         "_cpp_serdes",

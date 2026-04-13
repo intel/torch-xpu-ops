@@ -11,15 +11,12 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # Owner(s): ["module: intel"]
-import sys
-
-sys.path.append("../../../../test/export")
 
 try:
-    from . import test_export_xpu, testing
+    from . import test_export_xpu, testing_xpu as testing
 except ImportError:
     import test_export_xpu  # @manual=fbcode//caffe2/test:test_export-library
-    import testing  # @manual=fbcode//caffe2/test:test_export-library
+    import testing_xpu as testing  # @manual=fbcode//caffe2/test:test_export-library
 
 from torch.export import export
 

@@ -116,8 +116,6 @@ from torch.utils._pytree import (
     treespec_loads,
 )
 
-sys.path.append("../../../../test/export")
-
 if HAS_GPU:
     import triton
     import triton.language as tl
@@ -131,9 +129,9 @@ except ImportError:
     HAS_TORCHREC = False
 
 try:
-    import testing
+    import testing_xpu as testing
 except ImportError:
-    import testing  # @manual=fbcode//caffe2/test:test_export-library
+    import testing_xpu as testing  # @manual=fbcode//caffe2/test:test_export-library
 # The following import pattern matters as `test_export.export` is patched
 # in other files (like test_export_nonstrict.py). `torch.export.export`
 # will invalidate the patch.
