@@ -11,23 +11,30 @@
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
+#include <ATen/xpu/XPUGeneratorImpl.h>
+#include <ATen/xpu/XPUGraphsUtils.h>
+#include <c10/core/InferenceMode.h>
 #include <ATen/native/nested/NestedTensorUtils.h>
 #include <ATen/native/transformers/attention.h>
 #include <ATen/native/transformers/sdp_utils_cpp.h>
 #include <ATen/native/xpu/sycl/DropoutKernels.h>
 #include <ATen/ops/_scaled_dot_product_attention_math.h>
+#include <torch/autograd.h>
 
 #ifndef AT_PER_OPERATOR_HEADERS
 #include <ATen/Functions.h>
 #include <ATen/NativeFunctions.h>
 #else
 #include <ATen/ops/_scaled_dot_product_efficient_attention_native.h>
+#include <ATen/ops/empty.h>
 #include <ATen/ops/empty_like.h>
 #include <ATen/ops/full.h>
+#include <ATen/ops/from_blob.h>
 #include <ATen/ops/linear.h>
 #include <ATen/ops/scalar_tensor.h>
 #include <ATen/ops/scaled_dot_product_attention.h>
 #include <ATen/ops/split_native.h>
+#include <ATen/ops/zeros_like.h>
 #endif
 
 #include <ATen/native/transformers/SDPUtils.h>
@@ -320,16 +327,41 @@ std::tuple<Tensor, Tensor> native_multi_head_attention_xpu(
   return std::make_tuple(std::move(proj), std::move(qkt));
 }
 
-/**
- * Get the mask for dropout. only used for testing, not much
- * attention is paid to performance
- */
+// Reproduces the dropout mask from a host-side seed/offset (normal path).
 at::Tensor& _fill_mem_eff_dropout_mask_(
     Tensor& self,
     double dropout_p,
     const int64_t seed,
     const int64_t offset) {
-  auto mask = std::get<1>(xpu::dropout_kernel(self, dropout_p, true));
+  auto state = c10::make_intrusive<at::XPUGeneratorState>(
+      static_cast<uint64_t>(seed),
+      static_cast<uint64_t>(offset));
+  auto gen = at::make_generator<at::XPUGeneratorImpl>(
+      self.device().index(), std::move(state));
+  auto mask = std::get<1>(
+      xpu::fused_dropout_kernel(self, 1.0 - dropout_p, gen));
+  self.copy_(mask);
+  return self;
+}
+
+// Reproduces the dropout mask from device-side seed/offset tensors (graph
+// capture path). Constructs a temporary generator whose extragraph tensors
+// alias the provided device tensors so the SYCL kernel reads seed/offset
+// directly from device memory during graph replay — no D2H transfer.
+static at::Tensor& _fill_mem_eff_dropout_mask_from_device_tensors_(
+    Tensor& self,
+    double dropout_p,
+    const Tensor& philox_seed_t,
+    const Tensor& philox_offset_t) {
+  auto state = c10::make_intrusive<at::XPUGeneratorState>();
+  state->capturing_ = true;
+  state->seed_extragraph_ = philox_seed_t;
+  state->offset_extragraph_ = philox_offset_t;
+  state->offset_intragraph_ = 0;
+  auto gen = at::make_generator<at::XPUGeneratorImpl>(
+      self.device().index(), std::move(state));
+  auto mask = std::get<1>(
+      xpu::fused_dropout_kernel(self, 1.0 - dropout_p, gen));
   self.copy_(mask);
   return self;
 }
@@ -360,6 +392,51 @@ _scaled_dot_product_efficient_attention_xpu(
         MAX_BATCH_SIZE,
         ").");
   }
+
+  // Snapshot the philox seed/offset *before* running the math kernel so that
+  // the backward pass can replay the same dropout mask.
+  // During XPU graph capture we cannot do host-side reads; instead we emit a
+  // device-side copy of the generator's extragraph tensors into output scalar
+  // tensors so each graph replay writes the correct values into them.
+  Tensor philox_seed_tensor, philox_offset_tensor;
+  if (dropout_p > 0.0) {
+    auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
+        std::nullopt, at::xpu::detail::getDefaultXPUGenerator());
+    if (at::xpu::currentStreamCaptureStatus() != at::xpu::CaptureStatus::Executing) {
+      // Graph capture path: output device tensors that alias the extragraph
+      // seed/offset buffers, updated on each replay by replay_prologue().
+      philox_seed_tensor =
+          at::empty({1}, query.options().dtype(at::kLong));
+      philox_offset_tensor =
+          at::empty({1}, query.options().dtype(at::kLong));
+      PhiloxXpuState pstate;
+      {
+        std::lock_guard<std::mutex> lock(gen->mutex_);
+        pstate = gen->philox_xpu_state(0);
+      }
+      auto dev_opts = at::TensorOptions().dtype(at::kLong).device(query.device());
+      at::Tensor seed_eg   = at::from_blob(pstate.seed_.ptr,   {1}, dev_opts);
+      at::Tensor offset_eg = at::from_blob(pstate.offset_.ptr, {1}, dev_opts);
+      philox_seed_tensor.copy_(seed_eg);
+      philox_offset_tensor.copy_(offset_eg);
+      philox_offset_tensor.add_(static_cast<int64_t>(pstate.offset_intragraph_));
+    } else {
+      // Normal path: snapshot host-side seed/offset.
+      std::lock_guard<std::mutex> lock(gen->mutex_);
+      philox_seed_tensor = at::scalar_tensor(
+          static_cast<int64_t>(gen->current_seed()),
+          query.options().dtype(at::kLong));
+      philox_offset_tensor = at::scalar_tensor(
+          static_cast<int64_t>(gen->philox_offset_per_thread()),
+          query.options().dtype(at::kLong));
+    }
+  } else {
+    philox_seed_tensor =
+        at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong));
+    philox_offset_tensor =
+        at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong));
+  }
+
   auto res = at::_scaled_dot_product_attention_math(
       query,
       key,
@@ -387,8 +464,137 @@ _scaled_dot_product_efficient_attention_xpu(
           {B, H, (compute_log_sumexp ? ceil_div(L, kAlignLSE) * kAlignLSE : 0)},
           0.0,
           attention.options()),
-      at::scalar_tensor(1, query.options()),
-      at::scalar_tensor(1, query.options()));
+      std::move(philox_seed_tensor),
+      std::move(philox_offset_tensor));
+}
+
+/**
+ * Fall back implementation of efficient attention backward.
+ * Since the forward path uses _scaled_dot_product_attention_math (which is
+ * fully differentiable), we re-run the math forward with autograd enabled
+ * and use torch::autograd::grad to compute the gradients for query, key,
+ * value (and optionally attn_bias).
+ */
+std::tuple<Tensor, Tensor, Tensor, Tensor>
+_scaled_dot_product_efficient_attention_backward_xpu(
+    const Tensor& grad_out_,
+    const Tensor& query,
+    const Tensor& key,
+    const Tensor& value,
+    const Tensor& attn_bias,
+    const Tensor& out,
+    const Tensor& logsumexp,
+    const Tensor& philox_seed,
+    const Tensor& philox_offset,
+    double dropout_p,
+    std::array<bool, 4> grad_input_mask,
+    bool is_causal,
+    std::optional<double> scale) {
+  if (!grad_out_.defined()) {
+    return std::make_tuple(Tensor{}, Tensor{}, Tensor{}, Tensor{});
+  }
+
+  // Re-run the math-based forward with autograd enabled so we can
+  // differentiate through it.
+  auto q = query.detach().clone().set_requires_grad(true);
+  auto k = key.detach().clone().set_requires_grad(true);
+  auto v = value.detach().clone().set_requires_grad(true);
+
+  std::optional<Tensor> attn_bias_opt;
+  Tensor ab;
+  if (attn_bias.defined()) {
+    ab = attn_bias.detach().clone().set_requires_grad(true);
+    attn_bias_opt = ab;
+  }
+
+  // When dropout was used in the forward pass, rebuild the exact same mask
+  // using the captured philox seed/offset via a temporary generator.
+  std::optional<Tensor> dropout_mask_opt;
+  if (dropout_p > 0.0 && philox_seed.defined() && philox_offset.defined()) {
+    int64_t B = query.size(0);
+    int64_t H = query.size(1);
+    int64_t L_q = query.size(2);
+    int64_t L_k = key.size(2);
+    Tensor mask = at::empty(
+        {B, H, L_q, L_k},
+        query.options().dtype(at::kFloat).device(query.device()));
+    if (at::xpu::currentStreamCaptureStatus() != at::xpu::CaptureStatus::Executing) {
+      // Graph capture path: philox_seed/offset are XPU device tensors.
+      _fill_mem_eff_dropout_mask_from_device_tensors_(
+          mask, dropout_p, philox_seed, philox_offset);
+    } else {
+      at::native::_fill_mem_eff_dropout_mask_(
+          mask,
+          dropout_p,
+          philox_seed.item<int64_t>(),
+          philox_offset.item<int64_t>());
+    }
+    dropout_mask_opt = mask.to(at::kBool);
+  }
+
+  Tensor attention;
+  {
+    // The autograd engine executes backward nodes with the GraphTask's saved
+    // ThreadLocalState restored.  That state was captured during the forward
+    // pass, at which point VariableType had installed an
+    // AutoDispatchBelowADInplaceOrView guard.  That guard adds the autograd
+    // dispatch keys to the TLS *excluded* set.  When the engine restores this
+    // state, all autograd keys stay excluded for the entire backward node —
+    // even if AutoGradMode(true) is set.  IncludeDispatchKeyGuard only
+    // modifies the *included* set and cannot override the excluded set.
+    //
+    // The correct fix mirrors what InferenceMode(false) does: remove the
+    // autograd keys from the excluded set directly, then re-enable grad_mode.
+    // We use _force_tls_local_dispatch_key_set for atomic RAII replacement.
+    at::AutoGradMode enable_grad(true);
+    auto saved_ks = c10::impl::tls_local_dispatch_key_set();
+    c10::impl::PODLocalDispatchKeySet new_ks{};
+    new_ks.set_included(saved_ks.included_);
+    new_ks.set_excluded(saved_ks.excluded_ - c10::autograd_dispatch_keyset);
+    c10::impl::_force_tls_local_dispatch_key_set(new_ks);
+    struct RestoreKS {
+      c10::impl::LocalDispatchKeySet saved;
+      ~RestoreKS() { c10::impl::_force_tls_local_dispatch_key_set(saved); }
+    } restore_ks{saved_ks};
+
+    // Re-run the forward with the reproduced mask. We must pass the actual
+    // dropout_p (not 0.0) so that _scaled_dot_product_attention_math applies
+    // the correct scaling factor 1/(1-dropout_p) alongside the mask, matching
+    // exactly what the original forward computed.
+    auto res = at::_scaled_dot_product_attention_math(
+        q,
+        k,
+        v,
+        attn_bias_opt,
+        dropout_mask_opt.has_value() ? dropout_p : 0.0,
+        is_causal,
+        dropout_mask_opt,
+        scale);
+    attention = std::get<0>(res);
+  }
+
+  TORCH_INTERNAL_ASSERT(
+      attention.requires_grad(),
+      "_scaled_dot_product_efficient_attention_backward_xpu: "
+      "re-run of _scaled_dot_product_attention_math did not produce a tensor "
+      "with requires_grad=True. This is a bug — the autograd graph was not "
+      "recorded despite removing autograd keys from the excluded dispatch key set.");
+
+  std::vector<Tensor> inputs = {q, k, v};
+  if (ab.defined()) inputs.push_back(ab);
+
+  auto grads = torch::autograd::grad(
+      {attention}, inputs, {grad_out_}, /*retain_graph=*/false);
+
+  Tensor grad_q = grads[0], grad_k = grads[1], grad_v = grads[2];
+  Tensor grad_bias;
+  if (ab.defined()) grad_bias = grads[3];
+
+  return std::make_tuple(
+      std::move(grad_q),
+      std::move(grad_k),
+      std::move(grad_v),
+      std::move(grad_bias));
 }
 
 } // namespace native
