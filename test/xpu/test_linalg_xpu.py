@@ -430,6 +430,12 @@ def addmm_relu_tunableop_rocm(self, device, dtype):
         self._test_addmm_impl(torch._addmm_activation, "relu", device, dtype)
 
 
+@unittest.skip("xpu does not support TunableOp rotating buffer API")
+@dtypes(torch.float)
+def rotating_buffer_tunableop(self, device, dtype):
+    pass
+
+
 def get_tunableop_untuned_filename():
     import os
 
@@ -767,6 +773,7 @@ TestLinalg.test_svd_driver_argument_behavior_on_xpu = (
 TestLinalg.test_svd_internal_parameter_combinations = (
     svd_internal_parameter_combinations
 )
+TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
 TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True
