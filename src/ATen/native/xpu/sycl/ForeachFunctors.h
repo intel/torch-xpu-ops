@@ -12,9 +12,9 @@
 #include <ATen/OpMathType.h>
 #include <ATen/native/ForeachUtils.h>
 
+#include <ATen/native/xpu/sycl/DeviceAddCmulCdiv.h>
 #include <ATen/native/xpu/sycl/MultiTensorApply.h>
 #include <ATen/native/xpu/sycl/Pow.h>
-#include <ATen/native/xpu/sycl/PointwiseFMAHelper.h>
 
 namespace at::native::xpu {
 
@@ -261,13 +261,12 @@ struct PointwiseOpScalarFunctor {
         load_store(r_args[2], args[2], 0, i_start);
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
-          r_args[0][ii] = static_cast<T>(
-              pointwise_op_impl<opmath_t>(
-                  static_cast<opmath_t>(r_args[0][ii]),
-                  static_cast<opmath_t>(r_args[1][ii]),
-                  static_cast<opmath_t>(r_args[2][ii]),
-                  scalar,
-                  op));
+          r_args[0][ii] = static_cast<T>(pointwise_op_impl<opmath_t>(
+              static_cast<opmath_t>(r_args[0][ii]),
+              static_cast<opmath_t>(r_args[1][ii]),
+              static_cast<opmath_t>(r_args[2][ii]),
+              scalar,
+              op));
         }
         load_store(args[res_arg_index], r_args[0], i_start, 0);
       }
@@ -278,13 +277,12 @@ struct PointwiseOpScalarFunctor {
             r_args, args, i_start, chunk_size, n, item_idx, item_range);
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
-          r_args[0][ii] = static_cast<T>(
-              pointwise_op_impl<opmath_t>(
-                  static_cast<opmath_t>(r_args[0][ii]),
-                  static_cast<opmath_t>(r_args[1][ii]),
-                  static_cast<opmath_t>(r_args[2][ii]),
-                  scalar,
-                  op));
+          r_args[0][ii] = static_cast<T>(pointwise_op_impl<opmath_t>(
+              static_cast<opmath_t>(r_args[0][ii]),
+              static_cast<opmath_t>(r_args[1][ii]),
+              static_cast<opmath_t>(r_args[2][ii]),
+              scalar,
+              op));
         }
         store_args(
             args[res_arg_index],
@@ -331,13 +329,12 @@ struct PointwiseOpScalarListFunctor {
         load_store(r_args[2], args[2], 0, i_start);
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
-          r_args[0][ii] = static_cast<T>(
-              pointwise_op_impl<opmath_t>(
-                  static_cast<opmath_t>(r_args[0][ii]),
-                  static_cast<opmath_t>(r_args[1][ii]),
-                  static_cast<opmath_t>(r_args[2][ii]),
-                  scalar,
-                  op));
+          r_args[0][ii] = static_cast<T>(pointwise_op_impl<opmath_t>(
+              static_cast<opmath_t>(r_args[0][ii]),
+              static_cast<opmath_t>(r_args[1][ii]),
+              static_cast<opmath_t>(r_args[2][ii]),
+              scalar,
+              op));
         }
         load_store(args[res_arg_index], r_args[0], i_start, 0);
       }
@@ -348,13 +345,12 @@ struct PointwiseOpScalarListFunctor {
             r_args, args, i_start, chunk_size, n, item_idx, item_range);
 #pragma unroll
         for (int ii = 0; ii < kILP; ii++) {
-          r_args[0][ii] = static_cast<T>(
-              pointwise_op_impl<opmath_t>(
-                  static_cast<opmath_t>(r_args[0][ii]),
-                  static_cast<opmath_t>(r_args[1][ii]),
-                  static_cast<opmath_t>(r_args[2][ii]),
-                  scalar,
-                  op));
+          r_args[0][ii] = static_cast<T>(pointwise_op_impl<opmath_t>(
+              static_cast<opmath_t>(r_args[0][ii]),
+              static_cast<opmath_t>(r_args[1][ii]),
+              static_cast<opmath_t>(r_args[2][ii]),
+              scalar,
+              op));
         }
         store_args(
             args[res_arg_index],
