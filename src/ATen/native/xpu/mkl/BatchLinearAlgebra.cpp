@@ -477,4 +477,173 @@ void triangular_solve_mkl(
       });
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ SVD ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+template <typename scalar_t>
+void svd_mkl_impl(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+  using value_t = typename c10::scalar_value_type<scalar_t>::type;
+
+  TORCH_CHECK(A.device().is_xpu(), "A must be an XPU tensor");
+
+  if (A.numel() == 0) {
+    info.zero_();
+    return;
+  }
+
+  auto A_contig = A.contiguous();
+  int64_t m = A_contig.size(-2); // row
+  int64_t n = A_contig.size(-1); // column
+  int64_t k = std::min(m, n);
+  int64_t lda = n;
+  int64_t ldu = n;
+  int64_t ldvt = full_matrices ? m : k;
+  int64_t batch_size = native::batchCount(A_contig);
+
+  auto jobz = compute_uv ? (full_matrices ? oneapi::mkl::jobsvd::vectors
+                                          : oneapi::mkl::jobsvd::somevec)
+                         : oneapi::mkl::jobsvd::novec;
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+
+  Tensor info_cpu = at::zeros(info.sizes(), info.options().device(at::kCPU));
+  int32_t* info_data = info_cpu.data_ptr<int32_t>();
+
+  int64_t bufsize = oneapi::mkl::lapack::gesvd_scratchpad_size<scalar_t>(
+      queue, jobz, jobz, n, m, lda, ldu, ldvt);
+  scalar_t* buffer = sycl::malloc_device<scalar_t>(bufsize, queue);
+
+  // Process each batch element individually with gesvd
+  for (int64_t i = 0; i < batch_size; ++i) {
+    scalar_t* a_ptr = A_contig.data_ptr<scalar_t>();
+    value_t* s_ptr = S.select(0, i).data_ptr<value_t>();
+
+    scalar_t* vt_ptr =
+        compute_uv ? U.select(0, i).data_ptr<scalar_t>() : nullptr;
+    scalar_t* u_ptr =
+        compute_uv ? Vh.select(0, i).data_ptr<scalar_t>() : nullptr;
+
+    try {
+      oneapi::mkl::lapack::gesvd(
+          queue,
+          jobz,
+          jobz,
+          n,
+          m,
+          a_ptr,
+          lda,
+          s_ptr,
+          u_ptr,
+          ldu,
+          vt_ptr,
+          ldvt,
+          buffer,
+          bufsize);
+    } catch (const oneapi::mkl::lapack::exception& e) {
+      info_data[i] = e.info();
+    }
+
+    sycl::free(buffer, queue);
+  }
+
+  // Vh.as_strided_({m, k}, {1, m});
+  if (compute_uv && !full_matrices) {
+    U.as_strided_({k, m}, {1, k});
+    Vh.as_strided_({k, n}, {1, k});
+  }
+
+  U.transpose_(-2, -1);
+  Vh.transpose_(-2, -1);
+  info.copy_(info_cpu);
+}
+
+void svd_mkl(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+  AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "svd_mkl_xpu", [&] {
+    svd_mkl_impl<scalar_t>(
+        A, full_matrices, compute_uv, driver, U, S, Vh, info);
+  });
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ EIGH ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+template <typename scalar_t>
+void eigh_mkl_impl(
+    const Tensor& eigenvalues,
+    const Tensor& eigenvectors,
+    const Tensor& infos,
+    bool upper,
+    bool compute_eigenvectors) {
+  using value_t = typename c10::scalar_value_type<scalar_t>::type;
+
+  TORCH_CHECK(
+      eigenvectors.device().is_xpu(), "eigenvectors must be an XPU tensor");
+
+  if (eigenvectors.numel() == 0) {
+    infos.zero_();
+    return;
+  }
+
+  int64_t n = eigenvectors.size(-1);
+  int64_t lda = std::max<int64_t>(1, n);
+  int64_t batch_size = native::batchCount(eigenvectors);
+
+  auto jobz =
+      compute_eigenvectors ? oneapi::mkl::job::vec : oneapi::mkl::job::novec;
+  auto uplo = upper ? oneapi::mkl::uplo::upper : oneapi::mkl::uplo::lower;
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+
+  Tensor infos_cpu = at::zeros(infos.sizes(), infos.options().device(at::kCPU));
+  int32_t* infos_data = infos_cpu.data_ptr<int32_t>();
+
+  int64_t bufsize = oneapi::mkl::lapack::syevd_scratchpad_size<scalar_t>(
+      queue, jobz, uplo, n, lda);
+  scalar_t* buffer = sycl::malloc_device<scalar_t>(bufsize, queue);
+
+  int64_t vectors_stride = native::matrixStride(eigenvectors);
+  int64_t values_stride = eigenvalues.size(-1);
+
+  for (int64_t i = 0; i < batch_size; ++i) {
+    scalar_t* a_ptr = eigenvectors.data_ptr<scalar_t>() + i * vectors_stride;
+    value_t* w_ptr = eigenvalues.data_ptr<value_t>() + i * values_stride;
+
+    try {
+      oneapi::mkl::lapack::syevd(
+          queue, jobz, uplo, n, a_ptr, lda, w_ptr, buffer, bufsize);
+    } catch (const oneapi::mkl::lapack::exception& e) {
+      infos_data[i] = e.info();
+    }
+  }
+
+  sycl::free(buffer, queue);
+  infos.copy_(infos_cpu);
+}
+
+void eigh_mkl(
+    const Tensor& eigenvalues,
+    const Tensor& eigenvectors,
+    const Tensor& infos,
+    bool upper,
+    bool compute_eigenvectors) {
+  AT_DISPATCH_FLOATING_TYPES(eigenvectors.scalar_type(), "eigh_mkl_xpu", [&] {
+    eigh_mkl_impl<scalar_t>(
+        eigenvalues, eigenvectors, infos, upper, compute_eigenvectors);
+  });
+}
+
 } // namespace at::native::xpu

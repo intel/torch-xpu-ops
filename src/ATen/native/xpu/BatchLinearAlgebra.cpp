@@ -134,4 +134,109 @@ void triangular_solve_kernel_xpu(
 
 REGISTER_XPU_DISPATCH(triangular_solve_stub, &triangular_solve_kernel_xpu);
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ SVD ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+void svd_kernel_fallback(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+  auto A_cpu = A.to(A.options().device(kCPU));
+  auto U_cpu = U.to(U.options().device(kCPU));
+  auto S_cpu = S.to(S.options().device(kCPU));
+  auto Vh_cpu = Vh.to(Vh.options().device(kCPU));
+  auto info_cpu = info.to(info.options().device(kCPU));
+
+  svd_stub(
+      at::kCPU,
+      A_cpu,
+      full_matrices,
+      compute_uv,
+      driver,
+      U_cpu,
+      S_cpu,
+      Vh_cpu,
+      info_cpu);
+
+  if (compute_uv) {
+    U.copy_(U_cpu);
+    Vh.copy_(Vh_cpu);
+  }
+  S.copy_(S_cpu);
+  info.copy_(info_cpu);
+}
+
+void svd_kernel_xpu(
+    const Tensor& A,
+    const bool full_matrices,
+    const bool compute_uv,
+    const std::optional<std::string_view>& driver,
+    const Tensor& U,
+    const Tensor& S,
+    const Tensor& Vh,
+    const Tensor& info) {
+#if defined(USE_ONEMKL_XPU)
+  native::xpu::svd_mkl(A, full_matrices, compute_uv, driver, U, S, Vh, info);
+#else
+  svd_kernel_fallback(A, full_matrices, compute_uv, driver, U, S, Vh, info);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(svd_stub, &svd_kernel_xpu);
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ EIGH ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+void linalg_eigh_kernel_fallback(
+    const Tensor& eigenvalues,
+    const Tensor& eigenvectors,
+    const Tensor& infos,
+    bool upper,
+    bool compute_eigenvectors) {
+  auto eigenvalues_cpu = eigenvalues.to(eigenvalues.options().device(kCPU));
+  auto eigenvectors_cpu = eigenvectors.to(eigenvectors.options().device(kCPU));
+  auto infos_cpu = infos.to(infos.options().device(kCPU));
+
+  linalg_eigh_stub(
+      at::kCPU,
+      eigenvalues_cpu,
+      eigenvectors_cpu,
+      infos_cpu,
+      upper,
+      compute_eigenvectors);
+
+  eigenvalues.copy_(eigenvalues_cpu);
+  eigenvectors.copy_(eigenvectors_cpu);
+  infos.copy_(infos_cpu);
+}
+
+void linalg_eigh_kernel_xpu(
+    const Tensor& eigenvalues,
+    const Tensor& eigenvectors,
+    const Tensor& infos,
+    bool upper,
+    bool compute_eigenvectors) {
+#if defined(USE_ONEMKL_XPU)
+  native::xpu::eigh_mkl(
+      eigenvalues, eigenvectors, infos, upper, compute_eigenvectors);
+#else
+  linalg_eigh_kernel_fallback(
+      eigenvalues, eigenvectors, infos, upper, compute_eigenvectors);
+#endif // USE_ONEMKL_XPU
+}
+
+REGISTER_XPU_DISPATCH(linalg_eigh_stub, &linalg_eigh_kernel_xpu);
+
+TORCH_IMPL_FUNC(linalg_cholesky_ex_xpu_out)
+(const Tensor& A,
+ bool upper,
+ bool check_errors,
+ const Tensor& L,
+ const Tensor& info) {
+  xpu::linalg_cholesky_ex_kernel(A, upper, check_errors, L, info);
+}
+
 } // namespace at::native
