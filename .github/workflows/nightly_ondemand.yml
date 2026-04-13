@@ -15,11 +15,10 @@ env:
 
 jobs:
   test:
-    runs-on: build
+    runs-on: ${{ INPUTS.node_name }}
     env:
       bbb: 2
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env
-        uses: ./.github/workflows/_linux_e2e.yml
+      - name: Check UT Results
+        run: |
+          ip a
