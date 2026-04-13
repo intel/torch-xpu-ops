@@ -83,6 +83,7 @@ runs:
       if: ${{ inputs.ut_name == 'skipped_ut' }}
       run: |
         export PYTORCH_TEST_WITH_SLOW=1
+        export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
         mkdir -p ut_log/skipped_ut
         cd pytorch/third_party/torch-xpu-ops/test/xpu
         python run_test_with_skip.py --test-cases skipped \
