@@ -142,6 +142,7 @@ jobs:
     with:
       ut: op_extended,test_xpu
       runner: Windows_CI
+      build_runner: Windows_CI_Build
       src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
       has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
