@@ -23,7 +23,6 @@ from torch._higher_order_ops.wrap import wrap
 from torch._library.fake_class_registry import FakeScriptObject
 from torch.export._trace import _export
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
@@ -32,6 +31,7 @@ from torch.testing._internal.common_utils import (
     skipIfTorchDynamo,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.torchbind_impls import (
     _empty_tensor_queue,
     init_torchbind_implementations,

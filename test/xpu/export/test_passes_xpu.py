@@ -4,6 +4,8 @@ with test_functionalization_with_native_python_assertion)
 """
 
 # Owner(s): ["oncall: export"]
+# flake8: noqa
+
 import math
 import operator
 import unittest
@@ -56,7 +58,6 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.torchbind_impls import init_torchbind_implementations
 from torch.utils import _pytree as pytree
-
 
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 TEST_GPU = TEST_CUDA or TEST_XPU
@@ -1341,13 +1342,21 @@ default](args = (%x, %b_state), kwargs = {})
         ep = torch.export.export(M(), (torch.ones(3),))
         ep = move_to_device_pass(ep, device_type)
         ep.graph_module.recompile()
-        expected_code = """\
+        expected_code = (
+            """\
 def forward(self, x):
-    _assert_tensor_metadata_default = torch.ops.aten._assert_tensor_metadata.default(x, dtype = torch.float32, device = 'cuda', layout = torch.strided);  _assert_tensor_metadata_default = None
-    to = torch.ops.aten.to.device(x, 'cuda', torch.float32);  x = None
-    add = torch.ops.aten.add.Tensor(to, to);  to = None
-    return (add,)
-    """.replace("'cuda'", repr(device_type))
+"""
+            "    _assert_tensor_metadata_default = "
+            "torch.ops.aten._assert_tensor_metadata.default("
+            "x, dtype = torch.float32, device = 'cuda', layout = torch.strided"
+            ");  _assert_tensor_metadata_default = None\n"
+            "    to = torch.ops.aten.to.device(x, 'cuda', torch.float32);  x = None\n"
+            "    add = torch.ops.aten.add.Tensor(to, to);  to = None\n"
+            "    return (add,)\n"
+            "    "
+        ).replace(
+            "'cuda'", repr(device_type)
+        )
         self.assertExpectedInline(
             ep.graph_module.code.strip("\n"),
             expected_code,
@@ -1364,13 +1373,22 @@ def forward(self, x):
         ep = torch.export.export(M(), (torch.ones(3),))
         ep = move_to_device_pass(ep, device_type)
         ep.graph_module.submod_1.recompile()
-        expected_code = """\
+        expected_code = (
+            """\
 def forward(self, arg0_1):
-    _assert_tensor_metadata_default = torch.ops.aten._assert_tensor_metadata.default(arg0_1, dtype = torch.float32, device = 'cuda', layout = torch.strided);  _assert_tensor_metadata_default = None
-    to = torch.ops.aten.to.dtype_layout(arg0_1, dtype = torch.float32, layout = torch.strided, device = 'cuda');  arg0_1 = None
-    add = torch.ops.aten.add.Tensor(to, to);  to = None
-    return (add,)
-    """.replace("'cuda'", repr(device_type))
+"""
+            "    _assert_tensor_metadata_default = "
+            "torch.ops.aten._assert_tensor_metadata.default("
+            "arg0_1, dtype = torch.float32, device = 'cuda', layout = torch.strided"
+            ");  _assert_tensor_metadata_default = None\n"
+            "    to = torch.ops.aten.to.dtype_layout("
+            "arg0_1, dtype = torch.float32, layout = torch.strided, device = 'cuda'"
+            ");  arg0_1 = None\n"
+            "    add = torch.ops.aten.add.Tensor(to, to);  to = None\n"
+            "    return (add,)"
+        ).replace(
+            "'cuda'", repr(device_type)
+        )
         self.assertExpectedInline(
             ep.graph_module.submod_1.code.strip("\n"),
             expected_code,
@@ -1440,9 +1458,15 @@ def forward(self, arg0_1):
         ep_cuda = move_to_device_pass(ep, location=location)
 
         # Verify example_inputs moved to the current accelerator
-        self.assertEqual(ep_cuda.example_inputs[0][0].device, torch.device(f"{device_type}:0"))
-        self.assertEqual(ep_cuda.example_inputs[0][1].device, torch.device(f"{device_type}:0"))
-        self.assertEqual(ep_cuda.example_inputs[1]["z"].device, torch.device(f"{device_type}:0"))
+        self.assertEqual(
+            ep_cuda.example_inputs[0][0].device, torch.device(f"{device_type}:0")
+        )
+        self.assertEqual(
+            ep_cuda.example_inputs[0][1].device, torch.device(f"{device_type}:0")
+        )
+        self.assertEqual(
+            ep_cuda.example_inputs[1]["z"].device, torch.device(f"{device_type}:0")
+        )
 
 
 if __name__ == "__main__":

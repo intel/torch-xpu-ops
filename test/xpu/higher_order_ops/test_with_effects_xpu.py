@@ -11,6 +11,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 # Owner(s): ["module: intel"]
+# flake8: noqa
 
 import unittest
 from collections import deque

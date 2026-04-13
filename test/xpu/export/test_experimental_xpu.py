@@ -41,7 +41,6 @@ from torch.testing import FileCheck
 from torch.testing._internal.common_utils import TEST_CUDA, TEST_XPU
 from torch.utils import _pytree as pytree
 
-
 GLOBAL_LIST = []
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 TEST_GPU = TEST_CUDA or TEST_XPU
@@ -1439,7 +1438,9 @@ def forward(self, arg0_1):
     _to_copy_10 = torch.ops.aten._to_copy.default(sum_5, dtype = torch.int32, memory_format = torch.contiguous_format);  sum_5 = None
     _to_copy_11 = torch.ops.aten._to_copy.default(getitem_7, dtype = torch.int32, memory_format = torch.contiguous_format);  getitem_7 = None
     return (arg0_1, _to_copy_3, _to_copy_4, _to_copy_6, _to_copy_7, _to_copy_8, _to_copy_9, _to_copy_10, _to_copy_11)"""
-            expected_code = expected_code.replace("device(type='cuda', index=0)", f"device(type='{device_type}', index=0)")
+            expected_code = expected_code.replace(
+                "device(type='cuda', index=0)", f"device(type='{device_type}', index=0)"
+            )
             self.assertExpectedInline(
                 str(joint_with_descriptors.graph_module.code).strip(),
                 expected_code,

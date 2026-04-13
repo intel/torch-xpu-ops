@@ -73,6 +73,7 @@ from torch.fx.experimental.symbolic_shapes import GuardOnDataDependentSymNode, S
 from torch.nn.attention.flex_attention import flex_attention
 from torch.nn.utils.rnn import PackedSequence
 from torch.testing import FileCheck
+
 # from torch.testing._internal.common_cuda import SM80OrLater
 from torch.testing._internal.common_device_type import tol, toleranceOverride
 from torch.testing._internal.common_utils import (
@@ -6399,7 +6400,6 @@ def forward(self, primals_1, tangents_1):
         import math
 
         import networkx as nx
-
         from torch._functorch.partitioners import _find_infinite_capacity_path
 
         # Test 1: Verify _find_infinite_capacity_path finds a path with edge reasons
@@ -7640,7 +7640,9 @@ class TestAOTModuleSimplified(AOTTestCase):
                 continue
             self.assertTrue(node.stack_trace is not None)
             if "test_aotdispatch_xpu.py" not in node.stack_trace:
-                raise AssertionError("Expected 'test_aotdispatch_xpu.py' in stack trace")
+                raise AssertionError(
+                    "Expected 'test_aotdispatch_xpu.py' in stack trace"
+                )
 
         def assert_compiler(gm: torch.fx.GraphModule, _):
             if torch.ops.aten.copy_.default not in [x.target for x in gm.graph.nodes]:

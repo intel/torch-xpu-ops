@@ -24,7 +24,6 @@ from typing import NamedTuple
 from torch.testing._internal.inductor_utils import GPU_TYPE, HAS_GPU
 from torch.testing._internal.triton_utils import requires_gpu
 
-
 if HAS_GPU:
     import triton
     import triton.language as tl
@@ -474,8 +473,13 @@ def forward(self, x):
 
     def test_symint_list(self):
         # This reflects the behavior from inductor's ExternFallbackNode
+        from torch._dynamo.source import ConstantSource
+
         shape_env = torch.fx.experimental.symbolic_shapes.ShapeEnv()
-        symint = shape_env.create_unbacked_symint()
+        symint = shape_env.create_symintnode(
+            shape_env.create_symbol(2, source=ConstantSource("symint_list")),
+            hint=2,
+        )
         serializer = GraphModuleSerializer(None, None)  # type: ignore[arg-type]
         res = serializer.serialize_inputs(
             torch.ops.aten.ones.default, ([1, symint, 3],), {}
@@ -1476,12 +1480,10 @@ class TestDeserialize(TestCase):
         ep = torch.export.export(M(), (torch.ones(3, 3), None, torch.ones(3, 3)))
 
         serialized_program = ExportedProgramSerializer(None, 2).serialize(ep)
-        serialized_program.exported_program.graph_module.signature.input_specs[1] = (
-            schema.InputSpec.create(
-                user_input=schema.UserInputSpec(
-                    arg=schema.Argument.create(as_none=True)
-                )
-            )
+        serialized_program.exported_program.graph_module.signature.input_specs[
+            1
+        ] = schema.InputSpec.create(
+            user_input=schema.UserInputSpec(arg=schema.Argument.create(as_none=True))
         )
         ep = ExportedProgramDeserializer(None).deserialize(
             serialized_program.exported_program, {}, {}, {}

@@ -116,13 +116,11 @@ from torch.utils._pytree import (
     treespec_loads,
 )
 
-
 sys.path.append("../../../../test/export")
 
 if HAS_GPU:
     import triton
     import triton.language as tl
-
     from torch._library import capture_triton
 
 try:
@@ -140,7 +138,6 @@ except ImportError:
 # in other files (like test_export_nonstrict.py). `torch.export.export`
 # will invalidate the patch.
 from torch.export import export
-
 
 device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "cpu"
 
@@ -706,7 +703,9 @@ class TestExport(TestCase):
             def forward(self, x, y):
                 f = lambda x, y: (
                     (x * y).to("cpu", memory_format=torch.channels_last) + 1
-                ).sum(dim=0)  # noqa: E731
+                ).sum(
+                    dim=0
+                )  # noqa: E731
                 vmapped = torch.vmap(f)(x, y)
                 return vmapped.sum(dim=0)
 
@@ -6431,7 +6430,6 @@ def forward(self, p_linear_weight, p_linear_bias, b_buffer, x):
 
     def test_replaced_unbacked_bindings(self):
         import sympy
-
         from torch.utils._sympy.symbol import prefix_str, symbol_is_type, SymT
 
         class Foo(torch.nn.Module):
@@ -10006,7 +10004,6 @@ def forward(self, b_a_buffer, x):
 
     def test_ccode_python_mod(self):
         import sympy
-
         from torch.utils._sympy.functions import PythonMod
 
         class Foo(torch.nn.Module):
@@ -10225,7 +10222,6 @@ def forward(self, b_a_buffer, x):
         from unittest.mock import patch
 
         import sympy
-
         from torch.export.dynamic_shapes import defaultdict
         from torch.fx.experimental.symbolic_shapes import _suggest_torch_checks
 
@@ -10253,7 +10249,6 @@ def forward(self, b_a_buffer, x):
 
     def test_suggest_torch_checks_with_regular_check(self):
         import sympy
-
         from torch.export.dynamic_shapes import defaultdict
         from torch.fx.experimental.symbolic_shapes import _suggest_torch_checks
 
@@ -12862,6 +12857,7 @@ graph():
             # https://docs.python.org/3/whatsnew/3.14.html#changes-in-the-python-api
             def fancy_forward(self, x, y):
                 return x + 2 + y
+
         else:
 
             def fancy_forward(x, y):
@@ -14333,9 +14329,7 @@ def forward(self, x, b_t, y):
     def test_export_with_autocast(self):
         class Model(torch.nn.Module):
             def forward(self, x):
-                with torch.autocast(
-                    device_type="xpu", dtype=torch.int16, enabled=True
-                ):
+                with torch.autocast(device_type="xpu", dtype=torch.int16, enabled=True):
                     y = x.sin().sum()
                 with torch.autocast(
                     device_type="cpu", dtype=torch.float16, enabled=True
@@ -15177,14 +15171,12 @@ def forward(self, x, y):
             "y": [Dim("dy")],  # y & z incorrect, export is supposed to fail.
             "z": [Dim("dz")],  # suggested fix should be to match these up.
         }
-        with (
-            self.assertRaisesRegex(  # if disable=True, suggested fixes should not specialize.
-                torch._dynamo.exc.UserError,
-                r".*Constraints violated(.*\n)*"
-                r"Suggested fixes:(.*\n)*"
-                r".*dz = dy(.*\n)*",
-            ) as msg
-        ):
+        with self.assertRaisesRegex(  # if disable=True, suggested fixes should not specialize.
+            torch._dynamo.exc.UserError,
+            r".*Constraints violated(.*\n)*"
+            r"Suggested fixes:(.*\n)*"
+            r".*dz = dy(.*\n)*",
+        ) as msg:
             export(
                 Foo(),
                 inputs,
@@ -16101,7 +16093,8 @@ def forward(self, x):
         """Make sure the metadata is kept after exported program run_decompositions."""
 
         @torch.library.custom_op("mylib::add", mutates_args=())
-        def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor: ...
+        def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+            ...
 
         @torch.library.register_fake("mylib::add")
         def _(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
