@@ -146,6 +146,50 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
+// Optimized cast kernel for common fp32/fp16/bf16 conversions.
+// Uses gpu_kernel_nocast with explicit CastScalarFunc to enable vectorized
+// memory access, bypassing the generic LoadWithCast/StoreWithCast path
+// which disables vectorization and uses per-element runtime dtype dispatch.
+bool try_fast_copy_kernel_xpu(TensorIteratorBase& iter) {
+  ScalarType dst_dtype = iter.dtype(0);
+  ScalarType src_dtype = iter.dtype(1);
+  if (dst_dtype == src_dtype) {
+    return false;
+  }
+
+  // fp32 <-> fp16
+  if (src_dtype == kFloat && dst_dtype == kHalf) {
+    gpu_kernel_nocast(iter, CastScalarFunc<float, Half>());
+    return true;
+  }
+  if (src_dtype == kHalf && dst_dtype == kFloat) {
+    gpu_kernel_nocast(iter, CastScalarFunc<Half, float>());
+    return true;
+  }
+
+  // fp32 <-> bf16
+  if (src_dtype == kFloat && dst_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, CastScalarFunc<float, BFloat16>());
+    return true;
+  }
+  if (src_dtype == kBFloat16 && dst_dtype == kFloat) {
+    gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, float>());
+    return true;
+  }
+
+  // fp16 <-> bf16
+  if (src_dtype == kHalf && dst_dtype == kBFloat16) {
+    gpu_kernel_nocast(iter, CastScalarFunc<Half, BFloat16>());
+    return true;
+  }
+  if (src_dtype == kBFloat16 && dst_dtype == kHalf) {
+    gpu_kernel_nocast(iter, CastScalarFunc<BFloat16, Half>());
+    return true;
+  }
+
+  return false;
+}
+
 void copy_kernel(TensorIteratorBase& iter) {
   ScalarType dtype = iter.common_dtype();
   if (isQIntType(dtype)) {
@@ -156,6 +200,9 @@ void copy_kernel(TensorIteratorBase& iter) {
     float8_copy_kernel_xpu(iter);
   } else if (iter.dtype(0) == kFloat4_e2m1fn_x2) {
     float4_copy_kernel_xpu(iter);
+  } else if (try_fast_copy_kernel_xpu(iter)) {
+    // Handled by optimized vectorized cast path above.
+    return;
   } else {
     AT_DISPATCH_V2(
         dtype,
