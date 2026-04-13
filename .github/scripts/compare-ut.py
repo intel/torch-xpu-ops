@@ -1751,13 +1751,12 @@ def main() -> int:
                     ('test/regressions/', 'op_regression'),
                     ('test/xpu/extended/', 'op_extended'),
                     ('test/distributed/', 'xpu_distributed'),
-                    ('test/xpu/', 'op_ut'),
                 ]
                 for pattern, label in patterns:
                     if (pattern in str(row['testfile_target']).lower() or
                         pattern in str(row['testfile_baseline']).lower()):
                         return label
-                return 'stock_ut'
+                return 'op_ut'
 
             # No data to compare – early exit
             if baseline_df.empty and target_df.empty:
@@ -1843,38 +1842,53 @@ def main() -> int:
         print("\n" + "=" * 60)
         print(" " * 20 + "UT SUMMARY")
         print("=" * 60)
-        print(f"📊 Files processed: {extractor.stats['files_processed']}")
-        print(f"🧪 Test cases found: {extractor.stats['test_cases_found']}")
-        print(f"⏱️  Time: {elapsed:.2f}s")
-        print(f"📁 Output: {output_path}")
+
+        label_width = 28
+
+        # Process statistics
+        print(f"{'📊 Files processed:':<{label_width}} {extractor.stats['files_processed']:>6}")
+        print(f"{'🧪 Test cases found:':<{label_width}} {extractor.stats['test_cases_found']:>6}")
+        print(f"{'⏱️ Time:':<{label_width}} {elapsed:>6.2f}s")
+        print("-" * 60)
+
+        # Output files
+        print(f"{'📁 Output:':<{label_width}} {output_path}")
 
         if args.markdown:
             if args.markdown_output:
-                print(f"📝 Markdown report: {markdown_path}")
+                md_path = markdown_path
             else:
-                print(f"📝 Markdown report: {output_path.parent / f'{output_path.stem}_report.md'}")
+                md_path = output_path.parent / f'{output_path.stem}_report.md'
+            print(f"{'📝 Markdown report:':<{label_width}} {md_path}")
 
+        print("-" * 60)
+        # Analysis results
         unique_df = analyzer.deduplicate_by_priority()
         if not unique_df.empty:
             baseline_count = len(unique_df[unique_df["device"] == "baseline"])
             target_count = len(unique_df[unique_df["device"] == "target"])
+            print(f"{'🎯 Target tests:':<{label_width}} {target_count:>6}")
+            print(f"{'📊 Baseline tests:':<{label_width}} {baseline_count:>6}")
 
-            print(f"📱 Baseline tests: {baseline_count}, Target tests: {target_count}")
-
-            # Show file summary stats
+            # File summary
             file_summary = analyzer.generate_file_summary(unique_df)
             if not file_summary.empty:
-                print(f"📂 Test files: {len(file_summary)}")
+                print(f"{'📄 Test files:':<{label_width}} {len(file_summary):>6}")
 
-            # Show changes summary
+            # Changes summary
             baseline_df, target_df = analyzer.split_by_device(unique_df)
             if not baseline_df.empty and not target_df.empty:
                 merged_df = analyzer.merge_results(baseline_df, target_df)
                 new_failures_df, new_passes_df = analyzer.find_target_changes(merged_df)
                 if not new_failures_df.empty:
-                    print(f"🚨 New failures: {len(new_failures_df)}")
+                    print(f"{'❌ New failures:':<{label_width}} {len(new_failures_df):>6}")
                 if not new_passes_df.empty:
-                    print(f"✨ New passes: {len(new_passes_df)}")
+                    print(f"{'✅ New passes:':<{label_width}} {len(new_passes_df):>6}")
+
+        print("-" * 60)
+        if args.check_changes:
+            print(f"{'✅ New tracked issues passed:':<{label_width}} {len(tracked_passed_df):>6}")
+            print(f"{'❌ New untracked failures:':<{label_width}} {len(untracked_failures_df):>6}")
 
         print("=" * 60)
 

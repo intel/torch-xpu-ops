@@ -638,8 +638,8 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
 def _write_html_table(rows: pd.DataFrame, columns: list[str], condition_col: str,
                       fail_color: str, pass_color: str, file_handle):
     """Write an HTML table with row background colors based on condition_col."""
-    file_handle.write('緣\n')
-    file_handle.write('<thead>')
+    file_handle.write('<table>\n\n')
+    file_handle.write('<thead>\n')
     for col in columns:
         file_handle.write(f'<th>{col}</th>')
     file_handle.write('</thead>\n')
@@ -939,15 +939,19 @@ Examples:
     print("\n" + "=" * 60)
     print(" " * 20 + "E2E SUMMARY")
     print("=" * 60)
-    print(f"🎯 Target accuracy records: {len(target_acc)}")
-    print(f"⚡ Target performance records: {len(target_perf)}")
-    print(f"📉 Baseline accuracy records: {len(baseline_acc)}")
-    print(f"🐢 Baseline performance records: {len(baseline_perf)}")
-    print(f"🐢 New failed cases: {len(failed_cases)}")
-    print(f"🐢 New passed cases: {len(passed_cases)}")
-    print(f"🐢 New dropped cases: {len(dropped_cases)}")
-    print(f"🐢 New improved cases: {len(improved_cases)}")
-    print(f"📁 Output: {summary_file}")
+    label_width = 30
+    print(f"{'🎯 Target accuracy:':<{label_width}} {len(target_acc):>6}")
+    print(f"{'⚡ Target performance:':<{label_width}} {len(target_perf):>6}")
+    print("-" * 60)
+    print(f"{'📊 Baseline accuracy:':<{label_width}} {len(baseline_acc):>6}")
+    print(f"{'⏱️ Baseline performance:':<{label_width}} {len(baseline_perf):>6}")
+    print("-" * 60)
+    print(f"{'❌ Failed cases:':<{label_width}} {len(failed_cases):>6}")
+    print(f"{'✅ Passed cases:':<{label_width}} {len(passed_cases):>6}")
+    print(f"{'🗑️ Dropped cases:':<{label_width}} {len(dropped_cases):>6}")
+    print(f"{'📈 Improved cases:':<{label_width}} {len(improved_cases):>6}")
+    print("-" * 60)
+    print(f"{'📁 Output file:':<{label_width}} {summary_file}")
     print("=" * 60)
 
     return 0
