@@ -349,7 +349,7 @@ class TestInvokeSubgraphCompile(TestCase):
     """
                     "        invoke_subgraph = torch.ops.higher_order.invoke_subgraph("
                     "subgraph_0, 'subgraph_0', l_mod_buffers_buf_, l_x_, l_y_);  subgraph_0 = None\n"
-                    "        getitem_8: \"f32[8]\" = invoke_subgraph[0];  invoke_subgraph = None\n"
+                    '        getitem_8: "f32[8]" = invoke_subgraph[0];  invoke_subgraph = None\n'
                     "        subgraph_1 = self.subgraph_0\n"
                     "        invoke_subgraph_1 = torch.ops.higher_order.invoke_subgraph("
                     "subgraph_1, 'subgraph_0', l_mod_buffers_buf_, l_x_, l_y_);  "
