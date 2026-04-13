@@ -86,7 +86,6 @@ jobs:
       test_role: 'target'
       all_inputs_json: ${{ toJSON(inputs) }}
       runner: ${{ needs.get-runner.outputs.runner_id }}
-      windows_runner: 'Windows_CI'
       is_scheduled_run: target-manually
       ut: 'op_p0'
       suite: 'huggingface,timm_models,torchbench'
@@ -101,7 +100,6 @@ jobs:
       test_role: 'baseline'
       all_inputs_json: ${{ toJSON(inputs) }}
       runner: ${{ needs.get-runner.outputs.runner_id }}
-      windows_runner: 'Windows_CI'
       is_scheduled_run: baseline-manually
       ut: 'op_p0'
       suite: 'huggingface,timm_models,torchbench'

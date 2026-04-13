@@ -99,7 +99,6 @@ jobs:
     with:
       all_inputs_json: ${{ toJSON(inputs) }}
       runner: 'pvc_rolling'
-      windows_runner: 'Windows_CI'
       is_scheduled_run: dispatch-manually
       ut: ${{ inputs.ut }}
       suite: ${{ inputs.suite }}

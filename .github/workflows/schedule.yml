@@ -27,7 +27,6 @@ jobs:
     uses: ./.github/workflows/_test_call.yml
     with:
       runner: 'pvc_rolling'
-      windows_runner: 'Windows_CI'
       is_scheduled_run: schedule
       ut: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,microbench,windows'
       suite: 'huggingface,timm_models,torchbench,pt2e'

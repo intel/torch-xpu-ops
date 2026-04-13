@@ -36,10 +36,6 @@ on:
         type: string
         default: 'pvc_rolling'
         description: 'Runner label for Linux tests'
-      windows_runner:
-        type: string
-        default: 'Windows_CI'
-        description: 'Runner label for Windows tests'
       is_scheduled_run:
         type: string
         required: true
@@ -170,7 +166,8 @@ jobs:
       python: ${{ needs.parse-inputs.outputs.python }}
       src_changed: false
       has_label: true
-      runner: ${{ inputs.windows_runner }}
+      build_runner: Windows_CI_Build
+      runner: Windows_CI
       torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
       pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
 
