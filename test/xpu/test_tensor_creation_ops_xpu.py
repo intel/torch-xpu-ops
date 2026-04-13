@@ -4386,10 +4386,18 @@ class TestLikeTensorCreation(TestCase):
         )
 
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @largeTensorTest(
+        lambda self, device, dtype: (2**31)
+        * torch.tensor([], dtype=dtype).element_size()
+    )
     def test_zeros_large(self, device, dtype):
         output = torch.zeros(2**31 - 1, device=device, dtype=dtype)
 
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
+    @largeTensorTest(
+        lambda self, device, dtype: (2**31)
+        * torch.tensor([], dtype=dtype).element_size()
+    )
     def test_ones_large(self, device, dtype):
         output = torch.ones(2**31 - 1, device=device, dtype=dtype)
 
@@ -4624,7 +4632,8 @@ class TestAsArray(TestCase):
             3. Whether the result lives in the expected device
             4. Whether the result has its 'requires_grad' set or not
         """
-        result = torch.asarray(cvt(original), **kwargs)
+        inp = cvt(original)
+        result = torch.asarray(inp, **kwargs)
         self.assertTrue(isinstance(result, torch.Tensor))
 
         # 1. The storage pointers should be equal only if 'is_alias' is set
@@ -4655,8 +4664,16 @@ class TestAsArray(TestCase):
         if device.index is not None:
             self.assertEqual(device.index, result.device.index)
 
-        # 4. By default, 'requires_grad' is unset
-        self.assertEqual(result.requires_grad, kwargs.get("requires_grad", False))
+        # 4. requires_grad: by default torch.asarray propagates from tensor inputs when copy=False
+        #    (PyTorch change a97dcf9c584 / PR https://github.com/pytorch/pytorch/pull/170897 made
+        #    requires_grad optional and inheriting when copy=False)
+        expected_requires_grad = kwargs.get(
+            "requires_grad",
+            inp.requires_grad
+            if isinstance(inp, torch.Tensor) and kwargs.get("copy", False) is False
+            else False,
+        )
+        self.assertEqual(result.requires_grad, expected_requires_grad)
 
     def _test_alias_with_cvt(
         self, cvt, device, dtype, shape=(5, 5), only_with_dtype=False
