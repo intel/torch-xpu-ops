@@ -377,24 +377,6 @@ def prepare_environment(ctx: ComparisonContext) -> None:
         sys.exit(1)
 
 
-def aggregate_summaries() -> None:
-    print("::group::Aggregate summaries to GITHUB_STEP_SUMMARY")
-    summary_files = ["ut_comparison.md", "e2e_comparison.md"]
-    step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-    if not step_summary:
-        print("GITHUB_STEP_SUMMARY not set, skipping aggregation")
-        return
-
-    with open(step_summary, "a", encoding="utf-8") as out_f:
-        out_f.write("\n## Comparison Results\n\n")
-        for file in summary_files:
-            path = Path(file)
-            if path.is_file():
-                content = path.read_text(encoding="utf-8")
-                out_f.write(content)
-                out_f.write("\n\n")
-
-
 def final_status(ctx: ComparisonContext, reporter: ComparisonReporter) -> None:
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     run_id = os.environ.get("GITHUB_RUN_ID", "")
@@ -449,7 +431,6 @@ def main() -> None:
     prepare_environment(ctx)
     run_ut_comparison(ctx, ctx.reporter)
     run_e2e_comparison(ctx, ctx.reporter)
-    aggregate_summaries()
     final_status(ctx, ctx.reporter)
 
 

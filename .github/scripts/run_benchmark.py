@@ -356,10 +356,10 @@ class Environment:
         """Clone PyTorch at exact commit and set up torch-xpu-ops."""
         if not self.pytorch_dir.exists():
             run_cmd(f"git clone {PYTORCH_REPO} {self.pytorch_dir}", "Cloning PyTorch")
-        run_cmd("git reset --hard", cwd=self.pytorch_dir)
+        run_cmd("git reset --hard && git clean -df", cwd=self.pytorch_dir)
         run_cmd("git fetch origin -a", cwd=self.pytorch_dir)
         run_cmd(f"git checkout {commit}", cwd=self.pytorch_dir)
-        run_cmd("rm -rf ./torch", cwd=self.pytorch_dir, check=False)
+        # run_cmd("rm -rf ./torch", cwd=self.pytorch_dir, check=False)
 
         # Clone torch-xpu-ops and copy benchmark files
         run_cmd("rm -rf torch-xpu-ops", cwd=self.pytorch_dir, check=False)
@@ -579,7 +579,7 @@ class BenchmarkRunner:
         if torch_commit != torch_check or triton_version != triton_check:
             logger.error(f"Torch or Triton has been re-installed! Torch: {torch_commit}/{torch_check}, Triton: {triton_version}/{triton_check}")
             sys.exit(1)
-        run_cmd('rm -rf ~/.cache/ ~/.triton/ /tmp/torchinductor_*', shell=True, check=False)
+        run_cmd('sudo rm -rf ~/.triton/ /tmp/torch* /tmp/tmp*', shell=True, check=False)
         run_cmd(cmd, cwd=self.env.pytorch_dir, shell=True, check=False)  # Do not exit on benchmark failure
 
         # If the benchmark did not produce the expected CSV, create a fallback

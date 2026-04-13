@@ -141,12 +141,25 @@ jobs:
         run: |
           # Activation & environment info
           source myvenv/bin/activate
+
+          exit_label=0
           python .github/scripts/check-results.py \
               --results-dir ${{ github.workspace }}/results \
               --check \
                   ut_new_fail \
                   acc_new_fail \
-                  perf_new_fail perf_dropped
+                  perf_new_fail perf_dropped || exit_label=1
+
+          # Aggregate summary files (always do this, even if comparisons failed)
+          echo "Aggregating summary files..."
+          for file in e2e_comparison.summary.md ut_comparison.summary.md \
+                      e2e_comparison.details.md ut_comparison.details.md; do
+              if [ -f "$file" ]; then
+                  cat "$file" >> "${GITHUB_STEP_SUMMARY}"
+              fi
+          done
+
+          exit $exit_label
 
       - name: Upload Tests Summary
         if: always()
