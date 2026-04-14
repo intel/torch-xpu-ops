@@ -461,7 +461,7 @@ jobs:
         run: |
           pip install junitparser
           find . -type f -name "*.xml" -exec mv {} ${{ github.workspace }}/ut_log/ \; || true
-          python ./.github/scripts/check-ut.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
+          python ./.github/scripts/ut_summary.py -n ${{ inputs.ut }} -i ${{ github.workspace }}/ut_log/*.xml >> $GITHUB_STEP_SUMMARY || true
           # Check the failure logs
           if ls ${{ github.workspace }}/failures*.log 1> /dev/null 2>&1; then
             echo -e "Exist Failure logs"
