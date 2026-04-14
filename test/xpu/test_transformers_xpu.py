@@ -5919,7 +5919,8 @@ class TestSDPACudaOnly(NNTestCase):
             # Create real output
             output_tuple = fused_op(query, key, value, **kwargs)
             if not all(
-                not isinstance(o, torch.Tensor) or o.is_cuda or o.is_xpu for o in output_tuple
+                not isinstance(o, torch.Tensor) or o.is_cuda or o.is_xpu
+                for o in output_tuple
             ):
                 raise AssertionError("expected all tensor outputs to be on cuda or xpu")
         g.replay()
