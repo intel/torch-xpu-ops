@@ -163,7 +163,8 @@ struct SumVarOps {
     // (initialized from the first element of the row being processed).
     // If this assert fires, the reduction tree has mixed anchors.
     assert(
-        a.first_elem == b.first_elem &&
+        (a.first_elem == b.first_elem || isnan(a.first_elem) ||
+        isnan(b.first_elem)) &&
         "SumVarOps::combine: first_elem mismatch between partial accumulators");
     acc_scalar_t new_count = a.nf + b.nf;
     return {
