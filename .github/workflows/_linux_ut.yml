@@ -51,7 +51,8 @@ on:
         default: ''
         description: 'Component version for comparison'
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:

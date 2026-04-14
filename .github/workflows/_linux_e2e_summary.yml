@@ -16,7 +16,8 @@ on:
         default: '3.12'
         description: 'Python version for summary processing'
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -32,6 +33,8 @@ jobs:
   summary:
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
+      contents: read
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
