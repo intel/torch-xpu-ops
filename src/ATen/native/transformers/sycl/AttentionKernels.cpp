@@ -432,6 +432,7 @@ void _transform_bias_rescale_qkv_kernel(
       "transform_bias_rescale_qkv_xpu",
       [&] {
         using accscalar_t = at::acc_type<scalar_t, true>;
+        using VectorT = at::detail::Array<scalar_t, TRANSFORM_BIAS_RESCALE_VEC>;
         auto local_range = std::max(
             std::min<int32_t>(
                 max_wg_size,
@@ -442,7 +443,7 @@ void _transform_bias_rescale_qkv_kernel(
         const bool aligned =
             ((dim_per_head % TRANSFORM_BIAS_RESCALE_VEC) == 0) &&
             ((reinterpret_cast<intptr_t>(qkv_bias.data_ptr()) %
-              TRANSFORM_BIAS_RESCALE_VEC) == 0);
+                alignof(VectorT)) == 0);
 
         if (aligned) {
           TORCH_INTERNAL_ASSERT_DEBUG_ONLY(
@@ -469,7 +470,7 @@ void _transform_bias_rescale_qkv_kernel(
           auto qkv_acc = q_k_v.packed_accessor64<scalar_t, 5>();
           if (aligned &&
               ((reinterpret_cast<intptr_t>(qkv.data_ptr()) %
-                TRANSFORM_BIAS_RESCALE_VEC) == 0)) {
+                  alignof(VectorT)) == 0)) {
             TransformBiasRescaleQKVAddPaddingFunctor<
                 scalar_t,
                 accscalar_t,
