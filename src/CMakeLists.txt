@@ -20,6 +20,10 @@ set(ATen_XPU_FLASH_ATTN_DIRS
   ${TORCH_XPU_OPS_ROOT}/src/ATen/native/transformers/xpu/flash_attn
   CACHE STRING "ATen XPU Flash Attention directory"
 )
+set(ATen_XPU_DUAL_GEMM_DIRS
+  ${TORCH_XPU_OPS_ROOT}/src/ATen/native/transformers/xpu/dual_gemm
+  CACHE STRING "ATen XPU Dual GEMM directory"
+)
 
 add_subdirectory(ATen)
 if(USE_C10D_XCCL)
