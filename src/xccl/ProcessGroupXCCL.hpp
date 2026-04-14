@@ -176,7 +176,7 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   ~ProcessGroupXCCL() override;
 
-  uint64_t getUid() {
+  uint64_t getUid() const noexcept {
     return static_cast<uint64_t>(local_id_);
   }
 
@@ -493,8 +493,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
   void attachRetireAndStatusCallback(
-    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
-    std::shared_ptr<ProcessGroupStatus> pgStatus);
+      c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+      std::shared_ptr<ProcessGroupStatus> pgStatus);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
