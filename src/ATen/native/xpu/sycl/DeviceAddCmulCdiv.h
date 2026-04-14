@@ -27,8 +27,9 @@ inline opmath_t pointwise_op_impl(
     opmath_t alpha,
     Op op) {
   if (alpha == opmath_t(1)) {
-    if constexpr (std::is_same_v<Op, std::multiplies<opmath_t>> &&
-                  std::is_floating_point_v<opmath_t>) {
+    if constexpr (
+        std::is_same_v<Op, std::multiplies<opmath_t>> &&
+        std::is_floating_point_v<opmath_t>) {
       return std::fma(tensor1, tensor2, input);
     } else {
       return input + op(tensor1, tensor2);
