@@ -37,9 +37,7 @@ jobs:
     if: ${{ github.event.pull_request.draft == false }}
     needs: [preci-lint-check]
     uses: ./.github/workflows/_test_call.yml
-    permissions:
-      contents: read
-      issues: write
+    permissions: write-all
     with:
       runner: 'pvc_rolling'
       is_scheduled_run: pull_request
