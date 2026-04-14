@@ -494,16 +494,39 @@ _scaled_dot_product_efficient_attention_backward_xpu(
     return std::make_tuple(Tensor{}, Tensor{}, Tensor{}, Tensor{});
   }
 
-  // Re-run the math-based forward with autograd enabled so we can
-  // differentiate through it.
-  auto q = query.detach().clone().set_requires_grad(true);
-  auto k = key.detach().clone().set_requires_grad(true);
-  auto v = value.detach().clone().set_requires_grad(true);
+  // Not used in this fallback path; the re-run forward recomputes attention
+  // from scratch rather than reading saved outputs or log-sum-exp.
+  (void)out;
+  (void)logsumexp;
+
+  // Nothing to differentiate — return empty gradients immediately.
+  bool any_grad_needed = grad_input_mask[0] || grad_input_mask[1] ||
+      grad_input_mask[2] || (grad_input_mask[3] && attn_bias.defined());
+  if (!any_grad_needed) {
+    return std::make_tuple(Tensor{}, Tensor{}, Tensor{}, Tensor{});
+  }
+
+  // Detach the inputs so we control which ones participate in the autograd
+  // graph.  detach() returns a view sharing storage — no copy is made.
+  // requires_grad_() is then set only for inputs whose grad_input_mask bit
+  // is true; inputs that do not need a gradient are passed as plain detached
+  // views and are never added to the `inputs` list for autograd::grad.
+  auto q = query.detach();
+  auto k = key.detach();
+  auto v = value.detach();
+  if (grad_input_mask[0])
+    q.requires_grad_(true);
+  if (grad_input_mask[1])
+    k.requires_grad_(true);
+  if (grad_input_mask[2])
+    v.requires_grad_(true);
 
   std::optional<Tensor> attn_bias_opt;
   Tensor ab;
   if (attn_bias.defined()) {
-    ab = attn_bias.detach().clone().set_requires_grad(true);
+    ab = attn_bias.detach();
+    if (grad_input_mask[3])
+      ab.requires_grad_(true);
     attn_bias_opt = ab;
   }
 
@@ -530,7 +553,7 @@ _scaled_dot_product_efficient_attention_backward_xpu(
           philox_seed.item<int64_t>(),
           philox_offset.item<int64_t>());
     }
-    dropout_mask_opt = mask.to(at::kBool);
+    dropout_mask_opt = std::move(mask);
   }
 
   Tensor attention;
@@ -583,17 +606,31 @@ _scaled_dot_product_efficient_attention_backward_xpu(
       "with requires_grad=True. This is a bug — the autograd graph was not "
       "recorded despite removing autograd keys from the excluded dispatch key set.");
 
-  std::vector<Tensor> inputs = {q, k, v};
-  if (ab.defined())
+  // Build the inputs list only from tensors that need gradients so that
+  // autograd::grad does not compute — or error on — unrequested gradients.
+  std::vector<Tensor> inputs;
+  if (grad_input_mask[0])
+    inputs.push_back(q);
+  if (grad_input_mask[1])
+    inputs.push_back(k);
+  if (grad_input_mask[2])
+    inputs.push_back(v);
+  if (grad_input_mask[3] && ab.defined())
     inputs.push_back(ab);
 
+  Tensor grad_q, grad_k, grad_v, grad_bias;
   auto grads = torch::autograd::grad(
       {attention}, inputs, {grad_out_}, /*retain_graph=*/false);
 
-  Tensor grad_q = grads[0], grad_k = grads[1], grad_v = grads[2];
-  Tensor grad_bias;
-  if (ab.defined())
-    grad_bias = grads[3];
+  int idx = 0;
+  if (grad_input_mask[0])
+    grad_q = grads[idx++];
+  if (grad_input_mask[1])
+    grad_k = grads[idx++];
+  if (grad_input_mask[2])
+    grad_v = grads[idx++];
+  if (grad_input_mask[3] && ab.defined())
+    grad_bias = grads[idx++];
 
   return std::make_tuple(
       std::move(grad_q),
