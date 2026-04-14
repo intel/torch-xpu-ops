@@ -55,7 +55,7 @@ struct SumVarOpsXPU : public SumVarOps<scalar_t, acc_scalar_t, index_t, res_t> {
   inline acc_t shfl_down(acc_t acc, int offset) const {
     auto sg = item.get_sub_group();
     return {
-        sycl::shift_group_left(sg, acc.first_elem, offset),
+        acc.first_elem, // same across all work-items, no shuffle needed
         sycl::shift_group_left(sg, acc.sum, offset),
         sycl::shift_group_left(sg, acc.sum_of_squares, offset),
         sycl::shift_group_left(sg, acc.n, offset),
