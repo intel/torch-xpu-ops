@@ -19,6 +19,7 @@
 #include <ATen/native/cpu/zmath.h>
 #include <c10/macros/Macros.h>
 #include <comm/XPUPair.h>
+#include <cassert>
 #include <cmath>
 #include <complex>
 #include <type_traits>
@@ -145,7 +146,7 @@ struct SumVarOps {
     acc_scalar_t dif = static_cast<acc_scalar_t>(data) - acc.first_elem;
     return {
         acc.first_elem,
-        acc.sum + data,
+        acc.sum + dif,
         acc.sum_of_squares + dif * dif,
         new_n,
         new_nf,
@@ -167,9 +168,10 @@ struct SumVarOps {
         new_count};
   }
   inline res_t project(acc_t acc) const __ubsan_ignore_float_divide_by_zero__ {
-    const auto mean = static_cast<scalar_t>(acc.sum / acc.nf);
-    const auto var = (acc.sum_of_squares / acc.nf) -
-        (mean - acc.first_elem) * (mean - acc.first_elem);
+    const auto shifted_mean = acc.sum / acc.nf;
+    const auto mean = static_cast<scalar_t>(shifted_mean + acc.first_elem);
+    const auto var =
+        (acc.sum_of_squares / acc.nf) - shifted_mean * shifted_mean;
     const auto safe_var = var < acc_scalar_t{0} ? acc_scalar_t{0} : var;
     res_t results(take_sqrt ? device_sqrt(safe_var) : safe_var, mean);
     return results;
