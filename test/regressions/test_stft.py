@@ -38,9 +38,7 @@ class TestSTFT(TestCase):
         This is the direct regression guard: if someone re-adds stft to the
         dtype override dict, this test will fail.
         """
-        xpu_test_dir = os.path.join(
-            os.path.dirname(__file__), os.pardir, "xpu"
-        )
+        xpu_test_dir = os.path.join(os.path.dirname(__file__), os.pardir, "xpu")
         sys.path.insert(0, os.path.abspath(xpu_test_dir))
         from xpu_test_utils import _ops_dtype_different_cuda_support
 
@@ -105,7 +103,7 @@ class TestSTFT(TestCase):
 
         # Compute the difference between eager and compiled in float16.
         # Cast to complex64 for accurate diff computation.
-        diff = (eager_result.to(torch.complex64) - compiled_result.to(torch.complex64))
+        diff = eager_result.to(torch.complex64) - compiled_result.to(torch.complex64)
         max_abs_diff = diff.abs().max().item()
 
         # The max absolute diff should exceed the inductor tolerance (atol=1e-5),
@@ -145,9 +143,7 @@ class TestSTFT(TestCase):
         n_fft = 20
         window = torch.hann_window(n_fft)
 
-        result_cpu = torch.stft(
-            x, n_fft, window=window, return_complex=True
-        )
+        result_cpu = torch.stft(x, n_fft, window=window, return_complex=True)
         result_xpu = torch.stft(
             x.to(xpu_device),
             n_fft,
