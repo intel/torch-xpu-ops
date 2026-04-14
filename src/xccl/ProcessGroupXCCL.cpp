@@ -431,6 +431,28 @@ void ProcessGroupXCCL::setEnqueuedPgStatus(
   pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
 }
 
+void ProcessGroupXCCL::attachRetireAndStatusCallback(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+    std::shared_ptr<ProcessGroupStatus> pgStatus) {
+  auto id = work->trace_id_;
+  auto reset_epoch = work->trace_reset_epoch_;
+  int64_t seq = static_cast<int64_t>(work->getSequencenumber());
+  std::string workName = opTypeToString(work->opType_);
+  size_t numelIn = work->numelIn_;
+  size_t numelOut = work->numelOut_;
+  work->future_->addCallback(
+      [id, reset_epoch, pgStatus, seq, workName, numelIn, numelOut](
+          at::ivalue::Future&) {
+        FlightRecorderXCCL::get()->retire_id(
+            id, reset_epoch, /*compute_duration*/ true);
+        pgStatus->lastCompletedSeq = seq;
+        pgStatus->lastCompletedWorkName = workName;
+        pgStatus->lastCompletedNumelIn = numelIn;
+        pgStatus->lastCompletedNumelOut = numelOut;
+      },
+      /*use_future*/ false);
+}
+
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
 uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
@@ -677,23 +699,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
     work->future_->markCompleted(at::IValue(std::vector<at::Tensor>()));
   }
 
-  auto id = work->trace_id_;
-  auto reset_epoch = work->trace_reset_epoch_;
-  auto pgStatus = pgStatus_;
-  int64_t seq = static_cast<int64_t>(work->getSequencenumber());
-  std::string workName = opTypeToString(work->opType_);
-  size_t numelIn = work->numelIn_;
-  size_t numelOut = work->numelOut_;
-  work->future_->addCallback(
-      [id, reset_epoch, pgStatus, seq, workName, numelIn, numelOut](at::ivalue::Future&) {
-        FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ true);
-        pgStatus->lastCompletedSeq = seq;
-        pgStatus->lastCompletedWorkName = workName;
-        pgStatus->lastCompletedNumelIn = numelIn;
-        pgStatus->lastCompletedNumelOut = numelOut;
-      },
-      /*use_future*/ false);
+  attachRetireAndStatusCallback(work, pgStatus_);
   setEnqueuedPgStatus(work);
 
   coalescing_state_ = 0;
@@ -854,24 +860,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     work->numelOut_ += output.numel();
   }
   setEnqueuedPgStatus(work);
-
-  auto id = work->trace_id_;
-  auto reset_epoch = work->trace_reset_epoch_;
-  auto pgStatus = pgStatus_;
-  int64_t seq = static_cast<int64_t>(work->getSequencenumber());
-  std::string workName = opTypeToString(work->opType_);
-  size_t numelIn = work->numelIn_;
-  size_t numelOut = work->numelOut_;
-  work->future_->addCallback(
-      [id, reset_epoch, pgStatus, seq, workName, numelIn, numelOut](at::ivalue::Future&) {
-        FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ true);
-        pgStatus->lastCompletedSeq = seq;
-        pgStatus->lastCompletedWorkName = workName;
-        pgStatus->lastCompletedNumelIn = numelIn;
-        pgStatus->lastCompletedNumelOut = numelOut;
-      },
-      /*use_future*/ false);
+  attachRetireAndStatusCallback(work, pgStatus_);
 
   return asyncOp ? work : nullptr;
 }
@@ -1014,24 +1003,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     }
 
     setEnqueuedPgStatus(work);
-
-    auto id = work->trace_id_;
-    auto reset_epoch = work->trace_reset_epoch_;
-    auto pgStatus = pgStatus_;
-    int64_t seq = static_cast<int64_t>(work->getSequencenumber());
-    std::string workName = opTypeToString(work->opType_);
-    size_t numelIn = work->numelIn_;
-    size_t numelOut = work->numelOut_;
-    work->future_->addCallback(
-        [id, reset_epoch, pgStatus, seq, workName, numelIn, numelOut](at::ivalue::Future&) {
-          FlightRecorderXCCL::get()->retire_id(
-              id, reset_epoch, /*compute_duration*/ true);
-          pgStatus->lastCompletedSeq = seq;
-          pgStatus->lastCompletedWorkName = workName;
-          pgStatus->lastCompletedNumelIn = numelIn;
-          pgStatus->lastCompletedNumelOut = numelOut;
-        },
-        /*use_future*/ false);
+    attachRetireAndStatusCallback(work, pgStatus_);
   }
 
   return work;

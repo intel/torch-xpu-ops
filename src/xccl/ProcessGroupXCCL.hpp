@@ -492,6 +492,9 @@ class TORCH_API ProcessGroupXCCL : public Backend {
   const std::vector<uint64_t>& groupRanks() const;
   const int& globalRank() const;
   void setEnqueuedPgStatus(c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work);
+  void attachRetireAndStatusCallback(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+    std::shared_ptr<ProcessGroupStatus> pgStatus);
   bool dumpDebuggingInfo(bool includeStackTrace = true);
 
  protected:
