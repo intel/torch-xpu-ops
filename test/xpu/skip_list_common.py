@@ -9,7 +9,12 @@
 skip_dict = {
     "complex_tensor/test_complex_tensor_xpu.py": None,
     "functorch/test_ops_xpu.py": None,
-    "nn/test_convolution_xpu.py": None,
+    "nn/test_convolution_xpu.py": (
+        # AssertionError: Object comparison failed: <_ConvBackend.Overrideable: 12> != <_ConvBackend.Hipdnn: 23>
+        "test_conv2d_hipdnn_backend_selection_xpu",
+        # AssertionError: RuntimeError not raised
+        "test_conv2d_hipdnn_deterministic_error_xpu",
+    ),
     "nn/test_dropout_xpu.py": None,
     "nn/test_embedding_xpu.py": None,
     "nn/test_init_xpu.py": None,
