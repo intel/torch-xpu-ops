@@ -24,7 +24,8 @@ on:
         type: string
         description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -141,6 +142,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
+      contents: read
       issues: write
     steps:
       - name: Checkout torch-xpu-ops
