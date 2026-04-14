@@ -33,6 +33,8 @@ declare -A EXPECTED_CASES=(
     ["op_regression"]=268
     ["op_regression_dev1"]=1
     ["op_transformers"]=262
+    ["xpu_inductor"]=20880
+    ["torch_xpu"]=396
     ["op_ut"]="${OP_UT_EXPECTED[$TEST_PLATFORM]}"
     ["test_xpu"]=69
 )
@@ -376,7 +378,7 @@ mark_passed_issue() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu)
+    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu|xpu_inductor|torch_xpu)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
