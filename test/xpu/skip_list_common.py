@@ -48,7 +48,10 @@ skip_dict = {
     "test_complex_xpu.py": None,
     "test_content_store_xpu.py": None,
     "test_dataloader_xpu.py": None,
-    "test_decomp_xpu.py": None,
+    "test_decomp_xpu.py": (
+        # Slow test case: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward_baddbmm_xpu_float64",
+    ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
     "test_foreach_xpu.py": (
@@ -80,6 +83,9 @@ skip_dict = {
         "_efficient_attention_",
         # Exception: The supported dtypes for linalg.multi_dot on device type xpu are incorrect!
         "test_dtypes_linalg_multi_dot_xpu",
+        # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
+        "test_out_histc_xpu_float32",
+        "test_out_mean_xpu_float32",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
@@ -104,7 +110,11 @@ skip_dict = {
     "functorch/test_eager_transforms_xpu.py": None,
     "test_cpp_api_parity_xpu.py": None,
     "test_expanded_weights_xpu.py": None,
-    "test_fake_tensor_xpu.py": None,
+    "test_fake_tensor_xpu.py": (
+        # https://github.com/intel/torch-xpu-ops/issues/2472
+        # aten::_cudnn_rnn/aten::miopen_rnn not supported
+        "test_cudnn_rnn",
+    ),
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": None,
