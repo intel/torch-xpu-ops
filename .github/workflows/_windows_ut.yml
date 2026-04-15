@@ -257,6 +257,7 @@ jobs:
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
+          compression-level: 0
    
   ut_test:
     needs: [build]
