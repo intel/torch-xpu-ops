@@ -82,7 +82,9 @@ jobs:
     needs: [linux-build]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
     secrets: inherit
-    permissions: write-all
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +100,9 @@ jobs:
     needs: [linux-build]
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
     secrets: inherit
-    permissions: write-all
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +133,11 @@ jobs:
     name: linux-e2e-summary
     needs: [linux-e2e]
     if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions: write-all
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
@@ -142,6 +150,7 @@ jobs:
     with:
       ut: op_extended,test_xpu
       runner: Windows_CI
+      build_runner: Windows_CI_Build
       src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
       has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
