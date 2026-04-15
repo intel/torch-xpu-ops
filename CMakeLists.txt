@@ -66,8 +66,13 @@ if(USE_XCCL)
   endif()
 endif()
 
+option(BUILD_TEST_XPU_BARRIER "Build test/xpu/barrier targets" OFF)
+
 if(BUILD_TEST)
   add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/sycl ${CMAKE_BINARY_DIR}/test_sycl)
+  if(BUILD_TEST_XPU_BARRIER)
+    add_subdirectory(${TORCH_XPU_OPS_ROOT}/test/xpu/barrier ${CMAKE_BINARY_DIR}/test_xpu_barrier)
+  endif()
 endif()
 
 if(NOT TORCH_ROOT)
