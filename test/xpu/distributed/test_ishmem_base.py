@@ -21,8 +21,6 @@ device_type = "xpu"
 device_module = torch.get_device_module(device_type)
 class ISHMEMSymmetricMemoryTest(MultiProcContinuousTest):
     def _init_device(self) -> None:
-        import os
-        os.environ['MASTER_ADDR'] = 'localhost'
         device_module.set_device(self.device)
         symm_mem.set_backend("ISHMEM")
 
