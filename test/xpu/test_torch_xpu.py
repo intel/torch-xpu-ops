@@ -3241,6 +3241,11 @@ else:
         xpu_out = torch.cumprod(x.to(device), dim=0).cpu()
         torch.testing.assert_close(xpu_out, cpu_ref, atol=1e-4, rtol=1e-4)
 
+        y = 1.0 + 0.0001 * torch.randn(2, 1_000_000, dtype=torch.float32)
+        cpu_ref = torch.cumprod(y, dim=1)
+        xpu_out = torch.cumprod(y.to(device), dim=1).cpu()
+        torch.testing.assert_close(xpu_out, cpu_ref, atol=1e-4, rtol=1e-4)
+
     @skipIfMPS
     def test_cummax_cummin(self, device):
         def test_ops(op, string_of_function_name, expected_output1, expected_output2):
