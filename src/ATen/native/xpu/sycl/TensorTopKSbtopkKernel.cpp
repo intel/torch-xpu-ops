@@ -28,9 +28,6 @@ constexpr int SBTOPK_BLOCK = 1024;
 constexpr int SBTOPK_MAX_K = 16;
 
 // RADIX_BITS=2, matching CUDA SortingRadixSelect.cuh
-constexpr int RADIX_BITS = 2;
-constexpr int RADIX_SIZE = 1 << RADIX_BITS;  // 4
-constexpr int RADIX_MASK = RADIX_SIZE - 1;
 
 // SLM reused across phases:
 //   Radix select: RADIX_SIZE + 2 = 6 entries
