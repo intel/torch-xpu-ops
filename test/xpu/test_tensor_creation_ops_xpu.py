@@ -4666,8 +4666,14 @@ class TestAsArray(TestCase):
 
         # 4. requires_grad: by default torch.asarray inherits requires_grad from tensor
         #    inputs regardless of copy. See PyTorch PR #170897 / commit a97dcf9c584.
-        original_requires_grad = converted_original.requires_grad if isinstance(converted_original, torch.Tensor) else False
-        self.assertEqual(result.requires_grad, kwargs.get("requires_grad", original_requires_grad))
+        original_requires_grad = (
+            converted_original.requires_grad
+            if isinstance(converted_original, torch.Tensor)
+            else False
+        )
+        self.assertEqual(
+            result.requires_grad, kwargs.get("requires_grad", original_requires_grad)
+        )
 
     def _test_alias_with_cvt(
         self, cvt, device, dtype, shape=(5, 5), only_with_dtype=False
