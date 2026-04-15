@@ -32,7 +32,6 @@ declare -A EXPECTED_CASES=(
     ["op_extended"]=5349
     ["op_regression"]=268
     ["op_regression_dev1"]=1
-    ["op_transformers"]=262
     ["op_ut"]="${OP_UT_EXPECTED[$TEST_PLATFORM]}"
     ["test_xpu"]=69
 )
@@ -376,7 +375,7 @@ mark_passed_issue() {
 
 # Main dispatcher - route to appropriate test runner based on suite type
 case "$ut_suite" in
-    op_regression|op_regression_dev1|op_extended|op_transformers|op_ut|test_xpu)
+    op_regression|op_regression_dev1|op_extended|op_ut|test_xpu)
         run_main_tests "$ut_suite"
         ;;
     xpu_distributed)
@@ -390,7 +389,7 @@ case "$ut_suite" in
         ;;
     *)
         echo "❌ Unknown test suite: ${ut_suite}" >&2
-        printf "💡 Available: op_regression, op_regression_dev1, op_extended, op_transformers, " >&2
+        printf "💡 Available: op_regression, op_regression_dev1, op_extended, " >&2
         printf "op_ut, test_xpu, xpu_distributed, skipped_ut, xpu_profiling\n" >&2
         ;;
 esac
