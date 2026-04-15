@@ -251,7 +251,7 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_placement_types.py": None,
     "../../../../test/distributed/test_data_parallel.py": None,
     "../../../../test/distributed/test_debug.py": None,
-    "../../../../test/distributed/test_c10d_xccl.py": None,
+    # "../../../../test/distributed/test_c10d_xccl.py": None,
     "../../../../test/distributed/test_overlap_bucketing_unit.py": None,
 }
 
