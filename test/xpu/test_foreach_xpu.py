@@ -13,11 +13,12 @@ import torch
 from torch.testing import make_tensor
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
+    largeTensorTest,
     OpDTypes,
     ops,
 )
 from torch.testing._internal.common_methods_invocations import foreach_binary_op_db
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_utils import run_tests, serialTest
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -193,6 +194,23 @@ def _test_0dim_tensor_overload_exception(self):
 
 
 TestForeach.test_0dim_tensor_overload_exception = _test_0dim_tensor_overload_exception
+
+
+@serialTest()
+@largeTensorTest("40GB", device="xpu")
+def _test_foreach_copy_with_multi_dtypes_large_input(self):
+    # see https://github.com/pytorch/pytorch/issues/156261
+    self_tensor = torch.empty(2**31 + 1, device="xpu", dtype=torch.float32)
+    src_tensor = torch.ones(2**31 + 1, device="xpu", dtype=torch.bfloat16)
+
+    torch._foreach_copy_([self_tensor], [src_tensor])
+    ref_out = torch.empty_like(self_tensor).copy_(src_tensor)
+    self.assertEqual(self_tensor, ref_out)
+
+
+TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
+    _test_foreach_copy_with_multi_dtypes_large_input
+)
 
 
 @ops(filter(lambda op: op.name == "_foreach_copy", foreach_binary_op_db))
