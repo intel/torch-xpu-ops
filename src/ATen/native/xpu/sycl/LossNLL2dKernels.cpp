@@ -198,6 +198,7 @@ void nll_loss2d_forward_kernel(
   }
 
   total_weight.resize_({});
+  total_weight.zero_();
 
   if (reduction == at::Reduction::None) {
     int64_t batch_size = input.size(0);
@@ -245,7 +246,6 @@ void nll_loss2d_forward_kernel(
     } else {
       output.zero_();
     }
-    total_weight.zero_();
     return;
   }
 
@@ -254,7 +254,6 @@ void nll_loss2d_forward_kernel(
   auto target_ = target.contiguous();
 
   output.zero_();
-  total_weight.zero_();
 
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::ScalarType::Half,
