@@ -43,7 +43,8 @@ Tensor _histc_xpu(
   // See Note [Writing Nondeterministic Operations]
   // Nondeterministic for floating types because of atomicAdd usage
   if (at::isFloatingType(self.scalar_type())) {
-    globalContext().alertNotDeterministic("_histc_xpu with floating point input");
+    globalContext().alertNotDeterministic(
+        "_histc_xpu with floating point input");
   }
   return native::xpu::_histc_kernel(self, nbins, min, max);
 }
