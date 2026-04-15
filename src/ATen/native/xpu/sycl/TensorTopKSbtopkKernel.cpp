@@ -7,12 +7,15 @@
  *   - TensorTopK.cu: gatherTopK (lines 40-182), radixSelect (860)
  *
  * Key CUDA -> SYCL mappings:
- *   WARP_BALLOT + __popc  -> sub-group reduce_over_group
- *   getLaneId()           -> sg.get_local_linear_id()
- *   atomicAdd (smem)      -> sycl::atomic_ref (local_space)
- *   __syncthreads()       -> sycl::group_barrier(item.get_group())
- *   getLaneMaskLe()+ballot -> sycl::inclusive_scan_over_group
- *   smem[]                -> int* from local accessor
+ *   WARP_BALLOT(pred)         -> sycl::ext::oneapi::group_ballot(sg, pred)
+ *   __popc(ballot)            -> ballot.count()  (or extract_bits + __builtin_popcount)
+ *   getLaneMaskLe() & ballot  -> extract_bits + manual le_mask + __builtin_popcount
+ *   getLaneId()               -> sg.get_local_linear_id()
+ *   atomicAdd (smem)          -> sycl::atomic_ref (local_space)
+ *   __syncthreads()           -> sycl::group_barrier(item.get_group())
+ *   doLdg(ptr)                -> direct load (no read-only cache hint in SYCL)
+ *   Bitfield<T>::getBitfield  -> software shift+mask (no PTX BFE/BFI in SYCL)
+ *   smem[]                    -> int* from local accessor
  *
  * withinSliceStride = 1 (input is .contiguous() before calling sbtopk).
  * RADIX_BITS, RADIX_SIZE, RADIX_MASK are defined in SortingRadixSelect.h.
@@ -22,6 +25,7 @@
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
+#include <sycl/ext/oneapi/sub_group_mask.hpp>
 
 namespace at {
 namespace native {
@@ -48,8 +52,11 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // ================================================================
   // countRadixUsingMask (SortingRadixSelect.cuh:176)
   //
-  // Counts distribution of radix digits at digitPos for elements
-  // matching (convert(v) & desiredMask) == desired.
+  // CUDA: per-iteration WARP_BALLOT + __popc for each digit.
+  // Each iteration, each thread processes one element. The warp collectively
+  // counts via ballot+popc. counts[j] accumulates the warp-level count
+  // across iterations (all lanes have the same value).
+  // SYCL: per-iteration group_ballot + count() for each digit (1:1 match).
   // Result: all threads have identical counts[0..RADIX_SIZE-1].
   // ================================================================
   void countRadixUsingMask(
@@ -77,25 +84,35 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     sycl::group_barrier(item.get_group());
 
-    // CUDA: per-warp counting via WARP_BALLOT + __popc, accumulated
-    // SYCL: per-thread counting + sub_group reduce (semantically identical)
-    for (int i = lid; i < sliceSize; i += block_size) {
-      RadixT val = TopKTypeConfig<scalar_t>::convert(data[i]);
-      bool hasVal = ((val & desiredMask) == desired);
-      RadixT digit = (val >> digitPos) & RADIX_MASK;
+    // CUDA: WARP_BALLOT + __popc per iteration, per digit.
+    // In CUDA, threads exit the loop when i >= sliceSize, and __ballot_sync
+    // uses a mask to track active threads. In SYCL, group_ballot requires
+    // converged control flow, so we round up the loop and have out-of-range
+    // threads pass false for the vote (same result).
+    int numIterations =
+        ((sliceSize + block_size - 1) / block_size) * block_size;
+
+    for (int i = lid; i < numIterations; i += block_size) {
+      bool inRange = (i < sliceSize);
+      // CUDA: TopKTypeConfig<scalar_t>::convert(doLdg(&data[i]))
+      RadixT val = inRange
+          ? TopKTypeConfig<scalar_t>::convert(data[i])
+          : static_cast<RadixT>(0);
+
+      bool hasVal = inRange && ((val & desiredMask) == desired);
+      // CUDA: Bitfield<bitwise_t>::getBitfield(val, radixDigitPos, RadixBits)
+      RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, RADIX_BITS);
+
 #pragma unroll
       for (int j = 0; j < RADIX_SIZE; ++j) {
-        counts[j] += (hasVal && (digit == j)) ? 1 : 0;
+        bool vote = hasVal && (digit == static_cast<RadixT>(j));
+        // CUDA: counts[j] += __popc(WARP_BALLOT(vote));
+        counts[j] +=
+            sycl::ext::oneapi::group_ballot(sg, vote).count();
       }
     }
 
-    // CUDA: accumulated warp-level counts -> lane 0 atomicAdd to smem
-    // SYCL: sub_group reduce -> lane 0 atomicAdd to smem
-#pragma unroll
-    for (int j = 0; j < RADIX_SIZE; ++j) {
-      counts[j] = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
-    }
-
+    // CUDA: if (getLaneId() == 0) atomicAdd(&smem[i], counts[i])
     if (sg_lid == 0) {
 #pragma unroll
       for (int j = 0; j < RADIX_SIZE; ++j) {
@@ -167,21 +184,20 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   }
 
   // ================================================================
-  // inclusiveBinaryPrefixScan (ScanUtils.cuh:16)
+  // inclusiveBinaryPrefixScan (ScanUtils.cuh:16, non-ROCm path)
   //
   // CUDA:
-  //   vote = WARP_BALLOT(in)
-  //   index = __popc(getLaneMaskLe() & vote)   // inclusive within warp
-  //   carry = __popc(vote)                      // warp total
+  //   T vote = WARP_BALLOT(in);
+  //   T index = __popc(getLaneMaskLe() & vote);   // inclusive within warp
+  //   T carry = __popc(vote);                      // warp total
   //   lane 0: smem[warp] = carry
   //   __syncthreads()
-  //   thread 0: for i in 0..num_warps-1:
-  //     v = smem[i]; smem[i] += current; current += v
+  //   thread 0: serial prefix sum over smem
   //   __syncthreads()
   //   if (warp >= 1): index += smem[warp - 1]
   //   return index
   //
-  // SYCL: sub-group inclusive_scan + smem cross-sub-group serial scan.
+  // SYCL: group_ballot + extract_bits + manual le_mask + __builtin_popcount
   // ================================================================
   int inclusiveBinaryPrefixScan(
       sycl::nd_item<1> item,
@@ -192,27 +208,35 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int sg_size = sg.get_local_range()[0];
     int sg_id = sg.get_group_linear_id();
     int block_size = item.get_local_range(0);
-    int num_sgs = (block_size + sg_size - 1) / sg_size;
+    // CUDA: blockDim.x / C10_WARP_SIZE
+    int num_sgs = block_size / sg_size;
 
-    int val = in ? 1 : 0;
+    // CUDA: T vote = WARP_BALLOT(in)
+    auto ballot = sycl::ext::oneapi::group_ballot(sg, in);
+    uint32_t vote;
+    ballot.extract_bits(vote);
 
-    // Intra-sub-group inclusive scan
-    // (= CUDA __popc(getLaneMaskLe() & WARP_BALLOT(in)))
-    int index = sycl::inclusive_scan_over_group(sg, val, sycl::plus<int>());
+    // CUDA: getLaneMaskLe() — PTX %%lanemask_le special register
+    // Bitmask with bits 0..laneId set (inclusive)
+    uint32_t le_mask =
+        (static_cast<uint32_t>(sg_lid) >= 31u)
+            ? ~0u
+            : ((1u << (static_cast<uint32_t>(sg_lid) + 1)) - 1u);
 
-    // Sub-group carry = last lane's inclusive value
-    // (= CUDA __popc(vote))
-    int carry = sycl::group_broadcast(sg, index, sg_size - 1);
+    // CUDA: T index = __popc(getLaneMaskLe() & vote)
+    int index = sycl::popcount(le_mask & vote);
 
-    // Lane 0 writes carry to smem
-    // (= CUDA if (getLaneId() == 0) smem[warp] = carry)
+    // CUDA: T carry = __popc(vote)
+    int carry = sycl::popcount(vote);
+
+    // CUDA: if (getLaneId() == 0) smem[warp] = carry
     if (sg_lid == 0) {
       smem[sg_id] = carry;
     }
     sycl::group_barrier(item.get_group());
 
-    // Thread 0 serial inclusive prefix sum over sub-group carries
-    // (= CUDA if (threadIdx.x == 0) { for ... smem[i] = smem[i] + current; current += v; })
+    // CUDA: if (threadIdx.x == 0) { serial prefix sum over smem }
+    // Note: binop = plus. smem[i] = smem[i] + current; current += v
     if (item.get_local_id(0) == 0) {
       int current = 0;
       for (int i = 0; i < num_sgs; ++i) {
@@ -223,8 +247,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     sycl::group_barrier(item.get_group());
 
-    // Add preceding sub-groups' prefix
-    // (= CUDA if (warp >= 1) index += smem[warp - 1])
+    // CUDA: if (warp >= 1) index = binop(index, smem[warp - 1])
     if (sg_id >= 1) {
       index += smem[sg_id - 1];
     }
@@ -236,7 +259,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // exclusiveBinaryPrefixScan (ScanUtils.cuh:64)
   //
   // CUDA:
-  //   inclusiveBinaryPrefixScan(smem, in, &out, binop)
+  //   inclusiveBinaryPrefixScan<T, false>(smem, in, &out, binop)
   //   *out -= (T)in                                     // inclusive->exclusive
   //   *carry = smem[ceil_div(blockDim.x, WARP_SIZE)-1]  // total
   //   __syncthreads()                                   // KillWARDependency
@@ -250,7 +273,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int& carry) const {
     int block_size = item.get_local_range(0);
     int sg_size = sg.get_local_range()[0];
-    int num_sgs = (block_size + sg_size - 1) / sg_size;
+    int num_sgs = block_size / sg_size;
 
     int inclusive = inclusiveBinaryPrefixScan(item, sg, smem, in);
 
