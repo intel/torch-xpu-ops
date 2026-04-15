@@ -513,7 +513,7 @@ def pinv_errors_and_warnings(self, device, dtype):
     with warnings.catch_warnings(record=True) as w:
         warnings.filterwarnings(
             "ignore",
-            message=r".*Aten Op fallback from XPU to CPU happened.*",
+            message=r".*Aten Op fallback from XPU to CPU happends.*",
             category=UserWarning,
         )
         torch.linalg.pinv(a, out=out)
@@ -594,7 +594,7 @@ def cond_errors_and_warnings(self, device, dtype):
         with warnings.catch_warnings(record=True) as w:
             warnings.filterwarnings(
                 "ignore",
-                message=r".*Aten Op fallback from XPU to CPU happened.*",
+                message=r".*Aten Op fallback from XPU to CPU happends.*",
                 category=UserWarning,
             )
             # Trigger warning
