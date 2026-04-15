@@ -7163,7 +7163,9 @@ torch.cuda.synchronize()
             else [torch.float16, torch.float32]
         )
     )
-    @skipXPUIf(True, "XPU does not support NestedTensor for SDPA operations.")
+    @skipXPUIf(
+        True, "XPU does not support the NestedTensor SDPA packed in-proj path."
+    )
     def test_sdpa_with_packed_in_proj(self, device, dtype):
         # shape (B, *, D)
         input_packed = random_nt_from_dims(
@@ -7248,7 +7250,10 @@ torch.cuda.synchronize()
     @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
     @unittest.skipIf(IS_WINDOWS, reason="Windows not yet supported for torch.compile")
-    @skipXPUIf(True, "XPU does not support NestedTensor for SDPA operations.")
+    @skipXPUIf(
+        True,
+        "XPU does not support this NestedTensor SDPA autocast path under torch.compile.",
+    )
     def test_sdpa_autocast(self, device):
         def fn_nt(values32, values16, offsets):
             nt32 = convert_jagged_to_nested_tensor(values32, offsets, max_length=16)
@@ -7332,7 +7337,9 @@ torch.cuda.synchronize()
     @skipCUDAIfRocm
     @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
-    @skipXPUIf(True, "XPU does not support NestedTensor for SDPA operations.")
+    @skipXPUIf(
+        True, "XPU does not support NestedTensor SDPA flop-counter coverage in this test."
+    )
     def test_sdpa_flop_counter(self, device):
         from torch.utils.flop_counter import FlopCounterMode
 
