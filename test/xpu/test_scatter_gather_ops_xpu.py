@@ -20,7 +20,7 @@ with XPUPatchForImport(False):
     import torch
     from test_scatter_gather_ops import TestScatterGather
 
-    def __test_slice_scatter_compiled_backward_matches_cpu(self, device):
+    def _test_slice_scatter_compiled_backward_matches_cpu(self, device):
         def program(x, y):
             out = torch.slice_scatter(x, y, dim=1, start=0, end=6)
             return out.sum(dim=1)
@@ -34,9 +34,12 @@ with XPUPatchForImport(False):
         g = torch.randn(4, 33, dtype=torch.float32, device=device)
 
         torch._dynamo.reset()
-        compiled = torch.compile(program, backend="inductor")
-        out = compiled(x, y)
-        out.backward(g)
+        try:
+            compiled = torch.compile(program, backend="inductor")
+            out = compiled(x, y)
+            out.backward(g)
+        finally:
+            torch._dynamo.reset()
 
         x_cpu = x.detach().cpu().requires_grad_(True)
         y_cpu = y.detach().cpu().requires_grad_(True)
@@ -49,7 +52,7 @@ with XPUPatchForImport(False):
         self.assertEqual(y.grad.cpu(), y_cpu.grad, atol=1e-4, rtol=1e-4)
 
     TestScatterGather.test_slice_scatter_compiled_backward_matches_cpu = (
-        __test_slice_scatter_compiled_backward_matches_cpu
+        _test_slice_scatter_compiled_backward_matches_cpu
     )
 
 
