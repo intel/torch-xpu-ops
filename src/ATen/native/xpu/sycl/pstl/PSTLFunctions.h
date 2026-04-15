@@ -1098,7 +1098,8 @@ OutputIt count_by_segment(
   sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
 
   // 2. get target positions with inclusive_scan
-  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
+  constexpr index_t ZERO_BASED_INDEX_OFFSET = static_cast<index_t>(-1);
+  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, ZERO_BASED_INDEX_OFFSET);
 
   // 3. calculate counts for each unique point
   Tensor range = at::empty({N + 1}, options);
@@ -1299,6 +1300,16 @@ inline void merge(
   size_t r_sq2_low_bound;
   size_t l_sq1_upper_bound;
   size_t r_sq1_upper_bound;
+
+  // Copy only the first sequence if the second one is empty.
+  if (sq2_start >= sq2_end) {
+    for (unsigned int i = 0; i < chunk1_size; ++i) {
+      out_key[chunk1_start + i] = in_key[chunk1_start + i];
+      out_val[chunk1_start + i] = in_val[chunk1_start + i];
+    }
+    return;
+  }
+
   if (!comp_t(in_key[sq2_start], in_key[sq1_end - 1])) {
     for (unsigned int i = 0; i < chunk1_size; ++i) {
       out_key[chunk1_start + i] = in_key[chunk1_start + i];

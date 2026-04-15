@@ -61,6 +61,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
+    onlyCUDA,
     onlyXPU,
     PYTORCH_CUDA_MEMCHECK,
     skipMeta,
@@ -268,14 +269,10 @@ class TestBasicVitalSigns(TestCase):
 
 # FIXME: document or deprecate whatever this is
 class TestVitalSignsCuda(TestCase):
-    @onlyXPU
+    @onlyCUDA  # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
     def test_cuda_vitals_gpu_only(self, device):
-        if TEST_XPU:
-            with torch_vital_set("ON"):
-                self.assertIn("XPU.used\t\t true", torch.read_vitals())
-        else:
-            with torch_vital_set("ON"):
-                self.assertIn("CUDA.used\t\t true", torch.read_vitals())
+        with torch_vital_set("ON"):
+            self.assertIn("CUDA.used\t\t true", torch.read_vitals())
 
 
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
@@ -1398,8 +1395,8 @@ class TestTorchDeviceType(TestCase):
             small2 = torch.randn(*dims_small2, device=device).float()
             small2_expanded = small2.expand(*dims_full)
 
-        if small.is_cuda and fn in ["map", "map2"]:
-            # map and map2 are not implementd on CUDA tensors
+        if (small.device.type in ["cuda", "xpu"]) and fn in ["map", "map2"]:
+            # map and map2 are not implemented on CUDA and XPU tensors
             return
 
         if hasattr(large_expanded, fn):
@@ -2504,7 +2501,7 @@ else:
         result = original.scatter(0, null_index, null_arr)
         self.assertEqual(result, original, atol=0, rtol=0)
 
-    @onlyXPU
+    @onlyCUDA
     @skipIfTorchInductor("FIXME")
     def test_sync_warning(self, device):
         def _sync_raises_helper(f, level):
@@ -6681,12 +6678,6 @@ else:
                     if torch.cuda.amp.common.amp_definitely_not_available()
                     else a.is_enabled()
                 )
-            elif device.type == "xpu":
-                self.assertTrue(
-                    not a.is_enabled()
-                    if torch.xpu.amp.common.amp_definitely_not_available()
-                    else a.is_enabled()
-                )
             else:
                 self.assertTrue(a.is_enabled())
             if lazy_init_scale:
@@ -7687,6 +7678,11 @@ else:
             self.skipTest("uint16,32,64 not implemented on XLA")
         t = torch.ones((), device=device, dtype=dtype)
         self.assertEqual(1, t.item())
+
+    def test__local_scalar_dense_with_empty_tensor(self, device):
+        input = torch.randn(0, device=device)
+        with self.assertRaisesRegex(RuntimeError, "Empty tensor not supported"):
+            torch.ops.aten._local_scalar_dense(input)
 
     @onlyNativeDeviceTypes
     def test_masked_scatter_inplace_noncontiguous(self, device):
@@ -9733,7 +9729,7 @@ class TestTorch(TestCase):
         self.assertExpectedInline(str(x), """tensor([1.0000e+02, 1.0000e-02])""")
         torch.set_printoptions(sci_mode=False)
         self.assertEqual(x.__repr__(), str(x))
-        self.assertExpectedInline(str(x), """tensor([  100.0000,     0.0100])""")
+        self.assertExpectedInline(str(x), """tensor([100.0000,   0.0100])""")
         torch.set_printoptions(sci_mode=None)  # reset to the default value
 
         # test no leading space if all elements positive

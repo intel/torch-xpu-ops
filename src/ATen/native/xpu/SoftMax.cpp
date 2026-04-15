@@ -11,7 +11,6 @@
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/xpu/sycl/SoftMaxKernels.h>
-#include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 
 #include <ATen/ops/_log_softmax_backward_data_native.h>

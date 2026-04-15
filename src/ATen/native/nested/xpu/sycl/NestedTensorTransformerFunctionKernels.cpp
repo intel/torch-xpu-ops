@@ -926,7 +926,242 @@ void jagged_dense_elementwise_dense_template(
 #undef INVOKE_KERNEL_WITH_DIM
 }
 
-at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
+// Returns the idx satisfying condition: offsets[r] <= val < offsets[r+1].
+// Equivalent to (upper_bound(offsets, offsets+n+1, val) - offsets) - 1.
+// Searching only the range [1, n] since offsets[0] is always 0.
+template <typename index_t>
+inline int upper_bound_minus1(const index_t* offsets, int n, int val) {
+  int first = 1;
+  int count = n - 1;
+  while (count > 0) {
+    const int step = count / 2;
+    const int idx = first + step;
+    if (offsets[idx] <= val) {
+      first = idx + 1;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+  return first - 1;
+}
+
+template <int NUM_JAGGED_DIM, typename index_t, typename scalar_t, typename F>
+struct JaggedDenseDenseElementwiseJaggedOutputFunctor {
+  void operator()(sycl::nd_item<2> item) const {
+    const int outer_dense_size = y_0_.size(0);
+    const int inner_dense_size = y_0_.size(2);
+    const int nnz = x_values_.size(0);
+    auto output_values = output_values_;
+
+    const int offset_begin =
+        item.get_group(0) * item.get_local_range(1) + item.get_local_id(1);
+    const int offset_stride = item.get_group_range(0) * item.get_local_range(1);
+    for (int offset = offset_begin; offset < nnz; offset += offset_stride) {
+      // Resolve flat packed index -> (batch_idx, jidx) in the dense tensor.
+      // Each jagged dim narrows batch_idx from a flat NNZ index to a batch row.
+      int batch_idx = offset;
+      int jidx = 0;
+      bool truncated = false;
+      int dim_prod = 1;
+#pragma unroll
+      for (int d = NUM_JAGGED_DIM - 1; d >= 0; --d) {
+        const int n_seqs = x_offsets_sizes_.vals[d] - 1;
+        const int seq =
+            upper_bound_minus1(x_offsets_.vals[d], n_seqs, batch_idx);
+        const int pos = batch_idx - x_offsets_.vals[d][seq];
+        if (pos >= jagged_dims_.vals[d]) {
+          truncated = true;
+          break;
+        }
+        jidx += pos * dim_prod;
+        dim_prod *= jagged_dims_.vals[d];
+        batch_idx = seq;
+      }
+
+      if (batch_idx >= outer_dense_size) {
+        truncated = true;
+      }
+
+      const int oidx = batch_idx;
+      int iidx;
+      for (iidx = item.get_local_id(0); iidx * 2 + 1 < inner_dense_size;
+           iidx += item.get_local_range(0)) {
+        if (!truncated) {
+          output_values[offset][2 * iidx] =
+              f_(x_values_[offset][2 * iidx],
+                 y_0_[oidx][jidx][2 * iidx],
+                 y_1_[oidx][jidx][2 * iidx]);
+          output_values[offset][2 * iidx + 1] =
+              f_(x_values_[offset][2 * iidx + 1],
+                 y_0_[oidx][jidx][2 * iidx + 1],
+                 y_1_[oidx][jidx][2 * iidx + 1]);
+        } else {
+          output_values[offset][2 * iidx] =
+              f_(x_values_[offset][2 * iidx], 0, 0);
+          output_values[offset][2 * iidx + 1] =
+              f_(x_values_[offset][2 * iidx + 1], 0, 0);
+        }
+      }
+      if (iidx * 2 + 1 == inner_dense_size) {
+        if (!truncated) {
+          output_values[offset][2 * iidx] =
+              f_(x_values_[offset][2 * iidx],
+                 y_0_[oidx][jidx][2 * iidx],
+                 y_1_[oidx][jidx][2 * iidx]);
+        } else {
+          output_values[offset][2 * iidx] =
+              f_(x_values_[offset][2 * iidx], 0, 0);
+        }
+      }
+    }
+  }
+  JaggedDenseDenseElementwiseJaggedOutputFunctor(
+      const at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> x_values,
+      StackArray<index_t*> x_offsets,
+      StackArray<int64_t> x_offsets_sizes,
+      const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y_0,
+      const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y_1,
+      at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> output_values,
+      StackArray<int64_t> jagged_dims,
+      F f)
+      : x_values_(x_values),
+        x_offsets_(x_offsets),
+        x_offsets_sizes_(x_offsets_sizes),
+        y_0_(y_0),
+        y_1_(y_1),
+        output_values_(output_values),
+        jagged_dims_(jagged_dims),
+        f_(f) {}
+
+ private:
+  const at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> x_values_;
+  StackArray<index_t*> x_offsets_;
+  StackArray<int64_t> x_offsets_sizes_;
+  const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y_0_;
+  const at::PackedTensorAccessor32<scalar_t, 3, RestrictPtrTraits> y_1_;
+  at::PackedTensorAccessor32<scalar_t, 2, RestrictPtrTraits> output_values_;
+  StackArray<int64_t> jagged_dims_;
+  F f_;
+};
+
+template <typename scalar_t>
+struct DenseToJaggedFunctor {
+  scalar_t operator()(scalar_t /*unused*/, scalar_t y, scalar_t /*unused*/)
+      const {
+    return y;
+  }
+};
+
+template <typename scalar_t, typename F>
+void jagged_dense_elementwise_jagged_output_template(
+    const Tensor& x_values,
+    const std::vector<Tensor>& x_offsets,
+    const Tensor& y,
+    const Tensor& output_values,
+    F f) {
+  TENSOR_ON_XPU_GPU(x_values);
+  for (auto& x_offset : x_offsets) {
+    TENSOR_ON_XPU_GPU(x_offset);
+  }
+
+  const int num_jagged_dim = y.dim() - 2;
+  TORCH_CHECK(
+      x_offsets.size() == static_cast<size_t>(num_jagged_dim),
+      "x_offsets.size(), ",
+      x_offsets.size(),
+      " != num_jagged_dim, ",
+      num_jagged_dim);
+
+  if (y.numel() == 0 || x_values.numel() == 0) {
+    return;
+  }
+
+  // Canonicalize y to 3D, collapsing jagged dimensions.
+  const Tensor y_reshaped = y.view({y.size(0), -1, y.size(-1)});
+
+  sycl::range<2> global_range, local_range;
+  StackArray<int64_t> jagged_dims_tensor;
+  std::tie(local_range, global_range, jagged_dims_tensor) =
+      check_shape_and_partition_(x_values, x_offsets, y);
+
+  // Override grid size to parallelize over NNZ
+  const int wg_size_y = local_range[1];
+  const int num_group = div_round_up(x_values.size(0), wg_size_y);
+  global_range[0] = num_group * local_range[0];
+
+#define INVOKE_KERNEL_WITH_DIM(NUM_JAGGED_DIM)                                 \
+  {                                                                            \
+    std::vector<Tensor> x_offsets_contig;                                      \
+    x_offsets_contig.resize(num_jagged_dim);                                   \
+    StackArray<index_t*> x_offset_ptrs;                                        \
+    x_offset_ptrs.ndim = num_jagged_dim;                                       \
+    StackArray<int64_t> x_offset_sizes;                                        \
+    x_offset_sizes.ndim = num_jagged_dim;                                      \
+    for (int d = 0; d < num_jagged_dim; ++d) {                                 \
+      x_offsets_contig[d] = x_offsets[d].contiguous();                         \
+      x_offset_ptrs.vals[d] =                                                  \
+          x_offsets_contig[d].template data_ptr<index_t>();                    \
+      x_offset_sizes.vals[d] = x_offsets[d].numel();                           \
+    }                                                                          \
+    auto kfn = JaggedDenseDenseElementwiseJaggedOutputFunctor<                 \
+        NUM_JAGGED_DIM,                                                        \
+        index_t,                                                               \
+        scalar_t,                                                              \
+        F>(                                                                    \
+        x_values.packed_accessor32<scalar_t, 2, RestrictPtrTraits>(),          \
+        x_offset_ptrs,                                                         \
+        x_offset_sizes,                                                        \
+        y_reshaped.packed_accessor32<scalar_t, 3, RestrictPtrTraits>(),        \
+        y_reshaped.packed_accessor32<scalar_t, 3, RestrictPtrTraits>(),        \
+        output_values.packed_accessor32<scalar_t, 2, RestrictPtrTraits>(),     \
+        jagged_dims_tensor,                                                    \
+        f);                                                                    \
+    sycl_kernel_submit(global_range, local_range, getCurrentSYCLQueue(), kfn); \
+  }
+
+  JAGGED_TENSOR_DISPATCH_DIMS();
+
+#undef INVOKE_KERNEL_WITH_DIM
+}
+
+at::Tensor dense_to_jagged_forward_kernel(
+    const Tensor& dense,
+    TensorList offsets,
+    std::optional<c10::SymInt> total_L) {
+  auto D = dense.size(-1);
+
+  at::SymInt total_L_computed;
+  if (total_L.has_value()) {
+    total_L_computed = total_L.value();
+  } else {
+    TORCH_CHECK(
+        !offsets.empty(),
+        "dense_to_jagged_forward: offsets must be non-empty when total_L is not provided.");
+    total_L_computed = offsets.back().max().item<int64_t>();
+  }
+  auto values = at::empty_symint({total_L_computed, D}, dense.options());
+  auto output = at::empty_like(values);
+
+  AT_DISPATCH_ALL_TYPES_AND3(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
+      values.scalar_type(),
+      "dense_to_jagged_xpu",
+      [&] {
+        jagged_dense_elementwise_jagged_output_template<scalar_t>(
+            values,
+            offsets.vec(),
+            dense,
+            output,
+            DenseToJaggedFunctor<scalar_t>());
+      });
+
+  return output;
+}
+
+at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
@@ -953,9 +1188,10 @@ at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
   Tensor padded_values_view =
       D_folded ? padded_values.unsqueeze(-1) : padded_values;
 
-  AT_DISPATCH_ALL_TYPES_AND2(
+  AT_DISPATCH_ALL_TYPES_AND3(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
+      at::ScalarType::Bool,
       values.scalar_type(),
       "jagged_to_padded_dense_xpu",
       [&] {

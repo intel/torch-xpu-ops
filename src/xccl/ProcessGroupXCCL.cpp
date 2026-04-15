@@ -34,6 +34,27 @@ bool checkSameSize(const std::vector<at::Tensor>& input_tensors) {
   return true;
 }
 
+struct OnecclGroupGuard {
+  OnecclGroupGuard() {
+    xccl::oneccl_group_start();
+  }
+
+  ~OnecclGroupGuard() noexcept {
+    // Ensure the group is always closed, even if a prior call threw.
+    // Suppress any exception here so that none can escape this noexcept
+    // destructor and trigger std::terminate during stack unwinding.
+    try {
+      xccl::oneccl_group_end();
+    } catch (...) {
+    }
+  }
+
+  OnecclGroupGuard(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard& operator=(const OnecclGroupGuard&) = delete;
+  OnecclGroupGuard(OnecclGroupGuard&&) = delete;
+  OnecclGroupGuard& operator=(OnecclGroupGuard&&) = delete;
+};
+
 void checkSingleTensor(
     const at::Tensor& tensor,
     const bool p2p = false // whether operation is a P2P operation
@@ -59,6 +80,26 @@ void checkSingleTensor(
       C10_THROW_ERROR(ValueError, "Tensors must be contiguous");
     }
   }
+}
+
+ReduceOp applyPreMulSumIfNeeded(
+    const at::Tensor& input,
+    const ReduceOp& reduceOp) {
+  // Although premul_sum is supported in oneCCL, it is only for scale-up,
+  // not scale-out, and there is no foolproof way to detect scale-out scenario,
+  // so we always apply premul sum here to be safe.
+  bool applyScaleoutPreMulSum = reduceOp == ReduceOp::PREMUL_SUM;
+  auto newOp = applyScaleoutPreMulSum ? ReduceOp(ReduceOp::SUM) : reduceOp;
+  if (applyScaleoutPreMulSum) {
+    const auto* preMulSupplement =
+        reinterpret_cast<NCCLPreMulSumSupplement*>(reduceOp.supplement_.get());
+    if (preMulSupplement->tensor_factor.defined()) {
+      input.mul_(preMulSupplement->tensor_factor);
+    } else {
+      input.mul_(preMulSupplement->double_factor);
+    }
+  }
+  return newOp;
 }
 
 int64_t checkTensorOnSameDevice(const std::vector<at::Tensor>& tensors) {
@@ -118,6 +159,10 @@ std::string dump_xccl_trace(
       std::unordered_map<std::string, std::string>>();
   return FlightRecorderXCCL::get()->dump(
       xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
+}
+
+void reset_xccl_trace() {
+  FlightRecorderXCCL::get()->reset_all();
 }
 
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
@@ -225,12 +270,12 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
       auto currentTimepoint = std::chrono::steady_clock::now();
       auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
           currentTimepoint - workStartTime_);
-      if (timeElapsed >= timeout) {
+      if (timeout != kNoTimeout && timeElapsed >= timeout) {
         std::string exceptionMsg = c10::str(
-            "Work ran time out after ", timeElapsed.count(), " milliseconds.");
+            "Work timed out after ", timeElapsed.count(), " milliseconds.");
         LOG(ERROR) << exceptionMsg;
         // todo: abort comm and exit
-        TORCH_CHECK(false, exceptionMsg)
+        C10_THROW_ERROR(DistBackendError, exceptionMsg);
       }
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kSynchronizeBusyWaitMillis));
@@ -362,6 +407,12 @@ const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
     return globalRanks;
   }
   return options_->global_ranks_in_group;
+}
+
+bool ProcessGroupXCCL::isInitialized() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // Unlike PGNCCL, all comms are initialized (or we fail)
+  return !devXCCLCommMap_.empty();
 }
 
 void ProcessGroupXCCL::setEnqueuedPgStatus(
@@ -758,7 +809,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_->addCallback(
       [id, reset_epoch](at::ivalue::Future&) {
         FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ false);
+            id, reset_epoch, /*compute_duration*/ true);
       },
       /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
@@ -891,7 +942,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   c10::xpu::XPUCachingAllocator::recordStream(
       tensor.storage().data_ptr(), stream);
 
-  fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  if (!batchP2P) {
+    OnecclGroupGuard group_guard;
+    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  } else {
+    fn(tensor, *comm, stream, cclstream, p2pTargetRank);
+  }
 
   if (!coalescing_state_) {
     post(stream);
@@ -913,7 +969,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_->addCallback(
         [id, reset_epoch](at::ivalue::Future&) {
           FlightRecorderXCCL::get()->retire_id(
-              id, reset_epoch, /*compute_duration*/ false);
+              id, reset_epoch, /*compute_duration*/ true);
         },
         /*use_future*/ false);
     setEnqueuedPgStatus(work);
@@ -1196,8 +1252,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_impl(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1285,8 +1342,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::allreduce_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclAllReduce(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1689,8 +1747,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter(
             xcclComm_t& comm,
             at::xpu::XPUStream& stream,
             ccl::stream& xcclStream) {
+          auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
           xccl::onecclReduceScatter(
-              input, output, comm, opts.reduceOp, xcclStream, stream);
+              input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
           if (opts.reduceOp == ReduceOp::AVG) {
             auto divisor = getSize();
@@ -1776,8 +1835,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::_reduce_scatter_base(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();
@@ -1827,8 +1887,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::reduce_scatter_tensor_coalesced(
           xcclComm_t& comm,
           at::xpu::XPUStream& stream,
           ccl::stream& xcclStream) {
+        auto actualReduceOp = applyPreMulSumIfNeeded(input, opts.reduceOp);
         xccl::onecclReduceScatter(
-            input, output, comm, opts.reduceOp, xcclStream, stream);
+            input, output, comm, actualReduceOp, xcclStream, stream);
 #if !defined(XCCL_HAS_AVG)
         if (opts.reduceOp == ReduceOp::AVG) {
           auto divisor = getSize();

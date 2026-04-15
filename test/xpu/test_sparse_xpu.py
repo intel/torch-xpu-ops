@@ -42,7 +42,6 @@ from torch.testing._internal.common_device_type import (
     ops,
     precisionOverride,
     skipCUDAIf,
-    skipXPUIf,
     tol,
     toleranceOverride,
 )
@@ -1963,21 +1962,19 @@ class TestSparse(TestSparseBase):
         ab = torch.bmm(a, b)
         self.assertEqual(ab, torch.zeros((2, 1, 1), device=device))
 
-    @onlyOn(["cuda", "xpu"])
+    @onlyOn(["xpu"])
     @unittest.skipIf(
-        not IS_WINDOWS or not TEST_WITH_ROCM,
-        "this test ensures bmm sparse-dense CUDA gives an error when run on Windows with CUDA < 11.0",
+        not IS_WINDOWS,
+        "Windows-specific error check; skipping on non-Windows",
     )
-    @unittest.skipIf(TEST_XPU, "bmm sparse-dense XPU is not yet supported")
     @dtypes(torch.double)
     def test_bmm_windows_error(self, device, dtype):
-        a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device_type)
-        b = torch.rand(2, 2, 2, dtype=dtype).to(device_type)
-        with self.assertRaisesRegex(
-            RuntimeError,
-            "bmm sparse-dense CUDA is not supported on Windows with cuda before 11.0",
-        ):
-            ab = a.bmm(b)
+        self.assertTrue(device.startswith("xpu"))
+        a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device)
+        b = torch.rand(2, 2, 2, dtype=dtype).to(device)
+        # XPU supports sparse-dense bmm; verify result matches dense reference
+        ab = a.bmm(b)
+        self.assertEqual(ab, torch.bmm(a.to_dense(), b))
 
     @onlyCPU
     @coalescedonoff
@@ -2217,7 +2214,6 @@ class TestSparse(TestSparseBase):
     @expectedFailureMPS
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_hsmm(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)[0]
@@ -3360,7 +3356,6 @@ class TestSparse(TestSparseBase):
     @expectedFailureMPS
     @dtypes(torch.double)
     @dtypesIfMPS(torch.float32)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2211")
     def test_mv(self, device, dtype, coalesced):
         def test_shape(di, dj, dk, nnz):
             x, _, _ = self._gen_sparse(2, nnz, [di, dj], dtype, device, coalesced)
@@ -6183,28 +6178,12 @@ class TestSparseAny(TestCase):
     def test_constructor_autograd(self, device, layout):
         def specific_constructor(*args, **kwargs):
             if layout is torch.sparse_csr:
-                if "xpu" in device:
-                    self.skipTest(
-                        "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2212 for details"
-                    )
                 return torch.sparse_csr_tensor(*args, **kwargs)
             elif layout is torch.sparse_csc:
-                if "xpu" in device:
-                    self.skipTest(
-                        "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2212 for details"
-                    )
                 return torch.sparse_csc_tensor(*args, **kwargs)
             elif layout is torch.sparse_bsc:
-                if "xpu" in device:
-                    self.skipTest(
-                        "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
-                    )
                 return torch.sparse_bsc_tensor(*args, **kwargs)
             elif layout is torch.sparse_bsr:
-                if "xpu" in device:
-                    self.skipTest(
-                        "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
-                    )
                 return torch.sparse_bsr_tensor(*args, **kwargs)
             elif layout is torch.sparse_coo:
                 return torch.sparse_coo_tensor(*args, **kwargs)
@@ -6304,24 +6283,6 @@ class TestSparseAny(TestCase):
     def test_gradcheck_to_dense(
         self, from_layout, device, dtype, index_dtype, gradcheck
     ):
-        if (
-            from_layout in {torch.sparse_csc, torch.sparse_csr}
-            and "xpu" in device
-            and dtype in {torch.complex128, torch.float64}
-            and not gradcheck.masked
-        ):
-            self.skipTest(
-                "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2212 for details"
-            )
-        if (
-            from_layout in {torch.sparse_bsc, torch.sparse_bsr}
-            and "xpu" in device
-            and dtype in {torch.complex128, torch.float64}
-            and not gradcheck.masked
-        ):
-            self.skipTest(
-                "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
-            )
         for t in self.generate_simple_inputs(
             from_layout, device=device, dtype=dtype, index_dtype=index_dtype
         ):
@@ -6460,13 +6421,6 @@ class TestSparseAny(TestCase):
                 ):
                     explicit_to_sparse(t)
                 self.skipTest("NOT IMPL")
-            elif (from_layout, to_layout) is not (
-                torch.strided,
-                torch.sparse_coo,
-            ) and "xpu" in device:
-                self.skipTest(
-                    "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
-                )
             else:
                 r = t.to_sparse(layout=to_layout, blocksize=blocksize)
 
@@ -6587,15 +6541,6 @@ class TestSparseAny(TestCase):
     @precisionOverride({torch.bfloat16: 5e-4, torch.float16: 5e-3})
     @all_sparse_layouts("layout", include_strided=False)
     def test_reductions(self, layout, device, dtype, op):
-        if (
-            op.name == "sum"
-            and layout is torch.sparse_coo
-            and "xpu" in device
-            and dtype is torch.complex128
-        ):
-            self.skipTest(
-                "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2212 for details"
-            )
         count = 0
         for sample in op.sample_inputs_sparse(layout, device, dtype):
             count += 1
@@ -6755,10 +6700,6 @@ class TestSparseAny(TestCase):
         y = ref_y.requires_grad_(True)
 
         if layout is torch.sparse_bsr and not masked or layout is torch.sparse_bsc:
-            if "xpu" in device:
-                self.skipTest(
-                    "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2214 for details"
-                )
             with self.assertRaisesRegex(
                 RuntimeError,
                 r"addmm: computation on (CPU|CUDA) is not implemented for Strided \+ Sparse(Bsr|Bsc) @ Strided",
@@ -6768,10 +6709,6 @@ class TestSparseAny(TestCase):
         elif (
             layout in {torch.sparse_csc, torch.sparse_bsr, torch.sparse_bsc} and masked
         ):
-            if "xpu" in device:
-                self.skipTest(
-                    "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2214 for details"
-                )
             with self.assertRaisesRegex(
                 RuntimeError,
                 r"(sparse_addmm_sparse_backward: unsupported combination of layouts,"
@@ -6782,25 +6719,16 @@ class TestSparseAny(TestCase):
                 torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
             self.skipTest("NOT IMPL")
         else:
-            if "xpu" in device:
-                self.skipTest(
-                    "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2213 for details"
-                )
             torch.autograd.gradcheck(mm, (x, y), fast_mode=fast_mode, masked=masked)
 
     @onlyNativeDeviceTypes
     @suppress_warnings
     @ops(binary_ufuncs_with_sparse_support)
     @all_sparse_layouts("layout", include_strided=False)
-    @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/2209")
     def test_binary_operation(self, layout, device, dtype, op):
         if not op.supports_sparse_layout(layout):
             self.skipTest(
                 f"{layout} is not supported in `{op.name}` OpInfo definition. Skipping!"
-            )
-        if op.name == "mul" and layout is not torch.sparse_coo and "xpu" in device:
-            self.skipTest(
-                "Skipping!, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
             )
 
         for sample in op.sample_inputs_sparse(layout, device, dtype):
@@ -7008,11 +6936,6 @@ class TestSparseAny(TestCase):
 
         def identity(x):
             return x
-
-        if not masked and "xpu" in device and layout in sparse_compressed_layouts:
-            self.skipTest(
-                "XPU has issues, Skipping, see https://github.com/intel/torch-xpu-ops/issues/2209 for details"
-            )
 
         for func in (
             torch.Tensor.to_dense,
