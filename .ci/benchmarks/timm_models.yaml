@@ -11,3 +11,93 @@ skip:
       - dm_nfnet_f0
       - nfnet_l0
       - visformer_small
+
+
+# TODO - Figure out the reason of cold start memory spike
+batch_size:
+  divisors:
+    beit_base_patch16_224: 2
+    convit_base: 2
+    convmixer_768_32: 2
+    convnext_base: 2
+    cspdarknet53: 2
+    deit_base_distilled_patch16_224: 2
+    gluon_xception65: 2
+    mobilevit_s: 2
+    pnasnet5large: 2
+    poolformer_m36: 2
+    resnest101e: 2
+    swin_base_patch4_window7_224: 2
+    swsl_resnext101_32x16d: 2
+    vit_base_patch16_224: 2
+    volo_d1_224: 2
+    jx_nest_base: 4
+
+
+tolerance:
+  higher_training:
+    - inception_v3
+    - mobilenetv3_large_100
+
+  higher_fp16_xpu:
+    - botnet26t_256
+
+  higher_amp:
+    - poolformer_m36
+
+  even_higher:
+    - deit_base_distilled_patch16_224
+    - vit_base_patch16_siglip_256
+    - levit_128
+    - sebotnet33ts_256
+    - beit_base_patch16_224
+    - cspdarknet53
+
+  # These models need higher tolerance in MaxAutotune mode
+  even_higher_max_autotune:
+    - gluon_inception_v3
+
+  # beit_base_patch16_224 needs 16 * 1e-2 tolerance in training
+  highest_training:
+    - beit_base_patch16_224
+
+  freezing:
+    # the conv-batchnorm fusion used under freezing may cause relatively
+    # large numerical difference. We need a larger tolerance.
+    # Check https://github.com/pytorch/pytorch/issues/120545 for context
+    - adv_inception_v3
+    - botnet26t_256
+    - gluon_inception_v3
+    - selecsls42b
+    - swsl_resnext101_32x16d
+
+  cosine: []
+
+
+scaled_compute_loss:
+  - mobilevit_s
+  - ese_vovnet19b_dw
+  - fbnetc_100
+  - mnasnet_100
+  - sebotnet33ts_256
+
+
+require_larger_multiplier_for_smaller_tensor:
+  - inception_v3
+  - mobilenetv3_large_100
+  - vit_base_patch14_dinov2.lvd142m
+  - cspdarknet53
+  - gluon_inception_v3
+  - cait_m36_384
+
+
+dtype:
+  force_amp_for_fp16_bf16_models:
+    - convit_base
+    - xcit_large_24_p8_224
+
+
+accuracy:
+  skip:
+    eager_not_deterministic:
+      - xcit_large_24_p8_224
