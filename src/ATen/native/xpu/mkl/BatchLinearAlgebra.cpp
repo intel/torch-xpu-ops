@@ -129,7 +129,7 @@ void mkl_getrs(
       trans,
       n,
       nrhs,
-      const_cast<scalar_t*>(a), // oneMKL getrs reads LU factors but takes a mutable pointer
+      const_cast<scalar_t*>(a),
       lda,
       stride_a,
       ipiv,
