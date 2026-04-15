@@ -40,7 +40,10 @@ constexpr int SMEM_INTS = 68;
 template <typename scalar_t>
 struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
-  static constexpr int NUM_BITS = sizeof(RadixT) * 8;
+  // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
+  // For fp16: sizeof(Half)=2 -> 16 bits, but sizeof(uint32_t)=4 -> 32 bits.
+  // Using RadixT would scan garbage upper bits and break Half/BFloat16.
+  static constexpr int NUM_BITS = sizeof(scalar_t) * 8;
 
   // ================================================================
   // countRadixUsingMask (SortingRadixSelect.cuh:176)
