@@ -199,12 +199,12 @@ struct TopKTypeConfig<at::BFloat16> {
 
   static inline RadixType convert(at::BFloat16 v) {
     RadixType x = v.x;
-    RadixType mask = -((x >> 15)) | 0x8000;
-    return (x ^ mask);
+    RadixType mask = (x & 0x00008000) ? 0x0000ffff : 0x00008000;
+    return (v == v) ? (x ^ mask) : 0xffff;
   }
 
   static inline at::BFloat16 deconvert(RadixType v) {
-    RadixType mask = ((v >> 15) - 1) | 0x8000;
+    RadixType mask = (v & 0x00008000) ? 0x00008000 : 0x0000ffff;
     at::BFloat16 r;
     r.x = (v ^ mask);
     return r;
@@ -346,8 +346,8 @@ scalar_t findPattern(
   auto local_id = item_id.get_local_id(0);
   auto smem_ptr = static_cast<scalar_t*>(static_cast<void*>(
       smem.template get_multi_ptr<sycl::access::decorated::no>().get()));
-  if (local_id < 2) {
-    smem_ptr[local_id] = static_cast<scalar_t>(0);
+  if (local_id < RADIX_SIZE) {
+    smem_ptr[RADIX_SIZE] = static_cast<scalar_t>(0);
   }
 
   sycl::group_barrier(item_id.get_group());
