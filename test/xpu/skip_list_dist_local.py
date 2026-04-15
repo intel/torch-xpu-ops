@@ -251,7 +251,12 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_placement_types.py": None,
     "../../../../test/distributed/test_data_parallel.py": None,
     "../../../../test/distributed/test_debug.py": None,
-    # "../../../../test/distributed/test_c10d_xccl.py": None,
+    "../../../../test/distributed/test_c10d_xccl.py": (
+        "test_trace_while_active_timing_enabled_True_only_active_False",
+        "test_trace_while_active_timing_enabled_True_only_active_True",
+        "test_trace_while_stuck_timing_enabled_True",
+        "test_trace_while_stuck_timing_enabled_False",
+    ),
     "../../../../test/distributed/test_overlap_bucketing_unit.py": None,
 }
 
