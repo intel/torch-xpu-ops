@@ -65,6 +65,96 @@ constexpr int SBTOPK_MAX_K = 16;
 // Phase 2 (gather): [0..num_subgroups-1] sub-group carries, [num_subgroups] total
 constexpr int SBTOPK_SLM_SIZE = SBTOPK_R_SIZE + 2;  // 258
 
+// ---- sbtopk-local branchless convert/deconvert ----
+// These are branchless versions of TopKTypeConfig::convert/deconvert that
+// avoid the NaN-check branch present in the shared SortingRadixSelect.h
+// versions. The NaN check adds control flow overhead that is harmful in
+// sbtopk's tight inner loops. Since topk input data does not require
+// special NaN ordering, branchless conversion is both correct and faster.
+//
+// The general pattern for IEEE floating-point:
+//   convert:   mask = -((x >> sign_bit_pos)) | sign_bit
+//              return x ^ mask
+//   deconvert: mask = ((v >> sign_bit_pos) - 1) | sign_bit
+//              return v ^ mask
+//
+// For 16-bit types (Half/BFloat16), RadixType is uint32_t but only the
+// lower 16 bits are meaningful, so we mask with CONVERT_MASK.
+
+template <typename scalar_t>
+struct SbtopkConvert {
+  using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
+  // Fall back to TopKTypeConfig for integer types (no NaN issue)
+  static inline RadixT convert(scalar_t v) {
+    return TopKTypeConfig<scalar_t>::convert(v);
+  }
+  static inline scalar_t deconvert(RadixT v) {
+    return TopKTypeConfig<scalar_t>::deconvert(v);
+  }
+};
+
+template <>
+struct SbtopkConvert<float> {
+  using RadixT = uint32_t;
+  static inline RadixT convert(float v) {
+    RadixT x = *((uint32_t*)&v);
+    RadixT mask = -((x >> 31)) | 0x80000000;
+    return (x ^ mask);
+  }
+  static inline float deconvert(RadixT v) {
+    RadixT mask = ((v >> 31) - 1) | 0x80000000;
+    float r;
+    *((uint32_t*)&r) = (v ^ mask);
+    return r;
+  }
+};
+
+template <>
+struct SbtopkConvert<double> {
+  using RadixT = uint64_t;
+  static inline RadixT convert(double v) {
+    RadixT x = *((uint64_t*)&v);
+    RadixT mask = -((x >> 63)) | 0x8000000000000000ULL;
+    return (x ^ mask);
+  }
+  static inline double deconvert(RadixT v) {
+    RadixT mask = ((v >> 63) - 1) | 0x8000000000000000ULL;
+    double r;
+    *((uint64_t*)&r) = (v ^ mask);
+    return r;
+  }
+};
+
+template <>
+struct SbtopkConvert<at::Half> {
+  using RadixT = uint32_t;
+  static inline RadixT convert(at::Half v) {
+    RadixT x = *((uint16_t*)&v);
+    RadixT mask = -((x >> 15)) | 0x8000;
+    return (x ^ mask);
+  }
+  static inline at::Half deconvert(RadixT v) {
+    RadixT mask = ((v >> 15) - 1) | 0x8000;
+    return __ushort_as_half(v ^ mask);
+  }
+};
+
+template <>
+struct SbtopkConvert<at::BFloat16> {
+  using RadixT = uint32_t;
+  static inline RadixT convert(at::BFloat16 v) {
+    RadixT x = v.x;
+    RadixT mask = -((x >> 15)) | 0x8000;
+    return (x ^ mask);
+  }
+  static inline at::BFloat16 deconvert(RadixT v) {
+    RadixT mask = ((v >> 15) - 1) | 0x8000;
+    at::BFloat16 r;
+    r.x = (v ^ mask);
+    return r;
+  }
+};
+
 template <typename scalar_t, bool Largest>
 struct SbtopkFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
@@ -77,7 +167,7 @@ struct SbtopkFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       : (static_cast<RadixT>(1) << NUM_BITS) - 1;
 
   inline RadixT convert_masked(scalar_t v) const {
-    return TopKTypeConfig<scalar_t>::convert(v) & CONVERT_MASK;
+    return SbtopkConvert<scalar_t>::convert(v) & CONVERT_MASK;
   }
 
   void operator()(sycl::nd_item<1> item) const {
