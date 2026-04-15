@@ -486,6 +486,27 @@ void topk_kernel(
     return;
   }
 
+  // Determine whether to use sbtopk (single-block radix select).
+  // sbtopk launches one work-group (SBTOPK_BLOCK threads) per slice,
+  // so it requires enough slices to fill the GPU's hardware thread slots.
+  //
+  // total_hw_threads = syclGpuEuCount() * syclGpuHWThreadsPerEU()
+  //   (= number of sub-groups the GPU can run concurrently)
+  // subgroups_per_wg = SBTOPK_BLOCK / subgroup_size
+  // max_concurrent_wgs = total_hw_threads / subgroups_per_wg
+  //
+  // When nsegments < max_concurrent_wgs, the GPU would be underutilized,
+  // so we fall back to the original group radix select (which uses fewer,
+  // larger work-groups with multiple elements per thread).
+  bool use_sbtopk = false;
+  if (nelements > 4096 && k <= SBTOPK_MAX_K) {
+    int64_t total_hw_threads = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+    constexpr int SUBGROUP_SIZE = 32;
+    constexpr int64_t SUBGROUPS_PER_WG = SBTOPK_BLOCK / SUBGROUP_SIZE;
+    int64_t max_concurrent_wgs = total_hw_threads / SUBGROUPS_PER_WG;
+    use_sbtopk = (nsegments >= max_concurrent_wgs);
+  }
+
   Tensor self_;
   bool need_infer_dim = dim != ndim - 1;
   if (!need_infer_dim) {
@@ -521,9 +542,7 @@ void topk_kernel(
         scalar_t* values_ptr = values_.data_ptr<scalar_t>();
         int64_t* indices_ptr = indices_.data_ptr<int64_t>();
 
-        // Use sbtopk for large slices with small k (where radix selection
-        // with vectorized loads outperforms the radix-sort-based approach)
-        if (nelements > 4096 && k <= SBTOPK_MAX_K) {
+        if (use_sbtopk) {
           sbtopk_launch<scalar_t>(
               self_ptr,
               values_ptr,
