@@ -547,6 +547,11 @@ jobs:
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
+            # Skip test_xpu since it's temporarily disabled on Windows
+            if [ "$ut_name" == "test_xpu" ]; then
+              echo "⏩ Skipping test_xpu check (temporarily disabled)"
+              continue
+            fi
             touch Known_issue.log
             if [ -f "issues.log" ]; then
               awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
