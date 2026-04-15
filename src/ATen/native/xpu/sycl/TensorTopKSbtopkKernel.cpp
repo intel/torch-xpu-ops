@@ -107,8 +107,13 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       for (int j = 0; j < RADIX_SIZE; ++j) {
         bool vote = hasVal && (digit == static_cast<RadixT>(j));
         // CUDA: counts[j] += __popc(WARP_BALLOT(vote));
-        counts[j] +=
-            sycl::ext::oneapi::group_ballot(sg, vote).count();
+        // group_ballot returns 64-bit sub_group_mask; .count() on 64-bit
+        // compiles to software Brian Kernighan loop. Extract to uint32_t
+        // first so sycl::popcount maps to hardware cbit instruction.
+        auto ballot = sycl::ext::oneapi::group_ballot(sg, vote);
+        uint32_t bits;
+        ballot.extract_bits(bits);
+        counts[j] += sycl::popcount(bits);
       }
     }
 
