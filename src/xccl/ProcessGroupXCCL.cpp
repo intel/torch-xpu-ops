@@ -161,6 +161,10 @@ std::string dump_xccl_trace(
       xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
 }
 
+void reset_xccl_trace() {
+  FlightRecorderXCCL::get()->reset_all();
+}
+
 constexpr int64_t kSynchronizeBusyWaitMillis = 10;
 thread_local uint64_t ProcessGroupXCCL::xcclActiveGroupCounter_ = 0;
 
@@ -266,12 +270,12 @@ bool ProcessGroupXCCL::WorkXCCL::wait(std::chrono::milliseconds timeout) {
       auto currentTimepoint = std::chrono::steady_clock::now();
       auto timeElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
           currentTimepoint - workStartTime_);
-      if (timeElapsed >= timeout) {
+      if (timeout != kNoTimeout && timeElapsed >= timeout) {
         std::string exceptionMsg = c10::str(
-            "Work ran time out after ", timeElapsed.count(), " milliseconds.");
+            "Work timed out after ", timeElapsed.count(), " milliseconds.");
         LOG(ERROR) << exceptionMsg;
         // todo: abort comm and exit
-        TORCH_CHECK(false, exceptionMsg)
+        C10_THROW_ERROR(DistBackendError, exceptionMsg);
       }
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kSynchronizeBusyWaitMillis));
@@ -403,6 +407,12 @@ const std::vector<uint64_t>& ProcessGroupXCCL::groupRanks() const {
     return globalRanks;
   }
   return options_->global_ranks_in_group;
+}
+
+bool ProcessGroupXCCL::isInitialized() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // Unlike PGNCCL, all comms are initialized (or we fail)
+  return !devXCCLCommMap_.empty();
 }
 
 void ProcessGroupXCCL::setEnqueuedPgStatus(
@@ -799,7 +809,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_->addCallback(
       [id, reset_epoch](at::ivalue::Future&) {
         FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ false);
+            id, reset_epoch, /*compute_duration*/ true);
       },
       /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
@@ -959,7 +969,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
     work->future_->addCallback(
         [id, reset_epoch](at::ivalue::Future&) {
           FlightRecorderXCCL::get()->retire_id(
-              id, reset_epoch, /*compute_duration*/ false);
+              id, reset_epoch, /*compute_duration*/ true);
         },
         /*use_future*/ false);
     setEnqueuedPgStatus(work);
