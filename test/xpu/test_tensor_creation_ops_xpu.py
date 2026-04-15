@@ -4624,8 +4624,8 @@ class TestAsArray(TestCase):
             3. Whether the result lives in the expected device
             4. Whether the result has its 'requires_grad' set or not
         """
-        inp = cvt(original)
-        result = torch.asarray(inp, **kwargs)
+        converted_original = cvt(original)
+        result = torch.asarray(converted_original, **kwargs)
         self.assertTrue(isinstance(result, torch.Tensor))
 
         # 1. The storage pointers should be equal only if 'is_alias' is set
@@ -4658,11 +4658,8 @@ class TestAsArray(TestCase):
 
         # 4. requires_grad: by default torch.asarray inherits requires_grad from tensor
         #    inputs regardless of copy. See PyTorch PR #170897 / commit a97dcf9c584.
-        expected_requires_grad = kwargs.get(
-            "requires_grad",
-            inp.requires_grad if isinstance(inp, torch.Tensor) else False,
-        )
-        self.assertEqual(result.requires_grad, expected_requires_grad)
+        original_requires_grad = converted_original.requires_grad if isinstance(converted_original, torch.Tensor) else False
+        self.assertEqual(result.requires_grad, kwargs.get("requires_grad", original_requires_grad))
 
     def _test_alias_with_cvt(
         self, cvt, device, dtype, shape=(5, 5), only_with_dtype=False
