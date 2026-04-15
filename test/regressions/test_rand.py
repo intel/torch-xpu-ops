@@ -46,7 +46,12 @@ class TestNNMethod(TestCase):
 
         cpu_result = torch.std(x)
         xpu_result = torch.std(x.to(xpu_device)).cpu()
+        cpu_var = torch.var(x)
+        xpu_var = torch.var(x.to(xpu_device)).cpu()
 
         self.assertTrue(torch.isfinite(cpu_result))
         self.assertTrue(torch.isfinite(xpu_result))
+        self.assertTrue(torch.isfinite(cpu_var))
+        self.assertTrue(torch.isfinite(xpu_var))
         self.assertEqual(xpu_result, cpu_result, rtol=1e-4, atol=1e-4)
+        self.assertEqual(xpu_var, cpu_var, rtol=1e-4, atol=1e-4)
