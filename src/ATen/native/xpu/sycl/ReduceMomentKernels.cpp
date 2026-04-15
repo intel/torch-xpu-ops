@@ -21,14 +21,16 @@ namespace at {
 namespace native {
 namespace xpu {
 
-template <typename scalar_t, typename out_t = scalar_t>
+template <
+    typename scalar_t,
+    typename accscalar_t = at::acc_type_device<scalar_t, kXPU>,
+    typename out_t = scalar_t>
 void std_var_template(
     TensorIterator& iter,
     double correction_opt,
     bool take_sqrt) {
   // reducing unrolling factor to 2 for welford kernel
   // This is necessary to lower register usage that leads to register spills.
-  using accscalar_t = at::acc_type_device<scalar_t, kXPU>;
   using ops_t =
       WelfordOps<scalar_t, accscalar_t, int32_t, at::xpu::pair<out_t, out_t>>;
   ops_t ops(static_cast<accscalar_t>(correction_opt), take_sqrt);
@@ -46,6 +48,8 @@ void std_var_kernel(
   } else if (input_dtype == kBFloat16 && iter.dtype() == kFloat) {
     // type promotion that does cast and reduction in a single kernel
     std_var_template<at::BFloat16, float>(iter, correction_opt, take_sqrt);
+  } else if (input_dtype == kFloat && iter.dtype() == kFloat) {
+    std_var_template<float, double>(iter, correction_opt, take_sqrt);
   } else {
     AT_DISPATCH_FLOATING_TYPES_AND2(
         at::ScalarType::Half,
