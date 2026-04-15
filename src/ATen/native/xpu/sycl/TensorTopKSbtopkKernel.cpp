@@ -135,7 +135,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int j = 0; j < RADIX_SIZE; ++j) {
       counts[j] = smem[j];
     }
-    sycl::group_barrier(item.get_group());
+    // Barrier removed: post-read WAR; next call's barrier@85 covers it.
   }
 
   // ================================================================
@@ -159,7 +159,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       smem[64] = 0;  // found flag
       smem[65] = -1; // found index
     }
-    sycl::group_barrier(item.get_group());
+    // Barrier removed: post-write; barrier@177 covers the first read at line 179.
 
     // CUDA: numIterations = round_up(sliceSize, blockDim.x)
     int numIterations =
@@ -178,7 +178,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
       int found = smem[64];
       int foundIdx = smem[65];
-      sycl::group_barrier(item.get_group());
+      // Barrier removed: post-read WAR; next iteration's barrier@177 covers it.
 
       if (found != 0) {
         return data[foundIdx];
@@ -288,8 +288,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Carry = total across all threads
     carry = smem[num_sgs - 1];
 
-    // KillWARDependency = true
-    sycl::group_barrier(item.get_group());
+    // Barrier removed: post-read KillWARDependency; next call's barrier@241 covers it.
   }
 
   // ================================================================
