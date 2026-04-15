@@ -290,32 +290,7 @@ static void initialize_ishmem_with_store(
     mpi_initialized_fn(&flag);
     mpi_already_initialized = (flag != 0);
   }
-  LOG(WARNING) << "Thiago's last version 5:46" << std::endl;
 
-  // For torchrun/MPCP: set I_MPI_MPCP_RANK and I_MPI_MPCP if not set.
-  // These are needed when ISHMEM initializes MPI itself
-  // (initialize_runtime=true, i.e. no mpi4py), as MPCP replaces the
-  // mpirun/hydra process manager.
-  if (!getenv("I_MPI_MPCP_RANK")) {
-    const char* local_rank = getenv("LOCAL_RANK");
-    if (local_rank) {
-      setenv("I_MPI_MPCP_RANK", local_rank, 1);
-    }
-  }
-  if (!getenv("I_MPI_MPCP")) {
-    setenv("I_MPI_MPCP", "1", 1);
-  }
-
-  // MPCP needs MASTER_ADDR (or I_MPI_MPCP_SERVER_NAME) for bootstrap.
-  // MultiProcContinuousTest uses FileStore and doesn't set MASTER_ADDR,
-  // so default to localhost for single-node scenarios.
-  if (!getenv("MASTER_ADDR") && !getenv("I_MPI_MPCP_SERVER_NAME")) {
-    setenv("MASTER_ADDR", "localhost", 1);
-  }
-
-  // UID-based init: ishmemx_get_uniqueid reads MASTER_ADDR from env.
-  // initialize_runtime=true lets ISHMEM call MPI_Init (with MPCP support);
-  // initialize_runtime=false when mpi4py already initialized MPI.
   ishmemx_uniqueid_t unique_id;
   memset(&unique_id, 0, sizeof(unique_id));
 
@@ -330,8 +305,10 @@ static void initialize_ishmem_with_store(
   ishmemx_attr_t attr;
   attr.initialize_runtime = !mpi_already_initialized;
   attr.use_uid = true;
+  attr.rank = rank;
   attr.nranks = world_size;
   attr.uid = &unique_ids[0];
+  attr.device_idx = device_idx;
   ishmemx_init_attr(&attr);
 
   TORCH_CHECK(
