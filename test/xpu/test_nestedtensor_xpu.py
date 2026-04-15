@@ -7163,9 +7163,7 @@ torch.cuda.synchronize()
             else [torch.float16, torch.float32]
         )
     )
-    @skipXPUIf(
-        True, "XPU does not support the NestedTensor SDPA packed in-proj path."
-    )
+    @skipXPUIf(True, "XPU does not support the NestedTensor SDPA packed in-proj path.")
     def test_sdpa_with_packed_in_proj(self, device, dtype):
         # shape (B, *, D)
         input_packed = random_nt_from_dims(
@@ -7338,7 +7336,8 @@ torch.cuda.synchronize()
     @onlyOn(["cuda", "xpu"])
     @skipIfTorchDynamo()
     @skipXPUIf(
-        True, "XPU does not support NestedTensor SDPA flop-counter coverage in this test."
+        True,
+        "XPU does not support NestedTensor SDPA flop-counter coverage in this test.",
     )
     def test_sdpa_flop_counter(self, device):
         from torch.utils.flop_counter import FlopCounterMode
