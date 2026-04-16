@@ -8,117 +8,120 @@ on:
         type: string
         required: true
         default: ''
-        description: 'PyTorch version'
+        description: PyTorch version
       torch_xpu_ops:
         type: string
         required: false
         default: ''
-        description: 'Torch-xpu-ops version'
+        description: Torch-xpu-ops version
       runner:
         type: string
         required: true
-        description: 'What runner to use'
+        description: Runner label for test execution
       python:
         type: string
         required: true
-        description: 'Python version'
+        description: Python version
 
       # ----- Component Build (Optional) -----
       component:
         type: string
         required: false
         default: ''
-        description: 'Optional component to build'
+        description: Optional component to build
       component_version:
         type: string
         required: false
         default: ''
-        description: 'Optional component version to build'
+        description: Optional component version to build
 
       # ----- Unit Tests -----
       ut:
         type: string
         required: false
         default: ''
-        description: 'Unit test scope (comma-separated)'
+        description: Unit test scope (comma-separated)
 
       # ----- E2E Parameters -----
       suite:
         type: string
         required: false
         default: ''
-        description: 'E2E test suites (comma-separated)'
+        description: E2E test suites (comma-separated)
       dt:
         type: string
         required: false
         default: ''
-        description: 'E2E test dtypes (comma-separated)'
+        description: E2E test dtypes (comma-separated)
       mode:
         type: string
         required: false
         default: ''
-        description: 'E2E test modes (comma-separated)'
+        description: E2E test modes (comma-separated)
       scenario:
         type: string
         required: false
         default: ''
-        description: 'E2E test scenarios (comma-separated)'
+        description: E2E test scenarios (comma-separated)
       model:
         type: string
         required: false
         default: ''
-        description: 'E2E test specific models name (if need, comma-separated)'
+        description: E2E test specific model names (comma-separated)
 
       # ----- Comparison Parameters -----
       category:
         type: string
         required: false
         default: ''
-        description: 'Distinguish the target or baseline'
+        description: Distinguish the target or baseline
 
 permissions:
   contents: read
 
 jobs:
+  # Prepare: convert comma-separated inputs to JSON arrays for matrix strategy
   tests-matrix:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      ut_list_json:  ${{ steps.matrix.outputs.ut_list_json }}
-      e2e_list_json: ${{ steps.matrix.outputs.e2e_list_json }}
+      ut_json:  ${{ steps.matrix.outputs.ut_json }}
+      e2e_json: ${{ steps.matrix.outputs.e2e_json }}
     steps:
-      - name: Compute ut and e2e suite lists
+      - name: Build matrix JSON arrays
         id: matrix
         run: |
-          get_json_array() {
+          csv_to_json() {
             local input="$1"
             if [ -z "$input" ]; then
               echo "[]"
-            else
-              json="["; sep=""
-              IFS=','; for x in $1; do
-                x="${x## }"; x="${x%% }"
-                [[ "$x" == "windows" || "$x" == "microbench" || -z "$x" ]] && continue
-                json+="${sep}\"${x}\""; sep=","
-              done; unset IFS
-              json+="]"
-              echo "$json"
+              return
             fi
+            local json="[" sep=""
+            IFS=',' read -ra items <<< "$input"
+            for x in "${items[@]}"; do
+              x="${x#"${x%%[![:space:]]*}"}"   # trim leading
+              x="${x%"${x##*[![:space:]]}"}"   # trim trailing
+              [[ "$x" == "windows" || "$x" == "microbench" || -z "$x" ]] && continue
+              json+="${sep}\"${x}\""
+              sep=","
+            done
+            json+="]"
+            echo "$json"
           }
 
-          # ── tests matrix ──
-          ut_list_json="$(get_json_array "${{ inputs.ut }}")"
-          e2e_list_json="$(get_json_array "${{ inputs.suite }}")"
+          ut_json="$(csv_to_json "${{ inputs.ut }}")"
+          e2e_json="$(csv_to_json "${{ inputs.suite }}")"
 
-          # ── set outputs ──
-          echo "ut_list_json=${ut_list_json}" >> $GITHUB_OUTPUT
-          echo "e2e_list_json=${e2e_list_json}" >> $GITHUB_OUTPUT
+          echo "ut_json=${ut_json}"   >> "$GITHUB_OUTPUT"
+          echo "e2e_json=${e2e_json}" >> "$GITHUB_OUTPUT"
 
+  # Build
   linux-build:
-    secrets: inherit
     permissions:
       contents: read
       checks: write
+    secrets: inherit
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: ${{ inputs.runner }}
@@ -129,14 +132,15 @@ jobs:
       component: ${{ inputs.component }}
       component_version: ${{ inputs.component_version }}
 
+  # Linux Unit Tests
   linux-ut:
     needs: [linux-build, tests-matrix]
-    if: needs.tests-matrix.outputs.ut_list_json != '[]'
+    if: needs.tests-matrix.outputs.ut_json != '[]'
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
-        ut_name: ${{ toJson(needs.tests-matrix.outputs.ut_list_json) }}
+        ut_name: ${{ fromJSON(needs.tests-matrix.outputs.ut_json) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ inputs.runner }}
@@ -148,18 +152,18 @@ jobs:
       component: ${{ inputs.component }}
       component_version: ${{ inputs.component_version }}
 
+  # Linux E2E Tests
   linux-e2e:
     needs: [linux-build, tests-matrix]
-    if: needs.tests-matrix.outputs.e2e_list_json != '[]'
+    if: needs.tests-matrix.outputs.e2e_json != '[]'
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ toJson(needs.tests-matrix.outputs.e2e_list_json) }}
+        suite: ${{ fromJSON(needs.tests-matrix.outputs.e2e_json) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ inputs.runner }}
-      test_type: ${{ inputs.test_type }}
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
@@ -171,20 +175,21 @@ jobs:
       component: ${{ inputs.component }}
       component_version: ${{ inputs.component_version }}
 
+  # Linux Microbenchmarks
   linux-microbench:
-    needs:
-      - linux-build
+    needs: linux-build
     if: contains(inputs.ut, 'microbench')
-    secrets: inherit
-    uses: ./.github/workflows/_linux_op_benchmark.yml
     permissions:
       contents: read
       issues: write
+    secrets: inherit
+    uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ inputs.pytorch }}
       python: ${{ inputs.python }}
 
+  # Windows Unit Tests
   windows-ut:
     if: contains(inputs.ut, 'windows')
     secrets: inherit
@@ -199,192 +204,136 @@ jobs:
       torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
       pytorch: ${{ inputs.pytorch }}
 
-  # Compare-results job
+  # Compare Results
   compare-results:
-    if: ${{ inputs.category == '' && ! cancelled() }}
-    needs:
-      - linux-ut
-      - linux-e2e
+    if: inputs.category == '' && !cancelled()
+    needs: [linux-ut, linux-e2e]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
       issues: write
     env:
       GH_TOKEN: ${{ github.token }}
-      # Configurable via workflow inputs
       BASELINE_ISSUE_ID: 1645
       ISSUE_PREFIX: 'PVC -'
-      BASELINE_SUFFIXES: 'weekly,nightly'
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Step 0: Download target logs
-      - name: Download Target Logs
+      - name: Download target logs
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*'
           path: ${{ github.workspace }}/results/target
 
-      # Step 1: Determine baseline artifact type and if this run is itself a baseline
-      - name: Determine Baseline Artifact Type
-        id: determine_type
+      - name: Determine baseline artifact type
+        id: determine-type
         run: |
-          if [ "${{ inputs.pytorch }}" == "" ];then
+          if [ "${{ endsWith(inputs.pytorch, '_wheel') }}" == "true" ]; then
+            build_kind="wheel"
           else
+            build_kind="build"
           fi
-          TEST_TYPE="${{ inputs.test_type }}"
-          EVENT_NAME="${{ github.event_name }}"
-          IFS=',' read -ra SUFFIXES <<< "${{ env.BASELINE_SUFFIXES }}"
 
-          # Build a regex pattern from the suffixes (e.g., (weekly|nightly)$)
-          REGEX="($(IFS='|'; echo "${SUFFIXES[*]}"))$"
-
-          # Check if the current test_type is a baseline run (ends with any suffix)
-          IS_BASELINE=false
-          if [[ "${TEST_TYPE}" =~ $REGEX ]]; then
-            IS_BASELINE=true
-          fi
-          echo "is_baseline=${IS_BASELINE}" >> $GITHUB_OUTPUT
-
-          # Determine which baseline artifact to fetch
-          base="${TEST_TYPE%%-*}"
-          if [[ "${TEST_TYPE}" =~ $REGEX ]]; then
-            # If test_type already ends with a known suffix, use it as-is
-            artifact_type="${TEST_TYPE}"
-          elif [ "${{ github.event_name }}" == "pull_request" ]; then
-            artifact_type="${base}-nightly"
+          if [ "${{ github.event.schedule }}" == "00 16 * * 5" ]; then
+            cadence="weekly"
           else
-            artifact_type="${base}-weekly"
+            cadence="nightly"
           fi
-          echo "artifact_type=${artifact_type}" >> $GITHUB_OUTPUT
-          echo "Derived artifact type: ${artifact_type}"
 
-      # Step 2: Fetch baseline run ID from the issue (continues if not found)
-      - name: Fetch Baseline Run ID from Issue
+          echo "artifact_type=${build_kind}-${cadence}" >> "$GITHUB_OUTPUT"
+          echo "Derived artifact type: ${build_kind}-${cadence}"
+
+      - name: Fetch baseline run ID from issue
         id: baseline
-        continue-on-error: true   # Job continues even if issue fetch fails
+        continue-on-error: true
         run: |
-          BASELINE_ISSUE_ID="${{ env.BASELINE_ISSUE_ID }}"
-          ISSUE_PREFIX="${{ env.ISSUE_PREFIX }}"
-          ARTIFACT_TYPE="${{ steps.determine_type.outputs.artifact_type }}"
+          ARTIFACT_TYPE="${{ steps.determine-type.outputs.artifact_type }}"
 
-          # Fetch issue body
-          if ! gh --repo "${{ github.repository }}" issue view "${BASELINE_ISSUE_ID}" --json body -q .body > body.txt 2>&1; then
-            echo "::warning::Failed to fetch issue ${BASELINE_ISSUE_ID}. Continuing without baseline."
-            echo "BASELINE_RUN_ID=" >> $GITHUB_OUTPUT
+          if ! gh --repo "${{ github.repository }}" issue view "${{ env.BASELINE_ISSUE_ID }}" \
+               --json body -q .body > body.txt 2>&1; then
+            echo "::warning::Failed to fetch issue ${{ env.BASELINE_ISSUE_ID }}. Skipping baseline."
+            echo "run_id=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Extract run ID for the artifact type
-          BASELINE_RUN_ID="$(grep -i "^${ISSUE_PREFIX}${ARTIFACT_TYPE}:" body.txt | sed 's/.*: *//' | head -1 || true)"
+          run_id="$(grep -i "^${{ env.ISSUE_PREFIX }}${ARTIFACT_TYPE}:" body.txt \
+                    | sed 's/.*: *//' | head -1 || true)"
 
-          if [ -z "${BASELINE_RUN_ID}" ]; then
-            echo "::warning::No baseline run ID found for ${ARTIFACT_TYPE} in issue #${BASELINE_ISSUE_ID}. Continuing without baseline."
+          if [ -z "${run_id}" ]; then
+            echo "::warning::No baseline found for ${ARTIFACT_TYPE} in issue #${{ env.BASELINE_ISSUE_ID }}."
           else
-            echo "Found baseline run ID: ${BASELINE_RUN_ID}"
+            echo "Found baseline run ID: ${run_id}"
           fi
+          echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
 
-          echo "BASELINE_RUN_ID=${BASELINE_RUN_ID}" >> $GITHUB_OUTPUT
-
-      # Step 3: Download baseline logs only if a run ID was found
-      - name: Download Baseline Logs
-        if: steps.baseline.outputs.BASELINE_RUN_ID != ''
+      - name: Download baseline logs
+        if: steps.baseline.outputs.run_id != '' && github.event_name != 'pull_request'
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*'
           path: ${{ github.workspace }}/results/baseline
-          run-id: ${{ steps.baseline.outputs.BASELINE_RUN_ID }}
-          github-token: ${{ github.token }} # must set if run-id or repository different
+          run-id: ${{ steps.baseline.outputs.run_id }}
+          github-token: ${{ github.token }}
 
-      # Step 4: Set up Python environment (unchanged)
-      - name: Setup Python Environment
+      - name: Setup Python environment
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
           uv venv myvenv --python 3.10 --clear
           source myvenv/bin/activate
           uv pip install pip numpy 'setuptools<81' wheel
-          uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
+          uv pip install pandas pydantic tqdm psutil openpyxl PyGithub
 
-      # Step 5: Update baseline issue if this run is itself a baseline
-      - name: Update Baseline Run ID
-        if: steps.determine_type.outputs.is_baseline == 'true' && success()
+      - name: Update baseline run ID
+        if: github.event_name == 'schedule'
         env:
-          BASELINE_ISSUE_ID: ${{ env.BASELINE_ISSUE_ID }}
-          ISSUE_PREFIX: ${{ env.ISSUE_PREFIX }}
-          ARTIFACT_TYPE: ${{ steps.determine_type.outputs.artifact_type }}
+          ARTIFACT_TYPE: ${{ steps.determine-type.outputs.artifact_type }}
           NEW_RUN_ID: ${{ github.run_id }}
         run: |
-          echo "Updating baseline for artifact type: ${ARTIFACT_TYPE} with run ID: ${NEW_RUN_ID}"
+          echo "Updating baseline: ${ARTIFACT_TYPE} → ${NEW_RUN_ID}"
 
-          # Fetch current issue body
-          if ! gh --repo "${{ github.repository }}" issue view "${BASELINE_ISSUE_ID}" --json body -q .body > new_body.txt 2>&1; then
-            echo "::error::Failed to fetch issue ${BASELINE_ISSUE_ID}"
-            exit 1
-          fi
+          gh --repo "${{ github.repository }}" issue view "${{ env.BASELINE_ISSUE_ID }}" \
+            --json body -q .body > new_body.txt
 
-          # Check if line already exists
-          line_pattern="^${ISSUE_PREFIX}${ARTIFACT_TYPE}:"
+          line_pattern="^${{ env.ISSUE_PREFIX }}${ARTIFACT_TYPE}:"
           if grep -q "${line_pattern}" new_body.txt; then
-            # Replace the line
-            sed -i "s|${line_pattern}.*|${ISSUE_PREFIX}${ARTIFACT_TYPE}: ${NEW_RUN_ID}|" new_body.txt
-            echo "Updated existing baseline entry for ${ARTIFACT_TYPE}"
+            sed -i "s|${line_pattern}.*|${{ env.ISSUE_PREFIX }}${ARTIFACT_TYPE}: ${NEW_RUN_ID}|" new_body.txt
           else
-            # Append new line
-            echo "${ISSUE_PREFIX}${ARTIFACT_TYPE}: ${NEW_RUN_ID}" >> new_body.txt
-            echo "Appended new baseline entry for ${ARTIFACT_TYPE}"
+            echo "${{ env.ISSUE_PREFIX }}${ARTIFACT_TYPE}: ${NEW_RUN_ID}" >> new_body.txt
           fi
 
-          # Update issue body
-          if ! gh --repo "${{ github.repository }}" issue edit "${BASELINE_ISSUE_ID}" --body-file new_body.txt; then
-            echo "::error::Failed to update issue ${BASELINE_ISSUE_ID}"
-            exit 1
-          fi
+          gh --repo "${{ github.repository }}" issue edit "${{ env.BASELINE_ISSUE_ID }}" \
+            --body-file new_body.txt
 
-          echo "Successfully updated baseline run ID for ${ARTIFACT_TYPE} in issue #${BASELINE_ISSUE_ID}"
-
-      # Step 6: Run comparison scripts and append summaries
-      - name: Setup python env
+      - name: Compare test results
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
-          uv venv myvenv --python 3.10 --clear
           source myvenv/bin/activate
-          uv pip install pip numpy setuptools wheel
-          uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
-      - name: Compare Test Results
-        run: |
-          # Activation & environment info
-          source myvenv/bin/activate
+          exit_code=0
 
-          exit_label=0
-          if [ "${{ github.event_name }}" == "pull_request" ];then
-            python .github/scripts/check-results.py --results-dir ${{ github.workspace }}/results || exit_label=1
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            python .github/scripts/check-results.py \
+              --results-dir "${{ github.workspace }}/results" || exit_code=1
           else
-            python .github/scripts/check-results.py
-                --results-dir ${{ github.workspace }}/results \
-                --check \
-                    ut_new_fail ut_untracked_fail ut_tracked_pass \
-                    acc_new_fail acc_untracked_fail \
-                    perf_new_fail perf_dropped || exit_label=1
+            python .github/scripts/check-results.py \
+              --results-dir "${{ github.workspace }}/results" \
+              --check \
+                ut_new_fail ut_untracked_fail ut_tracked_pass \
+                acc_new_fail acc_untracked_fail \
+                perf_new_fail perf_dropped || exit_code=1
           fi
 
-          # Aggregate summary files (always do this, even if comparisons failed)
-          echo "Aggregating summary files..."
           for file in e2e_comparison.summary.md ut_comparison.summary.md \
                       e2e_comparison.details.md ut_comparison.details.md; do
-              if [ -f "$file" ]; then
-                  cat "$file" >> "${GITHUB_STEP_SUMMARY}"
-              fi
+            [ -f "$file" ] && cat "$file" >> "${GITHUB_STEP_SUMMARY}"
           done
 
-          exit $exit_label
+          exit $exit_code
 
-      # Step 7: Upload comparison summaries (always)
-      - name: Upload Tests Summary
+      - name: Upload test summary
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ inputs.component }}-test-summary
+          name: test-reports-summary
           path: |
             *_comparison*.csv
             *_comparison*.xlsx
