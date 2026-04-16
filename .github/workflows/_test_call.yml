@@ -208,7 +208,7 @@ jobs:
   # Compare Results
   compare-results:
     if: >-
-      (inputs.category == 'pr' || inputs.category == 'ondemand') &&
+      inputs.category != 'target' && inputs.category != 'baseline' &&
       !cancelled() &&
       (needs.linux-ut.result != 'skipped' || needs.linux-e2e.result != 'skipped')
     needs: [linux-ut, linux-e2e]
