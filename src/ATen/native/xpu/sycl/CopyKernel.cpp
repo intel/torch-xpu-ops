@@ -35,6 +35,25 @@ struct CastScalarFunc {
   }
 };
 
+// TODO: Remove this work around for Half -0.0
+template <>
+struct CastScalarFunc<Half, float> {
+  float operator()(Half src_val) const {
+    if (src_val.x == 0x8000)
+      return -0.0f;
+    return (float)src_val;
+  }
+};
+
+// TODO: Remove this work around for Half -0.0
+template <>
+struct CastScalarFunc<Half, BFloat16> {
+  BFloat16 operator()(Half src_val) const {
+    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
+    return (BFloat16)val;
+  }
+};
+
 // TODO: Avoid using sycl::half to prevent the fp16->fp32->fp8 fusion
 // from incorrectly converting -0.0 to NaN. This temporary fix should
 // be removed once the compiler/driver error is resolved.
