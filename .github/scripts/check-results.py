@@ -273,8 +273,8 @@ def _process_performance_details(reporter: ComparisonReporter, path: Path,
 def _run_accuracy_summary_script(reporter: ComparisonReporter, ctx: ComparisonContext) -> None:
     """Run the legacy e2e_summary.sh script and parse its output."""
     script = Path(".github/scripts/e2e_summary.sh")
-    if not script.is_file() or not os.access(script, os.X_OK):
-        reporter.add(1, "e2e_summary.sh not found or not executable", True, pd.DataFrame(), None)
+    if not script.is_file():
+        reporter.add(1, "e2e_summary.sh not found", True, pd.DataFrame(), None)
         return
 
     target_dir = ctx.results_dir / "target"
