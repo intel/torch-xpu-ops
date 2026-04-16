@@ -1,4 +1,5 @@
 #! /bin/bash
+set -o pipefail
 # This script work for xpu / cuda device inductor tests
 
 SUITE=${1:-huggingface}     # huggingface / torchbench / timm_models
@@ -61,9 +62,6 @@ partition_flags=""
 if [[ -n "$NUM_SHARDS" && -n "$SHARD_ID" ]] && [ $NUM_SHARDS -gt 1 ]; then
   partition_flags="--total-partitions $NUM_SHARDS --partition-id $SHARD_ID "
 fi
-
-# clean cache
-rm -rf ~/.triton /tmp/torchinductor_*
 
 # ulimit -n 1048576
 ZE_AFFINITY_MASK=${CARD} \

@@ -437,11 +437,18 @@ post_build() {
     local tmp_dir="$pytorch_dir/tmp"
     mkdir -p "$tmp_dir"
 
-    # Find wheel files
-    local wheel_files=("$dist_dir"/torch-*.whl)
+    # Find wheel files (nullglob ensures empty array if no match)
+    local -a wheel_files
+    shopt -s nullglob
+    wheel_files=("$dist_dir"/torch-*.whl)
+    shopt -u nullglob
+
     if [[ ${#wheel_files[@]} -eq 0 ]]; then
         log_error "No wheel files found in $dist_dir"
         exit 1
+    fi
+    if [[ ${#wheel_files[@]} -gt 1 ]]; then
+        log_warning "Multiple wheel files found, using first: ${wheel_files[0]}"
     fi
 
     for wheel_file in "${wheel_files[@]}"; do
@@ -452,8 +459,15 @@ post_build() {
             # We'll assume it modifies in place and then we use that file.
             if bash third_party/torch-xpu-ops/.github/scripts/rpath.sh "$wheel_file" "$tmp_dir"; then
                 # If rpath.sh succeeded, install from the processed wheel
+                shopt -s nullglob
                 working_wheel=("$tmp_dir"/torch-*.whl)
-                processed_wheel="${working_wheel[*]}"
+                shopt -u nullglob
+                if [[ ${#working_wheel[@]} -eq 0 ]]; then
+                    log_warning "rpath.sh produced no wheel, using original"
+                    processed_wheel="$wheel_file"
+                else
+                    processed_wheel="${working_wheel[0]}"
+                fi
             else
                 log_warning "rpath.sh failed, using original wheel"
                 processed_wheel="$wheel_file"

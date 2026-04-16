@@ -108,7 +108,7 @@ jobs:
     uses: ./.github/workflows/_test_call.yml
     with:
       runner: pvc_rolling
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'main' }}
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: cicd
       python: '3.10'
       ut: ${{ needs.preci-matrix.outputs.ut_list }}

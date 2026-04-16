@@ -44,7 +44,7 @@ runs:
         cp "${SCRIPT_DIR}/inductor_xpu_test.sh" "${TARGET_DIR}/"
 
         cd "${TARGET_DIR}"
-        rm -rf inductor_log torch
+        rm -rf inductor_log torch ~/.triton /tmp/torchinductor_* /tmp/tmp*
 
         # Full benchmark models for non-PR, non-comparison runs
         if [[ "${{ github.event_name }}" != "pull_request" \

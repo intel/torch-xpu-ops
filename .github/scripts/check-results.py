@@ -371,10 +371,14 @@ def prepare_environment(ctx: ComparisonContext) -> None:
 
     target_dir = ctx.results_dir / "target"
     baseline_dir = ctx.results_dir / "baseline"
-    if not target_dir.is_dir() or not baseline_dir.is_dir():
+    if not target_dir.is_dir():
         print(_colorize("red",
-                        f"Error: Missing 'target' and/or 'baseline' subdirectory under {ctx.results_dir}"))
+                        f"Error: Missing 'target' subdirectory under {ctx.results_dir}"))
         sys.exit(1)
+    if not baseline_dir.is_dir():
+        print(_colorize("yellow",
+                        f"Warning: Missing 'baseline' subdirectory under {ctx.results_dir}, creating empty baseline"))
+        baseline_dir.mkdir(parents=True, exist_ok=True)
 
 
 def final_status(ctx: ComparisonContext, reporter: ComparisonReporter) -> None:
