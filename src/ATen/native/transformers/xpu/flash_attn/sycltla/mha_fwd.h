@@ -9,6 +9,17 @@
  */
 
 #pragma once
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-warning-option"
+#pragma clang diagnostic ignored "-Wchanges-meaning"
+#pragma clang diagnostic ignored "-Wsycl-strict"
+#pragma clang diagnostic ignored "-Wunused-local-typedefs"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wchanges-meaning"
+
 #include <cute/tensor.hpp>
 #include <cute/util/compat.hpp>
 #include <cutlass/numeric_conversion.h>
@@ -17,3 +28,6 @@
 #include <sycl/sycl.hpp>
 
 #include <sycltla/kernel/xe_fmha_fwd_kernel.h>
+
+#pragma clang diagnostic pop
+#pragma GCC diagnostic pop
