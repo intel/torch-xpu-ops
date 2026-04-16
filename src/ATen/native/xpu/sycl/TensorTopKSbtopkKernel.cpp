@@ -141,11 +141,11 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // ================================================================
   // findPattern (SortingRadixSelect.cuh:239)
   //
-  // Finds the unique scalar_t value whose convert() matches desired.
-  // CUDA uses smem cast to scalar_t* for flag+value.
-  // SYCL uses smem[64]=flag(int), smem[65]=index(int), then data[index].
+  // Finds the unique value whose convert() matches desired.
+  // Returns RadixT (converted form) directly — no deconvert needed.
+  // SYCL uses smem[64]=flag(int), smem[65]=index(int), then convert(data[index]).
   // ================================================================
-  scalar_t findPattern(
+  RadixT findPattern(
       sycl::nd_item<1> item,
       int* smem,
       const scalar_t* data,
@@ -181,11 +181,11 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // Barrier removed: post-read WAR; next iteration's barrier@177 covers it.
 
       if (found != 0) {
-        return data[foundIdx];
+        return TopKTypeConfig<scalar_t>::convert(data[foundIdx]);
       }
     }
     // Should not reach here
-    return static_cast<scalar_t>(0);
+    return static_cast<RadixT>(0);
   }
 
   // ================================================================
@@ -296,19 +296,18 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   //
   // Iterates MSB to LSB in RADIX_BITS steps.
   // At each step: count digits, scan to find which digit contains k-th.
-  // found_unique (count==1, kToFind==1): findPattern + return
+  // found_unique (count==1, kToFind==1): findPattern + return RadixT
   // found_non_unique (count>=kToFind): narrow desired/desiredMask, continue
-  // End: *topK = deconvert(desired)
+  // End: return desired (RadixT, fully determined)
   // ================================================================
-  void radixSelect(
+  RadixT radixSelect(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       int* smem,
       const scalar_t* data,
       int k,
       bool largest,
-      int sliceSize,
-      scalar_t* topKValue) const {
+      int sliceSize) const {
     int counts[RADIX_SIZE];
     RadixT desired = 0;
     RadixT desiredMask = 0;
@@ -333,9 +332,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                 desired, i, digitPos, RADIX_BITS);
             desiredMask = Bitfield<RadixT>::setBitfield(
                 desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
-            *topKValue = findPattern(
+            return findPattern(
                 item, smem, data, sliceSize, desired, desiredMask);
-            return;
           }
 
           // found_non_unique: break inner loop, continue outer
@@ -358,9 +356,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                 desired, i, digitPos, RADIX_BITS);
             desiredMask = Bitfield<RadixT>::setBitfield(
                 desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
-            *topKValue = findPattern(
+            return findPattern(
                 item, smem, data, sliceSize, desired, desiredMask);
-            return;
           }
 
           if (count >= kToFind) {
@@ -377,7 +374,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
 
     // No unique result; desired fully determined
-    *topKValue = TopKTypeConfig<scalar_t>::deconvert(desired);
+    return desired;
   }
 
   // ================================================================
@@ -401,11 +398,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     scalar_t* topKSlice = topKData_ + (int64_t)slice * k_;
     int64_t* indicesSlice = indicesData_ + (int64_t)slice * k_;
 
-    // Step 1: radixSelect
-    scalar_t topKValue = static_cast<scalar_t>(0);
-    radixSelect(item, sg, smem, inputSlice, k_, largest_, sliceSize_, &topKValue);
-
-    RadixT topKConverted = TopKTypeConfig<scalar_t>::convert(topKValue);
+    // Step 1: radixSelect — returns RadixT directly (no deconvert/convert round-trip)
+    RadixT topKConverted = radixSelect(item, sg, smem, inputSlice, k_, largest_, sliceSize_);
 
     // Step 2: Gather values strictly greater/less than topKValue
     // CUDA: numIterations = round_up(inputSliceSize, blockDim.x)
