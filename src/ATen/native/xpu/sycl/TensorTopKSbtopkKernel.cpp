@@ -207,12 +207,17 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int sg_size = sg.get_local_range()[0];
     int num_sgs = block_size / sg_size;
 
-    // WAR barrier: previous call reads smem (carry), this call writes smem.
-    sycl::group_barrier(item.get_group());
-
-    // Sub-group exclusive scan + reduce
-    int sg_exclusive = sycl::exclusive_scan_over_group(sg, local_count, 0, sycl::plus<int>());
-    int sg_total = sycl::reduce_over_group(sg, local_count, sycl::plus<int>());
+    // Manual sub-group inclusive prefix scan (Kogge-Stone)
+    int val = local_count;
+#pragma unroll
+    for (int offset = 1; offset < 16; offset <<= 1) {
+      int n = sycl::shift_group_right(sg, val, offset);
+      if (sg_lid >= offset) val += n;
+    }
+    // val = inclusive scan within sub-group
+    int sg_inclusive = val;
+    int sg_exclusive = sg_inclusive - local_count;
+    int sg_total = sycl::group_broadcast(sg, sg_inclusive, sg_size - 1);
 
     // Lane 0 writes sub-group total to smem
     if (sg_lid == 0) {
@@ -225,15 +230,13 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int current = 0;
       for (int i = 0; i < num_sgs; ++i) {
         int v = smem[i];
-        smem[i] = v + current;  // inclusive prefix sum
+        smem[i] = v + current;
         current += v;
       }
     }
     sycl::group_barrier(item.get_group());
 
     // Add cross-sub-group prefix
-    // smem[sg_id] is inclusive sum up to and including sg_id
-    // We need exclusive: sum of sg_0..sg_{id-1}
     int cross_sg_prefix = (sg_id >= 1) ? smem[sg_id - 1] : 0;
     out = sg_exclusive + cross_sg_prefix;
 
