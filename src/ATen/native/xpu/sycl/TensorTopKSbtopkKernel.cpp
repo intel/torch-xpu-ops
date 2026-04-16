@@ -18,7 +18,8 @@
  *   smem[]                    -> int* from local accessor
  *
  * withinSliceStride = 1 (input is .contiguous() before calling sbtopk).
- * RADIX_BITS, RADIX_SIZE, RADIX_MASK are defined in SortingRadixSelect.h.
+ * RADIX_BITS, RADIX_SIZE, RADIX_MASK are defined in SortingRadixSelect.h (=2,4,3).
+ * sbtopk uses SBTOPK_RADIX_BITS=4, SBTOPK_RADIX_SIZE=16, SBTOPK_RADIX_MASK=15.
  */
 
 #include <ATen/ATen.h>
@@ -32,22 +33,18 @@ namespace at {
 namespace native {
 namespace xpu {
 
-// Override RADIX_BITS for sbtopk: 4 bits = 16 digits per pass
-// Halves radix passes for fp32 (16→8), targeting SyncStall from countRadix barriers.
-// The global RADIX_BITS=2 in SortingRadixSelect.h is used by the original radix select kernel.
-#undef RADIX_BITS
-#undef RADIX_SIZE
-#undef RADIX_MASK
-constexpr int RADIX_BITS = 4;
-constexpr int RADIX_SIZE = 16; // 2 ^ RADIX_BITS
-constexpr int RADIX_MASK = (RADIX_SIZE - 1);
+// sbtopk uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
+// Cannot reuse RADIX_BITS/SIZE/MASK from SortingRadixSelect.h (constexpr int, can't #undef).
+constexpr int SBTOPK_RADIX_BITS = 4;
+constexpr int SBTOPK_RADIX_SIZE = 16; // 2 ^ SBTOPK_RADIX_BITS
+constexpr int SBTOPK_RADIX_MASK = (SBTOPK_RADIX_SIZE - 1);
 
 // Block size = 1024 threads, matching CUDA C10_LAUNCH_BOUNDS_1(1024)
 constexpr int SBTOPK_BLOCK = 1024;
 
 // SLM layout:
-//   [0..63]  : used by countRadixUsingMask (smem[0..RADIX_SIZE-1] for counts)
-//              and by inclusiveBinaryPrefixScan (smem[0..num_sgs-1] for carries)
+//   [0..63]  : used by countRadixUsingMask (smem[0..SBTOPK_RADIX_SIZE-1] for counts)
+//              and by exclusiveIntPrefixScan (smem[0..num_sgs-1] for carries)
 //   [64..65] : used by findPattern (flag + found index)
 //   Total: 68 ints = 272 bytes
 constexpr int SMEM_INTS = 68;
@@ -75,7 +72,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       int* smem,
-      int counts[RADIX_SIZE],
+      int counts[SBTOPK_RADIX_SIZE],
       RadixT desired,
       RadixT desiredMask,
       int digitPos,
@@ -86,10 +83,10 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int sg_lid = sg.get_local_linear_id();
 
 #pragma unroll
-    for (int i = 0; i < RADIX_SIZE; ++i) {
+    for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
       counts[i] = 0;
     }
-    if (lid < RADIX_SIZE) {
+    if (lid < SBTOPK_RADIX_SIZE) {
       smem[lid] = 0;
     }
     sycl::group_barrier(item.get_group());
@@ -109,7 +106,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       for (int v = 0; v < VEC_SIZE; ++v) {
         RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
         if ((val & desiredMask) == desired) {
-          RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, RADIX_BITS);
+          RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
           counts[digit]++;
         }
       }
@@ -118,14 +115,14 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
       RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
       if ((val & desiredMask) == desired) {
-        RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, RADIX_BITS);
+        RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
         counts[digit]++;
       }
     }
 
     // Sub-group reduce + work-group reduce via atomicAdd
 #pragma unroll
-    for (int j = 0; j < RADIX_SIZE; ++j) {
+    for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       int sg_total = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
       if (sg_lid == 0) {
         sycl::atomic_ref<int, sycl::memory_order::relaxed,
@@ -139,7 +136,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // All threads read block-level totals
 #pragma unroll
-    for (int j = 0; j < RADIX_SIZE; ++j) {
+    for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       counts[j] = smem[j];
     }
   }
@@ -272,13 +269,13 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int k,
       bool largest,
       int sliceSize) const {
-    int counts[RADIX_SIZE];
+    int counts[SBTOPK_RADIX_SIZE];
     RadixT desired = 0;
     RadixT desiredMask = 0;
     int kToFind = k;
 
-    for (int digitPos = NUM_BITS - RADIX_BITS; digitPos >= 0;
-         digitPos -= RADIX_BITS) {
+    for (int digitPos = NUM_BITS - SBTOPK_RADIX_BITS; digitPos >= 0;
+         digitPos -= SBTOPK_RADIX_BITS) {
       countRadixUsingMask(
           item, sg, smem, counts,
           desired, desiredMask, digitPos,
@@ -287,15 +284,15 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       // All threads execute the same scan logic (counts are identical).
       // Replicates CUDA found_unique / found_non_unique lambdas exactly.
       if (largest) {
-        for (int i = RADIX_SIZE - 1; i >= 0; --i) {
+        for (int i = SBTOPK_RADIX_SIZE - 1; i >= 0; --i) {
           int count = counts[i];
 
           // found_unique: return from radixSelect
           if (count == 1 && kToFind == 1) {
             desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, RADIX_BITS);
+                desired, i, digitPos, SBTOPK_RADIX_BITS);
             desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
             return findPattern(
                 item, smem, data, sliceSize, desired, desiredMask);
           }
@@ -303,32 +300,32 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           // found_non_unique: break inner loop, continue outer
           if (count >= kToFind) {
             desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, RADIX_BITS);
+                desired, i, digitPos, SBTOPK_RADIX_BITS);
             desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
             break;
           }
 
           kToFind -= count;
         }
       } else {
-        for (int i = 0; i < RADIX_SIZE; ++i) {
+    for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
           int count = counts[i];
 
           if (count == 1 && kToFind == 1) {
             desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, RADIX_BITS);
+                desired, i, digitPos, SBTOPK_RADIX_BITS);
             desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
             return findPattern(
                 item, smem, data, sliceSize, desired, desiredMask);
           }
 
           if (count >= kToFind) {
             desired = Bitfield<RadixT>::setBitfield(
-                desired, i, digitPos, RADIX_BITS);
+                desired, i, digitPos, SBTOPK_RADIX_BITS);
             desiredMask = Bitfield<RadixT>::setBitfield(
-                desiredMask, RADIX_MASK, digitPos, RADIX_BITS);
+                desiredMask, SBTOPK_RADIX_MASK, digitPos, SBTOPK_RADIX_BITS);
             break;
           }
 
