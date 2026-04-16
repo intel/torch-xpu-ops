@@ -244,8 +244,8 @@ struct SubgroupTopKFunctor {
 // ================================================================
 // Launch function
 // ================================================================
-template <typename scalar_t>
-static void sbtopk_launch_kernel(
+template <typename scalar_t, int K, int VEC_SIZE>
+static void sbtopk_launch_impl(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
@@ -253,9 +253,6 @@ static void sbtopk_launch_kernel(
     int sliceSize,
     int k,
     bool largest) {
-  constexpr int K = 16;
-  constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 8 : 4;
-  // Work-group size: multiple sub-groups per WG for better occupancy
   constexpr int WG_SIZE = 256; // 8 sub-groups per work-group
   constexpr int SGS_PER_WG = WG_SIZE / SG_SIZE;
   int num_wgs = (numSlices + SGS_PER_WG - 1) / SGS_PER_WG;
@@ -270,6 +267,33 @@ static void sbtopk_launch_kernel(
       functor);
 }
 
+template <typename scalar_t>
+static void sbtopk_launch_kernel(
+    const scalar_t* input,
+    scalar_t* topK,
+    int64_t* indices,
+    int numSlices,
+    int sliceSize,
+    int k,
+    bool largest) {
+  constexpr int K = 16;
+  // Max VEC_SIZE for this dtype
+  constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
+
+  // Pick largest VEC_SIZE such that:
+  //   1. 32 * VEC_SIZE <= sliceSize  (all threads get at least one full vector)
+  //   2. sliceSize % VEC_SIZE == 0   (slice boundaries are aligned)
+  if (MAX_VEC >= 8 && sliceSize % 8 == 0 && SG_SIZE * 8 <= sliceSize) {
+    sbtopk_launch_impl<scalar_t, K, 8>(input, topK, indices, numSlices, sliceSize, k, largest);
+  } else if (MAX_VEC >= 4 && sliceSize % 4 == 0 && SG_SIZE * 4 <= sliceSize) {
+    sbtopk_launch_impl<scalar_t, K, 4>(input, topK, indices, numSlices, sliceSize, k, largest);
+  } else if (sliceSize % 2 == 0 && SG_SIZE * 2 <= sliceSize) {
+    sbtopk_launch_impl<scalar_t, K, 2>(input, topK, indices, numSlices, sliceSize, k, largest);
+  } else {
+    sbtopk_launch_impl<scalar_t, K, 1>(input, topK, indices, numSlices, sliceSize, k, largest);
+  }
+}
+
 bool sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
@@ -279,7 +303,7 @@ bool sbtopk_try_launch(
     const at::Tensor& values,
     const at::Tensor& indices) {
   // Only handle cases where sub-group topk is beneficial
-  if (nelements < 1024 || k > 16) {
+  if (k > 16) {
     return false;
   }
 
