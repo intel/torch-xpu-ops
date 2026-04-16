@@ -3235,16 +3235,18 @@ else:
 
     @onlyXPU
     def test_cumprod_long_float32_precision(self, device):
-        torch.manual_seed(0)
-        x = 1.0 + 0.0001 * torch.randn(1_000_000, dtype=torch.float32)
-        cpu_ref = torch.cumprod(x, dim=0)
-        xpu_out = torch.cumprod(x.to(device), dim=0).cpu()
-        torch.testing.assert_close(xpu_out, cpu_ref, atol=1e-4, rtol=1e-4)
+        long_scan_len = (1 << 16) + 1
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            x = 1.0 + 0.0001 * torch.randn(long_scan_len, dtype=torch.float32)
+            cpu_ref = torch.cumprod(x, dim=0)
+            xpu_out = torch.cumprod(x.to(device), dim=0).cpu()
+            torch.testing.assert_close(xpu_out, cpu_ref, atol=1e-4, rtol=1e-4)
 
-        y = 1.0 + 0.0001 * torch.randn(2, 1_000_000, dtype=torch.float32)
-        cpu_ref = torch.cumprod(y, dim=1)
-        xpu_out = torch.cumprod(y.to(device), dim=1).cpu()
-        torch.testing.assert_close(xpu_out, cpu_ref, atol=1e-4, rtol=1e-4)
+            y = 1.0 + 0.0001 * torch.randn(2, long_scan_len, dtype=torch.float32)
+            cpu_ref = torch.cumprod(y, dim=1)
+            xpu_out = torch.cumprod(y.to(device), dim=1).cpu()
+            torch.testing.assert_close(xpu_out, cpu_ref, atol=1e-4, rtol=1e-4)
 
     @skipIfMPS
     def test_cummax_cummin(self, device):
