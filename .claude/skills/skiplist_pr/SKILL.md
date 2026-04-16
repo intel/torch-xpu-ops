@@ -250,6 +250,28 @@ skip_dict = {
 - If gh not authenticated: user handles PR manually
 - Write access to push to torch-xpu-ops fork (for PR creation)
 
+## Tools Used
+
+| Tool | Purpose |
+|------|---------|
+| websearch | Search for issue details on GitHub |
+| webfetch | Get issue content from GitHub URL |
+| grep | Search for existing test entries in skip_list |
+| read | Read skip_list_common.py to find test entries |
+| edit | Add skip entries to skip_list_common.py |
+| question | Ask user for clarification if needed |
+| bash | Run git commands for PR creation |
+| gh | Create PR if authenticated |
+
+## Constraints
+
+- Working directory: `.` (torch-xpu-ops repo root)
+- Skip list file: `test/xpu/skip_list_common.py` (relative to torch-xpu-ops)
+- Tests in `test/xpu/` use skip_list_common.py
+- Tests in `pytorch/test/` use @skipIfXpu decorator (use check_pytorch_skip skill)
+- gh CLI may not be authenticated - use webfetch/websearch as fallback
+- This skill is for tests in torch-xpu-ops repo, NOT pytorch/test/
+
 ## Examples
 
 **Single issue:**
@@ -272,4 +294,16 @@ Add tests to skiplist: issues #3127, #3128, #3129, #3133, #3126
 - Skip 68 SDPA nested broadcasting tests
 - Skip 4 SDPA failure mode tests
 - Refer to respective issues
+```
+
+## Integration with create_skill
+
+This skill was created using the **create_skill** workflow. When modifying this skill:
+1. Track all new tools used
+2. Track all new constraints encountered
+3. Update this SKILL.md file with the create_skill pattern
+
+To create a similar skill, load the create_skill skill first:
+```bash
+skill load create_skill
 ```
