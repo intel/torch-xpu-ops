@@ -1,0 +1,147 @@
+name: Nightly-OnDemand Tests
+
+on:
+  schedule:
+    # Nightly at weekday 00:00 GMT+8 (16:00 UTC)
+    - cron: '00 16 * * 0-4'
+    # Weekly  at weekend 00:00 GMT+8 (16:00 UTC)
+    - cron: '00 16 * * 5'
+  workflow_dispatch:
+    inputs:
+      # ----- Basic Configuration -----
+      pytorch:
+        type: string
+        description: |
+          PyTorch version:
+          - nightly_wheel(==xxx optional), release_wheel, test_wheel for prebuilt wheel
+          - commit/branch/tag, repo@commit/repo@branch/repo@tag
+        required: true
+      torch_xpu_ops:
+        type: string
+        description: |
+          - Torch-xpu-ops version:
+          - empty is the triggered commit
+          - pinned for pytorch pinned commit
+          - commit/branch/tag, repo@commit/repo@branch/repo@tag
+        default: ''
+        required: false
+      runner:
+        type: choice
+        options:
+          - PVC
+          - BMG
+        default: 'PVC'
+        description: 'What runner to use'
+      python:
+        type: string
+        description: 'Python version (e.g., 3.9, 3.10, 3.11, 3.12)'
+        default: '3.10'
+        required: true
+
+      # ----- Component Build (Optional) -----
+      component:
+        type: choice
+        description: 'Optional component to build'
+        options:
+          - ''
+          - onednn
+          - sycltla
+          - triton
+          - oneapi
+        default: ''
+      component_version:
+        type: string
+        description: |
+          Component version:
+          - empty → use PyTorch pinned version
+          - commit/branch/tag, repo@commit/repo@branch/repo@tag
+          - for oneAPI, use offline installer accessible url
+        default: ''
+        required: false
+
+      # ----- Unit Tests -----
+      ut:
+        type: string
+        description: |
+          Unit test scopes (comma-separated):
+          basic, op_regression, op_transformers, op_extended, op_regression_dev1,
+          op_ut, skipped_ut, torch_xpu, xpu_profiling, xpu_distributed,
+          microbench, windows
+        default: ''
+        required: false
+
+      # ----- E2E Parameters -----
+      suite:
+        type: string
+        description: 'E2E test suites: huggingface, timm_models, torchbench, pt2e'
+        default: ''
+        required: false
+      dt:
+        type: string
+        description: 'Dtypes: float32, bfloat16, float16, amp_bf16, amp_fp16, int8'
+        default: ''
+        required: false
+      mode:
+        type: string
+        description: 'Test modes: inference, training'
+        default: ''
+        required: false
+      scenario:
+        type: string
+        description: 'Test scenarios: accuracy, performance'
+        default: ''
+        required: false
+      model:
+        type: string
+        description: 'Specific model name (if set, only this model runs)'
+        default: ''
+        required: false
+
+permissions: read-all
+
+env:
+  RUNNER_LABEL: 'pvc_rolling'
+
+run-name: |
+    (github.event_name == 'schedule' && 'Scheduled / ' +
+     (github.event.schedule == '10 13 * * 0-4' && 'Weekday 21:00' || 'Saturday 00:00')
+    ) ||
+    (github.event_name == 'workflow_dispatch' && 'Manual / ' +
+     (inputs.pytorch != '' && inputs.pytorch || inputs.build_type)
+    ) ||
+    github.event_name
+
+jobs:
+  ondemand-tests:
+    if: github.event_name == 'workflow_dispatch'
+    permissions: write-all
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ contains(inputs.runner, 'BMG') && 'bmg-test' || 'pvc_rolling' }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops == '' && github.workflow_sha || inputs.torch_xpu_ops }}
+      python: ${{ inputs.python }}
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.component_version }}
+      ut: ${{ inputs.ut }}
+      suite: ${{ inputs.suite }}
+      dt: ${{ inputs.dt }}
+      mode: ${{ inputs.mode }}
+      scenario: ${{ inputs.scenario }}
+      model: ${{ inputs.model }}
+    secrets: inherit
+
+  scheduled-tests:
+    if: github.event_name == 'schedule' && github.repository_owner == 'intel'
+    permissions: write-all
+    uses: ./.github/workflows/_test_call.yml
+    strategy:
+      matrix:
+        pytorch: [main, nightly_wheel]
+    with:
+      runner: 'pvc_rolling'
+      pytorch: ${{ matrix.pytorch }}
+      torch_xpu_ops: ${{ contains(matrix.pytorch, 'main') && 'main' || 'pinned' }}
+      ut: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,microbench,windows'
+      suite: 'huggingface,timm_models,torchbench,pt2e'
+    secrets: inherit

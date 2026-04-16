@@ -16,7 +16,7 @@ on:
       python:
         required: false
         type: string
-        default: '3.12'
+        default: '3.10'
         description: Python version
       runner:
         required: true
@@ -59,7 +59,7 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   HF_HUB_ETAG_TIMEOUT: 120
   HF_HUB_DOWNLOAD_TIMEOUT: 120
-  python: ${{ inputs.python != '' && inputs.python || '3.12' }}
+  python: ${{ inputs.python != '' && inputs.python || '3.10' }}
   accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.7.0'}}
   datasets: ${{ inputs.datasets != '' && inputs.datasets || 'v3.6.0'}}
   transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}

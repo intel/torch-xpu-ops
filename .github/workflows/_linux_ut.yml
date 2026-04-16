@@ -21,7 +21,7 @@ on:
         description: 'Torch-xpu-ops version: main (default), commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
       python:
         type: string
-        default: '3.12'
+        default: '3.10'
         description: 'Python version'
       ut:
         required: true
@@ -38,10 +38,10 @@ on:
           - basic: Basic tests (op_regression, op_transformers, op_extended, op_regression_dev1)
           - xpu_distributed: XPU distributed tests
           - xpu_profiling: XPU profiling tests
-      test_role:
+      category:
         type: string
         default: 'default'
-        description: 'Role for test comparison'
+        description: 'Category for test comparison'
       component:
         type: string
         default: ''
@@ -135,7 +135,7 @@ jobs:
           suite: ${{ contains(inputs.ut, 'transformers') && 'huggingface' || 'None' }}
           component: ${{ inputs.component }}
           component_version: ${{ inputs.component_version }}
-          test_role: ${{ inputs.test_role }}
+          category: ${{ inputs.category }}
 
       - name: Run XPU Unit Tests
         uses: ./.github/actions/linux-uttest
@@ -173,7 +173,7 @@ jobs:
         if: ${{ !cancelled() && steps.upload-logs.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore
@@ -209,7 +209,7 @@ jobs:
           suite: 'None'
           component: ${{ inputs.component }}
           component_version: ${{ inputs.component_version }}
-          test_role: ${{ inputs.test_role }}
+          category: ${{ inputs.category }}
 
       - name: Run XPU Unit Tests (Baremetal)
         uses: ./.github/actions/linux-uttest
@@ -247,7 +247,7 @@ jobs:
         if: ${{ !cancelled() && steps.upload-logs-baremetal.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
           retention-days: 7
           if-no-files-found: ignore

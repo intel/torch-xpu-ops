@@ -26,7 +26,7 @@ on:
         description: 'Pytorch version: main (default), commit/branch, or repo@commit/repo@branch'
       python:
         type: string
-        default: '3.12'
+        default: '3.10'
         description: 'Python version'
       suite:
         type: string
@@ -49,10 +49,10 @@ on:
         type: string
         default: ''
         description: 'Specific model to test. If set, only this model will be tested'
-      test_role:
+      category:
         type: string
         default: 'default'
-        description: 'Role for test comparison'
+        description: 'Category for test comparison'
       component:
         type: string
         default: ''
@@ -141,7 +141,7 @@ jobs:
           suite: ${{ inputs.suite }}
           component: ${{ inputs.component }}
           component_version: ${{ inputs.component_version }}
-          test_role: ${{ inputs.test_role }}
+          category: ${{ inputs.category }}
 
       # Helper function to check if suite is in input
       - name: Parse suite configuration
@@ -369,7 +369,7 @@ jobs:
 
       # On-demand Test Comparison
       - name: Execute On-demand Training tests
-        if: ${{ contains(inputs.test_role, 'target') || contains(inputs.test_role, 'baseline') }}
+        if: ${{ contains(inputs.category, 'target') || contains(inputs.category, 'baseline') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
@@ -378,7 +378,7 @@ jobs:
           scenario: accuracy,performance
           comparison_type: comparison
       - name: Execute On-demand Inference tests
-        if: ${{ contains(inputs.test_role, 'target') || contains(inputs.test_role, 'baseline') }}
+        if: ${{ contains(inputs.category, 'target') || contains(inputs.category, 'baseline') }}
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}

@@ -11,7 +11,7 @@ on:
       - unlabeled
     branches:
       - main
-      - release/*
+      - release/**
 
 permissions: read-all
 
@@ -26,21 +26,102 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      - name: Run basic lint checks
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Running Basic Lint Format Checks ==="
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+
+          bash .github/scripts/lintrunner.sh || {
+            echo "Lint check failed"
+            exit 1
+          }
+
+          echo "Basic lint checks completed successfully"
+
+      - name: Run Clang format/tidy checks
+        shell: bash -eo pipefail {0}
+        run: |
+          echo "=== Running Clang Format/Tidy Checks ==="
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
+
+          bash .github/scripts/lintrunner.sh || {
+            echo "Clang lint check failed"
+            exit 1
+          }
+
+          echo "Clang lint checks completed successfully"
+
+  preci-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: |
+      github.repository_owner == 'intel' &&
+      github.event.pull_request.draft == false &&
+      !contains(github.event.pull_request.labels.*.name, 'disable_all')
+    outputs:
+      ut_list:  ${{ steps.matrix.outputs.ut_list }}
+      e2e_list: ${{ steps.matrix.outputs.e2e_list }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect path changes
+        id: filter
+        uses: dorny/paths-filter@v4
         with:
-          fetch-depth: 1
-      - name: Run comprehensive lint checks
-        uses: ./.github/actions/lint-check
-        with:
-          enable_clang: true
+          filters: |
+            src_changed:
+              - 'cmake/**'
+              - 'tools/**'
+              - 'src/**.cmake'
+              - 'CMakeLists.txt'
+              - 'test/sycl/CMakeLists.txt'
+              - 'src/xccl/CMakeLists.txt'
+              - 'src/ATen/CMakeLists.txt'
+              - 'src/CMakeLists.txt'
+              - '.github/workflows/_windows_ut.yml'
+
+      - name: Compute ut and e2e suite lists
+        id: matrix
+        env:
+          disable_ut:  ${{ contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
+          disable_e2e: ${{ contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
+          disable_distributed: ${{ contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
+          disable_win: ${{ contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+          src_changed: ${{ steps.filter.outputs.src_changed }}
+        run: |
+          # ── unit-test suites
+          ut_list='basic,op_ut'
+          if [[ "$src_changed" == "true" ]] && [[ "$disable_win" != "true" ]]; then
+            ut_list+=',windows'
+          fi
+          if [[ "$disable_distributed" != "true" ]]; then
+            ut_list+="xpu_distributed"
+          fi
+
+          # ── e2e suites
+          if [[ "$disable_e2e" == "true" ]]; then
+            e2e_list=""
+          else
+            e2e_list="huggingface,timm_models,torchbench"
+          fi
+
+          echo "ut_list=$ut_list"   >> "$GITHUB_OUTPUT"
+          echo "e2e_list=$e2e_list" >> "$GITHUB_OUTPUT"
 
   preci-tests:
-    if: ${{ github.event.pull_request.draft == false }}
-    needs: [preci-lint-check]
+    needs: [preci-lint-check, preci-matrix]
+    if: |
+      needs.preci-matrix.outputs.ut_list  != '' ||
+      needs.preci-matrix.outputs.e2e_list != ''
     uses: ./.github/workflows/_test_call.yml
     permissions: write-all
     with:
-      runner: 'pvc_rolling'
-      is_scheduled_run: pull_request
-      ut: 'basic,op_ut,xpu_distributed'
-      suite: 'huggingface,timm_models,torchbench'
+      runner:         'pvc_rolling'
+      pytorch:        ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'main' }}
+      torch_xpu_ops:  'cicd'
+      ut:             ${{ needs.preci-matrix.outputs.ut_list }}
+      suite:          ${{ needs.preci-matrix.outputs.e2e_list }}
     secrets: inherit

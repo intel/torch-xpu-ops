@@ -21,7 +21,7 @@ on:
       python:
         required: false
         type: string
-        default: '3.12'
+        default: '3.10'
         description: Python version
       runner:
         required: true
@@ -94,7 +94,7 @@ jobs:
     env:
       accelerate: ${{ inputs.accelerate != '' && inputs.accelerate || 'v1.6.0' }}
       transformers: ${{ inputs.transformers != '' && inputs.transformers || 'v4.51.3' }}
-      python: ${{ inputs.python != '' && inputs.python || '3.12' }}
+      python: ${{ inputs.python != '' && inputs.python || '3.10' }}
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v6

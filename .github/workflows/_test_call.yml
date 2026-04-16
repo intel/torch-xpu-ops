@@ -3,179 +3,202 @@ name: Test Workflow Call
 on:
   workflow_call:
     inputs:
-      # Basic configuration
-      all_inputs_json:
-        type: string
-        description: 'JSON string containing all inputs'
-
-      # Test scope configuration
-      ut:
-        type: string
-        default: ''
-        description: |
-          Unit test scope (comma-separated):
-          - basic: op_regression, op_transformers, op_extended, op_regression_dev1
-          - op_regression, op_transformers, op_extended, op_regression_dev1
-          - op_ut, skipped_ut, torch_xpu, xpu_profiling, xpu_distributed
-          - microbench, windows (special flags)
-      suite:
-        type: string
-        default: ''
-        description: |
-          E2E test suite (comma-separated):
-          - huggingface, timm_models, torchbench, pt2e
-
-      # Comparison configuration
-      test_role:
-        type: string
-        default: 'none'
-        description: 'What type actor, target, baseline or none by default'
-
-      # Advanced configuration
-      runner:
-        type: string
-        default: 'pvc_rolling'
-        description: 'Runner label for Linux tests'
-      is_scheduled_run:
+      # ----- Basic Configuration -----
+      pytorch:
         type: string
         required: true
-        description: 'Set to true for scheduled runs (affects build behavior)'
+        default: ''
+        description: 'PyTorch version'
+      torch_xpu_ops:
+        type: string
+        required: false
+        default: ''
+        description: 'Torch-xpu-ops version'
+      runner:
+        type: string
+        required: true
+        description: 'What runner to use'
+      python:
+        type: string
+        required: true
+        description: 'Python version'
+
+      # ----- Component Build (Optional) -----
+      component:
+        type: string
+        required: false
+        default: ''
+        description: 'Optional component to build'
+      component_version:
+        type: string
+        required: false
+        default: ''
+        description: 'Optional component version to build'
+
+      # ----- Unit Tests -----
+      ut:
+        type: string
+        required: false
+        default: ''
+        description: 'Unit test scope (comma-separated)'
+
+      # ----- E2E Parameters -----
+      suite:
+        type: string
+        required: false
+        default: ''
+        description: 'E2E test suites (comma-separated)'
+      dt:
+        type: string
+        required: false
+        default: ''
+        description: 'E2E test dtypes (comma-separated)'
+      mode:
+        type: string
+        required: false
+        default: ''
+        description: 'E2E test modes (comma-separated)'
+      scenario:
+        type: string
+        required: false
+        default: ''
+        description: 'E2E test scenarios (comma-separated)'
+      model:
+        type: string
+        required: false
+        default: ''
+        description: 'E2E test specific models name (if need, comma-separated)'
+
+      # ----- Comparison Parameters -----
+      category:
+        type: string
+        required: false
+        default: ''
+        description: 'Distinguish the target or baseline'
 
 permissions: read-all
 
 jobs:
-  parse-inputs:
+  tests-matrix:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      test_role: ${{ inputs.test_role }}
-      ut: ${{ inputs.ut }}
-      suite: ${{ inputs.suite }}
+    timeout-minutes: 5
     outputs:
-      # Configuration
-      test_type: ${{ steps.parse-config.outputs.test_type }}
-      pytorch: ${{ steps.parse-config.outputs.pytorch }}
-      torch_xpu_ops: ${{ steps.parse-config.outputs.torch_xpu_ops }}
-      should_build: ${{ steps.parse-config.outputs.should_build }}
-
-      # Test scope
-      test_scope: ${{ steps.parse-config.outputs.test_scope }}
-      ut_json_array: ${{ steps.parse-config.outputs.ut_json_array }}
-      suite_json_array: ${{ steps.parse-config.outputs.suite_json_array }}
-
-      # Others
-      python: ${{ steps.parse-config.outputs.python }}
-      component: ${{ steps.parse-config.outputs.component }}
-      component_version: ${{ steps.parse-config.outputs.component_version }}
-      dt: ${{ steps.parse-config.outputs.dt }}
-      mode: ${{ steps.parse-config.outputs.mode }}
-      scenario: ${{ steps.parse-config.outputs.scenario }}
-      model: ${{ steps.parse-config.outputs.model }}
+      ut_list_json:  ${{ steps.matrix.outputs.ut_list_json }}
+      e2e_list_json: ${{ steps.matrix.outputs.e2e_list_json }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-      - name: Filter PR conditions and determine configuration
-        id: parse-config
-        uses: ./.github/actions/conditions-filter
-        with:
-          all_inputs_json: ${{ inputs.all_inputs_json || '' }}
-          is_scheduled_run: ${{ inputs.is_scheduled_run }}
+      - name: Compute ut and e2e suite lists
+        id: matrix
+        run: |
+          get_json_array() {
+            local input="$1"
+            if [ -z "$input" ]; then
+              echo "[]"
+            else
+              json="["; sep=""
+              IFS=','; for x in $1; do
+                x="${x## }"; x="${x%% }"
+                [[ "$x" == "windows" || "$x" == "microbench" || -z "$x" ]] && continue
+                json+="${sep}\"${x}\""; sep=","
+              done; unset IFS
+              json+="]"
+              echo "$json"
+            fi
+          }
+
+          # ── tests matrix ──
+          ut_list_json="$(get_json_array "${{ inputs.ut }}")"
+          e2e_list_json="$(get_json_array "${{ inputs.suite }}")"
+
+          # ── set outputs ──
+          echo "ut_list_json=${ut_list_json}" >> $GITHUB_OUTPUT
+          echo "e2e_list_json=${e2e_list_json}" >> $GITHUB_OUTPUT
 
   linux-build:
-    needs: [parse-inputs]
     secrets: inherit
     permissions: write-all
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: ${{ inputs.runner }}
-      python: ${{ needs.parse-inputs.outputs.python }}
-      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
-      should_build: ${{ needs.parse-inputs.outputs.should_build }}
-      test_role: ${{ inputs.test_role }}
-      component: ${{ needs.parse-inputs.outputs.component }}
-      component_version: ${{ needs.parse-inputs.outputs.component_version }}
+      python: ${{ inputs.python }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+      category: ${{ inputs.category }}
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.component_version }}
 
   linux-ut:
-    needs:
-      - parse-inputs
-      - linux-build
-    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'ut') }}
+    needs: [linux-build, tests-matrix]
+    if: needs.tests-matrix.outputs.ut_list_json != '[]'
     secrets: inherit
     permissions: write-all
     strategy:
       fail-fast: false
       matrix:
-        ut_name: ${{ fromJSON(needs.parse-inputs.outputs.ut_json_array) }}
+        ut_name: ${{ toJson(needs.tests-matrix.outputs.ut_list_json) }}
     uses: ./.github/workflows/_linux_ut.yml
     with:
       runner: ${{ inputs.runner }}
-      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
-      torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
-      python: ${{ needs.parse-inputs.outputs.python }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+      python: ${{ inputs.python }}
       ut: ${{ matrix.ut_name }}
-      test_role: ${{ inputs.test_role }}
-      component: ${{ needs.parse-inputs.outputs.component }}
-      component_version: ${{ needs.parse-inputs.outputs.component_version }}
+      category: ${{ inputs.category }}
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.component_version }}
 
   linux-e2e:
-    needs:
-      - parse-inputs
-      - linux-build
-    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'e2e') }}
+    needs: [linux-build, tests-matrix]
+    if: needs.tests-matrix.outputs.e2e_list_json != '[]'
     secrets: inherit
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(needs.parse-inputs.outputs.suite_json_array) }}
+        suite: ${{ toJson(needs.tests-matrix.outputs.e2e_list_json) }}
     uses: ./.github/workflows/_linux_e2e.yml
     with:
       runner: ${{ inputs.runner }}
-      test_type: ${{ needs.parse-inputs.outputs.test_type }}
-      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
-      python: ${{ needs.parse-inputs.outputs.python }}
+      test_type: ${{ inputs.test_type }}
+      pytorch: ${{ inputs.pytorch }}
+      python: ${{ inputs.python }}
       suite: ${{ matrix.suite }}
-      dt: ${{ needs.parse-inputs.outputs.dt }}
-      mode: ${{ needs.parse-inputs.outputs.mode }}
-      scenario: ${{ needs.parse-inputs.outputs.scenario }}
-      model: ${{ needs.parse-inputs.outputs.model }}
-      test_role: ${{ inputs.test_role }}
-      component: ${{ needs.parse-inputs.outputs.component }}
-      component_version: ${{ needs.parse-inputs.outputs.component_version }}
+      dt: ${{ inputs.dt }}
+      mode: ${{ inputs.mode }}
+      scenario: ${{ inputs.scenario }}
+      model: ${{ inputs.model }}
+      category: ${{ inputs.category }}
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.component_version }}
 
   linux-microbench:
     needs:
-      - parse-inputs
       - linux-build
-    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'microbench') }}
+    if: contains(inputs.ut, 'microbench')
     secrets: inherit
     uses: ./.github/workflows/_linux_op_benchmark.yml
     permissions: write-all
     with:
       runner: ${{ inputs.runner }}
-      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
-      python: ${{ needs.parse-inputs.outputs.python }}
+      pytorch: ${{ inputs.pytorch }}
+      python: ${{ inputs.python }}
 
   windows-ut:
-    needs: [parse-inputs]
-    if: ${{ contains(needs.parse-inputs.outputs.test_scope, 'windows') }}
+    if: contains(inputs.ut, 'windows')
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: 'op_extended,test_xpu,op_ut_windows'
-      python: ${{ needs.parse-inputs.outputs.python }}
+      python: ${{ inputs.python }}
       src_changed: false
       has_label: true
       build_runner: Windows_CI_Build
       runner: Windows_CI
-      torch_xpu_ops: ${{ needs.parse-inputs.outputs.torch_xpu_ops }}
-      pytorch: ${{ needs.parse-inputs.outputs.pytorch }}
+      torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+      pytorch: ${{ inputs.pytorch }}
 
   # Compare-results job
   compare-results:
-    if: ${{ inputs.is_scheduled_run != 'comparison-manually' && ! cancelled() }}
+    if: ${{ inputs.category == '' && ! cancelled() }}
     needs:
-      - parse-inputs
       - linux-ut
       - linux-e2e
     runs-on: ubuntu-24.04
@@ -200,7 +223,10 @@ jobs:
       - name: Determine Baseline Artifact Type
         id: determine_type
         run: |
-          TEST_TYPE="${{ needs.parse-inputs.outputs.test_type }}"
+          if [ "${{ inputs.pytorch }}" == "" ];then
+          else
+          fi
+          TEST_TYPE="${{ inputs.test_type }}"
           EVENT_NAME="${{ github.event_name }}"
           IFS=',' read -ra SUFFIXES <<< "${{ env.BASELINE_SUFFIXES }}"
 
@@ -219,7 +245,7 @@ jobs:
           if [[ "${TEST_TYPE}" =~ $REGEX ]]; then
             # If test_type already ends with a known suffix, use it as-is
             artifact_type="${TEST_TYPE}"
-          elif [ "${{ inputs.is_scheduled_run }}" == "pull_request" ]; then
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
             artifact_type="${base}-nightly"
           else
             artifact_type="${base}-weekly"
@@ -268,7 +294,7 @@ jobs:
       - name: Setup Python Environment
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
-          uv venv myvenv --python 3.12 --clear
+          uv venv myvenv --python 3.10 --clear
           source myvenv/bin/activate
           uv pip install pip numpy 'setuptools<81' wheel
           uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
@@ -314,7 +340,7 @@ jobs:
       - name: Setup python env
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
-          uv venv myvenv --python 3.12 --clear
+          uv venv myvenv --python 3.10 --clear
           source myvenv/bin/activate
           uv pip install pip numpy setuptools wheel
           uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
@@ -324,7 +350,7 @@ jobs:
           source myvenv/bin/activate
 
           exit_label=0
-          if [ "${{ inputs.is_scheduled_run }}" == "pull_request" ];then
+          if [ "${{ github.event_name }}" == "pull_request" ];then
             python .github/scripts/check-results.py --results-dir ${{ github.workspace }}/results || exit_label=1
           else
             python .github/scripts/check-results.py
@@ -351,7 +377,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.parse-inputs.outputs.component }}-test-summary
+          name: ${{ inputs.component }}-test-summary
           path: |
             *_comparison*.csv
             *_comparison*.xlsx

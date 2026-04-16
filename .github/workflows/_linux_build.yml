@@ -13,25 +13,23 @@ on:
         default: 'pytorch/manylinux2_28-builder:xpu-main'
         description: 'Docker image for build environment'
       python:
+        required: true
         type: string
-        default: '3.12'
+        default: '3.10'
         description: 'Python version'
       pytorch:
+        required: true
         type: string
         default: 'main'
         description: 'Pytorch version: main (default), commit/branch, or repo@commit/repo@branch'
       torch_xpu_ops:
         type: string
-        default: 'main'
+        default: ''
         description: 'Torch-xpu-ops version: main, commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
-      should_build:
+      category:
         type: string
-        default: 'false'
-        description: 'Build from source or use nightly wheel'
-      test_role:
-        type: string
-        default: 'default'
-        description: 'Role for test comparison (used as subdirectory)'
+        default: ''
+        description: 'Category to distinguish test runs'
       component:
         type: string
         default: ''
@@ -53,9 +51,9 @@ env:
   PATH: /tmp/xpu-tool/myvenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   GCC_VERSION: 13
   # Centralize important paths
-  BUILD_DIR: ${{ github.workspace }}/${{ inputs.test_role }}
-  PYTORCH_SRC: ${{ github.workspace }}/${{ inputs.test_role }}/pytorch
-  TORCH_XPU_OPS_SRC: ${{ github.workspace }}/${{ inputs.test_role }}/torch-xpu-ops
+  BUILD_DIR: ${{ github.workspace }}/${{ inputs.category }}
+  PYTORCH_SRC: ${{ github.workspace }}/${{ inputs.category }}/pytorch
+  TORCH_XPU_OPS_SRC: ${{ github.workspace }}/${{ inputs.category }}/torch-xpu-ops
 
 jobs:
   runner:
@@ -86,7 +84,7 @@ jobs:
 
   build:
     needs: runner
-    if: ${{ !contains(inputs.pytorch, '_wheel') && inputs.should_build == 'true' }}
+    if: ${{ !endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     permissions:
       checks: write
@@ -390,10 +388,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: Torch-XPU-Wheel-${{ inputs.test_role }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Torch-XPU-Wheel-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ inputs.test_role }}/*.whl
-            ${{ inputs.test_role }}/build_*.log
+            ${{ inputs.category }}/*.whl
+            ${{ inputs.category }}/build_*.log
           retention-days: 7
           if-no-files-found: error
 

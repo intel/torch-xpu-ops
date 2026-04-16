@@ -9,15 +9,10 @@ inputs:
     default: 'main'
     description: 'Torch-xpu-ops version: main (default), commit/branch, or repo@commit/repo@branch, or "pinned" for pytorch pin'
   python:
-    default: '3.12'
+    default: '3.10'
     description: 'Python version'
   suite:
     required: true
-    type: string
-    options:
-      - huggingface
-      - timm_models
-      - torchbench
     description: 'Dynamo benchmarks test suite.'
   component:
     default: ''
@@ -25,9 +20,9 @@ inputs:
   component_version:
     default: ''
     description: 'Component version for comparison'
-  test_role:
+  category:
     default: 'default'
-    description: 'Role for test comparison'
+    description: 'Category for test comparison'
 
 runs:
   using: composite
@@ -116,7 +111,7 @@ runs:
       if: ${{ !contains(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v8
       with:
-        pattern: Torch-XPU-Wheel-${{ inputs.test_role }}-*
+        pattern: Torch-XPU-Wheel-${{ inputs.category }}-*
         path: ./wheels
         merge-multiple: true
 

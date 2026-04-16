@@ -3,16 +3,27 @@ name: OnDemand Acceptance Tests
 on:
   workflow_dispatch:
     inputs:
+      # ----- Basic Configuration -----
       pytorch:
-        required: true
         type: string
-        default: 'main'
         description: |
           PyTorch version:
-          - main (default for source builds)
-          - nightly_wheel, test_wheel, release_wheel (for wheel tests)
-          - commit/branch/tag
-          - repo@commit/repo@branch/repo@tag
+          - nightly_wheel(==xxx optional), release_wheel, test_wheel for prebuilt wheel
+          - commit/branch/tag, repo@commit/repo@branch/repo@tag
+        default: 'main'
+        required: true
+      runner:
+        type: choice
+        options:
+          - PVC
+          - BMG
+        default: 'BMG'
+        description: 'What runner to use'
+      python:
+        type: string
+        description: 'Python version (e.g., 3.9, 3.10, 3.11, 3.12)'
+        default: '3.10'
+        required: true
 
       # Component selection
       component:
@@ -44,19 +55,6 @@ on:
           - commit/branch/tag
           - repo@commit/repo@branch/repo@tag
 
-      # Environment
-      python:
-        type: string
-        default: '3.12'
-        description: 'Python version'
-      runner:
-        type: choice
-        options:
-          - PVC
-          - BMG
-        default: 'PVC'
-        description: 'What runner to use'
-
 permissions: read-all
 
 run-name: >-
@@ -83,10 +81,12 @@ jobs:
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
-      test_role: 'target'
-      all_inputs_json: ${{ toJSON(inputs) }}
-      runner: ${{ needs.get-runner.outputs.runner_id }}
-      is_scheduled_run: target-manually
+      category: 'target'
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: 'pinned'
+      python: ${{ inputs.python }}
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.target_version }}
       ut: 'op_p0'
       suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
@@ -97,10 +97,12 @@ jobs:
     permissions: write-all
     uses: ./.github/workflows/_test_call.yml
     with:
-      test_role: 'baseline'
-      all_inputs_json: ${{ toJSON(inputs) }}
-      runner: ${{ needs.get-runner.outputs.runner_id }}
-      is_scheduled_run: baseline-manually
+      category: 'baseline'
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: 'pinned'
+      python: ${{ inputs.python }}
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.baseline_version }}
       ut: 'op_p0'
       suite: 'huggingface,timm_models,torchbench'
     secrets: inherit
@@ -130,7 +132,7 @@ jobs:
       - name: Setup python env
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
-          uv venv myvenv --python 3.12 --clear
+          uv venv myvenv --python 3.10 --clear
           source myvenv/bin/activate
           uv pip install pip numpy 'setuptools<81' wheel
           uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub

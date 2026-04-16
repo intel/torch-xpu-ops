@@ -6,7 +6,7 @@ if ! uv --help > /dev/null 2>&1; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$PATH:$HOME/.local/bin"
 fi
-uv venv lint --python 3.12 --clear
+uv venv lint --python 3.10 --clear
 source lint/bin/activate
 uv pip install -U pip setuptools==81.0.0 wheel pyyaml typing-extensions
 
