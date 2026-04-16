@@ -42,7 +42,7 @@ constexpr int SBTOPK_BLOCK = 1024;
 //   Total: 68 ints = 272 bytes
 constexpr int SMEM_INTS = 68;
 
-template <typename scalar_t, int VEC_SIZE = 4>
+template <typename scalar_t, int VEC_SIZE = 4, int ELEMS_PER_THREAD = 32>
 struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
@@ -338,9 +338,10 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // 2. Gather values strictly > topK (largest) or < topK (!largest)
   // 3. Fill remaining with values == topK
   //
-  // v3: Vectorized gatherTopK — each thread processes VEC_SIZE elements
-  // per iteration with integer prefix scan instead of binary prefix scan.
-  // Reduces ballot count from 2048 to 512 per sub-group (8x in step2, 4x step3).
+  // v4: Each thread processes ELEMS_PER_THREAD elements per iteration
+  // (LOADS_PER_ITER × vec4 loads), then ONE prefix scan.
+  // v3: 32 iterations × 2 barriers = 64 barriers for step2
+  // v4 (ELEMS_PER_THREAD=32): 4 iterations × 2 barriers = 8 barriers (8x reduction)
   // ================================================================
   [[sycl::reqd_sub_group_size(32)]]
   void operator()(sycl::nd_item<1> item) const {
@@ -361,60 +362,70 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     RadixT topKConverted = radixSelect(item, sg, smem, inputSlice, k_, largest_, sliceSize_);
 
     // Vectorized gather setup
+    // ELEMS_PER_THREAD: each thread processes this many elements per iteration.
+    // Multiple vec4 loads per iteration, then ONE prefix scan.
+    // v3: ELEMS_PER_THREAD=4 (=VEC_SIZE) → 32 iterations for dim=131072
+    // v4: ELEMS_PER_THREAD=32 → 4 iterations → 8x fewer prefix scans/barriers
+    static constexpr int LOADS_PER_ITER = ELEMS_PER_THREAD / VEC_SIZE;
     using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
     int lid = item.get_local_id(0);
 
-    // Uniform iteration count: all threads must participate in every prefix scan.
-    // Each iteration covers SBTOPK_BLOCK * VEC_SIZE elements.
-    // Total iterations = ceil(sliceSize_ / (SBTOPK_BLOCK * VEC_SIZE))
-    int vec_stride = SBTOPK_BLOCK * VEC_SIZE;
-    int numVecIters = (sliceSize_ + vec_stride - 1) / vec_stride;
+    // Each iteration covers SBTOPK_BLOCK * ELEMS_PER_THREAD elements.
+    int iter_stride = SBTOPK_BLOCK * ELEMS_PER_THREAD;
+    int numIters = (sliceSize_ + iter_stride - 1) / iter_stride;
 
     // Step 2: Gather values strictly greater/less than topKValue
     int writeIndexStart = 0;
 
-    for (int iter = 0; iter < numVecIters; ++iter) {
-      int base = iter * vec_stride + lid * VEC_SIZE;
-
-      scalar_t vals[VEC_SIZE];
-      int match_offsets[VEC_SIZE]; // local offsets of matching elements within VEC_SIZE
+    for (int iter = 0; iter < numIters; ++iter) {
+      // Each thread loads ELEMS_PER_THREAD elements from LOADS_PER_ITER vec4 chunks.
+      // Thread layout: consecutive threads handle consecutive VEC_SIZE chunks.
+      // Thread t handles chunks at offsets: t*VEC_SIZE, (t+SBTOPK_BLOCK)*VEC_SIZE, ...
+      scalar_t vals[ELEMS_PER_THREAD];
+      int match_indices[ELEMS_PER_THREAD]; // global index of matching elements
       int local_count = 0;
 
-      if (base + VEC_SIZE <= sliceSize_) {
-        // Full vector load
-        *reinterpret_cast<LoadT*>(&vals) =
-            *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+      int iter_base = iter * iter_stride;
+
 #pragma unroll
-        for (int v = 0; v < VEC_SIZE; ++v) {
-          RadixT cv = TopKTypeConfig<scalar_t>::convert(vals[v]);
-          bool match = largest_ ? (cv > topKConverted) : (cv < topKConverted);
-          if (match) {
-            match_offsets[local_count] = v;
-            local_count++;
+      for (int L = 0; L < LOADS_PER_ITER; ++L) {
+        int base = iter_base + L * SBTOPK_BLOCK * VEC_SIZE + lid * VEC_SIZE;
+
+        if (base + VEC_SIZE <= sliceSize_) {
+          scalar_t src[VEC_SIZE];
+          *reinterpret_cast<LoadT*>(&src) =
+              *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+#pragma unroll
+          for (int v = 0; v < VEC_SIZE; ++v) {
+            RadixT cv = TopKTypeConfig<scalar_t>::convert(src[v]);
+            bool match = largest_ ? (cv > topKConverted) : (cv < topKConverted);
+            if (match) {
+              vals[local_count] = src[v];
+              match_indices[local_count] = base + v;
+              local_count++;
+            }
           }
-        }
-      } else if (base < sliceSize_) {
-        // Tail: scalar loads for remaining elements
-        for (int v = 0; v < VEC_SIZE && base + v < sliceSize_; ++v) {
-          vals[v] = inputSlice[base + v];
-          RadixT cv = TopKTypeConfig<scalar_t>::convert(vals[v]);
-          bool match = largest_ ? (cv > topKConverted) : (cv < topKConverted);
-          if (match) {
-            match_offsets[local_count] = v;
-            local_count++;
+        } else if (base < sliceSize_) {
+          for (int v = 0; v < VEC_SIZE && base + v < sliceSize_; ++v) {
+            scalar_t sv = inputSlice[base + v];
+            RadixT cv = TopKTypeConfig<scalar_t>::convert(sv);
+            bool match = largest_ ? (cv > topKConverted) : (cv < topKConverted);
+            if (match) {
+              vals[local_count] = sv;
+              match_indices[local_count] = base + v;
+              local_count++;
+            }
           }
         }
       }
-      // else: base >= sliceSize_, local_count stays 0, thread still participates in scan
 
       int offset, carry;
       exclusiveIntPrefixScan(item, sg, smem, local_count, offset, carry);
 
       for (int j = 0; j < local_count; ++j) {
         int writeIndex = writeIndexStart + offset + j;
-        int v_idx = match_offsets[j];
-        topKSlice[writeIndex] = vals[v_idx];
-        indicesSlice[writeIndex] = base + v_idx;
+        topKSlice[writeIndex] = vals[j];
+        indicesSlice[writeIndex] = match_indices[j];
       }
       writeIndexStart += carry;
     }
@@ -422,31 +433,39 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     // Step 3: Fill remaining with values == topKValue
     int topKRemaining = k_ - writeIndexStart;
 
-    for (int iter = 0; iter < numVecIters; ++iter) {
-      int base = iter * vec_stride + lid * VEC_SIZE;
-
-      scalar_t vals[VEC_SIZE];
-      int match_offsets[VEC_SIZE];
+    for (int iter = 0; iter < numIters; ++iter) {
+      scalar_t vals[ELEMS_PER_THREAD];
+      int match_indices[ELEMS_PER_THREAD];
       int local_count = 0;
 
-      if (base + VEC_SIZE <= sliceSize_) {
-        *reinterpret_cast<LoadT*>(&vals) =
-            *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+      int iter_base = iter * iter_stride;
+
 #pragma unroll
-        for (int v = 0; v < VEC_SIZE; ++v) {
-          RadixT cv = TopKTypeConfig<scalar_t>::convert(vals[v]);
-          if (cv == topKConverted) {
-            match_offsets[local_count] = v;
-            local_count++;
+      for (int L = 0; L < LOADS_PER_ITER; ++L) {
+        int base = iter_base + L * SBTOPK_BLOCK * VEC_SIZE + lid * VEC_SIZE;
+
+        if (base + VEC_SIZE <= sliceSize_) {
+          scalar_t src[VEC_SIZE];
+          *reinterpret_cast<LoadT*>(&src) =
+              *reinterpret_cast<const LoadT*>(&inputSlice[base]);
+#pragma unroll
+          for (int v = 0; v < VEC_SIZE; ++v) {
+            RadixT cv = TopKTypeConfig<scalar_t>::convert(src[v]);
+            if (cv == topKConverted) {
+              vals[local_count] = src[v];
+              match_indices[local_count] = base + v;
+              local_count++;
+            }
           }
-        }
-      } else if (base < sliceSize_) {
-        for (int v = 0; v < VEC_SIZE && base + v < sliceSize_; ++v) {
-          vals[v] = inputSlice[base + v];
-          RadixT cv = TopKTypeConfig<scalar_t>::convert(vals[v]);
-          if (cv == topKConverted) {
-            match_offsets[local_count] = v;
-            local_count++;
+        } else if (base < sliceSize_) {
+          for (int v = 0; v < VEC_SIZE && base + v < sliceSize_; ++v) {
+            scalar_t sv = inputSlice[base + v];
+            RadixT cv = TopKTypeConfig<scalar_t>::convert(sv);
+            if (cv == topKConverted) {
+              vals[local_count] = sv;
+              match_indices[local_count] = base + v;
+              local_count++;
+            }
           }
         }
       }
@@ -457,9 +476,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       for (int j = 0; j < local_count; ++j) {
         if (offset + j < topKRemaining) {
           int writeIndex = writeIndexStart + offset + j;
-          int v_idx = match_offsets[j];
-          topKSlice[writeIndex] = vals[v_idx];
-          indicesSlice[writeIndex] = base + v_idx;
+          topKSlice[writeIndex] = vals[j];
+          indicesSlice[writeIndex] = match_indices[j];
         }
       }
 
@@ -517,7 +535,8 @@ static void sbtopk_launch_kernel(
   // fp32/int32/int64/double: 4 elements (128-bit / 256-bit load)
   // fp16/bf16: 8 elements (128-bit load)
   constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 8 : 4;
-  SbtopkGatherFunctor<scalar_t, VEC_SIZE> functor(
+  constexpr int ELEMS_PER_THREAD = 32; // 8x vec4 loads per iteration
+  SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD> functor(
       input, topK, indices, numSlices, sliceSize, k, largest);
 
   sycl_kernel_submit(
