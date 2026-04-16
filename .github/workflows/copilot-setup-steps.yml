@@ -14,7 +14,7 @@ on:
 jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
   copilot-setup-steps:
-    runs-on: bmg-test
+    runs-on: copilot_runner
     timeout-minutes: 59
 
     container:
@@ -32,19 +32,7 @@ jobs:
     permissions:
       contents: read
 
-    defaults:
-      run:
-        shell: bash
-
     steps:
-      - name: Fix sh to use bash (Copilot runtime requires pipefail)
-        run: |
-          ln -sf /bin/bash /bin/sh
-
-      - name: Check that pipefail works
-        run: |
-          sh -c 'set -o pipefail && echo "pipefail works"'
-
       - name: Checkout code
         uses: actions/checkout@v5
 
