@@ -40,11 +40,20 @@ jobs:
           echo "Checking for XPU devices..."
           xpu-smi discovery
 
-      - name: Setup PyTorch Nightly
-        uses: ./.github/actions/linux-testenv
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
         with:
-          pytorch: nightly_wheel
-          python: "3.10"
+          python-version: "3.10"
+
+      - name: Create virtual environment
+        run: |
+          uv venv ${{ github.workspace }}/.venv
+          echo "VIRTUAL_ENV=${{ github.workspace }}/.venv" >> $GITHUB_ENV
+          echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+
+      - name: Install PyTorch nightly
+        run: |
+          uv pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
 
       - name: Verify setup
         run: |
