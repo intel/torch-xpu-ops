@@ -152,9 +152,9 @@ runs:
 
         read -r TXO_REPO TXO_COMMIT <<< "$(parse_txo "${{ inputs.torch_xpu_ops }}" | tail -1)"
 
-        if [[ "${{ github.event_name }}" == "pull_request" && "${{ inputs.pytorch }}" != *"_wheel" ]]; then
-          mkdir -p third_party/torch-xpu-ops
-          cp -r "${{ github.workspace }}/torch-xpu-ops/"* third_party/torch-xpu-ops/
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          rm -rf third_party/torch-xpu-ops
+          cp -r "${{ github.workspace }}/torch-xpu-ops" third_party/torch-xpu-ops
         else
           git clone "${TXO_REPO}" third_party/torch-xpu-ops
           if [[ "${TXO_COMMIT}" != "main" ]]; then
