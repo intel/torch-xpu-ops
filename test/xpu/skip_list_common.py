@@ -125,7 +125,7 @@ skip_dict = {
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": (
-        # OSError: [Errno 39] Directory not empty: '/tmp/torchinductor_ubuntu/aotautograd'
+        # Intermittent OSError during AOTAutogradCache.clear() directory cleanup
         "test_input_mutation_set__nop",
     ),
 }
