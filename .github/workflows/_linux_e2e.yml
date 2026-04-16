@@ -322,7 +322,7 @@ jobs:
       # ── Collect & upload artifacts ────────────────────────────────────────
       - name: Collect test artifacts
         id: collect-artifacts
-        if: ! cancelled()
+        if: ${{ ! cancelled() }}
         run: |
           LOGS_DIR="${WORKSPACE}/pytorch/inductor_log"
           UPLOAD_DIR="${WORKSPACE}/upload_files"
@@ -336,7 +336,7 @@ jobs:
           fi
 
       - name: Upload E2E artifacts
-        if: ! cancelled() && steps.collect-artifacts.outcome == 'success'
+        if: ${{ ! cancelled() && steps.collect-artifacts.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-E2E-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}

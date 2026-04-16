@@ -87,7 +87,7 @@ jobs:
   UT:
     name: ${{ inputs.ut }}
     needs: runner
-    if: ! contains(inputs.ut, 'distributed')
+    if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 1440
     container:
@@ -140,7 +140,7 @@ jobs:
 
       - name: Collect UT logs
         id: collect-logs
-        if: ! cancelled()
+        if: ${{ ! cancelled() }}
         run: |
           if [ ! -d "${WORKSPACE}/ut_log" ]; then
             echo "::warning::No UT logs found"
@@ -149,7 +149,7 @@ jobs:
           echo "Collected $(find "${WORKSPACE}/ut_log" -type f | wc -l) log files"
 
       - name: Upload UT logs
-        if: ! cancelled() && steps.collect-logs.outcome == 'success'
+        if: ${{ ! cancelled() && steps.collect-logs.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -197,7 +197,7 @@ jobs:
 
       - name: Collect UT logs
         id: collect-logs
-        if: ! cancelled()
+        if: ${{ ! cancelled() }}
         run: |
           if [ ! -d "${WORKSPACE}/ut_log" ]; then
             echo "::warning::No UT logs found"
@@ -206,7 +206,7 @@ jobs:
           echo "Collected $(find "${WORKSPACE}/ut_log" -type f | wc -l) log files"
 
       - name: Upload UT logs
-        if: ! cancelled() && steps.collect-logs.outcome == 'success'
+        if: ${{ ! cancelled() && steps.collect-logs.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-UT-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
