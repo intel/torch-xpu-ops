@@ -251,13 +251,24 @@ class TestNativeBatchNormEvalMode(TestCase):
         running_var = torch.rand(C).abs() + 0.1  # positive
 
         cpu_out = torch.native_batch_norm(
-            x, weight, bias, running_mean, running_var,
-            False, 0.1, 1e-5,
+            x,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            False,
+            0.1,
+            1e-5,
         )
         xpu_out = torch.native_batch_norm(
-            x.to(xpu_device), weight.to(xpu_device), bias.to(xpu_device),
-            running_mean.to(xpu_device), running_var.to(xpu_device),
-            False, 0.1, 1e-5,
+            x.to(xpu_device),
+            weight.to(xpu_device),
+            bias.to(xpu_device),
+            running_mean.to(xpu_device),
+            running_var.to(xpu_device),
+            False,
+            0.1,
+            1e-5,
         )
 
         # Output tensor should match in shape and values
@@ -281,9 +292,14 @@ class TestNativeBatchNormEvalMode(TestCase):
         running_var = torch.ones(C)
 
         xpu_out = torch.native_batch_norm(
-            x.to(xpu_device), weight.to(xpu_device), bias.to(xpu_device),
-            running_mean.to(xpu_device), running_var.to(xpu_device),
-            True, 0.1, 1e-5,
+            x.to(xpu_device),
+            weight.to(xpu_device),
+            bias.to(xpu_device),
+            running_mean.to(xpu_device),
+            running_var.to(xpu_device),
+            True,
+            0.1,
+            1e-5,
         )
 
         # In training mode save_mean and save_invstd should have shape [C]
