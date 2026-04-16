@@ -23,6 +23,7 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add 991 --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
+              --entrypoint ""
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
 
@@ -31,10 +32,18 @@ jobs:
     permissions:
       contents: read
 
+    defaults:
+      run:
+        shell: bash
+
     steps:
       - name: Fix sh to use bash (Copilot runtime requires pipefail)
-        run: ln -sf /bin/bash /bin/sh
-        shell: bash
+        run: |
+          ln -sf /bin/bash /bin/sh
+
+      - name: Check that pipefail works
+        run: |
+          sh -c 'set -o pipefail && echo "pipefail works"'
 
       - name: Checkout code
         uses: actions/checkout@v5
