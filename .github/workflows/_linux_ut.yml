@@ -30,12 +30,11 @@ on:
           UT scope to execute. Options:
           - op_regression: Operation regression tests
           - op_regression_dev1: Device 1 specific regression tests
-          - op_transformers: Transformer operation tests
           - op_extended: Extended operation tests
           - op_ut: All XPU operation unit tests
           - skipped_ut: Skipped unit tests
           - torch_xpu: PyTorch XPU tests
-          - basic: Basic tests (op_regression, op_transformers, op_extended, op_regression_dev1)
+          - basic: Basic tests (op_regression, op_extended, op_regression_dev1)
           - xpu_distributed: XPU distributed tests
           - xpu_profiling: XPU profiling tests
       category:

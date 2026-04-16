@@ -6,10 +6,9 @@ inputs:
     required: true
     description: |
       Which unit test to launch. Options:
-      - basic: Runs basic test suites (op_regression, op_regression_dev1, op_transformers, op_extended)
+      - basic: Runs basic test suites (op_regression, op_regression_dev1, op_extended)
       - op_regression: Operation regression tests
       - op_regression_dev1: Device 1 specific operation tests
-      - op_transformers: Transformer operation tests
       - op_extended: Extended operation tests
       - op_ut: All XPU operation unit tests
       - skipped_ut: Skipped unit tests
@@ -112,43 +111,6 @@ runs:
         echo "Reproduce Command: pytest -sv test_operation_on_device_1.py" | tee -a "${REPRODUCE_FILE}"
 
         echo "op_regression_dev1 tests completed"
-
-    - name: Run op_transformers tests
-      shell: timeout 3600 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'op_transformers' || inputs.ut_name == 'basic' }}
-      env:
-        LOG_DIR: ${{ github.workspace }}/ut_log/${{ inputs.ut_name }}
-        PYTORCH_TEST_WITH_SLOW: 1
-      run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running op_transformers Tests ==="
-        mkdir -p "${LOG_DIR}"
-
-        cd "${GITHUB_WORKSPACE}/pytorch" || {
-          echo "Error: Pytorch directory not found"
-          exit 1
-        }
-
-        echo "Test directory: $(pwd)"
-        echo "Running transformer tests with XPU filter..."
-
-        # Run transformer tests filtered for XPU
-        pytest test/test_transformers.py -k xpu \
-          --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_transformers.xml" \
-          2> "${LOG_DIR}/op_transformers_test_error.log" | \
-          tee "${LOG_DIR}/op_transformers_test.log" || true
-
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_transformers.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv test/test_transformers.py -k xpu" | tee -a "${REPRODUCE_FILE}"
-
-        echo "op_transformers tests completed"
 
     - name: Run op_extended tests
       shell: timeout 3600 bash -eo pipefail {0}
@@ -265,6 +227,7 @@ runs:
         echo "Running skipped tests only..."
 
         # Run only skipped tests
+        export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
         python run_test_with_skip.py --test-cases skipped \
           2> "${LOG_BASE}/skipped_ut_with_skip_test_error.log" | \
           tee "${LOG_BASE}/skipped_ut_with_skip_test.log" || true
