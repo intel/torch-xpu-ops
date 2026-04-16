@@ -6,169 +6,153 @@ on:
       # ----- Basic Configuration -----
       pytorch:
         type: string
-        description: |
-          PyTorch version:
-          - nightly_wheel(==xxx optional), release_wheel, test_wheel for prebuilt wheel
-          - commit/branch/tag, repo@commit/repo@branch/repo@tag
-        default: 'main'
         required: true
+        default: main
+        description: >-
+          PyTorch version: nightly_wheel(==xxx), release_wheel, test_wheel,
+          or commit/branch/tag, repo@commit/repo@branch/repo@tag
       runner:
         type: choice
-        options:
-          - PVC
-          - BMG
-        default: 'BMG'
-        description: 'What runner to use'
+        default: BMG
+        description: Runner platform
+        options: [PVC, BMG]
       python:
         type: string
-        description: 'Python version (e.g., 3.9, 3.10, 3.11, 3.12)'
+        required: true
         default: '3.10'
-        required: true
+        description: Python version (e.g. 3.10, 3.11, 3.12)
 
-      # Component selection
+      # ----- Component Comparison -----
       component:
-        required: true
         type: choice
-        options:
-          - onednn
-          - sycltla
-          - triton
-          - oneapi
-        default: 'onednn'
-        description: 'Component to compare'
-
-      # Version configuration
+        required: true
+        default: onednn
+        description: Component to compare
+        options: [onednn, sycltla, triton, oneapi]
       target_version:
-        required: true
         type: string
+        required: true
         default: ''
-        description: |
-          Target component version (new version):
-          - commit/branch/tag
-          - repo@commit/repo@branch/repo@tag
+        description: 'Target component version (new): commit/branch/tag or repo@ref'
       baseline_version:
-        required: true
         type: string
+        required: true
         default: ''
-        description: |
-          Baseline component version (reference):
-          - commit/branch/tag
-          - repo@commit/repo@branch/repo@tag
+        description: 'Baseline component version (reference): commit/branch/tag or repo@ref'
 
 permissions:
   contents: read
 
 run-name: >-
-  Acceptance Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
+  Acceptance / ${{ inputs.component }}
+  (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
 
 jobs:
+  # Resolve runner
   get-runner:
     runs-on: ${{ contains(inputs.runner, 'BMG') && 'bmg-test' || 'pvc_rolling' }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
     steps:
-      - name: Checkout torch-xpu-ops repository
+      - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
-      - name: Get runner information and configuration
+      - name: Get runner information
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  # Run tests on target version
+  # Target tests
   target-tests:
     needs: get-runner
     permissions:
       contents: read
       checks: write
       issues: write
+    secrets: inherit
     uses: ./.github/workflows/_test_call.yml
     with:
-      category: 'target'
+      runner: ${{ needs.get-runner.outputs.runner_id }}
       pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: 'pinned'
+      torch_xpu_ops: pinned
       python: ${{ inputs.python }}
+      category: target
       component: ${{ inputs.component }}
       component_version: ${{ inputs.target_version }}
-      ut: 'op_p0'
+      ut: op_p0
       suite: 'huggingface,timm_models,torchbench'
-    secrets: inherit
 
-  # Run tests on baseline version
+  # Baseline tests
   baseline-tests:
     needs: get-runner
     permissions:
       contents: read
       checks: write
       issues: write
+    secrets: inherit
     uses: ./.github/workflows/_test_call.yml
     with:
-      category: 'baseline'
+      runner: ${{ needs.get-runner.outputs.runner_id }}
       pytorch: ${{ inputs.pytorch }}
-      torch_xpu_ops: 'pinned'
+      torch_xpu_ops: pinned
       python: ${{ inputs.python }}
+      category: baseline
       component: ${{ inputs.component }}
       component_version: ${{ inputs.baseline_version }}
-      ut: 'op_p0'
+      ut: op_p0
       suite: 'huggingface,timm_models,torchbench'
-    secrets: inherit
 
-  # Job 4: Compare results and generate report
+  # Compare results
   compare-results:
     needs: [target-tests, baseline-tests]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Download Target Logs
+      - name: Download target logs
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*target*'
           path: ${{ github.workspace }}/results/target
 
-      - name: Download Baseline Logs
+      - name: Download baseline logs
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*baseline*'
           path: ${{ github.workspace }}/results/baseline
 
-      - name: Setup python env
+      - name: Setup Python environment
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
           uv venv myvenv --python 3.10 --clear
           source myvenv/bin/activate
           uv pip install pip numpy 'setuptools<81' wheel
-          uv pip install numpy pandas pydantic tqdm psutil openpyxl PyGithub
+          uv pip install pandas pydantic tqdm psutil openpyxl PyGithub
 
-      - name: Compare Test Results
+      - name: Compare test results
         run: |
-          # Activation & environment info
           source myvenv/bin/activate
+          exit_code=0
 
-          exit_label=0
           python .github/scripts/check-results.py \
-              --results-dir ${{ github.workspace }}/results \
-              --check \
-                  ut_new_fail \
-                  acc_new_fail \
-                  perf_new_fail perf_dropped || exit_label=1
+            --results-dir "${{ github.workspace }}/results" \
+            --check \
+              ut_new_fail \
+              acc_new_fail \
+              perf_new_fail perf_dropped || exit_code=1
 
-          # Aggregate summary files (always do this, even if comparisons failed)
-          echo "Aggregating summary files..."
           for file in e2e_comparison.summary.md ut_comparison.summary.md \
                       e2e_comparison.details.md ut_comparison.details.md; do
-              if [ -f "$file" ]; then
-                  cat "$file" >> "${GITHUB_STEP_SUMMARY}"
-              fi
+            [ -f "$file" ] && cat "$file" >> "${GITHUB_STEP_SUMMARY}"
           done
 
-          exit $exit_label
+          exit $exit_code
 
-      - name: Upload Tests Summary
+      - name: Upload test summary
         if: always()
         uses: actions/upload-artifact@v7
         with:

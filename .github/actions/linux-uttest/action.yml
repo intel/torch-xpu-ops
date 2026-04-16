@@ -1,464 +1,227 @@
 name: Linux Unit Test
-description: Linux Unit Test
+description: >-
+  Dispatch a single UT suite by name (op_regression, op_extended, torch_xpu, …)
 
 inputs:
   ut_name:
     required: true
-    description: |
-      Which unit test to launch. Options:
-      - basic: Runs basic test suites (op_regression, op_regression_dev1, op_extended)
-      - op_regression: Operation regression tests
-      - op_regression_dev1: Device 1 specific operation tests
-      - op_extended: Extended operation tests
-      - op_ut: All XPU operation unit tests
-      - skipped_ut: Skipped unit tests
-      - torch_xpu: PyTorch XPU tests
-      - xpu_profiling: XPU profiling tests
-      - xpu_distributed: XPU distributed tests
-      - op_p0: Acceptance tests scope for components
+    description: >-
+      basic, op_regression, op_regression_dev1, op_extended, op_ut,
+      skipped_ut, torch_xpu, xpu_profiling, xpu_distributed, op_p0
 
 runs:
   using: composite
   steps:
-    - name: Verify Python environment
+    # ── Environment ─────────────────────────────────────────────────────────
+    - name: Log environment
       shell: bash -eo pipefail {0}
       run: |
-        echo "=== Python Environment Verification ==="
-        echo "Python executable: $(which python)"
-        echo "Python version: $(python -V 2>&1)"
-        echo ""
-        echo "=== PIP Environment ==="
-        pip --version
-        pip list --format=columns
-        printenv | sort |tee -a ${GITHUB_WORKSPACE}/test_info.log
+        python -V 2>&1
+        pip list --format=columns 2>/dev/null || true
+        printenv | sort | tee -a "${GITHUB_WORKSPACE}/test_info.log"
 
-    - name: Run op_regression tests
+    # ── op_regression ───────────────────────────────────────────────────────
+    - name: op_regression
       shell: timeout 3600 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic' }}
+      if: inputs.ut_name == 'op_regression' || inputs.ut_name == 'basic'
       env:
         LOG_DIR: ${{ github.workspace }}/ut_log/${{ inputs.ut_name }}
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running op_regression Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_DIR}"
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions"
 
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions" || {
-          echo "Error: Test directory not found"
-          exit 1
-        }
-
-        echo "Test directory: $(pwd)"
-        echo "Running pytest for op_regression..."
-
-        # Run pytest with XML output and separate error logging
         pytest --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_regression.xml" \
-          2> "${LOG_DIR}/op_regression_test_error.log" | \
-          tee "${LOG_DIR}/op_regression_test.log" || true
+          2> "${LOG_DIR}/op_regression_test_error.log" \
+          | tee "${LOG_DIR}/op_regression_test.log" || true
 
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_regression.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv failed_case" | tee -a "${REPRODUCE_FILE}"
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_op_regression.log"
 
-        echo "op_regression tests completed"
-
-    - name: Run op_regression_dev1 tests
+    # ── op_regression_dev1 ──────────────────────────────────────────────────
+    - name: op_regression_dev1
       shell: timeout 300 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic' }}
+      if: inputs.ut_name == 'op_regression_dev1' || inputs.ut_name == 'basic'
       env:
         LOG_DIR: ${{ github.workspace }}/ut_log/${{ inputs.ut_name }}
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running op_regression_dev1 Tests (Device 1) ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_DIR}"
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions"
 
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/regressions" || {
-          echo "Error: Test directory not found"
-          exit 1
-        }
-
-        echo "Test directory: $(pwd)"
-        echo "Running device 1 specific tests..."
-
-        # Run specific device test with timeout
         unset PYTEST_ADDOPTS ZE_AFFINITY_MASK
         timeout 180 pytest -v test_operation_on_device_1.py \
           --junit-xml="${GITHUB_WORKSPACE}/ut_log/op_regression_dev1.xml" \
-          2> "${LOG_DIR}/op_regression_dev1_test_error.log" | \
-          tee "${LOG_DIR}/op_regression_dev1_test.log" || true
+          2> "${LOG_DIR}/op_regression_dev1_test_error.log" \
+          | tee "${LOG_DIR}/op_regression_dev1_test.log" || true
 
-        # Check timeout exit code
-        TIMEOUT_EXIT_CODE=$?
-        if [ "${TIMEOUT_EXIT_CODE}" -eq 124 ]; then
-          echo "Warning: Test timed out after 180 seconds"
-        elif [ "${TIMEOUT_EXIT_CODE}" -ne 0 ]; then
-          echo "Test exited with code: ${TIMEOUT_EXIT_CODE}"
-        fi
+        echo "Reproduce: cd $(pwd) && pytest -sv test_operation_on_device_1.py" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_op_regression_dev1.log"
 
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_regression_dev1.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv test_operation_on_device_1.py" | tee -a "${REPRODUCE_FILE}"
-
-        echo "op_regression_dev1 tests completed"
-
-    - name: Run op_extended tests
+    # ── op_extended ─────────────────────────────────────────────────────────
+    - name: op_extended
       shell: timeout 3600 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic' }}
+      if: inputs.ut_name == 'op_extended' || inputs.ut_name == 'basic'
       env:
         LOG_DIR: ${{ github.workspace }}/ut_log/${{ inputs.ut_name }}
         PYTORCH_TEST_WITH_SLOW: 1
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running op_extended Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_DIR}"
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu/extended"
 
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu/extended" || {
-          echo "Error: Extended tests directory not found"
-          exit 1
-        }
-
-        echo "Test directory: $(pwd)"
-        echo "Running extended tests with skip handling..."
-
-        # Run extended tests with skip handling
         python run_test_with_skip.py \
-          2> "${LOG_DIR}/op_extended_test_error.log" | \
-          tee "${LOG_DIR}/op_extended_test.log" || true
+          2> "${LOG_DIR}/op_extended_test_error.log" \
+          | tee "${LOG_DIR}/op_extended_test.log" || true
 
-        # Copy XML reports
-        echo "Collecting XML reports..."
-        for xml_file in *.xml; do
-          if [ -f "${xml_file}" ]; then
-            cp "${xml_file}" "${GITHUB_WORKSPACE}/ut_log/" && \
-              echo "Copied: ${xml_file}"
-          fi
-        done
+        cp -f *.xml "${GITHUB_WORKSPACE}/ut_log/" 2>/dev/null || true
 
-        # List generated files
-        echo "Generated files in test directory:"
-        ls -la
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_op_extended.log"
 
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_extended.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv failed_case" | tee -a "${REPRODUCE_FILE}"
-
-        echo "op_extended tests completed"
-
-    - name: Run op_ut tests
+    # ── op_ut ───────────────────────────────────────────────────────────────
+    - name: op_ut
       shell: timeout 72000 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'op_ut' }}
+      if: inputs.ut_name == 'op_ut'
       env:
         PYTORCH_TEST_WITH_SLOW: 1
         LOG_BASE: ${{ github.workspace }}/ut_log/op_ut
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running All XPU Operation Unit Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_BASE}"
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu"
 
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu" || {
-          echo "Error: XPU tests directory not found"
-          exit 1
-        }
-
-        echo "Test directory: $(pwd)"
-        echo "Running all XPU operation tests with skip handling..."
-
-        # Run all XPU tests with skip handling
         python run_test_with_skip.py \
-          2> "${LOG_BASE}/op_ut_with_skip_test_error.log" | \
-          tee "${LOG_BASE}/op_ut_with_skip_test.log" || true
+          2> "${LOG_BASE}/op_ut_with_skip_test_error.log" \
+          | tee "${LOG_BASE}/op_ut_with_skip_test.log" || true
 
-        # Find and copy XML reports
-        echo "Collecting XML reports..."
-        find . -type f -name "op_ut_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || \
-          echo "No XML reports found"
+        find . -name "op_ut_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
 
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_ut.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv failed_case" | tee -a "${REPRODUCE_FILE}"
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_op_ut.log"
 
-        echo "op_ut tests completed"
-
-    - name: Run skipped_ut tests
+    # ── skipped_ut ──────────────────────────────────────────────────────────
+    - name: skipped_ut
       shell: timeout 72000 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'skipped_ut' }}
+      if: inputs.ut_name == 'skipped_ut'
       env:
         PYTORCH_TEST_WITH_SLOW: 1
         LOG_BASE: ${{ github.workspace }}/ut_log/skipped_ut
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running Skipped Unit Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_BASE}"
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu"
 
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu" || {
-          echo "Error: XPU tests directory not found"
-          exit 1
-        }
-
-        echo "Test directory: $(pwd)"
-        echo "Running skipped tests only..."
-
-        # Run only skipped tests
-        export PYTEST_ADDOPTS="$(echo "${PYTEST_ADDOPTS}" | sed 's/--timeout 600/--timeout 3600/')"
+        export PYTEST_ADDOPTS="${PYTEST_ADDOPTS//--timeout 600/--timeout 3600}"
         python run_test_with_skip.py --test-cases skipped \
-          2> "${LOG_BASE}/skipped_ut_with_skip_test_error.log" | \
-          tee "${LOG_BASE}/skipped_ut_with_skip_test.log" || true
+          2> "${LOG_BASE}/skipped_ut_with_skip_test_error.log" \
+          | tee "${LOG_BASE}/skipped_ut_with_skip_test.log" || true
 
-        # Find and copy XML reports
-        echo "Collecting XML reports..."
-        find . -type f -name "op_ut_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || \
-          echo "No XML reports found"
+        find . -name "op_ut_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
 
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_skipped_ut.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv failed_case" | tee -a "${REPRODUCE_FILE}"
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_skipped_ut.log"
 
-        echo "skipped_ut tests completed"
-
-    - name: Run torch_xpu tests
+    # ── torch_xpu ───────────────────────────────────────────────────────────
+    - name: torch_xpu
       shell: timeout 72000 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'torch_xpu' }}
+      if: inputs.ut_name == 'torch_xpu'
       env:
         PYTORCH_TEST_WITH_SLOW: 1
-        PYTORCH_TESTING_DEVICE_ONLY_FOR: "xpu"
+        PYTORCH_TESTING_DEVICE_ONLY_FOR: xpu
         LOG_BASE: ${{ github.workspace }}/ut_log/torch_xpu
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running PyTorch XPU Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_BASE}"
+        cd "${GITHUB_WORKSPACE}/pytorch"
 
-        cd "${GITHUB_WORKSPACE}/pytorch" || {
-          echo "Error: Pytorch directory not found"
-          exit 1
-        }
+        # Collect all inductor + xpu test files
+        TEST_INCLUDES=""
+        for f in test/inductor/test_*.py; do
+          [[ -f "$f" ]] && TEST_INCLUDES+=" inductor/$(basename "$f")"
+        done
+        for f in test/xpu/test_*.py; do
+          [[ -f "$f" ]] && TEST_INCLUDES+=" xpu/$(basename "$f")"
+        done
+        [[ -f "test/test_xpu.py" ]] && TEST_INCLUDES+=" test_xpu.py"
 
-        echo "Test directory: $(pwd)"
-        echo "Running PyTorch XPU tests..."
+        python test/run_test.py --include ${TEST_INCLUDES} \
+          2> "${LOG_BASE}/torch_xpu_test_error.log" \
+          | tee "${LOG_BASE}/torch_xpu_test.log" || true
 
-        # Build test command
-        TEST_CMD="python test/run_test.py --include"
-
-        # Add inductor tests
-        if [ -d "test/inductor" ]; then
-          for test_file in test/inductor/test_*.py; do
-            if [ -f "${test_file}" ]; then
-              test_name=$(basename "${test_file}")
-              TEST_CMD="${TEST_CMD} inductor/${test_name}"
-            fi
-          done
-        fi
-
-        # Add xpu tests
-        if [ -d "test/xpu" ]; then
-          for test_file in test/xpu/test_*.py; do
-            if [ -f "${test_file}" ]; then
-              test_name=$(basename "${test_file}")
-              TEST_CMD="${TEST_CMD} xpu/${test_name}"
-            fi
-          done
-        fi
-
-        # Add test_xpu.py if exists
-        if [ -f "test/test_xpu.py" ]; then
-          TEST_CMD="${TEST_CMD} test_xpu.py"
-        fi
-
-        echo "Test command: ${TEST_CMD}"
-
-        # Run the tests
-        eval "${TEST_CMD}" \
-          2> "${LOG_BASE}/torch_xpu_test_error.log" | \
-          tee "${LOG_BASE}/torch_xpu_test.log" || true
-
-        echo "torch_xpu tests completed"
-
-    - name: Run xpu_profiling tests
+    # ── xpu_profiling ───────────────────────────────────────────────────────
+    - name: xpu_profiling
       shell: timeout 3600 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'xpu_profiling' }}
+      if: inputs.ut_name == 'xpu_profiling'
       env:
         LOG_BASE: ${{ github.workspace }}/ut_log/xpu_profiling
-        ISSUE_REPRODUCE_DIR: ${{ github.workspace }}/ut_log/xpu_profiling/issue_reproduce
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running XPU Profiling Tests ==="
-        mkdir -p "${LOG_BASE}"
-        mkdir -p "${ISSUE_REPRODUCE_DIR}"
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
+        mkdir -p "${LOG_BASE}/issue_reproduce"
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops"
 
-        echo "Starting ResNet50 profiling test..."
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops" || {
-          echo "Error: torch-xpu-ops directory not found"
-          exit 1
-        }
-
-        # Run ResNet50 profiling
+        # ResNet50 profiling
         PROFILE=1 python -u test/profiling/rn50.py \
-          -a resnet50 \
-          --dummy ./ \
-          --num-iterations 20 \
-          --xpu 0 || true
+          -a resnet50 --dummy ./ --num-iterations 20 --xpu 0 || true
+        cp -f profiling.fp32.train.pt "${LOG_BASE}/" 2>/dev/null || true
 
-        # Copy profiling output
-        if [ -f "profiling.fp32.train.pt" ]; then
-          cp profiling.fp32.train.pt "${LOG_BASE}/"
-          echo "Copied profiling.fp32.train.pt"
-        fi
-
-        echo -e "\n=== Running Issue Reproduction Tests ==="
-
-        # Define issue reproduction tests
-        declare -a ISSUE_TESTS=(
-          "test/profiling/correlation_id_mixed.py"
-          "test/profiling/reproducer.missing.gpu.kernel.time.py"
-          "test/profiling/time_precision_in_profile.py"
-          "test/profiling/profile_partial_runtime_ops.py"
-          "test/profiling/triton_xpu_ops_time.py"
-          "test/profiling/test_profiler_correctness.py"
-          "test/profiling/test_for_overlapping_kernels.py"
-        )
-
-        # Run each issue reproduction test
-        for test_script in "${ISSUE_TESTS[@]}"; do
-          if [ -f "${test_script}" ]; then
-            test_name=$(basename "${test_script}" .py)
-            echo "Running: ${test_name}"
-            python -u "${test_script}" | tee "${ISSUE_REPRODUCE_DIR}/${test_name}.log" || true
-          else
-            echo "Warning: Test script not found: ${test_script}"
-          fi
+        # Issue reproduction tests
+        for t in \
+          test/profiling/correlation_id_mixed.py \
+          test/profiling/reproducer.missing.gpu.kernel.time.py \
+          test/profiling/time_precision_in_profile.py \
+          test/profiling/profile_partial_runtime_ops.py \
+          test/profiling/triton_xpu_ops_time.py \
+          test/profiling/test_profiler_correctness.py \
+          test/profiling/test_for_overlapping_kernels.py; do
+          [[ -f "$t" ]] && python -u "$t" | tee "${LOG_BASE}/issue_reproduce/$(basename "$t" .py).log" || true
         done
 
-        echo -e "\n=== Running Llama Profiling Test ==="
-        pip install transformers --quiet
-
-        if [ -f "test/profiling/llama.py" ]; then
+        # Llama profiling
+        pip install -q transformers
+        if [[ -f "test/profiling/llama.py" ]]; then
           python test/profiling/llama.py | tee "${LOG_BASE}/llama.log" || true
-
-          # Generate llama summary
-          if [ -f ".github/scripts/llama_summary.py" ]; then
+          [[ -f ".github/scripts/llama_summary.py" ]] && \
             python .github/scripts/llama_summary.py \
               -i "${LOG_BASE}/llama.log" \
               -o "${LOG_BASE}/llama_summary.csv" || true
-          fi
         fi
 
-        echo -e "\n=== Running Profiler Tests ==="
-        cd "${GITHUB_WORKSPACE}/pytorch/test/profiler" || {
-          echo "Error: Profiler tests directory not found"
-          exit 1
-        }
-
-        # Run profiler tests
-        declare -a PROFILER_TESTS=(
-          "test_cpp_thread.py"
-          "test_execution_trace.py"
-          "test_memory_profiler.py"
-          "test_profiler_tree.py"
-          "test_xpu_profiler.py"
-        )
-
-        for test_file in "${PROFILER_TESTS[@]}"; do
-          if [ -f "${test_file}" ]; then
-            test_name=$(basename "${test_file}" .py)
-            echo "Running profiler test: ${test_name}"
-            python -m pytest -s "${test_file}" | tee "${LOG_BASE}/${test_name}.log" || true
-          fi
+        # Upstream profiler tests
+        cd "${GITHUB_WORKSPACE}/pytorch/test/profiler"
+        for t in test_cpp_thread.py test_execution_trace.py test_memory_profiler.py \
+                 test_profiler_tree.py test_xpu_profiler.py; do
+          [[ -f "$t" ]] && python -m pytest -s "$t" | tee "${LOG_BASE}/$(basename "$t" .py).log" || true
         done
 
-        echo "xpu_profiling tests completed"
-
-    - name: Run xpu_distributed tests
+    # ── xpu_distributed ─────────────────────────────────────────────────────
+    - name: xpu_distributed
       shell: timeout 36000 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'xpu_distributed' }}
+      if: inputs.ut_name == 'xpu_distributed'
       env:
         LOG_BASE: ${{ github.workspace }}/ut_log/xpu_distributed
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${XPU_ONEAPI_PATH}/setvars.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running XPU Distributed Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${XPU_ONEAPI_PATH}/setvars.sh" || true
         mkdir -p "${LOG_BASE}"
 
-        # Check system topology
-        echo "Checking system topology..."
-        xpu-smi topology -m 2>/dev/null || echo "xpu-smi command not available"
+        xpu-smi topology -m 2>/dev/null || true
 
-        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu" || {
-          echo "Error: XPU tests directory not found"
-          exit 1
-        }
+        cd "${GITHUB_WORKSPACE}/pytorch/third_party/torch-xpu-ops/test/xpu"
 
-        echo "Test directory: $(pwd)"
+        # Verify XCCL
+        XCCL=$(python -c "import torch; print(torch.distributed.is_xccl_available())" 2>/dev/null || echo False)
+        [[ "${XCCL}" == "False" ]] && { echo "::error::XCCL not available"; exit 1; }
 
-        # Check XCCL availability
-        echo "Checking XCCL availability..."
-        XCCL_ENABLE=$(python -c "import torch; print(str(torch.distributed.is_xccl_available()).lower())" 2>/dev/null || echo "unknown")
-
-        echo "XCCL enabled: ${XCCL_ENABLE}"
-
-        if [[ "${XCCL_ENABLE}" == "false" ]] || [[ "${XCCL_ENABLE}" == "0" ]]; then
-          echo "Error: XCCL is not enabled"
-          exit 1
-        fi
-
-        echo "Running distributed tests..."
-
-        # Run distributed tests
         python run_distributed.py \
-          2> "${LOG_BASE}/xpu_distributed_test_error.log" | \
-          tee "${LOG_BASE}/xpu_distributed_test.log" || true
+          2> "${LOG_BASE}/xpu_distributed_test_error.log" \
+          | tee "${LOG_BASE}/xpu_distributed_test.log" || true
 
-        # Copy XML reports
-        echo "Collecting XML reports..."
-        find .. -type f -name "*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || \
-          echo "No XML reports found"
+        find .. -name "*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
 
-        echo "xpu_distributed tests completed"
-
-    - name: Run op_p0 tests
+    # ── op_p0 ───────────────────────────────────────────────────────────────
+    - name: op_p0
       shell: timeout 72000 bash -eo pipefail {0}
-      if: ${{ inputs.ut_name == 'op_p0' }}
+      if: inputs.ut_name == 'op_p0'
       env:
         PYTORCH_TEST_WITH_SLOW: 1
         LOG_BASE: ${{ github.workspace }}/ut_log/op_p0
@@ -466,36 +229,15 @@ runs:
         XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
         XML_PREFIX: op_p0_with_
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        echo "=== Running All XPU Operation Unit Tests ==="
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
         mkdir -p "${LOG_BASE}"
+        cd "${GITHUB_WORKSPACE}/pytorch/"
 
-        cd "${GITHUB_WORKSPACE}/pytorch/" || {
-          echo "Error: XPU tests directory not found"
-          exit 1
-        }
+        "${GITHUB_WORKSPACE}/.ci/benchmarks/p0/run_ut.sh" \
+          2> "${LOG_BASE}/op_p0_with_skip_test_error.log" \
+          | tee "${LOG_BASE}/op_p0_with_skip_test.log" || true
 
-        echo "Test directory: $(pwd)"
-        echo "Running all XPU operation tests with skip handling..."
+        find . -name "op_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
 
-        # Run all XPU tests with skip handling
-        ${GITHUB_WORKSPACE}/.ci/benchmarks/p0/run_ut.sh \
-          2> "${LOG_BASE}/op_p0_with_skip_test_error.log" | \
-          tee "${LOG_BASE}/op_p0_with_skip_test.log" || true
-
-        # Find and copy XML reports
-        echo "Collecting XML reports..."
-        find . -type f -name "op_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || \
-          echo "No XML reports found"
-
-        # Generate reproduction instructions
-        REPRODUCE_FILE="${GITHUB_WORKSPACE}/ut_log/reproduce_op_p0.log"
-        echo "File Path: $(pwd)" | tee -a "${REPRODUCE_FILE}"
-        echo "Reproduce Command: pytest -sv failed_case" | tee -a "${REPRODUCE_FILE}"
-
-        echo "op_p0 tests completed"
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_op_p0.log"

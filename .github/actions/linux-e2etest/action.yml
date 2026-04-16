@@ -1,317 +1,150 @@
 name: Linux E2E Test
-description: Linux E2E Test
+description: Run Inductor E2E tests across suite/dt/mode/scenario combinations with multi-GPU sharding
 
 inputs:
   suite:
     required: true
-    type: string
-    options:
-      - huggingface
-      - timm_models
-      - torchbench
-    description: 'Dynamo benchmarks test suite.'
+    description: 'Suite: huggingface, timm_models, torchbench'
   dt:
     required: true
-    type: string
-    options:
-      - float32
-      - bfloat16
-      - float16
-      - amp_bf16
-      - amp_fp16
-    description: 'Data precision of the test.'
+    description: 'Dtypes: float32, bfloat16, float16, amp_bf16, amp_fp16'
   mode:
     required: true
-    type: string
-    options:
-      - inference
-      - training
-    description: 'Test mode.'
+    description: 'Modes: inference, training'
   scenario:
     required: true
-    type: string
-    options:
-      - accuracy
-      - performance
-    description: 'Test scenario.'
+    description: 'Scenarios: accuracy, performance'
   comparison_type:
-    default: 'default'
-    description: 'Test type: comparison or others'
+    default: default
+    description: 'comparison or default'
 
 runs:
   using: composite
   steps:
-    - name: Verify Python environment
+    - name: Log environment
       shell: bash -eo pipefail {0}
       run: |
-        echo "=== Python Environment Check ==="
-        echo "Python executable: $(which python)"
-        echo "Python version: $(python -V 2>&1)"
-        echo ""
-        echo "=== PIP Environment ==="
-        echo "PIP executable: $(which pip)"
-        pip list --format=columns || echo "pip list failed, continuing..."
-        printenv | sort |tee -a ${GITHUB_WORKSPACE}/test_info.log
+        python -V 2>&1
+        pip list --format=columns 2>/dev/null || true
+        printenv | sort | tee -a "${GITHUB_WORKSPACE}/test_info.log"
 
-    - name: Execute E2E Tests
+    - name: Run E2E tests
       shell: bash -eo pipefail {0}
       run: |
-        # Set test environment
-        if [ "${XPU_ONEAPI_PATH}" != "" ];then
-          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || {
-            echo "Warning: Failed to source environment script"
-          }
-        fi
-        # Configuration and setup
+        # Source oneAPI env if present
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && \
+          source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
+
         SCRIPT_DIR="${GITHUB_WORKSPACE}/.github/scripts"
         TARGET_DIR="${GITHUB_WORKSPACE}/pytorch"
 
-        echo "=== Test Configuration ==="
-        echo "Test Suite(s): ${{ inputs.suite }}"
-        echo "Data Type(s): ${{ inputs.dt }}"
-        echo "Mode(s): ${{ inputs.mode }}"
-        echo "Scenario(s): ${{ inputs.scenario }}"
-        echo "NUMACTL_ARGS: ${NUMACTL_ARGS}"
-        echo "ZE_AFFINITY_MASK: ${ZE_AFFINITY_MASK}"
+        # Copy test driver
+        [[ -f "${SCRIPT_DIR}/inductor_xpu_test.sh" ]] || \
+          { echo "::error::inductor_xpu_test.sh not found"; exit 1; }
+        cp "${SCRIPT_DIR}/inductor_xpu_test.sh" "${TARGET_DIR}/"
 
-        # Copy test script
-        if [ -f "${SCRIPT_DIR}/inductor_xpu_test.sh" ]; then
-          cp "${SCRIPT_DIR}/inductor_xpu_test.sh" "${TARGET_DIR}/"
-          echo "Copied inductor_xpu_test.sh to pytorch directory"
-        else
-          echo "Error: inductor_xpu_test.sh not found in ${SCRIPT_DIR}"
-          exit 1
-        fi
-
-        cd "${TARGET_DIR}" || exit 1
-
-        # Clean previous runs
+        cd "${TARGET_DIR}"
         rm -rf inductor_log torch
 
-        # Setup benchmark models for nightly runs
-        if [ "${{ github.event_name }}" != "pull_request" ] && [ "${{ inputs.comparison_type }}" != "comparison" ]; then
-          echo "Nightly run detected - setting up all benchmark models"
-          BENCHMARK_SRC="../.ci/benchmarks/"
-          BENCHMARK_DEST="benchmarks/dynamo/"
-          rsync -avz "${BENCHMARK_SRC}" "${BENCHMARK_DEST}"
-        else
-          echo "PR run detected - using limited model set"
+        # Full benchmark models for non-PR, non-comparison runs
+        if [[ "${{ github.event_name }}" != "pull_request" \
+              && "${{ inputs.comparison_type }}" != "comparison" ]]; then
+          rsync -az "../.ci/benchmarks/" "benchmarks/dynamo/"
         fi
 
-        # Helper function to validate input values
-        validate_input() {
-          local valid_values="$1"
-          local test_value="$2"
-          local input_type="$3"
-
-          # Create regex pattern from comma-separated list
-          local pattern="^((${valid_values//,/|}))$"
-
-          if [[ "$test_value" =~ $pattern ]]; then
-            echo "Valid ${input_type}: ${test_value}"
-            return 0
-          else
-            echo "Error: Invalid ${input_type}: '${test_value}'"
-            echo "Valid values are: ${valid_values}"
-            return 1
-          fi
-        }
-
-        # Helper function to check if value is in list
+        # ── helpers ─────────────────────────────────────────────────────────
         contains_value() {
-          local valid_list="$1"
-          local test_value="$2"
-
-          # Convert list to array
-          IFS=',' read -ra valid_array <<< "${valid_list}"
-
-          for valid_item in "${valid_array[@]}"; do
-            if [[ "${valid_item}" == "${test_value}" ]]; then
-              return 0  # Found
-            fi
-          done
-
-          return 1  # Not found
+          local IFS=','
+          for v in $1; do [[ "$v" == "$2" ]] && return 0; done
+          return 1
         }
 
-        # Function to run tests with sharding
         run_with_sharding() {
-          local suite="$1"
-          local dt="$2"
-          local mode="$3"
-          local scenario="$4"
-          local numactl_args="$5"
+          local suite=$1 dt=$2 mode=$3 scenario=$4 numactl_args=$5
 
-          echo "=== Starting Test Run ==="
-          echo "Suite: ${suite}"
-          echo "Data Type: ${dt}"
-          echo "Mode: ${mode}"
-          echo "Scenario: ${scenario}"
-
-          # Determine model selection arguments
+          # Model selection
           local models_list_args=""
-
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            # PR runs use limited model list
-            local model_list_file="benchmarks/dynamo/${suite//_models/}_models_list.txt"
-            if [ -f "${model_list_file}" ]; then
-              models_list_args="$(awk -F '[,; ]' '{printf(" -k %s ", $1)}' ${model_list_file})"
-              echo "PR run - using model: ${model_list_file}"
-            fi
-          elif [ -n "${MODEL_ONLY_NAME:-}" ]; then
-            # Specific model override
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            local list_file="benchmarks/dynamo/${suite//_models/}_models_list.txt"
+            [[ -f "${list_file}" ]] && \
+              models_list_args="$(awk -F '[,; ]' '{printf(" -k %s ", $1)}' "${list_file}")"
+          elif [[ -n "${MODEL_ONLY_NAME:-}" ]]; then
             models_list_args=" -k ${MODEL_ONLY_NAME} "
-            echo "Using specific model: ${MODEL_ONLY_NAME}"
-          else
-            # Full run (all models)
-            echo "Running all models for ${suite}"
           fi
 
-          # Parse numactl arguments for sharding
-          local delimiter=";"
-          IFS="${delimiter}" read -ra numactl_commands <<< "${numactl_args}"
-          local instance_count=${#numactl_commands[@]}
-          local pids=()
+          # Parse sharding instances from semicolon-delimited numactl args
+          IFS=';' read -ra numa_cmds <<< "${numactl_args}"
+          local n=${#numa_cmds[@]} pids=()
 
-          echo "Number of parallel instances: ${instance_count}"
+          for ((i = 0; i < n; i++)); do
+            local cmd="${numa_cmds[$i]}"
+            cmd="${cmd%;}" ; cmd="${cmd%; }"
 
-          # Run tests in parallel across instances
-          for ((i = 0; i < instance_count; i++)); do
-            local numactl_cmd="${numactl_commands[$i]}"
+            # Extract XPU ID
+            local xpu_id=$i
+            [[ "${cmd}" =~ ZE_AFFINITY_MASK=([0-9]+) ]] && xpu_id="${BASH_REMATCH[1]}"
 
-            # Extract XPU ID from command
-            local xpu_id
-            if [[ "${numactl_cmd}" =~ ZE_AFFINITY_MASK=([0-9]+) ]]; then
-              xpu_id="${BASH_REMATCH[1]}"
-            else
-              xpu_id="${i}"  # Fallback to index
-            fi
-
-            # Clean up the command (remove trailing spaces/semicolons)
-            numactl_cmd="${numactl_cmd%;}"
-            numactl_cmd="${numactl_cmd%; }"
-
-            # Create log directory
             local log_dir="inductor_log/${suite}/${dt}"
             mkdir -p "${log_dir}"
 
-            # Build command
-            local cmd="${numactl_cmd} bash -xe inductor_xpu_test.sh \
-                ${suite} ${dt} ${mode} ${scenario} \
-                xpu ${xpu_id} static ${instance_count} ${i} \
-                \"${models_list_args}\""
-
-            echo "Starting instance ${i} on XPU ${xpu_id}: ${cmd:0:100}..."
-
-            # Execute in background
-            eval "${cmd}" > "${log_dir}/instance_${i}_xpu_${xpu_id}.log" 2>&1 &
+            eval "${cmd} bash -xe inductor_xpu_test.sh \
+              ${suite} ${dt} ${mode} ${scenario} \
+              xpu ${xpu_id} static ${n} ${i} \
+              \"${models_list_args}\"" \
+              > "${log_dir}/instance_${i}_xpu_${xpu_id}.log" 2>&1 &
             pids+=($!)
           done
 
-          # Wait for all instances to complete
-          echo "Waiting for ${#pids[@]} test instances to complete..."
-          local failed_pids=()
-
+          # Wait and track failures
+          local fails=0
           for pid in "${pids[@]}"; do
-            if wait "${pid}"; then
-              echo "Instance with PID ${pid} completed successfully"
-            else
-              echo "Instance with PID ${pid} failed"
-              failed_pids+=("${pid}")
-            fi
+            wait "${pid}" || ((fails++))
           done
 
           # Consolidate logs
-          local consolidated_log_dir="inductor_log/${suite}/${dt}"
-          local consolidated_log_name="inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log"
+          local logdir="inductor_log/${suite}/${dt}"
+          local merged="${logdir}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log"
+          rm -f "${merged}"
+          find "${logdir}/" \( -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" \
+            -o -name "instance_*_xpu_*.log" \) 2>/dev/null | while read -r f; do
+            echo "=== $(basename "${f}") ===" >> "${merged}"
+            cat "${f}" >> "${merged}"
+            echo >> "${merged}"
+          done
 
-          rm -f "${consolidated_log_dir}/${consolidated_log_name}"
-
-          # Find and combine all instance logs
-          find "${consolidated_log_dir}/" -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" \
-            -o -name "instance_*_xpu_*.log" 2>/dev/null | \
-            while read -r log_file; do
-              if [ -f "${log_file}" ]; then
-                echo "=== Log from: $(basename "${log_file}") ===" >> "${consolidated_log_dir}/${consolidated_log_name}"
-                cat "${log_file}" >> "${consolidated_log_dir}/${consolidated_log_name}"
-                echo -e "\n\n" >> "${consolidated_log_dir}/${consolidated_log_name}"
-              fi
-            done
-
-          if [ ${#failed_pids[@]} -gt 0 ]; then
-            echo "Warning: ${#failed_pids[@]} test instances failed"
-            return 1
-          fi
-
-          echo "Test run completed for ${suite}/${dt}/${mode}/${scenario}"
-          return 0
+          return "${fails}"
         }
 
-        # Main test execution loop
-        IFS=',' read -ra suite_array <<< "${{ inputs.suite }}"
-        IFS=',' read -ra dt_array <<< "${{ inputs.dt }}"
-        IFS=',' read -ra mode_array <<< "${{ inputs.mode }}"
-        IFS=',' read -ra scenario_array <<< "${{ inputs.scenario }}"
-
-        # Define valid values for validation
+        # ── main loop ───────────────────────────────────────────────────────
         VALID_SUITES="huggingface,timm_models,torchbench"
         VALID_DT="float32,bfloat16,float16,amp_bf16,amp_fp16"
         VALID_MODES="inference,training"
         VALID_SCENARIOS="accuracy,performance"
 
-        # Track overall success
-        overall_success=true
+        overall_ok=true
 
-        for suite in "${suite_array[@]}"; do
-          suite="${suite// /}"  # Clean whitespace
+        IFS=',' read -ra suites   <<< "${{ inputs.suite }}"
+        IFS=',' read -ra dts      <<< "${{ inputs.dt }}"
+        IFS=',' read -ra modes    <<< "${{ inputs.mode }}"
+        IFS=',' read -ra scenarios <<< "${{ inputs.scenario }}"
 
-          if ! contains_value "${VALID_SUITES}" "${suite}"; then
-            echo "Skipping invalid suite: ${suite}"
-            continue
-          fi
+        for s in "${suites[@]}"; do   s="${s// /}"
+          contains_value "${VALID_SUITES}" "$s" || continue
+          for d in "${dts[@]}"; do      d="${d// /}"
+            contains_value "${VALID_DT}" "$d" || continue
+            for m in "${modes[@]}"; do    m="${m// /}"
+              contains_value "${VALID_MODES}" "$m" || continue
+              for sc in "${scenarios[@]}"; do sc="${sc// /}"
+                contains_value "${VALID_SCENARIOS}" "$sc" || continue
 
-          for dt in "${dt_array[@]}"; do
-            dt="${dt// /}"  # Clean whitespace
-
-            if ! contains_value "${VALID_DT}" "${dt}"; then
-              echo "Skipping invalid data type: ${dt}"
-              continue
-            fi
-
-            for mode in "${mode_array[@]}"; do
-              mode="${mode// /}"  # Clean whitespace
-
-              if ! contains_value "${VALID_MODES}" "${mode}"; then
-                echo "Skipping invalid mode: ${mode}"
-                continue
-              fi
-
-              for scenario in "${scenario_array[@]}"; do
-                scenario="${scenario// /}"  # Clean whitespace
-
-                if ! contains_value "${VALID_SCENARIOS}" "${scenario}"; then
-                  echo "Skipping invalid scenario: ${scenario}"
-                  continue
+                echo "── ${s} / ${d} / ${m} / ${sc} ──"
+                if ! run_with_sharding "$s" "$d" "$m" "$sc" "${NUMACTL_ARGS}"; then
+                  overall_ok=false
+                  echo "::warning::Failed: ${s}/${d}/${m}/${sc}"
                 fi
+              done
+            done
+          done
+        done
 
-                echo "================================================================="
-                echo "Running: Suite=${suite}, DT=${dt}, Mode=${mode}, Scenario=${scenario}"
-                echo "================================================================="
-
-                # Run tests with sharding
-                if ! run_with_sharding "${suite}" "${dt}" "${mode}" "${scenario}" "${NUMACTL_ARGS}"; then
-                  overall_success=false
-                  echo "Test run failed for ${suite}/${dt}/${mode}/${scenario}"
-                fi
-
-              done  # scenario loop
-            done  # mode loop
-          done  # dt loop
-        done  # suite loop
-
-        if [ "${overall_success}" = true ]; then
-          echo "All test configurations completed successfully"
-        else
-          echo "Some test configurations failed"
-          exit 1
-        fi
+        [[ "${overall_ok}" == true ]] || { echo "::error::Some test configs failed"; exit 1; }
