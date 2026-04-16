@@ -44,8 +44,7 @@ permissions:
   contents: read
 
 run-name: >-
-  Acceptance / ${{ inputs.component }}
-  (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
+  Acceptance / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
 
 jobs:
   # Resolve runner

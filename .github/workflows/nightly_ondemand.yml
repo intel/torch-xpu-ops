@@ -89,10 +89,10 @@ permissions:
 
 run-name: >-
   ${{
-    (github.event_name == 'schedule' && 'Scheduled / ' +
-     (github.event.schedule == '00 16 * * 5' && 'Weekly' || 'Nightly')
+    (github.event_name == 'schedule' && format('Scheduled / {0}',
+     (github.event.schedule == '00 16 * * 5' && 'Weekly' || 'Nightly'))
     ) ||
-    (github.event_name == 'workflow_dispatch' && 'Ondemand / ' + inputs.pytorch
+    (github.event_name == 'workflow_dispatch' && format('Ondemand / {0}', inputs.pytorch)
     ) ||
     github.event_name
   }}
