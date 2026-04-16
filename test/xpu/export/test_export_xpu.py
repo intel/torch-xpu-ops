@@ -5633,7 +5633,7 @@ def forward(self, x):
         with torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True):
             warn_re = re.compile(
                 r"Detected\s+\d+\s+fake\s+tensors?"
-                r".*test_export\.py.*global_list\.append\(x \+ y\)",
+                r".*test_export(?:_xpu)?\.py.*global_list\.append\(x \+ y\)",
                 re.S,
             )
             with self.assertWarnsRegex(UserWarning, warn_re):
@@ -13790,14 +13790,15 @@ graph():
             "stack_trace", ""
         )
         self.assertTrue(
-            re.search(r"test_export.py.*in forward\n.*x \*= 2.0", trace_mul)
+            re.search(r"test_export(?:_xpu)?.py.*in forward\n.*x \*= 2.0", trace_mul)
         )
         trace_addmm = [
             node for node in ep.graph.nodes if node.name in ["addmm", "linear"]
         ][0].meta.get("stack_trace", "")
         self.assertTrue(
             re.search(
-                r"test_export.py.*in forward\n.*x = self.linear\(x\)", trace_addmm
+                r"test_export(?:_xpu)?.py.*in forward\n.*x = self.linear\(x\)",
+                trace_addmm,
             )
         )
 
@@ -13824,14 +13825,15 @@ graph():
             0
         ].meta.get("stack_trace", "")
         self.assertTrue(
-            re.search(r"test_export.py.*in forward\n.*x \*= 2.0", trace_mul)
+            re.search(r"test_export(?:_xpu)?.py.*in forward\n.*x \*= 2.0", trace_mul)
         )
         trace_addmm = [node for node in gm.graph.nodes if node.name in ["addmm", "t"]][
             0
         ].meta.get("stack_trace", "")
         self.assertTrue(
             re.search(
-                r"test_export.py.*in forward\n.*x = self.linear\(x\)", trace_addmm
+                r"test_export(?:_xpu)?.py.*in forward\n.*x = self.linear\(x\)",
+                trace_addmm,
             )
         )
 
@@ -13845,14 +13847,15 @@ graph():
             "stack_trace", ""
         )
         self.assertTrue(
-            re.search(r"test_export.py.*in forward\n.*x \*= 2.0", trace_mul)
+            re.search(r"test_export(?:_xpu)?.py.*in forward\n.*x \*= 2.0", trace_mul)
         )
         trace_addmm = [
             node for node in ep.graph.nodes if node.name in ["addmm", "linear"]
         ][0].meta.get("stack_trace", "")
         self.assertTrue(
             re.search(
-                r"test_export.py.*in forward\n.*x = self.linear\(x\)", trace_addmm
+                r"test_export(?:_xpu)?.py.*in forward\n.*x = self.linear\(x\)",
+                trace_addmm,
             )
         )
 
