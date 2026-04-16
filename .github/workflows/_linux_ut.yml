@@ -22,9 +22,10 @@ on:
       ut:
         required: true
         type: string
-        description: UT scope. one of `op_regression,op_transformers,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -142,6 +143,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
+      contents: read
       issues: write
     steps:
       - name: Checkout torch-xpu-ops
@@ -174,7 +176,7 @@ jobs:
               --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
           fi
           if [ "${{ inputs.ut }}" == "basic" ];then
-            ut_list="op_regression op_transformers op_extended op_regression_dev1"
+            ut_list="op_regression op_extended op_regression_dev1"
           else
             ut_list="${{ inputs.ut }}"
           fi

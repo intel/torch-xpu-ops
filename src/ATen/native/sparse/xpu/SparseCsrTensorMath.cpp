@@ -24,9 +24,11 @@
 #else
 #include <ATen/ops/add.h>
 #include <ATen/ops/addmm.h>
+#include <ATen/ops/addmv.h>
 #include <ATen/ops/baddbmm.h>
 #include <ATen/ops/copy_native.h>
 #include <ATen/ops/mul.h>
+#include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
 #endif
 
@@ -424,4 +426,47 @@ Tensor& add_out_sparse_compressed_xpu(
   return out;
 }
 
+Tensor& addmv_out_sparse_compressed_xpu(
+    const Tensor& self,
+    const Tensor& mat,
+    const Tensor& vec,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  if (mat.layout() == kSparseCsc) {
+    return addmv_out_sparse_compressed_xpu(
+        self, mat.to_sparse_csr(), vec, beta, alpha, result);
+  }
+  TORCH_CHECK(
+      mat.layout() != kSparseBsc,
+      "addmv_out_sparse_compressed_xpu currently does not support layout SparseBsc for input mat.");
+
+  TORCH_CHECK(mat.dim() == 2, "addmv: Expected mat to be 2-D");
+  TORCH_CHECK(vec.dim() == 1, "addmv: Expected vec to be 1-D");
+
+  auto betaval = beta.toComplexDouble();
+
+  if (mat._nnz() == 0) {
+    // shortcut for an empty matrix
+    // By definition, when beta==0, values in self should be ignored. nans and
+    // infs should not propagate
+    if (betaval == 0.0) {
+      return result.zero_();
+    } else {
+      return at::mul_out(
+          result,
+          self,
+          at::native::scalar_tensor(
+              beta,
+              self.scalar_type(),
+              std::nullopt /* layout */,
+              at::kCPU,
+              std::nullopt /* pin_memory */));
+    }
+  }
+
+  at::addmv_out(result, self, mat.to_dense(), vec, beta, alpha);
+
+  return result;
+}
 } // namespace at::native

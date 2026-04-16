@@ -194,6 +194,14 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   c10::intrusive_ptr<Work> endCoalescing(OpType optype);
 
+  void setTimeout(std::chrono::milliseconds timeout) override {
+    options_->timeout = timeout;
+  }
+
+  bool isInitialized();
+
+  void setEnableNanCheck(bool enableNanCheck);
+
   std::shared_ptr<xcclComm_t> getXCCLComm(const std::string& deviceKey);
 
   std::shared_ptr<xcclComm_t> initXCCLComm(
@@ -475,8 +483,6 @@ class TORCH_API ProcessGroupXCCL : public Backend {
 
   const std::string& logPrefix() const;
 
-  void setEnableNanCheck(bool enableNanCheck);
-
   c10::DeviceIndex guessDeviceId() const;
 
   const std::vector<uint64_t>& groupRanks() const;
@@ -518,6 +524,8 @@ class TORCH_API ProcessGroupXCCL : public Backend {
  private:
   std::mutex kvs_mutex_;
 };
+
+TORCH_API void reset_xccl_trace();
 
 // Dumps the comm traces and additional information about the ProcessGroup.
 TORCH_API std::string dump_xccl_trace(
