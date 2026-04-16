@@ -55,7 +55,8 @@ on:
           - commit/branch/tag
           - repo@commit/repo@branch/repo@tag
 
-permissions: read-all
+permissions:
+  contents: read
 
 run-name: >-
   Acceptance Test / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
@@ -78,7 +79,10 @@ jobs:
   # Run tests on target version
   target-tests:
     needs: get-runner
-    permissions: write-all
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     uses: ./.github/workflows/_test_call.yml
     with:
       category: 'target'
@@ -94,7 +98,10 @@ jobs:
   # Run tests on baseline version
   baseline-tests:
     needs: get-runner
-    permissions: write-all
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     uses: ./.github/workflows/_test_call.yml
     with:
       category: 'baseline'

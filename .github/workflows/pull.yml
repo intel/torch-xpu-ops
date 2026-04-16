@@ -13,7 +13,8 @@ on:
       - main
       - release/**
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -117,7 +118,10 @@ jobs:
       needs.preci-matrix.outputs.ut_list  != '' ||
       needs.preci-matrix.outputs.e2e_list != ''
     uses: ./.github/workflows/_test_call.yml
-    permissions: write-all
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     with:
       runner:         'pvc_rolling'
       pytorch:        ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || 'main' }}

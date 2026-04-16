@@ -76,7 +76,8 @@ on:
         default: ''
         description: 'Distinguish the target or baseline'
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   tests-matrix:
@@ -115,7 +116,9 @@ jobs:
 
   linux-build:
     secrets: inherit
-    permissions: write-all
+    permissions:
+      contents: read
+      checks: write
     uses: ./.github/workflows/_linux_build.yml
     with:
       runner: ${{ inputs.runner }}
@@ -130,7 +133,6 @@ jobs:
     needs: [linux-build, tests-matrix]
     if: needs.tests-matrix.outputs.ut_list_json != '[]'
     secrets: inherit
-    permissions: write-all
     strategy:
       fail-fast: false
       matrix:
@@ -175,7 +177,9 @@ jobs:
     if: contains(inputs.ut, 'microbench')
     secrets: inherit
     uses: ./.github/workflows/_linux_op_benchmark.yml
-    permissions: write-all
+    permissions:
+      contents: read
+      issues: write
     with:
       runner: ${{ inputs.runner }}
       pytorch: ${{ inputs.pytorch }}
@@ -202,6 +206,9 @@ jobs:
       - linux-ut
       - linux-e2e
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
     env:
       GH_TOKEN: ${{ github.token }}
       # Configurable via workflow inputs

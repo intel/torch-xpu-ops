@@ -97,7 +97,8 @@ on:
         default: ''
         required: false
 
-permissions: read-all
+permissions:
+  contents: read
 
 env:
   RUNNER_LABEL: 'pvc_rolling'
@@ -114,7 +115,10 @@ run-name: |
 jobs:
   ondemand-tests:
     if: github.event_name == 'workflow_dispatch'
-    permissions: write-all
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     uses: ./.github/workflows/_test_call.yml
     with:
       runner: ${{ contains(inputs.runner, 'BMG') && 'bmg-test' || 'pvc_rolling' }}
@@ -133,7 +137,10 @@ jobs:
 
   scheduled-tests:
     if: github.event_name == 'schedule' && github.repository_owner == 'intel'
-    permissions: write-all
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     uses: ./.github/workflows/_test_call.yml
     strategy:
       matrix:
