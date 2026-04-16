@@ -35,6 +35,29 @@ outputs:
 runs:
   using: composite
   steps:
+    # ── Cleanup ─────────────────────────────────────────────────────────────
+    - name: Cleanup and fix permissions
+      shell: bash -xeo pipefail {0}
+      run: |
+        # Docker prune
+        if command -v docker &>/dev/null && docker info &>/dev/null; then
+          docker system prune -af || true
+        else
+          echo "::error::Docker not available"
+          exit 1
+        fi
+
+        # Fix ownership
+        ME="$(id -u):$(id -g)"
+        sudo chown "${ME}" "${HOME}" -R 2>/dev/null || true
+        sudo chmod 777 /tmp -R 2>/dev/null || true
+        sudo chown "${ME}" . -R 2>/dev/null || true
+
+        if [[ -n "${RUNNER_WORKSPACE}" && -d "${RUNNER_WORKSPACE}/.." ]]; then
+          cd "${RUNNER_WORKSPACE}/.."
+          [[ "$(pwd)" != "/" ]] && sudo chown "${ME}" . -R 2>/dev/null || true
+        fi
+
     # ── Identity ────────────────────────────────────────────────────────────
     - name: Resolve runner identity
       id: runner
@@ -157,26 +180,3 @@ runs:
         echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}"     >> "$GITHUB_OUTPUT"
         echo "numactl_args=${numactl_args}"              >> "$GITHUB_OUTPUT"
         echo "pytest_extra_args=${pytest_extra_args}"     >> "$GITHUB_OUTPUT"
-
-    # ── Cleanup ─────────────────────────────────────────────────────────────
-    - name: Cleanup and fix permissions
-      shell: bash -xeo pipefail {0}
-      run: |
-        # Docker prune
-        if command -v docker &>/dev/null && docker info &>/dev/null; then
-          docker system prune -af || true
-        else
-          echo "::error::Docker not available"
-          exit 1
-        fi
-
-        # Fix ownership
-        ME="$(id -u):$(id -g)"
-        sudo chown "${ME}" "${HOME}" -R 2>/dev/null || true
-        sudo chmod 777 /tmp -R 2>/dev/null || true
-        sudo chown "${ME}" . -R 2>/dev/null || true
-
-        if [[ -n "${RUNNER_WORKSPACE}" && -d "${RUNNER_WORKSPACE}/.." ]]; then
-          cd "${RUNNER_WORKSPACE}/.."
-          [[ "$(pwd)" != "/" ]] && sudo chown "${ME}" . -R 2>/dev/null || true
-        fi

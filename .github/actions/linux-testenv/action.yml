@@ -68,7 +68,7 @@ runs:
         fetch-depth: 1
 
     - name: Download PyTorch wheel
-      if: ! contains(inputs.pytorch, '_wheel')
+      if: ${{ ! contains(inputs.pytorch, '_wheel') }}
       uses: actions/download-artifact@v8
       with:
         pattern: Torch-XPU-Wheel-${{ inputs.category }}-*
