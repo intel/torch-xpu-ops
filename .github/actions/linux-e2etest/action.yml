@@ -14,9 +14,6 @@ inputs:
   scenario:
     required: true
     description: 'Scenarios: accuracy, performance'
-  comparison_type:
-    default: default
-    description: 'comparison or default'
 
 runs:
   using: composite
@@ -39,112 +36,28 @@ runs:
         TARGET_DIR="${GITHUB_WORKSPACE}/pytorch"
 
         # Copy test driver
-        [[ -f "${SCRIPT_DIR}/inductor_xpu_test.sh" ]] || \
-          { echo "::error::inductor_xpu_test.sh not found"; exit 1; }
-        cp "${SCRIPT_DIR}/inductor_xpu_test.sh" "${TARGET_DIR}/"
+        [[ -f "${SCRIPT_DIR}/run_benchmark.py" ]] || \
+          { echo "::error::run_benchmark.py not found"; exit 1; }
+        cp "${SCRIPT_DIR}/run_benchmark.py" "${TARGET_DIR}/"
 
         cd "${TARGET_DIR}"
-        rm -rf inductor_log torch ~/.triton /tmp/torchinductor_* /tmp/tmp*
+        rm -rf inductor_log ~/.triton /tmp/torchinductor_*
 
-        # Full benchmark models for non-PR, non-comparison runs
-        if [[ "${{ github.event_name }}" != "pull_request" \
-              && "${{ inputs.comparison_type }}" != "comparison" ]]; then
-          rsync -az "../.ci/benchmarks/" "benchmarks/dynamo/"
+        # Use model list file for nightly/weekly/ondemand (not PR or comparison)
+        model_list_arg=""
+        if [[ "${CATEGORY}" != "pr" \
+              && "${CATEGORY}" != "target" && "${CATEGORY}" != "baseline" ]]; then
+          if [[ -f "${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt" ]]; then
+            model_list_arg="--model-only ${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt"
+          fi
+        fi
+        if [[ -n "${MODEL_ONLY_NAME}" ]]; then
+          model_list_arg="--model-only ${MODEL_ONLY_NAME}"
         fi
 
-        # ── helpers ─────────────────────────────────────────────────────────
-        contains_value() {
-          local IFS=','
-          for v in $1; do [[ "$v" == "$2" ]] && return 0; done
-          return 1
-        }
-
-        run_with_sharding() {
-          local suite=$1 dt=$2 mode=$3 scenario=$4 numactl_args=$5
-
-          # Model selection
-          local models_list_args=""
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            local list_file="benchmarks/dynamo/${suite//_models/}_models_list.txt"
-            [[ -f "${list_file}" ]] && \
-              models_list_args="$(awk -F '[,; ]' '{printf(" -k %s ", $1)}' "${list_file}")"
-          elif [[ -n "${MODEL_ONLY_NAME:-}" ]]; then
-            models_list_args=" -k ${MODEL_ONLY_NAME} "
-          fi
-
-          # Parse sharding instances from semicolon-delimited numactl args
-          IFS=';' read -ra numa_cmds <<< "${numactl_args}"
-          local n=${#numa_cmds[@]} pids=()
-
-          for ((i = 0; i < n; i++)); do
-            local cmd="${numa_cmds[$i]}"
-            cmd="${cmd%;}" ; cmd="${cmd%; }"
-
-            # Extract XPU ID
-            local xpu_id=$i
-            [[ "${cmd}" =~ ZE_AFFINITY_MASK=([0-9]+) ]] && xpu_id="${BASH_REMATCH[1]}"
-
-            local log_dir="inductor_log/${suite}/${dt}"
-            mkdir -p "${log_dir}"
-
-            eval "${cmd} bash -xe inductor_xpu_test.sh \
-              ${suite} ${dt} ${mode} ${scenario} \
-              xpu ${xpu_id} static ${n} ${i} \
-              \"${models_list_args}\"" \
-              > "${log_dir}/instance_${i}_xpu_${xpu_id}.log" 2>&1 &
-            pids+=($!)
-          done
-
-          # Wait and track failures
-          local fails=0
-          for pid in "${pids[@]}"; do
-            wait "${pid}" || ((fails++))
-          done
-
-          # Consolidate logs
-          local logdir="inductor_log/${suite}/${dt}"
-          local merged="${logdir}/inductor_${suite}_${dt}_${mode}_xpu_${scenario}_all.log"
-          rm -f "${merged}"
-          find "${logdir}/" \( -name "inductor_${suite}_${dt}_${mode}_xpu_${scenario}_card*.log" \
-            -o -name "instance_*_xpu_*.log" \) 2>/dev/null | while read -r f; do
-            echo "=== $(basename "${f}") ===" >> "${merged}"
-            cat "${f}" >> "${merged}"
-            echo >> "${merged}"
-          done
-
-          return "${fails}"
-        }
-
         # ── main loop ───────────────────────────────────────────────────────
-        VALID_SUITES="huggingface,timm_models,torchbench"
-        VALID_DT="float32,bfloat16,float16,amp_bf16,amp_fp16"
-        VALID_MODES="inference,training"
-        VALID_SCENARIOS="accuracy,performance"
+        if [[ -z "${NUM_GPUS}" ]]; then
+          export NUM_GPUS=$(echo "$ZE_AFFINITY_MASK" | awk -F, '{print NF}')
+        fi
 
-        overall_ok=true
-
-        IFS=',' read -ra suites   <<< "${{ inputs.suite }}"
-        IFS=',' read -ra dts      <<< "${{ inputs.dt }}"
-        IFS=',' read -ra modes    <<< "${{ inputs.mode }}"
-        IFS=',' read -ra scenarios <<< "${{ inputs.scenario }}"
-
-        for s in "${suites[@]}"; do   s="${s// /}"
-          contains_value "${VALID_SUITES}" "$s" || continue
-          for d in "${dts[@]}"; do      d="${d// /}"
-            contains_value "${VALID_DT}" "$d" || continue
-            for m in "${modes[@]}"; do    m="${m// /}"
-              contains_value "${VALID_MODES}" "$m" || continue
-              for sc in "${scenarios[@]}"; do sc="${sc// /}"
-                contains_value "${VALID_SCENARIOS}" "$sc" || continue
-
-                echo "── ${s} / ${d} / ${m} / ${sc} ──"
-                if ! run_with_sharding "$s" "$d" "$m" "$sc" "${NUMACTL_ARGS}"; then
-                  overall_ok=false
-                  echo "::warning::Failed: ${s}/${d}/${m}/${sc}"
-                fi
-              done
-            done
-          done
-        done
-
-        [[ "${overall_ok}" == true ]] || { echo "::error::Some test configs failed"; exit 1; }
+        python ./run_benchmark.py --suite "${{ inputs.suite }}" --dt "${{ inputs.dt }}" --mode "${{ inputs.mode }}" --scenario "${{ inputs.scenario }}" ${model_list_arg}

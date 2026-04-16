@@ -77,7 +77,6 @@ jobs:
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
-      numactl_args: ${{ steps.runner-info.outputs.numactl_args }}
       ze_affinity_mask: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
       - name: Checkout repository
@@ -110,16 +109,12 @@ jobs:
         --shm-size=8g
         -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
-        NUMACTL_ARGS: ${{ needs.runner.outputs.numactl_args }}
         ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
     env:
+      CATEGORY: ${{ inputs.category }}
       MODEL_ONLY_NAME: ${{ inputs.model }}
       WORKSPACE: ${{ github.workspace }}
-      SUITE_INPUT: ${{ inputs.suite }}
-      DT_INPUT: ${{ inputs.dt }}
-      MODE_INPUT: ${{ inputs.mode }}
-      SCENARIO_INPUT: ${{ inputs.scenario }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -311,7 +306,6 @@ jobs:
           dt: amp_fp16
           mode: training
           scenario: accuracy,performance
-          comparison_type: comparison
 
       - name: Comparison — inference
         if: inputs.category == 'target' || inputs.category == 'baseline'
@@ -321,7 +315,6 @@ jobs:
           dt: bfloat16
           mode: inference
           scenario: accuracy,performance
-          comparison_type: comparison
 
       # ── Collect & upload artifacts ────────────────────────────────────────
       - name: Collect test artifacts
