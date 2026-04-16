@@ -380,7 +380,7 @@ def generate_command_prefixes(num_gpus: int) -> list[tuple[int, str, dict]]:
         start_core = gpu * cores_per_gpu
         end_core = min(start_core + cores_per_gpu - 1, physical_cores - 1)
         core_range = f"{start_core}-{end_core}"
-        prefix = f"ZE_AFFINITY_MASK={gpu} numactl -C {core_range}"
+        prefix = f"numactl -C {core_range}"
         env_vars = {"OMP_NUM_THREADS": str(cores_per_gpu)}
         prefixes.append((gpu, prefix, env_vars))
         print(f"GPU {gpu} → cores {core_range} (OMP_NUM_THREADS={cores_per_gpu})")
