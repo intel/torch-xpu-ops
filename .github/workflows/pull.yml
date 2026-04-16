@@ -101,6 +101,7 @@ jobs:
       needs.preci-matrix.outputs.e2e_list != ''
     permissions:
       contents: read
+      actions: read
       checks: write
       issues: write
     secrets: inherit

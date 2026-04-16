@@ -182,6 +182,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      actions: read
     secrets: inherit
     uses: ./.github/workflows/_linux_op_benchmark.yml
     with:
