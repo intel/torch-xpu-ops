@@ -23,6 +23,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
@@ -41,7 +42,7 @@ constexpr int SBTOPK_BLOCK = 1024;
 //   Total: 68 ints = 272 bytes
 constexpr int SMEM_INTS = 68;
 
-template <typename scalar_t>
+template <typename scalar_t, int VEC_SIZE = 4>
 struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
@@ -50,13 +51,14 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   static constexpr int NUM_BITS = sizeof(scalar_t) * 8;
 
   // ================================================================
-  // countRadixUsingMask (SortingRadixSelect.cuh:176)
+  // countRadixUsingMask — per-thread counting + sub-group/work-group reduce
   //
-  // CUDA: per-iteration WARP_BALLOT + __popc for each digit.
-  // Each iteration, each thread processes one element. The warp collectively
-  // counts via ballot+popc. counts[j] accumulates the warp-level count
-  // across iterations (all lanes have the same value).
-  // SYCL: per-iteration group_ballot + count() for each digit (1:1 match).
+  // Replaces ballot-based counting. Each thread:
+  //   1. Loads VEC_SIZE elements per iteration (vectorized)
+  //   2. Locally increments counts[digit] (pure ALU, no cross-lane)
+  //   3. After loop: sub-group reduce + lane0 atomicAdd to smem + broadcast
+  //
+  // Eliminates all group_ballot calls in counting.
   // Result: all threads have identical counts[0..RADIX_SIZE-1].
   // ================================================================
   void countRadixUsingMask(
@@ -73,69 +75,63 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int block_size = item.get_local_range(0);
     int sg_lid = sg.get_local_linear_id();
 
-    // CUDA: counts[i] = 0
 #pragma unroll
     for (int i = 0; i < RADIX_SIZE; ++i) {
       counts[i] = 0;
     }
-    // CUDA: if (threadIdx.x < RadixSize) smem[threadIdx.x] = 0
     if (lid < RADIX_SIZE) {
       smem[lid] = 0;
     }
     sycl::group_barrier(item.get_group());
 
-    // CUDA: WARP_BALLOT + __popc per iteration, per digit.
-    // In CUDA, threads exit the loop when i >= sliceSize, and __ballot_sync
-    // uses a mask to track active threads. In SYCL, group_ballot requires
-    // converged control flow, so we round up the loop and have out-of-range
-    // threads pass false for the vote (same result).
-    int numIterations =
-        ((sliceSize + block_size - 1) / block_size) * block_size;
+    // Each thread processes VEC_SIZE consecutive elements per iteration.
+    // Stride = block_size * VEC_SIZE for coalesced access across threads.
+    using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
+    int stride = block_size * VEC_SIZE;
 
-    for (int i = lid; i < numIterations; i += block_size) {
-      bool inRange = (i < sliceSize);
-      // CUDA: TopKTypeConfig<scalar_t>::convert(doLdg(&data[i]))
-      RadixT val = inRange
-          ? TopKTypeConfig<scalar_t>::convert(data[i])
-          : static_cast<RadixT>(0);
-
-      bool hasVal = inRange && ((val & desiredMask) == desired);
-      // CUDA: Bitfield<bitwise_t>::getBitfield(val, radixDigitPos, RadixBits)
-      RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, RADIX_BITS);
-
+    // Vectorized main loop — full VEC_SIZE loads
+    int base = lid * VEC_SIZE;
+    for (; base + VEC_SIZE <= sliceSize; base += stride) {
+      scalar_t src[VEC_SIZE];
+      *reinterpret_cast<LoadT*>(&src) =
+          *reinterpret_cast<const LoadT*>(&data[base]);
 #pragma unroll
-      for (int j = 0; j < RADIX_SIZE; ++j) {
-        bool vote = hasVal && (digit == static_cast<RadixT>(j));
-        // CUDA: counts[j] += __popc(WARP_BALLOT(vote));
-        // group_ballot returns 64-bit sub_group_mask; .count() on 64-bit
-        // compiles to software Brian Kernighan loop. Extract to uint32_t
-        // first so sycl::popcount maps to hardware cbit instruction.
-        auto ballot = sycl::ext::oneapi::group_ballot(sg, vote);
-        uint32_t bits;
-        ballot.extract_bits(bits);
-        counts[j] += sycl::popcount(bits);
+      for (int v = 0; v < VEC_SIZE; ++v) {
+        RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
+        if ((val & desiredMask) == desired) {
+          RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, RADIX_BITS);
+          counts[digit]++;
+        }
+      }
+    }
+    // Scalar tail — remaining elements
+    for (int idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
+      RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
+      if ((val & desiredMask) == desired) {
+        RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, RADIX_BITS);
+        counts[digit]++;
       }
     }
 
-    // CUDA: if (getLaneId() == 0) atomicAdd(&smem[i], counts[i])
-    if (sg_lid == 0) {
+    // Sub-group reduce + work-group reduce via atomicAdd
 #pragma unroll
-      for (int j = 0; j < RADIX_SIZE; ++j) {
+    for (int j = 0; j < RADIX_SIZE; ++j) {
+      int sg_total = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
+      if (sg_lid == 0) {
         sycl::atomic_ref<int, sycl::memory_order::relaxed,
                          sycl::memory_scope::work_group,
                          sycl::access::address_space::local_space>
             ref(smem[j]);
-        ref.fetch_add(counts[j]);
+        ref.fetch_add(sg_total);
       }
     }
     sycl::group_barrier(item.get_group());
 
-    // CUDA: all threads read smem[0..RadixSize-1] = block-level totals
+    // All threads read block-level totals
 #pragma unroll
     for (int j = 0; j < RADIX_SIZE; ++j) {
       counts[j] = smem[j];
     }
-    // Barrier removed: post-read WAR; next call's barrier@85 covers it.
   }
 
   // ================================================================
@@ -499,7 +495,11 @@ static void sbtopk_launch_kernel(
     int sliceSize,
     int k,
     bool largest) {
-  SbtopkGatherFunctor<scalar_t> functor(
+  // VEC_SIZE: number of elements per vectorized load in countRadixUsingMask.
+  // fp32/int32/int64/double: 4 elements (128-bit / 256-bit load)
+  // fp16/bf16: 8 elements (128-bit load)
+  constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 8 : 4;
+  SbtopkGatherFunctor<scalar_t, VEC_SIZE> functor(
       input, topK, indices, numSlices, sliceSize, k, largest);
 
   sycl_kernel_submit(
