@@ -32,6 +32,10 @@ jobs:
       contents: read
 
     steps:
+      - name: Fix sh to use bash (Copilot runtime requires pipefail)
+        run: ln -sf /bin/bash /bin/sh
+        shell: bash
+
       - name: Checkout code
         uses: actions/checkout@v5
 
