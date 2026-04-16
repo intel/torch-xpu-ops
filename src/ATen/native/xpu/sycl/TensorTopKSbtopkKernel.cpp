@@ -209,8 +209,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // Manual sub-group inclusive prefix scan (Kogge-Stone)
     int val = local_count;
-#pragma unroll
-    for (int offset = 1; offset < 16; offset <<= 1) {
+    for (int offset = 1; offset < sg_size; offset <<= 1) {
       int n = sycl::shift_group_right(sg, val, offset);
       if (sg_lid >= offset) val += n;
     }
