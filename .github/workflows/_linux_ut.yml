@@ -71,6 +71,9 @@ jobs:
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
       ze_affinity_mask: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
+      - name: Clean workspace
+        run: sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:

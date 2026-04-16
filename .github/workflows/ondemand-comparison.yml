@@ -53,6 +53,9 @@ jobs:
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
     steps:
+      - name: Clean workspace
+        run: sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
+
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
