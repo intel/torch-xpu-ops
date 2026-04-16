@@ -207,8 +207,11 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int sg_size = sg.get_local_range()[0];
     int num_sgs = block_size / sg_size;
 
+    // WAR barrier: previous call reads smem (carry), this call writes smem.
+    sycl::group_barrier(item.get_group());
+
     // Sub-group exclusive scan + reduce
-    int sg_exclusive = sycl::exclusive_scan_over_group(sg, local_count, sycl::plus<int>());
+    int sg_exclusive = sycl::exclusive_scan_over_group(sg, local_count, 0, sycl::plus<int>());
     int sg_total = sycl::reduce_over_group(sg, local_count, sycl::plus<int>());
 
     // Lane 0 writes sub-group total to smem
