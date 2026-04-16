@@ -208,8 +208,10 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     int num_sgs = block_size / sg_size;
 
     // Manual sub-group inclusive prefix scan (Kogge-Stone)
+    // Sub-group size is 32 on B580 (Xe2/BMG).
     int val = local_count;
-    for (int offset = 1; offset < sg_size; offset <<= 1) {
+#pragma unroll
+    for (int offset = 1; offset < 32; offset <<= 1) {
       int n = sycl::shift_group_right(sg, val, offset);
       if (sg_lid >= offset) val += n;
     }
