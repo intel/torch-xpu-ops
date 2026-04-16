@@ -32,6 +32,16 @@ namespace at {
 namespace native {
 namespace xpu {
 
+// Override RADIX_BITS for sbtopk: 4 bits = 16 digits per pass
+// Halves radix passes for fp32 (16→8), targeting SyncStall from countRadix barriers.
+// The global RADIX_BITS=2 in SortingRadixSelect.h is used by the original radix select kernel.
+#undef RADIX_BITS
+#undef RADIX_SIZE
+#undef RADIX_MASK
+constexpr int RADIX_BITS = 4;
+constexpr int RADIX_SIZE = 16; // 2 ^ RADIX_BITS
+constexpr int RADIX_MASK = (RADIX_SIZE - 1);
+
 // Block size = 1024 threads, matching CUDA C10_LAUNCH_BOUNDS_1(1024)
 constexpr int SBTOPK_BLOCK = 1024;
 
