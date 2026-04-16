@@ -122,6 +122,7 @@ jobs:
       mode: ${{ inputs.mode }}
       scenario: ${{ inputs.scenario }}
       model: ${{ inputs.model }}
+      category: ondemand
 
   # ---------------------------------------------------------------------------
   # Scheduled (nightly / weekly)
@@ -144,3 +145,4 @@ jobs:
       python: '3.10'
       ut: 'basic,op_ut,skipped_ut,xpu_profiling,xpu_distributed,microbench,windows'
       suite: 'huggingface,timm_models,torchbench,pt2e'
+      category: ${{ github.event.schedule == '00 16 * * 5' && 'weekly' || 'nightly' }}

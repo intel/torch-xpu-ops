@@ -206,7 +206,7 @@ jobs:
 
   # Compare Results
   compare-results:
-    if: inputs.category == '' && !cancelled()
+    if: (inputs.category == 'pr' || inputs.category == 'ondemand') && ! cancelled()
     needs: [linux-ut, linux-e2e]
     runs-on: ubuntu-24.04
     permissions:

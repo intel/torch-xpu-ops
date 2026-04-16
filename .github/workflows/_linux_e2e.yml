@@ -11,12 +11,6 @@ on:
         type: string
         default: 'intelgpu/ubuntu-24.04-lts2:2523.40'
         description: Docker image for test environment
-      test_type:
-        type: string
-        default: build-cicd
-        description: >-
-          Test type: build-cicd, build-nightly, wheel-nightly,
-          build-weekly, wheel-weekly, build-ondemand, wheel-ondemand
       pytorch:
         type: string
         default: main
@@ -122,7 +116,6 @@ jobs:
     env:
       MODEL_ONLY_NAME: ${{ inputs.model }}
       WORKSPACE: ${{ github.workspace }}
-      TEST_TYPE: ${{ inputs.test_type }}
       SUITE_INPUT: ${{ inputs.suite }}
       DT_INPUT: ${{ inputs.dt }}
       MODE_INPUT: ${{ inputs.mode }}
@@ -159,7 +152,7 @@ jobs:
 
       # ── CI/CD (pull request) ──────────────────────────────────────────────
       - name: CI/CD — huggingface
-        if: github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
+        if: inputs.category == 'pr' && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
@@ -168,7 +161,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: CI/CD — timm_models
-        if: github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
+        if: inputs.category == 'pr' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
@@ -177,7 +170,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: CI/CD — torchbench
-        if: github.event_name == 'pull_request' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
+        if: inputs.category == 'pr' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
@@ -187,7 +180,7 @@ jobs:
 
       # ── Nightly ───────────────────────────────────────────────────────────
       - name: Nightly — huggingface
-        if: contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
+        if: inputs.category == 'nightly' && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
@@ -196,7 +189,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: Nightly — timm_models
-        if: contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
+        if: inputs.category == 'nightly' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
@@ -205,7 +198,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: Nightly — torchbench
-        if: contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
+        if: inputs.category == 'nightly' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
@@ -214,7 +207,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: Nightly — pt2e
-        if: contains(inputs.test_type, 'nightly') && steps.parse-suites.outputs.HAS_PT2E == '1'
+        if: inputs.category == 'nightly' && steps.parse-suites.outputs.HAS_PT2E == '1'
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
@@ -222,7 +215,7 @@ jobs:
 
       # ── Weekly ────────────────────────────────────────────────────────────
       - name: Weekly — huggingface
-        if: contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
+        if: inputs.category == 'weekly' && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
@@ -231,7 +224,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: Weekly — timm_models
-        if: contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
+        if: inputs.category == 'weekly' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
@@ -240,7 +233,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: Weekly — torchbench
-        if: contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
+        if: inputs.category == 'weekly' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
@@ -249,7 +242,7 @@ jobs:
           scenario: accuracy,performance
 
       - name: Weekly — pt2e
-        if: contains(inputs.test_type, 'weekly') && steps.parse-suites.outputs.HAS_PT2E == '1'
+        if: inputs.category == 'weekly' && steps.parse-suites.outputs.HAS_PT2E == '1'
         uses: ./.github/actions/pt2e
         with:
           dt: float32,int8
@@ -258,7 +251,7 @@ jobs:
       # ── On-demand ─────────────────────────────────────────────────────────
       - name: Parse dtypes for on-demand tests
         id: parse-dtypes
-        if: contains(inputs.test_type, 'ondemand')
+        if: inputs.category == 'ondemand'
         run: |
           # Split dtypes into E2E-valid and PT2E-valid buckets
           E2E="" ; PT2E=""
@@ -276,7 +269,7 @@ jobs:
           echo "PT2E_DTYPES=${PT2E:-float32}" >> "$GITHUB_OUTPUT"
 
       - name: On-demand — huggingface
-        if: contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
+        if: inputs.category == 'ondemand' && steps.parse-suites.outputs.HAS_HUGGINGFACE == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: huggingface
@@ -285,7 +278,7 @@ jobs:
           scenario: ${{ inputs.scenario }}
 
       - name: On-demand — timm_models
-        if: contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
+        if: inputs.category == 'ondemand' && steps.parse-suites.outputs.HAS_TIMM_MODELS == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: timm_models
@@ -294,7 +287,7 @@ jobs:
           scenario: ${{ inputs.scenario }}
 
       - name: On-demand — torchbench
-        if: contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
+        if: inputs.category == 'ondemand' && steps.parse-suites.outputs.HAS_TORCHBENCH == '1'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: torchbench
@@ -303,7 +296,7 @@ jobs:
           scenario: ${{ inputs.scenario }}
 
       - name: On-demand — pt2e
-        if: contains(inputs.test_type, 'ondemand') && steps.parse-suites.outputs.HAS_PT2E == '1'
+        if: inputs.category == 'ondemand' && steps.parse-suites.outputs.HAS_PT2E == '1'
         uses: ./.github/actions/pt2e
         with:
           dt: ${{ steps.parse-dtypes.outputs.PT2E_DTYPES }}
@@ -311,7 +304,7 @@ jobs:
 
       # ── Comparison (target / baseline) ────────────────────────────────────
       - name: Comparison — training
-        if: contains(inputs.category, 'target') || contains(inputs.category, 'baseline')
+        if: inputs.category == 'target' || inputs.category == 'baseline'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
@@ -321,7 +314,7 @@ jobs:
           comparison_type: comparison
 
       - name: Comparison — inference
-        if: contains(inputs.category, 'target') || contains(inputs.category, 'baseline')
+        if: inputs.category == 'target' || inputs.category == 'baseline'
         uses: ./.github/actions/linux-e2etest
         with:
           suite: ${{ inputs.suite }}
@@ -350,7 +343,7 @@ jobs:
         if: ! cancelled() && steps.collect-artifacts.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
-          name: Inductor-${{ inputs.test_type }}-LTS2-XPU-E2E-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-E2E-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/upload_files
           retention-days: 7
           if-no-files-found: warn
