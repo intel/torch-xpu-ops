@@ -342,6 +342,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // per iteration with integer prefix scan instead of binary prefix scan.
   // Reduces ballot count from 2048 to 512 per sub-group (8x in step2, 4x step3).
   // ================================================================
+  [[sycl::reqd_sub_group_size(32)]]
   void operator()(sycl::nd_item<1> item) const {
     int slice = item.get_group_linear_id();
     if (slice >= numSlices_) return;
