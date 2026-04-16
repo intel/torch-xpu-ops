@@ -231,5 +231,65 @@ class TestBatchNormContiguous(TestCase):
         self.assertEqual(rv_cpu, rv_xpu.cpu(), atol=1e-4, rtol=1e-4)
 
 
+class TestNativeBatchNormEvalMode(TestCase):
+    """
+    Regression tests for native_batch_norm returning empty save_mean/save_invstd
+    in eval mode (training=False) to match CPU behavior.
+
+    Previously, XPU returned tensors of shape [num_features] for save_mean and
+    save_invstd in eval mode, while CPU returns size-0 tensors.
+    """
+
+    def test_native_batch_norm_eval_save_tensors_shape(self):
+        """save_mean and save_invstd must be size-0 tensors in eval mode."""
+        torch.manual_seed(0)
+        N, C, H, W = 2, 3, 4, 4
+        x = torch.randn(N, C, H, W)
+        weight = torch.randn(C)
+        bias = torch.randn(C)
+        running_mean = torch.randn(C)
+        running_var = torch.rand(C).abs() + 0.1  # positive
+
+        cpu_out = torch.native_batch_norm(
+            x, weight, bias, running_mean, running_var,
+            False, 0.1, 1e-5,
+        )
+        xpu_out = torch.native_batch_norm(
+            x.to(xpu_device), weight.to(xpu_device), bias.to(xpu_device),
+            running_mean.to(xpu_device), running_var.to(xpu_device),
+            False, 0.1, 1e-5,
+        )
+
+        # Output tensor should match in shape and values
+        self.assertEqual(cpu_out[0].shape, xpu_out[0].cpu().shape)
+        self.assertEqual(cpu_out[0], xpu_out[0].cpu(), atol=1e-4, rtol=1e-4)
+
+        # save_mean and save_invstd must be empty (size-0) in eval mode
+        self.assertEqual(cpu_out[1].shape, torch.Size([0]))
+        self.assertEqual(cpu_out[2].shape, torch.Size([0]))
+        self.assertEqual(xpu_out[1].shape, torch.Size([0]))
+        self.assertEqual(xpu_out[2].shape, torch.Size([0]))
+
+    def test_native_batch_norm_train_save_tensors_populated(self):
+        """save_mean and save_invstd must be populated in training mode."""
+        torch.manual_seed(0)
+        N, C, H, W = 2, 3, 4, 4
+        x = torch.randn(N, C, H, W)
+        weight = torch.randn(C)
+        bias = torch.randn(C)
+        running_mean = torch.zeros(C)
+        running_var = torch.ones(C)
+
+        xpu_out = torch.native_batch_norm(
+            x.to(xpu_device), weight.to(xpu_device), bias.to(xpu_device),
+            running_mean.to(xpu_device), running_var.to(xpu_device),
+            True, 0.1, 1e-5,
+        )
+
+        # In training mode save_mean and save_invstd should have shape [C]
+        self.assertEqual(xpu_out[1].shape, torch.Size([C]))
+        self.assertEqual(xpu_out[2].shape, torch.Size([C]))
+
+
 if __name__ == "__main__":
     run_tests()

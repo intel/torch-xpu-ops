@@ -11,6 +11,7 @@
 #include <ATen/AccumulateType.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
+#include <ATen/native/Resize.h>
 #include <ATen/native/xpu/sycl/BatchNormKernels.h>
 #include <comm/xpu_aten.h>
 
@@ -111,6 +112,12 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_xpu(
       save_mean,
       save_invstd);
 
+  // In eval mode, save_mean and save_invstd are not needed for the backward
+  // pass and should be empty tensors (size 0) to match CPU behavior.
+  if (!training) {
+    return std::make_tuple(
+        output, at::empty({0}, options), at::empty({0}, options));
+  }
   return std::make_tuple(output, save_mean, save_invstd);
 }
 
@@ -126,7 +133,7 @@ std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_xpu_out(
     Tensor& out,
     Tensor& save_mean,
     Tensor& save_invstd) {
-  return xpu::batch_norm_kernel(
+  xpu::batch_norm_kernel(
       input,
       weight,
       bias,
@@ -138,6 +145,13 @@ std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_xpu_out(
       out,
       save_mean,
       save_invstd);
+  // In eval mode, save_mean and save_invstd should be empty (size 0) to
+  // match CPU behavior.
+  if (!training) {
+    at::native::resize_output(save_mean, {0});
+    at::native::resize_output(save_invstd, {0});
+  }
+  return std::tuple<Tensor&, Tensor&, Tensor&>(out, save_mean, save_invstd);
 }
 
 std::tuple<Tensor, Tensor, Tensor> batch_norm_backward_xpu(
