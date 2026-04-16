@@ -34,7 +34,6 @@
 #include <ATen/ops/scalar_tensor.h>
 #include <ATen/ops/scaled_dot_product_attention.h>
 #include <ATen/ops/split_native.h>
-#include <ATen/ops/zeros_like.h>
 #endif
 
 #include <ATen/native/transformers/SDPUtils.h>
