@@ -116,4 +116,36 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> flash_attention_backward(
       std::move(grad_query), std::move(grad_key), std::move(grad_value));
 #endif
 }
+
+std::tuple<at::Tensor, at::Tensor> flash_attention_forward_varlen(
+    const at::Tensor& query,
+    const at::Tensor& key,
+    const at::Tensor& value,
+    const at::Tensor& cu_seqlens_q,
+    const at::Tensor& cu_seqlens_k,
+    const int64_t max_seqlen_q,
+    const int64_t max_seqlen_k,
+    const double dropout,
+    const bool is_causal,
+    const float scale) {
+#ifndef USE_SYCLTLA
+  TORCH_CHECK(
+      false,
+      "flash_attention_forward_varlen: Torch XPU was not compiled with SYCLTLA support.");
+  return std::make_tuple(at::Tensor(), at::Tensor());
+#else
+  return flash_attention_forward_varlen_sycltla(
+      query,
+      key,
+      value,
+      cu_seqlens_q,
+      cu_seqlens_k,
+      max_seqlen_q,
+      max_seqlen_k,
+      dropout,
+      is_causal,
+      scale);
+#endif
+}
+
 } // namespace sycltla
