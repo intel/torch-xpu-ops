@@ -213,11 +213,10 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
     tensor_size = (tensor_size // world_size) * world_size
     results = {}
 
-    # Benchmark torch.distributed.all_reduce
+    print(f"Benchmark torch.distributed.all_reduce (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
     tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
-        t = tensor_dist.clone()
-        dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
     torch.xpu.synchronize()
 
     dist.barrier()
@@ -228,11 +227,10 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
     end = time.perf_counter()
     results["dist.all_reduce"] = (end - start) / num_iters * 1000
 
-    # Benchmark specified implementation
+    print(f"Benchmark specified implementation (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
     tensor_impl = torch.randn(tensor_size, device=device, dtype=dtype)
     for _ in range(num_warmup):
-        t = tensor_impl.clone()
-        impl_func(t, op="sum")
+        impl_func(tensor_impl, op="sum")
     torch.xpu.synchronize()
 
     dist.barrier()
@@ -282,7 +280,7 @@ def run_benchmark(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
         print(f"AllReduce Benchmark: {impl_name} (world_size={world_size}, dtype={dtype}{pipeline_info})")
         print("=" * 80)
         print(f"{'Size (MB)':>12} | {'dist.all_reduce':>15} | {impl_name:>15} | {'Speedup':>10} | {'Correct':>8}")
-        print("-" * 80)
+        print("-" * 80, flush=True)
 
     for size in sizes:
         results, is_correct = benchmark_allreduce(size, impl_func, dtype=dtype)
@@ -296,7 +294,7 @@ def run_benchmark(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
                   f"{speedup:>9.2f}x | {'✓' if is_correct else '✗':>8}")
 
     if rank == 0:
-        print("=" * 80)
+        print("=" * 80, flush=True)
 
 
 def main():

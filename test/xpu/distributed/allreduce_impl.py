@@ -573,7 +573,7 @@ def allreduce_low_latency(
     symm_buf = workspace.get_buffer(rank, (numel,), tensor.dtype, storage_offset=0)
     symm_buf.copy_(tensor.view(-1))
 
-    result = torch.ops.symm_mem.all_reduce_low_latency(
+    result = torch.ops.symm_mem.one_shot_all_reduce(
         symm_buf, op, group_name
     )
 

@@ -800,13 +800,49 @@ at::Tensor low_latency_all_reduce_impl(
 // Public API functions
 // ============================================================================
 
-at::Tensor all_reduce_low_latency(
-    at::Tensor input,
+at::Tensor one_shot_all_reduce_out(
+    const at::Tensor& input,
+    std::string reduce_op,
+    std::string group_name,
+    at::Tensor out) {
+  return low_latency_all_reduce_impl(input, out, reduce_op, group_name);
+}
+
+at::Tensor one_shot_all_reduce(
+    const at::Tensor& input,
     std::string reduce_op,
     std::string group_name) {
-  return low_latency_all_reduce_impl(
-      input, std::nullopt, reduce_op, group_name);
+  return low_latency_all_reduce_impl(input, std::nullopt, reduce_op, group_name);
 }
+
+// at::Tensor one_shot_all_reduce_copy_out(
+//     const at::Tensor& input,
+//     const at::Tensor& local_input,
+//     std::string reduce_op,
+//     std::string group_name,
+//     at::Tensor out) {
+//   return one_shot_all_reduce_out_impl(
+//       input, local_input, reduce_op, group_name, out);
+// }
+
+// at::Tensor one_shot_all_reduce(
+//     const at::Tensor& input,
+//     std::string reduce_op,
+//     std::string group_name) {
+//   auto out = at::empty_like(input);
+//   return one_shot_all_reduce_out_impl(
+//       input, std::nullopt, reduce_op, group_name, out);
+// }
+
+// at::Tensor one_shot_all_reduce_copy(
+//     const at::Tensor& input,
+//     const at::Tensor& local_input,
+//     std::string reduce_op,
+//     std::string group_name) {
+//   auto out = at::empty_like(local_input);
+//   return one_shot_all_reduce_out_impl(
+//       input, local_input, reduce_op, group_name, out);
+// }
 
 at::Tensor two_shot_all_reduce_(
     at::Tensor input,
@@ -836,8 +872,8 @@ TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl(
       "two_shot_all_reduce_out",
       c10d::symmetric_memory::two_shot_all_reduce_out);
-  m.impl(
-      "all_reduce_low_latency",
-      c10d::symmetric_memory::all_reduce_low_latency);
+  m.impl("one_shot_all_reduce", c10d::symmetric_memory::one_shot_all_reduce);
+  m.impl("one_shot_all_reduce_out", c10d::symmetric_memory::one_shot_all_reduce_out);
+
 }
 
