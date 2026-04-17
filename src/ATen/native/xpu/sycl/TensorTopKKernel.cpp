@@ -129,10 +129,9 @@ void topk_kernel(
               largest);
         }
 
-        // Only sort if the user asked for sorted output AND sbtopk did not
-        // already produce a sorted result. The subgroup topk kernel returns
-        // SORTED; the single workgroup kernel and the original radix select
-        // return UNSORTED (or FAILED).
+        // Only sort if the user asked for sorted output AND the optimized
+        // kernel did not already produce a sorted result. The subgroup topk
+        // kernel returns SORTED; the original kernel returns FAILED.
         if (sorted && sbtopk_result != SbtopkResult::SORTED) {
           segmented_sort_pairs<scalar_t, int64_t>(
               values_ptr,

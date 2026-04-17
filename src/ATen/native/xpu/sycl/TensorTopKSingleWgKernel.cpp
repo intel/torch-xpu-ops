@@ -12,15 +12,17 @@
  *
  * CUDA sources translated 1:1:
  *   - SortingRadixSelect.cuh: countRadixUsingMask (line 176), findPattern (239)
- *   - ScanUtils.cuh: inclusiveBinaryPrefixScan (16), exclusiveBinaryPrefixScan (64)
+ *   - ScanUtils.cuh: inclusiveBinaryPrefixScan (16), exclusiveBinaryPrefixScan
+ * (64)
  *   - TensorTopK.cu: gatherTopK (lines 40-182), radixSelect (860)
  *
  * Key CUDA -> SYCL mappings:
  *   WARP_BALLOT(pred)         -> sycl::ext::oneapi::group_ballot(sg, pred)
- *   __popc(ballot)            -> ballot.count()  (or extract_bits + __builtin_popcount)
- *   getLaneMaskLe() & ballot  -> extract_bits + manual le_mask + __builtin_popcount
- *   getLaneId()               -> sg.get_local_linear_id()
- *   atomicAdd (smem)          -> sycl::atomic_ref (local_space)
+ *   __popc(ballot)            -> ballot.count()  (or extract_bits +
+ * __builtin_popcount) getLaneMaskLe() & ballot  -> extract_bits + manual
+ * le_mask + __builtin_popcount getLaneId()               ->
+ * sg.get_local_linear_id() atomicAdd (smem)          -> sycl::atomic_ref
+ * (local_space)
  *   __syncthreads()           -> sycl::group_barrier(item.get_group())
  *   doLdg(ptr)                -> direct load (no read-only cache hint in SYCL)
  *   Bitfield<T>::getBitfield  -> software shift+mask (no PTX BFE/BFI in SYCL)
@@ -41,13 +43,13 @@
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
 
-
 namespace at {
 namespace native {
 namespace xpu {
 
 // Uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
-// Cannot reuse RADIX_BITS/SIZE/MASK from SortingRadixSelect.h (constexpr int, can't #undef).
+// Cannot reuse RADIX_BITS/SIZE/MASK from SortingRadixSelect.h (constexpr int,
+// can't #undef).
 constexpr int SBTOPK_RADIX_BITS = 4;
 constexpr int SBTOPK_RADIX_SIZE = 16; // 2 ^ SBTOPK_RADIX_BITS
 constexpr int SBTOPK_RADIX_MASK = (SBTOPK_RADIX_SIZE - 1);
@@ -56,13 +58,18 @@ constexpr int SBTOPK_RADIX_MASK = (SBTOPK_RADIX_SIZE - 1);
 constexpr int SBTOPK_BLOCK = 1024;
 
 // SLM layout:
-//   [0..63]  : used by countRadixUsingMask (smem[0..SBTOPK_RADIX_SIZE-1] for counts)
+//   [0..63]  : used by countRadixUsingMask (smem[0..SBTOPK_RADIX_SIZE-1] for
+//   counts)
 //              and by exclusiveIntPrefixScan (smem[0..num_sgs-1] for carries)
 //   [64..65] : used by findPattern (flag + found index)
 //   Total: 68 ints = 272 bytes
 constexpr int SMEM_INTS = 68;
 
-template <typename scalar_t, int VEC_SIZE = 4, int ELEMS_PER_THREAD = 32, int SIMD = 32>
+template <
+    typename scalar_t,
+    int VEC_SIZE = 4,
+    int ELEMS_PER_THREAD = 32,
+    int SIMD = 32>
 struct SbtopkGatherFunctor {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
@@ -81,8 +88,7 @@ struct SbtopkGatherFunctor {
   // Eliminates all group_ballot calls in counting.
   // Result: all threads have identical counts[0..RADIX_SIZE-1].
   // ================================================================
-  __attribute__((noinline))
-  void countRadixUsingMask(
+  __attribute__((noinline)) void countRadixUsingMask(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       int* smem,
@@ -120,7 +126,8 @@ struct SbtopkGatherFunctor {
       for (int v = 0; v < VEC_SIZE; ++v) {
         RadixT val = TopKTypeConfig<scalar_t>::convert(src[v]);
         if ((val & desiredMask) == desired) {
-          RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+          RadixT digit =
+              Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
           counts[digit]++;
         }
       }
@@ -129,20 +136,22 @@ struct SbtopkGatherFunctor {
     for (int idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
       RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
       if ((val & desiredMask) == desired) {
-        RadixT digit = Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
+        RadixT digit =
+            Bitfield<RadixT>::getBitfield(val, digitPos, SBTOPK_RADIX_BITS);
         counts[digit]++;
       }
     }
 
     // Sub-group reduce + lane0 atomicAdd to smem.
-    // Testing: reduce_over_group instead of manual Kogge-Stone.
 #pragma unroll
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
       int total = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
       if (sg_lid == 0) {
-        sycl::atomic_ref<int, sycl::memory_order::relaxed,
-                         sycl::memory_scope::work_group,
-                         sycl::access::address_space::local_space>
+        sycl::atomic_ref<
+            int,
+            sycl::memory_order::relaxed,
+            sycl::memory_scope::work_group,
+            sycl::access::address_space::local_space>
             ref(smem[j]);
         ref.fetch_add(total);
       }
@@ -161,10 +170,10 @@ struct SbtopkGatherFunctor {
   //
   // Finds the unique value whose convert() matches desired.
   // Returns RadixT (converted form) directly — no deconvert needed.
-  // SYCL uses smem[64]=flag(int), smem[65]=index(int), then convert(data[index]).
+  // SYCL uses smem[64]=flag(int), smem[65]=index(int), then
+  // convert(data[index]).
   // ================================================================
-  __attribute__((noinline))
-  RadixT findPattern(
+  __attribute__((noinline)) RadixT findPattern(
       sycl::nd_item<1> item,
       int* smem,
       const scalar_t* data,
@@ -175,7 +184,7 @@ struct SbtopkGatherFunctor {
     int block_size = item.get_local_range(0);
 
     if (lid == 0) {
-      smem[64] = 0;  // found flag
+      smem[64] = 0; // found flag
       smem[65] = -1; // found index
     }
     // Barrier required: init must be visible before any thread enters the loop
@@ -218,8 +227,7 @@ struct SbtopkGatherFunctor {
   // Sub-group level: exclusive_scan_over_group + reduce_over_group
   // Cross sub-group: smem serial scan (same pattern as binary version)
   // ================================================================
-  __attribute__((noinline))
-  void exclusiveIntPrefixScan(
+  __attribute__((noinline)) void exclusiveIntPrefixScan(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       int* smem,
@@ -230,8 +238,8 @@ struct SbtopkGatherFunctor {
     int sg_id = sg.get_group_linear_id();
     constexpr int num_sgs = SBTOPK_BLOCK / SIMD;
 
-    // inclusive_scan_over_group instead of manual Kogge-Stone
-    int sg_inclusive = sycl::inclusive_scan_over_group(sg, local_count, sycl::plus<int>());
+    int sg_inclusive =
+        sycl::inclusive_scan_over_group(sg, local_count, sycl::plus<int>());
     int sg_exclusive = sg_inclusive - local_count;
 
     // group_broadcast to get sub-group total (last lane's inclusive value)
@@ -266,8 +274,7 @@ struct SbtopkGatherFunctor {
   // found_non_unique (count>=kToFind): narrow desired/desiredMask, continue
   // End: return desired (RadixT, fully determined)
   // ================================================================
-  __attribute__((noinline))
-  RadixT radixSelect(
+  __attribute__((noinline)) RadixT radixSelect(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
       int* smem,
@@ -283,9 +290,15 @@ struct SbtopkGatherFunctor {
     for (int digitPos = NUM_BITS - SBTOPK_RADIX_BITS; digitPos >= 0;
          digitPos -= SBTOPK_RADIX_BITS) {
       countRadixUsingMask(
-          item, sg, smem, counts,
-          desired, desiredMask, digitPos,
-          data, sliceSize);
+          item,
+          sg,
+          smem,
+          counts,
+          desired,
+          desiredMask,
+          digitPos,
+          data,
+          sliceSize);
 
       // All threads execute the same scan logic (counts are identical).
       // Replicates CUDA found_unique / found_non_unique lambdas exactly.
@@ -315,7 +328,7 @@ struct SbtopkGatherFunctor {
           kToFind -= count;
         }
       } else {
-    for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
+        for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
           int count = counts[i];
 
           if (count == 1 && kToFind == 1) {
@@ -356,23 +369,25 @@ struct SbtopkGatherFunctor {
   // With ELEMS_PER_THREAD=32 and 1024 threads, each iteration covers
   // 32K elements, so dim=131072 needs only 4 iterations.
   // ================================================================
-  [[sycl::reqd_sub_group_size(SIMD)]]
   void operator()(sycl::nd_item<1> item) const {
     int slice = item.get_group_linear_id();
-    if (slice >= numSlices_) return;
+    if (slice >= numSlices_)
+      return;
 
     sycl::sub_group sg = item.get_sub_group();
 
     // Get raw int* pointer from local accessor
-    int* smem = local_mem_.template get_multi_ptr<
-        sycl::access::decorated::no>().get();
+    int* smem =
+        local_mem_.template get_multi_ptr<sycl::access::decorated::no>().get();
 
     const scalar_t* inputSlice = inputData_ + (int64_t)slice * sliceSize_;
     scalar_t* topKSlice = topKData_ + (int64_t)slice * k_;
     int64_t* indicesSlice = indicesData_ + (int64_t)slice * k_;
 
-    // Step 1: radixSelect — returns RadixT directly (no deconvert/convert round-trip)
-    RadixT topKConverted = radixSelect(item, sg, smem, inputSlice, k_, largest_, sliceSize_);
+    // Step 1: radixSelect — returns RadixT directly (no deconvert/convert
+    // round-trip)
+    RadixT topKConverted =
+        radixSelect(item, sg, smem, inputSlice, k_, largest_, sliceSize_);
 
     // Vectorized gather setup
     // ELEMS_PER_THREAD: each thread processes this many elements per iteration.
@@ -390,9 +405,10 @@ struct SbtopkGatherFunctor {
     int writeIndexStart = 0;
 
     for (int iter = 0; iter < numIters; ++iter) {
-      // Each thread loads ELEMS_PER_THREAD elements from LOADS_PER_ITER vec4 chunks.
-      // Thread layout: consecutive threads handle consecutive VEC_SIZE chunks.
-      // Thread t handles chunks at offsets: t*VEC_SIZE, (t+SBTOPK_BLOCK)*VEC_SIZE, ...
+      // Each thread loads ELEMS_PER_THREAD elements from LOADS_PER_ITER vec4
+      // chunks. Thread layout: consecutive threads handle consecutive VEC_SIZE
+      // chunks. Thread t handles chunks at offsets: t*VEC_SIZE,
+      // (t+SBTOPK_BLOCK)*VEC_SIZE, ...
       scalar_t vals[ELEMS_PER_THREAD];
       int match_indices[ELEMS_PER_THREAD]; // global index of matching elements
       int local_count = 0;
@@ -546,14 +562,16 @@ static void sbtopk_launch_impl(
   namespace syclex = sycl::ext::oneapi::experimental;
 
   constexpr int SIMD = 32;
-  using Functor = SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD>;
+  using Functor =
+      SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD>;
 
   syclex::properties kernel_props{syclex::sub_group_size<SIMD>};
 
   auto& q = at::xpu::getCurrentSYCLQueue();
   q.submit([&](sycl::handler& cgh) {
     sycl::local_accessor<int, 1> local_mem(SMEM_INTS, cgh);
-    Functor functor(input, topK, indices, numSlices, sliceSize, k, largest, local_mem);
+    Functor functor(
+        input, topK, indices, numSlices, sliceSize, k, largest, local_mem);
     cgh.parallel_for<Functor>(
         sycl::nd_range<1>(
             sycl::range<1>(numSlices * SBTOPK_BLOCK),
@@ -564,7 +582,7 @@ static void sbtopk_launch_impl(
 }
 
 // Dispatch macro to reduce boilerplate
-#define SBTOPK_LAUNCH(V, E) \
+#define SBTOPK_LAUNCH(V, E)           \
   sbtopk_launch_impl<scalar_t, V, E>( \
       input, topK, indices, numSlices, sliceSize, k, largest)
 
@@ -579,81 +597,157 @@ static void sbtopk_launch_kernel(
     bool largest) {
   // Determine ELEMS_PER_THREAD based on dim: target ~4 iterations
   int ept;
-  if      (sliceSize >= 32 * SBTOPK_BLOCK) ept = 32;
-  else if (sliceSize >= 16 * SBTOPK_BLOCK) ept = 16;
-  else if (sliceSize >= 8  * SBTOPK_BLOCK) ept = 8;
-  else if (sliceSize >= 4  * SBTOPK_BLOCK) ept = 4;
-  else if (sliceSize >= 2  * SBTOPK_BLOCK) ept = 2;
-  else                                      ept = 1;
+  if (sliceSize >= 32 * SBTOPK_BLOCK)
+    ept = 32;
+  else if (sliceSize >= 16 * SBTOPK_BLOCK)
+    ept = 16;
+  else if (sliceSize >= 8 * SBTOPK_BLOCK)
+    ept = 8;
+  else if (sliceSize >= 4 * SBTOPK_BLOCK)
+    ept = 4;
+  else if (sliceSize >= 2 * SBTOPK_BLOCK)
+    ept = 2;
+  else
+    ept = 1;
 
   // Determine VEC_SIZE: largest power-of-2 dividing sliceSize,
   // capped by type max AND by EPT (vec <= ept required)
   constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
   int cap = MAX_VEC < ept ? MAX_VEC : ept;
   int vec = 1;
-  if (cap >= 8 && sliceSize % 8 == 0) vec = 8;
-  else if (cap >= 4 && sliceSize % 4 == 0) vec = 4;
-  else if (cap >= 2 && sliceSize % 2 == 0) vec = 2;
+  if (cap >= 8 && sliceSize % 8 == 0)
+    vec = 8;
+  else if (cap >= 4 && sliceSize % 4 == 0)
+    vec = 4;
+  else if (cap >= 2 && sliceSize % 2 == 0)
+    vec = 2;
 
-  // Dispatch: VEC determines which EPT values are valid (EPT >= VEC, EPT % VEC == 0)
+  // Dispatch: VEC determines which EPT values are valid (EPT >= VEC, EPT % VEC
+  // == 0)
   if constexpr (MAX_VEC == 8) {
     // 16-bit types: VEC can be 8, 4, 2, 1
     if (vec == 8) {
       switch (ept) {
-        case 8:  SBTOPK_LAUNCH(8, 8);  return;
-        case 16: SBTOPK_LAUNCH(8, 16); return;
-        default: SBTOPK_LAUNCH(8, 32); return;
+        case 8:
+          SBTOPK_LAUNCH(8, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(8, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(8, 32);
+          return;
       }
     } else if (vec == 4) {
       switch (ept) {
-        case 4:  SBTOPK_LAUNCH(4, 4);  return;
-        case 8:  SBTOPK_LAUNCH(4, 8);  return;
-        case 16: SBTOPK_LAUNCH(4, 16); return;
-        default: SBTOPK_LAUNCH(4, 32); return;
+        case 4:
+          SBTOPK_LAUNCH(4, 4);
+          return;
+        case 8:
+          SBTOPK_LAUNCH(4, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(4, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(4, 32);
+          return;
       }
     } else if (vec == 2) {
       switch (ept) {
-        case 2:  SBTOPK_LAUNCH(2, 2);  return;
-        case 4:  SBTOPK_LAUNCH(2, 4);  return;
-        case 8:  SBTOPK_LAUNCH(2, 8);  return;
-        case 16: SBTOPK_LAUNCH(2, 16); return;
-        default: SBTOPK_LAUNCH(2, 32); return;
+        case 2:
+          SBTOPK_LAUNCH(2, 2);
+          return;
+        case 4:
+          SBTOPK_LAUNCH(2, 4);
+          return;
+        case 8:
+          SBTOPK_LAUNCH(2, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(2, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(2, 32);
+          return;
       }
     } else {
       switch (ept) {
-        case 1:  SBTOPK_LAUNCH(1, 1);  return;
-        case 2:  SBTOPK_LAUNCH(1, 2);  return;
-        case 4:  SBTOPK_LAUNCH(1, 4);  return;
-        case 8:  SBTOPK_LAUNCH(1, 8);  return;
-        case 16: SBTOPK_LAUNCH(1, 16); return;
-        default: SBTOPK_LAUNCH(1, 32); return;
+        case 1:
+          SBTOPK_LAUNCH(1, 1);
+          return;
+        case 2:
+          SBTOPK_LAUNCH(1, 2);
+          return;
+        case 4:
+          SBTOPK_LAUNCH(1, 4);
+          return;
+        case 8:
+          SBTOPK_LAUNCH(1, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(1, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(1, 32);
+          return;
       }
     }
   } else {
     // 32-bit types: VEC can be 4, 2, 1
     if (vec >= 4) {
       switch (ept) {
-        case 4:  SBTOPK_LAUNCH(4, 4);  return;
-        case 8:  SBTOPK_LAUNCH(4, 8);  return;
-        case 16: SBTOPK_LAUNCH(4, 16); return;
-        default: SBTOPK_LAUNCH(4, 32); return;
+        case 4:
+          SBTOPK_LAUNCH(4, 4);
+          return;
+        case 8:
+          SBTOPK_LAUNCH(4, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(4, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(4, 32);
+          return;
       }
     } else if (vec == 2) {
       switch (ept) {
-        case 2:  SBTOPK_LAUNCH(2, 2);  return;
-        case 4:  SBTOPK_LAUNCH(2, 4);  return;
-        case 8:  SBTOPK_LAUNCH(2, 8);  return;
-        case 16: SBTOPK_LAUNCH(2, 16); return;
-        default: SBTOPK_LAUNCH(2, 32); return;
+        case 2:
+          SBTOPK_LAUNCH(2, 2);
+          return;
+        case 4:
+          SBTOPK_LAUNCH(2, 4);
+          return;
+        case 8:
+          SBTOPK_LAUNCH(2, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(2, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(2, 32);
+          return;
       }
     } else {
       switch (ept) {
-        case 1:  SBTOPK_LAUNCH(1, 1);  return;
-        case 2:  SBTOPK_LAUNCH(1, 2);  return;
-        case 4:  SBTOPK_LAUNCH(1, 4);  return;
-        case 8:  SBTOPK_LAUNCH(1, 8);  return;
-        case 16: SBTOPK_LAUNCH(1, 16); return;
-        default: SBTOPK_LAUNCH(1, 32); return;
+        case 1:
+          SBTOPK_LAUNCH(1, 1);
+          return;
+        case 2:
+          SBTOPK_LAUNCH(1, 2);
+          return;
+        case 4:
+          SBTOPK_LAUNCH(1, 4);
+          return;
+        case 8:
+          SBTOPK_LAUNCH(1, 8);
+          return;
+        case 16:
+          SBTOPK_LAUNCH(1, 16);
+          return;
+        default:
+          SBTOPK_LAUNCH(1, 32);
+          return;
       }
     }
   }
