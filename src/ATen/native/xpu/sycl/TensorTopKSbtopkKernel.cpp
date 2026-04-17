@@ -28,6 +28,7 @@
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 
 namespace at {
 namespace native {
@@ -49,8 +50,8 @@ constexpr int SBTOPK_BLOCK = 1024;
 //   Total: 68 ints = 272 bytes
 constexpr int SMEM_INTS = 68;
 
-template <typename scalar_t, int VEC_SIZE = 4, int ELEMS_PER_THREAD = 32>
-struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
+template <typename scalar_t, int VEC_SIZE = 4, int ELEMS_PER_THREAD = 32, int SIMD = 32>
+struct SbtopkGatherFunctor {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
   // For fp16: sizeof(Half)=2 -> 16 bits, but sizeof(uint32_t)=4 -> 32 bits.
@@ -68,6 +69,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // Eliminates all group_ballot calls in counting.
   // Result: all threads have identical counts[0..RADIX_SIZE-1].
   // ================================================================
+  __attribute__((noinline))
   void countRadixUsingMask(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
@@ -120,16 +122,17 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       }
     }
 
-    // Sub-group reduce + work-group reduce via atomicAdd
+    // Sub-group reduce + lane0 atomicAdd to smem.
+    // Testing: reduce_over_group instead of manual Kogge-Stone.
 #pragma unroll
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
-      int sg_total = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
+      int total = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
       if (sg_lid == 0) {
         sycl::atomic_ref<int, sycl::memory_order::relaxed,
                          sycl::memory_scope::work_group,
                          sycl::access::address_space::local_space>
             ref(smem[j]);
-        ref.fetch_add(sg_total);
+        ref.fetch_add(total);
       }
     }
     sycl::group_barrier(item.get_group());
@@ -148,6 +151,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // Returns RadixT (converted form) directly — no deconvert needed.
   // SYCL uses smem[64]=flag(int), smem[65]=index(int), then convert(data[index]).
   // ================================================================
+  __attribute__((noinline))
   RadixT findPattern(
       sycl::nd_item<1> item,
       int* smem,
@@ -162,9 +166,9 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       smem[64] = 0;  // found flag
       smem[65] = -1; // found index
     }
-    // Barrier removed: post-write; barrier@177 covers the first read at line 179.
+    // Barrier required: init must be visible before any thread enters the loop
+    sycl::group_barrier(item.get_group());
 
-    // CUDA: numIterations = round_up(sliceSize, blockDim.x)
     int numIterations =
         ((sliceSize + block_size - 1) / block_size) * block_size;
 
@@ -181,13 +185,14 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
       int found = smem[64];
       int foundIdx = smem[65];
-      // Barrier removed: post-read WAR; next iteration's barrier@177 covers it.
 
       if (found != 0) {
         return TopKTypeConfig<scalar_t>::convert(data[foundIdx]);
       }
+
+      // WAR barrier: protect smem writes in next iteration from current reads
+      sycl::group_barrier(item.get_group());
     }
-    // Should not reach here
     return static_cast<RadixT>(0);
   }
 
@@ -201,6 +206,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // Sub-group level: exclusive_scan_over_group + reduce_over_group
   // Cross sub-group: smem serial scan (same pattern as binary version)
   // ================================================================
+  __attribute__((noinline))
   void exclusiveIntPrefixScan(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
@@ -210,30 +216,20 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int& carry) const {
     int sg_lid = sg.get_local_linear_id();
     int sg_id = sg.get_group_linear_id();
-    int block_size = item.get_local_range(0);
-    int sg_size = sg.get_local_range()[0];
-    int num_sgs = block_size / sg_size;
+    constexpr int num_sgs = SBTOPK_BLOCK / SIMD;
 
-    // Manual sub-group inclusive prefix scan (Kogge-Stone)
-    // Sub-group size is 32 on B580 (Xe2/BMG).
-    int val = local_count;
-#pragma unroll
-    for (int offset = 1; offset < 32; offset <<= 1) {
-      int n = sycl::shift_group_right(sg, val, offset);
-      if (sg_lid >= offset) val += n;
-    }
-    // val = inclusive scan within sub-group
-    int sg_inclusive = val;
+    // inclusive_scan_over_group instead of manual Kogge-Stone
+    int sg_inclusive = sycl::inclusive_scan_over_group(sg, local_count, sycl::plus<int>());
     int sg_exclusive = sg_inclusive - local_count;
-    int sg_total = sycl::group_broadcast(sg, sg_inclusive, sg_size - 1);
 
-    // Lane 0 writes sub-group total to smem
-    if (sg_lid == 0) {
+    // group_broadcast to get sub-group total (last lane's inclusive value)
+    int sg_total = sycl::group_broadcast(sg, sg_inclusive, SIMD - 1);
+    if (sg_lid == SIMD - 1) {
       smem[sg_id] = sg_total;
     }
     sycl::group_barrier(item.get_group());
 
-    // Thread 0: serial inclusive prefix sum over smem
+    // Thread 0: serial inclusive prefix sum over sub-group totals
     if (item.get_local_id(0) == 0) {
       int current = 0;
       for (int i = 0; i < num_sgs; ++i) {
@@ -244,11 +240,8 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     sycl::group_barrier(item.get_group());
 
-    // Add cross-sub-group prefix
     int cross_sg_prefix = (sg_id >= 1) ? smem[sg_id - 1] : 0;
     out = sg_exclusive + cross_sg_prefix;
-
-    // Carry = total across all threads
     carry = smem[num_sgs - 1];
   }
 
@@ -261,6 +254,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // found_non_unique (count>=kToFind): narrow desired/desiredMask, continue
   // End: return desired (RadixT, fully determined)
   // ================================================================
+  __attribute__((noinline))
   RadixT radixSelect(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
@@ -350,7 +344,7 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   // v3: 32 iterations × 2 barriers = 64 barriers for step2
   // v4 (ELEMS_PER_THREAD=32): 4 iterations × 2 barriers = 8 barriers (8x reduction)
   // ================================================================
-  [[sycl::reqd_sub_group_size(32)]]
+  [[sycl::reqd_sub_group_size(SIMD)]]
   void operator()(sycl::nd_item<1> item) const {
     int slice = item.get_group_linear_id();
     if (slice >= numSlices_) return;
@@ -431,8 +425,10 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
       for (int j = 0; j < local_count; ++j) {
         int writeIndex = writeIndexStart + offset + j;
-        topKSlice[writeIndex] = vals[j];
-        indicesSlice[writeIndex] = match_indices[j];
+        if (writeIndex < k_) {
+          topKSlice[writeIndex] = vals[j];
+          indicesSlice[writeIndex] = match_indices[j];
+        }
       }
       writeIndexStart += carry;
     }
@@ -496,10 +492,6 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
   }
 
-  void sycl_ker_config_convention(sycl::handler& cgh) {
-    local_mem_ = sycl_local_acc_t<int>(SMEM_INTS, cgh);
-  }
-
   SbtopkGatherFunctor(
       const scalar_t* inputData,
       scalar_t* topKData,
@@ -507,14 +499,16 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       int numSlices,
       int sliceSize,
       int k,
-      bool largest)
+      bool largest,
+      sycl::local_accessor<int, 1> local_mem)
       : inputData_(inputData),
         topKData_(topKData),
         indicesData_(indicesData),
         numSlices_(numSlices),
         sliceSize_(sliceSize),
         k_(k),
-        largest_(largest) {}
+        largest_(largest),
+        local_mem_(local_mem) {}
 
   const scalar_t* inputData_;
   scalar_t* topKData_;
@@ -523,12 +517,45 @@ struct SbtopkGatherFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   int sliceSize_;
   int k_;
   bool largest_;
-  sycl_local_acc_t<int> local_mem_;
+  sycl::local_accessor<int, 1> local_mem_;
 };
 
 // ================================================================
 // Launch function
 // ================================================================
+template <typename scalar_t, int SIMD>
+static void sbtopk_launch_kernel_simd(
+    const scalar_t* input,
+    scalar_t* topK,
+    int64_t* indices,
+    int numSlices,
+    int sliceSize,
+    int k,
+    bool largest) {
+  namespace syclex = sycl::ext::oneapi::experimental;
+  namespace intelex = sycl::ext::intel::experimental;
+
+  constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 8 : 4;
+  constexpr int ELEMS_PER_THREAD = 32;
+  using Functor = SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD>;
+
+  // Let compiler auto-select GRF size based on register pressure
+  syclex::properties kernel_props{
+      syclex::sub_group_size<SIMD>};
+
+  auto& q = at::xpu::getCurrentSYCLQueue();
+  q.submit([&](sycl::handler& cgh) {
+    sycl::local_accessor<int, 1> local_mem(SMEM_INTS, cgh);
+    Functor functor(input, topK, indices, numSlices, sliceSize, k, largest, local_mem);
+    cgh.parallel_for<Functor>(
+        sycl::nd_range<1>(
+            sycl::range<1>(numSlices * SBTOPK_BLOCK),
+            sycl::range<1>(SBTOPK_BLOCK)),
+        kernel_props,
+        functor);
+  });
+}
+
 template <typename scalar_t>
 static void sbtopk_launch_kernel(
     const scalar_t* input,
@@ -538,19 +565,11 @@ static void sbtopk_launch_kernel(
     int sliceSize,
     int k,
     bool largest) {
-  // VEC_SIZE: number of elements per vectorized load in countRadixUsingMask.
-  // fp32/int32/int64/double: 4 elements (128-bit / 256-bit load)
-  // fp16/bf16: 8 elements (128-bit load)
-  constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 8 : 4;
-  constexpr int ELEMS_PER_THREAD = 32; // 8x vec4 loads per iteration
-  SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD> functor(
+  // With __SYCL_KER_CONFIG_CONVENTION__ removed and local_accessor passed
+  // as functor member, reqd_sub_group_size / kernel properties work correctly.
+  // SIMD=32 with Kogge-Stone shuffle ops is now safe.
+  sbtopk_launch_kernel_simd<scalar_t, 32>(
       input, topK, indices, numSlices, sliceSize, k, largest);
-
-  sycl_kernel_submit(
-      sycl::range<1>(numSlices * SBTOPK_BLOCK),
-      sycl::range<1>(SBTOPK_BLOCK),
-      at::xpu::getCurrentSYCLQueue(),
-      functor);
 }
 
 bool sbtopk_try_launch(
