@@ -13,8 +13,10 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
+#include <comm/DeviceProperties.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
+#include <ATen/native/xpu/sycl/TensorTopKSbtopkV5Kernel.h>
 
 namespace at {
 namespace native {
@@ -294,7 +296,8 @@ static void sbtopk_launch_kernel(
   }
 }
 
-bool sbtopk_try_launch(
+// v6 internal launch — only called from dispatch below
+static bool sbtopk_v6_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -302,7 +305,6 @@ bool sbtopk_try_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices) {
-  // Only handle cases where sub-group topk is beneficial
   if (k > 16) {
     return false;
   }
@@ -311,7 +313,7 @@ bool sbtopk_try_launch(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
-      "sbtopk_xpu",
+      "sbtopk_v6_xpu",
       [&]() {
         sbtopk_launch_kernel<scalar_t>(
             static_cast<const scalar_t*>(self.const_data_ptr()),
@@ -324,6 +326,58 @@ bool sbtopk_try_launch(
       });
 
   return true;
+}
+
+// ================================================================
+// Dispatch: original (segmented group radix) vs v5 (radix select)
+//           vs v6 (sub-group bitonic merge)
+//
+// From 360-case benchmark on B580 (3 dtypes x 5 bs x 4 dims x 2 align x 3 k):
+//   - dim < 1024: original wins (sbtopk launch overhead dominates)
+//   - dim=1024, small bs (<256): original wins (v5 has 3-5x regression)
+//   - dim >= 1024, bs >= 256, k <= 16: v6 wins (sub-group parallelism)
+//   - dim >= 8192, bs < 256: v5 wins (bandwidth-bound, radix select)
+//   - dim >= 8192, k > 16: v5 (v6 only supports k<=16)
+// ================================================================
+bool sbtopk_try_launch(
+    const at::Tensor& self,
+    int64_t nsegments,
+    int64_t nelements,
+    int64_t k,
+    bool largest,
+    const at::Tensor& values,
+    const at::Tensor& indices) {
+  // sbtopk not beneficial for small dim
+  if (nelements < 1024) {
+    return false;
+  }
+
+  // v6: sub-group bitonic merge -- best for large batch, k<=16.
+  //
+  // Threshold: nsegments >= thread_slots / 4.
+  //   v6 uses 1 sub-group per slice (reading data once). v5/original read
+  //   data multiple times (radix select ~3 passes), so v6 reaches memory-BW
+  //   saturation at much lower occupancy. thread_slots/4 is the conservative
+  //   cutoff: only dispatch v6 when batch is clearly large enough.
+  //
+  // On B580: thread_slots = 160 EU * 8 HW threads = 1280, threshold = 320.
+  int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
+  int64_t v6_threshold = thread_slots / 4;
+  if (k <= 16 && nsegments >= v6_threshold && nelements >= 1024) {
+    return sbtopk_v6_try_launch(
+        self, nsegments, nelements, k, largest, values, indices);
+  }
+
+  // v5: radix select -- good for large dim.
+  // Use nelements >= 4096 so dim=1024/1025 falls through to original
+  // (v5 has 3-4x regressions at dim=1024 for medium/large batches).
+  if (nelements >= 4096) {
+    return sbtopk_v5_try_launch(
+        self, nsegments, nelements, k, largest, values, indices);
+  }
+
+  // Fallback to original for dim=1024-4095 or k>16 with small batch
+  return false;
 }
 
 } // namespace xpu
