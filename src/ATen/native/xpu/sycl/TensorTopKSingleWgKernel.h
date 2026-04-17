@@ -6,7 +6,10 @@ namespace at {
 namespace native {
 namespace xpu {
 
-TORCH_XPU_API bool sbtopk_v5_try_launch(
+// Single-workgroup top-k kernel (translated from CUDA single-block path).
+// One workgroup per slice: radix select to find the k-th value, then gather.
+// Good for large dim (≥4096), any batch size. Output is UNSORTED.
+TORCH_XPU_API bool single_wg_topk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,

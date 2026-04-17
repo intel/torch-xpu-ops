@@ -1,5 +1,14 @@
 /*
- * Faithful SYCL translation of CUDA sbtopk (single-block topk).
+ * Single-workgroup top-k kernel — SYCL translation of CUDA single-block path.
+ *
+ * One workgroup (1024 threads) handles one slice. Algorithm:
+ *   1. radixSelect: iterates MSB→LSB in RADIX_BITS=4 steps to identify
+ *      the k-th largest (or smallest) value.
+ *   2. gatherTopK: two-pass gather — first collects values strictly
+ *      better than the k-th value, then fills remaining slots with
+ *      values equal to the k-th value.
+ *
+ * Output is UNSORTED. Caller applies segmented sort if sorted output needed.
  *
  * CUDA sources translated 1:1:
  *   - SortingRadixSelect.cuh: countRadixUsingMask (line 176), findPattern (239)
@@ -17,16 +26,19 @@
  *   Bitfield<T>::getBitfield  -> software shift+mask (no PTX BFE/BFI in SYCL)
  *   smem[]                    -> int* from local accessor
  *
- * withinSliceStride = 1 (input is .contiguous() before calling sbtopk).
- * RADIX_BITS, RADIX_SIZE, RADIX_MASK are defined in SortingRadixSelect.h (=2,4,3).
- * sbtopk uses SBTOPK_RADIX_BITS=4, SBTOPK_RADIX_SIZE=16, SBTOPK_RADIX_MASK=15.
+ * withinSliceStride = 1 (input is .contiguous() before calling this kernel).
+ * Uses SBTOPK_RADIX_BITS=4, SBTOPK_RADIX_SIZE=16, SBTOPK_RADIX_MASK=15
+ * (halving radix passes vs the original RADIX_BITS=2).
+ *
+ * Future: CUDA multi-block radix path will be added for very large
+ * (nsegments × nelements) workloads.
  */
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
-#include <ATen/native/xpu/sycl/TensorTopKSbtopkV5Kernel.h>
+#include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
 
 
@@ -34,7 +46,7 @@ namespace at {
 namespace native {
 namespace xpu {
 
-// sbtopk uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
+// Uses RADIX_BITS=4 (16 digits per pass), halving radix passes for fp32.
 // Cannot reuse RADIX_BITS/SIZE/MASK from SortingRadixSelect.h (constexpr int, can't #undef).
 constexpr int SBTOPK_RADIX_BITS = 4;
 constexpr int SBTOPK_RADIX_SIZE = 16; // 2 ^ SBTOPK_RADIX_BITS
@@ -339,10 +351,10 @@ struct SbtopkGatherFunctor {
   // 2. Gather values strictly > topK (largest) or < topK (!largest)
   // 3. Fill remaining with values == topK
   //
-  // v4: Each thread processes ELEMS_PER_THREAD elements per iteration
-  // (LOADS_PER_ITER × vec4 loads), then ONE prefix scan.
-  // v3: 32 iterations × 2 barriers = 64 barriers for step2
-  // v4 (ELEMS_PER_THREAD=32): 4 iterations × 2 barriers = 8 barriers (8x reduction)
+  // Each thread processes ELEMS_PER_THREAD elements per iteration
+  // (LOADS_PER_ITER × vec loads), then ONE prefix scan per iteration.
+  // With ELEMS_PER_THREAD=32 and 1024 threads, each iteration covers
+  // 32K elements, so dim=131072 needs only 4 iterations.
   // ================================================================
   [[sycl::reqd_sub_group_size(SIMD)]]
   void operator()(sycl::nd_item<1> item) const {
@@ -364,9 +376,8 @@ struct SbtopkGatherFunctor {
 
     // Vectorized gather setup
     // ELEMS_PER_THREAD: each thread processes this many elements per iteration.
-    // Multiple vec4 loads per iteration, then ONE prefix scan.
-    // v3: ELEMS_PER_THREAD=4 (=VEC_SIZE) → 32 iterations for dim=131072
-    // v4: ELEMS_PER_THREAD=32 → 4 iterations → 8x fewer prefix scans/barriers
+    // Multiple vec loads per iteration, then ONE prefix scan.
+    // With ELEMS_PER_THREAD=32: 4 iterations for dim=131072.
     static constexpr int LOADS_PER_ITER = ELEMS_PER_THREAD / VEC_SIZE;
     using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
     int lid = item.get_local_id(0);
@@ -650,7 +661,7 @@ static void sbtopk_launch_kernel(
 
 #undef SBTOPK_LAUNCH
 
-bool sbtopk_v5_try_launch(
+bool single_wg_topk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -658,7 +669,7 @@ bool sbtopk_v5_try_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices) {
-  // Only handle cases where sbtopk is beneficial:
+  // Only handle cases where single-workgroup topk is beneficial:
   // large dim, small k, contiguous last-dim
   if (k > 256) {
     return false;
@@ -668,7 +679,7 @@ bool sbtopk_v5_try_launch(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
-      "sbtopk_xpu",
+      "single_wg_topk_xpu",
       [&]() {
         sbtopk_launch_kernel<scalar_t>(
             static_cast<const scalar_t*>(self.const_data_ptr()),

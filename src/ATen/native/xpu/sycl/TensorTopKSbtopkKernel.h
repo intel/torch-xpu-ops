@@ -28,17 +28,19 @@ enum class SbtopkResult : int {
   SORTED   = 2,
 };
 
-// Try to run topk using the sbtopk (single-block topk) kernel family.
+// Try to run topk using an optimized kernel path.
 //
 // This function is compiled in a separate translation unit
-// (TensorTopKSbtopkKernel.cpp) to isolate sbtopk's template instantiations
-// from the original topk kernel. The SYCL compiler's global optimization
-// decisions are affected by the total set of templates in a compilation unit;
-// keeping sbtopk separate prevents it from regressing the original kernel's
-// performance on small-dim cases where sbtopk is not even used.
+// (TensorTopKSbtopkKernel.cpp) to isolate the optimized kernels' template
+// instantiations from the original topk kernel. The SYCL compiler's global
+// optimization decisions are affected by the total set of templates in a
+// compilation unit; keeping them separate prevents regressing the original
+// kernel's performance on small-dim cases where the optimized paths are not
+// even used.
 //
-// Dispatches between v6 (sub-group bitonic merge, output SORTED) and v5
-// (radix select, output UNSORTED) based on (nsegments, nelements, k).
+// Dispatches between the subgroup topk kernel (sub-group bitonic merge,
+// output SORTED) and the single workgroup topk kernel (radix select,
+// output UNSORTED) based on (nsegments, nelements, k).
 TORCH_XPU_API SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,

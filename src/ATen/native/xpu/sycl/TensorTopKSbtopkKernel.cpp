@@ -1,13 +1,21 @@
 /*
- * Sub-group level top-k: each sub-group (32 threads) handles one slice.
- * Each thread maintains a sorted top-k buffer in registers.
- * Data loaded with vec4. Merge across sub-group via bitonic shuffle merge.
- * Zero SLM, zero barriers.
+ * Subgroup top-k kernel + dispatch logic for optimized topk paths.
+ *
+ * Subgroup top-k: each sub-group (32 lanes) handles one slice entirely
+ * in registers. Zero SLM, zero barriers.
  *
  * Algorithm:
- *   Phase 1: Each thread scans dim/32 elements, maintains sorted top-k buffer
+ *   Phase 1: Each lane scans dim/32 elements, maintains a sorted top-k
+ *            buffer via insertion sort (fully unrolled, no branches on
+ *            direction thanks to compile-time Largest template param).
  *   Phase 2: 5 levels of pairwise bitonic merge via sub-group shuffles
- *   Phase 3: Lane 0 writes k results
+ *            to combine 32 per-lane buffers into one global top-k.
+ *   Phase 3: Lane 0 writes k results. Output is already sorted.
+ *
+ * Dispatch logic routes to:
+ *   - Subgroup top-k: k ≤ 16, large batch — single-pass, output sorted
+ *   - Single-workgroup top-k: large dim (≥4096) — radix select, output unsorted
+ *   - Original kernel: small dim or fallback
  */
 
 #include <ATen/ATen.h>
@@ -16,7 +24,7 @@
 #include <comm/DeviceProperties.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
-#include <ATen/native/xpu/sycl/TensorTopKSbtopkV5Kernel.h>
+#include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 
 namespace at {
 namespace native {
@@ -303,8 +311,8 @@ static void sbtopk_launch_kernel(
   }
 }
 
-// v6 internal launch — only called from dispatch below
-static bool sbtopk_v6_try_launch(
+// Subgroup top-k: internal launch — only called from dispatch below
+static bool subgroup_topk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -320,7 +328,7 @@ static bool sbtopk_v6_try_launch(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
       self.scalar_type(),
-      "sbtopk_v6_xpu",
+      "subgroup_topk_xpu",
       [&]() {
         sbtopk_launch_kernel<scalar_t>(
             static_cast<const scalar_t*>(self.const_data_ptr()),
@@ -336,15 +344,14 @@ static bool sbtopk_v6_try_launch(
 }
 
 // ================================================================
-// Dispatch: original (segmented group radix) vs v5 (radix select)
-//           vs v6 (sub-group bitonic merge)
+// Dispatch: subgroup top-k vs single-workgroup top-k vs original
 //
-// From 360-case benchmark on B580 (3 dtypes x 5 bs x 4 dims x 2 align x 3 k):
-//   - dim < 1024: original wins (sbtopk launch overhead dominates)
-//   - dim=1024, small bs (<256): original wins (v5 has 3-5x regression)
-//   - dim >= 1024, bs >= 256, k <= 16: v6 wins (sub-group parallelism)
-//   - dim >= 8192, bs < 256: v5 wins (bandwidth-bound, radix select)
-//   - dim >= 8192, k > 16: v5 (v6 only supports k<=16)
+// From 432-case benchmark on B580 (3 dtypes x 6 bs x 4 dims x 2 align x 3 k):
+//   - dim < 1024: original wins (kernel launch overhead dominates)
+//   - dim=1024, small bs (<256): original wins
+//   - dim >= 1024, bs >= ~320, k <= 16: subgroup top-k wins
+//   - dim >= 4096, any bs: single-workgroup top-k wins
+//   - dim >= 4096, k > 16: single-workgroup top-k (subgroup only supports k<=16)
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
@@ -354,37 +361,37 @@ SbtopkResult sbtopk_try_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices) {
-  // sbtopk not beneficial for small dim
+  // Not beneficial for small dim
   if (nelements < 1024) {
     return SbtopkResult::FAILED;
   }
 
-  // v6: sub-group bitonic merge -- best for large batch, k<=16.
+  // Subgroup top-k: best for large batch, k<=16.
   // Output is ALREADY SORTED (descending for largest, ascending for smallest).
   //
   // Threshold: nsegments >= thread_slots / 4.
-  //   v6 uses 1 sub-group per slice (reading data once). v5/original read
-  //   data multiple times (radix select ~3 passes), so v6 reaches memory-BW
-  //   saturation at much lower occupancy. thread_slots/4 is the conservative
-  //   cutoff: only dispatch v6 when batch is clearly large enough.
+  //   Subgroup top-k uses 1 sub-group per slice (reading data once), while
+  //   single-wg/original read data multiple times (~3 radix passes). So
+  //   subgroup top-k reaches memory-BW saturation at much lower occupancy.
+  //   thread_slots/4 is the conservative cutoff.
   //
   // On B580: thread_slots = 160 EU * 8 HW threads = 1280, threshold = 320.
   int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
-  int64_t v6_threshold = thread_slots / 4;
-  if (k <= 16 && nsegments >= v6_threshold && nelements >= 1024) {
-    if (sbtopk_v6_try_launch(
+  int64_t sg_threshold = thread_slots / 4;
+  if (k <= 16 && nsegments >= sg_threshold && nelements >= 1024) {
+    if (subgroup_topk_try_launch(
             self, nsegments, nelements, k, largest, values, indices)) {
       return SbtopkResult::SORTED;
     }
     return SbtopkResult::FAILED;
   }
 
-  // v5: radix select -- good for large dim. Output is UNSORTED.
+  // Single-workgroup top-k: radix select, good for large dim. Output is UNSORTED.
   // Use nelements >= 4096 so dim=1024/1025 falls through to original
-  // (v5 has 3-4x regressions at dim=1024 for medium/large batches).
-  // v5 uses int for numSlices internally; reject if nsegments overflows int32.
+  // (single-wg has regressions at dim=1024 for medium/large batches).
+  // Single-wg uses int for numSlices internally; reject if nsegments overflows int32.
   if (nelements >= 4096 && nsegments <= std::numeric_limits<int>::max()) {
-    if (sbtopk_v5_try_launch(
+    if (single_wg_topk_try_launch(
             self, nsegments, nelements, k, largest, values, indices)) {
       return SbtopkResult::UNSORTED;
     }
