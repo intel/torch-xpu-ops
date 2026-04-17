@@ -1,6 +1,15 @@
 # Torch XPU Ops Review Notes
 
-This file is a repository-specific overlay for `torch-xpu-ops` reviews. Use it together with the generic PyTorch review references rather than as a replacement for them.
+Use this file as the repository-specific overlay for `torch-xpu-ops` reviews.
+
+## Why This Review Is Different
+
+Do not treat `torch-xpu-ops` like a generic operator repository.
+
+- Many operators are implemented here as SYCL kernels
+- Some linear algebra paths route through oneMKL
+- Some conv or gemm critical paths belong in upstream PyTorch oneDNN XPU code instead
+- The first review question is whether the change belongs in this repository and this backend path at all
 
 ## Repository File Map
 
@@ -15,54 +24,205 @@ Inspect these first when the change touches operator wiring, kernels, or tests:
 - `test/test_ops_xpu.py`
 - `.github/workflows/` when the PR changes CI, packaging, or platform coverage
 
-## What To Verify For Operator Changes
+## Eight High-Risk Review Areas
 
-1. Schema, dispatch, and backend wiring change together.
-2. The implementation location matches the registration path.
-3. The XPU path is actually exercised by tests, not just CPU or generic wrappers.
-4. CUDA or CPU parity claims are checked against the exact upstream counterpart.
-5. Forward, backward, and structured or generated paths still line up after the change.
+### 1. Semantic Parity Must Match CPU Or CUDA Behavior
 
-## Common Torch XPU Ops Review Patterns
+Check:
 
-| Concern family | What to verify | Typical outcome once verified |
-|---|---|---|
-| CUDA and XPU parity complaint | Check the exact CUDA upstream file and line | Often `Not valid` if CUDA behaves the same way |
-| Dtype dispatch reported as too narrow | Compare the XPU `AT_DISPATCH_*` macro against CUDA upstream | Often `Not valid` if the macro matches upstream coverage |
-| Batched sparse CSR or `dim > 2` complaint | Check whether CUDA and CPU support that path at all | Often `Not valid` if the path is unsupported everywhere |
-| `.wait()` blocking concern | Verify queue ordering, actual behavior change, and target execution model | Sometimes `Technically correct but not practically significant` on in-order queue paths |
-| Missing registration concern | Inspect yaml, generated wiring, and actual implementation file together | Do not conclude from one file alone |
+- Invalid-input error behavior
+- Dtype promotion and broadcasting
+- Stride semantics and non-contiguous handling
+- `functional`, `out=`, `inplace`, and view behavior
+- Empty tensors, zero-size dimensions, scalar tensors, and channels-last inputs
+- Backward, autograd, and deterministic behavior when relevant
 
-## XPU-Specific Review Checks
+Red flags:
 
-- Confirm XPU registration in the relevant yaml rather than inferring support from one source file.
-- Check whether the PR changes generated-code expectations, not just hand-written kernels.
-- Prefer XPU device-specific test coverage or existing operator coverage over isolated one-off tests.
-- When reviewing SYCL code, check read-only vs writable pointer use, address-space assumptions, and synchronization behavior explicitly.
-- Treat silent fallback behavior as a correctness question, not just a performance question.
+- Only the happy path is tested
+- Forward passes but backward or `out=` semantics are not covered
+- The PR adds an XPU-only special case that silently changes PyTorch-visible behavior
 
-## Thread Reply Conventions
+### 2. Async Execution And Hidden Synchronization
 
-- Start with a bold verdict.
-- Keep each public reply to roughly 2-4 sentences unless the user explicitly asks for more detail.
-- Cite an exact repo-relative or upstream file and line whenever possible.
-- Do not use thanks, apologies, or generic praise.
-- Add the `*[AI-assisted reply]*` footer only when the user wants repo-ready reply text.
+Check:
 
-## Bot Comment Rules
+- Host-side reads, `.item()`, debug printing, blocking helper APIs, or shape logic that depends on device values
+- Cross-stream ordering when results are consumed elsewhere
+- New `synchronize()` or wait calls added to force correctness
+- Event or stream recording behavior when buffers or outputs live across streams
 
-Do not agree with or duplicate automated comments from these sources:
+Red flags:
 
-- Any self-authored automated comment ending with `*[AI-assisted reply]*`
-- Any self-authored automated comment containing `Requested in [this mention]`
-- `copilot[bot]`
-- `github-actions[bot]`
+- A bug fix works only because it adds broad synchronization
+- Device results are pulled back to host in the hot path
+- Stream dependencies are implied but never expressed
 
-If the same file and line already have an equivalent self-authored automated reply, skip the duplicate unless there is materially new evidence.
+### 3. Memory Layout And Format Handling
 
-## How To Use The Generic References Here
+Check:
 
-- Use `pytorch-pr-review-skill.md` for the overall review workflow and output discipline.
-- Use `review-checklist.md` for CI-blind infrastructure, testing, and safety checks.
-- Use `bc-guidelines.md` when a user-visible behavior change might alter public semantics, exceptions, defaults, or compatibility.
-- Use this file to adapt those generic rules to `torch-xpu-ops` file layout, review patterns, and common false positives.
+- Whether contiguous and non-contiguous inputs are both truly supported
+- Whether channels-last inputs run a real optimized path or silently materialize contiguous intermediates
+- Whether the change adds extra copies or format conversions
+- Whether temporary buffers or `out=` allocations inflate memory usage or fragment the allocator
+
+Red flags:
+
+- The PR claims channels-last support but internally converts to plain contiguous format
+- The implementation only works correctly after a hidden `.contiguous()`
+- A temporary allocation is introduced for every launch without justification
+
+### 4. Dtype, Precision, And Numerical Stability
+
+Check:
+
+- Input dtype, compute dtype, and accumulation dtype separately
+- BF16, FP16, autocast, reductions, norms, softmax-style ops, and atomic accumulation patterns
+- Whether a new optimization downgrades accumulation precision
+- Whether tolerances are chosen per dtype rather than copied from CUDA defaults
+
+Red flags:
+
+- FP32 accumulation becomes BF16 or FP16 without explicit rationale
+- Only FP32 tests exist for an op that is expected to run under BF16 or FP16
+- Numerical thresholds do not match the dtype under test
+
+### 5. 64-Bit Indexing And Large Tensor Safety
+
+Check:
+
+- Index, offset, stride, `numel`, and shape-product math
+- Pointer arithmetic, flattened index helpers, and loop counters
+- Whether address calculations can overflow even when total element count stays below `2^31`
+- Whether tests cover realistic large-index cases
+
+Red flags:
+
+- `int` or `int32_t` is used for address math in generic tensor loops
+- The PR passes small tests but has no evidence for large strides or offsets
+- A helper assumes contiguous dense indexing and silently truncates
+
+### 6. SYCL Kernel Mapping And Intel XPU Performance Model
+
+Check:
+
+- Work-group size and subgroup assumptions
+- Branch-heavy inner loops or divergence
+- Global-memory access patterns and repeated host-side setup
+- Queue, context, descriptor, or temporary object construction inside hot paths
+- Whether a generalized implementation slows down the dominant fast path
+
+Red flags:
+
+- Work-group size looks arbitrary with no test or benchmark evidence
+- Every call rebuilds descriptors or other expensive launch metadata
+- Rare edge-case support makes the common path branchy and slow
+
+### 7. Dispatch, Fallback, And Registration
+
+Check:
+
+- Dispatch key registration and yaml wiring
+- Meta, native, backward, and generated-code alignment
+- Whether unsupported cases fail explicitly or intentionally fall back
+- Whether the implementation location matches the registration path and backend boundary
+
+Red flags:
+
+- The PR updates a kernel file but not the yaml or generated wiring that should move with it
+- A supposedly unsupported case silently takes a wrong generic path
+- A library-backed path is reimplemented locally without a strong reason
+
+### 8. Test Design Must Match XPU Risk, Not Just Functionality
+
+At minimum, look for coverage across these dimensions when relevant:
+
+1. Device dimension: XPU execution path is actually exercised
+2. Dtype dimension: FP32, BF16, FP16, and integer types when supported
+3. Layout dimension: contiguous, non-contiguous, and channels-last
+4. Shape dimension: small, large, corner, empty, and broadcasted cases
+5. API dimension: `functional`, `out=`, `inplace`, and backward
+6. Execution dimension: default stream and non-default stream when async behavior matters
+7. Numerical dimension: tolerances chosen per dtype
+8. Performance dimension: benchmark or regression evidence when the PR claims optimization
+
+Red flags:
+
+- Only one tiny happy-path tensor shape is tested
+- The tests cover CPU or generic wrappers but not the real XPU path
+- A performance PR has no benchmark or regression evidence
+
+## Practical Review Checklist
+
+### A. Backend Ownership
+
+- Should this change live in `torch-xpu-ops`, upstream PyTorch XPU, oneDNN XPU, or oneMKL?
+- Is this duplicating an existing backend or library path?
+
+### B. Correctness
+
+- Does behavior match CPU or CUDA semantics?
+- Are edge cases, `out=`, `inplace`, and backward covered?
+
+### C. Async And Synchronization
+
+- Is there hidden host synchronization?
+- Are stream dependencies explicit and correct?
+- Is synchronization being used to hide a race?
+
+### D. Layout And Memory
+
+- Is non-contiguous support real or just a hidden copy?
+- Is channels-last truly optimized or only accepted?
+- Are temporary buffers reasonable?
+
+### E. Precision And Numerics
+
+- Are BF16, FP16, autocast, and accumulation dtype handled correctly?
+- Are tolerances chosen for XPU and dtype rather than copied blindly?
+
+### F. Large Tensors
+
+- Is indexing 64-bit safe?
+- Can stride or offset math overflow?
+
+### G. Performance
+
+- Is the kernel mapping consistent with Intel XPU execution characteristics?
+- Is there benchmark evidence for claimed optimization?
+
+### H. Maintainability
+
+- Are fast path and fallback path clearly separated?
+- Are XPU-specific constraints explained where they are not obvious?
+
+## Reusable Review Comment Templates
+
+### Hidden Synchronization
+
+> Could this introduce host-side synchronization? If the goal is only to preserve correctness, can this depend on stream or event ordering instead of broad synchronization? The XPU path is asynchronous, so a new wait here may serialize otherwise independent work.
+
+### Layout Support
+
+> Is this path natively handling channels-last or non-contiguous inputs, or does it materialize a contiguous intermediate first? If the latter is intentional, please call it out and show the performance impact, since passing correctness tests alone would hide the regression.
+
+### BF16 Or FP16 Precision
+
+> Can you confirm the accumulation dtype on the BF16 or FP16 path? This looks like a numerically sensitive area, so I would expect explicit tests for autocast or low-precision reduce behavior rather than only FP32 coverage.
+
+### 64-Bit Indexing
+
+> The address math here still looks 32-bit. Can you verify large-tensor or large-stride behavior and add a 64-bit indexing case? Small tensors passing is not enough evidence for this part of the kernel.
+
+### Kernel Mapping And Performance
+
+> Is the work-group and branch structure here tuned for Intel GPU execution, or was it chosen for simplicity? This path looks hot, so I would expect either benchmark evidence or a short rationale for the subgroup and work-group design.
+
+## If You Can Only Check Three Things
+
+Prioritize these first:
+
+1. Hidden synchronization or incorrect stream ordering
+2. 64-bit indexing and large-tensor overflow risk
+3. Channels-last plus BF16 or FP16 correctness and performance integrity
