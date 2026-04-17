@@ -80,6 +80,13 @@ u16 = torch.uint16
 u32 = torch.uint32
 u64 = torch.uint64
 
+for _op in op_db:
+    if _op.name == "addbmm":
+        for _dtype_list in [_op.dtypesIfCUDA, _op.dtypesIfXPU, _op.dtypesIf.get("xpu")]:
+            if _dtype_list is not None and torch.bfloat16 not in _dtype_list:
+                _dtype_list.add(bf16)
+        break
+
 foreach_op_db = (
     foreach_unary_op_db
     + foreach_binary_op_db
