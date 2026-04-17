@@ -23,14 +23,12 @@ namespace xpu {
 //   SORTED   - ran; output is already sorted (descending for largest,
 //              ascending for smallest). Caller can skip sort.
 enum class SbtopkResult : int {
-  FAILED   = 0,
+  FAILED = 0,
   UNSORTED = 1,
-  SORTED   = 2,
+  SORTED = 2,
 };
 
-// Try to run topk using the subgroup topk kernel (separate TU to avoid
-// SYCL compiler interference with the original kernel's codegen).
-TORCH_XPU_API SbtopkResult sbtopk_try_launch(
+SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,

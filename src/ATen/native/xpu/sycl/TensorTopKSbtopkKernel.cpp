@@ -18,11 +18,11 @@
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
-#include <limits>
-#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
-#include <comm/DeviceProperties.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
+#include <comm/DeviceProperties.h>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
+#include <limits>
 
 namespace at {
 namespace native {
@@ -40,32 +40,38 @@ static constexpr int SG_SIZE = 32;
 // VEC_SIZE: vectorized load width
 // Largest: compile-time direction flag. Eliminates per-element branches
 //          on largest_ that otherwise pessimize the tight insert/merge loops.
-// IndexT: int32 for nsegments <= INT_MAX (common), int64_t for huge batch.
-//         Mirrors CUDA's canUse32BitIndexMath dispatch. Only numSlices_ and
-//         the slice variable need IndexT; sliceSize_ and k_ stay int because
-//         nelements is already checked <= INT_MAX.
+// IndexT: int32 when total elements (nsegments * nelements) <= INT_MAX
+//         (common case), int64_t otherwise.  Mirrors CUDA's
+//         canUse32BitIndexMath.  int32 avoids 64-bit arithmetic on slice
+//         indices and element indices, reducing register pressure.
 // ================================================================
-template <typename scalar_t, int K, int VEC_SIZE, bool Largest, typename IndexT = int>
+template <
+    typename scalar_t,
+    int K,
+    int VEC_SIZE,
+    bool Largest,
+    typename IndexT = int>
 struct SubgroupTopKFunctor {
-
   // Insert val into a K-sorted buffer. For Largest=true the buffer is sorted
   // descending (top_vals[0] is max); for Largest=false it is sorted ascending
   // (top_vals[0] is min). The comparator `better(a, b)` means "a should sit
   // above b in the buffer" — i.e. strictly greater for largest, strictly less
   // for smallest.
   //
-  // idx is the element position within a slice (0..sliceSize-1), always int
-  // because sliceSize <= INT_MAX. IndexT is only for the slice count.
-  //
   // Fully unrolled, no early break — SIMD-friendly.
   inline void insert(
-      scalar_t* top_vals, int* top_idx, int count,
-      scalar_t val, int idx) const {
+      scalar_t* top_vals,
+      IndexT* top_idx,
+      int count,
+      scalar_t val,
+      IndexT idx) const {
     // Threshold is at the bottom of the buffer (top_vals[K-1]).
     if constexpr (Largest) {
-      if (count >= K && !(val > top_vals[K - 1])) return;
+      if (count >= K && !(val > top_vals[K - 1]))
+        return;
     } else {
-      if (count >= K && !(val < top_vals[K - 1])) return;
+      if (count >= K && !(val < top_vals[K - 1]))
+        return;
     }
     bool inserted = false;
 #pragma unroll
@@ -91,13 +97,15 @@ struct SubgroupTopKFunctor {
   // Step 1: A[i] = better(A[i], B[K-1-i]) — produces bitonic sequence.
   // Step 2: bitonic sort restores the sorted-by-better order on A.
   inline void bitonic_merge(
-      scalar_t* A, int* A_idx,
-      const scalar_t* B, const int* B_idx) const {
+      scalar_t* A,
+      IndexT* A_idx,
+      const scalar_t* B,
+      const IndexT* B_idx) const {
     // Step 1: compare with reversed partner
 #pragma unroll
     for (int i = 0; i < K; ++i) {
       scalar_t bv = B[K - 1 - i];
-      int bi = B_idx[K - 1 - i];
+      IndexT bi = B_idx[K - 1 - i];
       bool take;
       if constexpr (Largest) {
         take = bv > A[i];
@@ -109,7 +117,27 @@ struct SubgroupTopKFunctor {
         A_idx[i] = bi;
       }
     }
-    // Step 2: bitonic sort in the "better" direction
+    // Step 2: bitonic sort — standard bitonic merge network.
+    //
+    // After step 1, A[0..K-1] is bitonic (first decreasing then increasing,
+    // or vice versa).  At stride = K/2 we compare A[i] with A[i + K/2]
+    // for i in [0, K/2) and swap so the "better" value goes to the low
+    // half.  This guarantees:
+    //   (a) every element in A[0..K/2-1] >= every element in A[K/2..K-1],
+    //   (b) each half is itself bitonic (splitting a bitonic sequence at
+    //       the midpoint with min/max produces two bitonic subsequences).
+    // Recurse with stride K/4, K/8, ..., 1 and each sub-piece halves
+    // again, until every piece has length 1 — the array is sorted.
+    //
+    // j = i ^ stride pairs each element with its partner at distance
+    // `stride`.  The guard j > i ensures each pair is processed once.
+    //
+    // Example for K = 16:
+    //   stride 8: (0,8) (1,9) (2,10) ... (7,15)   — 8 pairs
+    //   stride 4: (0,4) (1,5) (2,6) (3,7)          — two groups of 4
+    //             (8,12) (9,13) (10,14) (11,15)
+    //   stride 2: (0,2) (1,3) (4,6) (5,7) ...      — four groups of 2
+    //   stride 1: (0,1) (2,3) (4,5) ... (14,15)    — 8 adjacent pairs
 #pragma unroll
     for (int stride = K / 2; stride >= 1; stride >>= 1) {
 #pragma unroll
@@ -122,31 +150,37 @@ struct SubgroupTopKFunctor {
           swap = (j > i) && (A[i] > A[j]);
         }
         if (swap) {
-          scalar_t tv = A[i]; A[i] = A[j]; A[j] = tv;
-          int ti = A_idx[i]; A_idx[i] = A_idx[j]; A_idx[j] = ti;
+          scalar_t tv = A[i];
+          A[i] = A[j];
+          A[j] = tv;
+          IndexT ti = A_idx[i];
+          A_idx[i] = A_idx[j];
+          A_idx[j] = ti;
         }
       }
     }
   }
 
-  [[sycl::reqd_sub_group_size(32)]]
   void operator()(sycl::nd_item<1> item) const {
     sycl::sub_group sg = item.get_sub_group();
     int sg_lid = sg.get_local_linear_id();
 
     // Each sub-group handles one slice
     int sgs_per_wg = item.get_local_range(0) / SG_SIZE;
-    IndexT slice = static_cast<IndexT>(item.get_group_linear_id()) * sgs_per_wg
-                   + sg.get_group_linear_id();
-    if (slice >= numSlices_) return;
+    IndexT slice =
+        static_cast<IndexT>(item.get_group_linear_id()) * sgs_per_wg +
+        sg.get_group_linear_id();
+    if (slice >= numSlices_)
+      return;
 
-    const scalar_t* inputSlice = inputData_ + static_cast<int64_t>(slice) * sliceSize_;
+    const scalar_t* inputSlice =
+        inputData_ + static_cast<int64_t>(slice) * sliceSize_;
     scalar_t* topKSlice = topKData_ + static_cast<int64_t>(slice) * k_;
     int64_t* indicesSlice = indicesData_ + static_cast<int64_t>(slice) * k_;
 
     // Initialize sorted top-K buffer
     scalar_t top_vals[K];
-    int top_idx_local[K];
+    IndexT top_idx_local[K];
     scalar_t init_val;
     if constexpr (Largest) {
       if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
@@ -172,22 +206,32 @@ struct SubgroupTopKFunctor {
     using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
     int stride = SG_SIZE * VEC_SIZE;
 
-    int base;
-    for (base = sg_lid * VEC_SIZE; base + VEC_SIZE <= sliceSize_; base += stride) {
+    int64_t base;
+    for (base = sg_lid * VEC_SIZE; base + VEC_SIZE <= sliceSize_;
+         base += stride) {
       scalar_t src[VEC_SIZE];
       *reinterpret_cast<LoadT*>(&src) =
           *reinterpret_cast<const LoadT*>(&inputSlice[base]);
 #pragma unroll
       for (int v = 0; v < VEC_SIZE; ++v) {
-        insert(top_vals, top_idx_local, count, src[v], base + v);
-        if (count < K) count++;
+        insert(
+            top_vals,
+            top_idx_local,
+            count,
+            src[v],
+            static_cast<IndexT>(base + v));
+        if (count < K)
+          count++;
       }
     }
     // Scalar tail
-    for (int idx = base; idx < sliceSize_ && idx < base + VEC_SIZE; ++idx) {
+    for (IndexT idx = static_cast<IndexT>(base);
+         idx < sliceSize_ && idx < base + VEC_SIZE;
+         ++idx) {
       scalar_t val = inputSlice[idx];
       insert(top_vals, top_idx_local, count, val, idx);
-      if (count < K) count++;
+      if (count < K)
+        count++;
     }
 
     // ---- Phase 2: sub-group bitonic merge (5 levels for sg_size=32) ----
@@ -196,7 +240,7 @@ struct SubgroupTopKFunctor {
       int partner = sg_lid ^ (1 << d);
 
       scalar_t partner_vals[K];
-      int partner_idx[K];
+      IndexT partner_idx[K];
 #pragma unroll
       for (int i = 0; i < K; ++i) {
         partner_vals[i] = sycl::select_from_group(sg, top_vals[i], partner);
@@ -220,7 +264,7 @@ struct SubgroupTopKFunctor {
       scalar_t* topKData,
       int64_t* indicesData,
       IndexT numSlices,
-      int sliceSize,
+      int64_t sliceSize,
       int k)
       : inputData_(inputData),
         topKData_(topKData),
@@ -233,7 +277,7 @@ struct SubgroupTopKFunctor {
   scalar_t* topKData_;
   int64_t* indicesData_;
   IndexT numSlices_;
-  int sliceSize_;
+  int64_t sliceSize_;
   int k_;
 };
 
@@ -246,11 +290,12 @@ static void sbtopk_launch_impl(
     scalar_t* topK,
     int64_t* indices,
     IndexT numSlices,
-    int sliceSize,
+    int64_t sliceSize,
     int k) {
   constexpr int WG_SIZE = 256; // 8 sub-groups per work-group
   constexpr int SGS_PER_WG = WG_SIZE / SG_SIZE;
-  auto num_wgs = (static_cast<int64_t>(numSlices) + SGS_PER_WG - 1) / SGS_PER_WG;
+  auto num_wgs =
+      (static_cast<int64_t>(numSlices) + SGS_PER_WG - 1) / SGS_PER_WG;
 
   SubgroupTopKFunctor<scalar_t, K, VEC_SIZE, Largest, IndexT> functor(
       input, topK, indices, numSlices, sliceSize, k);
@@ -260,35 +305,40 @@ static void sbtopk_launch_impl(
     cgh.parallel_for(
         sycl::nd_range<1>(num_wgs * WG_SIZE, WG_SIZE),
         syclex::properties{
-            syclex::sub_group_size<SG_SIZE>,
-            intelex::grf_size<128>},
+            syclex::sub_group_size<SG_SIZE>, intelex::grf_size<128>},
         functor);
   });
 }
 
-// Vec-size dispatch: picks the largest VEC_SIZE compatible with (dtype, sliceSize).
+// Vec-size dispatch: picks the largest VEC_SIZE compatible with
+// (dtype, sliceSize).
 template <typename scalar_t, int K, bool Largest, typename IndexT>
 static void sbtopk_launch_vec_dispatch(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
     IndexT numSlices,
-    int sliceSize,
+    int64_t sliceSize,
     int k) {
   // Max VEC_SIZE for this dtype
   constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
 
   // Pick largest VEC_SIZE such that:
-  //   1. SG_SIZE * VEC_SIZE <= sliceSize  (all threads get at least one full vector)
+  //   1. SG_SIZE * VEC_SIZE <= sliceSize  (all threads get at
+  //      least one full vector)
   //   2. sliceSize % VEC_SIZE == 0        (slice boundaries are aligned)
   if (MAX_VEC >= 8 && sliceSize % 8 == 0 && SG_SIZE * 8 <= sliceSize) {
-    sbtopk_launch_impl<scalar_t, K, 8, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 8, Largest, IndexT>(
+        input, topK, indices, numSlices, sliceSize, k);
   } else if (MAX_VEC >= 4 && sliceSize % 4 == 0 && SG_SIZE * 4 <= sliceSize) {
-    sbtopk_launch_impl<scalar_t, K, 4, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 4, Largest, IndexT>(
+        input, topK, indices, numSlices, sliceSize, k);
   } else if (sliceSize % 2 == 0 && SG_SIZE * 2 <= sliceSize) {
-    sbtopk_launch_impl<scalar_t, K, 2, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 2, Largest, IndexT>(
+        input, topK, indices, numSlices, sliceSize, k);
   } else {
-    sbtopk_launch_impl<scalar_t, K, 1, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 1, Largest, IndexT>(
+        input, topK, indices, numSlices, sliceSize, k);
   }
 }
 
@@ -298,16 +348,16 @@ static void sbtopk_launch_kernel(
     scalar_t* topK,
     int64_t* indices,
     int64_t numSlices,
-    int sliceSize,
+    int64_t sliceSize,
     int k,
     bool largest) {
   constexpr int K = 16;
   // Dispatch on (largest, IndexT) at the outermost level:
   //   - largest: so tight insert/merge loops have no runtime direction branch
-  //   - IndexT: int32 when nsegments fits (common), int64 for huge batch.
-  //     Mirrors CUDA's canUse32BitIndexMath. int32 avoids 64-bit slice
+  //   - IndexT: int32 when total elements fit (common), int64 otherwise.
+  //     Mirrors CUDA's canUse32BitIndexMath. int32 avoids 64-bit
   //     arithmetic and reduces register pressure.
-  if (numSlices <= std::numeric_limits<int>::max()) {
+  if (numSlices * sliceSize <= std::numeric_limits<int>::max()) {
     int numSlices32 = static_cast<int>(numSlices);
     if (largest) {
       sbtopk_launch_vec_dispatch<scalar_t, K, true, int>(
@@ -357,7 +407,8 @@ SbtopkResult sbtopk_try_launch(
   //   thread_slots/4 is the conservative cutoff.
   //
   // On B580: thread_slots = 160 EU * 8 HW threads = 1280, threshold = 320.
-  int64_t thread_slots = ::xpu::sycl::syclGpuEuCount() * ::xpu::sycl::syclGpuHWThreadsPerEU();
+  int64_t thread_slots =
+      ::xpu::sycl::syclGpuEuCount() * ::xpu::sycl::syclGpuHWThreadsPerEU();
   int64_t sg_threshold = thread_slots / 4;
   if (k <= 16 && nsegments >= sg_threshold) {
     AT_DISPATCH_ALL_TYPES_AND2(
@@ -371,7 +422,7 @@ SbtopkResult sbtopk_try_launch(
               static_cast<scalar_t*>(values.data_ptr()),
               static_cast<int64_t*>(indices.data_ptr()),
               nsegments,
-              static_cast<int>(nelements),
+              nelements,
               static_cast<int>(k),
               largest);
         });
