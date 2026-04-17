@@ -1962,21 +1962,19 @@ class TestSparse(TestSparseBase):
         ab = torch.bmm(a, b)
         self.assertEqual(ab, torch.zeros((2, 1, 1), device=device))
 
-    @onlyOn(["cuda", "xpu"])
+    @onlyOn(["xpu"])
     @unittest.skipIf(
-        not IS_WINDOWS or not TEST_WITH_ROCM,
-        "this test ensures bmm sparse-dense CUDA gives an error when run on Windows with CUDA < 11.0",
+        not IS_WINDOWS,
+        "Windows-specific error check; skipping on non-Windows",
     )
-    @unittest.skipIf(TEST_XPU, "bmm sparse-dense XPU is not yet supported")
     @dtypes(torch.double)
     def test_bmm_windows_error(self, device, dtype):
-        a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device_type)
-        b = torch.rand(2, 2, 2, dtype=dtype).to(device_type)
-        with self.assertRaisesRegex(
-            RuntimeError,
-            "bmm sparse-dense CUDA is not supported on Windows with cuda before 11.0",
-        ):
-            ab = a.bmm(b)
+        self.assertTrue(device.startswith("xpu"))
+        a = torch.rand(2, 2, 2, dtype=dtype).to_sparse().to(device)
+        b = torch.rand(2, 2, 2, dtype=dtype).to(device)
+        # XPU supports sparse-dense bmm; verify result matches dense reference
+        ab = a.bmm(b)
+        self.assertEqual(ab, torch.bmm(a.to_dense(), b))
 
     @onlyCPU
     @coalescedonoff
