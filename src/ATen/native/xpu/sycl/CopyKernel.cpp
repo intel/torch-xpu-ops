@@ -35,17 +35,16 @@ struct CastScalarFunc {
   }
 };
 
-// TODO: Remove this work around for Half -0.0
+// TODO: Remove this workaround for Half -0.0
 template <>
 struct CastScalarFunc<Half, float> {
   float operator()(Half src_val) const {
-    if (src_val.x == 0x8000)
-      return -0.0f;
-    return (float)src_val;
+    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
+    return (float)val;
   }
 };
 
-// TODO: Remove this work around for Half -0.0
+// TODO: Remove this workaround for Half -0.0
 template <>
 struct CastScalarFunc<Half, BFloat16> {
   BFloat16 operator()(Half src_val) const {
