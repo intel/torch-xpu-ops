@@ -28,18 +28,8 @@ enum class SbtopkResult : int {
   SORTED   = 2,
 };
 
-// Try to run topk using the subgroup topk kernel.
-//
-// This function is compiled in a separate translation unit
-// (TensorTopKSbtopkKernel.cpp) to isolate the kernel's template
-// instantiations from the original topk kernel. The SYCL compiler's global
-// optimization decisions are affected by the total set of templates in a
-// compilation unit; keeping them separate prevents regressing the original
-// kernel's performance on small-dim cases where the optimized path is not
-// even used.
-//
-// Currently dispatches to the subgroup topk kernel (sub-group bitonic merge,
-// output SORTED) when k <= 16 and batch size is large enough.
+// Try to run topk using the subgroup topk kernel (separate TU to avoid
+// SYCL compiler interference with the original kernel's codegen).
 TORCH_XPU_API SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,

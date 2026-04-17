@@ -18,14 +18,18 @@
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <limits>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <comm/DeviceProperties.h>
-#include <comm/SYCLHelpers.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 
 namespace at {
 namespace native {
 namespace xpu {
+
+namespace syclex = sycl::ext::oneapi::experimental;
+namespace intelex = sycl::ext::intel::experimental;
 
 static constexpr int SG_SIZE = 32;
 
@@ -49,6 +53,9 @@ struct SubgroupTopKFunctor {
   // (top_vals[0] is min). The comparator `better(a, b)` means "a should sit
   // above b in the buffer" — i.e. strictly greater for largest, strictly less
   // for smallest.
+  //
+  // idx is the element position within a slice (0..sliceSize-1), always int
+  // because sliceSize <= INT_MAX. IndexT is only for the slice count.
   //
   // Fully unrolled, no early break — SIMD-friendly.
   inline void insert(
@@ -142,9 +149,17 @@ struct SubgroupTopKFunctor {
     int top_idx_local[K];
     scalar_t init_val;
     if constexpr (Largest) {
-      init_val = -std::numeric_limits<scalar_t>::infinity();
+      if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
+        init_val = -std::numeric_limits<scalar_t>::infinity();
+      } else {
+        init_val = std::numeric_limits<scalar_t>::lowest();
+      }
     } else {
-      init_val = std::numeric_limits<scalar_t>::infinity();
+      if constexpr (std::numeric_limits<scalar_t>::has_infinity) {
+        init_val = std::numeric_limits<scalar_t>::infinity();
+      } else {
+        init_val = std::numeric_limits<scalar_t>::max();
+      }
     }
 #pragma unroll
     for (int i = 0; i < K; ++i) {
@@ -240,11 +255,15 @@ static void sbtopk_launch_impl(
   SubgroupTopKFunctor<scalar_t, K, VEC_SIZE, Largest, IndexT> functor(
       input, topK, indices, numSlices, sliceSize, k);
 
-  sycl_kernel_submit(
-      sycl::range<1>(num_wgs * WG_SIZE),
-      sycl::range<1>(WG_SIZE),
-      at::xpu::getCurrentSYCLQueue(),
-      functor);
+  auto q = at::xpu::getCurrentSYCLQueue();
+  q.submit([&](sycl::handler& cgh) {
+    cgh.parallel_for(
+        sycl::nd_range<1>(num_wgs * WG_SIZE, WG_SIZE),
+        syclex::properties{
+            syclex::sub_group_size<SG_SIZE>,
+            intelex::grf_size<128>},
+        functor);
+  });
 }
 
 // Vec-size dispatch: picks the largest VEC_SIZE compatible with (dtype, sliceSize).
