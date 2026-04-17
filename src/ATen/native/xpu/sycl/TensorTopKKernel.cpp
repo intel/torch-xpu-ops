@@ -115,7 +115,9 @@ void topk_kernel(
         scalar_t* values_ptr = values_.data_ptr<scalar_t>();
         int64_t* indices_ptr = indices_.data_ptr<int64_t>();
 
-        if (!sbtopk_try_launch(self_, nsegments, nelements, k, largest, values_, indices_)) {
+        SbtopkResult sbtopk_result = sbtopk_try_launch(
+            self_, nsegments, nelements, k, largest, values_, indices_);
+        if (sbtopk_result == SbtopkResult::FAILED) {
           segmented_group_select_pairs<scalar_t, int64_t>(
               self_ptr,
               values_ptr,
@@ -127,7 +129,10 @@ void topk_kernel(
               largest);
         }
 
-        if (sorted) {
+        // Only sort if the user asked for sorted output AND sbtopk did not
+        // already produce a sorted result. v6 returns SORTED; v5 and the
+        // original radix select return UNSORTED (or FAILED).
+        if (sorted && sbtopk_result != SbtopkResult::SORTED) {
           segmented_sort_pairs<scalar_t, int64_t>(
               values_ptr,
               values_ptr,

@@ -16,9 +16,19 @@ namespace at {
 namespace native {
 namespace xpu {
 
-// Try to run topk using the sbtopk (single-block topk) kernel.
-// Returns true if sbtopk was used, false if the caller should fall back
-// to the original group radix select.
+// Result of sbtopk_try_launch.
+//   FAILED   - sbtopk did not run; caller should fall back to original.
+//   UNSORTED - sbtopk ran; output contains top-k values but is not sorted.
+//              Caller must sort if sorted output is requested.
+//   SORTED   - sbtopk ran; output is already sorted (descending for largest,
+//              ascending for smallest). Caller can skip sort.
+enum class SbtopkResult : int {
+  FAILED   = 0,
+  UNSORTED = 1,
+  SORTED   = 2,
+};
+
+// Try to run topk using the sbtopk (single-block topk) kernel family.
 //
 // This function is compiled in a separate translation unit
 // (TensorTopKSbtopkKernel.cpp) to isolate sbtopk's template instantiations
@@ -27,11 +37,9 @@ namespace xpu {
 // keeping sbtopk separate prevents it from regressing the original kernel's
 // performance on small-dim cases where sbtopk is not even used.
 //
-// Note: this function only performs the radix selection (unsorted).
-// The caller is responsible for sorting the k results if needed, since
-// segmented_sort_pairs lives in SortingKernels.h and including it here
-// would defeat the purpose of compilation unit isolation.
-TORCH_XPU_API bool sbtopk_try_launch(
+// Dispatches between v6 (sub-group bitonic merge, output SORTED) and v5
+// (radix select, output UNSORTED) based on (nsegments, nelements, k).
+TORCH_XPU_API SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,

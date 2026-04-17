@@ -339,7 +339,7 @@ static bool sbtopk_v6_try_launch(
 //   - dim >= 8192, bs < 256: v5 wins (bandwidth-bound, radix select)
 //   - dim >= 8192, k > 16: v5 (v6 only supports k<=16)
 // ================================================================
-bool sbtopk_try_launch(
+SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
     int64_t nsegments,
     int64_t nelements,
@@ -349,10 +349,11 @@ bool sbtopk_try_launch(
     const at::Tensor& indices) {
   // sbtopk not beneficial for small dim
   if (nelements < 1024) {
-    return false;
+    return SbtopkResult::FAILED;
   }
 
   // v6: sub-group bitonic merge -- best for large batch, k<=16.
+  // Output is ALREADY SORTED (descending for largest, ascending for smallest).
   //
   // Threshold: nsegments >= thread_slots / 4.
   //   v6 uses 1 sub-group per slice (reading data once). v5/original read
@@ -364,20 +365,26 @@ bool sbtopk_try_launch(
   int64_t thread_slots = syclGpuEuCount() * syclGpuHWThreadsPerEU();
   int64_t v6_threshold = thread_slots / 4;
   if (k <= 16 && nsegments >= v6_threshold && nelements >= 1024) {
-    return sbtopk_v6_try_launch(
-        self, nsegments, nelements, k, largest, values, indices);
+    if (sbtopk_v6_try_launch(
+            self, nsegments, nelements, k, largest, values, indices)) {
+      return SbtopkResult::SORTED;
+    }
+    return SbtopkResult::FAILED;
   }
 
-  // v5: radix select -- good for large dim.
+  // v5: radix select -- good for large dim. Output is UNSORTED.
   // Use nelements >= 4096 so dim=1024/1025 falls through to original
   // (v5 has 3-4x regressions at dim=1024 for medium/large batches).
   if (nelements >= 4096) {
-    return sbtopk_v5_try_launch(
-        self, nsegments, nelements, k, largest, values, indices);
+    if (sbtopk_v5_try_launch(
+            self, nsegments, nelements, k, largest, values, indices)) {
+      return SbtopkResult::UNSORTED;
+    }
+    return SbtopkResult::FAILED;
   }
 
   // Fallback to original for dim=1024-4095 or k>16 with small batch
-  return false;
+  return SbtopkResult::FAILED;
 }
 
 } // namespace xpu
