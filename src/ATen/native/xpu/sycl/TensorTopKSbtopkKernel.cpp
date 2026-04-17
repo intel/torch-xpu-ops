@@ -31,8 +31,12 @@ static constexpr int SG_SIZE = 32;
 // VEC_SIZE: vectorized load width
 // Largest: compile-time direction flag. Eliminates per-element branches
 //          on largest_ that otherwise pessimize the tight insert/merge loops.
+// IndexT: int32 for nsegments <= INT_MAX (common), int64_t for huge batch.
+//         Mirrors CUDA's canUse32BitIndexMath dispatch. Only numSlices_ and
+//         the slice variable need IndexT; sliceSize_ and k_ stay int because
+//         nelements is already checked <= INT_MAX.
 // ================================================================
-template <typename scalar_t, int K, int VEC_SIZE, bool Largest>
+template <typename scalar_t, int K, int VEC_SIZE, bool Largest, typename IndexT = int>
 struct SubgroupTopKFunctor {
 
   // Insert val into a K-sorted buffer. For Largest=true the buffer is sorted
@@ -120,13 +124,13 @@ struct SubgroupTopKFunctor {
 
     // Each sub-group handles one slice
     int sgs_per_wg = item.get_local_range(0) / SG_SIZE;
-    int slice = item.get_group_linear_id() * sgs_per_wg
-                + sg.get_group_linear_id();
+    IndexT slice = static_cast<IndexT>(item.get_group_linear_id()) * sgs_per_wg
+                   + sg.get_group_linear_id();
     if (slice >= numSlices_) return;
 
-    const scalar_t* inputSlice = inputData_ + (int64_t)slice * sliceSize_;
-    scalar_t* topKSlice = topKData_ + (int64_t)slice * k_;
-    int64_t* indicesSlice = indicesData_ + (int64_t)slice * k_;
+    const scalar_t* inputSlice = inputData_ + static_cast<int64_t>(slice) * sliceSize_;
+    scalar_t* topKSlice = topKData_ + static_cast<int64_t>(slice) * k_;
+    int64_t* indicesSlice = indicesData_ + static_cast<int64_t>(slice) * k_;
 
     // Initialize sorted top-K buffer
     scalar_t top_vals[K];
@@ -195,7 +199,7 @@ struct SubgroupTopKFunctor {
       const scalar_t* inputData,
       scalar_t* topKData,
       int64_t* indicesData,
-      int numSlices,
+      IndexT numSlices,
       int sliceSize,
       int k)
       : inputData_(inputData),
@@ -208,7 +212,7 @@ struct SubgroupTopKFunctor {
   const scalar_t* inputData_;
   scalar_t* topKData_;
   int64_t* indicesData_;
-  int numSlices_;
+  IndexT numSlices_;
   int sliceSize_;
   int k_;
 };
@@ -216,19 +220,19 @@ struct SubgroupTopKFunctor {
 // ================================================================
 // Launch function
 // ================================================================
-template <typename scalar_t, int K, int VEC_SIZE, bool Largest>
+template <typename scalar_t, int K, int VEC_SIZE, bool Largest, typename IndexT>
 static void sbtopk_launch_impl(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
-    int numSlices,
+    IndexT numSlices,
     int sliceSize,
     int k) {
   constexpr int WG_SIZE = 256; // 8 sub-groups per work-group
   constexpr int SGS_PER_WG = WG_SIZE / SG_SIZE;
-  int num_wgs = (numSlices + SGS_PER_WG - 1) / SGS_PER_WG;
+  auto num_wgs = (static_cast<int64_t>(numSlices) + SGS_PER_WG - 1) / SGS_PER_WG;
 
-  SubgroupTopKFunctor<scalar_t, K, VEC_SIZE, Largest> functor(
+  SubgroupTopKFunctor<scalar_t, K, VEC_SIZE, Largest, IndexT> functor(
       input, topK, indices, numSlices, sliceSize, k);
 
   sycl_kernel_submit(
@@ -239,12 +243,12 @@ static void sbtopk_launch_impl(
 }
 
 // Vec-size dispatch: picks the largest VEC_SIZE compatible with (dtype, sliceSize).
-template <typename scalar_t, int K, bool Largest>
+template <typename scalar_t, int K, bool Largest, typename IndexT>
 static void sbtopk_launch_vec_dispatch(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
-    int numSlices,
+    IndexT numSlices,
     int sliceSize,
     int k) {
   // Max VEC_SIZE for this dtype
@@ -254,13 +258,13 @@ static void sbtopk_launch_vec_dispatch(
   //   1. SG_SIZE * VEC_SIZE <= sliceSize  (all threads get at least one full vector)
   //   2. sliceSize % VEC_SIZE == 0        (slice boundaries are aligned)
   if (MAX_VEC >= 8 && sliceSize % 8 == 0 && SG_SIZE * 8 <= sliceSize) {
-    sbtopk_launch_impl<scalar_t, K, 8, Largest>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 8, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
   } else if (MAX_VEC >= 4 && sliceSize % 4 == 0 && SG_SIZE * 4 <= sliceSize) {
-    sbtopk_launch_impl<scalar_t, K, 4, Largest>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 4, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
   } else if (sliceSize % 2 == 0 && SG_SIZE * 2 <= sliceSize) {
-    sbtopk_launch_impl<scalar_t, K, 2, Largest>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 2, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
   } else {
-    sbtopk_launch_impl<scalar_t, K, 1, Largest>(input, topK, indices, numSlices, sliceSize, k);
+    sbtopk_launch_impl<scalar_t, K, 1, Largest, IndexT>(input, topK, indices, numSlices, sliceSize, k);
   }
 }
 
@@ -269,19 +273,33 @@ static void sbtopk_launch_kernel(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
-    int numSlices,
+    int64_t numSlices,
     int sliceSize,
     int k,
     bool largest) {
   constexpr int K = 16;
-  // Dispatch on largest at the outermost level so that the tight insert/merge
-  // loops inside the kernel have no runtime branch on direction.
-  if (largest) {
-    sbtopk_launch_vec_dispatch<scalar_t, K, true>(
-        input, topK, indices, numSlices, sliceSize, k);
+  // Dispatch on (largest, IndexT) at the outermost level:
+  //   - largest: so tight insert/merge loops have no runtime direction branch
+  //   - IndexT: int32 when nsegments fits (common), int64 for huge batch.
+  //     Mirrors CUDA's canUse32BitIndexMath. int32 avoids 64-bit slice
+  //     arithmetic and reduces register pressure.
+  if (numSlices <= std::numeric_limits<int>::max()) {
+    int numSlices32 = static_cast<int>(numSlices);
+    if (largest) {
+      sbtopk_launch_vec_dispatch<scalar_t, K, true, int>(
+          input, topK, indices, numSlices32, sliceSize, k);
+    } else {
+      sbtopk_launch_vec_dispatch<scalar_t, K, false, int>(
+          input, topK, indices, numSlices32, sliceSize, k);
+    }
   } else {
-    sbtopk_launch_vec_dispatch<scalar_t, K, false>(
-        input, topK, indices, numSlices, sliceSize, k);
+    if (largest) {
+      sbtopk_launch_vec_dispatch<scalar_t, K, true, int64_t>(
+          input, topK, indices, numSlices, sliceSize, k);
+    } else {
+      sbtopk_launch_vec_dispatch<scalar_t, K, false, int64_t>(
+          input, topK, indices, numSlices, sliceSize, k);
+    }
   }
 }
 
@@ -308,7 +326,7 @@ static bool sbtopk_v6_try_launch(
             static_cast<const scalar_t*>(self.const_data_ptr()),
             static_cast<scalar_t*>(values.data_ptr()),
             static_cast<int64_t*>(indices.data_ptr()),
-            static_cast<int>(nsegments),
+            nsegments,
             static_cast<int>(nelements),
             static_cast<int>(k),
             largest);
@@ -364,7 +382,8 @@ SbtopkResult sbtopk_try_launch(
   // v5: radix select -- good for large dim. Output is UNSORTED.
   // Use nelements >= 4096 so dim=1024/1025 falls through to original
   // (v5 has 3-4x regressions at dim=1024 for medium/large batches).
-  if (nelements >= 4096) {
+  // v5 uses int for numSlices internally; reject if nsegments overflows int32.
+  if (nelements >= 4096 && nsegments <= std::numeric_limits<int>::max()) {
     if (sbtopk_v5_try_launch(
             self, nsegments, nelements, k, largest, values, indices)) {
       return SbtopkResult::UNSORTED;
