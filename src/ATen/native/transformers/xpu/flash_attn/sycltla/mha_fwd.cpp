@@ -498,8 +498,8 @@ flash_attention_forward_sycltla(
       logsumexp,
       /* cumulative_sequence_length_q */ at::Tensor(),
       /* cumulative_sequence_length_k */ at::Tensor(),
-      /* max_seqlen_batch_q */ c10::SymInt(0),
-      /* max_seqlen_batch_k */ c10::SymInt(0),
+      /* max_seqlen_batch_q */ c10::SymInt(seqlen_qo),
+      /* max_seqlen_batch_k */ c10::SymInt(seqlen_kv),
       /* philox_seed */ at::empty({}, at::dtype(at::kLong)),
       /* philox_offset */ at::empty({}, at::dtype(at::kLong))};
 }
