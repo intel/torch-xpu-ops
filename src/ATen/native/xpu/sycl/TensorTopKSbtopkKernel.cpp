@@ -28,7 +28,7 @@
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
-#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
+
 
 namespace at {
 namespace native {
@@ -523,8 +523,8 @@ struct SbtopkGatherFunctor {
 // ================================================================
 // Launch function
 // ================================================================
-template <typename scalar_t, int SIMD>
-static void sbtopk_launch_kernel_simd(
+template <typename scalar_t, int VEC_SIZE, int ELEMS_PER_THREAD>
+static void sbtopk_launch_impl(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
@@ -533,15 +533,11 @@ static void sbtopk_launch_kernel_simd(
     int k,
     bool largest) {
   namespace syclex = sycl::ext::oneapi::experimental;
-  namespace intelex = sycl::ext::intel::experimental;
 
-  constexpr int VEC_SIZE = sizeof(scalar_t) <= 2 ? 8 : 4;
-  constexpr int ELEMS_PER_THREAD = 32;
+  constexpr int SIMD = 32;
   using Functor = SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD>;
 
-  // Let compiler auto-select GRF size based on register pressure
-  syclex::properties kernel_props{
-      syclex::sub_group_size<SIMD>};
+  syclex::properties kernel_props{syclex::sub_group_size<SIMD>};
 
   auto& q = at::xpu::getCurrentSYCLQueue();
   q.submit([&](sycl::handler& cgh) {
@@ -556,6 +552,11 @@ static void sbtopk_launch_kernel_simd(
   });
 }
 
+// Dispatch macro to reduce boilerplate
+#define SBTOPK_LAUNCH(V, E) \
+  sbtopk_launch_impl<scalar_t, V, E>( \
+      input, topK, indices, numSlices, sliceSize, k, largest)
+
 template <typename scalar_t>
 static void sbtopk_launch_kernel(
     const scalar_t* input,
@@ -565,12 +566,90 @@ static void sbtopk_launch_kernel(
     int sliceSize,
     int k,
     bool largest) {
-  // With __SYCL_KER_CONFIG_CONVENTION__ removed and local_accessor passed
-  // as functor member, reqd_sub_group_size / kernel properties work correctly.
-  // SIMD=32 with Kogge-Stone shuffle ops is now safe.
-  sbtopk_launch_kernel_simd<scalar_t, 32>(
-      input, topK, indices, numSlices, sliceSize, k, largest);
+  // Determine VEC_SIZE: largest power-of-2 dividing sliceSize, capped by type
+  constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
+  int vec = 1;
+  if (sliceSize % MAX_VEC == 0) vec = MAX_VEC;
+  else if (MAX_VEC > 4 && sliceSize % 4 == 0) vec = 4;
+  else if (sliceSize % 2 == 0) vec = 2;
+
+  // Determine ELEMS_PER_THREAD based on dim: target ~4 iterations
+  int ept;
+  if      (sliceSize >= 32 * SBTOPK_BLOCK) ept = 32;
+  else if (sliceSize >= 16 * SBTOPK_BLOCK) ept = 16;
+  else if (sliceSize >= 8  * SBTOPK_BLOCK) ept = 8;
+  else if (sliceSize >= 4  * SBTOPK_BLOCK) ept = 4;
+  else if (sliceSize >= 2  * SBTOPK_BLOCK) ept = 2;
+  else                                      ept = 1;
+
+  // EPT must be >= VEC_SIZE
+  if (ept < vec) ept = vec;
+
+  // Dispatch: VEC determines which EPT values are valid (EPT >= VEC, EPT % VEC == 0)
+  if constexpr (MAX_VEC == 8) {
+    // 16-bit types: VEC can be 8, 4, 2, 1
+    if (vec == 8) {
+      switch (ept) {
+        case 8:  SBTOPK_LAUNCH(8, 8);  return;
+        case 16: SBTOPK_LAUNCH(8, 16); return;
+        default: SBTOPK_LAUNCH(8, 32); return;
+      }
+    } else if (vec == 4) {
+      switch (ept) {
+        case 4:  SBTOPK_LAUNCH(4, 4);  return;
+        case 8:  SBTOPK_LAUNCH(4, 8);  return;
+        case 16: SBTOPK_LAUNCH(4, 16); return;
+        default: SBTOPK_LAUNCH(4, 32); return;
+      }
+    } else if (vec == 2) {
+      switch (ept) {
+        case 2:  SBTOPK_LAUNCH(2, 2);  return;
+        case 4:  SBTOPK_LAUNCH(2, 4);  return;
+        case 8:  SBTOPK_LAUNCH(2, 8);  return;
+        case 16: SBTOPK_LAUNCH(2, 16); return;
+        default: SBTOPK_LAUNCH(2, 32); return;
+      }
+    } else {
+      switch (ept) {
+        case 1:  SBTOPK_LAUNCH(1, 1);  return;
+        case 2:  SBTOPK_LAUNCH(1, 2);  return;
+        case 4:  SBTOPK_LAUNCH(1, 4);  return;
+        case 8:  SBTOPK_LAUNCH(1, 8);  return;
+        case 16: SBTOPK_LAUNCH(1, 16); return;
+        default: SBTOPK_LAUNCH(1, 32); return;
+      }
+    }
+  } else {
+    // 32-bit types: VEC can be 4, 2, 1
+    if (vec >= 4) {
+      switch (ept) {
+        case 4:  SBTOPK_LAUNCH(4, 4);  return;
+        case 8:  SBTOPK_LAUNCH(4, 8);  return;
+        case 16: SBTOPK_LAUNCH(4, 16); return;
+        default: SBTOPK_LAUNCH(4, 32); return;
+      }
+    } else if (vec == 2) {
+      switch (ept) {
+        case 2:  SBTOPK_LAUNCH(2, 2);  return;
+        case 4:  SBTOPK_LAUNCH(2, 4);  return;
+        case 8:  SBTOPK_LAUNCH(2, 8);  return;
+        case 16: SBTOPK_LAUNCH(2, 16); return;
+        default: SBTOPK_LAUNCH(2, 32); return;
+      }
+    } else {
+      switch (ept) {
+        case 1:  SBTOPK_LAUNCH(1, 1);  return;
+        case 2:  SBTOPK_LAUNCH(1, 2);  return;
+        case 4:  SBTOPK_LAUNCH(1, 4);  return;
+        case 8:  SBTOPK_LAUNCH(1, 8);  return;
+        case 16: SBTOPK_LAUNCH(1, 16); return;
+        default: SBTOPK_LAUNCH(1, 32); return;
+      }
+    }
+  }
 }
+
+#undef SBTOPK_LAUNCH
 
 bool sbtopk_try_launch(
     const at::Tensor& self,
