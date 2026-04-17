@@ -164,7 +164,7 @@ void float4_copy_kernel_xpu(TensorIteratorBase& iter) {
   }
 }
 
-bool isFastCastType(TensorIteratorBase& iter) {
+bool isFastCastType(const TensorIteratorBase& iter) {
   ScalarType dst_dtype = iter.dtype(0);
   ScalarType src_dtype = iter.dtype(1);
 
