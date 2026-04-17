@@ -566,13 +566,6 @@ static void sbtopk_launch_kernel(
     int sliceSize,
     int k,
     bool largest) {
-  // Determine VEC_SIZE: largest power-of-2 dividing sliceSize, capped by type
-  constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
-  int vec = 1;
-  if (sliceSize % MAX_VEC == 0) vec = MAX_VEC;
-  else if (MAX_VEC > 4 && sliceSize % 4 == 0) vec = 4;
-  else if (sliceSize % 2 == 0) vec = 2;
-
   // Determine ELEMS_PER_THREAD based on dim: target ~4 iterations
   int ept;
   if      (sliceSize >= 32 * SBTOPK_BLOCK) ept = 32;
@@ -582,8 +575,14 @@ static void sbtopk_launch_kernel(
   else if (sliceSize >= 2  * SBTOPK_BLOCK) ept = 2;
   else                                      ept = 1;
 
-  // EPT must be >= VEC_SIZE
-  if (ept < vec) ept = vec;
+  // Determine VEC_SIZE: largest power-of-2 dividing sliceSize,
+  // capped by type max AND by EPT (vec <= ept required)
+  constexpr int MAX_VEC = sizeof(scalar_t) <= 2 ? 8 : 4;
+  int cap = MAX_VEC < ept ? MAX_VEC : ept;
+  int vec = 1;
+  if (cap >= 8 && sliceSize % 8 == 0) vec = 8;
+  else if (cap >= 4 && sliceSize % 4 == 0) vec = 4;
+  else if (cap >= 2 && sliceSize % 2 == 0) vec = 2;
 
   // Dispatch: VEC determines which EPT values are valid (EPT >= VEC, EPT % VEC == 0)
   if constexpr (MAX_VEC == 8) {
