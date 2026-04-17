@@ -10,7 +10,14 @@
 
 #ifdef USE_C10D_XCCL
 
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+// Official suppression macro provided by Intel SYCL headers for
+// host-only compilation (without -fsycl).
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <ATen/xpu/XPUEvent.h>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 #include <torch/csrc/distributed/c10d/FlightRecorderDetail.hpp>
 #include <xccl/ProcessGroupXCCL.hpp>
 
