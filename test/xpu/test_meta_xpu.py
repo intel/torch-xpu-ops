@@ -80,12 +80,23 @@ u16 = torch.uint16
 u32 = torch.uint32
 u64 = torch.uint64
 
+_ops_missing_bf16 = [
+    "addbmm",
+    "__rmatmul__",
+    "bmm",
+    "matmul",
+    "nn.functional.bilinear",
+    "torch.ops.aten._efficient_attention_forward",
+]
+_ops_count = 0
 for _op in op_db:
-    if _op.name == "addbmm":
+    if _op.name in _ops_missing_bf16:
+        _ops_count += 1
         for _dtype_list in [_op.dtypesIfCUDA, _op.dtypesIfXPU, _op.dtypesIf.get("xpu")]:
-            if _dtype_list is not None and torch.bfloat16 not in _dtype_list:
+            if _dtype_list is not None and bf16 not in _dtype_list:
                 _dtype_list.add(bf16)
-        break
+        if _ops_count == len(_ops_missing_bf16):
+            break
 
 foreach_op_db = (
     foreach_unary_op_db
