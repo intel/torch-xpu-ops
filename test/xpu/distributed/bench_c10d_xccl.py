@@ -144,7 +144,11 @@ def _measure_time(
     )
     iter_call_times = torch.tensor(call_times_ms, dtype=torch.float64, device=device)
 
-    print(f"[RANK {rank}] Iter event time(ms) {iter_event_times} API call time(ms) {iter_call_times} \n", flush=True)
+    print(
+        f"[RANK {rank}] Per-op event time(ms): {iter_event_times / loop_collectives}\n"
+        f"            Per-op API call time(ms): {iter_call_times / loop_collectives}",
+        flush=True,
+    )
 
     # Event time keeps the existing minimum-across-ranks behavior.
     dist.all_reduce(iter_event_times, op=dist.ReduceOp.MIN)
@@ -503,6 +507,17 @@ DTYPE_MAP = {
 }
 
 
+def _parse_size_str(s: str) -> int:
+    """Parse a human-readable size string (e.g. '64MB', '1KB', '256B') to bytes."""
+    s = s.strip().upper()
+    units = {"B": 1, "KB": 1 << 10, "MB": 1 << 20, "GB": 1 << 30}
+    for suffix, factor in sorted(units.items(), key=lambda x: -len(x[0])):
+        if s.endswith(suffix):
+            return int(float(s[: -len(suffix)]) * factor)
+    # Bare number → treat as bytes
+    return int(float(s))
+
+
 def dtype_size(dtype: torch.dtype) -> int:
     return torch.tensor([], dtype=dtype).element_size()
 
@@ -532,7 +547,10 @@ def run_benchmark(args):
 
     ops = args.ops.split(",") if args.ops else ALL_OPS
     dtype = DTYPE_MAP[args.dtype]
-    sizes = _generate_sizes(args.min_size, args.max_size, args.size_steps)
+    if args.size:
+        sizes = [_parse_size_str(s) for s in args.size.split(",")]
+    else:
+        sizes = _generate_sizes(args.min_size, args.max_size, args.size_steps)
 
     all_results = []
 
@@ -544,7 +562,10 @@ def run_benchmark(args):
         print(f"  Collective Benchmark — {device_type.upper()}/{backend.upper()}")
         print(f"  world_size={world_size}, dtype={args.dtype}")
         print(f"  iters={args.num_iters}, warmup={args.num_warmup}")
-        print(f"  message sizes: {len(sizes)} points from 2^{args.min_size} to 2^{args.max_size} bytes")
+        if args.size:
+            print(f"  message sizes: {', '.join(_format_size(s) for s in sizes)}")
+        else:
+            print(f"  message sizes: {len(sizes)} points from 2^{args.min_size} to 2^{args.max_size} bytes")
         print(f"  ops: {', '.join(ops)}")
         print(f"{'='*90}\n")
 
@@ -670,10 +691,11 @@ def sweep_world_sizes(args):
             "--dtype", args.dtype,
             "--num-iters", str(args.num_iters),
             "--num-warmup", str(args.num_warmup),
+        ] + (["--size", args.size] if args.size else [
             "--min-size", str(args.min_size),
             "--max-size", str(args.max_size),
             "--size-steps", str(args.size_steps),
-        ] + csv_arg
+        ]) + csv_arg
 
         print(f"\n{'#'*90}")
         print(f"# Launching world_size={ws}")
@@ -705,6 +727,14 @@ Examples:
   # Sweep world sizes 2,4,8:
   python bench_c10d_xccl.py --sweep-world-sizes 2,4,8
 
+  # Specific size with human-readable units:
+  torchrun --standalone --nproc-per-node 4 bench_c10d_xccl.py \\
+      --size 64MB --dtype bfloat16
+
+  # Multiple sizes:
+  torchrun --standalone --nproc-per-node 4 bench_c10d_xccl.py \\
+      --size 1KB,64MB,1GB
+
   # Large message sizes with bfloat16:
   torchrun --standalone --nproc-per-node 4 bench_c10d_xccl.py \\
       --dtype bfloat16 --min-size 20 --max-size 30
@@ -725,6 +755,13 @@ Examples:
     )
     parser.add_argument("--num-iters", type=int, default=50, help="Number of measured iterations (default: 50)")
     parser.add_argument("--num-warmup", type=int, default=10, help="Number of warmup iterations (default: 10)")
+    parser.add_argument(
+        "--size",
+        type=str,
+        default=None,
+        help="Comma-separated message sizes with units, e.g. '64MB', '1KB,64MB,1GB'. "
+             "Overrides --min-size/--max-size when specified.",
+    )
     parser.add_argument(
         "--min-size",
         type=int,
