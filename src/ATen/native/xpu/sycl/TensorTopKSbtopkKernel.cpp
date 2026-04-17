@@ -20,6 +20,7 @@
 
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernelImpl.h>
+#include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <c10/util/llvmMathExtras.h>
 #include <comm/DeviceProperties.h>
 
@@ -68,10 +69,13 @@ static bool subgroup_topk_try_launch(
 #undef SBTOPK_LAUNCH
 
 // ================================================================
-// Dispatch: subgroup top-k vs original
+// Dispatch: subgroup top-k vs single-workgroup top-k vs original
 //
 //   - dim < 32: original (need at least SG_SIZE elements)
-//   - dim >= 32, large batch, k <= 16: subgroup top-k
+//   - dim >= 32, large batch, k <= 8: subgroup top-k
+//   - dim >= 4096, any bs: single-workgroup top-k
+//   - dim >= 4096, k > 8: single-workgroup top-k
+//     (subgroup only supports k <= 8)
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
@@ -86,12 +90,12 @@ SbtopkResult sbtopk_try_launch(
     return SbtopkResult::FAILED;
   }
 
-  // Subgroup top-k: best for large batch, k<=8.
+  // Subgroup top-k: best for large batch, k <= 8.
   // Output is ALREADY SORTED (descending for largest, ascending for smallest).
   //
   // Threshold: nsegments >= thread_slots / 4.
   //   Subgroup top-k uses 1 sub-group per slice (reading data once), while
-  //   the original kernel reads data multiple times (~3 radix passes). So
+  //   single-wg/original read data multiple times (~3 radix passes). So
   //   subgroup top-k reaches memory-BW saturation at much lower occupancy.
   //   thread_slots/4 is the conservative cutoff.
   //
@@ -107,6 +111,21 @@ SbtopkResult sbtopk_try_launch(
     return SbtopkResult::FAILED;
   }
 
+  // Single-workgroup top-k: radix select, good for large
+  // dim. Output is UNSORTED.
+  // Use nelements >= 4096 so dim=1024/1025 falls through to original
+  // (single-wg has regressions at dim=1024 for medium/large batches).
+  // Single-wg uses int for numSlices internally; reject
+  // if nsegments overflows int32.
+  if (nelements >= 4096 && nsegments <= std::numeric_limits<int>::max()) {
+    if (single_wg_topk_try_launch(
+            self, nsegments, nelements, k, largest, values, indices)) {
+      return SbtopkResult::UNSORTED;
+    }
+    return SbtopkResult::FAILED;
+  }
+
+  // Fallback to original for dim=32-4095 or k>8 with small batch
   return SbtopkResult::FAILED;
 }
 
