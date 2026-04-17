@@ -11386,7 +11386,7 @@ class TestNNDeviceType(NNTestCase):
         out = bn(data).sum().backward()
 
     @dtypesIfCUDA(torch.float, torch.double, torch.half, torch.complex128)
-    @dtypesIfXPU(torch.half)
+    @dtypesIfXPU(torch.float, torch.double, torch.half, torch.complex128)
     @dtypesIfMPS(torch.float, torch.half, torch.complex64)
     @dtypes(torch.float, torch.double, torch.bfloat16, torch.complex128)
     def test_conv_empty_input(self, device, dtype):
@@ -14061,7 +14061,7 @@ class TestNNDeviceType(NNTestCase):
             self.assertEqual(input.grad, inputf.grad.to(dtype), atol=1e-3, rtol=0)
 
     @dtypesIfCUDA(torch.half, torch.float)
-    @dtypesIfXPU(torch.half)
+    @dtypesIfXPU(torch.half, torch.float)
     @dtypes(torch.float)
     def test_softmax_results(self, device, dtype):
         # Non-even sizes and non-zero shifts test fallback paths in vectorized kernel
@@ -15198,7 +15198,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(grad1, grad2)
 
     @dtypes(torch.float)
-    @dtypesIfXPU(torch.bfloat16)
+    @dtypesIfXPU(torch.float, torch.bfloat16)
     @dtypesIfCUDA(torch.float, torch.bfloat16)
     def test_batchnorm_eval(self, device, dtype):
         self._test_batchnorm_eval(2, device, dtype)
@@ -15248,7 +15248,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(grad1, grad2)
 
     @dtypes(torch.float)
-    @dtypesIfXPU(torch.bfloat16)
+    @dtypesIfXPU(torch.float, torch.bfloat16)
     @dtypesIfCUDA(torch.float, torch.bfloat16)
     def test_batchnorm_affine(self, device, dtype):
         self._test_batchnorm_affine(2, device, dtype)
@@ -15318,7 +15318,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(module.running_var, (running_var1 + running_var2) / 2)
 
     @dtypes(torch.float)
-    @dtypesIfXPU(torch.bfloat16)
+    @dtypesIfXPU(torch.float, torch.bfloat16)
     @dtypesIfCUDA(torch.float, torch.bfloat16)
     def test_batchnorm_simple_average(self, device, dtype):
         self._test_batchnorm_simple_average(device, dtype)
