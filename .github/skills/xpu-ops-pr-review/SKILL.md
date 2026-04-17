@@ -1,6 +1,6 @@
 ---
 name: xpu-ops-pr-review
-description: "Review intel/torch-xpu-ops pull requests, diffs, commits, and review threads with XPU-specific checks for backend ownership, SYCL and library boundaries, async stream semantics, layout handling, BF16/FP16 numerics, 64-bit indexing, dispatch wiring, and test gaps. Use when the user asks to review a torch-xpu-ops PR, validate a review concern, or draft a maintainer-style reply."
+description: "Review intel/torch-xpu-ops pull requests, diffs, commits, and review threads with XPU-specific checks for backend ownership, SYCL and library boundaries, async stream semantics, layout handling, BF16/FP16 numerics, 64-bit indexing, dispatch wiring, and test gaps. Use when the user asks to review a torch-xpu-ops PR, validate a review concern, draft a maintainer-style reply, or extend this review workflow with English custom skill guidance."
 ---
 
 # XPU Ops PR Review
@@ -20,6 +20,7 @@ Use this Skill when:
 - Drafting a reply to an inline review thread or PR comment
 - Writing file-scoped findings with concrete evidence
 - Evaluating XPU-specific correctness, performance, or regression risk
+- Extending this review workflow with English custom skill guidance for team- or repo-specific review rules
 
 Do not use this Skill when:
 
@@ -36,6 +37,18 @@ Typical prompts that should trigger this Skill:
 - "Draft a reply to this inline reviewer concern"
 - "Review this branch against main"
 - "Summarize the blocking findings in this diff"
+- "Add an English custom skill extension for our torch-xpu-ops review workflow"
+
+## Custom Skills
+
+If the user asks to customize or extend this review workflow:
+
+- Write the custom skill text in English unless the user explicitly asks for another language
+- Keep the core XPU review invariants intact: evidence-based findings, parity verification, async and layout scrutiny, BF16 or FP16 numerics, 64-bit indexing safety, dispatch correctness, and test adequacy
+- Put stable, reusable team- or repository-specific extensions in a separate reference file rather than overloading the core review rules
+- Only encode repeatable review policy, repository facts, escalation rules, reply conventions, or label and workflow guidance that will stay true across reviews
+- Do not add one-off PR facts, temporary reviewer preferences, or speculative heuristics as custom skill content
+- Use `references/custom-skills.md` as the default place for English custom-skill guidance and examples
 
 ## Load First
 
@@ -47,6 +60,7 @@ Typical prompts that should trigger this Skill:
 - `references/torch-xpu-ops-review-notes.md`
 - `references/review-checklist.md`
 - `references/bc-guidelines.md`
+- `references/custom-skills.md` when the user asks to extend the workflow
 
 ## If Context Is Missing
 
@@ -294,3 +308,5 @@ Use this when the user wants help answering several review comments in one PR. G
 - `references/torch-xpu-ops-review-notes.md`
 - `references/review-checklist.md`
 - `references/bc-guidelines.md`
+- `references/custom-skills.md`
+
