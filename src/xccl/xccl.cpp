@@ -518,4 +518,85 @@ void onecclAllToAll(
 }
 
 } // namespace xccl
+
+bool xcclComm_t::registerSegment(
+    void* ptr,
+    size_t size,
+    bool errorOnRereg,
+    bool window) {
+#ifdef XCCL_HAS_COMM_WINDOW_REGISTER
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  if (registeredSegmentHandles_.count(ptr) > 0) {
+    TORCH_CHECK(
+        !errorOnRereg,
+        "Segment with ptr ",
+        ptr,
+        " has already been registered");
+    return true;
+  }
+
+  if (!cclComm.has_value()) {
+    TORCH_WARN("XCCL communicator not initialized, skipping registration");
+    return false;
+  }
+
+  if (window) {
+    try {
+      ccl::window* win = new ccl::window(
+          ccl::comm_window_register(
+              cclComm.value(),
+              ptr,
+              size,
+              CCL_WIN_COLL_SYMMETRIC));
+      registeredSegmentHandles_[ptr] = static_cast<void*>(win);
+      LOG(INFO) << "XCCL: Successfully window registered segment ptr="
+                << ptr << ", size=" << size;
+    } catch (const std::exception& e) {
+      LOG(WARNING) << "XCCL: Failed to window register segment: " << e.what();
+      return false;
+    }
+  } else {
+    registeredSegmentHandles_[ptr] = nullptr;
+    LOG(INFO) << "XCCL: Recorded segment ptr=" << ptr << ", size=" << size
+              << " (window=false, no actual registration)";
+  }
+  return true;
+#else
+  LOG(WARNING) << "XCCL: Window registration not supported in this build";
+  return false;
+#endif
+}
+
+bool xcclComm_t::deregisterSegment(void* ptr, bool window) {
+#ifdef XCCL_HAS_COMM_WINDOW_REGISTER
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  auto it = registeredSegmentHandles_.find(ptr);
+  if (it == registeredSegmentHandles_.end()) {
+    LOG(WARNING) << "XCCL: Segment with ptr " << ptr
+                 << " not found for deregistration";
+    return false;
+  }
+
+  if (window && it->second != nullptr && cclComm.has_value()) {
+    try {
+      auto* win = static_cast<ccl::window*>(it->second);
+      ccl::comm_window_deregister(cclComm.value(), *win);
+      delete win;
+      LOG(INFO) << "XCCL: Successfully window deregistered segment ptr="
+                << ptr;
+    } catch (const std::exception& e) {
+      LOG(WARNING) << "XCCL: Failed to window deregister segment: "
+                   << e.what();
+    }
+  }
+
+  registeredSegmentHandles_.erase(it);
+  return true;
+#else
+  return false;
+#endif
+}
+
 } // namespace c10d

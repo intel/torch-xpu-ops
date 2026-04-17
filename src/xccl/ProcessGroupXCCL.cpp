@@ -437,6 +437,94 @@ void ProcessGroupXCCL::setEnableNanCheck(bool enableNanCheck) {
   enableNanCheck_ = enableNanCheck;
 }
 
+void ProcessGroupXCCL::registerMemPool(
+    c10::DeviceIndex device,
+    c10::MempoolId_t mempool_id,
+    bool symm) {
+#ifdef XCCL_HAS_COMM_WINDOW_REGISTER
+  const auto key = std::to_string(device);
+  LOG(INFO) << logPrefix()
+            << "Performing XCCL user buffer registration for all buffers in "
+            << "MemPool: (" << mempool_id.first << ", " << mempool_id.second
+            << "), device index: " << key << ", symm: " << symm;
+
+  auto xcclComm = getXCCLComm(key);
+  if (xcclComm == nullptr) {
+    C10_THROW_ERROR(
+        DistBackendError,
+        "XCCL communicator has not been initialized before mem pool creation. "
+        "You can pass `device_id` to init_process_group to work around this issue");
+  }
+
+  // Get snapshot of all segments in this memory pool
+  auto snapshot = c10::xpu::XPUCachingAllocator::snapshot(mempool_id);
+
+  // Register each segment
+  size_t registered_count = 0;
+  for (const auto& segmentInfo : snapshot.segments) {
+    if (segmentInfo.device != device) {
+      continue;
+    }
+    xcclComm->registerSegment(
+        // NOLINTNEXTLINE(performance-no-int-to-ptr)
+        reinterpret_cast<void*>(segmentInfo.address),
+        segmentInfo.total_size,
+        /*errorOnRereg=*/false,
+        /*window=*/symm);
+    registered_count++;
+  }
+
+  LOG(INFO) << logPrefix() << "Registered " << registered_count
+            << " segments from MemPool (" << mempool_id.first << ", "
+            << mempool_id.second << ")";
+#else
+  LOG(WARNING) << logPrefix()
+               << "XCCL window registration not supported in this build";
+#endif
+}
+
+void ProcessGroupXCCL::deregisterMemPool(
+    c10::DeviceIndex device,
+    c10::MempoolId_t mempool_id) {
+#ifdef XCCL_HAS_COMM_WINDOW_REGISTER
+  const auto key = std::to_string(device);
+  LOG(INFO) << logPrefix()
+            << "Performing XCCL user buffer deregistration for all buffers in "
+            << "MemPool: (" << mempool_id.first << ", " << mempool_id.second
+            << "), device index: " << key;
+
+  auto xcclComm = getXCCLComm(key);
+  if (xcclComm == nullptr) {
+    LOG(WARNING) << logPrefix()
+                 << "XCCL communicator not found for device " << key;
+    return;
+  }
+
+  // Get snapshot of all segments in this memory pool
+  auto snapshot = c10::xpu::XPUCachingAllocator::snapshot(mempool_id);
+
+  // Deregister each segment
+  size_t deregistered_count = 0;
+  for (const auto& segmentInfo : snapshot.segments) {
+    if (segmentInfo.device != device) {
+      continue;
+    }
+    xcclComm->deregisterSegment(
+        // NOLINTNEXTLINE(performance-no-int-to-ptr)
+        reinterpret_cast<void*>(segmentInfo.address),
+        /*window=*/true);  // Assume window registration was used
+    deregistered_count++;
+  }
+
+  LOG(INFO) << logPrefix() << "Deregistered " << deregistered_count
+            << " segments from MemPool (" << mempool_id.first << ", "
+            << mempool_id.second << ")";
+#else
+  LOG(WARNING) << logPrefix()
+               << "XCCL window registration not supported in this build";
+#endif
+}
+
 c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> ProcessGroupXCCL::initWork(
     at::Device& device,
     int rank,
@@ -586,6 +674,10 @@ std::shared_ptr<xcclComm_t> ProcessGroupXCCL::initXCCLComm(
   // retaining the SYCL queue pointer for collective operations, so this change
   // will be necessary in oneCCLv2 as well.
   ccl::stream xccl_stream = ccl::create_stream(q);
+
+  // Store the device index for later use in mempool registration
+  XCCLComm->setDeviceIndex(device.index());
+
   std::lock_guard<std::mutex> lock(mutex_);
   devXCCLCommMap_.emplace(deviceKey, XCCLComm);
   xcclStreamsMap_.emplace(
