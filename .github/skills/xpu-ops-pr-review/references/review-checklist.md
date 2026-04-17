@@ -1,6 +1,6 @@
 # XPU Ops Review Checklist
 
-Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused on XPU-specific correctness, backend wiring, and CI-blind risks rather than style or lint.
+Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused on XPU-specific correctness, backend wiring, and risks that CI may not catch rather than style or lint.
 
 ## Scope And Ownership
 
