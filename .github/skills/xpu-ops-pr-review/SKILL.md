@@ -38,6 +38,7 @@ Before reviewing, load and use these references:
 ### 2. Review correctness
 Check whether:
 - Behavior matches CPU/CUDA semantics
+- If CPU/CUDA parity matters, inspect the actual upstream implementation from a local `pytorch/pytorch` checkout; if it is not available locally, fetch or clone it before concluding
 - Edge cases are covered: empty tensor, non-contiguous, broadcast, scalar, large shape
 - out / inplace / backward behavior is correct
 - Error handling and unsupported cases are explicit

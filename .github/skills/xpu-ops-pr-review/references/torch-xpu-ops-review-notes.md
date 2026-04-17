@@ -24,6 +24,15 @@ Inspect these first when the change touches operator wiring, kernels, or tests:
 - `test/test_ops_xpu.py`
 - `.github/workflows/` when the PR changes CI, packaging, or platform coverage
 
+## Upstream Parity Source Of Truth
+
+When CPU or CUDA parity is relevant, do not infer behavior from memory.
+
+- Use an actual `pytorch/pytorch` source checkout as the reference for CPU and CUDA behavior
+- If the workspace already has a local PyTorch checkout, inspect that code directly
+- If no local PyTorch checkout is available, fetch or clone `pytorch/pytorch` before making parity claims
+- Do not accept or write a CPU/CUDA parity conclusion unless the upstream implementation was actually inspected
+
 ## Eight High-Risk Review Areas
 
 ### 1. Semantic Parity Must Match CPU Or CUDA Behavior

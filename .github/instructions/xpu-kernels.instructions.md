@@ -1,8 +1,8 @@
 ---
-applyTo: "src/**,yaml/**"
+applyTo: "src/**"
 ---
 
-When reviewing implementation or operator-definition changes in this repository:
+When reviewing implementation changes in this repository:
 
 ## For `src/**` changes
 - Check correctness of kernel and operator behavior.
@@ -10,11 +10,6 @@ When reviewing implementation or operator-definition changes in this repository:
 - Check dtype-specific behavior and conversion semantics.
 - Check shape, stride, layout, and memory-sensitive behavior.
 - Check whether the code path could change synchronization, fallback behavior, or backend-specific semantics.
-
-## For `yaml/**` changes
-- Check whether the definition or config change is intentional.
-- Check whether implementation and tests are updated accordingly.
-- Flag schema or config changes that are not reflected in `src/` or `test/`.
 
 ## Cross-file consistency
 If both `src/` and `yaml/` change in the same PR:
