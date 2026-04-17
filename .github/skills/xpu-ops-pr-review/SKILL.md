@@ -39,6 +39,7 @@ Before reviewing, load and use these references:
 Check whether:
 - Behavior matches CPU/CUDA semantics
 - If CPU/CUDA parity matters, inspect the actual upstream implementation from a local `pytorch/pytorch` checkout; if it is not available locally, fetch or clone it before concluding
+- Do not write a CPU/CUDA parity conclusion from model memory alone; use checked source from `pytorch/pytorch`
 - Edge cases are covered: empty tensor, non-contiguous, broadcast, scalar, large shape
 - out / inplace / backward behavior is correct
 - Error handling and unsupported cases are explicit
@@ -90,8 +91,8 @@ Prefer comments like:
 - “PR claims speedup but lacks benchmark evidence.”
 - “Please add BF16/channels_last coverage for this path.”
 
-If a calling workflow explicitly requires a skill marker, append this exact final line:
-- Custom skills applied: xpu-ops-pr-review.
+If a calling workflow explicitly requires a skill marker, append this exact literal final line:
+Custom skills applied: xpu-ops-pr-review.
 
 Otherwise, keep the reply in the requested review format and do not force an extra trailing sentence.
 

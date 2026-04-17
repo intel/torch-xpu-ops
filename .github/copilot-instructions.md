@@ -11,7 +11,7 @@ This repository implements Torch XPU Operators for Intel GPU support.
 - `src/` — XPU operator implementations and backend-specific logic.
 - `yaml/` — operator definitions, schemas, and configuration sources.
 - `test/` — regression tests and behavior validation.
-- `.ci/` — CI workflows and validation logic.
+- `.github/workflows/` and `.ci/` — CI workflows and related validation logic.
 - `tools/` — helper scripts and utilities.
 
 ## General engineering priorities

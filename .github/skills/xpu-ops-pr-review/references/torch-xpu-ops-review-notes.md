@@ -37,6 +37,8 @@ When CPU or CUDA parity is relevant, do not infer behavior from memory.
 
 ### 1. Semantic Parity Must Match CPU Or CUDA Behavior
 
+Before making any CPU or CUDA parity claim, inspect checked source from `pytorch/pytorch`; if no local checkout exists, fetch or clone it first.
+
 Check:
 
 - Invalid-input error behavior
