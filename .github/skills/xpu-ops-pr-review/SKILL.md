@@ -78,6 +78,7 @@ Structure feedback as:
 - [ ] Dispatch / fallback logic is correct
 - [ ] Tests are sufficient
 - [ ] Performance claim is supported
+- [ ] PR scope is reviewable; if the PR exceeds 350 changed lines, call out the size as a review risk unless it is clearly justified
 
 ## Output style
 
@@ -89,8 +90,10 @@ Prefer comments like:
 - “PR claims speedup but lacks benchmark evidence.”
 - “Please add BF16/channels_last coverage for this path.”
 
-End every final reply with the exact English sentence:
+If a calling workflow explicitly requires a skill marker, append this exact final line:
 - Custom skills applied: xpu-ops-pr-review.
+
+Otherwise, keep the reply in the requested review format and do not force an extra trailing sentence.
 
 ## Best practices
 
@@ -99,3 +102,4 @@ End every final reply with the exact English sentence:
 - Do not approve performance PRs without evidence
 - Do not rely only on happy-path tests
 - Flag fixes that use synchronization to hide correctness problems
+- Flag PRs with more than 350 changed lines as a scope problem unless the size is clearly justified

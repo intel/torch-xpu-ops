@@ -7,6 +7,7 @@ Use this checklist for `torch-xpu-ops` PR reviews. It is intentionally focused o
 - [ ] The change belongs in `torch-xpu-ops` rather than upstream PyTorch XPU, oneDNN XPU, or oneMKL
 - [ ] The implementation location matches the intended backend path and registration strategy
 - [ ] The PR does not duplicate an existing library or backend capability without justification
+- [ ] The PR remains reviewable in one pass; if it exceeds 350 changed lines, call out the scope risk unless the size is clearly justified
 
 ## Correctness And Semantics
 
