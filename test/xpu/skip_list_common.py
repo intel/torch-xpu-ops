@@ -56,6 +56,7 @@ skip_dict = {
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward_baddbmm_xpu_float64",
+        "test_quick_core_backward__unsafe_masked_index_put_accumulate_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
