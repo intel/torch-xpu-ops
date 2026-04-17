@@ -255,6 +255,7 @@ skip_dict = {
         "test_trace_while_stuck_timing_enabled_False",
     ),
     "../../../../test/distributed/test_overlap_bucketing_unit.py": None,
+    "../../../../test/distributed/pipelining/test_schedule_multiproc.py":None,
 }
 
 skip_dict_python = {
