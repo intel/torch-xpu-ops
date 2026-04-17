@@ -1,8 +1,8 @@
 /*
- * Subgroup top-k kernel for optimized topk on XPU.
+ * Subgroup top-k kernel + dispatch logic for optimized topk paths.
  *
- * Each sub-group (32 lanes) handles one slice entirely in registers.
- * Zero SLM, zero barriers.
+ * Subgroup top-k: each sub-group (32 lanes) handles one slice entirely
+ * in registers. Zero SLM, zero barriers.
  *
  * Algorithm:
  *   Phase 1: Each lane scans nelements/32 elements, maintains a sorted top-k
@@ -12,16 +12,20 @@
  *            to combine 32 per-lane buffers into one global top-k.
  *   Phase 3: Lane 0 writes k results. Output is already sorted.
  *
- * Dispatch: k <= 16 and enough segments (large batch) and nelements >= 32
- *           routes to subgroup top-k; otherwise falls back to original.
+ * Dispatch logic routes to:
+ *   - Subgroup top-k: k ≤ 16, large batch — single-pass, output sorted
+ *   - Single-workgroup top-k: large dim (≥4096) — radix select, output unsorted
+ *   - Original kernel: small dim or fallback
  */
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
+#include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <c10/util/llvmMathExtras.h>
+#include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <comm/DeviceProperties.h>
 #include <comm/SYCLHelpers.h>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
@@ -297,7 +301,7 @@ struct SubgroupTopKFunctor {
 };
 
 // ================================================================
-// Launch helpers
+// Launch function
 // ================================================================
 template <typename scalar_t, int K, int VEC_SIZE, bool Largest, typename IndexT>
 static void sbtopk_launch_impl(
@@ -427,11 +431,46 @@ static void sbtopk_launch_kernel(
 #undef SBTOPK_DISPATCH_K
 }
 
+// Subgroup top-k: internal launch — only called from dispatch below
+static bool subgroup_topk_try_launch(
+    const at::Tensor& self,
+    int64_t nsegments,
+    int64_t nelements,
+    int64_t k,
+    bool largest,
+    const at::Tensor& values,
+    const at::Tensor& indices) {
+  if (k > 16) {
+    return false;
+  }
+
+  AT_DISPATCH_ALL_TYPES_AND2(
+      at::ScalarType::Half,
+      at::ScalarType::BFloat16,
+      self.scalar_type(),
+      "subgroup_topk_xpu",
+      [&]() {
+        sbtopk_launch_kernel<scalar_t>(
+            static_cast<const scalar_t*>(self.const_data_ptr()),
+            static_cast<scalar_t*>(values.data_ptr()),
+            static_cast<int64_t*>(indices.data_ptr()),
+            nsegments,
+            nelements,
+            static_cast<int>(k),
+            largest);
+      });
+
+  return true;
+}
+
 // ================================================================
-// Dispatch: subgroup top-k vs original
+// Dispatch: subgroup top-k vs single-workgroup top-k vs original
 //
 //   - dim < 32: original (need at least SG_SIZE elements)
 //   - dim >= 32, large batch, k <= 16: subgroup top-k
+//   - dim >= 4096, any bs: single-workgroup top-k
+//   - dim >= 4096, k > 16: single-workgroup top-k
+//     (subgroup only supports k<=16)
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
@@ -451,7 +490,7 @@ SbtopkResult sbtopk_try_launch(
   //
   // Threshold: nsegments >= thread_slots / 4.
   //   Subgroup top-k uses 1 sub-group per slice (reading data once), while
-  //   the original kernel reads data multiple times (~3 radix passes). So
+  //   single-wg/original read data multiple times (~3 radix passes). So
   //   subgroup top-k reaches memory-BW saturation at much lower occupancy.
   //   thread_slots/4 is the conservative cutoff.
   //
@@ -460,24 +499,28 @@ SbtopkResult sbtopk_try_launch(
       ::xpu::sycl::syclGpuEuCount() * ::xpu::sycl::syclGpuHWThreadsPerEU();
   int64_t sg_threshold = thread_slots / 4;
   if (k <= 16 && nsegments >= sg_threshold) {
-    AT_DISPATCH_ALL_TYPES_AND2(
-        at::ScalarType::Half,
-        at::ScalarType::BFloat16,
-        self.scalar_type(),
-        "subgroup_topk_xpu",
-        [&]() {
-          sbtopk_launch_kernel<scalar_t>(
-              static_cast<const scalar_t*>(self.const_data_ptr()),
-              static_cast<scalar_t*>(values.data_ptr()),
-              static_cast<int64_t*>(indices.data_ptr()),
-              nsegments,
-              nelements,
-              static_cast<int>(k),
-              largest);
-        });
-    return SbtopkResult::SORTED;
+    if (subgroup_topk_try_launch(
+            self, nsegments, nelements, k, largest, values, indices)) {
+      return SbtopkResult::SORTED;
+    }
+    return SbtopkResult::FAILED;
   }
 
+  // Single-workgroup top-k: radix select, good for large
+  // dim. Output is UNSORTED.
+  // Use nelements >= 4096 so dim=1024/1025 falls through to original
+  // (single-wg has regressions at dim=1024 for medium/large batches).
+  // Single-wg uses int for numSlices internally; reject
+  // if nsegments overflows int32.
+  if (nelements >= 4096 && nsegments <= std::numeric_limits<int>::max()) {
+    if (single_wg_topk_try_launch(
+            self, nsegments, nelements, k, largest, values, indices)) {
+      return SbtopkResult::UNSORTED;
+    }
+    return SbtopkResult::FAILED;
+  }
+
+  // Fallback to original for dim=32-4095 or k>16 with small batch
   return SbtopkResult::FAILED;
 }
 
