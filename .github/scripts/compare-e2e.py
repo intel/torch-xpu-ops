@@ -300,25 +300,32 @@ def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> 
         if col in merged.columns:
             merged[col] = pd.to_numeric(merged[col], errors='coerce').astype('Int64')
 
+    def _is_acc_pass(val):
+        return pd.notna(val) and 'pass' in str(val)
+
+    def _is_acc_fail(val):
+        return pd.notna(val) and 'fail' in str(val)
+
     def compare_acc(row):
         tgt = row.get("accuracy_target")
         bsl = row.get("accuracy_baseline")
-        if pd.isna(tgt) and pd.isna(bsl):
-            return "no_changed"
-        if pd.isna(tgt):
-            return "not_run"
-        if pd.isna(bsl):
+        tgt_pass = _is_acc_pass(tgt)
+        bsl_pass = _is_acc_pass(bsl)
+
+        # 1. Target passed
+        if tgt_pass:
+            if _is_acc_fail(bsl):
+                return "new_passed"
             return "new_case"
-        # Both present: check pass/fail status
-        tgt_pass = 'pass' in str(tgt)
-        bsl_pass = 'pass' in str(bsl)
-        if not tgt_pass and bsl_pass:
-            return "new_failed"
-        if tgt_pass and not bsl_pass:
-            return "new_passed"
+        # 2. Baseline passed
+        if bsl_pass:
+            if _is_acc_fail(tgt):
+                return "new_failed"
+            return "not_run"
+        # 3. Everything else
         return "no_changed"
 
-    merged["comparison_acc"] = merged.replace(r'^\s*$', np.nan, regex=True).apply(compare_acc, axis=1)
+    merged["comparison_acc"] = merged.apply(compare_acc, axis=1)
 
     cols = ["suite", "data_type", "mode", "model",
             "batch_size_target", "accuracy_target",
@@ -421,30 +428,38 @@ def merge_performance(target_records: list[dict], baseline_records: list[dict],
         if col in merged.columns:
             merged[col] = merged[col].round(3)
 
+    def _is_positive_number(val):
+        return pd.notna(val) and isinstance(val, (int, float)) and val > 0
+
     def compare_perf(row):
-        # If both missing -> empty
-        if pd.isna(row.get("inductor_target")) and pd.isna(row.get("inductor_baseline")):
-            return "no_changed"
-        # If one side missing -> treat as new fail/pass
-        if pd.isna(row.get("inductor_baseline")):
-            return "new_case"
-        if pd.isna(row.get("inductor_target")):
-            return "not_run"
-        # If either ratio negative (unphysical) -> treat as fail/pass based on availability
-        if row["inductor_target"] <= 0 and row["inductor_baseline"] <= 0:
-            return "no_changed"
-        if row["inductor_target"] <= 0:
-            return "new_failed"
-        if row["inductor_baseline"] <= 0:
+        ind_tgt = row.get("inductor_target")
+        ind_bsl = row.get("inductor_baseline")
+        ind_ratio = row.get("inductor_ratio")
+        eag_ratio = row.get("eager_ratio")
+
+        tgt_ok = _is_positive_number(ind_tgt)
+        bsl_ok = _is_positive_number(ind_bsl)
+
+        # 1. Both are valid positive numbers — compare ratios
+        if tgt_ok and bsl_ok:
+            ind_drop = pd.notna(ind_ratio) and ind_ratio < 1 - threshold
+            ind_improve = pd.notna(ind_ratio) and ind_ratio > 1 + threshold
+            eag_drop = pd.notna(eag_ratio) and eag_ratio < 1 - threshold
+            eag_improve = pd.notna(eag_ratio) and eag_ratio > 1 + threshold
+            if ind_drop or eag_drop:
+                return "new_dropped"
+            if ind_improve or eag_improve:
+                return "new_improved"
+        # 2. Target valid, baseline not — new_passed
+        if tgt_ok and not bsl_ok:
             return "new_passed"
-        # Check thresholds
-        if row["inductor_ratio"] < 1 - threshold or row["eager_ratio"] < 1 - threshold:
-            return "new_dropped"
-        if row["inductor_ratio"] > 1 + threshold or row["eager_ratio"] > 1 + threshold:
-            return "new_improved"
+        # 3. Baseline valid, target not — new_failed
+        if bsl_ok and not tgt_ok:
+            return "new_failed"
+        # 4. Neither valid
         return "no_changed"
 
-    merged["comparison_perf"] = merged.replace(r'^\s*$', np.nan, regex=True).apply(compare_perf, axis=1)
+    merged["comparison_perf"] = merged.apply(compare_perf, axis=1)
 
     cols = ["suite", "data_type", "mode", "model",
             "batch_size_target", "inductor_target", "eager_target",

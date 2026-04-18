@@ -272,14 +272,13 @@ jobs:
           echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
 
       - name: Download baseline logs
-        if: steps.baseline.outputs.run_id != '' && github.event_name != 'pull_request'
+        if: steps.baseline.outputs.run_id != ''
         uses: actions/download-artifact@v8
         with:
           pattern: 'Inductor-*'
           path: ${{ github.workspace }}/results/baseline
           run-id: ${{ steps.baseline.outputs.run_id }}
           github-token: ${{ github.token }}
-
       - name: Ensure baseline directory exists
         run: mkdir -p "${{ github.workspace }}/results/baseline"
 
@@ -318,6 +317,7 @@ jobs:
           exit_code=0
 
           if [ "${{ github.event_name }}" == "pull_request" ]; then
+            find ${{ github.workspace }}/results/baseline -type f -name '*.xml' -delete
             python .github/scripts/check-results.py \
               --results-dir "${{ github.workspace }}/results" || exit_code=1
           else

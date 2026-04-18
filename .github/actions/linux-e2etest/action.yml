@@ -41,7 +41,7 @@ runs:
         cp "${SCRIPT_DIR}/run_benchmark.py" "${TARGET_DIR}/"
 
         cd "${TARGET_DIR}"
-        rm -rf inductor_log ~/.triton /tmp/torchinductor_*
+        rm -rf torch inductor_log ~/.triton /tmp/torchinductor_*
 
         # Use model list file for nightly/weekly/ondemand (not PR or comparison)
         model_list_arg=""

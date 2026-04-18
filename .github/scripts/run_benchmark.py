@@ -512,7 +512,7 @@ def main():
 
     if total_tasks == 0:
         print("No valid tasks generated.")
-        sys.exit(0)
+        sys.exit(1)
 
     print(f"Total tasks to run: {total_tasks}")
 
@@ -617,10 +617,8 @@ def _run_workers(tasks, workers, args, earlyoom_proc):
         print("Failed tasks:")
         for task in failed_tasks:
             print(f"  - {task.suite} {task.dt} {task.mode} {task.scenario} {task.model}")
-        sys.exit(1)
     else:
         print(f"[Tasks {total_tasks}/{total_tasks}] All tasks completed successfully.")
-        sys.exit(0)
 
 
 if __name__ == "__main__":
