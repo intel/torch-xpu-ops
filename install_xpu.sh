@@ -293,7 +293,7 @@ if [[ -n "$DRIVER" ]]; then
             apt update
             apt-get install -y software-properties-common
             add-apt-repository -y ppa:kobuk-team/intel-graphics
-            local client_pkgs
+            client_pkgs=()
             read -ra client_pkgs <<< "$(_pkgs_client)"
             apt-get install -y "${client_pkgs[@]}"
             ;;
