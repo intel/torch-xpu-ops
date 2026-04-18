@@ -1,12 +1,12 @@
 # Owner(s): ["module: sdpa"]
 
-import contextlib
 import itertools
 import math
 import os
 import sys
 import unittest
 from collections import namedtuple
+from contextlib import contextmanager, nullcontext
 from functools import partial, wraps
 from unittest.mock import ANY, MagicMock, patch
 
@@ -22,6 +22,7 @@ from torch.nn.functional import scaled_dot_product_attention
 from torch.nn.parameter import Parameter
 from torch.testing._internal.common_cuda import (
     IS_JETSON,
+    PLATFORM_SUPPORTS_CUDNN_ATTENTION as _UPSTREAM_PLATFORM_SUPPORTS_CUDNN_ATTENTION,
     PLATFORM_SUPPORTS_FLASH_ATTENTION,
     PLATFORM_SUPPORTS_FUSED_ATTENTION,
     PLATFORM_SUPPORTS_MEM_EFF_ATTENTION,
@@ -79,7 +80,7 @@ def onlyAccelerator(fn):
     return only_fn
 
 
-@contextlib.contextmanager
+@contextmanager
 def use_deterministic_algorithims(mode: bool, warn_only: bool):
     r"""
     This context manager can be used to temporarily enable or disable deterministic algorithms.
@@ -92,6 +93,15 @@ def use_deterministic_algorithims(mode: bool, warn_only: bool):
         yield {}
     finally:
         torch.use_deterministic_algorithms(previous_mode, warn_only=previous_warn_only)
+
+
+def cudnn_attention_if_supported():
+    """Return sdpa_kernel context forcing cuDNN if supported, else nullcontext."""
+    return (
+        sdpa_kernel(backends=[SDPBackend.CUDNN_ATTENTION])
+        if PLATFORM_SUPPORTS_CUDNN_ATTENTION
+        else nullcontext()
+    )
 
 
 # Found in torch/testing/_comparison.py
@@ -259,8 +269,10 @@ def query_key_value_clones(
     return query_ref, key_ref, value_ref
 
 
-# Workaround in order to align XPU test with cuda
-PLATFORM_SUPPORTS_CUDNN_ATTENTION = True
+# cuDNN attention is not available on XPU; preserve upstream value for CUDA runs
+PLATFORM_SUPPORTS_CUDNN_ATTENTION = (
+    False if TEST_XPU else _UPSTREAM_PLATFORM_SUPPORTS_CUDNN_ATTENTION
+)
 
 
 def get_platform_specific_sdpa():
@@ -666,7 +678,7 @@ class TestTransformers(NNTestCase):
         maybe_autocast = (
             torch.autocast(device, dtype=torch.float16)
             if use_autocast
-            else contextlib.nullcontext()
+            else nullcontext()
         )
         with maybe_autocast:
             for input, src_key_padding_mask in input_mask_pairs:
@@ -739,7 +751,7 @@ class TestTransformers(NNTestCase):
         if with_no_grad:
             cm = torch.no_grad()
         else:
-            cm = contextlib.nullcontext()
+            cm = nullcontext()
         with cm:
             result = model(x, mask=src_mask)
 
@@ -1080,7 +1092,7 @@ class TestTransformers(NNTestCase):
         # ref output precision too low
         with set_default_dtype(torch.double):
             if training:
-                cm = contextlib.nullcontext()
+                cm = nullcontext()
             else:
                 cm = torch.no_grad()  # transformer fast path requires no grad
             with cm:
@@ -1105,11 +1117,7 @@ class TestTransformers(NNTestCase):
         input_seq_len = torch.tensor([3, 2])
         padding_mask = torch.arange(3)[None, :].cpu() >= input_seq_len[:, None]
 
-        with (
-            self.assertNoLogs(None)
-            if not TEST_WITH_TORCHDYNAMO
-            else contextlib.nullcontext()
-        ):
+        with self.assertNoLogs(None) if not TEST_WITH_TORCHDYNAMO else nullcontext():
             encoder(
                 inputs,
                 mask=src_mask,
@@ -1230,7 +1238,7 @@ class TestTransformers(NNTestCase):
         ).to(device)
         mha.eval()
 
-        ctx = torch.no_grad if fast_path else contextlib.nullcontext
+        ctx = torch.no_grad if fast_path else nullcontext
         with ctx():
             x = torch.randn(B, L, F).to(device)
             if not batch_first:
@@ -3669,11 +3677,9 @@ class TestSDPACudaOnly(NNTestCase):
         S_converted = F.pad(S_converted, (0, seqlen_k_og - seqlen_k_rounded))
         return S_converted[:, :, :seqlen_q, :seqlen_k]
 
-    @unittest.skipIf(
-        not PLATFORM_SUPPORTS_CUDNN_ATTENTION,
-        "cuDNN Attention is not supported on this system",
-    )
     def test_cudnn_attention_different_dk_dv(self, device):
+        # Adapted for XPU: tests SDPA correctness with different dk/dv dims
+        # using default dispatch (cuDNN not available on XPU).
         dtype = torch.bfloat16
         make_tensor = partial(
             torch.rand, device=device, dtype=dtype, requires_grad=True
@@ -3689,7 +3695,7 @@ class TestSDPACudaOnly(NNTestCase):
             make_tensor(v_shape),
         )
 
-        with sdpa_kernel(backends=[SDPBackend.CUDNN_ATTENTION]):
+        with cudnn_attention_if_supported():
             actual = torch.nn.functional.scaled_dot_product_attention(
                 query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
             )
@@ -3869,7 +3875,7 @@ class TestSDPACudaOnly(NNTestCase):
             make_tensor(v_shape),
         )
 
-        # test that we do not dispatch to cuDNN for an unsupported case
+        # test unsupported case (dk != dv) - on XPU this uses default dispatch
         actual = torch.nn.functional.scaled_dot_product_attention(
             query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False
         )
@@ -3914,19 +3920,15 @@ class TestSDPACudaOnly(NNTestCase):
                 with self.assertRaisesRegex(RuntimeError, "No available kernel."):
                     torch.nn.functional.scaled_dot_product_attention(q, k, v)
 
-    @unittest.skipIf(
-        not PLATFORM_SUPPORTS_CUDNN_ATTENTION,
-        "cudnn Attention is not supported on this system",
-    )
     def test_cudnn_attention_trivial_output_transpose(self, device):
         # see also: https://github.com/pytorch/pytorch/issues/134001
+        # Adapted for XPU: tests output transpose + backward using default
+        # dispatch (cuDNN not available on XPU).
         x = torch.randn(
             2, 4, 1, 64, device=device, dtype=torch.float16, requires_grad=True
         )
         x2 = x.transpose(1, 2)
-        with torch.nn.attention.sdpa_kernel(
-            torch.nn.attention.SDPBackend.CUDNN_ATTENTION
-        ):
+        with cudnn_attention_if_supported():
             o = (
                 torch.nn.functional.scaled_dot_product_attention(x2, x2, x2)
                 .transpose(1, 2)
@@ -4166,11 +4168,9 @@ class TestSDPACudaOnly(NNTestCase):
             )
             out.backward(grad)
 
-    @unittest.skipIf(
-        not PLATFORM_SUPPORTS_CUDNN_ATTENTION,
-        "cudnn Attention is not supported on this system",
-    )
     def test_cudnn_attention_low_dropout(self, device):
+        # Adapted for XPU: tests near-zero dropout behavior using default
+        # dispatch (cuDNN not available on XPU).
         q = torch.randn(2, 8, 128, 128, dtype=torch.half, device=device)
         dropout_p = 0.00000000001
         out1 = torch.nn.functional.scaled_dot_product_attention(
@@ -4181,12 +4181,10 @@ class TestSDPACudaOnly(NNTestCase):
             self.assertNotEqual(out1, out2)
 
     @skipIfRocm
-    @unittest.skipIf(
-        not PLATFORM_SUPPORTS_CUDNN_ATTENTION,
-        "cudnn Attention is not supported on this system",
-    )
     def test_cudnn_attention_broken_166211(self, device):
         # https://github.com/pytorch/pytorch/issues/166211#issue-3551350377
+        # Adapted for XPU: tests gradient NaN regression using default
+        # dispatch (cuDNN not available on XPU).
         shape = (20, 4, 4, 32)
         scale = 10
         for _ in range(100):
@@ -4201,9 +4199,7 @@ class TestSDPACudaOnly(NNTestCase):
                 torch.randn(*shape, device=device, dtype=torch.bfloat16) * scale
             )
 
-            with torch.nn.attention.sdpa_kernel(
-                torch.nn.attention.SDPBackend.CUDNN_ATTENTION
-            ):
+            with cudnn_attention_if_supported():
                 attn_output = torch.nn.functional.scaled_dot_product_attention(q, k, v)
                 dq, dk, dv = torch.autograd.grad(
                     outputs=attn_output, inputs=(q, k, v), grad_outputs=grad_attn_output
@@ -4936,7 +4932,7 @@ class TestSDPACudaOnly(NNTestCase):
                 f"{kernel_name} defaults to a non-deterministic algorithm.",
             )
             if warn_only
-            else contextlib.nullcontext()
+            else nullcontext()
         )
         with use_deterministic_algorithims(True, warn_only=warn_only):
             with sdpa_kernel(backends=[fused_kernel]):
