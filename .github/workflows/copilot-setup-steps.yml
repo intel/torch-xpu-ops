@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 59
 
     container:
-      image: intelgpu/ubuntu-24.04-rolling:26.05
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add 991 --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g

@@ -51,7 +51,7 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 900
     container:
-      image: intelgpu/ubuntu-24.04-rolling:26.05
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
