@@ -10,15 +10,140 @@ on:
 
 permissions: read-all
 
-env:
-  aaa: 1
-
 jobs:
-  test:
-    runs-on: ${{ INPUTS.node_name }}
-    env:
-      bbb: 2
+  get-params:
+    runs-on: ubuntu-24.04
+    outputs:
+      node_name: ${{ steps.params.outputs.node_name }}
     steps:
-      - name: Check UT Results
+      - name: Get params
+        id: params
         run: |
+          set -xe
+          node_node="$(echo ${{ inputs.node_name }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+          echo "node_name=${node_node}" >> ${GITHUB_OUTPUT}
+  check-nodes:
+    runs-on: ${{ matrix.node_name }}
+    if: ${{ ! cancelled() }}
+    needs: [get-params]
+    strategy:
+      fail-fast: false
+      matrix:
+        node_name: ${{ fromJSON(needs.get-params.outputs.node_name) }}
+    steps:
+      - name: Check env
+        run: |
+          set -xe
+          sudo find ./ |grep -v "^\./$" |xargs sudo rm -rf
+          clinfo --list
+          id
           ip a
+
+
+          # Fix ownership
+          ME="$(id -u):$(id -g)"
+          sudo chown "${ME}" "${HOME}" -R 2>/dev/null || true
+          sudo chmod 777 /tmp -R 2>/dev/null || true
+          sudo chown "${ME}" . -R 2>/dev/null || true
+
+          if [[ -n "${RUNNER_WORKSPACE}" && -d "${RUNNER_WORKSPACE}/.." ]]; then
+            cd "${RUNNER_WORKSPACE}/.."
+            [[ "$(pwd)" != "/" ]] && sudo chown "${ME}" . -R 2>/dev/null || true
+          fi
+
+          export DEBIAN_FRONTEND=noninteractive
+          export LANG=C.UTF-8
+          export LC_ALL=C.UTF-8
+          export TZ=UTC
+          export GCC_VERSION=13
+          . /etc/os-release
+
+          sudo rm -rf /etc/apt/sources.list.d/intel-*
+          sudo apt-get autoremove -y && \
+          sudo apt-get clean && \
+          sudo rm -rf \
+              /var/lib/apt/lists/* \
+              /tmp/* \
+              /var/tmp/* \
+              /usr/share/doc/* \
+              /usr/share/man/*
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu ${VERSION_CODENAME}/lts/2523 unified" |sudo tee /etc/apt/sources.list.d/intel-gpu-${VERSION_CODENAME}.list
+
+          sudo apt-get update
+          sudo apt-get upgrade -y --no-install-recommends
+          if [ "${VERSION_ID}" == "22.04" ];then
+              sudo apt-get install -y software-properties-common
+              sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+          fi
+          sudo apt-get install -y --no-install-recommends \
+              ca-certificates \
+              gnupg \
+              software-properties-common \
+              apt-transport-https \
+              lsb-release && \
+          sudo rm -rf /var/lib/apt/lists/*
+
+          sudo apt install -y \
+              linux-headers-$(uname -r) \
+              linux-modules-extra-$(uname -r) \
+              flex bison \
+              intel-fw-gpu intel-i915-dkms xpu-smi
+          sudo apt install -y \
+              intel-opencl-icd libze-intel-gpu1 libze1 \
+              intel-media-va-driver-non-free libmfx-gen1 libvpl2 \
+              libegl-mesa0 libegl1-mesa libegl1-mesa-dev libgbm1 libgl1-mesa-dev libgl1-mesa-dri \
+              libglapi-mesa libglx-mesa0 libigdgmm12 libxatracker2 mesa-va-drivers \
+              mesa-vdpau-drivers mesa-vulkan-drivers va-driver-all vainfo hwinfo clinfo intel-ocloc
+          sudo apt install -y \
+              libigc-dev intel-igc-cm libigdfcl-dev libigfxcmrt-dev libze-dev libgomp1 pciutils
+
+          sudo apt-get update && \
+          sudo apt-get install -y --no-install-recommends \
+              wget \
+              curl \
+              sudo \
+              git \
+              unzip \
+              zip \
+              gh \
+              numactl \
+              rsync \
+              jq \
+              gcc g++ \
+              gcc-${GCC_VERSION} g++-${GCC_VERSION} \
+              cmake \
+              ninja-build \
+              pkg-config \
+              autoconf \
+              automake \
+              libtool \
+              libgl1 \
+              libglib2.0-0 \
+              libglib2.0-dev \
+              zlib1g \
+              zlib1g-dev \
+              python3 \
+              python3-dev \
+              python3-venv \
+              python3-pip && \
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-${GCC_VERSION} 100 && \
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-${GCC_VERSION} 100 && \
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-${GCC_VERSION} 100 && \
+          gcc -v && g++ -v && gcov -v && \
+          sudo pip3 install --no-cache-dir --upgrade \
+            pip \
+            setuptools \
+            wheel
+
+          uname -a
+          dpkg -l |grep -iE 'intel-opencl-icd|libze|libigc|intel-igc'
+          clinfo --list
+
+          sudo apt-get autoremove -y && \
+          sudo apt-get clean && \
+          sudo rm -rf \
+              /var/lib/apt/lists/* \
+              /tmp/* \
+              /var/tmp/* \
+              /usr/share/doc/* \
+              /usr/share/man/*
