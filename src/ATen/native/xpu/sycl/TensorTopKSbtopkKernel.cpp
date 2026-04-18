@@ -22,6 +22,7 @@
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <comm/DeviceProperties.h>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
+#include <cstdint>
 #include <limits>
 
 namespace at {
@@ -76,11 +77,18 @@ struct SubgroupTopKFunctor {
     bool inserted = false;
 #pragma unroll
     for (int i = K - 1; i >= 0; --i) {
+      // When count < K the buffer is partially filled: positions [0, count)
+      // hold real values while [count, K) still contain sentinels.
+      // Guard "i <= count" ensures we only stop at position i when
+      // top_vals[i-1] is a real entry.  Without this guard, an input
+      // value equal to the sentinel (e.g. all -inf for largest=true)
+      // would always stop at position K-1, overwriting it repeatedly
+      // instead of filling lower positions.
       bool stop;
       if constexpr (Largest) {
-        stop = (i == 0) || !(val > top_vals[i - 1]);
+        stop = (i == 0) || (i <= count && !(val > top_vals[i - 1]));
       } else {
-        stop = (i == 0) || !(val < top_vals[i - 1]);
+        stop = (i == 0) || (i <= count && !(val < top_vals[i - 1]));
       }
       if (!inserted && stop) {
         top_vals[i] = val;
@@ -209,7 +217,7 @@ struct SubgroupTopKFunctor {
     int64_t base;
     for (base = sg_lid * VEC_SIZE; base + VEC_SIZE <= sliceSize_;
          base += stride) {
-      scalar_t src[VEC_SIZE];
+      alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
       *reinterpret_cast<LoadT*>(&src) =
           *reinterpret_cast<const LoadT*>(&inputSlice[base]);
 #pragma unroll
@@ -327,13 +335,22 @@ static void sbtopk_launch_vec_dispatch(
   //   1. SG_SIZE * VEC_SIZE <= sliceSize  (all threads get at
   //      least one full vector)
   //   2. sliceSize % VEC_SIZE == 0        (slice boundaries are aligned)
-  if (MAX_VEC >= 8 && sliceSize % 8 == 0 && SG_SIZE * 8 <= sliceSize) {
+  //   3. input pointer is aligned to sizeof(scalar_t) * VEC_SIZE
+  //      (usually guaranteed by PyTorch allocators, but a non-zero
+  //      storage offset can break alignment)
+  auto input_align = reinterpret_cast<uintptr_t>(input);
+  if (MAX_VEC >= 8 && sliceSize % 8 == 0 && SG_SIZE * 8 <= sliceSize &&
+      input_align % (sizeof(scalar_t) * 8) == 0) {
     sbtopk_launch_impl<scalar_t, K, 8, Largest, IndexT>(
         input, topK, indices, numSlices, sliceSize, k);
-  } else if (MAX_VEC >= 4 && sliceSize % 4 == 0 && SG_SIZE * 4 <= sliceSize) {
+  } else if (
+      MAX_VEC >= 4 && sliceSize % 4 == 0 && SG_SIZE * 4 <= sliceSize &&
+      input_align % (sizeof(scalar_t) * 4) == 0) {
     sbtopk_launch_impl<scalar_t, K, 4, Largest, IndexT>(
         input, topK, indices, numSlices, sliceSize, k);
-  } else if (sliceSize % 2 == 0 && SG_SIZE * 2 <= sliceSize) {
+  } else if (
+      sliceSize % 2 == 0 && SG_SIZE * 2 <= sliceSize &&
+      input_align % (sizeof(scalar_t) * 2) == 0) {
     sbtopk_launch_impl<scalar_t, K, 2, Largest, IndexT>(
         input, topK, indices, numSlices, sliceSize, k);
   } else {
