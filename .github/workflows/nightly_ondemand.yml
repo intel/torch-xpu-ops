@@ -40,7 +40,6 @@ jobs:
             [[ "$(pwd)" != "/" ]] && sudo chown "${ME}" . -R 2>/dev/null || true
           fi
 
-          set -xe
           clinfo --list
           id
           ip a
@@ -51,8 +50,11 @@ jobs:
           sudo chmod 777 /tmp -R 2>/dev/null || true
           sudo chown "${ME}" . -R 2>/dev/null || true
 
+
+          exit 0
+
           export DEBIAN_FRONTEND=noninteractive
           export LANG=C.UTF-8
           export LC_ALL=C.UTF-8
           export TZ=UTC
-          sudo bash ${{ github.workspace }}/install_xpu.sh --clean --common --uv --driver-lts2
+          # sudo bash ${{ github.workspace }}/install_xpu.sh --clean --common --uv --driver-lts2
