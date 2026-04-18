@@ -26,7 +26,7 @@
  *   __syncthreads()           -> sycl::group_barrier(item.get_group())
  *   doLdg(ptr)                -> direct load (no read-only cache hint in SYCL)
  *   Bitfield<T>::getBitfield  -> software shift+mask (no PTX BFE/BFI in SYCL)
- *   smem[]                    -> int* from local accessor
+ *   smem[]                    -> IndexT* from local accessor
  *
  * withinSliceStride = 1 (input is .contiguous() before calling this kernel).
  * Uses SBTOPK_RADIX_BITS=4, SBTOPK_RADIX_SIZE=16, SBTOPK_RADIX_MASK=15
@@ -63,14 +63,15 @@ constexpr int SBTOPK_BLOCK = 1024;
 //   counts)
 //              and by exclusiveIntPrefixScan (smem[0..num_sgs-1] for carries)
 //   [64..65] : used by findPattern (flag + found index)
-//   Total: 68 ints = 272 bytes
-constexpr int SMEM_INTS = 68;
+//   Total: 68 elements (IndexT-sized)
+constexpr int SMEM_ELEMS = 68;
 
 template <
     typename scalar_t,
     int VEC_SIZE = 4,
     int ELEMS_PER_THREAD = 32,
-    int SIMD = 32>
+    int SIMD = 32,
+    typename IndexT = int>
 struct SbtopkGatherFunctor {
   using RadixT = typename TopKTypeConfig<scalar_t>::RadixType;
   // CUDA uses sizeof(scalar_t)*8, NOT sizeof(RadixType)*8.
@@ -92,13 +93,13 @@ struct SbtopkGatherFunctor {
   __attribute__((noinline)) void countRadixUsingMask(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
-      int* smem,
-      int counts[SBTOPK_RADIX_SIZE],
+      IndexT* smem,
+      IndexT counts[SBTOPK_RADIX_SIZE],
       RadixT desired,
       RadixT desiredMask,
       int digitPos,
       const scalar_t* data,
-      int sliceSize) const {
+      IndexT sliceSize) const {
     int lid = item.get_local_id(0);
     int block_size = item.get_local_range(0);
     int sg_lid = sg.get_local_linear_id();
@@ -115,10 +116,10 @@ struct SbtopkGatherFunctor {
     // Each thread processes VEC_SIZE consecutive elements per iteration.
     // Stride = block_size * VEC_SIZE for coalesced access across threads.
     using LoadT = memory::aligned_vector<scalar_t, VEC_SIZE>;
-    int stride = block_size * VEC_SIZE;
+    IndexT stride = static_cast<IndexT>(block_size) * VEC_SIZE;
 
     // Vectorized main loop — full VEC_SIZE loads
-    int base = lid * VEC_SIZE;
+    IndexT base = static_cast<IndexT>(lid) * VEC_SIZE;
     for (; base + VEC_SIZE <= sliceSize; base += stride) {
       scalar_t src[VEC_SIZE];
       *reinterpret_cast<LoadT*>(&src) =
@@ -134,7 +135,7 @@ struct SbtopkGatherFunctor {
       }
     }
     // Scalar tail — remaining elements
-    for (int idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
+    for (IndexT idx = base; idx < sliceSize && idx < base + VEC_SIZE; ++idx) {
       RadixT val = TopKTypeConfig<scalar_t>::convert(data[idx]);
       if ((val & desiredMask) == desired) {
         RadixT digit =
@@ -146,10 +147,11 @@ struct SbtopkGatherFunctor {
     // Sub-group reduce + lane0 atomicAdd to smem.
 #pragma unroll
     for (int j = 0; j < SBTOPK_RADIX_SIZE; ++j) {
-      int total = sycl::reduce_over_group(sg, counts[j], sycl::plus<int>());
+      IndexT total =
+          sycl::reduce_over_group(sg, counts[j], sycl::plus<IndexT>());
       if (sg_lid == 0) {
         sycl::atomic_ref<
-            int,
+            IndexT,
             sycl::memory_order::relaxed,
             sycl::memory_scope::work_group,
             sycl::access::address_space::local_space>
@@ -171,14 +173,13 @@ struct SbtopkGatherFunctor {
   //
   // Finds the unique value whose convert() matches desired.
   // Returns RadixT (converted form) directly — no deconvert needed.
-  // SYCL uses smem[64]=flag(int), smem[65]=index(int), then
-  // convert(data[index]).
+  // SYCL uses smem[64]=flag, smem[65]=index, then convert(data[index]).
   // ================================================================
   __attribute__((noinline)) RadixT findPattern(
       sycl::nd_item<1> item,
-      int* smem,
+      IndexT* smem,
       const scalar_t* data,
-      int sliceSize,
+      IndexT sliceSize,
       RadixT desired,
       RadixT desiredMask) const {
     int lid = item.get_local_id(0);
@@ -186,15 +187,15 @@ struct SbtopkGatherFunctor {
 
     if (lid == 0) {
       smem[64] = 0; // found flag
-      smem[65] = -1; // found index
+      smem[65] = static_cast<IndexT>(-1); // found index
     }
     // Barrier required: init must be visible before any thread enters the loop
     sycl::group_barrier(item.get_group());
 
-    int numIterations =
+    IndexT numIterations =
         ((sliceSize + block_size - 1) / block_size) * block_size;
 
-    for (int i = lid; i < numIterations; i += block_size) {
+    for (IndexT i = lid; i < numIterations; i += block_size) {
       bool inRange = (i < sliceSize);
       scalar_t v = inRange ? data[i] : static_cast<scalar_t>(0);
 
@@ -205,8 +206,8 @@ struct SbtopkGatherFunctor {
       }
       sycl::group_barrier(item.get_group());
 
-      int found = smem[64];
-      int foundIdx = smem[65];
+      IndexT found = smem[64];
+      IndexT foundIdx = smem[65];
 
       if (found != 0) {
         return TopKTypeConfig<scalar_t>::convert(data[foundIdx]);
@@ -221,17 +222,20 @@ struct SbtopkGatherFunctor {
   // ================================================================
   // exclusiveIntPrefixScan — integer exclusive prefix scan
   //
-  // Each thread provides an integer count (0..VEC_SIZE). Returns:
+  // Each thread provides an integer count (0..ELEMS_PER_THREAD). Returns:
   //   out: exclusive prefix sum (write offset for this thread)
   //   carry: total sum across all threads in the work-group
   //
-  // Sub-group level: exclusive_scan_over_group + reduce_over_group
+  // Values are bounded by SBTOPK_BLOCK * ELEMS_PER_THREAD (always fits int),
+  // but smem is IndexT* so we cast at the interface.
+  //
+  // Sub-group level: inclusive_scan_over_group + group_broadcast
   // Cross sub-group: smem serial scan (same pattern as binary version)
   // ================================================================
   __attribute__((noinline)) void exclusiveIntPrefixScan(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
-      int* smem,
+      IndexT* smem,
       int local_count,
       int& out,
       int& carry) const {
@@ -246,24 +250,24 @@ struct SbtopkGatherFunctor {
     // group_broadcast to get sub-group total (last lane's inclusive value)
     int sg_total = sycl::group_broadcast(sg, sg_inclusive, SIMD - 1);
     if (sg_lid == SIMD - 1) {
-      smem[sg_id] = sg_total;
+      smem[sg_id] = static_cast<IndexT>(sg_total);
     }
     sycl::group_barrier(item.get_group());
 
     // Thread 0: serial inclusive prefix sum over sub-group totals
     if (item.get_local_id(0) == 0) {
-      int current = 0;
+      IndexT current = 0;
       for (int i = 0; i < num_sgs; ++i) {
-        int v = smem[i];
+        IndexT v = smem[i];
         smem[i] = v + current;
         current += v;
       }
     }
     sycl::group_barrier(item.get_group());
 
-    int cross_sg_prefix = (sg_id >= 1) ? smem[sg_id - 1] : 0;
+    int cross_sg_prefix = (sg_id >= 1) ? static_cast<int>(smem[sg_id - 1]) : 0;
     out = sg_exclusive + cross_sg_prefix;
-    carry = smem[num_sgs - 1];
+    carry = static_cast<int>(smem[num_sgs - 1]);
   }
 
   // ================================================================
@@ -278,12 +282,12 @@ struct SbtopkGatherFunctor {
   __attribute__((noinline)) RadixT radixSelect(
       sycl::nd_item<1> item,
       sycl::sub_group sg,
-      int* smem,
+      IndexT* smem,
       const scalar_t* data,
       int k,
       bool largest,
-      int sliceSize) const {
-    int counts[SBTOPK_RADIX_SIZE];
+      IndexT sliceSize) const {
+    IndexT counts[SBTOPK_RADIX_SIZE];
     RadixT desired = 0;
     RadixT desiredMask = 0;
     int kToFind = k;
@@ -305,7 +309,7 @@ struct SbtopkGatherFunctor {
       // Replicates CUDA found_unique / found_non_unique lambdas exactly.
       if (largest) {
         for (int i = SBTOPK_RADIX_SIZE - 1; i >= 0; --i) {
-          int count = counts[i];
+          IndexT count = counts[i];
 
           // found_unique: return from radixSelect
           if (count == 1 && kToFind == 1) {
@@ -326,11 +330,12 @@ struct SbtopkGatherFunctor {
             break;
           }
 
-          kToFind -= count;
+          // count < kToFind here, so count fits in int
+          kToFind -= static_cast<int>(count);
         }
       } else {
         for (int i = 0; i < SBTOPK_RADIX_SIZE; ++i) {
-          int count = counts[i];
+          IndexT count = counts[i];
 
           if (count == 1 && kToFind == 1) {
             desired = Bitfield<RadixT>::setBitfield(
@@ -349,7 +354,7 @@ struct SbtopkGatherFunctor {
             break;
           }
 
-          kToFind -= count;
+          kToFind -= static_cast<int>(count);
         }
       }
     }
@@ -371,19 +376,20 @@ struct SbtopkGatherFunctor {
   // 32K elements, so dim=131072 needs only 4 iterations.
   // ================================================================
   void operator()(sycl::nd_item<1> item) const {
-    int slice = item.get_group_linear_id();
+    IndexT slice = static_cast<IndexT>(item.get_group_linear_id());
     if (slice >= numSlices_)
       return;
 
     sycl::sub_group sg = item.get_sub_group();
 
-    // Get raw int* pointer from local accessor
-    int* smem =
+    // Get raw IndexT* pointer from local accessor
+    IndexT* smem =
         local_mem_.template get_multi_ptr<sycl::access::decorated::no>().get();
 
-    const scalar_t* inputSlice = inputData_ + (int64_t)slice * sliceSize_;
-    scalar_t* topKSlice = topKData_ + (int64_t)slice * k_;
-    int64_t* indicesSlice = indicesData_ + (int64_t)slice * k_;
+    const scalar_t* inputSlice =
+        inputData_ + static_cast<int64_t>(slice) * sliceSize_;
+    scalar_t* topKSlice = topKData_ + static_cast<int64_t>(slice) * k_;
+    int64_t* indicesSlice = indicesData_ + static_cast<int64_t>(slice) * k_;
 
     // Step 1: radixSelect — returns RadixT directly (no deconvert/convert
     // round-trip)
@@ -399,8 +405,9 @@ struct SbtopkGatherFunctor {
     int lid = item.get_local_id(0);
 
     // Each iteration covers SBTOPK_BLOCK * ELEMS_PER_THREAD elements.
-    int iter_stride = SBTOPK_BLOCK * ELEMS_PER_THREAD;
-    int numIters = (sliceSize_ + iter_stride - 1) / iter_stride;
+    IndexT iter_stride = static_cast<IndexT>(SBTOPK_BLOCK) * ELEMS_PER_THREAD;
+    int numIters =
+        static_cast<int>((sliceSize_ + iter_stride - 1) / iter_stride);
 
     // Step 2: Gather values strictly greater/less than topKValue
     int writeIndexStart = 0;
@@ -411,14 +418,16 @@ struct SbtopkGatherFunctor {
       // chunks. Thread t handles chunks at offsets: t*VEC_SIZE,
       // (t+SBTOPK_BLOCK)*VEC_SIZE, ...
       scalar_t vals[ELEMS_PER_THREAD];
-      int match_indices[ELEMS_PER_THREAD]; // global index of matching elements
+      IndexT match_indices[ELEMS_PER_THREAD];
       int local_count = 0;
 
-      int iter_base = iter * iter_stride;
+      IndexT iter_base = static_cast<IndexT>(iter) * iter_stride;
 
 #pragma unroll
       for (int L = 0; L < LOADS_PER_ITER; ++L) {
-        int base = iter_base + L * SBTOPK_BLOCK * VEC_SIZE + lid * VEC_SIZE;
+        IndexT base = iter_base +
+            static_cast<IndexT>(L) * SBTOPK_BLOCK * VEC_SIZE +
+            static_cast<IndexT>(lid) * VEC_SIZE;
 
         if (base + VEC_SIZE <= sliceSize_) {
           scalar_t src[VEC_SIZE];
@@ -466,14 +475,16 @@ struct SbtopkGatherFunctor {
 
     for (int iter = 0; iter < numIters; ++iter) {
       scalar_t vals[ELEMS_PER_THREAD];
-      int match_indices[ELEMS_PER_THREAD];
+      IndexT match_indices[ELEMS_PER_THREAD];
       int local_count = 0;
 
-      int iter_base = iter * iter_stride;
+      IndexT iter_base = static_cast<IndexT>(iter) * iter_stride;
 
 #pragma unroll
       for (int L = 0; L < LOADS_PER_ITER; ++L) {
-        int base = iter_base + L * SBTOPK_BLOCK * VEC_SIZE + lid * VEC_SIZE;
+        IndexT base = iter_base +
+            static_cast<IndexT>(L) * SBTOPK_BLOCK * VEC_SIZE +
+            static_cast<IndexT>(lid) * VEC_SIZE;
 
         if (base + VEC_SIZE <= sliceSize_) {
           scalar_t src[VEC_SIZE];
@@ -524,11 +535,11 @@ struct SbtopkGatherFunctor {
       const scalar_t* inputData,
       scalar_t* topKData,
       int64_t* indicesData,
-      int numSlices,
-      int sliceSize,
+      IndexT numSlices,
+      IndexT sliceSize,
       int k,
       bool largest,
-      sycl::local_accessor<int, 1> local_mem)
+      sycl::local_accessor<IndexT, 1> local_mem)
       : inputData_(inputData),
         topKData_(topKData),
         indicesData_(indicesData),
@@ -541,23 +552,27 @@ struct SbtopkGatherFunctor {
   const scalar_t* inputData_;
   scalar_t* topKData_;
   int64_t* indicesData_;
-  int numSlices_;
-  int sliceSize_;
+  IndexT numSlices_;
+  IndexT sliceSize_;
   int k_;
   bool largest_;
-  sycl::local_accessor<int, 1> local_mem_;
+  sycl::local_accessor<IndexT, 1> local_mem_;
 };
 
 // ================================================================
 // Launch function
 // ================================================================
-template <typename scalar_t, int VEC_SIZE, int ELEMS_PER_THREAD>
+template <
+    typename scalar_t,
+    int VEC_SIZE,
+    int ELEMS_PER_THREAD,
+    typename IndexT>
 static void sbtopk_launch_impl(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
-    int numSlices,
-    int sliceSize,
+    IndexT numSlices,
+    IndexT sliceSize,
     int k,
     bool largest) {
   namespace syclex = sycl::ext::oneapi::experimental;
@@ -565,19 +580,19 @@ static void sbtopk_launch_impl(
 
   constexpr int SIMD = 32;
   using Functor =
-      SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD>;
+      SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD, IndexT>;
 
   syclex::properties kernel_props{
       syclex::sub_group_size<SIMD>, intelex::grf_size<128>};
 
   auto& q = at::xpu::getCurrentSYCLQueue();
   q.submit([&](sycl::handler& cgh) {
-    sycl::local_accessor<int, 1> local_mem(SMEM_INTS, cgh);
+    sycl::local_accessor<IndexT, 1> local_mem(SMEM_ELEMS, cgh);
     Functor functor(
         input, topK, indices, numSlices, sliceSize, k, largest, local_mem);
     cgh.parallel_for<Functor>(
         sycl::nd_range<1>(
-            sycl::range<1>(numSlices * SBTOPK_BLOCK),
+            sycl::range<1>(static_cast<size_t>(numSlices) * SBTOPK_BLOCK),
             sycl::range<1>(SBTOPK_BLOCK)),
         kernel_props,
         functor);
@@ -585,17 +600,17 @@ static void sbtopk_launch_impl(
 }
 
 // Dispatch macro to reduce boilerplate
-#define SBTOPK_LAUNCH(V, E)           \
-  sbtopk_launch_impl<scalar_t, V, E>( \
+#define SBTOPK_LAUNCH(V, E)                   \
+  sbtopk_launch_impl<scalar_t, V, E, IndexT>( \
       input, topK, indices, numSlices, sliceSize, k, largest)
 
-template <typename scalar_t>
+template <typename scalar_t, typename IndexT>
 static void sbtopk_launch_kernel(
     const scalar_t* input,
     scalar_t* topK,
     int64_t* indices,
-    int numSlices,
-    int sliceSize,
+    IndexT numSlices,
+    IndexT sliceSize,
     int k,
     bool largest) {
   // Determine ELEMS_PER_THREAD based on dim: target ~4 iterations
@@ -778,14 +793,30 @@ bool single_wg_topk_try_launch(
       self.scalar_type(),
       "single_wg_topk_xpu",
       [&]() {
-        sbtopk_launch_kernel<scalar_t>(
-            static_cast<const scalar_t*>(self.const_data_ptr()),
-            static_cast<scalar_t*>(values.data_ptr()),
-            static_cast<int64_t*>(indices.data_ptr()),
-            static_cast<int>(nsegments),
-            static_cast<int>(nelements),
-            static_cast<int>(k),
-            largest);
+        const auto* input = static_cast<const scalar_t*>(self.const_data_ptr());
+        auto* topK = static_cast<scalar_t*>(values.data_ptr());
+        auto* idx = static_cast<int64_t*>(indices.data_ptr());
+
+        if (nsegments * nelements <=
+            static_cast<int64_t>(std::numeric_limits<int>::max())) {
+          sbtopk_launch_kernel<scalar_t, int>(
+              input,
+              topK,
+              idx,
+              static_cast<int>(nsegments),
+              static_cast<int>(nelements),
+              static_cast<int>(k),
+              largest);
+        } else {
+          sbtopk_launch_kernel<scalar_t, int64_t>(
+              input,
+              topK,
+              idx,
+              nsegments,
+              nelements,
+              static_cast<int>(k),
+              largest);
+        }
       });
 
   return true;
