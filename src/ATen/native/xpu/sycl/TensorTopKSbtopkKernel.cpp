@@ -458,9 +458,7 @@ SbtopkResult sbtopk_try_launch(
   // dim. Output is UNSORTED.
   // Use nelements >= 4096 so dim=1024/1025 falls through to original
   // (single-wg has regressions at dim=1024 for medium/large batches).
-  // Single-wg uses int for numSlices internally; reject
-  // if nsegments overflows int32.
-  if (nelements >= 4096 && nsegments <= std::numeric_limits<int>::max()) {
+  if (nelements >= 4096) {
     if (single_wg_topk_try_launch(
             self, nsegments, nelements, k, largest, values, indices)) {
       return SbtopkResult::UNSORTED;
