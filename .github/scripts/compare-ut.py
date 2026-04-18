@@ -257,6 +257,8 @@ class GitHubIssueTracker:
 
     def load_cache(self) -> bool:
         """Load issues from local cache file."""
+        if not self.cache_path:
+            return False
         one_cache_path = (sorted(glob.glob(f"./**/{self.cache_path.name}", recursive=True), reverse=True) or [None])[-1]
         if one_cache_path is None or not Path(one_cache_path).exists():
             return False
@@ -385,8 +387,12 @@ class GitHubIssueTracker:
         test_cases = self._extract_test_cases(issue_body)
         for test_case in test_cases:
             # Safely split the test case string
-            case_state = "close" if re.match(r'^~~.*~~$', test_case.strip()) else "open"
-            parts = test_case.split(',')
+            stripped = test_case.strip()
+            case_state = "close" if re.match(r'^~~.*~~$', stripped) else "open"
+            # Remove strikethrough markers before parsing fields
+            if case_state == "close":
+                stripped = stripped[2:-2]
+            parts = stripped.split(',')
             if len(parts) < 3:
                 logger.debug(f"Issue #{issue_id}: test case '{test_case}' has fewer than 3 comma-separated parts, skipping")
                 continue
@@ -866,9 +872,11 @@ class ResultAnalyzer:
         for col in status_cols:
             merged[col] = merged[col].fillna('unknown')
 
-        # Fill all other columns with empty string
-        other_cols = [col for col in merged.columns if col not in status_cols]
-        merged[other_cols] = merged[other_cols].fillna('')
+        # Fill numeric columns with 0, other columns with empty string
+        numeric_cols = merged.select_dtypes(include='number').columns.tolist()
+        string_cols = [col for col in merged.columns if col not in status_cols and col not in numeric_cols]
+        merged[numeric_cols] = merged[numeric_cols].fillna(0)
+        merged[string_cols] = merged[string_cols].fillna('')
 
         # Select and order columns for easy comparison
         columns = [
@@ -1013,11 +1021,10 @@ class ResultAnalyzer:
                 continue
 
             total = len(device_df)
+            passed_count = len(device_df[device_df["status"].isin(["passed", "xfail"])])
             failed = len(device_df[device_df["status"] == "failed"])
             error = len(device_df[device_df["status"] == "error"])
 
-            # Pass rate = (total - failed - error) / total
-            passed_count = total - failed - error
             pass_rate = (passed_count / total * 100) if total > 0 else 0
 
             device_name = "Baseline" if device_value == "baseline" else "Target"
@@ -1103,7 +1110,7 @@ class ResultAnalyzer:
             for _, row in stats_df.iterrows():
                 device = row['Device']
                 total = row['Total']
-                passed_non_failure = row['Passed']  # This is total - failed - error
+                passed_non_failure = row['Passed']  # passed + xfail count
                 failed_total = row['Failed'] + row['Error']  # Combine failed and error into one "Failed" column
                 skipped = row['Skipped']
                 xfail = row['XFAIL']
@@ -1184,7 +1191,7 @@ class ResultAnalyzer:
 
                     # Truncate message if too long
                     message = issue.get('message_target', '')
-                    message = message[:50] + "..."
+                    message = message[:50].replace('|', '\\|') + "..."
 
                     md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {issue_display} | {message} |")
 
@@ -1193,31 +1200,31 @@ class ResultAnalyzer:
 
                 md.append("")
 
-            # Add a subsection for untracked failures if provided
-            if untracked_failures_df is not None and not untracked_failures_df.empty:
-                md.append("### Untracked Failures (No Associated GitHub Issue)\n")
-                md.append("The following new failures have no matching GitHub issue. These may require new issue creation.\n")
+        # Add a section for untracked failures if provided (independent of new_failures)
+        if untracked_failures_df is not None and not untracked_failures_df.empty:
+            md.append("## ⚠️ Untracked Failures (No Associated GitHub Issue)\n")
+            md.append("The following target failures have no matching GitHub issue. These may require new issue creation.\n")
 
-                md.append("| Test File | Test Name | Status | Message |")
-                md.append("|-----------|-----------|--------|---------|")
+            md.append("| Test File | Test Name | Status | Message |")
+            md.append("|-----------|-----------|--------|---------|")
 
-                for _, issue in untracked_failures_df.head(20).iterrows():
-                    test_file = _get_non_empty(issue.get('testfile_target', ''), issue.get('testfile_baseline', ''), default='Unknown')
-                    test_name = _get_non_empty(issue.get('name_target', ''), issue.get('name_baseline', ''), default='Unknown')
-                    status = issue['status_target']
+            for _, issue in untracked_failures_df.head(20).iterrows():
+                test_file = _get_non_empty(issue.get('testfile_target', ''), issue.get('testfile_baseline', ''), default='Unknown')
+                test_name = _get_non_empty(issue.get('name_target', ''), issue.get('name_baseline', ''), default='Unknown')
+                status = issue['status_target']
 
-                    # Get status emoji
-                    status_emoji = TestStatus.from_string(status).emoji
+                # Get status emoji
+                status_emoji = TestStatus.from_string(status).emoji
 
-                    # Truncate message
-                    message = issue.get('message_target', '')
-                    message = message[:50] + "..."
+                # Truncate message
+                message = issue.get('message_target', '')
+                message = message[:50].replace('|', '\\|') + "..."
 
-                    md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {message} |")
+                md.append(f"| `{test_file}` | `{test_name}` | {status_emoji} {status} | {message} |")
 
-                if len(untracked_failures_df) > 20:
-                    md.append(f"| ... | ... | ... | *{len(untracked_failures_df) - 20} more untracked failures* |")
-                md.append("")
+            if len(untracked_failures_df) > 20:
+                md.append(f"| ... | ... | ... | *{len(untracked_failures_df) - 20} more untracked failures* |")
+            md.append("")
 
         # New Passes Section – only if there are any
         if new_passes_df is not None and not new_passes_df.empty:
@@ -1887,8 +1894,8 @@ def main() -> int:
 
         print("-" * 60)
         if args.check_changes:
-            print(f"{'✅ New tracked issues passed:':<{label_width}} {len(tracked_passed_df):>6}")
-            print(f"{'❌ New untracked failures:':<{label_width}} {len(untracked_failures_df):>6}")
+            print(f"{'✅ New tracked issues passed:':<{label_width}} {len(tracked_passed_df) if tracked_passed_df is not None else 0:>6}")
+            print(f"{'❌ New untracked failures:':<{label_width}} {len(untracked_failures_df) if untracked_failures_df is not None else 0:>6}")
 
         print("=" * 60)
 

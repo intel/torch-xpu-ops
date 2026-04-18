@@ -17,6 +17,7 @@ import numpy as np
 from glob import glob
 from datetime import datetime
 from typing import Any
+from html import escape as html_escape
 
 # ----------------------------------------------------------------------
 # Constants – easily adjustable
@@ -57,6 +58,7 @@ def _parse_filename_components(filename: str) -> tuple[str, str, str, str]:
         if len(parts) >= 5:
             suite, data_type, mode, _, result_type = parts[:5]
             return suite, data_type, mode, result_type
+        raise ValueError(f"inductor-results filename has too few parts: {filename}")
 
     base = filename[:-4]
     if not base.startswith("inductor"):
@@ -181,7 +183,8 @@ def load_results(file_list: list[str], result_type_filter: str) -> list[dict]:
                 continue
 
         for _, row in df.iterrows():
-            if row["dev"].strip() not in ['cpu', 'xpu', 'cuda']:
+            dev_val = row.get("dev")
+            if pd.isna(dev_val) or str(dev_val).strip() not in ['cpu', 'xpu', 'cuda']:
                 continue
 
             if result_type_filter == "accuracy":
@@ -312,12 +315,15 @@ def merge_accuracy(target_records: list[dict], baseline_records: list[dict]) -> 
         tgt_pass = _is_acc_pass(tgt)
         bsl_pass = _is_acc_pass(bsl)
 
-        # 1. Target passed
+        # Both passed — no change
+        if tgt_pass and bsl_pass:
+            return "no_changed"
+        # 1. Target passed, baseline didn't
         if tgt_pass:
             if _is_acc_fail(bsl):
                 return "new_passed"
             return "new_case"
-        # 2. Baseline passed
+        # 2. Baseline passed, target didn't
         if bsl_pass:
             if _is_acc_fail(tgt):
                 return "new_failed"
@@ -653,11 +659,11 @@ def write_summary_markdown(combined_summary: pd.DataFrame, threshold: float, fil
 def _write_html_table(rows: pd.DataFrame, columns: list[str], condition_col: str,
                       fail_color: str, pass_color: str, file_handle):
     """Write an HTML table with row background colors based on condition_col."""
-    file_handle.write('<table>\n\n')
-    file_handle.write('<thead>\n')
+    file_handle.write('<table>\n')
+    file_handle.write('<thead>\n<tr>')
     for col in columns:
         file_handle.write(f'<th>{col}</th>')
-    file_handle.write('</thead>\n')
+    file_handle.write('</tr>\n</thead>\n')
     file_handle.write('<tbody>\n')
     for _, row in rows.iterrows():
         val = row.get(condition_col, '')
@@ -668,7 +674,7 @@ def _write_html_table(rows: pd.DataFrame, columns: list[str], condition_col: str
             bg_color = f' style="background-color: {pass_color};"'
         file_handle.write(f'<tr{bg_color}>')
         for col in columns:
-            cell = str(row.get(col, ''))
+            cell = html_escape(str(row.get(col, '')))
             file_handle.write(f'<td>{cell}</td>')
         file_handle.write('</tr>\n')
     file_handle.write('</tbody>\n')
@@ -727,14 +733,16 @@ def write_details_markdown(acc_df: pd.DataFrame, perf_df: pd.DataFrame,
                     # Geometric means
                     ind_ratio = ""
                     if 'inductor_ratio' in perf_sub.columns:
-                        gm = np.exp(np.log(perf_sub['inductor_ratio'].dropna().replace(0, np.nan)).mean()) if not perf_sub['inductor_ratio'].dropna().empty else None
-                        if gm is not None:
-                            ind_ratio = f"{gm:.3f}"
+                        vals = perf_sub['inductor_ratio'].dropna()
+                        vals = vals[vals > 0]
+                        if not vals.empty:
+                            ind_ratio = f"{np.exp(np.log(vals).mean()):.3f}"
                     eag_ratio = ""
                     if 'eager_ratio' in perf_sub.columns:
-                        gm = np.exp(np.log(perf_sub['eager_ratio'].dropna().replace(0, np.nan)).mean()) if not perf_sub['eager_ratio'].dropna().empty else None
-                        if gm is not None:
-                            eag_ratio = f"{gm:.3f}"
+                        vals = perf_sub['eager_ratio'].dropna()
+                        vals = vals[vals > 0]
+                        if not vals.empty:
+                            eag_ratio = f"{np.exp(np.log(vals).mean()):.3f}"
                 else:
                     perf_total = perf_fail = perf_drop = perf_pass = perf_improve = 0
                     ind_ratio = eag_ratio = ""

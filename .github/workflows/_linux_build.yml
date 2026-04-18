@@ -146,8 +146,8 @@ jobs:
         run: |
           rm -rf ~/intel ~/.intel ${HOME}/intel /opt/intel
           wget -q -O oneapi.sh "${{ inputs.component_version }}"
-          sudo bash oneapi.sh -a -s --eula accept --action remove || true
-          sudo bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
+          bash oneapi.sh -a -s --eula accept --action remove || true
+          bash oneapi.sh -a -s --eula accept --action install --install-dir /opt/intel/oneapi
           echo "XPU_ONEAPI_PATH=/opt/intel/oneapi" >> "${GITHUB_ENV}"
 
       # ── Core build ────────────────────────────────────────────────────────

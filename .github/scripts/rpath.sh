@@ -1,20 +1,26 @@
 #!/bin/bash
+set -euo pipefail
 
 # Post-op the linux wheel to change the .so rpath to make the wheel work with XPU runtime pypi packages
-# Usage: rpath.sh /path/to/torch-xxxx.whl
+# Usage: rpath.sh /path/to/torch-xxxx.whl /path/to/output
 
-pkg="$(realpath $1)"
-output="$(realpath $2)"
+if [[ $# -lt 2 ]]; then
+    echo "Usage: $0 /path/to/torch-xxxx.whl /path/to/output"
+    exit 1
+fi
+
+pkg="$(realpath "$1")"
+output="$(realpath "$2")"
 PATCHELF_BIN=patchelf
 
 make_wheel_record() {
     FPATH=$1
-    if echo $FPATH | grep RECORD >/dev/null 2>&1; then
+    if echo "$FPATH" | grep RECORD >/dev/null 2>&1; then
         # if the RECORD file, then
         echo "$FPATH,,"
     else
-        HASH=$(openssl dgst -sha256 -binary $FPATH | openssl base64 | sed -e 's/+/-/g' | sed -e 's/\//_/g' | sed -e 's/=//g')
-        FSIZE=$(ls -nl $FPATH | awk '{print $5}')
+        HASH=$(openssl dgst -sha256 -binary "$FPATH" | openssl base64 | sed -e 's/+/-/g' | sed -e 's/\//_/g' | sed -e 's/=//g')
+        FSIZE=$(ls -nl "$FPATH" | awk '{print $5}')
         echo "$FPATH,sha256=$HASH,$FSIZE"
     fi
 }
@@ -27,13 +33,13 @@ export C_SO_RPATH=$XPU_RPATHS':$ORIGIN:$ORIGIN/lib'
 export LIB_SO_RPATH=$XPU_RPATHS':$ORIGIN'
 export FORCE_RPATH="--force-rpath"
 
-rm -rf $output
-mkdir -p $output
-cd $output
-cp $pkg .
+rm -rf "$output"
+mkdir -p "$output"
+cd "$output"
+cp "$pkg" .
 
-unzip -q $(basename $pkg)
-rm -f $(basename $pkg)
+unzip -q "$(basename "$pkg")"
+rm -f "$(basename "$pkg")"
 
 if [[ -d torch ]]; then
     PREFIX=torch
@@ -42,20 +48,21 @@ else
 fi
 
 # set RPATH of _C.so and similar to $ORIGIN, $ORIGIN/lib
-find $PREFIX -maxdepth 1 -type f -name "*.so*" | while read sofile; do
+find "$PREFIX" -maxdepth 1 -type f -name "*.so*" | while read -r sofile; do
     echo "Setting rpath of $sofile to ${C_SO_RPATH:-'$ORIGIN:$ORIGIN/lib'}"
-    $PATCHELF_BIN --set-rpath ${C_SO_RPATH:-'$ORIGIN:$ORIGIN/lib'} ${FORCE_RPATH:-} $sofile
-    $PATCHELF_BIN --print-rpath $sofile
+    $PATCHELF_BIN --set-rpath ${C_SO_RPATH:-'$ORIGIN:$ORIGIN/lib'} ${FORCE_RPATH:-} "$sofile"
+    $PATCHELF_BIN --print-rpath "$sofile"
 done
 
 # set RPATH of lib/ files to $ORIGIN
-find $PREFIX/lib -maxdepth 1 -type f -name "*.so*" | while read sofile; do    echo "Setting rpath of $sofile to ${LIB_SO_RPATH:-'$ORIGIN'}"
-    $PATCHELF_BIN --set-rpath ${LIB_SO_RPATH:-'$ORIGIN'} ${FORCE_RPATH:-} $sofile
-    $PATCHELF_BIN --print-rpath $sofile
+find "$PREFIX/lib" -maxdepth 1 -type f -name "*.so*" | while read -r sofile; do
+    echo "Setting rpath of $sofile to ${LIB_SO_RPATH:-'$ORIGIN'}"
+    $PATCHELF_BIN --set-rpath ${LIB_SO_RPATH:-'$ORIGIN'} ${FORCE_RPATH:-} "$sofile"
+    $PATCHELF_BIN --print-rpath "$sofile"
 done
 
 # regenerate the RECORD file with new hashes
-record_file=$(echo $(basename $pkg) | sed -e 's/-cp.*$/.dist-info\/RECORD/g')
+record_file=$(echo "$(basename "$pkg")" | sed -e 's/-cp.*$/.dist-info\/RECORD/g')
 if [[ -e $record_file ]]; then
     echo "Generating new record file $record_file"
     : > "$record_file"
@@ -66,4 +73,4 @@ if [[ -e $record_file ]]; then
 fi
 
 # zip up the wheel back
-zip -rq $(basename $pkg) $PREIX*
+zip -rq "$(basename "$pkg")" "$PREFIX"*

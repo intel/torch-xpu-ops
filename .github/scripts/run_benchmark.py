@@ -74,6 +74,22 @@ def get_model_list(suite: str, mode: str, model_only: str) -> list[str]:
     return models
 
 
+# Cached torch version (computed once)
+_torch_version_cache = None
+
+def _get_torch_version() -> str:
+    global _torch_version_cache
+    if _torch_version_cache is not None:
+        return _torch_version_cache
+    try:
+        result = subprocess.run(["pip", "list", "--format=freeze"], capture_output=True, text=True, check=True)
+        torch_line = [line for line in result.stdout.splitlines() if line.startswith("torch==")]
+        _torch_version_cache = torch_line[0].split("==")[1].split("+")[0] if torch_line else "0.0.0"
+    except Exception:
+        _torch_version_cache = "0.0.0"
+    return _torch_version_cache
+
+
 # Benchmark execution (merged from inductor_xpu_test.sh)
 def run_benchmark_with_prefix(
     task: TestTask,
@@ -84,8 +100,8 @@ def run_benchmark_with_prefix(
     worker_id: int,
     device: str,
     shape: str,
-) -> tuple[bool, Path]:
-    """Run a single benchmark with optional numactl prefix and extra environment variables."""
+) -> tuple[int, bool, Path]:
+    """Run a single benchmark and return `(exit_code, success, test_result)`."""
     model_only = task.model
     suite = task.suite
     dt = task.dt
@@ -95,7 +111,7 @@ def run_benchmark_with_prefix(
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"inductor-logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
     log_csv = log_dir / f"inductor-results-{suite}-{dt}-{mode}-{device}-{scenario}.csv"
-    tmp_file = tempfile.NamedTemporaryFile(delete=True, prefix='tmp_', suffix='.csv')
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, prefix='tmp_', suffix='.csv')
     tmp_log_csv = tmp_file.name
     tmp_file.close()
 
@@ -105,12 +121,7 @@ def run_benchmark_with_prefix(
         model_only_extra = f"--only {model_only}"
 
     # Version check
-    try:
-        result = subprocess.run(["pip", "list", "--format=freeze"], capture_output=True, text=True, check=True)
-        torch_line = [line for line in result.stdout.splitlines() if line.startswith("torch==")]
-        torch_ver = torch_line[0].split("==")[1].split("+")[0] if torch_line else "0.0.0"
-    except Exception:
-        torch_ver = "0.0.0"
+    torch_ver = _get_torch_version()
 
     mode_extra = ""
     if version.parse(torch_ver) >= version.parse("2.0.2"):
@@ -186,9 +197,11 @@ def run_benchmark_with_prefix(
             with log_buffer_lock:
                 log_buffer.append(formatted)
 
-            if not log_f.closed:
+            try:
                 log_f.write(formatted + "\n")
                 log_f.flush()
+            except ValueError:
+                pass  # file already closed
 
     reader_thread = threading.Thread(target=output_reader, daemon=True)
     reader_thread.start()
@@ -196,24 +209,34 @@ def run_benchmark_with_prefix(
     def error_monitor():
         timeout = 10800  # seconds
         start = time.time()
+        scan_pos = 0
         while proc.poll() is None and (time.time() - start) < timeout:
             with log_buffer_lock:
-                content = "\n".join(log_buffer)
-            for pattern in error_patterns:
-                if pattern.lower() in content.lower():
-                    print(f"  [Worker {worker_id}] Detected '{pattern}', killing process")
-                    proc.kill()
-                    return
+                new_lines = log_buffer[scan_pos:]
+                scan_pos = len(log_buffer)
+            if new_lines:
+                content = "\n".join(new_lines).lower()
+                for pattern in error_patterns:
+                    if pattern.lower() in content:
+                        print(f"  [Worker {worker_id}] Detected '{pattern}', killing process")
+                        proc.kill()
+                        return
             time.sleep(30)
 
     monitor_thread = threading.Thread(target=error_monitor, daemon=True)
     monitor_thread.start()
 
     exit_code = proc.wait()
-    reader_thread.join(timeout=1)
-    monitor_thread.join(timeout=1)
+    reader_thread.join(timeout=10)
     log_f.close()
+    monitor_thread.join(timeout=1)
     collect_csv_results(log_csv, tmp_log_csv, device, task)
+
+    # Clean up temp file
+    try:
+        os.unlink(tmp_log_csv)
+    except OSError:
+        pass
 
     # Determine success based on last non-empty line of log file
     def check_success_from_log(log_path: Path) -> tuple[str, bool]:
@@ -318,11 +341,15 @@ def get_cpu_topology() -> int:
             parts = line.split(':')
             if len(parts) >= 2:
                 cpu_range = parts[1].strip()
-                if '-' in cpu_range:
-                    start, end = map(int, cpu_range.split('-'))
-                    online_cpus = end - start + 1
-                else:
-                    online_cpus = len(cpu_range.split(','))
+                count = 0
+                for segment in cpu_range.split(','):
+                    segment = segment.strip()
+                    if '-' in segment:
+                        lo, hi = map(int, segment.split('-'))
+                        count += hi - lo + 1
+                    else:
+                        count += 1
+                online_cpus = count
         elif "Thread(s) per core:" in line:
             parts = line.split(':')
             if len(parts) >= 2:
@@ -521,8 +548,12 @@ def main():
         prefix_strings = [p.strip().rstrip(';') for p in args.numactl_args.split(';') if p.strip()]
         if len(prefix_strings) < num_gpus:
             prefix_strings += [prefix_strings[-1]] * (num_gpus - len(prefix_strings))
-        # Assign sequential card numbers 0..len(prefix_strings)-1
-        workers = [(i, prefix_strings[i], {}) for i in range(len(prefix_strings))]
+        # Extract card number from ZE_AFFINITY_MASK=N in each prefix, fallback to index
+        workers = []
+        for i, ps in enumerate(prefix_strings):
+            m = re.search(r'ZE_AFFINITY_MASK=(\d+)', ps)
+            card = int(m.group(1)) if m else i
+            workers.append((card, ps, {}))
         print(f"Using user-provided NUMACTL_ARGS prefixes ({len(workers)} workers)")
     else:
         workers = generate_command_prefixes(num_gpus)
@@ -532,12 +563,12 @@ def main():
     earlyoom_proc = start_earlyoom()
 
     try:
-        _run_workers(tasks, workers, args, earlyoom_proc)
+        _run_workers(tasks, workers, args)
     finally:
         stop_earlyoom(earlyoom_proc)
 
 
-def _run_workers(tasks, workers, args, earlyoom_proc):
+def _run_workers(tasks, workers, args):
     total_tasks = len(tasks)
 
     # Job queue
@@ -559,16 +590,20 @@ def _run_workers(tasks, workers, args, earlyoom_proc):
                 break
 
             log_dir = Path.cwd().resolve() / "inductor_log" / task.suite / task.dt / task.mode / task.scenario
-            exit_code, success, test_result = run_benchmark_with_prefix(
-                task=task,
-                card=card,
-                cmd_prefix=cmd_prefix,
-                env_vars=env_vars,
-                log_dir=log_dir,
-                worker_id=worker_id,
-                device=device,
-                shape=shape,
-            )
+            try:
+                exit_code, success, test_result = run_benchmark_with_prefix(
+                    task=task,
+                    card=card,
+                    cmd_prefix=cmd_prefix,
+                    env_vars=env_vars,
+                    log_dir=log_dir,
+                    worker_id=worker_id,
+                    device=device,
+                    shape=shape,
+                )
+            except Exception as e:
+                print(f"  [Worker {worker_id}] Exception running {task.model}: {e}")
+                exit_code, success, test_result = -1, False, "exception"
 
             # Increment completed counter
             with counter_lock:
