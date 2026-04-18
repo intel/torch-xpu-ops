@@ -14,7 +14,7 @@ on:
 jobs:
   # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
   copilot-setup-steps:
-    runs-on: bmg-test
+    runs-on: copilot_runner
     timeout-minutes: 59
 
     container:
@@ -23,8 +23,7 @@ jobs:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add 991 --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
               -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+              --user 1000:1000
 
     # Set the permissions to the lowest permissions possible needed for your steps.
     # Copilot will be given its own token for its operations.
@@ -32,10 +31,6 @@ jobs:
       contents: read
 
     steps:
-      - name: Fix sh to use bash (Copilot runtime requires pipefail)
-        run: ln -sf /bin/bash /bin/sh
-        shell: bash
-
       - name: Checkout code
         uses: actions/checkout@v5
 
