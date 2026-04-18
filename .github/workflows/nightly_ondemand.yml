@@ -55,4 +55,4 @@ jobs:
           export LANG=C.UTF-8
           export LC_ALL=C.UTF-8
           export TZ=UTC
-          ${{ github.workspace }}/install_xpu.sh --clean --common --uv --driver-lts2
+          sudo ${{ github.workspace }}/install_xpu.sh --clean --common --uv --driver-lts2
