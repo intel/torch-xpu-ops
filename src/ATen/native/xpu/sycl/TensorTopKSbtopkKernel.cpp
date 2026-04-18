@@ -416,13 +416,9 @@ static bool subgroup_topk_try_launch(
 // ================================================================
 // Dispatch: subgroup top-k vs single-workgroup top-k vs original
 //
-// From 432-case benchmark on B580 (3 dtypes x 6 bs x 4 dims x 2 align x 3 k):
-//   - dim < 1024: original wins (kernel launch overhead dominates)
-//   - dim=1024, small bs (<256): original wins
-//   - dim >= 1024, bs >= ~320, k <= 16: subgroup top-k wins
-//   - dim >= 4096, any bs: single-workgroup top-k wins
-//   - dim >= 4096, k > 16: single-workgroup top-k
-//     (subgroup only supports k<=16)
+//   - dim < 1024: original (kernel launch overhead dominates)
+//   - dim >= 1024, large batch, k <= 16: subgroup top-k
+//   - dim >= 4096: single-workgroup top-k
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
