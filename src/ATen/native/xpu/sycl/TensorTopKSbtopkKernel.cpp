@@ -380,9 +380,8 @@ static void sbtopk_launch_kernel(
 // ================================================================
 // Dispatch: subgroup top-k vs original
 //
-// From benchmark on B580 (3 dtypes x 6 bs x 4 dims x 2 align x 3 k):
-//   - dim < 1024: original wins (kernel launch overhead dominates)
-//   - dim >= 1024, bs >= ~320 segments, k <= 16: subgroup top-k wins
+//   - dim < 1024: original (kernel launch overhead dominates)
+//   - dim >= 1024, large batch, k <= 16: subgroup top-k
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
