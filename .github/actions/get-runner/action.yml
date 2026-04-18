@@ -49,8 +49,7 @@ runs:
 
         # Fix ownership
         ME="$(id -u):$(id -g)"
-        sudo chown "${ME}" "${HOME}" -R 2>/dev/null || true
-        sudo chmod 777 /tmp -R 2>/dev/null || true
+        sudo chown "${ME}" "${HOME}" /tmp/* -R 2>/dev/null || true
         sudo chown "${ME}" . -R 2>/dev/null || true
 
         if [[ -n "${RUNNER_WORKSPACE}" && -d "${RUNNER_WORKSPACE}/.." ]]; then
@@ -120,18 +119,18 @@ runs:
           echo $((cps * sck))
         }
 
-        get_online_xpu_count() {
-          command -v clinfo &>/dev/null || { echo 0; return; }
-          clinfo --list 2>/dev/null | awk '
-            BEGIN{g=0;c=0} /Platform.*Graphics/{g=1;next}
-            g&&/Platform:/{g=0;next} g{c++} END{print c}'
+        get_xpu_count() {
+          command -v lspci &>/dev/null || { echo 0; return; }
+          lspci -nn |grep  -Ei 'VGA|DISPLAY' |grep 8086 |wc -l
         }
 
         get_active_xpu_list() {
           local n=$1 list=""
           for ((id=0; id<n; id++)); do
-            if ZE_AFFINITY_MASK="${id}" clinfo --list 2>/dev/null | grep -q "Graphics" && \
-               ! ZE_AFFINITY_MASK="${id}" clinfo --list 2>/dev/null | grep -q " UHD "; then
+            local output
+            output=$(ZE_AFFINITY_MASK="${id}" timeout 60 clinfo --list 2>/dev/null) || continue
+            if echo "$output" | grep -q "Graphics" && \
+               ! echo "$output" | grep -q " UHD "; then
               list+="${id},"
             fi
           done
@@ -140,15 +139,20 @@ runs:
 
         # ── detect ──────────────────────────────────────────────────────────
         cpu_num=$(get_cpu_count | tail -1)
-        xpu_num=$(get_online_xpu_count | tail -1)
+        xpu_num=$(get_xpu_count | tail -1)
         cpus_per_xpu=$(( xpu_num > 0 ? cpu_num / xpu_num : cpu_num ))
 
         echo "CPUs: ${cpu_num}  XPUs: ${xpu_num}  CPUs/XPU: ${cpus_per_xpu}"
         [[ "${xpu_num}" -eq 0 ]] && echo "::warning::No online XPU devices"
 
         ZE_AFFINITY_MASK=$(get_active_xpu_list "${xpu_num}" | tail -1)
+        [[ -z "${ZE_AFFINITY_MASK}" ]] && echo "::error::No active XPU devices found" && exit 1
         IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK}"
-        n=${#gpus[@]}
+        active_num=${#gpus[@]}
+        n=${GPU_NUMS:-$xpu_num}
+        if (( GPU_NUMS > active_num )); then
+          echo "::warning::Requested ${n} GPUs, but only ${active_num} active. Using ${active_num} GPUs."
+        fi
 
         # ── numactl args (semicolon-delimited, one per GPU) ────────────────
         if (( n > 1 )); then
