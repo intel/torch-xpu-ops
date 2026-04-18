@@ -64,6 +64,8 @@ constexpr int SBTOPK_BLOCK = 1024;
 //              and by exclusiveIntPrefixScan (smem[0..num_sgs-1] for carries)
 //   [64..65] : used by findPattern (flag + found index)
 //   Total: 68 elements (IndexT-sized)
+constexpr int SMEM_FOUND_FLAG = 64;
+constexpr int SMEM_FOUND_IDX = 65;
 constexpr int SMEM_ELEMS = 68;
 
 template <
@@ -121,7 +123,7 @@ struct SbtopkGatherFunctor {
     // Vectorized main loop — full VEC_SIZE loads
     IndexT base = static_cast<IndexT>(lid) * VEC_SIZE;
     for (; base + VEC_SIZE <= sliceSize; base += stride) {
-      scalar_t src[VEC_SIZE];
+      alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
       *reinterpret_cast<LoadT*>(&src) =
           *reinterpret_cast<const LoadT*>(&data[base]);
 #pragma unroll
@@ -173,7 +175,8 @@ struct SbtopkGatherFunctor {
   //
   // Finds the unique value whose convert() matches desired.
   // Returns RadixT (converted form) directly — no deconvert needed.
-  // SYCL uses smem[64]=flag, smem[65]=index, then convert(data[index]).
+  // SYCL uses smem[SMEM_FOUND_FLAG]=flag, smem[SMEM_FOUND_IDX]=index,
+  // then convert(data[index]).
   // ================================================================
   __attribute__((noinline)) RadixT findPattern(
       sycl::nd_item<1> item,
@@ -186,8 +189,8 @@ struct SbtopkGatherFunctor {
     int block_size = item.get_local_range(0);
 
     if (lid == 0) {
-      smem[64] = 0; // found flag
-      smem[65] = static_cast<IndexT>(-1); // found index
+      smem[SMEM_FOUND_FLAG] = 0;
+      smem[SMEM_FOUND_IDX] = static_cast<IndexT>(-1);
     }
     // Barrier required: init must be visible before any thread enters the loop
     sycl::group_barrier(item.get_group());
@@ -201,13 +204,13 @@ struct SbtopkGatherFunctor {
 
       if (inRange &&
           ((TopKTypeConfig<scalar_t>::convert(v) & desiredMask) == desired)) {
-        smem[64] = 1; // flag
-        smem[65] = i; // index of found value
+        smem[SMEM_FOUND_FLAG] = 1;
+        smem[SMEM_FOUND_IDX] = i;
       }
       sycl::group_barrier(item.get_group());
 
-      IndexT found = smem[64];
-      IndexT foundIdx = smem[65];
+      IndexT found = smem[SMEM_FOUND_FLAG];
+      IndexT foundIdx = smem[SMEM_FOUND_IDX];
 
       if (found != 0) {
         return TopKTypeConfig<scalar_t>::convert(data[foundIdx]);
@@ -430,7 +433,7 @@ struct SbtopkGatherFunctor {
             static_cast<IndexT>(lid) * VEC_SIZE;
 
         if (base + VEC_SIZE <= sliceSize_) {
-          scalar_t src[VEC_SIZE];
+          alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
           *reinterpret_cast<LoadT*>(&src) =
               *reinterpret_cast<const LoadT*>(&inputSlice[base]);
 #pragma unroll
@@ -487,7 +490,7 @@ struct SbtopkGatherFunctor {
             static_cast<IndexT>(lid) * VEC_SIZE;
 
         if (base + VEC_SIZE <= sliceSize_) {
-          scalar_t src[VEC_SIZE];
+          alignas(alignof(LoadT)) scalar_t src[VEC_SIZE];
           *reinterpret_cast<LoadT*>(&src) =
               *reinterpret_cast<const LoadT*>(&inputSlice[base]);
 #pragma unroll
