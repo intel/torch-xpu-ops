@@ -41,6 +41,7 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <sycl/ext/oneapi/sub_group_mask.hpp>
 
 namespace at {
@@ -560,12 +561,14 @@ static void sbtopk_launch_impl(
     int k,
     bool largest) {
   namespace syclex = sycl::ext::oneapi::experimental;
+  namespace intelex = sycl::ext::intel::experimental;
 
   constexpr int SIMD = 32;
   using Functor =
       SbtopkGatherFunctor<scalar_t, VEC_SIZE, ELEMS_PER_THREAD, SIMD>;
 
-  syclex::properties kernel_props{syclex::sub_group_size<SIMD>};
+  syclex::properties kernel_props{
+      syclex::sub_group_size<SIMD>, intelex::grf_size<128>};
 
   auto& q = at::xpu::getCurrentSYCLQueue();
   q.submit([&](sycl::handler& cgh) {
