@@ -637,14 +637,12 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             event.query()
 
             new_stream.wait_event(event)
-            with torch.cuda.stream(
-                new_stream
-            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            device_module = torch.get_device_module(GPU_TYPE)
+            with device_module.stream(new_stream):
                 x = torch.add(x, 4)
 
-            new_event = (
-                torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
-            )
+            Event = torch.cuda.Event if torch.cuda.is_available() else torch.xpu.Event
+            new_event = Event()
             new_event.record(new_stream)
 
             new_event.wait(cur_stream)
@@ -672,7 +670,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
     )
     def test_cuda_device(self):
         def fn(x):
-            with torch.cuda.device(x.device.index - 1):
+            with torch.get_device_module(GPU_TYPE).device(x.device.index - 1):
                 x = torch.sin(x + 1)
             return x
 
@@ -711,7 +709,13 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         "requires cuda or xpu",
     )
     def test_autocast(self):
-        if not torch.cuda.is_bf16_supported():
+        if GPU_TYPE == "cuda":
+            bf16_supported = torch.cuda.is_bf16_supported()
+        elif GPU_TYPE == "xpu":
+            bf16_supported = getattr(torch.xpu, "is_bf16_supported", lambda: False)()
+        else:
+            bf16_supported = False
+        if not bf16_supported:
             raise unittest.SkipTest("requires bf16")
 
         class MyModule(torch.nn.Module):
@@ -1352,10 +1356,13 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
 
     def test_graph_break_inlining_autocast(self):
         for device in [GPU_TYPE, "cpu"]:
-            if device == GPU_TYPE and not (
-                torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-            ):
-                continue
+            if device == GPU_TYPE:
+                device_backend = getattr(torch, device)
+                if not (
+                    device_backend.is_available()
+                    and device_backend.is_bf16_supported()
+                ):
+                    continue
             self._graph_break_inlining_autocast_test_helper(device)
 
     def test_disable_saved_tensors_hooks(self):
