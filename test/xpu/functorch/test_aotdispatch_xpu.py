@@ -17,6 +17,11 @@ from functools import partial, wraps
 from typing import Any, Optional, Union
 from unittest.mock import patch
 
+import torch
+import torch._dynamo as torchdynamo
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.utils._pytree as pytree
 from common_utils import (
     decorate,
     decorateForModules,
@@ -25,12 +30,6 @@ from common_utils import (
     skipOps,
     xfail,
 )
-
-import torch
-import torch._dynamo as torchdynamo
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.utils._pytree as pytree
 from functorch import grad, jacrev, make_fx, vjp, vmap
 from functorch.compile import (
     aot_function,
@@ -103,7 +102,6 @@ from torch.testing._internal.subclasses import WrapperSubclass
 from torch.testing._internal.two_tensor import TwoTensor, TwoTensorMode
 from torch.utils._python_dispatch import TorchDispatchMode
 
-
 USE_TORCHVISION = False
 try:
     import torchvision
@@ -170,7 +168,9 @@ def _pack_fp8_wrap(x):
     if type(x) is not torch.Tensor:
         # Check only during compilation
         # Test calls hooks to get reference output
-        ctx = torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        ctx = (
+            torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        )
         assert ctx["_fw_graph"] is not None
         assert ctx["_bw_graph"] is not None
         assert ctx["_node"] is not None
@@ -187,7 +187,9 @@ def _unpack_fp8_wrap(x):
     if type(tensor) is not torch.Tensor:
         # Check only during compilation
         # Test calls hooks to get reference output
-        ctx = torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        ctx = (
+            torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
+        )
         assert ctx["_fw_graph"] is not None
         assert ctx["_bw_graph"] is not None
         assert ctx["_node"] is not None
@@ -6375,7 +6377,6 @@ def forward(self, primals_1, tangents_1):
         import math
 
         import networkx as nx
-
         from torch._functorch.partitioners import _find_infinite_capacity_path
 
         # Test 1: Verify _find_infinite_capacity_path finds a path with edge reasons

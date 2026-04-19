@@ -17,7 +17,6 @@ from torch.testing._internal.common_utils import (
 )
 from torch.testing._internal.inductor_utils import GPU_TYPE
 
-
 try:
     from . import test_functions
 except ImportError:
@@ -208,15 +207,24 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertTrue(same(ref, res))
         self.assertEqual(cnts.frame_count, 2)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_stream_context_manager1(self):
         def fn(x):
             s = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
-            current_stream = torch.cuda.current_stream() if torch.cuda.is_available() else torch.xpu.current_stream()
+            current_stream = (
+                torch.cuda.current_stream()
+                if torch.cuda.is_available()
+                else torch.xpu.current_stream()
+            )
             s.wait_stream(current_stream)
-            with torch.cuda.stream(s) if torch.cuda.is_available() else torch.xpu.stream(s):
+            with torch.cuda.stream(
+                s
+            ) if torch.cuda.is_available() else torch.xpu.stream(s):
                 x = torch.relu(x)
             current_stream.wait_stream(s)
             x = torch.add(x, 1)
@@ -233,7 +241,9 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertExpectedInline(str(cnts.op_count), """9""")
 
     @unittest.expectedFailure  # https://github.com/pytorch/pytorch/issues/118204
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda"
+    )
     def test_cuda_stream_across_graph_break(self):
         def fn(x):
             s = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
@@ -242,8 +252,16 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
 
             print("foo")
 
-            tcs = torch.cuda.stream(s) if torch.cuda.is_available() else torch.xpu.stream(s)
-            current_stream = torch.cuda.current_stream() if torch.cuda.is_available() else torch.xpu.current_stream()
+            tcs = (
+                torch.cuda.stream(s)
+                if torch.cuda.is_available()
+                else torch.xpu.stream(s)
+            )
+            current_stream = (
+                torch.cuda.current_stream()
+                if torch.cuda.is_available()
+                else torch.xpu.current_stream()
+            )
             s.wait_stream(current_stream)
 
             with tcs:
@@ -264,25 +282,40 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.op_count, 9)
 
     @unittest.expectedFailure  # https://github.com/pytorch/pytorch/issues/118204
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_stream_context_manager2(self):
         def fn(x, s):
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
 
-            current_stream = torch.cuda.current_stream() if torch.cuda.is_available() else torch.xpu.current_stream()
+            current_stream = (
+                torch.cuda.current_stream()
+                if torch.cuda.is_available()
+                else torch.xpu.current_stream()
+            )
             s.wait_stream(current_stream)
 
-            with torch.cuda.stream(s) if torch.cuda.is_available() else torch.xpu.stream(s):
+            with torch.cuda.stream(
+                s
+            ) if torch.cuda.is_available() else torch.xpu.stream(s):
                 x = torch.relu(x)
 
             current_stream.wait_stream(s)
-            with torch.cuda.stream(current_stream) if torch.cuda.is_available() else torch.xpu.stream(current_stream):
+            with torch.cuda.stream(
+                current_stream
+            ) if torch.cuda.is_available() else torch.xpu.stream(current_stream):
                 x = torch.relu(x)
 
-            s2 = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            s2 = (
+                torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            )
             s2.wait_stream(current_stream)
-            with torch.cuda.stream(s2) if torch.cuda.is_available() else torch.xpu.stream(s2):
+            with torch.cuda.stream(
+                s2
+            ) if torch.cuda.is_available() else torch.xpu.stream(s2):
                 x = torch.relu(x)
 
             current_stream.wait_stream(s2)
@@ -300,17 +333,28 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 1)
         self.assertEqual(cnts.op_count, 18)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_stream_method(self):
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
 
-            new_stream = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-            cur_stream = torch.cuda.current_stream() if torch.cuda.is_available() else torch.xpu.current_stream()
+            new_stream = (
+                torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            )
+            cur_stream = (
+                torch.cuda.current_stream()
+                if torch.cuda.is_available()
+                else torch.xpu.current_stream()
+            )
             new_stream.wait_stream(cur_stream)
 
-            with torch.cuda.stream(new_stream) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with torch.cuda.stream(
+                new_stream
+            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
                 x = torch.sin(x)
                 x = torch.add(x, 3)
 
@@ -320,7 +364,9 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             cur_stream.query()
             cur_stream.synchronize()
 
-            with torch.cuda.stream(new_stream) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with torch.cuda.stream(
+                new_stream
+            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
                 x = torch.add(x, 5)
             new_stream.synchronize()
 
@@ -337,7 +383,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 1)
         self.assertExpectedInline(str(cnts.op_count), """15""")
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_stream_compared_with_constant(self):
         def fn(x):
             x = torch.mul(x, 1)
@@ -367,7 +416,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(ref, res)
         self.assertEqual(ref, res2)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_stream_compared_with_stream(self):
         def fn(x, s0, s1):
             if s0 == s1:
@@ -407,7 +459,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 2)
         self.assertEqual(ref0, res0)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
@@ -427,7 +482,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 1)
         self.assertEqual(cnts.op_count, 3)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
@@ -457,12 +515,17 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 2)
         self.assertEqual(cnts.op_count, 10)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
     def test_cuda_event_created_outside_of_graph(self):
-        user_stream = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+        user_stream = (
+            torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+        )
         event = torch.cuda.Event()
         foo = torch.empty((2, 2), device=GPU_TYPE)
 
@@ -495,7 +558,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 1)
         self.assertEqual(cnts.op_count, 4)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     @unittest.skip(
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
@@ -510,10 +576,14 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             event.query()
 
             new_stream.wait_event(event)
-            with torch.cuda.stream(new_stream) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with torch.cuda.stream(
+                new_stream
+            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
                 x = torch.add(x, 4)
 
-            new_event = torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
+            new_event = (
+                torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
+            )
             new_event.record(new_stream)
 
             new_event.wait(cur_stream)
@@ -527,8 +597,14 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             return x
 
         x = torch.randn((2, 2), device=GPU_TYPE)
-        cur_stream = torch.cuda.current_stream() if torch.cuda.is_available() else torch.xpu.current_stream()
-        new_stream = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+        cur_stream = (
+            torch.cuda.current_stream()
+            if torch.cuda.is_available()
+            else torch.xpu.current_stream()
+        )
+        new_stream = (
+            torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+        )
         ref = fn(x, cur_stream, new_stream)
         cnts = torch._dynamo.testing.CompileCounter()
         opt_fn = torch.compile(fn, backend=cnts, fullgraph=True)
@@ -537,14 +613,23 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 1)
         self.assertExpectedInline(str(cnts.op_count), """16""")
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_event_method(self):
         def fn(x):
             x = torch.mul(x, 1)
             x = torch.add(x, 2)
 
-            cur_stream = torch.cuda.current_stream() if torch.cuda.is_available() else torch.xpu.current_stream()
-            new_stream = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            cur_stream = (
+                torch.cuda.current_stream()
+                if torch.cuda.is_available()
+                else torch.xpu.current_stream()
+            )
+            new_stream = (
+                torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            )
 
             x = torch.add(x, 3)
 
@@ -552,10 +637,14 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             event.query()
 
             new_stream.wait_event(event)
-            with torch.cuda.stream(new_stream) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
+            with torch.cuda.stream(
+                new_stream
+            ) if torch.cuda.is_available() else torch.xpu.stream(new_stream):
                 x = torch.add(x, 4)
 
-            new_event = torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
+            new_event = (
+                torch.cuda.Event() if torch.cuda.is_available() else torch.xpu.Event()
+            )
             new_event.record(new_stream)
 
             new_event.wait(cur_stream)
@@ -577,7 +666,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.frame_count, 1)
         self.assertExpectedInline(str(cnts.op_count), """16""")
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_cuda_device(self):
         def fn(x):
             with torch.cuda.device(x.device.index - 1):
@@ -614,7 +706,10 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             res = opt_fn(x)
             self.assertTrue(same(ref, res))
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "requires cuda or xpu")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "requires cuda or xpu",
+    )
     def test_autocast(self):
         if not torch.cuda.is_bf16_supported():
             raise unittest.SkipTest("requires bf16")

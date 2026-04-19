@@ -511,7 +511,10 @@ class AOTAutogradCacheTests(InductorTestCase):
     @inductor_config.patch("fx_graph_cache", True)
     @functorch_config.patch({"enable_autograd_cache": True})
     @functorch_config.patch({"strict_autograd_cache": True})
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "GPU is unavailable")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "GPU is unavailable",
+    )
     @requires_triton()
     def test_non_bundled_to_bundled_config_change(self):
         if functorch_config.bundled_autograd_cache:
@@ -1033,7 +1036,9 @@ class AOTAutogradCacheTests(InductorTestCase):
             # 3. Use the wrapped result with capture_triton
             kernel_fn = inner_kernel  # Direct assignment from global
             wrapped_kernel = identity_wrapper(kernel_fn)  # Wrapper call
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (  # noqa: E731
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )
             capture_triton(wrapped_kernel)[grid](y, n_elements, BLOCK_SIZE=256)
             return y
 
@@ -1148,7 +1153,9 @@ class AOTAutogradCacheTests(InductorTestCase):
 
         def helper_that_calls_kernel(y, n_elements):
             """Helper function that contains the triton kernel call."""
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (  # noqa: E731
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )
             capture_triton(nested_kernel)[grid](y, n_elements, BLOCK_SIZE=256)
 
         @torch._library.triton_op("test::recursive_func_triton_op", mutates_args=())
@@ -1210,7 +1217,9 @@ class AOTAutogradCacheTests(InductorTestCase):
             y = x.clone()
             n_elements = y.numel()
             kernel = get_kernel()
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (  # noqa: E731
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )
             capture_triton(kernel)[grid](y, n_elements, BLOCK_SIZE=256)
             return y
 
@@ -1278,7 +1287,9 @@ class AOTAutogradCacheTests(InductorTestCase):
             y = x.clone()
             n_elements = y.numel()
             kernel = get_cached_kernel()
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)  # noqa: E731
+            grid = lambda meta: (  # noqa: E731
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )
             capture_triton(kernel)[grid](y, n_elements, BLOCK_SIZE=256)
             return y
 
@@ -1854,7 +1865,10 @@ class AOTAutogradCacheTests(InductorTestCase):
         self.assertEqual(counters["aot_autograd"]["autograd_cache_hit"], 1)
         self.assertEqual(counters["aot_autograd"]["autograd_cache_saved"], 1)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "GPU is unavailable")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "GPU is unavailable",
+    )
     @unittest.skipIf(torch.cuda.is_available() and not SM80OrLater, "bfloat16, float8")
     @inductor_config.patch("fx_graph_remote_cache", False)
     @inductor_config.patch("fx_graph_cache", True)
@@ -1956,7 +1970,10 @@ class AOTAutogradCacheTests(InductorTestCase):
         self.assertEqual(counters["aot_autograd"]["autograd_cache_miss"], 3)
         self.assertEqual(counters["aot_autograd"]["autograd_cache_saved"], 3)
 
-    @unittest.skipIf(not torch.cuda.is_available() and not torch.xpu.is_available(), "GPU is unavailable")
+    @unittest.skipIf(
+        not torch.cuda.is_available() and not torch.xpu.is_available(),
+        "GPU is unavailable",
+    )
     @unittest.skipIf(torch.cuda.is_available() and not SM80OrLater, "bfloat16, float8")
     @inductor_config.patch("fx_graph_remote_cache", False)
     @inductor_config.patch("fx_graph_cache", True)
@@ -2559,7 +2576,9 @@ class _MockEntryForPickleTest:
 class AOTAutogradCachePicklerTests(torch._dynamo.test_case.TestCase):
     @property
     def device_type(self) -> str:
-        return GPU_TYPE if torch.cuda.is_available() or torch.xpu.is_available() else "cpu"
+        return (
+            GPU_TYPE if torch.cuda.is_available() or torch.xpu.is_available() else "cpu"
+        )
 
     def default_config(self):
         return AOTConfig(

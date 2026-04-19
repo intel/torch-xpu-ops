@@ -10,6 +10,7 @@ from torch._dynamo.utils import counters
 from torch._functorch import config as functorch_config
 from torch._inductor import config as inductor_config
 from torch.nn.attention.flex_attention import flex_attention, flex_attention_hop
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.triton_utils import requires_gpu_and_triton
 from torch.utils._debug_mode import DebugMode
 from torch.utils.checkpoint import (
@@ -17,7 +18,6 @@ from torch.utils.checkpoint import (
     CheckpointPolicy,
     create_selective_checkpoint_contexts,
 )
-from torch.testing._internal.inductor_utils import GPU_TYPE
 
 
 def count_ops(
@@ -60,9 +60,9 @@ def count_ops(
             for node in gm.graph.nodes:
                 if match_rng_op(node, op) or node.target == op:
                     actual_count += 1
-            assert actual_count >= freq_ge, (
-                f"In graph {gm}, expected {op} to have occurred at least {freq_ge} times in the graph, but got {actual_count}."
-            )
+            assert (
+                actual_count >= freq_ge
+            ), f"In graph {gm}, expected {op} to have occurred at least {freq_ge} times in the graph, but got {actual_count}."
     return gm
 
 

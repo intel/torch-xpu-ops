@@ -16,11 +16,9 @@ import typing
 import unittest
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
-from typing_extensions import NamedTuple
 from unittest.mock import patch
 
 import numpy as np
-
 import torch
 import torch._dynamo.test_case
 import torch._dynamo.testing
@@ -44,7 +42,7 @@ from torch.testing._internal.inductor_utils import HAS_GPU
 
 # Defines all the kernels for tests
 from torch.testing._internal.triton_utils import *  # noqa: F403
-
+from typing_extensions import NamedTuple
 
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
@@ -4311,7 +4309,9 @@ class GraphModule(torch.nn.Module):
             out = torch.empty_like(x)
             n_elements = x.numel()
 
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+            grid = lambda meta: (
+                triton.cdiv(n_elements, meta["BLOCK_SIZE"]),
+            )  # noqa: E731
 
             wrapped = torch.library.wrap_triton(sin_kernel)
             wrapped[grid](x, out, n_elements, BLOCK_SIZE=128)
