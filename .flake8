@@ -25,6 +25,8 @@ per-file-ignores =
     __init__.py: F401
     test/**: F821
     test/**/__init__.py: F401,F821
+    test/xpu/dynamo/test_higher_order_ops_xpu.py: B950
+    test/xpu/dynamo/test_error_messages_xpu.py: B950
 optional-ascii-coding = True
 exclude =
     ./.git,
