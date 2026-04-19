@@ -179,6 +179,7 @@ jobs:
 
   linux-build:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
+    needs: [preci-lint-check]
     secrets: inherit
     strategy:
       fail-fast: false
@@ -220,7 +221,7 @@ jobs:
         ut_name: [xpu_distributed]
     uses: ./.github/workflows/_linux_ut.yml
     with:
-      runner: PVC-03004
+      runner: distributed
       pytorch: distributed_2.11
       torch_xpu_ops: daisyden/distributed_2.11
       ut: ${{ matrix.ut_name }}
