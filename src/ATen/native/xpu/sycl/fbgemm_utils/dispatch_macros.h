@@ -11,7 +11,7 @@
 #include <torch/library.h>
 #include <experimental/source_location>
 
-namespace fbgemm_xpu::utils {
+namespace fbgemm_utils::utils {
 
 using source_location = std::experimental::source_location;
 
@@ -66,11 +66,11 @@ struct SourceContext {
   }
 };
 
-} // namespace fbgemm_xpu::utils
+} // namespace fbgemm_utils::utils
 
 #define SOURCE_CONTEXT_CURRENT(LABEL)                \
-  fbgemm_xpu::utils::SourceContext(                  \
-      fbgemm_gpu::utils::source_location::current(), \
+  fbgemm_utils::utils::SourceContext(                  \
+      fbgemm_utils::utils::source_location::current(), \
       #LABEL,                                        \
       _FBGEMM_TFILE_,                                \
       _FBGEMM_DSA_FILESRC_);
@@ -80,7 +80,7 @@ struct SourceContext {
     constexpr auto context = SOURCE_CONTEXT_CURRENT(KERNEL);                \
     auto& kernel = KERNEL;                                                  \
                                                                             \
-    return fbgemm_gpu::utils::                                              \
+    return fbgemm_utils::utils::                                              \
         KernelLauncher<false, _FKL_BLOCKING_, _FKL_TENSORCHECK_>(context)   \
             .launch_kernel(kernel, GRID, BLOCK, SMEM, STREAM, __VA_ARGS__); \
   }())
