@@ -293,9 +293,6 @@ permute_1D_sparse_data_xpu(
         };
     }
 
-    // Get SYCL queue
-    sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
-
     // Phase 1: Allocate and compute permuted_lengths
     at::Tensor permuted_lengths = at::empty({permuted_lengths_size}, lengths.options());
 

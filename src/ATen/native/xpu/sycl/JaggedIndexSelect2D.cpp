@@ -109,7 +109,6 @@ at::Tensor jagged_index_select_2d_forward_xpu(
     if (num_dense_output_rows == 0) return output;
 
     // Launch configuration
-    const int64_t max_work_group_size = 256;
     // Use a fixed work group size of 256 for simplicity and good occupancy
     int64_t work_group_size = 256; 
     
@@ -118,8 +117,6 @@ at::Tensor jagged_index_select_2d_forward_xpu(
     // If we have few rows, we use few groups.
     int64_t num_groups = std::min((int64_t)65535, num_dense_output_rows);
     if (num_groups == 0) num_groups = 1;
-    
-    sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
     
     // Dispatch macros for types
     AT_DISPATCH_FLOATING_TYPES(values.scalar_type(), "jagged_index_select_2d_forward_xpu", [&] {
