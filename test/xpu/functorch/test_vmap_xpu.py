@@ -3946,7 +3946,11 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
             raise unittest.SkipTest("This test is only for CUDA and XPU for now")
 
         # xfail for cuDNN version between 9.10 and 9.13 on CUDA hardware
-        if backend == SDPBackend.CUDNN_ATTENTION and randomness == "different" and device == "cuda":
+        if (
+            backend == SDPBackend.CUDNN_ATTENTION
+            and randomness == "different"
+            and device == "cuda"
+        ):
             if 91100 <= TEST_CUDNN_VERSION <= 91300:
                 raise unittest.SkipTest(
                     "xfail on cuDNN 9.10-9.13 with CUDNN backend and randomness='different'"
