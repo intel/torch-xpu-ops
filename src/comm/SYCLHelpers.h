@@ -195,6 +195,24 @@ static inline void sycl_kernel_submit(
   }
 }
 
+template <typename ker_t, int dim>
+static inline typename std::enable_if<
+    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit(
+    ::sycl::range<dim> global_range,
+    ::sycl::range<dim> local_range,
+    ::sycl::queue q,
+    int slm_sz,
+    ker_t ker) {
+  auto cgf = [&](::sycl::handler& cgh) {
+    cgh.parallel_for<ker_t>(
+        ::sycl::nd_range<dim>(global_range, local_range),
+        syclexp::properties{syclexp::work_group_scratch_size(slm_sz)},
+        ker);
+  };
+  q.submit(cgf);
+}
 
 #ifdef __SYCL_DEVICE_ONLY__
   #define SYCL_KERNEL_STRING(var, str) \
