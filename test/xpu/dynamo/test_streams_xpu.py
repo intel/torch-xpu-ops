@@ -13,11 +13,13 @@ from torch._dynamo.graph_bytecode_inputs import (
     store_user_object_weakrefs,
 )
 from torch._dynamo.testing import extract_graph, remove_trailing_space
-from torch.testing._internal.common_cuda import TEST_MULTIGPU
-from torch.testing._internal.common_utils import requires_cuda
+from torch.testing._internal.inductor_utils import GPU_TYPE
+from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
 requires_multigpu = functools.partial(
-    unittest.skipIf, not TEST_MULTIGPU, "requires multiple cuda devices"
+    unittest.skipIf,
+    not (torch.cuda.device_count() > 1 if torch.cuda.is_available() else torch.xpu.device_count() > 1),
+    "requires multiple GPU devices",
 )
 
 
@@ -38,17 +40,17 @@ class TestStreams(torch._dynamo.test_case.TestCase):
     def tearDownClass(cls):
         super().tearDownClass()
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_stream_weakref(self):
         s = torch.Stream()
         weakref.ref(s)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_event_weakref(self):
         e = torch.Event()
         weakref.ref(e)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_stream_enter_exit(self):
         def fn(x, y, s1, s2):
             with s1:
@@ -87,7 +89,7 @@ class <lambda>(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     @unittest.skip("Needs graph break support with annotation context")
     def test_stream_context_graph_break(self):
         def fn(x, y):
@@ -116,20 +118,20 @@ class <lambda>(torch.nn.Module):
         self.assertExpectedInline(print_graph(fw_graphs[0]), """""")
         self.assertExpectedInline(print_graph(fw_graphs[1]), """""")
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_stream_input(self):
         def fn(x, y, s):
             z = torch.add(x, y)
             y = z + 2
             return y, s
 
-        inp = (torch.ones(2, 2) + 1, torch.ones(2, 2), torch.Stream(device="cuda"))
+        inp = (torch.ones(2, 2) + 1, torch.ones(2, 2), torch.Stream(device=GPU_TYPE))
         expected = fn(*inp)
         fn_opt = torch.compile(fn, fullgraph=True)
         actual = fn_opt(*inp)
         self.assertEqual(expected, actual)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_local_stream_return(self):
         def fn(x, y):
             s = torch.Stream()
@@ -147,14 +149,14 @@ class <lambda>(torch.nn.Module):
         # Stream should be newly allocated on each call
         self.assertNotEqual(s0, s1)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_get_current_stream_return(self):
         def fn(x, s):
             with s:
                 s0 = torch.accelerator.current_stream()
             return x, s0
 
-        s_inp = torch.Stream(device="cuda")
+        s_inp = torch.Stream(device=GPU_TYPE)
         inp = (torch.ones(2, 2) + 1, s_inp)
         fn_opt = torch.compile(fn, fullgraph=True)
         _, s0 = fn_opt(*inp)
@@ -162,7 +164,7 @@ class <lambda>(torch.nn.Module):
         self.assertEqual(s_inp, s0)
         self.assertEqual(s0, s1)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     @requires_multigpu()
     def test_get_current_stream_return_different_device(self):
         def fn(x, s0, s1):
@@ -179,7 +181,7 @@ class <lambda>(torch.nn.Module):
         s_exp = fn(*inp)
         self.assertEqual(s_act, s_exp)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     @requires_multigpu()
     def test_get_current_stream_return_no_index(self):
         def fn(x, s0, s1):
@@ -196,7 +198,7 @@ class <lambda>(torch.nn.Module):
         s_exp = fn(*inp)
         self.assertEqual(s_act, s_exp)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_nested_stream_enter_exit(self):
         def fn(x, y, s0, s1, s2):
             with s1:
@@ -250,7 +252,7 @@ class <lambda>(torch.nn.Module):
     def test_nested_stream_enter_exit_graph_break(self):
         pass
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_local_stream_enter_exit(self):
         def fn(x, y):
             s2 = torch.Stream()
@@ -291,7 +293,7 @@ class <lambda>(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_local_stream_nested_enter_exit(self):
         def fn(x, y):
             s2 = torch.Stream()
@@ -334,7 +336,7 @@ class <lambda>(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     @requires_multigpu()
     def test_new_event_api(self) -> None:
         from torch._dynamo.graph_bytecode_inputs import get_external_object_by_index
@@ -362,7 +364,7 @@ class <lambda>(torch.nn.Module):
 
         fn(torch.ones(2, 2, device="cuda:0"))
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_new_stream_api(self) -> None:
         from torch._dynamo.graph_bytecode_inputs import get_external_object_by_index
         from torch._dynamo.variables.streams import new_stream
@@ -387,7 +389,7 @@ class <lambda>(torch.nn.Module):
 
         fn(torch.ones(2, 2, device="cuda:0"))
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_current_stream_api(self) -> None:
         from torch._dynamo.graph_bytecode_inputs import get_external_object_by_index
         from torch._dynamo.variables.streams import get_current_stream
@@ -418,7 +420,7 @@ class <lambda>(torch.nn.Module):
 
         fn(torch.ones(2, 2, device="cuda:0"))
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_stream_with_mutation(self):
         def fn(x, y):
             s2 = torch.Stream()
@@ -468,7 +470,7 @@ class <lambda>(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_stream_backward_simple(self) -> None:
         def fn(x, y):
             s2 = torch.Stream()
@@ -533,7 +535,7 @@ class GraphModule(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_stream_backward_sync(self) -> None:
         def fn(x, y):
             s2 = torch.Stream()
@@ -602,7 +604,7 @@ class GraphModule(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_event_tracing(self):
         def fn(x) -> None:
             e = torch.Event()
@@ -633,7 +635,7 @@ class <lambda>(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_run_opcheck_fork_join(self):
         from torch._dynamo.variables.streams import fork_stream, join_stream
         from torch.library import opcheck
@@ -655,7 +657,7 @@ class <lambda>(torch.nn.Module):
             torch.accelerator.set_stream(original_stream)
             reset_user_object_tracking()
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_run_opcheck_wait_record(self):
         from torch._dynamo.variables.streams import record_event, wait_event
         from torch.library import opcheck
@@ -679,7 +681,7 @@ class <lambda>(torch.nn.Module):
             torch.accelerator.set_stream(original_stream)
             reset_user_object_tracking()
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_run_opcheck_wait_record_stream(self):
         from torch._dynamo.variables.streams import wait_stream
         from torch.library import opcheck
@@ -699,7 +701,7 @@ class <lambda>(torch.nn.Module):
         finally:
             reset_user_object_tracking()
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_record_stream_problem_basic(self):
         # see https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream
         # for what this tests/solves for
@@ -757,7 +759,7 @@ class GraphModule(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_record_stream_problem_interleaved(self):
         # see https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream
         # for what this tests/solves for
@@ -874,7 +876,7 @@ tangents_2: "f32[2, 2]", tangents_3: "f32[2, 2]"):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_epilogue_copy_streams_inference(self):
         def fn(x):
             with torch.Stream(device="cuda:0"):
@@ -906,7 +908,7 @@ class <lambda>(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_epilogue_copy_streams_external(self):
         @torch.compile(backend="eager")
         def fn(x):
@@ -922,7 +924,7 @@ class <lambda>(torch.nn.Module):
         ):
             extract_graph(fn, *inp)
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_epilogue_copy_stream_tracking(self):
         """
         Test that epilogue copies for mutated inputs use the correct stream.
@@ -1003,7 +1005,7 @@ class GraphModule(torch.nn.Module):
 """,
         )
 
-    @requires_cuda
+    @requires_gpu_and_triton
     def test_inductor_lowering(self):
         with patch("torch._inductor.config.implicit_fallbacks", False):
 
