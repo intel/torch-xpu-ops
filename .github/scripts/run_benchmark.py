@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 import re
+import platform
 from pathlib import Path
 from dataclasses import dataclass
 import argparse
@@ -13,6 +14,8 @@ import queue
 import shlex
 import shutil
 from packaging import version
+
+IS_WINDOWS = platform.system() == "Windows"
 import pandas as pd
 
 
@@ -81,8 +84,9 @@ def _get_torch_version() -> str:
     global _torch_version_cache
     if _torch_version_cache is not None:
         return _torch_version_cache
+    pip_cmd = "pip.exe" if IS_WINDOWS else "pip"
     try:
-        result = subprocess.run(["pip", "list", "--format=freeze"], capture_output=True, text=True, check=True)
+        result = subprocess.run([pip_cmd, "list", "--format=freeze"], capture_output=True, text=True, check=True)
         torch_line = [line for line in result.stdout.splitlines() if line.startswith("torch==")]
         _torch_version_cache = torch_line[0].split("==")[1].split("+")[0] if torch_line else "0.0.0"
     except Exception:
@@ -154,11 +158,12 @@ def run_benchmark_with_prefix(
     cmd = re.sub(r'\s+', ' ', cmd).strip()
 
     # Build command as list for safe execution (no shell=True)
+    _posix = not IS_WINDOWS
     if cmd_prefix:
-        full_cmd_list = shlex.split(cmd_prefix) + shlex.split(cmd)
+        full_cmd_list = shlex.split(cmd_prefix, posix=_posix) + shlex.split(cmd, posix=_posix)
         full_cmd_str = f"{cmd_prefix} {cmd}"
     else:
-        full_cmd_list = shlex.split(cmd)
+        full_cmd_list = shlex.split(cmd, posix=_posix)
         full_cmd_str = cmd
 
     print(f" [Worker {worker_id}] Running: {full_cmd_str[:200]}...")
@@ -171,17 +176,20 @@ def run_benchmark_with_prefix(
     log_buffer = []
     log_buffer_lock = threading.Lock()
 
+    popen_kwargs = dict(
+        shell=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+        bufsize=1,
+    )
+    if IS_WINDOWS:
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
     try:
         log_f = open(log_file, "w")
-        proc = subprocess.Popen(
-            full_cmd_list,
-            shell=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=env,
-            bufsize=1,
-        )
+        proc = subprocess.Popen(full_cmd_list, **popen_kwargs)
     except Exception as e:
         if 'log_f' in locals() and not log_f.closed:
             log_f.close()
@@ -327,6 +335,35 @@ def collect_csv_results(
 # CPU topology and command prefix generation
 def get_cpu_topology() -> int:
     """Return number of physical cores."""
+    if IS_WINDOWS:
+        return _get_cpu_topology_windows()
+    return _get_cpu_topology_linux()
+
+
+def _get_cpu_topology_windows() -> int:
+    """Return number of physical cores on Windows via wmic or os.cpu_count fallback."""
+    try:
+        output = subprocess.check_output(
+            ["wmic", "cpu", "get", "NumberOfCores"], text=True
+        )
+        for line in output.splitlines():
+            line = line.strip()
+            if line.isdigit():
+                physical_cores = int(line)
+                logical = os.cpu_count() or physical_cores
+                print(f"Detected (Windows): {logical} logical CPUs, {physical_cores} physical cores")
+                return physical_cores
+    except Exception:
+        pass
+    # Fallback: assume half of logical CPUs are physical cores
+    logical = os.cpu_count() or 1
+    physical_cores = max(logical // 2, 1)
+    print(f"Detected (Windows fallback): {logical} logical CPUs, estimated {physical_cores} physical cores")
+    return physical_cores
+
+
+def _get_cpu_topology_linux() -> int:
+    """Return number of physical cores on Linux via lscpu."""
     try:
         output = subprocess.check_output(["lscpu"], text=True)
     except Exception as e:
@@ -407,16 +444,25 @@ def generate_command_prefixes(num_gpus: int) -> list[tuple[int, str, dict]]:
         start_core = gpu * cores_per_gpu
         end_core = min(start_core + cores_per_gpu - 1, physical_cores - 1)
         core_range = f"{start_core}-{end_core}"
-        prefix = f"numactl -C {core_range}"
-        env_vars = {"OMP_NUM_THREADS": str(cores_per_gpu)}
+        env_vars = {}
+        if IS_WINDOWS:
+            prefix = ""
+            print(f"GPU {gpu} → OMP_NUM_THREADS={cores_per_gpu} (numactl not available on Windows)")
+        else:
+            env_vars = {"OMP_NUM_THREADS": str(cores_per_gpu)}
+            prefix = f"numactl -l -C {core_range}"
+            print(f"GPU {gpu} → cores {core_range} (OMP_NUM_THREADS={cores_per_gpu})")
         prefixes.append((gpu, prefix, env_vars))
-        print(f"GPU {gpu} → cores {core_range} (OMP_NUM_THREADS={cores_per_gpu})")
     return prefixes
 
 
 # Earlyoom handling
 def start_earlyoom() -> subprocess.Popen | None:
     """Start earlyoom process if available. Return Popen object or None."""
+    if IS_WINDOWS:
+        print("INFO: earlyoom is not supported on Windows. Memory pressure monitoring disabled.")
+        return None
+
     earlyoom_path = shutil.which("earlyoom")
     if not earlyoom_path:
         print("INFO: earlyoom not found in PATH. Memory pressure monitoring disabled.")
@@ -431,14 +477,12 @@ def start_earlyoom() -> subprocess.Popen | None:
         "--prefer", "^(python|pytest)"
     ]
     try:
-        # Start earlyoom; redirect stdout/stderr to /dev/null to avoid clutter,
-        # but we could also let it print to console for visibility. We'll keep it quiet.
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            start_new_session=True,  # so it can be killed cleanly later
+            start_new_session=True,
         )
         print(f"Started earlyoom (PID {proc.pid}) to monitor memory pressure.")
         return proc
