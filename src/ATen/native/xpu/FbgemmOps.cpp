@@ -8,6 +8,9 @@
 #include <ATen/native/xpu/sycl/FbgemmKernels.h>
 #include <ATen/native/xpu/sycl/Permute1DSparseData.h>
 #include <ATen/native/xpu/sycl/JaggedIndexSelect2D.h>
+#include <ATen/native/xpu/sycl/SplitEmbeddingLookupOps.h>
+#include <ATen/native/xpu/sycl/SplitEmbeddingNobagBackwardRowwiseAdagrad.h>
+#include <ATen/native/xpu/sycl/SplitEmbeddingNobagForwardRowwiseAdagrad.h>
 
 namespace at {
 namespace native {
@@ -620,6 +623,17 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl("permute_2D_sparse_data", &at::native::permute_2D_sparse_data_xpu);
   m.impl("permute_1D_sparse_data", &at::native::xpu::permute_1D_sparse_data_xpu);
   m.impl("jagged_index_select_2d_forward", &at::native::xpu::jagged_index_select_2d_forward_xpu);
+  m.impl("split_embedding_nobag_codegen_forward_unweighted_pt2_wrapper", &at::native::xpu::split_embedding_nobag_codegen_forward_unweighted_pt2_xpu_wrapper);
+  m.impl("split_embedding_nobag_codegen_forward_unweighted_xpu", &at::native::xpu::split_embedding_nobag_codegen_forward_unweighted_xpu);
+  m.impl("split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_pt2_wrapper", &at::native::xpu::split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_pt2_xpu_wrapper);
+  m.impl("split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu", &at::native::xpu::split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu);
+  
+}
+
+TORCH_LIBRARY_IMPL(fbgemm, AutogradXPU, m) {
+    m.impl(
+      "split_embedding_codegen_lookup_rowwise_adagrad_function_pt2", 
+      &at::native::xpu::split_embedding_codegen_lookup_rowwise_adagrad_function_pt2_xpu);
 }
 
 } // namespace
