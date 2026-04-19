@@ -8,10 +8,12 @@
 
 #pragma once
 
+#include <comm/SYCLContext.h>
 #include <ATen/ATen.h>
 #include <cstdint>
 
-#include "dispatch_macros.h"
+#include <ATen/native/xpu/sycl/fbgemm_utils/dispatch_macros.h>
+#include <ATen/native/xpu/sycl/fbgemm_utils/function_types.h>
 
 namespace fbgemm_utils {
 
@@ -140,13 +142,6 @@ DLL_PUBLIC std::tuple<int32_t, uint32_t> adjust_info_B_num_bits(
   }
 
 
-// PhiloxXpuState is not available in PyTorch 2.8
-// Use native PhiloxState in future implementations
-struct PhiloxXpuState {
-    uint64_t seed = 0;
-    uint64_t offset = 0;
-};
-
 using fint32 = union fint32 {
   uint32_t I;
   float F;
@@ -234,7 +229,7 @@ class FixedDivisor {
 constexpr int32_t MAX_WORK_GROUPS_FACTOR = 64;
 
 inline int32_t get_max_work_groups_() {
-  auto device = c10::xpu::getCurrentXPUStream().queue().get_device();
+  auto device = getCurrentSYCLQueue().get_device();
   return MAX_WORK_GROUPS_FACTOR *
       device.get_info<sycl::info::device::max_compute_units>();
 }
@@ -290,7 +285,7 @@ inline int32_t get_max_work_groups_() {
          [[ maybe_unused ]] const int max_vecs_per_thread =                  \
            (MAX_D + 128 - 1) / 128;                \
          constexpr int kFixedMaxVecsPerThread = 2; \
-         [[ maybe_unused ]] constexpr int kThreadGroupSize = fbgemm_xpu::kThreadGroupSize;      \
+         [[ maybe_unused ]] constexpr int kThreadGroupSize = fbgemm_utils::kThreadGroupSize;      \
          [[ maybe_unused ]] constexpr bool kUseVecBlocking = true;           \
          return __VA_ARGS__();                                               \
        }                                                                     \
@@ -323,7 +318,7 @@ inline int32_t get_max_work_groups_() {
          [[ maybe_unused ]] const int max_vecs_per_thread =                  \
            (MAX_D + 128 - 1) / 128;                \
          constexpr int kFixedMaxVecsPerThread = 2; \
-         [[ maybe_unused ]] constexpr int kThreadGroupSize = fbgemm_xpu::kThreadGroupSize;      \
+         [[ maybe_unused ]] constexpr int kThreadGroupSize = fbgemm_utils::kThreadGroupSize;      \
          [[ maybe_unused ]] constexpr bool kUseVecBlocking = true;           \
          return __VA_ARGS__();                                               \
        }                                                                     \
