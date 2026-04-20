@@ -17333,7 +17333,7 @@ if __name__ == '__main__':
             torch.testing.assert_close(result, ref_output, atol=atol, rtol=rtol)
             mask = torch.tensor([[1]], device=device) == 1
             result = model(encoder_input, src_key_padding_mask=mask)
-            fast_path_device = result.is_cuda or result.is_cpu
+            fast_path_device = result.is_cuda or result.is_cpu or result.is_xpu
             result = result.cpu().detach().numpy()
             # Non Fast Paths
             if (
