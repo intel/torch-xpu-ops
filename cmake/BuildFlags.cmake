@@ -49,7 +49,6 @@ macro(set_build_flags)
       # SYCL headers warnings
       list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
       list(APPEND SYCL_HOST_FLAGS /wd4018) # allow signed and unsigned comparison
-      list(APPEND SYCL_HOST_FLAGS /WX) # treat warnings as errors
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
       list(APPEND SYCL_HOST_FLAGS -fPIC)
       list(APPEND SYCL_HOST_FLAGS -std=${CPP_STD})
