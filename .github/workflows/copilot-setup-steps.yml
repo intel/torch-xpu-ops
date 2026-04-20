@@ -1,0 +1,60 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation,
+# and allow manual testing through the repository's "Actions" tab
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: copilot_runner
+    timeout-minutes: 59
+
+    container:
+      image: intelgpu/ubuntu-24.04-rolling:26.05
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --group-add 991 --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -e ZE_AFFINITY_MASK
+              --user 0:0
+
+    # Set the permissions to the lowest permissions possible needed for your steps.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Check xpu devices
+        run: |
+          echo "Checking for XPU devices..."
+          xpu-smi discovery
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.10"
+
+      - name: Create virtual environment
+        run: |
+          uv venv ${{ github.workspace }}/.venv
+          echo "VIRTUAL_ENV=${{ github.workspace }}/.venv" >> $GITHUB_ENV
+          echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+
+      - name: Install PyTorch nightly
+        run: |
+          uv pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/xpu
+
+      - name: Verify setup
+        run: |
+          python -c "import torch; print(f'PyTorch {torch.__version__}')"
+          python -c "import torch; print(f'XPU devices count: {torch.xpu.device_count()}')"

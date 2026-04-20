@@ -1001,8 +1001,14 @@ class XPUPatchForImport:
         self.cuda_get_device_capability = torch.cuda.get_device_capability
         self.skipXPU = common_device_type.skipXPU
 
+    @staticmethod
+    def _preserve_cuda_only_decorators_on_xpu(op_name):
+        return "jiterator" in op_name
+
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
+            if self._preserve_cuda_only_decorators_on_xpu(op_name):
+                return False, list(wrappers)
             wrapper_xpu = []
             replaced = False
             for wrapper in wrappers:
