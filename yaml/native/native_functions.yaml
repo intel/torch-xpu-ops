@@ -7947,6 +7947,12 @@
     XPU: _scaled_dot_product_efficient_attention_xpu
   tags: nondeterministic_seeded
 
+- func: _scaled_dot_product_efficient_attention_backward(Tensor grad_out_, Tensor query, Tensor key, Tensor value, Tensor attn_bias, Tensor out, Tensor logsumexp, Tensor philox_seed, Tensor philox_offset, float dropout_p, bool[4] grad_input_mask, bool is_causal=False, *, float? scale=None) -> (Tensor, Tensor, Tensor, Tensor)
+  device_check: NoCheck
+  dispatch:
+    XPU: _scaled_dot_product_efficient_attention_backward_xpu
+  tags: nondeterministic_seeded
+
 - func: special_airy_ai(Tensor x) -> Tensor
   python_module: special
   structured_delegate: special_airy_ai.out
@@ -9573,3 +9579,16 @@
   variants: function
   dispatch:
     SparseCsrXPU: baddbmm_out_sparse_csr_xpu
+
+- func: addmv(Tensor self, Tensor mat, Tensor vec, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+  structured_delegate: addmv.out
+  variants: function, method
+
+- func: addmv_(Tensor(a!) self, Tensor mat, Tensor vec, *, Scalar beta=1, Scalar alpha=1) -> Tensor(a!)
+  structured_delegate: addmv.out
+  variants: function, method
+
+- func: addmv.out(Tensor self, Tensor mat, Tensor vec, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    SparseCsrXPU: addmv_out_sparse_compressed_xpu

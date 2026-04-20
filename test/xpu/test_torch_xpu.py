@@ -1395,8 +1395,8 @@ class TestTorchDeviceType(TestCase):
             small2 = torch.randn(*dims_small2, device=device).float()
             small2_expanded = small2.expand(*dims_full)
 
-        if small.is_cuda and fn in ["map", "map2"]:
-            # map and map2 are not implementd on CUDA tensors
+        if (small.device.type in ["cuda", "xpu"]) and fn in ["map", "map2"]:
+            # map and map2 are not implemented on CUDA and XPU tensors
             return
 
         if hasattr(large_expanded, fn):
@@ -6676,12 +6676,6 @@ else:
                 self.assertTrue(
                     not a.is_enabled()
                     if torch.cuda.amp.common.amp_definitely_not_available()
-                    else a.is_enabled()
-                )
-            elif device.type == "xpu":
-                self.assertTrue(
-                    not a.is_enabled()
-                    if torch.xpu.amp.common.amp_definitely_not_available()
                     else a.is_enabled()
                 )
             else:
