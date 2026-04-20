@@ -12,7 +12,7 @@
  *            to combine 32 per-lane buffers into one global top-k.
  *   Phase 3: Lane 0 writes k results. Output is already sorted.
  *
- * Dispatch: k <= 16 and enough segments (large batch) and dim >= 1024
+ * Dispatch: k <= 16 and enough segments (large batch) and dim >= 32
  *           routes to subgroup top-k; otherwise falls back to original.
  */
 
@@ -397,8 +397,8 @@ static void sbtopk_launch_kernel(
 // ================================================================
 // Dispatch: subgroup top-k vs original
 //
-//   - dim < 1024: original (kernel launch overhead dominates)
-//   - dim >= 1024, large batch, k <= 16: subgroup top-k
+//   - dim < 32: original (need at least SG_SIZE elements)
+//   - dim >= 32, large batch, k <= 16: subgroup top-k
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
@@ -408,8 +408,8 @@ SbtopkResult sbtopk_try_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices) {
-  // Not beneficial for small dim
-  if (nelements < 1024) {
+  // Subgroup kernel needs at least SG_SIZE (32) elements per slice
+  if (nelements < 32) {
     return SbtopkResult::FAILED;
   }
 
