@@ -136,17 +136,8 @@ skip_dict = {
         # due to #2164, CUDA specific test
         "test_no_cuda_monkeypatch",
         # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_storage_setitem_xpu_float32",
-        "test_storage_error_no_attribute",
-        "test_storage_setitem_xpu_uint8",
-        "test_storage_setitem_xpu_int16",
-        "test_storage_setitem_xpu_float64",
         "test_pickle_gradscaler_xpu",
-        "test_storage_setitem_xpu_int32",
-        "test_storage_setitem_xpu_int64",
         "test_grad_scaler_pass_itself_xpu",
-        "test_storage_setitem_xpu_bool",
-        "test_storage_setitem_xpu_int8",
         "test_grad_scaling_state_dict_xpu",
         "test_typed_storage_deprecation_warning",
         "test_typed_storage_internal_no_warning",
@@ -166,7 +157,6 @@ skip_dict = {
         # under pytest -k substring semantics used by the XPU skip runner.
         "test_print",
         "test_tensor_storage_type_xpu",
-        "test_typed_storage_internal_no_warning",
     ),
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
