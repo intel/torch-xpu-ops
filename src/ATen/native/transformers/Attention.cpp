@@ -518,6 +518,10 @@ _scaled_dot_product_efficient_attention_backward_xpu(
   if (grad_input_mask[2])
     v.requires_grad_(true);
 
+  TORCH_CHECK(
+      !grad_input_mask[3] || attn_bias.defined(),
+      "bias_requires_grad is true but no bias was provided");
+
   std::optional<Tensor> attn_bias_opt;
   Tensor ab;
   if (attn_bias.defined()) {
