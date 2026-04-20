@@ -210,7 +210,12 @@ fi
 
 # ── 2. Common packages ───────────────────────────────────────────────
 if $DO_COMMON; then
+    . /etc/os-release
     banner "Install common packages (GCC ${GCC_VERSION})"
+    if [ "${UBUNTU_VERSION}" == "22.04" ];then \
+        apt-get install -y software-properties-common
+        add-apt-repository ppa:ubuntu-toolchain-r/test -y
+    fi
     apt-get install -y \
         wget curl vim libgomp1 pciutils ca-certificates \
         gnupg software-properties-common apt-transport-https \
