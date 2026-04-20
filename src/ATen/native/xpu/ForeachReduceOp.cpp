@@ -115,14 +115,6 @@ std::vector<Tensor> foreach_tensor_max_xpu(TensorList tensors) {
     return foreach_tensor_max_slow(tensors);
   }
 
-  // for parity with max in ReduceAllOps.cpp, as max(empty) is ???
-  TORCH_CHECK(
-      std::all_of(
-          tensors.begin(),
-          tensors.end(),
-          [](const auto& t) { return t.numel() > 0; }),
-      "max(): Expected reduction dim to be specified for input.numel() == 0. Specify the reduction dim with the 'dim' argument.");
-
   return at::native::xpu::foreach_max_kernel(tensors);
 }
 
