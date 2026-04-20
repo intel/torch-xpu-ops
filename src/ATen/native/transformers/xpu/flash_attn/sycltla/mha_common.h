@@ -173,14 +173,14 @@ inline void set_params_fprop(
   params.k_batch_stride = k.stride(0);
   params.v_batch_stride = v.stride(0);
   params.o_batch_stride = out.stride(0);
-  params.q_head_stride = q.stride(1);
-  params.k_head_stride = k.stride(1);
-  params.v_head_stride = v.stride(1);
-  params.o_head_stride = out.stride(1);
-  params.q_row_stride = q.stride(2);
-  params.k_row_stride = k.stride(2);
-  params.v_row_stride = v.stride(2);
-  params.o_row_stride = out.stride(2);
+  params.q_head_stride = q.stride(2);
+  params.k_head_stride = k.stride(2);
+  params.v_head_stride = v.stride(2);
+  params.o_head_stride = out.stride(2);
+  params.q_row_stride = q.stride(1);
+  params.k_row_stride = k.stride(1);
+  params.v_row_stride = v.stride(1);
+  params.o_row_stride = out.stride(1);
 
   // Set the dimensions.
   params.batch_size = batch_size;
@@ -260,14 +260,14 @@ inline void set_params_dgrad(
   params.dq_batch_stride = dq.stride(0);
   params.dk_batch_stride = dk.stride(0);
   params.dv_batch_stride = dv.stride(0);
-  params.do_head_stride = grad_out.stride(1);
-  params.dq_head_stride = dq.stride(1);
-  params.dk_head_stride = dk.stride(1);
-  params.dv_head_stride = dv.stride(1);
-  params.do_row_stride = grad_out.stride(2);
-  params.dq_row_stride = dq.stride(2);
-  params.dk_row_stride = dk.stride(2);
-  params.dv_row_stride = dv.stride(2);
+  params.do_head_stride = grad_out.stride(2);
+  params.dq_head_stride = dq.stride(2);
+  params.dk_head_stride = dk.stride(2);
+  params.dv_head_stride = dv.stride(2);
+  params.do_row_stride = grad_out.stride(1);
+  params.dq_row_stride = dq.stride(1);
+  params.dk_row_stride = dk.stride(1);
+  params.dv_row_stride = dv.stride(1);
 }
 
 // Backward kernel padding constants.
