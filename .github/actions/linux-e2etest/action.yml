@@ -49,6 +49,7 @@ runs:
               && "${CATEGORY}" != "target" && "${CATEGORY}" != "baseline" ]]; then
           if [[ -f "${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt" ]]; then
             model_list_arg="--model-only ${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt"
+            cp "${GITHUB_WORKSPACE}/.ci/benchmarks/"*.txt ./benchmarks/dynamo/
           fi
         fi
         if [[ -n "${MODEL_ONLY_NAME}" ]]; then
