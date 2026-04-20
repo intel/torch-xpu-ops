@@ -433,8 +433,8 @@ static bool subgroup_topk_try_launch(
 // ================================================================
 // Dispatch: subgroup top-k vs single-workgroup top-k vs original
 //
-//   - dim < 1024: original (kernel launch overhead dominates)
-//   - dim >= 1024, large batch, k <= 16: subgroup top-k
+//   - dim < 32: original (need at least SG_SIZE elements)
+//   - dim >= 32, large batch, k <= 16: subgroup top-k
 //   - dim >= 4096: single-workgroup top-k
 // ================================================================
 SbtopkResult sbtopk_try_launch(
@@ -446,7 +446,7 @@ SbtopkResult sbtopk_try_launch(
     const at::Tensor& values,
     const at::Tensor& indices) {
   // Not beneficial for small dim
-  if (nelements < 1024) {
+  if (nelements < 32) {
     return SbtopkResult::FAILED;
   }
 
@@ -463,7 +463,7 @@ SbtopkResult sbtopk_try_launch(
   int64_t thread_slots =
       ::xpu::sycl::syclGpuEuCount() * ::xpu::sycl::syclGpuHWThreadsPerEU();
   int64_t sg_threshold = thread_slots / 4;
-  if (k <= 16 && nsegments >= sg_threshold && nelements >= 1024) {
+  if (k <= 16 && nsegments >= sg_threshold) {
     if (subgroup_topk_try_launch(
             self, nsegments, nelements, k, largest, values, indices)) {
       return SbtopkResult::SORTED;
@@ -483,7 +483,7 @@ SbtopkResult sbtopk_try_launch(
     return SbtopkResult::FAILED;
   }
 
-  // Fallback to original for dim=1024-4095 or k>16 with small batch
+  // Fallback to original for dim=32-4095 or k>16 with small batch
   return SbtopkResult::FAILED;
 }
 
