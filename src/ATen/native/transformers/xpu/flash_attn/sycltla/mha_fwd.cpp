@@ -108,14 +108,13 @@ mha_fwd(
     const bool return_softmax,
     std::optional<at::Generator> gen_) {
   TORCH_CHECK(
-      p_dropout == 0.0,
-      "mha_fwd on xpu does not only support p_dropout > 0.0 yet");
+      p_dropout == 0.0, "mha_fwd on xpu does not support p_dropout > 0.0 yet");
   TORCH_CHECK(
       alibi_slopes_.has_value() == false,
       "mha_fwd on xpu does not support alibi_slopes yet");
   TORCH_CHECK(
       window_size_left == -1 && window_size_right == -1,
-      "mha_fwd on xpu does not support window_SIZE yet");
+      "mha_fwd on xpu does not support window_size yet");
   TORCH_CHECK(softcap == 0.0, "mha_fwd on xpu does not support softcap yet");
   TORCH_CHECK(
       return_softmax == false,
@@ -195,13 +194,13 @@ mha_fwd(
     at::Tensor q_padded =
         at::empty({0, seqlen_qo, numhead_qo, headsize_qk}, opts);
     at::Tensor k_padded =
-        at::empty({0, seqlen_kv, numhead_kv, headsize_vo}, opts);
+        at::empty({0, seqlen_kv, numhead_kv, headsize_qk}, opts);
     at::Tensor v_padded =
         at::empty({0, seqlen_kv, numhead_kv, headsize_vo}, opts);
     at::Tensor softmax_lse =
         at::empty({0, numhead_qo, seqlen_qo}, opts.dtype(at::kFloat));
-    at::Tensor philox_seed = at::empty({}, at::dtype(at::kLong));
-    at::Tensor philox_offset = at::empty({}, at::dtype(at::kLong));
+    at::Tensor philox_seed = at::empty({}, opts.dtype(at::kLong));
+    at::Tensor philox_offset = at::empty({}, opts.dtype(at::kLong));
     at::Tensor p = at::empty({0}, opts);
     if (return_softmax) {
       p = at::empty({0, numhead_qo, seqlen_qo, seqlen_kv}, opts);
@@ -255,7 +254,7 @@ mha_fwd(
     TORCH_CHECK(
         out.stride(-1) == 1,
         "Output tensor must have contiguous last dimension");
-    CHECK_SHAPE(out, batch_size, numhead_qo, seqlen_qo, headsize_vo);
+    CHECK_SHAPE(out, batch_size, seqlen_qo, numhead_qo, headsize_vo);
   } else {
     out = at::empty_like(q);
   }

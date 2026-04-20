@@ -40,23 +40,18 @@ _flash_attention_forward(
     const std::optional<at::Tensor>& _alibi_slopes,
     const std::optional<at::Tensor>& _block_table,
     std::optional<at::Tensor> out,
-    std::optional<int64_t> num_splits
-) {
+    std::optional<int64_t> num_splits) {
 #ifndef USE_SYCLTLA
   TORCH_CHECK(
-    false,
-    "_flash_attention_forward: Torch XPU was not compiled with SYCLTLA support.");
+      false,
+      "_flash_attention_forward: Torch XPU was not compiled with SYCLTLA support.");
   return std::make_tuple(
-    at::Tensor(),
-    at::Tensor(),
-    at::Tensor(),
-    at::Tensor(),
-    at::Tensor());
+      at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor(), at::Tensor());
 #else
   TORCH_CHECK(
-    !num_splits.has_value(),
-    "num_splits requires FA3. Register FA3 with `register_flash_attention_fa3()` to set num_splits.");
-    
+      !num_splits.has_value(),
+      "num_splits requires FA3. Register FA3 with `register_flash_attention_fa3()` to set num_splits.");
+
   const auto softmax_scale = sdp::calculate_scale(query, scale).expect_float();
   std::optional<at::Tensor> seqused_k = _seqused_k;
   std::optional<at::Tensor> block_table = _block_table;
@@ -64,15 +59,19 @@ _flash_attention_forward(
   const float softcap = 0.0;
   const int window_left = window_size_left.value_or(-1);
   const int window_right = window_size_right.value_or(-1);
+  static_cast<void>(seqused_k);
+  static_cast<void>(block_table);
 
   // We are going to have two paths:
   // 1. The standard MHA path for dense tensors
   // 2. The Varseqlen path
   TORCH_CHECK(
-    cumulative_sequence_length_q.has_value() == cumulative_sequence_length_k.has_value(),
-    "cumulative_sequence_length_q and cumulative_sequence_length_k must be both set or both not set");
+      cumulative_sequence_length_q.has_value() ==
+          cumulative_sequence_length_k.has_value(),
+      "cumulative_sequence_length_q and cumulative_sequence_length_k must be both set or both not set");
 
-  at::Tensor output, q_padded, k_padded, v_padded, logsumexp, philox_seed, philox_offset, debug_attn_mask;
+  at::Tensor output, q_padded, k_padded, v_padded, logsumexp, philox_seed,
+      philox_offset, debug_attn_mask;
   if (cumulative_sequence_length_q.has_value()) {
     // std::tie(
     //     output,
@@ -104,7 +103,9 @@ _flash_attention_forward(
     //         softcap,
     //         return_debug_mask,
     //         std::nullopt /*gen_*/);
-    TORCH_CHECK(false, "_flash_attention_forward: Varseqlen path is not implemented yet.");
+    TORCH_CHECK(
+        false,
+        "_flash_attention_forward: Varseqlen path is not implemented yet.");
   } else {
     std::tie(
         output,
@@ -129,20 +130,22 @@ _flash_attention_forward(
             softcap,
             return_debug_mask, /*return_softmax (this is used for testing)*/
             std::nullopt);
+    static_cast<void>(q_padded);
+    static_cast<void>(k_padded);
+    static_cast<void>(v_padded);
   }
-    debug_attn_mask =
-        return_debug_mask ? debug_attn_mask : at::empty({0}, query.options());
-    return std::make_tuple(
-        std::move(output),
-        std::move(logsumexp),
-        std::move(philox_seed),
-        std::move(philox_offset),
-        std::move(debug_attn_mask));
+  debug_attn_mask =
+      return_debug_mask ? debug_attn_mask : at::empty({0}, query.options());
+  return std::make_tuple(
+      std::move(output),
+      std::move(logsumexp),
+      std::move(philox_seed),
+      std::move(philox_offset),
+      std::move(debug_attn_mask));
 #endif
 }
 
-std::tuple<at::Tensor, at::Tensor, at::Tensor> 
-_flash_attention_backward(
+std::tuple<at::Tensor, at::Tensor, at::Tensor> _flash_attention_backward(
     const at::Tensor& grad_out,
     const at::Tensor& query,
     const at::Tensor& key,
@@ -159,12 +162,11 @@ _flash_attention_backward(
     const at::Tensor& philox_offset,
     std::optional<double> scale,
     std::optional<int64_t> window_size_left,
-    std::optional<int64_t> window_size_right)
-{   
+    std::optional<int64_t> window_size_right) {
 #ifndef USE_SYCLTLA
   TORCH_CHECK(
-    false,
-    "_flash_attention_backward: Torch XPU was not compiled with SYCLTLA support.");
+      false,
+      "_flash_attention_backward: Torch XPU was not compiled with SYCLTLA support.");
   return std::make_tuple(at::Tensor(), at::Tensor(), at::Tensor());
 #else
   const auto softmax_scale = sdp::calculate_scale(query, scale).expect_float();
@@ -177,13 +179,13 @@ _flash_attention_backward(
   std::optional<at::Tensor> dq{std::nullopt};
   std::optional<at::Tensor> dk{std::nullopt};
   std::optional<at::Tensor> dv{std::nullopt};
-  
+
   // Currently unused args:
   std::optional<at::Tensor> alibi_slopes{std::nullopt};
   const float softcap = 0.0;
 
   bool deterministic{false};
-   auto& ctx = at::globalContext();
+  auto& ctx = at::globalContext();
   if (ctx.deterministicAlgorithms()) {
     if (ctx.deterministicAlgorithmsWarnOnly()) {
       TORCH_WARN_ONCE(
@@ -222,8 +224,11 @@ _flash_attention_backward(
     //     deterministic,
     //     philox_seed,
     //     philox_offset);
-    // return std::make_tuple(std::move(dQuery), std::move(dKey), std::move(dValue));
-    TORCH_CHECK(false, "_flash_attention_backward: Varseqlen path is not implemented yet.");
+    // return std::make_tuple(std::move(dQuery), std::move(dKey),
+    // std::move(dValue));
+    TORCH_CHECK(
+        false,
+        "_flash_attention_backward: Varseqlen path is not implemented yet.");
   } else {
     auto [dQuery, dKey, dValue, dSoftmax] = mha_bwd(
         contiguous_grad_out,
@@ -245,7 +250,8 @@ _flash_attention_backward(
         deterministic,
         philox_seed,
         philox_offset);
-    return std::make_tuple(std::move(dQuery), std::move(dKey), std::move(dValue));
+    return std::make_tuple(
+        std::move(dQuery), std::move(dKey), std::move(dValue));
   }
 #endif
 }

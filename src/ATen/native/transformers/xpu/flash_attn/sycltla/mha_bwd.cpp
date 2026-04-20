@@ -79,8 +79,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     const at::Tensor philox_seed,
     const at::Tensor philox_offset) {
   TORCH_CHECK(
-      p_dropout == 0.0,
-      "mha_bwd on xpu does not only support dropout > 0.0 yet");
+      p_dropout == 0.0, "mha_bwd on xpu does not support dropout > 0.0 yet");
   TORCH_CHECK(
       !alibi_slopes_.has_value(),
       "mha_bwd on xpu does not support alibi slopes yet");
@@ -235,7 +234,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
     dv = at::empty_like(v);
   }
 
-  auto softmax_d = at::Tensor();
+  auto softmax_d = at::empty({0}, q.options().dtype(at::kFloat));
 
   const int headsize_padded = round_up_headdim(headsize_qk);
   const bool needs_headsize_pad = headsize_padded > headsize_qk;
@@ -361,16 +360,6 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor> mha_bwd(
           dk,
           at::reshape(
               dk_expanded,
-              {batch_size,
-               seqlen_kv,
-               numhead_kv,
-               numhead_qo / numhead_kv,
-               headsize_padded}),
-          {3});
-      at::sum_out(
-          dv,
-          at::reshape(
-              dv_expanded,
               {batch_size,
                seqlen_kv,
                numhead_kv,
