@@ -114,7 +114,7 @@ void mkl_getrs(
     const scalar_t* a,
     int64_t lda,
     int64_t stride_a,
-    int64_t* ipiv,
+    const int64_t* ipiv,
     int64_t stride_ipiv,
     scalar_t* b,
     int64_t ldb,
@@ -129,7 +129,7 @@ void mkl_getrs(
       trans,
       n,
       nrhs,
-      const_cast<scalar_t*>(a),
+      a,
       lda,
       stride_a,
       ipiv,
@@ -252,7 +252,10 @@ static void apply_lu_solve_xpu_(
   int32_t* info_data = info_vec.data();
 
   auto execute_mkl_getrs =
-      [&](const scalar_t* a, scalar_t* b, int64_t* ipiv, int64_t batch_size) {
+      [&](const scalar_t* a,
+        scalar_t* b,
+        const int64_t* ipiv,
+        int64_t batch_size) {
         int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
             queue,
             trans,
@@ -310,7 +313,7 @@ static void apply_lu_solve_xpu_(
     int64_t lu_index_i = lu_index(i);
     const scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
     scalar_t* b_working_ptr = &b[i * stride_b];
-    int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
+    const int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
 
     execute_mkl_getrs(a_working_ptr, b_working_ptr, ipiv_working_ptr, 1);
   }
