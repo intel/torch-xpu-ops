@@ -268,7 +268,8 @@ struct ScatterGatherInternalKernelLoopFunctor {
   func_t f_;
 };
 
-template <bool is_scatter_like, typename scalar_t, typename index_t>
+template <bool is_scatter_like, typename scalar_t, typename index_t,
+          bool enable_vectorized_scatter = false>
 struct ScatterGatherInternalKernel {
   template <typename func_t>
   void operator()(
@@ -279,7 +280,8 @@ struct ScatterGatherInternalKernel {
       func_t f) {
     if (!iter.can_use_32bit_indexing()) {
       for (auto& sub_iter : iter.with_32bit_indexing()) {
-        ScatterGatherInternalKernel<is_scatter_like, scalar_t, index_t>()(
+        ScatterGatherInternalKernel<is_scatter_like, scalar_t, index_t,
+                                    enable_vectorized_scatter>()(
             sub_iter, index_size, index_stride, numel, f);
       }
       return;
@@ -306,6 +308,39 @@ struct ScatterGatherInternalKernel {
         if (iter.numel() == 0)
           return;
         at::native::xpu::vectorized_gather_kernel_launch<alignment, index_t>(
+            self_ptr,
+            src_ptr,
+            (index_t*)index_ptr,
+            num_ind,
+            slice_size,
+            ind_dim_size,
+            inp_stride_bytes,
+            out_stride_bytes);
+        return;
+      }
+    }
+
+    // Vectorized scatter fast path for TensorAssign (non-reduce scatter).
+    // Copies entire slices using wide vector loads/stores instead of
+    // element-by-element. Critical for bf16/fp16: avoids narrow d16 stores
+    // that underutilize LSC message throughput on Xe2 architecture.
+    if constexpr (is_scatter_like && enable_vectorized_scatter) {
+      constexpr size_t element_size = sizeof(scalar_t);
+      constexpr int64_t alignment = 16;
+      if (fast_scatter_kernel_eligible<alignment>(
+              iter,
+              self_ptr,
+              src_ptr,
+              index_stride * element_size,
+              element_size)) {
+        auto slice_size = iter.shape()[0] * element_size;
+        auto num_ind = iter.shape()[1];
+        auto ind_dim_size = index_size;
+        auto out_stride_bytes = index_stride * element_size;
+        auto inp_stride_bytes = iter.strides(1)[1];
+        if (iter.numel() == 0)
+          return;
+        at::native::xpu::vectorized_scatter_kernel_launch<alignment, index_t>(
             self_ptr,
             src_ptr,
             (index_t*)index_ptr,
@@ -458,7 +493,8 @@ struct ScatterGatherBaseKernel {
             scalar_t>::type;
         AT_DISPATCH_INDEX_TYPES(
             index.scalar_type(), "xpu_scatter_gather_base_kernel_func", [&]() {
-              ScatterGatherInternalKernel<is_scatter_like, dtype, index_t>()(
+              ScatterGatherInternalKernel<is_scatter_like, dtype, index_t,
+                                          /*enable_vectorized_scatter=*/true>()(
                   iter, index_size, index_stride, self.numel(), f);
             });
       });
@@ -478,7 +514,8 @@ struct ScatterGatherBaseKernel {
                   ScatterGatherInternalKernel<
                       is_scatter_like,
                       dtype,
-                      index_t>()(
+                      index_t,
+                      /*enable_vectorized_scatter=*/true>()(
                       iter, index_size, index_stride, self.numel(), f);
                 });
           }),
