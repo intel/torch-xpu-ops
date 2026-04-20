@@ -29,7 +29,7 @@ runs:
     - name: Prepare ImageNet dataset
       shell: bash -eo pipefail {0}
       run: |
-        DATASET_DIR="${RUNNER_TEMP}/_datasets/imagenet"
+        DATASET_DIR="${HOME}/.cache/imagenet"
 
         if [[ -d "${DATASET_DIR}" && -f "${DATASET_DIR}/valprep.sh" ]]; then
           echo "dataset_dir=${DATASET_DIR}" >> "${GITHUB_ENV}"

@@ -233,7 +233,7 @@ jobs:
       - name: Determine baseline artifact type
         id: determine-type
         run: |
-          if [ "${{ endsWith(inputs.pytorch, '_wheel') }}" == "true" ]; then
+          if [ "${{ contains(inputs.pytorch, '_wheel') }}" == "true" ]; then
             build_kind="wheel"
           else
             build_kind="build"

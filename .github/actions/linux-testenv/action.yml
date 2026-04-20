@@ -90,35 +90,34 @@ runs:
     - name: Install PyTorch
       shell: bash -xeo pipefail {0}
       run: |
-        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
 
-        extract_repo_commit() {
+        extract_repo() {
           if [[ "$1" == *"@"* ]]; then
-            echo "${1%%@*} ${1##*@}"
+            echo "${1%%@*}"
           else
-            echo "https://github.com/pytorch/pytorch.git $1"
+            echo "https://github.com/pytorch/pytorch.git"
           fi
         }
 
         case "${{ inputs.pytorch }}" in
-          *release_wheel*) pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu ;;
+          *release_wheel*) pip install torch"$(echo "${{ inputs.pytorch }}" |sed 's/.*_wheel//')" torchvision torchaudio --index-url https://download.pytorch.org/whl/xpu ;;
           *test_wheel*)    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/test/xpu ;;
           *nightly_wheel*) pip install torch torchvision torchaudio --pre --index-url https://download.pytorch.org/whl/nightly/xpu ;;
           *)
             whl="$(find ./wheels -name '*.whl' 2>/dev/null)"
             [[ -z "${whl}" ]] && { echo "::error::No wheels found"; exit 1; }
-            pip install --force-reinstall ${whl}
+            pip install --force-reinstall "${whl}"
             ;;
         esac
 
         TORCH_COMMIT_ID=$(python -c "import torch; print(torch.version.git_version)" 2>/dev/null || echo unknown)
 
         # Clone source for benchmarks / patching
-        read -r repo commit <<< "$(extract_repo_commit "${{ inputs.pytorch }}" | tail -1)"
-        commit="${TORCH_COMMIT_ID}"
+        repo=$(extract_repo "${{ inputs.pytorch }}")
         rm -rf pytorch
         git clone "${repo}" pytorch
-        cd pytorch && git checkout "${commit}"
+        cd pytorch && git checkout "${TORCH_COMMIT_ID}"
 
         # Apply patches
         pip install requests
@@ -150,10 +149,9 @@ runs:
           fi
         }
 
-        read -r TXO_REPO TXO_COMMIT <<< "$(parse_txo "${{ inputs.torch_xpu_ops }}" | tail -1)"
+        read -r TXO_REPO TXO_COMMIT <<< "$(parse_txo "${{ inputs.torch_xpu_ops }}")"
 
         if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-          rm -rf third_party/torch-xpu-ops
           cp -r "${{ github.workspace }}/torch-xpu-ops" third_party/torch-xpu-ops
         else
           git clone "${TXO_REPO}" third_party/torch-xpu-ops
@@ -219,8 +217,10 @@ runs:
 
           # DLRM deps
           pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt 2>/dev/null \
-            | xargs pip install || true
+          dlrm_reqs=$(mktemp)
+          curl -fsSL -o "${dlrm_reqs}" https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt 2>/dev/null \
+            && pip install -r "${dlrm_reqs}" || true
+          rm -f "${dlrm_reqs}"
           pip uninstall -y fbgemm_gpu_nightly-cpu 2>/dev/null || true
           pip install "git+https://github.com/nocoding03/gym@fix-np" || true
 
@@ -243,8 +243,10 @@ runs:
           pip install dominate
           python install.py Super_SloMo || true
           pip install pyre-extensions
-          curl -fsSL https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt 2>/dev/null \
-            | xargs pip install || true
+          dlrm_reqs=$(mktemp)
+          curl -fsSL -o "${dlrm_reqs}" https://raw.githubusercontent.com/facebookresearch/dlrm/refs/heads/torchrec-dlrm/requirements.txt 2>/dev/null \
+            && pip install -r "${dlrm_reqs}" || true
+          rm -f "${dlrm_reqs}"
           pip uninstall -y fbgemm_gpu_nightly-cpu 2>/dev/null || true
           cd ../pytorch
         else
@@ -273,7 +275,7 @@ runs:
     - name: Verify environment
       shell: bash -xeo pipefail {0}
       run: |
-        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
+        [[ -n "${XPU_ONEAPI_PATH}" ]] && source "${GITHUB_WORKSPACE}/torch-xpu-ops/.github/scripts/env.sh" || true
 
         python -c "import torch; print(torch.__config__.show())"
         python -c "import torch; print(torch.__config__.parallel_info())"

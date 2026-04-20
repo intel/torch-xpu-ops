@@ -86,7 +86,7 @@ jobs:
   build:
     name: build
     needs: runner
-    if: endsWith(inputs.pytorch, '_wheel') == false
+    if: contains(inputs.pytorch, '_wheel') == false
     runs-on: ${{ needs.runner.outputs.runner_id }}
     timeout-minutes: 300
     permissions:

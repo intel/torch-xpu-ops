@@ -49,13 +49,20 @@ runs:
 
         # Fix ownership
         ME="$(id -u):$(id -g)"
-        sudo chown "${ME}" "${HOME}" /tmp/* -R 2>/dev/null || true
+        sudo chown "${ME}" "${HOME}" -R 2>/dev/null || true
         sudo chown "${ME}" . -R 2>/dev/null || true
 
         if [[ -n "${RUNNER_WORKSPACE}" && -d "${RUNNER_WORKSPACE}/.." ]]; then
           cd "${RUNNER_WORKSPACE}/.."
           [[ "$(pwd)" != "/" ]] && sudo chown "${ME}" . -R 2>/dev/null || true
         fi
+
+        # For dataset caching and other shared resources
+        sudo mkdir -p /opt/xpu-test/.cache || true
+        sudo chmod 775 /opt/ -R 2>/dev/null || true
+        sudo chown "${ME}" /opt/xpu-test -R 2>/dev/null || true
+        sudo chmod 1777 /tmp/ -R 2>/dev/null || true
+        echo "Cleanup completed"
 
     # ── Identity ────────────────────────────────────────────────────────────
     - name: Resolve runner identity
@@ -116,6 +123,7 @@ runs:
         get_cpu_count() {
           local cps=$(lscpu | awk '/^Core\(s\) per socket:/{print $NF}')
           local sck=$(lscpu | awk '/^Socket\(s\):/{print $NF}')
+          [[ "${cps}" =~ ^[0-9]+$ && "${sck}" =~ ^[0-9]+$ ]] || { echo "::error::Failed to parse lscpu output"; return 1; }
           echo $((cps * sck))
         }
 
@@ -128,24 +136,28 @@ runs:
           local n=$1 list=""
           for ((id=0; id<n; id++)); do
             local output
-            output=$(ZE_AFFINITY_MASK="${id}" timeout 60 clinfo --list 2>/dev/null) || continue
+            output=$(ZE_AFFINITY_MASK="${id}" timeout 60 clinfo --list 2>/dev/null) || { echo "::warning::GPU ${id}: clinfo failed or timed out, skipping"; continue; }
             if echo "$output" | grep -q "Graphics" && \
                ! echo "$output" | grep -q " UHD "; then
               list+="${id},"
+            else
+              echo "::notice::GPU ${id}: not a discrete GPU, skipping"
             fi
           done
           echo "${list%,}"
         }
 
         # ── detect ──────────────────────────────────────────────────────────
-        cpu_num=$(get_cpu_count | tail -1)
-        xpu_num=$(get_xpu_count | tail -1)
-        cpus_per_xpu=$(( xpu_num > 0 ? cpu_num / xpu_num : cpu_num ))
+        cpu_num=$(get_cpu_count)
+        xpu_num=$(get_xpu_count)
 
-        echo "CPUs: ${cpu_num}  XPUs: ${xpu_num}  CPUs/XPU: ${cpus_per_xpu}"
+        echo "CPUs: ${cpu_num}  XPUs: ${xpu_num}"
         [[ "${xpu_num}" -eq 0 ]] && echo "::warning::No online XPU devices"
 
-        ZE_AFFINITY_MASK=$(get_active_xpu_list "${xpu_num}" | tail -1)
+        # Check numactl availability
+        command -v numactl &>/dev/null || { echo "::error::numactl not installed"; exit 1; }
+
+        ZE_AFFINITY_MASK=$(get_active_xpu_list "${xpu_num}")
         [[ -z "${ZE_AFFINITY_MASK}" ]] && echo "::error::No active XPU devices found" && exit 1
         IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK}"
         active_num=${#gpus[@]}
@@ -153,6 +165,9 @@ runs:
         if (( NUM_GPUS > active_num )); then
           echo "::warning::Requested ${n} GPUs, but only ${active_num} active. Using ${active_num} GPUs."
         fi
+
+        cpus_per_xpu=$(( n > 0 ? cpu_num / n : cpu_num ))
+        echo "Active XPUs: ${active_num}  CPUs/XPU: ${cpus_per_xpu}"
 
         # ── numactl args (semicolon-delimited, one per GPU) ────────────────
         if (( n > 1 )); then
