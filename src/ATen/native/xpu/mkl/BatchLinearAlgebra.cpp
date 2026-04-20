@@ -251,44 +251,43 @@ static void apply_lu_solve_xpu_(
   std::vector<int32_t> info_vec(batch_size, 0);
   int32_t* info_data = info_vec.data();
 
-  auto execute_mkl_getrs =
-      [&](const scalar_t* a,
-        scalar_t* b,
-        const int64_t* ipiv,
-        int64_t batch_size) {
-        int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
-            queue,
-            trans,
-            n,
-            nrhs,
-            lda,
-            stride_a,
-            stride_ipiv,
-            ldb,
-            stride_b,
-            batch_size);
-        Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
-        try {
-          mkl_getrs<scalar_t>(
-              queue,
-              trans,
-              n,
-              nrhs,
-              a,
-              lda,
-              stride_a,
-              ipiv,
-              stride_ipiv,
-              b,
-              ldb,
-              stride_b,
-              batch_size,
-              reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
-              scratchpad_size);
-        } catch (const oneapi::mkl::lapack::batch_error& be) {
-          error_handle(info_data, be);
-        }
-      };
+  auto execute_mkl_getrs = [&](const scalar_t* a,
+                               scalar_t* b,
+                               const int64_t* ipiv,
+                               int64_t batch_size) {
+    int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
+        queue,
+        trans,
+        n,
+        nrhs,
+        lda,
+        stride_a,
+        stride_ipiv,
+        ldb,
+        stride_b,
+        batch_size);
+    Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
+    try {
+      mkl_getrs<scalar_t>(
+          queue,
+          trans,
+          n,
+          nrhs,
+          a,
+          lda,
+          stride_a,
+          ipiv,
+          stride_ipiv,
+          b,
+          ldb,
+          stride_b,
+          batch_size,
+          reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+          scratchpad_size);
+    } catch (const oneapi::mkl::lapack::batch_error& be) {
+      error_handle(info_data, be);
+    }
+  };
 
   bool is_broadcast = false;
   IntArrayRef lu_batch_shape(lu_.sizes().data(), lu_.dim() - 2);
