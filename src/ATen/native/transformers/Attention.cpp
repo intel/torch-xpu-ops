@@ -39,8 +39,6 @@
 #include <ATen/native/transformers/SDPUtils.h>
 #include <ATen/native/transformers/sycl/AttentionKernels.h>
 
-#include <comm/SYCLContext.h>
-
 namespace at {
 namespace native {
 
@@ -519,6 +517,10 @@ _scaled_dot_product_efficient_attention_backward_xpu(
     k.requires_grad_(true);
   if (grad_input_mask[2])
     v.requires_grad_(true);
+
+  TORCH_CHECK(
+      !grad_input_mask[3] || attn_bias.defined(),
+      "bias_requires_grad is true but no bias was provided");
 
   std::optional<Tensor> attn_bias_opt;
   Tensor ab;
