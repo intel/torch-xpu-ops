@@ -9,6 +9,16 @@
 
 namespace c10d::symmetric_memory {
 
+// Defined in XPUSymmetricMemoryOps.cpp (separate per-file SYCL .so).
+// We take its address here to force ld to keep the SYCL .so as a DT_NEEDED
+// dependency of libtorch_xpu.so (otherwise --as-needed drops it since the TU
+// only has a static TORCH_LIBRARY_IMPL initializer).
+extern int xpu_symm_mem_ops_force_link;
+__attribute__((used, visibility("default")))
+void* _xpu_symm_mem_ops_force_link_anchor() {
+  return (void*)&xpu_symm_mem_ops_force_link;
+}
+
 // Query environment variable to get the backend used for XPU Symmetric Memory.
 std::string getSymmMemBackendXPU() {
   // TORCH_SYMMMEM environment variable can be used to indicate the preferred
