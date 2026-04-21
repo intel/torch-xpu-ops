@@ -117,6 +117,7 @@ runs:
       run: |
         # clean docker cache
         docker system prune -af || true
+        docker logout || true
         # fix potential permission issue
         sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R
         cd ${RUNNER_WORKSPACE}/..
