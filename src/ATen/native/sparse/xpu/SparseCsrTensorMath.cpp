@@ -420,8 +420,17 @@ Tensor& add_out_sparse_compressed_xpu(
       return out;
     }
 
+    // Preserve the index dtype from self (int32 or int64)
+    auto index_dtype = self.crow_indices().scalar_type();
     Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-    out = out_dense.to_sparse_csr();
+    Tensor out_csr = out_dense.to_sparse_csr();
+    Tensor result = at::sparse_compressed_tensor(
+        out_csr.crow_indices().to(index_dtype),
+        out_csr.col_indices().to(index_dtype),
+        out_csr.values(),
+        out_csr.sizes(),
+        out_csr.options().layout(at::kSparseCsr));
+    out.copy_(result);
   }
   return out;
 }
