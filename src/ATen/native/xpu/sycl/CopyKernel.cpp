@@ -39,8 +39,7 @@ struct CastScalarFunc {
 template <>
 struct CastScalarFunc<Half, float> {
   float operator()(Half src_val) const {
-    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
-    return (float)val;
+    return c10::convert<float>(src_val);
   }
 };
 
@@ -48,8 +47,7 @@ struct CastScalarFunc<Half, float> {
 template <>
 struct CastScalarFunc<Half, BFloat16> {
   BFloat16 operator()(Half src_val) const {
-    Half val = src_val == Half(-0.0) ? Half(0.0) : src_val;
-    return (BFloat16)val;
+    return c10::convert<BFloat16>(src_val);
   }
 };
 
