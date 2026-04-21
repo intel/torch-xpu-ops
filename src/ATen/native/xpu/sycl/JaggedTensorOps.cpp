@@ -1,17 +1,136 @@
-#include <ATen/ATen.h>
-#include <ATen/native/xpu/sycl/FbgemmKernels.h>
-#include <ATen/native/xpu/sycl/KernelUtils.h>
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
-#include <ATen/native/xpu/sycl/ScanUtils.h>
+#include <ATen/native/xpu/sycl/JaggedTensorOps.h>
+#include <ATen/native/xpu/sycl/fbgemm_utils/dispatch_macros.h>
 
+#include <sycl/sycl.hpp>
 #include <comm/SYCLContext.h>
 
 namespace syclext = sycl::ext::oneapi;
 namespace syclexp = sycl::ext::oneapi::experimental;
 
 namespace at {
-namespace native {
-namespace xpu {
+
+template <typename T>
+struct RestrictPtrTraits {
+  typedef T* __restrict__ PtrType;
+};
+
+namespace native::xpu {
+
+constexpr size_t kStackArrayMaxDims = 5;
+
+template <typename T, typename V>
+inline auto CeilDivUp(T a, V b) {
+  return (a + b - 1) / b;
+}
+
+template <typename T, typename V>
+inline auto round_down(T a, V b) {
+  return a / b * b;
+}
+
+struct VecType128 {
+  typedef sycl::float4 TType;
+  typedef struct __attribute__((aligned(16))) {
+    sycl::half a, b, c, d, w, x, y, z;
+  } half8;
+
+  union Data {
+    half8 val;
+    TType mask;
+    Data() {
+      mask = sycl::float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+  } data;
+};
+
+struct VecType64 {
+  typedef sycl::vec<float, 2> TType;
+  typedef struct __attribute__((aligned(8))) {
+    sycl::half a, b, c, d;
+  } half4;
+
+  union Data {
+    half4 val;
+    TType mask;
+    Data() {
+      mask = sycl::vec<float, 2>(0.0f, 0.0f);
+    }
+  } data;
+};
+
+struct VecType32 {
+  typedef float TType;
+
+  union Data {
+    sycl::vec<sycl::half, 2> val;
+    TType mask;
+    Data() {
+      mask = 0.0f;
+    }
+  } data;
+};
+
+template <typename F>
+void f128(
+    VecType128& v_out,
+    const VecType128& x,
+    const VecType128& y0,
+    const VecType128& y1,
+    F f) {
+  v_out.data.val.a = f(x.data.val.a, y0.data.val.a, y1.data.val.a);
+  v_out.data.val.b = f(x.data.val.b, y0.data.val.b, y1.data.val.b);
+  v_out.data.val.c = f(x.data.val.c, y0.data.val.c, y1.data.val.c);
+  v_out.data.val.d = f(x.data.val.d, y0.data.val.d, y1.data.val.d);
+  v_out.data.val.w = f(x.data.val.w, y0.data.val.w, y1.data.val.w);
+  v_out.data.val.x = f(x.data.val.x, y0.data.val.x, y1.data.val.x);
+  v_out.data.val.y = f(x.data.val.y, y0.data.val.y, y1.data.val.y);
+  v_out.data.val.z = f(x.data.val.z, y0.data.val.z, y1.data.val.z);
+}
+
+template <typename F>
+void f64(
+    VecType64& v_out,
+    const VecType64& x,
+    const VecType64& y0,
+    const VecType64& y1,
+    F f) {
+  v_out.data.val.a = f(x.data.val.a, y0.data.val.a, y1.data.val.a);
+  v_out.data.val.b = f(x.data.val.b, y0.data.val.b, y1.data.val.b);
+  v_out.data.val.c = f(x.data.val.c, y0.data.val.c, y1.data.val.c);
+  v_out.data.val.d = f(x.data.val.d, y0.data.val.d, y1.data.val.d);
+}
+
+template <typename F>
+void f32(
+    VecType32& v_out,
+    const VecType32& x,
+    const VecType32& y0,
+    const VecType32& y1,
+    F f) {
+  v_out.data.val = sycl::vec<sycl::half, 2>(
+      f(x.data.val.x(), y0.data.val.x(), y1.data.val.x()),
+      f(x.data.val.y(), y0.data.val.y(), y1.data.val.y()));
+}
+
+template <typename F>
+void fh(
+    sycl::half& v_out,
+    const sycl::half& x,
+    const sycl::half& y0,
+    const sycl::half& y1,
+    F f) {
+  v_out = f(x, y0, y1);
+}
 
 template <typename T>
 struct StackArray {
@@ -43,53 +162,6 @@ class SimpleRetFirstFunctor2 {
   }
 };
 
-uint32_t xpu_calc_xblock_count_base(int num_items, int threads_per_block) {
-  // The number of threads can be as high as 2048 on some newer architectures,
-  // but this is not portable.
-  TORCH_CHECK(
-      threads_per_block <= syclDeviceMaxWorkGroupSize(),
-      "Number of threads must be <=1024!");
-  constexpr uint64_t max_blocks = 2147483647;
-  const auto u_num_items = static_cast<uint64_t>(num_items);
-  const auto u_threads = static_cast<uint64_t>(threads_per_block);
-  // Overflow safe variant of (a + b - 1) / b
-  const uint64_t blocks =
-      u_num_items / u_threads + (u_num_items % u_threads != 0);
-  return static_cast<uint32_t>(std::min(blocks, max_blocks));
-}
-
-// See: xpu_calc_xblock_count_base
-uint32_t xpu_calc_xblock_count(int num_items, int threads_per_block) {
-  TORCH_CHECK(
-      num_items >= 0,
-      "When calculating block counts, the number of items must be positive!");
-  return xpu_calc_xblock_count_base(num_items, threads_per_block);
-}
-
-#define JAGGED_TENSOR_DISPATCH_DIMS()                                         \
-  AT_DISPATCH_INDEX_TYPES(x_offsets[0].scalar_type(), "jagged_indices", [=] { \
-    switch (num_jagged_dim) {                                                 \
-      case 1:                                                                 \
-        INVOKE_KERNEL_WITH_DIM(1);                                            \
-        break;                                                                \
-      case 2:                                                                 \
-        INVOKE_KERNEL_WITH_DIM(2);                                            \
-        break;                                                                \
-      case 3:                                                                 \
-        INVOKE_KERNEL_WITH_DIM(3);                                            \
-        break;                                                                \
-      case 4:                                                                 \
-        INVOKE_KERNEL_WITH_DIM(4);                                            \
-        break;                                                                \
-      case 5:                                                                 \
-        INVOKE_KERNEL_WITH_DIM(5);                                            \
-        break;                                                                \
-      default:                                                                \
-        TORCH_CHECK(                                                          \
-            false, "unsupported number of jagged dim ", num_jagged_dim);      \
-    }                                                                         \
-  });
-
 template <int NUM_JAGGED_DIM, typename index_t, typename scalar_t, typename F>
 SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
 void jagged_dense_elementwise_jagged_output_kernel_(
@@ -119,7 +191,6 @@ void jagged_dense_elementwise_jagged_output_kernel_(
     int dim_prod = 1;
 #pragma unroll
     for (int d = NUM_JAGGED_DIM - 1; d >= 0; --d) {
-      // Binary search the first that is bigger than offset
       int count = x_offsets_sizes.vals[d] - 1;
       int first = 1;
       while (count > 0) {
@@ -146,8 +217,6 @@ void jagged_dense_elementwise_jagged_output_kernel_(
     }
 
     if (offset_temp >= outer_dense_size) {
-      // This can happen when values have more elements than the last element of
-      // offset
       truncated = true;
     }
     if (!truncated) {
@@ -190,14 +259,13 @@ void jagged_dense_elementwise_jagged_output_kernel_(
 template <int NUM_JAGGED_DIM, typename index_t, typename scalar_t, typename F>
 void jagged_dense_elementwise_jagged_output_launch_(
     GenericPackedTensorAccessor<scalar_t, 2, DefaultPtrTraits, int32_t>
-        x_values, // output
+        x_values,
     StackArray<index_t*> x_offsets,
     StackArray<int64_t> x_offsets_sizes,
-    GenericPackedTensorAccessor<scalar_t, 3, DefaultPtrTraits, int32_t>
-        y_0, // not used
+    GenericPackedTensorAccessor<scalar_t, 3, DefaultPtrTraits, int32_t> y_0,
     GenericPackedTensorAccessor<scalar_t, 3, DefaultPtrTraits, int32_t> y_1,
     GenericPackedTensorAccessor<scalar_t, 2, DefaultPtrTraits, int32_t>
-        output_values, // not used
+        output_values,
     StackArray<int64_t> jagged_dims,
     F f,
     int64_t wg_0,
@@ -228,7 +296,6 @@ bool walk_down_tensor_storage_tree_(
     const int flattened_jagged_idx,
     const StackArray<int64_t>& jagged_dims,
     const StackArray<index_t*>& x_offsets) {
-  // compute coorindates
   int jagged_coords[NUM_JAGGED_DIM];
   int j_temp = flattened_jagged_idx;
 #pragma unroll
@@ -238,7 +305,6 @@ bool walk_down_tensor_storage_tree_(
     j_temp /= jagged_size;
   }
 
-  // walk down the tree
   bool is_zero = false;
 #pragma unroll
   for (int d = 0; d < NUM_JAGGED_DIM; ++d) {
@@ -294,6 +360,30 @@ check_shape_and_partition_(
   return {wg_size_0, wg_size_1, wg_num, jagged_dims_tensor};
 }
 
+#define JAGGED_TENSOR_DISPATCH_DIMS()                                         \
+  AT_DISPATCH_INDEX_TYPES(x_offsets[0].scalar_type(), "jagged_indices", [=] { \
+    switch (num_jagged_dim) {                                                 \
+      case 1:                                                                 \
+        INVOKE_KERNEL_WITH_DIM(1);                                            \
+        break;                                                                \
+      case 2:                                                                 \
+        INVOKE_KERNEL_WITH_DIM(2);                                            \
+        break;                                                                \
+      case 3:                                                                 \
+        INVOKE_KERNEL_WITH_DIM(3);                                            \
+        break;                                                                \
+      case 4:                                                                 \
+        INVOKE_KERNEL_WITH_DIM(4);                                            \
+        break;                                                                \
+      case 5:                                                                 \
+        INVOKE_KERNEL_WITH_DIM(5);                                            \
+        break;                                                                \
+      default:                                                                \
+        TORCH_CHECK(                                                          \
+            false, "unsupported number of jagged dim ", num_jagged_dim);      \
+    }                                                                         \
+  });
+
 template <typename scalar_t, typename F>
 void jagged_dense_elementwise_jagged_output_(
     const Tensor& x_values,
@@ -301,7 +391,6 @@ void jagged_dense_elementwise_jagged_output_(
     const Tensor& y,
     const Tensor& output_values,
     F f) {
-  // Canonicalize y to 3D, collapsing jagged dimensions.
   const int num_jagged_dim = y.dim() - 2;
   const Tensor y_reshaped = y.view({y.size(0), -1, y.size(-1)});
 
@@ -463,7 +552,6 @@ void jagged_dense_elementwise_dense_output_(
   std::tie(wg_0, wg_1, wg_num, jagged_dims_tensor) =
       check_shape_and_partition_(x_values, x_offsets, y);
 
-  // Canonicalize y and output to 3D, collapsing jagged dimensions.
   const int num_jagged_dim = y.dim() - 2;
   const Tensor y_reshaped = y.view({y.size(0), -1, y.size(-1)});
   Tensor output_reshaped = output.view(y_reshaped.sizes());
@@ -510,13 +598,12 @@ void jagged_to_padded_dense_forward_xpu_kernel(
         jagged_dense_elementwise_dense_output_<scalar_t>(
             x_values,
             x_offsets,
-            y, // not used
+            y,
             output,
             static_cast<scalar_t>(padding_value));
       });
 }
 
-// Check to see if the inputs to the op are amenable to the fast path
 inline bool jagged_dense_dense_elementwise_jagged_output_matches_opt(
     const int& num_jagged_dim,
     const Tensor& x_values,
@@ -527,32 +614,26 @@ inline bool jagged_dense_dense_elementwise_jagged_output_matches_opt(
   bool matches = true;
   matches &= (num_jagged_dim == 1);
 
-  // Unit stride embedding dim
   matches &= (x_values.stride(-1) == 1);
   matches &= (output_values.stride(-1) == 1);
   matches &= (y_0_reshaped.stride(-1) == 1);
   matches &= (y_1_reshaped.stride(-1) == 1);
 
-  // Each row is aligned to 128-bit
   matches &= ((x_values.stride(-2) & 0x7) == 0);
   matches &= ((output_values.stride(-2) & 0x7) == 0);
   matches &= ((y_0_reshaped.stride(-2) & 0x7) == 0);
   matches &= ((y_1_reshaped.stride(-2) & 0x7) == 0);
 
-  // Base addresses aligned to 128-bit
   matches &= ((reinterpret_cast<uint64_t>(x_values.data_ptr()) & 0xF) == 0);
   matches &=
       ((reinterpret_cast<uint64_t>(output_values.data_ptr()) % 0xF) == 0);
   matches &= ((reinterpret_cast<uint64_t>(y_0_reshaped.data_ptr()) % 0xF) == 0);
   matches &= ((reinterpret_cast<uint64_t>(y_1_reshaped.data_ptr()) % 0xF) == 0);
 
-  // Rows and col fit into int32_t
   matches &= (y_0_reshaped.size(0) < INT_MAX);
   matches &= (y_0_reshaped.size(1) < INT_MAX);
 
-  // maximum shared local memory size
   int max_shared_bytes = syclLocalMemSize();
-  // Use all shared memory, no L1 cache consideration
   int max_shared_kb = max_shared_bytes >> 10;
   int used_shared_kb = round_down(max_shared_kb, 16);
   TORCH_CHECK(used_shared_kb > 0);
@@ -782,7 +863,6 @@ void jagged_dense_dense_elementwise_jagged_output_kernel_(
     int dim_prod = 1;
 #pragma unroll
     for (int d = NUM_JAGGED_DIM - 1; d >= 0; --d) {
-      // Binary search the first that is bigger than offset
       int count = x_offsets_sizes.vals[d] - 1;
       int first = 1;
       while (count > 0) {
@@ -809,8 +889,6 @@ void jagged_dense_dense_elementwise_jagged_output_kernel_(
     }
 
     if (offset_temp >= outer_dense_size) {
-      // This can happen when values have more elements than the last element of
-      // offset
       truncated = true;
     }
     if (!truncated) {
@@ -886,23 +964,7 @@ void jagged_dense_dense_elementwise_jagged_output_kernel_(
         output_values.packed_accessor32<scalar_t, 2, at::RestrictPtrTraits>(), \
         jagged_dims_tensor,                                                    \
         f);                                                                    \
-  } // namespace xpu
-
-void fbgemm_cumsum_kernel(
-    const Tensor& result,
-    const Tensor& self,
-    int64_t dim) {
-  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
-      ScalarType::Half,
-      ScalarType::BFloat16,
-      self.scalar_type(),
-      "fbgemm_cumsum_xpu",
-      [&]() {
-        scalar_t init = 0;
-        scan<INCLUSIVE_TYPE, const scalar_t, scalar_t>(
-            result, self, dim, init, std::plus<scalar_t>());
-      });
-}
+  }
 
 template <typename scalar_t, typename F>
 void jagged_dense_elementwise_jagged_output_opt_(
@@ -911,7 +973,6 @@ void jagged_dense_elementwise_jagged_output_opt_(
     const Tensor& y,
     const Tensor& output_values,
     F f) {
-  // Canonicalize y to 3D, collapsing jagged dimensions.
   const int num_jagged_dim = y.dim() - 2;
   const Tensor y_reshaped = y.view({y.size(0), -1, y.size(-1)});
   if (jagged_dense_dense_elementwise_jagged_output_matches_opt(
@@ -935,7 +996,6 @@ void jagged_dense_elementwise_jagged_output_opt_(
               at::TensorOptions().dtype(at::kInt).device(
                   at::kXPU, c10::xpu::current_device()));
 
-          // Binary search
           size_t dynamic_smem_size = (B + 1) * sizeof(index_t);
           auto max_shared_bytes = syclLocalMemSize();
           int max_shared_kb = max_shared_bytes >> 10;
@@ -964,7 +1024,6 @@ void jagged_dense_elementwise_jagged_output_opt_(
               nnz,
               B);
 
-          // Gather kernel
           int dim_0_1 = 16;
           int nbr_of_wg_g = CeilDivUp(nnz, dim_0_1);
           if (nbr_of_wg_g > 65535) {
@@ -993,7 +1052,7 @@ void jagged_dense_elementwise_jagged_output_opt_(
               nnz,
               E,
               f);
-        }); // AT_DISPATCH
+        });
   } else {
     JAGGED_TENSOR_DISPATCH_DIMS();
   }
@@ -1015,566 +1074,21 @@ void jagged_dense_elementwise_add_jagged_output_fwd_xpu_kn(
                 offsets,
                 dense,
                 output_values,
-                SimpleAddFunctor3<sycl::half>()); // device lambda
-          } // lambda
-          ) // CASE
+                SimpleAddFunctor3<sycl::half>());
+          })
       FBGEMM_DISPATCH_FLOAT_AND_BFLOAT16_CASE([&] {
         jagged_dense_elementwise_jagged_output_<scalar_t>(
             x_values,
             offsets,
             dense,
             output_values,
-            SimpleAddFunctor3<scalar_t>()); // device lambda
-      } // lambda
-                                              ) // CASE_FLOATING_TYPES_AND
-  ); // SWITCH
-}
-
-template <typename Dtype>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void reorder_batched_ad_lengths_kernel_(
-    // reorder lengths from (ragged) [B  x T x #num_ads_b)] to
-    // [T][B][#num_ads_b], i.e. [T][sum(#num_ads_b)].
-    const GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        cat_ad_lengths,
-    const GenericPackedTensorAccessor<
-        int32_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> batch_offsets,
-    GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        reordered_cat_ad_lengths,
-    const int32_t T,
-    const bool broadcast_lengths) {
-  const int32_t B = batch_offsets.size(0) - 1;
-
-  const int32_t num_ads_in_batch = batch_offsets[B];
-  // warp-per-segment.
-  auto item = syclext::this_work_item::get_nd_item<2>();
-  const auto b_t =
-      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-  const int32_t b = b_t % B;
-  const int32_t t = b_t / B;
-  if (t >= T) {
-    return;
-  }
-
-  const int32_t num_ads_b = batch_offsets[b + 1] - batch_offsets[b];
-  const int32_t input_segment_start =
-      broadcast_lengths ? T * b + t : T * batch_offsets[b] + t * num_ads_b;
-  const int32_t output_segment_start = t * num_ads_in_batch + batch_offsets[b];
-
-  for (auto i = item.get_local_id(1); i < num_ads_b;
-       i += item.get_local_range(1)) {
-    reordered_cat_ad_lengths[output_segment_start + i] = broadcast_lengths
-        ? cat_ad_lengths[input_segment_start]
-        : cat_ad_lengths[input_segment_start + i];
-  }
-}
-
-void reorder_batched_ad_lengths_xpu_kernel(
-    const Tensor& cat_ad_lengths,
-    const Tensor& batch_offsets,
-    Tensor& reordered_cat_ad_lengths,
-    const int32_t T,
-    const bool broadcast_lengths,
-    const int32_t grid_size) {
-  FBGEMM_DISPATCH_ALL_TYPES(
-      cat_ad_lengths.scalar_type(),
-      "reorder_batched_ad_lengths_xpu_kernel",
-      [&] {
-        sycl_kernel_submit<reorder_batched_ad_lengths_kernel_<scalar_t>>(
-            sycl::range<2>(32 * grid_size, 32),
-            sycl::range<2>(32, 32),
-            getCurrentSYCLQueue(),
-            0,
-            cat_ad_lengths
-                .packed_accessor32<scalar_t, 1, at::RestrictPtrTraits>(),
-            batch_offsets
-                .packed_accessor32<int32_t, 1, at::RestrictPtrTraits>(),
-            reordered_cat_ad_lengths
-                .packed_accessor32<scalar_t, 1, at::RestrictPtrTraits>(),
-            T,
-            broadcast_lengths);
-      });
-}
-
-template <typename Dtype, typename index_t = int32_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void narrow_broadcast_indices_kernel_(
-    const GenericPackedTensorAccessor<
-        index_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> cat_ad_offsets,
-    const GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        cat_ad_indices,
-    GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        reordered_cat_ad_indices,
-    const int num_ads_in_batch,
-    const int reordered_cat_ad_batches,
-    const int subGroupSize) {
-  auto item = syclext::this_work_item::get_nd_item<1>();
-  const auto lane_id = item.get_local_id(0) % subGroupSize;
-  const auto warp_id =
-      (item.get_group(0) * item.get_local_range(0) + item.get_local_id(0)) /
-      subGroupSize;
-  const auto table_idx = warp_id / num_ads_in_batch;
-  const auto ads_idx = warp_id % num_ads_in_batch;
-  const auto start_offset = cat_ad_offsets[table_idx];
-  const auto end_offset = cat_ad_offsets[table_idx + 1];
-  const auto num_ads = end_offset - start_offset;
-  if (warp_id < reordered_cat_ad_batches) {
-    for (auto i = lane_id; i < num_ads; i += subGroupSize) {
-      reordered_cat_ad_indices
-          [start_offset * num_ads_in_batch + ads_idx * num_ads + i] =
-              cat_ad_indices[start_offset + i];
-    }
-  }
-}
-
-template <typename Dtype, typename index_t = int32_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void narrow_batched_broadcast_indices_kernel_(
-    const GenericPackedTensorAccessor<
-        index_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> cat_ad_offsets,
-    const GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        cat_ad_indices,
-    const GenericPackedTensorAccessor<
-        index_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> reordered_cat_ad_offsets,
-    GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        reordered_cat_ad_indices,
-    const GenericPackedTensorAccessor<
-        int32_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> batch_offsets,
-    const int32_t T,
-    const int subGroupSize) {
-  const auto B = batch_offsets.size(0) - 1;
-  const auto num_ads_in_batch = static_cast<uint32_t>(batch_offsets[B]);
-  // calculate table_id and batch_id for this warp
-  auto item = syclext::this_work_item::get_nd_item<1>();
-  const auto warp_id =
-      (item.get_group(0) * item.get_local_range(0) + item.get_local_id(0)) /
-      static_cast<uint32_t>(subGroupSize);
-  const auto table_id = warp_id / num_ads_in_batch;
-  const auto warp_id_in_table = warp_id % num_ads_in_batch;
-  // warps in a table equally splited for each B
-  const auto num_warp_in_batch = num_ads_in_batch / B;
-  const auto batch_id = warp_id_in_table / num_warp_in_batch;
-  if (table_id >= T || batch_id >= B) {
-    return;
-  }
-
-  // all table_id and batch_id for this warp is the same
-  const auto num_ads_b = batch_offsets[batch_id + 1] - batch_offsets[batch_id];
-  const auto output_segment_offset_start =
-      table_id * num_ads_in_batch + batch_offsets[batch_id];
-  const auto output_segment_start =
-      reordered_cat_ad_offsets[output_segment_offset_start];
-  const auto input_segment_offset_start = T * batch_id + table_id;
-  const auto input_segment_offset_end = input_segment_offset_start + 1;
-  const auto input_segment_start = cat_ad_offsets[input_segment_offset_start];
-  const auto input_segment_end = cat_ad_offsets[input_segment_offset_end];
-  const auto num_elements = input_segment_end - input_segment_start;
-
-  const auto warp_id_in_batch = warp_id_in_table % num_warp_in_batch;
-  const auto lane_id_in_warp = item.get_local_id(0) % subGroupSize;
-  for (auto i = warp_id_in_batch; i < num_ads_b; i += num_warp_in_batch) {
-    for (auto j = lane_id_in_warp; j < num_elements; j += subGroupSize) {
-      reordered_cat_ad_indices[output_segment_start + i * num_elements + j] =
-          cat_ad_indices[input_segment_start + j];
-    }
-  }
-}
-
-template <typename Dtype, typename index_t = int32_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void reorder_batched_ad_indices_kernel_(
-    // reorder indices from (ragged) [B  x T x #num_ads_b x length_{b, t, a})]
-    // to [T][B][#num_ads_b][length_{b, t, a}], i.e. [sum(length_{b, t, a})],
-    // laid out as [T][B][A][L] (if all lengths were equal).
-
-    // if broadcast_indices is enabled, all the indices will be copies of the
-    // first batch of the cat_ad_indices, this is useful for request-only
-    // broadcast
-    const GenericPackedTensorAccessor<
-        index_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> cat_ad_offsets,
-    const GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        cat_ad_indices,
-    const GenericPackedTensorAccessor<
-        index_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> reordered_cat_ad_offsets,
-    GenericPackedTensorAccessor<Dtype, 1, at::RestrictPtrTraits, int32_t>
-        reordered_cat_ad_indices,
-    const GenericPackedTensorAccessor<
-        int32_t,
-        1,
-        at::RestrictPtrTraits,
-        int32_t> batch_offsets,
-    const int32_t T,
-    const bool broadcast_indices) {
-  const int32_t B = batch_offsets.size(0) - 1;
-  const int32_t num_ads_in_batch = batch_offsets[B];
-  // warp-per-segment.
-  auto item = syclext::this_work_item::get_nd_item<2>();
-  const auto b_t =
-      item.get_group(0) * item.get_local_range(0) + item.get_local_id(0);
-  const int32_t b = b_t % B;
-  const int32_t t = b_t / B;
-  if (t >= T) {
-    return;
-  }
-
-  const auto num_ads_b = batch_offsets[b + 1] - batch_offsets[b];
-  const auto output_segment_offset_start =
-      t * num_ads_in_batch + batch_offsets[b];
-  const auto output_segment_start =
-      reordered_cat_ad_offsets[output_segment_offset_start];
-  const int32_t input_segment_offset_start =
-      broadcast_indices ? T * b + t : T * batch_offsets[b] + t * num_ads_b;
-  const int32_t input_segment_offset_end = broadcast_indices
-      ? input_segment_offset_start + 1
-      : input_segment_offset_start + num_ads_b;
-  const auto input_segment_start = cat_ad_offsets[input_segment_offset_start];
-  const auto input_segment_end = cat_ad_offsets[input_segment_offset_end];
-  const auto num_elements = input_segment_end - input_segment_start;
-
-  if (broadcast_indices) {
-    for (auto i = item.get_local_id(1); i < num_ads_b * num_elements;
-         i += item.get_local_range(1)) {
-      reordered_cat_ad_indices[output_segment_start + i] =
-          cat_ad_indices[input_segment_start + i % num_elements];
-    }
-  } else {
-    // Idea: we want to copy the entire segment of size sum_a(length_{b, t, a})
-    // from starting point (given by cat_ad_offsets[b, t])
-    // to end point (given by reordered_cat_ad_indices[t][b])
-    for (auto i = item.get_local_id(1);
-         i < input_segment_end - input_segment_start;
-         i += item.get_local_range(1)) {
-      reordered_cat_ad_indices[output_segment_start + i] =
-          cat_ad_indices[input_segment_start + i];
-    }
-  }
-}
-
-void reorder_batched_ad_indices_xpu_kernel(
-    const at::Tensor& cat_ad_offsets,
-    const at::Tensor& cat_ad_indices,
-    const at::Tensor& reordered_cat_ad_offsets,
-    const at::Tensor& batch_offsets,
-    at::Tensor& reordered_cat_ad_indices,
-    const int64_t num_ads_in_batch,
-    const int64_t B,
-    const int64_t T,
-    const bool broadcast_indices) {
-  const int subGroupSize = syclMaxSubGroupSize();
-  if (broadcast_indices && T <= 320 && B < 64) {
-    TORCH_CHECK(num_ads_in_batch * T == reordered_cat_ad_offsets.numel() - 1);
-    if (B == 1) {
-      // for B = 1 broadcast case
-      constexpr auto NUM_WARPS = 16;
-      const int workGroupSize = NUM_WARPS * subGroupSize;
-      const int global_dim =
-          xpu_calc_xblock_count(
-              reordered_cat_ad_offsets.numel() - 1, NUM_WARPS) *
-          workGroupSize;
-      FBGEMM_DISPATCH_ALL_TYPES(
-          cat_ad_indices.scalar_type(),
-          "narrow_broadcast_indices_kernel_1",
-          [&] {
-            AT_DISPATCH_INDEX_TYPES(
-                cat_ad_offsets.scalar_type(),
-                "narrow_broadcast_indices_kernel_2",
-                [&] {
-                  sycl_kernel_submit<
-                      narrow_broadcast_indices_kernel_<scalar_t, index_t>>(
-                      sycl::range<1>(global_dim),
-                      sycl::range<1>(workGroupSize),
-                      getCurrentSYCLQueue(),
-                      0,
-                      cat_ad_offsets.packed_accessor32<
-                          index_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      cat_ad_indices.packed_accessor32<
-                          scalar_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      reordered_cat_ad_indices.packed_accessor32<
-                          scalar_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      num_ads_in_batch,
-                      reordered_cat_ad_offsets.numel() - 1,
-                      subGroupSize);
-                });
-          });
-      return;
-    } else {
-      // for B > 1 and B < 64 broadcast case
-      constexpr auto NUM_WARPS = 16;
-      const int workGroupSize = NUM_WARPS * subGroupSize;
-      const int global_dim =
-          xpu_calc_xblock_count(T * num_ads_in_batch, NUM_WARPS) *
-          workGroupSize;
-      FBGEMM_DISPATCH_ALL_TYPES(
-          cat_ad_indices.scalar_type(),
-          "narrow_batched_broadcast_indices_kernel_1",
-          [&] {
-            AT_DISPATCH_INDEX_TYPES(
-                cat_ad_offsets.scalar_type(),
-                "narrow_batched_broadcast_indices_kernel_2",
-                [&] {
-                  sycl_kernel_submit<narrow_batched_broadcast_indices_kernel_<
-                      scalar_t,
-                      index_t>>(
-                      sycl::range<1>(global_dim),
-                      sycl::range<1>(workGroupSize),
-                      getCurrentSYCLQueue(),
-                      0,
-                      cat_ad_offsets.packed_accessor32<
-                          index_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      cat_ad_indices.packed_accessor32<
-                          scalar_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      reordered_cat_ad_offsets.packed_accessor32<
-                          index_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      reordered_cat_ad_indices.packed_accessor32<
-                          scalar_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      batch_offsets.packed_accessor32<
-                          int32_t,
-                          1,
-                          at::RestrictPtrTraits>(),
-                      T,
-                      subGroupSize);
-                });
-          });
-      return;
-    }
-  }
-  FBGEMM_DISPATCH_ALL_TYPES(
-      cat_ad_indices.scalar_type(),
-      "reorder_batched_ad_indices_xpu_kernel_1",
-      [&] {
-        AT_DISPATCH_INDEX_TYPES(
-            cat_ad_offsets.scalar_type(),
-            "reorder_batched_ad_indices_xpu_kernel_2",
-            [&] {
-              constexpr auto NUM_WARPS = 32;
-              const int maxWorkGroupSize = syclDeviceMaxWorkGroupSize();
-              auto maxWarpSize = maxWorkGroupSize / NUM_WARPS;
-              const int global_dim_y =
-                  maxWarpSize < subGroupSize ? maxWarpSize : subGroupSize;
-              const int global_dim_x =
-                  xpu_calc_xblock_count(B * T, NUM_WARPS) * NUM_WARPS;
-              sycl_kernel_submit<
-                  reorder_batched_ad_indices_kernel_<scalar_t, index_t>>(
-                  sycl::range<2>(global_dim_x, global_dim_y),
-                  sycl::range<2>(NUM_WARPS, global_dim_y),
-                  getCurrentSYCLQueue(),
-                  0,
-                  cat_ad_offsets
-                      .packed_accessor32<index_t, 1, at::RestrictPtrTraits>(),
-                  cat_ad_indices
-                      .packed_accessor32<scalar_t, 1, at::RestrictPtrTraits>(),
-                  reordered_cat_ad_offsets
-                      .packed_accessor32<index_t, 1, at::RestrictPtrTraits>(),
-                  reordered_cat_ad_indices
-                      .packed_accessor32<scalar_t, 1, at::RestrictPtrTraits>(),
-                  batch_offsets
-                      .packed_accessor32<int32_t, 1, at::RestrictPtrTraits>(),
-                  T,
-                  broadcast_indices);
-            });
-      });
-}
-
-// Kernel for permuting the lengths. Used for permutation of sparse features.
-template <typename index_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<1>))
-void permute_2D_lengths_kernel_(
-    int32_t T,
-    int32_t B,
-    const index_t* __restrict__ lengths,
-    const int32_t* __restrict__ permute,
-    index_t* __restrict__ permuted_lengths) {
-  auto item = syclext::this_work_item::get_nd_item<1>();
-  XPU_KERNEL_LOOP(item, b_t, B * T) {
-    int32_t b = b_t % B;
-    int32_t t = b_t / B;
-    permuted_lengths[b_t] = lengths[permute[t] * B + b];
-  }
-}
-
-void permute_2D_lengths_kernel_xpu(
-    int32_t T,
-    int32_t B,
-    const at::Tensor& lengths_contig,
-    const at::Tensor& permute_contig,
-    at::Tensor& permuted_lengths) {
-  constexpr int32_t threads_1 = 256;
-  const auto blocks_1 = xpu_calc_xblock_count(B * T, threads_1);
-  AT_DISPATCH_INDEX_TYPES(
-      lengths_contig.scalar_type(), "permute_2D_lengths_kernel", [&] {
-        sycl_kernel_submit<permute_2D_lengths_kernel_<index_t>>(
-            sycl::range<1>(blocks_1 * threads_1),
-            sycl::range<1>(threads_1),
-            getCurrentSYCLQueue(),
-            0,
-            T,
-            B,
-            lengths_contig.data_ptr<index_t>(),
-            permute_contig.data_ptr<int32_t>(),
-            permuted_lengths.data_ptr<index_t>());
-      });
-}
-
-template <
-    bool has_weight,
-    typename offsets_t,
-    typename indices_t,
-    typename weights_t>
-SYCL_EXT_ONEAPI_FUNCTION_PROPERTY((syclexp::nd_range_kernel<2>))
-void permute_2D_data_kernel_(
-    int32_t len,
-    int32_t T,
-    int32_t B,
-    const indices_t* __restrict__ indices,
-    const weights_t* __restrict__ weights,
-    const int32_t weights_columns,
-    const int32_t* __restrict__ permute,
-    const offsets_t* __restrict__ input_offsets,
-    const offsets_t* __restrict__ output_offsets,
-    indices_t* __restrict__ permuted_indices,
-    weights_t* __restrict__ permuted_weights) {
-  auto item = syclext::this_work_item::get_nd_item<2>();
-  auto b_t_start =
-      item.get_group(1) * item.get_local_range(0) + item.get_local_id(0);
-  const auto stride = item.get_group_range(1) * item.get_local_range(0);
-  for (int b_t = b_t_start; b_t < B * T; b_t += stride) {
-    int32_t b = b_t % B;
-    int32_t t = b_t / B;
-    offsets_t output_start = output_offsets[b_t];
-    offsets_t segment_length;
-    if (b_t == B * T - 1) {
-      segment_length = len - output_offsets[b_t];
-    } else {
-      segment_length = output_offsets[b_t + 1] - output_offsets[b_t];
-    }
-    offsets_t input_start = input_offsets[permute[t] * B + b];
-    for (auto i = item.get_local_id(1); i < segment_length;
-         i += item.get_local_range(1)) {
-      permuted_indices[output_start + i] = indices[input_start + i];
-      if (has_weight) {
-        for (auto w_col = 0; w_col < weights_columns; ++w_col) {
-          permuted_weights[(output_start + i) * weights_columns + w_col] =
-              weights[(input_start + i) * weights_columns + w_col];
-        }
-      }
-    }
-  }
-}
-
-void permute_2D_data_kernel_xpu(
-    int32_t permuted_indices_size,
-    int32_t T,
-    int32_t B,
-    const Tensor& indices_contig,
-    const std::optional<const Tensor>& weights,
-    const int32_t weights_columns,
-    const Tensor& permute_contig,
-    const Tensor& input_offsets,
-    const Tensor& output_offsets,
-    Tensor& permuted_indices,
-    const std::optional<Tensor>& permuted_weights) {
-  constexpr int32_t BT_blocks = 32;
-  const auto blocks_2 = xpu_calc_xblock_count(B * T, BT_blocks);
-  AT_DISPATCH_INDEX_TYPES(
-      input_offsets.scalar_type(), "permute_2D_data_kernel_1", [&] {
-        using offsets_t = index_t;
-        FBGEMM_DISPATCH_ALL_TYPES(
-            indices_contig.scalar_type(), "permute_2D_data_kernel_2", [&] {
-              using indices_t = scalar_t;
-              if (weights.has_value()) {
-                const auto weights_value_contig = weights.value().contiguous();
-                FBGEMM_DISPATCH_ALL_TYPES_AND_DOUBLE(
-                    weights_value_contig.scalar_type(),
-                    "permute_2D_data_kernel_3",
-                    [&] {
-                      using weights_t = scalar_t;
-                      sycl_kernel_submit<permute_2D_data_kernel_<
-                          true,
-                          offsets_t,
-                          indices_t,
-                          weights_t>>(
-                          sycl::range<2>(blocks_2 * 32, BT_blocks),
-                          sycl::range<2>(32, BT_blocks),
-                          getCurrentSYCLQueue(),
-                          0,
-                          permuted_indices_size,
-                          T,
-                          B,
-                          indices_contig.data_ptr<indices_t>(),
-                          weights_value_contig.data_ptr<weights_t>(),
-                          weights_columns,
-                          permute_contig.data_ptr<int32_t>(),
-                          input_offsets.data_ptr<offsets_t>(),
-                          output_offsets.data_ptr<offsets_t>(),
-                          permuted_indices.data_ptr<indices_t>(),
-                          permuted_weights.value().data_ptr<weights_t>());
-                    }); // for each weights_t
-              } else {
-                sycl_kernel_submit<permute_2D_data_kernel_<
-                    false,
-                    offsets_t,
-                    indices_t,
-                    float>>( // false float type here as wa since
-                             // std::nullptr_t cannot be
-                             // supported in free function
-                             // kernel
-                    sycl::range<2>(blocks_2 * 32, BT_blocks),
-                    sycl::range<2>(32, BT_blocks),
-                    getCurrentSYCLQueue(),
-                    0,
-                    permuted_indices_size,
-                    T,
-                    B,
-                    indices_contig.data_ptr<indices_t>(),
-                    nullptr,
-                    0,
-                    permute_contig.data_ptr<int32_t>(),
-                    input_offsets.data_ptr<offsets_t>(),
-                    output_offsets.data_ptr<offsets_t>(),
-                    permuted_indices.data_ptr<indices_t>(),
-                    nullptr);
-              }
-            }); // for each indices_t
-      }); // for each offsets_t
+            SimpleAddFunctor3<scalar_t>());
+      })
+  );
 }
 
 #undef INVOKE_KERNEL_WITH_DIM
+#undef JAGGED_TENSOR_DISPATCH_DIMS
 
-} // namespace xpu
-} // namespace native
+} // namespace native::xpu
 } // namespace at

@@ -5,8 +5,11 @@
 #include <torch/library.h>
 #include <torch/torch.h>
 
-#include <ATen/native/xpu/sycl/FbgemmKernels.h>
+#include <ATen/native/xpu/sycl/FbgemmCumsum.h>
+#include <ATen/native/xpu/sycl/JaggedTensorOps.h>
+#include <ATen/native/xpu/sycl/ReorderBatchedAd.h>
 #include <ATen/native/xpu/sycl/Permute1DSparseData.h>
+#include <ATen/native/xpu/sycl/Permute2DSparseData.h>
 #include <ATen/native/xpu/sycl/JaggedIndexSelect2D.h>
 #include <ATen/native/xpu/sycl/SplitEmbeddingLookupOps.h>
 #include <ATen/native/xpu/sycl/SplitEmbeddingNobagBackwardRowwiseAdagrad.h>
@@ -68,8 +71,6 @@ std::string tensor_on_same_xpu_if_not_optional_check(
   std::optional<int64_t> xpu_index;
   bool on_same_xpu = true;
 
-  // Collect the XPU index of the first non-empty optional tensor and make sure
-  // that all tensors are on this same index.
   (
       [&](const auto& tensor) {
         if (!torch_tensor_undefined(tensor)) {
@@ -108,7 +109,6 @@ std::string tensor_on_same_xpu_if_not_optional_check(
     var_names.push_back(temp);
   }
 
-  // Not all the tensors on a GPU or on the same GPU, generate a message.
   std::string msg = "Not all tensors were on the same GPU: ";
   size_t current_idx = 0;
   (
@@ -172,10 +172,8 @@ Tensor dense_to_jagged_forward_xpu(
       " != num_jagged_dim, ",
       num_jagged_dim);
 
-  // D is the embedding dimension
   auto D = dense.size(-1);
 
-  // If total_L is not given then compute it
   at::SymInt total_L_computed;
   if (total_L.has_value()) {
     total_L_computed = total_L.value();
@@ -183,7 +181,7 @@ Tensor dense_to_jagged_forward_xpu(
     total_L_computed = (int64_t)offsets.back().max().item<int64_t>();
   }
   auto values = at::empty_symint({total_L_computed, D}, dense.options());
-  auto output = at::empty_like(values); // not used
+  auto output = at::empty_like(values);
 
   if (dense.numel() == 0 || values.numel() == 0) {
     return output;
@@ -227,8 +225,6 @@ Tensor jagged_to_padded_dense_forward_xpu(
   padded_values_shape.insert(
       padded_values_shape.end(), max_lengths.begin(), max_lengths.end());
 
-  // Canonicalize padded_values by unsqueeze the last dim if the inner dense
-  // dimension is 1 and folded.
   const bool D_folded = values.dim() == 1;
   if (!D_folded) {
     padded_values_shape.push_back(values.size(-1));
@@ -267,9 +263,6 @@ class DenseToJaggedOp : public torch::autograd::Function<DenseToJaggedOp> {
       const Tensor& dense,
       const std::vector<Tensor>& offsets,
       const std::optional<at::SymInt>& total_L) {
-    // uncomment when implement backward
-
-    // dims of dense tensor: <batch, [maxlen0, maxlen1, ...], embedding_dim>
     static auto op =
         c10::Dispatcher::singleton()
             .findSchemaOrThrow("fbgemm::dense_to_jagged_forward", "")
@@ -285,16 +278,14 @@ class DenseToJaggedOp : public torch::autograd::Function<DenseToJaggedOp> {
   static torch::autograd::variable_list backward(
       torch::autograd::AutogradContext* ctx,
       torch::autograd::variable_list grad_outputs) {
-    // TODO: backward kernel
     return {
         torch::autograd::Variable(),
-        torch::autograd::Variable(), // offsets
-        torch::autograd::Variable() // total_L
+        torch::autograd::Variable(),
+        torch::autograd::Variable()
     };
   }
 };
 
-// output = x + y where x is jagged, y is dense, and output is jagged
 std::tuple<Tensor, std::vector<Tensor>> dense_to_jagged(
     const Tensor& dense,
     const std::vector<Tensor>& offsets,
@@ -327,12 +318,11 @@ class JaggedToPaddedDenseOp
   static torch::autograd::variable_list backward(
       torch::autograd::AutogradContext* ctx,
       torch::autograd::variable_list grad_outputs) {
-    // TODO: backward kernel
     return {
         torch::autograd::Variable(),
-        torch::autograd::Variable(), // offsets
-        torch::autograd::Variable(), // max_lengths
-        torch::autograd::Variable(), // padding_value
+        torch::autograd::Variable(),
+        torch::autograd::Variable(),
+        torch::autograd::Variable(),
     };
   }
 };
@@ -383,10 +373,9 @@ class JaggedDenseAddJaggedOutputOp
   static torch::autograd::variable_list backward(
       torch::autograd::AutogradContext* ctx,
       torch::autograd::variable_list grad_outputs) {
-    // TODO: backward kernel
     return {
         torch::autograd::Variable(),
-        torch::autograd::Variable(), // offsets
+        torch::autograd::Variable(),
         torch::autograd::Variable()};
   }
 };
@@ -491,16 +480,13 @@ Tensor asynchronous_exclusive_cumsum(const Tensor& t_in) {
 
   TORCH_CHECK(t_in.is_contiguous());
   TORCH_CHECK(t_in.dtype() == at::kInt || t_in.dtype() == at::kLong);
-  // only handles up to INT_MAX elements.
   TORCH_CHECK(t_in.numel() < std::numeric_limits<int32_t>::max());
   auto t_in_flatten = t_in.flatten();
   auto t_out = at::empty_like(t_in_flatten);
 
   xpu::fbgemm_cumsum_kernel(t_out, t_in_flatten, 0);
 
-  // make it exclusive
   t_out = t_out.roll(1, 0);
-  // set all first elemnts 0
   t_out[0] = 0;
   return t_out.view_as(t_in);
 }
@@ -520,14 +506,10 @@ permute_2D_sparse_data_xpu(
   const auto permute_contig = permute.contiguous();
   const auto lengths_contig = lengths.contiguous();
   const auto indices_contig = indices.contiguous();
-  // the data to permute over can be less or more with or without
-  // repetitions
   const auto T = permute.numel();
   const auto B = lengths.size(1);
 
   if (T == 0 || B == 0) {
-    // When T = 0 or B = 0, permutation will not be performed.  Return the
-    // input tensors.
     return {
         lengths.clone(),
         indices.clone(),
@@ -542,7 +524,6 @@ permute_2D_sparse_data_xpu(
   xpu::permute_2D_lengths_kernel_xpu(
       T, B, lengths_contig, permute_contig, permuted_lengths);
 
-  // convert lengths to offsets
   const auto input_offsets = asynchronous_exclusive_cumsum(lengths_contig);
   const auto output_offsets =
       asynchronous_complete_cumsum_xpu(permuted_lengths.flatten());
@@ -627,12 +608,12 @@ TORCH_LIBRARY_IMPL(fbgemm, XPU, m) {
   m.impl("split_embedding_nobag_codegen_forward_unweighted_xpu", &at::native::xpu::split_embedding_nobag_codegen_forward_unweighted_xpu);
   m.impl("split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_pt2_wrapper", &at::native::xpu::split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_pt2_xpu_wrapper);
   m.impl("split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu", &at::native::xpu::split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu);
-  
+
 }
 
 TORCH_LIBRARY_IMPL(fbgemm, AutogradXPU, m) {
     m.impl(
-      "split_embedding_codegen_lookup_rowwise_adagrad_function_pt2", 
+      "split_embedding_codegen_lookup_rowwise_adagrad_function_pt2",
       &at::native::xpu::split_embedding_codegen_lookup_rowwise_adagrad_function_pt2_xpu);
 }
 
