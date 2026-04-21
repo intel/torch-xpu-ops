@@ -701,9 +701,7 @@ namespace at::native::xpu {
                     stochastic_rounding,
                     stochastic_rounding_philox_args,
                     current_run_id,
-                    use_uniq_cache_locations
-                        ? (current_run_id - table_unique_indices_offsets[t_0])
-                        : segment_start,
+                    segment_start,
                     D,
                     t_0,
                     idx,
@@ -824,9 +822,7 @@ namespace at::native::xpu {
                 stochastic_rounding,
                 stochastic_rounding_philox_args,
                 run_id,
-                use_uniq_cache_locations
-                    ? (run_id - table_unique_indices_offsets[t_0])
-                    : segment_start,
+                segment_start,
                 D,
                 t_0,
                 idx,
@@ -950,58 +946,17 @@ namespace at::native::xpu {
         Tensor table_unique_indices_offsets;
 
         if (lxu_cache_locations.size(0) > 0) {
-            if (use_uniq_cache_locations) {
-                if (!use_homogeneous_placements) {
-                    // When use_uniq_cache_locations=true, lxu_cache_locations are unique
-                    // and sorted in an ascending order based on the linear cache indices.
-                    // Linear cache indices of tables that are not placed in cache are set
-                    // to a sentinel value (i.e., the sum of hash sizes of all embedding
-                    // tables).  Since the sentinel value is larger than the max linear
-                    // cache index value, the lxu_cache_locations can be sorted differently
-                    // than the sorted_linear_indices.
-                    //
-                    // For this reason, the run ids of sorted and unique
-                    // lxu_cache_locations can be different from those of the
-                    // sorted_linear_indices.  We need the following code to compute
-                    // table_unique_indices_offsets which contains the differences between
-                    // lxu_cache_locations run ids and sorted_linear_indices run ids.
-                    auto dev_or_uvm_unique_indices = at::zeros_like(weights_placements);
-                    auto local_range = kMaxThreads;
-                    auto global_range = div_round_up(static_cast<size_t>(total_unique_indices), local_range) * local_range;
-
-                    sycl_kernel_submit<SplitEmbeddingBackwardCountUniqueIndicesKernel<int64_t, int64_t, true>>(
-                      sycl::range<1>(global_range),
-                      sycl::range<1>(local_range),
-                      getCurrentSYCLQueue(),
-                      SplitEmbeddingBackwardCountUniqueIndicesKernel<int64_t, int64_t, true>(
-                                sorted_linear_indices_num_runs.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
-                                sorted_linear_indices_cumulative_run_lengths.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
-                                infos_sorted.packed_accessor32<int64_t, 1, RestrictPtrTraits>(),
-                                weights_placements.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
-                                dev_or_uvm_unique_indices.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
-                                info_B_num_bits
-                            ));
-
-                      table_unique_indices_offsets =
-                            asynchronous_complete_cumsum_xpu(dev_or_uvm_unique_indices).to(at::kInt);
-
-                }
-            }
-            else {
-                lxu_cache_locations_sorted = at::empty_like(lxu_cache_locations);
-                // size_t temp_storage_bytes = 0;
-                AT_DISPATCH_INDEX_TYPES(indices.scalar_type(), "split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu_1", [&] {
-                    auto sorted = at::sort(linear_indices, 0, false);
-                    linear_indices_sorted.copy_(std::get<0>(sorted));
-                    auto permutation = std::get<1>(sorted);
-                    lxu_cache_locations_sorted.copy_(lxu_cache_locations.index_select(0, permutation));
-                });
-            }
+          lxu_cache_locations_sorted = at::empty_like(lxu_cache_locations);
+          // size_t temp_storage_bytes = 0;
+          AT_DISPATCH_INDEX_TYPES(indices.scalar_type(), "split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu_1", [&] {
+              auto sorted = at::sort(linear_indices, 0, false);
+              linear_indices_sorted.copy_(std::get<0>(sorted));
+              auto permutation = std::get<1>(sorted);
+              lxu_cache_locations_sorted.copy_(lxu_cache_locations.index_select(0, permutation));
+          });
         }
 
-        if (lxu_cache_locations.size(0) == 0 || !use_uniq_cache_locations || use_homogeneous_placements) {
-            table_unique_indices_offsets = at::zeros_like(weights_placements);
-        }
+        table_unique_indices_offsets = at::zeros_like(weights_placements);
 
         AT_DISPATCH_INDEX_TYPES(indices.scalar_type(), "split_embedding_nobag_backward_codegen_rowwise_adagrad_unweighted_exact_xpu_2", [&] {
             DISPATCH_EMB_GRAD_CACHE_TYPES(
