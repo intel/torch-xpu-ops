@@ -29,13 +29,17 @@ namespace native {
 namespace {
 
 bool found_inf_nonzero(const std::optional<at::Tensor>& found_inf) {
-  return found_inf.has_value() && found_inf->item<double>() != 0.0;
+  return found_inf.has_value() && found_inf->is_cpu() &&
+      found_inf->item<double>() != 0.0;
 }
 
 double grad_scale_value(const std::optional<at::Tensor>& grad_scale) {
-  return grad_scale.has_value() ? grad_scale->item<double>() : 1.0;
+  return grad_scale.has_value() && grad_scale->is_cpu()
+      ? grad_scale->item<double>()
+      : 1.0;
 }
 
+template <typename LrT>
 bool try_mixed_precision_fused_adamw_xpu_(
     at::TensorList params,
     at::TensorList grads,
@@ -43,7 +47,7 @@ bool try_mixed_precision_fused_adamw_xpu_(
     at::TensorList exp_avg_sqs,
     at::TensorList max_exp_avg_sqs,
     at::TensorList state_steps,
-    const double lr,
+    const LrT& lr,
     const double beta1,
     const double beta2,
     const double weight_decay,
@@ -189,6 +193,11 @@ void fused_adamw_fallback_xpu_(
     return;
   }
 
+  if (found_inf.has_value() && !found_inf->is_cpu() &&
+      found_inf->item<double>() != 0.0) {
+    return;
+  }
+
   TORCH_CHECK(
       params.size() == grads.size() && params.size() == exp_avgs.size() &&
           params.size() == exp_avg_sqs.size() &&
@@ -201,6 +210,7 @@ void fused_adamw_fallback_xpu_(
         "inconsistent fused AdamW max_exp_avg_sqs size");
   }
 
+  const bool grad_scale_on_cpu = grad_scale.has_value() && grad_scale->is_cpu();
   const double grad_scale_v = grad_scale_value(grad_scale);
 
   for (int64_t i = 0; i < params.size(); ++i) {
@@ -214,7 +224,7 @@ void fused_adamw_fallback_xpu_(
     at::Tensor exp_avg_sq = exp_avg_sqs[i];
 
     if (grad_scale.has_value()) {
-      grad = grad.div(grad_scale_v);
+      grad = grad_scale_on_cpu ? grad.div(grad_scale_v) : grad.div(*grad_scale);
     }
     if (maximize) {
       grad = grad.neg();
@@ -429,7 +439,7 @@ void _fused_adamw_kernel_xpu_(
             exp_avg_sqs,
             max_exp_avg_sqs,
             state_steps,
-            lr.item<double>(),
+            lr,
             beta1,
             beta2,
             weight_decay,
