@@ -326,7 +326,6 @@ struct FMHAFwdMainloop<
       if (check_remainder_k && K == blk_k1 - 1) {
         CUTLASS_PRAGMA_UNROLL
         for (int i = 0; i < tSrS.size(); ++i) {
-          int row_idx = get<0>(cS_thread(i));
           int col_idx = get<1>(cS_thread(i));
           if (col_idx >= seq_len_kv) {
             tSrS(i) = ElementS(-INFINITY);

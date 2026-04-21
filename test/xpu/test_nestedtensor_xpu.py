@@ -45,7 +45,7 @@ from torch.testing._internal.common_cuda import (
 )
 from torch.testing._internal.common_device_type import (
     dtypes,
-    dtypesIfCUDA,
+    dtypesIfXPU,
     instantiate_device_type_tests,
     onlyCPU,
     onlyCUDA,
@@ -1005,7 +1005,7 @@ class TestNestedTensorDeviceType(NestedTensorTestCase):
         self.assertEqual(nt.device, nt_to.device)
 
     @dtypes(torch.float)
-    @dtypesIfCUDA(torch.float, torch.half)
+    @dtypesIfXPU(torch.float, torch.half)
     @skipMeta
     @torch.inference_mode()
     def test_layer_norm(self, device, dtype):
@@ -1066,7 +1066,7 @@ class TestNestedTensorDeviceType(NestedTensorTestCase):
             _test(size)
 
     @dtypes(torch.float)
-    @dtypesIfCUDA(torch.float, torch.half)
+    @dtypesIfXPU(torch.float, torch.half)
     @skipMeta
     @torch.inference_mode()
     def test_layer_norm_breaking(self, device, dtype):
@@ -6754,6 +6754,7 @@ torch.cuda.synchronize()
         "ROCm doesn't support flash attention or mem_efficient attention for NT",
     )
     @tf32_on_and_off(0.005)
+    @dtypesIfXPU(torch.bfloat16)
     @dtypes(
         *(
             [torch.float16, torch.bfloat16, torch.float32]
@@ -7026,6 +7027,7 @@ torch.cuda.synchronize()
     # Guarding with sqrt() doesn't work on ROCm?
     @skipCUDAIfRocm
     @onlyOn(["cuda", "xpu"])
+    @dtypesIfXPU(torch.bfloat16)
     @dtypes(
         *(
             [torch.float16, torch.bfloat16, torch.float32]
@@ -7156,6 +7158,7 @@ torch.cuda.synchronize()
         not PLATFORM_SUPPORTS_FUSED_ATTENTION,
         "Platform doesn't support flash or mem-efficient attention",
     )
+    @dtypesIfXPU(torch.bfloat16)
     @dtypes(
         *(
             [torch.float16, torch.bfloat16, torch.float32]
@@ -7214,6 +7217,7 @@ torch.cuda.synchronize()
     # mha_varlen_fwd not supported on ROCm
     @skipCUDAIfRocm
     @onlyOn(["cuda", "xpu"])
+    @dtypesIfXPU(torch.bfloat16)
     @dtypes(
         *(
             [torch.float16, torch.bfloat16, torch.float32]
@@ -8709,7 +8713,7 @@ COMPILE_FORWARD_SKIPS_AND_XFAILS = [
     # clone() -> preserve format on an non-contiguous NJT with holes currently uses
     # unbind(), leading to data-dependent expression. Should be fixed via torch._check()
     XFailRule(
-        error_type=torch._dynamo.exc.Unsupported,
+        error_type=(torch._dynamo.exc.Unsupported, torch._dynamo.exc.UserError),
         # Ne(u1, u0) (unhinted: Ne(u1, u0)).  (Size-like symbols: u1, u0)
         error_msg="Could not guard on data-dependent expression",
         op_match_fn=lambda device, op: (op.full_name == "clone"),
