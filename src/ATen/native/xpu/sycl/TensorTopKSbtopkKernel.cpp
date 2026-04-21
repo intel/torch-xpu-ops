@@ -372,30 +372,66 @@ static void sbtopk_launch_kernel(
     int64_t sliceSize,
     int k,
     bool largest) {
-  constexpr int K = 16;
-  // Dispatch on (largest, IndexT) at the outermost level:
-  //   - largest: so tight insert/merge loops have no runtime direction branch
-  //   - IndexT: int32 when total elements fit (common), int64 otherwise.
-  //     Mirrors CUDA's canUse32BitIndexMath. int32 avoids 64-bit
-  //     arithmetic and reduces register pressure.
-  if (numSlices * sliceSize <= std::numeric_limits<int>::max()) {
-    int numSlices32 = static_cast<int>(numSlices);
-    if (largest) {
-      sbtopk_launch_vec_dispatch<scalar_t, K, true, int>(
-          input, topK, indices, numSlices32, sliceSize, k);
-    } else {
-      sbtopk_launch_vec_dispatch<scalar_t, K, false, int>(
-          input, topK, indices, numSlices32, sliceSize, k);
-    }
-  } else {
-    if (largest) {
-      sbtopk_launch_vec_dispatch<scalar_t, K, true, int64_t>(
-          input, topK, indices, numSlices, sliceSize, k);
-    } else {
-      sbtopk_launch_vec_dispatch<scalar_t, K, false, int64_t>(
-          input, topK, indices, numSlices, sliceSize, k);
-    }
+  // Dispatch on (K, Largest, IndexT).
+  // K: smallest power-of-two >= k.  Smaller K means fewer unrolled
+  //    iterations in insert/merge, less register pressure, zero spills.
+  //    K=1 is a valid special case (top-1 = max/min element).
+  // Largest: compile-time direction eliminates per-element branches.
+  // IndexT: int32 when total elements fit (common), int64 otherwise.
+
+  // Select K: round up k to next power of two, clamped to [1, 16].
+  int K_sel;
+  if (k <= 1)
+    K_sel = 1;
+  else if (k <= 2)
+    K_sel = 2;
+  else if (k <= 4)
+    K_sel = 4;
+  else if (k <= 8)
+    K_sel = 8;
+  else
+    K_sel = 16;
+
+#define SBTOPK_DISPATCH_K(K_VAL, LARGEST, INDEX_T, NUM_SLICES)   \
+  sbtopk_launch_vec_dispatch<scalar_t, K_VAL, LARGEST, INDEX_T>( \
+      input, topK, indices, NUM_SLICES, sliceSize, k)
+
+#define SBTOPK_DISPATCH_LARGEST(K_VAL, INDEX_T, NUM_SLICES) \
+  if (largest) {                                            \
+    SBTOPK_DISPATCH_K(K_VAL, true, INDEX_T, NUM_SLICES);    \
+  } else {                                                  \
+    SBTOPK_DISPATCH_K(K_VAL, false, INDEX_T, NUM_SLICES);   \
   }
+
+#define SBTOPK_DISPATCH_INDEX(K_VAL)                              \
+  if (numSlices * sliceSize <= std::numeric_limits<int>::max()) { \
+    int numSlices32 = static_cast<int>(numSlices);                \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);             \
+  } else {                                                        \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices);           \
+  }
+
+  switch (K_sel) {
+    case 1:
+      SBTOPK_DISPATCH_INDEX(1);
+      break;
+    case 2:
+      SBTOPK_DISPATCH_INDEX(2);
+      break;
+    case 4:
+      SBTOPK_DISPATCH_INDEX(4);
+      break;
+    case 8:
+      SBTOPK_DISPATCH_INDEX(8);
+      break;
+    default:
+      SBTOPK_DISPATCH_INDEX(16);
+      break;
+  }
+
+#undef SBTOPK_DISPATCH_INDEX
+#undef SBTOPK_DISPATCH_LARGEST
+#undef SBTOPK_DISPATCH_K
 }
 
 // Subgroup top-k: internal launch — only called from dispatch below
