@@ -105,6 +105,10 @@ def get_platform_specific_sdpa():
 
 PLATFORM_SPECIFIC_SDPA = get_platform_specific_sdpa()
 
+# For XPU, add CUDNN_ATTENTION even though it's not supported - tests will fail with known issue
+if TEST_XPU and SDPBackend.CUDNN_ATTENTION not in PLATFORM_SPECIFIC_SDPA:
+    PLATFORM_SPECIFIC_SDPA.append(SDPBackend.CUDNN_ATTENTION)
+
 FALLBACK_REGEX = "There is a performance drop"
 
 
@@ -3884,7 +3888,7 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
     @parametrize("backend", PLATFORM_SPECIFIC_SDPA)
     def test_sdpa(self, device, backend):
         if device == "cpu":
-            raise unittest.SkipTest("This test is only for CUDA for now")
+            raise unittest.SkipTest("This test is only for CUDA and XPU for now")
 
         def T(*args):
             return torch.randn(*args, dtype=torch.float16, device=device)
@@ -3939,10 +3943,14 @@ class TestVmapBatchedGradient(Namespace.TestVmapBase):
     @parametrize("randomness", ["error", "same", "different"])
     def test_randomness(self, device, randomness, backend):
         if device == "cpu":
-            raise unittest.SkipTest("This test is only for CUDA for now")
+            raise unittest.SkipTest("This test is only for CUDA and XPU for now")
 
-        # xfail for cuDNN version between 9.10 and 9.13
-        if backend == SDPBackend.CUDNN_ATTENTION and randomness == "different":
+        # xfail for cuDNN version between 9.10 and 9.13 on CUDA hardware
+        if (
+            backend == SDPBackend.CUDNN_ATTENTION
+            and randomness == "different"
+            and device == "cuda"
+        ):
             if 91100 <= TEST_CUDNN_VERSION <= 91300:
                 raise unittest.SkipTest(
                     "xfail on cuDNN 9.10-9.13 with CUDNN backend and randomness='different'"

@@ -131,13 +131,17 @@ class GroupRadixSort {
             KeyTraits<KeyT>::convert(c10::load(&keys_group_in[offset]));
       } else {
         KeyTraitsT padding_key;
-        if (IS_DESCENDING) {
-          padding_key = 0;
+        if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+          padding_key = IS_DESCENDING ? false : true;
         } else {
-          constexpr uint64_t KEY_TRAITS_TYPE_MASK = 1ll
-              << ((sizeof(KeyTraitsT) << 3) - 1);
-          padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
-          padding_key = padding_key ^ (padding_key - 1);
+          if (IS_DESCENDING) {
+            padding_key = 0;
+          } else {
+            constexpr uint64_t KEY_TRAITS_TYPE_MASK = uint64_t{1}
+                << ((sizeof(KeyTraitsT) << 3) - 1);
+            padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
+            padding_key = padding_key ^ (padding_key - 1);
+          }
         }
         ukeys_[ITEM] = padding_key;
       }
@@ -560,13 +564,17 @@ class GroupRadixSort {
           ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_in[offset]));
         } else {
           KeyTraitsT padding_key;
-          if (IS_DESCENDING) {
-            padding_key = 0;
+          if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+            padding_key = IS_DESCENDING ? false : true;
           } else {
-            constexpr uint64_t KEY_TRAITS_TYPE_MASK = 1ll
-                << ((sizeof(KeyTraitsT) << 3) - 1);
-            padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
-            padding_key = padding_key ^ (padding_key - 1);
+            if (IS_DESCENDING) {
+              padding_key = 0;
+            } else {
+              constexpr uint64_t KEY_TRAITS_TYPE_MASK = uint64_t{1}
+                  << ((sizeof(KeyTraitsT) << 3) - 1);
+              padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
+              padding_key = padding_key ^ (padding_key - 1);
+            }
           }
           ukeys_[ITEM] = padding_key;
         }
