@@ -148,6 +148,25 @@ void syncStream(
   xcclEvent.block(xcclStream);
 }
 
+inline void errorIfCapturingNonCapturableXCCL(c10::xpu::CaptureStatus status) {
+  // oneCCL graph capture support requires version >= 2022.0.0
+  static const bool is_capturable = []() -> bool {
+    const std::string& ver = getXcclVersion();
+    int major = 0, minor = 0, patch = 0;
+    if (std::sscanf(ver.c_str(), "%d.%d.%d", &major, &minor, &patch) >= 2) {
+      return major > 2022 ||
+          (major == 2022 && (minor > 0 || (minor == 0 && patch >= 0)));
+    }
+    return false;
+  }();
+  if (!is_capturable) {
+    TORCH_CHECK_WITH(
+        NotImplementedError,
+        status == c10::xpu::CaptureStatus::Executing,
+        "Capturing XCCL collectives is only allowed with oneCCL >= 2022.0.0");
+  }
+}
+
 } // namespace
 
 std::string dump_xccl_trace(
@@ -635,6 +654,9 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   const auto key = std::to_string(device.index());
   auto stream = xcclStreamsMap_.at(key).xpuStream;
 
+  c10::xpu::CaptureStatus capture_status =
+      c10::xpu::currentStreamCaptureStatusMayInitCtx();
+
   auto work = initWork(
       device,
       rank_,
@@ -655,7 +677,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
-  setEnqueuedPgStatus(work);
+
+  if (capture_status == c10::xpu::CaptureStatus::Executing) {
+    setEnqueuedPgStatus(work);
+  }
 
   coalescing_state_ = 0;
   coalescedComm_ = nullptr;
@@ -682,6 +707,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     bool nanCheck) {
   nanCheck &= enableNanCheck_;
   auto device = inputs[0].device();
+  c10::OptionalDeviceGuard gpuGuard(device);
+
+  c10::xpu::CaptureStatus capture_status =
+      c10::xpu::currentStreamCaptureStatusMayInitCtx();
+  errorIfCapturingNonCapturableXCCL(capture_status);
+
   const auto key = std::to_string(device.index());
   std::shared_ptr<xcclComm_t> comm = getXCCLComm(key);
   if (comm == nullptr) {
@@ -735,16 +766,12 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     }
   }
 
+  bool enqueue = !coalescing_state_ &&
+      capture_status == c10::xpu::CaptureStatus::Executing;
+
   c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL> work;
   work = initWork(
-      device,
-      rank_,
-      opType,
-      false,
-      profilingTitle,
-      inputs,
-      outputs,
-      !coalescing_state_);
+      device, rank_, opType, false, profilingTitle, inputs, outputs, enqueue);
   if (coalescing_state_) {
     FlightRecorderXCCL::get()->record(
         local_id_,
@@ -773,8 +800,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
       work->stashed_for_allocator_safety_->stash(outputs);
     }
   }
-
-  c10::OptionalDeviceGuard gpuGuard(device);
 
   if (nanCheck) {
     for (const auto& input : inputs) {
@@ -822,7 +847,16 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   for (const auto& output : outputs) {
     work->numelOut_ += output.numel();
   }
-  setEnqueuedPgStatus(work);
+
+  /* Note [xpu graph capture and setEnqueuedPgStatus]
+
+  Similar to NCCL's workEnqueue behavior, we should not update PG status
+  during graph capture as event queries are disallowed during capture.
+  See Note [cuda graph capture and workEnqueue] in ProcessGroupNCCL.cpp.
+  */
+  if (capture_status == c10::xpu::CaptureStatus::Executing) {
+    setEnqueuedPgStatus(work);
+  }
 
   return asyncOp ? work : nullptr;
 }
@@ -840,6 +874,10 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
   std::string key;
   int p2pRank = 0, p2pTargetRank = 0;
   bool isSendRecvSelf = false;
+
+  c10::xpu::CaptureStatus capture_status =
+      c10::xpu::currentStreamCaptureStatusMayInitCtx();
+  errorIfCapturingNonCapturableXCCL(capture_status);
 
   bool batchP2P = xcclActiveGroupCounter_ > 0;
   if (batchP2P) {
@@ -972,7 +1010,13 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
               id, reset_epoch, /*compute_duration*/ true);
         },
         /*use_future*/ false);
-    setEnqueuedPgStatus(work);
+
+    // Skip PG status update during graph capture
+    c10::xpu::CaptureStatus p2p_capture_status =
+        c10::xpu::currentStreamCaptureStatusMayInitCtx();
+    if (p2p_capture_status == c10::xpu::CaptureStatus::Executing) {
+      setEnqueuedPgStatus(work);
+    }
   }
 
   return work;
