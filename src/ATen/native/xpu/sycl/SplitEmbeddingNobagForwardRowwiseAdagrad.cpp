@@ -172,7 +172,7 @@ namespace at::native::xpu {
                             overflow_safe_int_t output_j = indices_start + l_start + j;
                             // Load cache's index from thread j in the group
                             [[maybe_unused]] int32_t cache_idx_j
-                                = use_lxu_cache ? sycl::select_from_group(sg, cache_idx, j) : 0; // SHFL_SYNC(cache_idx, j) : 0;
+                                = use_lxu_cache ? sycl::select_from_group(sg, cache_idx, j) : 0;
                                 
                             const cache_t* cache_weights = reinterpret_cast<const cache_t*>(
                                 &lxu_cache_weights[cache_idx_j][0]);
