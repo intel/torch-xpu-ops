@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
