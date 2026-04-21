@@ -72,8 +72,19 @@ class GroupRadixSort {
     ValueT exchange_values[PROCESSING_LENGTH];
   };
 
+  // Use decorated local pointer type to preserve local address space info,
+  // avoiding generic address space operations in IGC.
+  using LocalStoragePtr = typename sycl::multi_ptr<
+      LocalStorage,
+      sycl::access::address_space::local_space,
+      sycl::access::decorated::yes>::pointer;
+  using LocalDigitPtr = typename sycl::multi_ptr<
+      DigitT,
+      sycl::access::address_space::local_space,
+      sycl::access::decorated::yes>::pointer;
+
   sycl::nd_item<1>& item_;
-  LocalStorage& local_storage_;
+  LocalStoragePtr local_storage_;
   int lid_;
   int bin_offset_;
 
@@ -103,9 +114,9 @@ class GroupRadixSort {
 
   inline GroupRadixSort(sycl::nd_item<1>& item, sycl_local_acc_t<char> buffer)
       : item_(item),
-        local_storage_(reinterpret_cast<LocalStorage&>(
-            *(buffer.template get_multi_ptr<sycl::access::decorated::no>()
-                  .get()))),
+        local_storage_(reinterpret_cast<LocalStoragePtr>(
+            buffer.template get_multi_ptr<sycl::access::decorated::yes>()
+                .get())),
         lid_(item.get_local_id(0)) {}
 
   inline void load_keys(
@@ -158,7 +169,7 @@ class GroupRadixSort {
   inline void store_keys(KeyT* keys_group_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      local_storage_.exchange_ukeys[lid_ * KEYS_PER_THREAD + ITEM] =
+      local_storage_->exchange_ukeys[lid_ * KEYS_PER_THREAD + ITEM] =
           ukeys_[ITEM];
     }
     sycl::group_barrier(item_.get_group());
@@ -167,13 +178,14 @@ class GroupRadixSort {
       int offset = lid_ + ITEM * GROUP_THREADS;
       if (offset < num_elements) {
         keys_group_out[offset] =
-            KeyTraits<KeyT>::deconvert(local_storage_.exchange_ukeys[offset]);
+            KeyTraits<KeyT>::deconvert(local_storage_->exchange_ukeys[offset]);
       }
     }
     sycl::group_barrier(item_.get_group());
   }
 
-  inline void store_keys(KeyT* out, int offset_select, int num_selected) {
+  template <typename KeyOutPtr>
+  inline void store_keys(KeyOutPtr out, int offset_select, int num_selected) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       if (ranks_[ITEM] < offset_select) {
@@ -186,7 +198,7 @@ class GroupRadixSort {
   inline void store_values(ValueT* values_group_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      local_storage_.exchange_values[lid_ * KEYS_PER_THREAD + ITEM] =
+      local_storage_->exchange_values[lid_ * KEYS_PER_THREAD + ITEM] =
           values_[ITEM];
     }
     sycl::group_barrier(item_.get_group());
@@ -194,13 +206,17 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
       if (offset < num_elements) {
-        values_group_out[offset] = local_storage_.exchange_values[offset];
+        values_group_out[offset] = local_storage_->exchange_values[offset];
       }
     }
     sycl::group_barrier(item_.get_group());
   }
 
-  inline void store_values(ValueT* out, int offset_select, int num_selected) {
+  template <typename ValueOutPtr>
+  inline void store_values(
+      ValueOutPtr out,
+      int offset_select,
+      int num_selected) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       if (ranks_[ITEM] < offset_select) {
@@ -212,15 +228,15 @@ class GroupRadixSort {
   inline void exchange_and_store_keys(KeyT* keys_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      local_storage_.exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
+      local_storage_->exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
     }
     sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
-      auto ukey = local_storage_.exchange_ukeys[offset];
+      auto ukey = local_storage_->exchange_ukeys[offset];
       relative_bin_offsets_[ITEM] =
-          local_storage_.relative_bin_offsets[extract_digit(ukey)];
+          local_storage_->relative_bin_offsets[extract_digit(ukey)];
       offset += relative_bin_offsets_[ITEM];
       if (offset < num_elements) {
         keys_out[offset] = KeyTraits<KeyT>::deconvert(ukey);
@@ -232,13 +248,13 @@ class GroupRadixSort {
   inline void exchange_and_store_values(ValueT* values_out, int num_elements) {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      local_storage_.exchange_values[ranks_[ITEM]] = values_[ITEM];
+      local_storage_->exchange_values[ranks_[ITEM]] = values_[ITEM];
     }
     sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
-      auto value = local_storage_.exchange_values[offset];
+      auto value = local_storage_->exchange_values[offset];
       offset += relative_bin_offsets_[ITEM];
       if (offset < num_elements) {
         values_out[offset] = value;
@@ -250,13 +266,13 @@ class GroupRadixSort {
   inline void exchange_keys() {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      local_storage_.exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
+      local_storage_->exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
     }
     sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
-      ukeys_[ITEM] = local_storage_.exchange_ukeys[offset];
+      ukeys_[ITEM] = local_storage_->exchange_ukeys[offset];
     }
     sycl::group_barrier(item_.get_group());
   }
@@ -268,7 +284,7 @@ class GroupRadixSort {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       if (ranks_[ITEM] >= lower_offset && ranks_[ITEM] < upper_offset) {
-        local_storage_.exchange_ukeys[ranks_[ITEM] - lower_offset] =
+        local_storage_->exchange_ukeys[ranks_[ITEM] - lower_offset] =
             ukeys_[ITEM];
       }
     }
@@ -280,7 +296,7 @@ class GroupRadixSort {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < new_length) {
         *mask |= (1u << ITEM);
-        ukeys_[ITEM] = local_storage_.exchange_ukeys[offset];
+        ukeys_[ITEM] = local_storage_->exchange_ukeys[offset];
       }
     }
     sycl::group_barrier(item_.get_group());
@@ -289,13 +305,13 @@ class GroupRadixSort {
   inline void exchange_values() {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
-      local_storage_.exchange_values[ranks_[ITEM]] = values_[ITEM];
+      local_storage_->exchange_values[ranks_[ITEM]] = values_[ITEM];
     }
     sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
-      values_[ITEM] = local_storage_.exchange_values[offset];
+      values_[ITEM] = local_storage_->exchange_values[offset];
     }
     sycl::group_barrier(item_.get_group());
   }
@@ -304,7 +320,7 @@ class GroupRadixSort {
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       if (ranks_[ITEM] >= lower_offset && ranks_[ITEM] < upper_offset) {
-        local_storage_.exchange_values[ranks_[ITEM] - lower_offset] =
+        local_storage_->exchange_values[ranks_[ITEM] - lower_offset] =
             values_[ITEM];
       }
     }
@@ -314,7 +330,7 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < new_length) {
-        values_[ITEM] = local_storage_.exchange_values[offset];
+        values_[ITEM] = local_storage_->exchange_values[offset];
       }
     }
     sycl::group_barrier(item_.get_group());
@@ -328,12 +344,12 @@ class GroupRadixSort {
     begin_bit_ = begin_bit;
     pass_bits_ = end_bit - begin_bit_;
     pass_bits_ = RADIX_BITS < pass_bits_ ? RADIX_BITS : pass_bits_;
-    DigitT* digit_counters[KEYS_PER_THREAD];
+    LocalDigitPtr digit_counters[KEYS_PER_THREAD];
 
     // reset buckets
 #pragma unroll
     for (int ITEM = 0; ITEM < COUNTER_LANES; ++ITEM) {
-      local_storage_.rank_storage.counters[ITEM][lid_] = 0;
+      local_storage_->rank_storage.counters[ITEM][lid_] = 0;
     }
     sycl::group_barrier(item_.get_group());
 
@@ -346,8 +362,8 @@ class GroupRadixSort {
         sub_counter = PACKING_RATIO - 1 - sub_counter;
         counter_lane = COUNTER_LANES - 1 - counter_lane;
       }
-      digit_counters[ITEM] =
-          &local_storage_.rank_storage.buckets[counter_lane][lid_][sub_counter];
+      digit_counters[ITEM] = &local_storage_->rank_storage
+                                  .buckets[counter_lane][lid_][sub_counter];
       ranks_[ITEM] = *digit_counters[ITEM];
       *digit_counters[ITEM] = ranks_[ITEM] + 1;
     }
@@ -357,7 +373,7 @@ class GroupRadixSort {
         CounterT,
         COUNTER_LANES,
         GROUP_THREADS,
-        SUBGROUP_SIZE>(local_storage_.rank_storage.counters_flat, item_);
+        SUBGROUP_SIZE>(local_storage_->rank_storage.counters_flat, item_);
 
     CounterT c = 0;
 #pragma unroll
@@ -368,7 +384,7 @@ class GroupRadixSort {
 
 #pragma unroll
     for (int INDEX = 0; INDEX < COUNTER_LANES; ++INDEX) {
-      local_storage_.rank_storage.counters[INDEX][lid_] += c;
+      local_storage_->rank_storage.counters[INDEX][lid_] += c;
     }
     sycl::group_barrier(item_.get_group());
 
@@ -387,8 +403,8 @@ class GroupRadixSort {
         auto sub_counter = digit >> LOG_COUNTER_LANES;
         auto counter_lane = digit & (COUNTER_LANES - 1);
         int digit_offset =
-            local_storage_.rank_storage.buckets[counter_lane][0][sub_counter];
-        local_storage_.relative_bin_offsets[lid_] = bin_offset_ - digit_offset;
+            local_storage_->rank_storage.buckets[counter_lane][0][sub_counter];
+        local_storage_->relative_bin_offsets[lid_] = bin_offset_ - digit_offset;
       }
       sycl::group_barrier(item_.get_group());
     }
@@ -405,7 +421,7 @@ class GroupRadixSort {
     for (int DIGIT = 1; DIGIT < RADIX_BUCKETS; ++DIGIT) {
       auto sub_counter = DIGIT >> LOG_COUNTER_LANES;
       auto counter_lane = DIGIT & (COUNTER_LANES - 1);
-      auto count = (int)(local_storage_.rank_storage
+      auto count = (int)(local_storage_->rank_storage
                              .buckets[counter_lane][0][sub_counter]);
       if (count > num_to_select) {
         *out_offset_active = count;
@@ -426,12 +442,12 @@ class GroupRadixSort {
       int* out_offset_active) {
     begin_bit_ = begin_bit;
     pass_bits_ = pass_bits;
-    DigitT* digit_counters[KEYS_PER_THREAD];
+    LocalDigitPtr digit_counters[KEYS_PER_THREAD];
 
     // reset buckets
 #pragma unroll
     for (int ITEM = 0; ITEM < COUNTER_LANES; ++ITEM) {
-      local_storage_.rank_storage.counters[ITEM][lid_] = 0;
+      local_storage_->rank_storage.counters[ITEM][lid_] = 0;
     }
     sycl::group_barrier(item_.get_group());
 
@@ -446,7 +462,7 @@ class GroupRadixSort {
           sub_counter = PACKING_RATIO - 1 - sub_counter;
           counter_lane = COUNTER_LANES - 1 - counter_lane;
         }
-        digit_counters[ITEM] = &local_storage_.rank_storage
+        digit_counters[ITEM] = &local_storage_->rank_storage
                                     .buckets[counter_lane][lid_][sub_counter];
         ranks_[ITEM] = *digit_counters[ITEM];
         *digit_counters[ITEM] = ranks_[ITEM] + 1;
@@ -458,7 +474,7 @@ class GroupRadixSort {
         CounterT,
         COUNTER_LANES,
         GROUP_THREADS,
-        SUBGROUP_SIZE>(local_storage_.rank_storage.counters_flat, item_);
+        SUBGROUP_SIZE>(local_storage_->rank_storage.counters_flat, item_);
 
     int carry = 0;
 #pragma unroll
@@ -476,7 +492,7 @@ class GroupRadixSort {
 
 #pragma unroll
     for (int INDEX = 0; INDEX < COUNTER_LANES; ++INDEX) {
-      local_storage_.rank_storage.counters[INDEX][lid_] += c;
+      local_storage_->rank_storage.counters[INDEX][lid_] += c;
     }
     sycl::group_barrier(item_.get_group());
 
@@ -493,12 +509,13 @@ class GroupRadixSort {
     sycl::group_barrier(item_.get_group());
   }
 
+  template <typename KeyOutPtr, typename ValueOutPtr>
   inline void topk(
       int begin_bit,
       int end_bit,
       int k,
-      KeyT* out_keys,
-      ValueT* out_values) {
+      KeyOutPtr out_keys,
+      ValueOutPtr out_values) {
     uint32_t active_mask = 0xffffffff;
     int num_selected = 0;
     while (true) {
@@ -529,9 +546,10 @@ class GroupRadixSort {
     }
   }
 
+  template <typename KeyTempPtr>
   inline void topk_append_keys(
       const KeyT* keys_in,
-      const KeyT* keys_temp,
+      KeyTempPtr keys_temp,
       int num_elements,
       int num_start,
       int k) {
@@ -539,7 +557,7 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       if (offset < k) {
-        ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_temp[offset]));
+        ukeys_[ITEM] = KeyTraits<KeyT>::convert(keys_temp[offset]);
       } else {
         offset += num_start - k;
         if (offset < num_elements) {
@@ -564,9 +582,10 @@ class GroupRadixSort {
     }
   }
 
+  template <typename ValueTempPtr>
   inline void topk_append_values(
       const ValueT* values_in,
-      const ValueT* values_temp,
+      ValueTempPtr values_temp,
       int num_elements,
       int num_start,
       int k) {

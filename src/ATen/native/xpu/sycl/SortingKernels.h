@@ -468,12 +468,12 @@ struct SegmentedGroupRadixSelectPairsFunctor
     auto values_in_seg =
         values_in_ == nullptr ? nullptr : values_in_ + seg_offset;
 
-    key_t* keys_temp = reinterpret_cast<key_t*>(
-        slm_.template get_multi_ptr<sycl::access::decorated::no>().get() +
-        make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()));
-    value_t* values_temp = reinterpret_cast<value_t*>(
-        reinterpret_cast<char*>(keys_temp) +
-        make_alignment_n<MAX_KV_BYTES>(k_ * sizeof(key_t)));
+    // Use separate local accessors with proper address space to avoid generic
+    // address space operations that cause additional control flow in IGC.
+    auto keys_temp =
+        slm_keys_.template get_multi_ptr<sycl::access::decorated::no>();
+    auto values_temp =
+        slm_values_.template get_multi_ptr<sycl::access::decorated::no>();
 
     method.load_keys(keys_in_seg, nelements_);
     method.load_values(values_in_seg, nelements_);
@@ -499,11 +499,9 @@ struct SegmentedGroupRadixSelectPairsFunctor
   }
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
-    slm_ = sycl_local_acc_t<char>(
-        make_alignment_n<MAX_KV_BYTES>(method_t::LocalMemorySize()) +
-            make_alignment_n<MAX_KV_BYTES>(k_ * sizeof(key_t)) +
-            k_ * sizeof(value_t),
-        cgh);
+    slm_ = sycl_local_acc_t<char>(method_t::LocalMemorySize(), cgh);
+    slm_keys_ = sycl_local_acc_t<key_t>(k_, cgh);
+    slm_values_ = sycl_local_acc_t<value_t>(k_, cgh);
   }
 
   SegmentedGroupRadixSelectPairsFunctor(
@@ -528,6 +526,8 @@ struct SegmentedGroupRadixSelectPairsFunctor
   int nelements_;
   int k_;
   sycl_local_acc_t<char> slm_;
+  sycl_local_acc_t<key_t> slm_keys_;
+  sycl_local_acc_t<value_t> slm_values_;
 };
 
 template <
