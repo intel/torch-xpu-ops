@@ -8,9 +8,9 @@
 
 # ATen XPU sources
 
-file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/sparse/*.cpp" "native/sparse/xpu/*.cpp" "native/nested/*.cpp" "native/nested/xpu/*.cpp" "native/transformers/*.cpp" "native/quantized/*.cpp" "native/transformers/xpu/flash_attn/*.cpp")
+file(GLOB xpu_native_cpp "native/xpu/*.cpp" "native/xpu/conv/*.cpp" "native/sparse/*.cpp" "native/sparse/xpu/*.cpp" "native/nested/*.cpp" "native/nested/xpu/*.cpp" "native/transformers/*.cpp" "native/quantized/*.cpp" "native/transformers/xpu/flash_attn/*.cpp")
 file(GLOB xpu_sycl "native/xpu/sycl/*.cpp" "native/sparse/xpu/sycl/*.cpp" "native/nested/xpu/sycl/*.cpp" "native/transformers/sycl/*.cpp" "native/quantized/sycl/*.cpp")
-file(GLOB xpu_sycltla "native/transformers/xpu/flash_attn/sycltla/*.cpp" "native/xpu/sycltla/*.cpp")
+file(GLOB xpu_sycltla "native/transformers/xpu/flash_attn/sycltla/*.cpp" "native/xpu/sycltla/*.cpp" "native/xpu/conv/sycltla/*.cpp")
 
 if(USE_ONEMKL_XPU)
   file(GLOB xpu_mkl "native/xpu/mkl/*.cpp")
