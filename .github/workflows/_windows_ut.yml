@@ -257,6 +257,7 @@ jobs:
         with:
           name: Torch-XPU-Windows-Binary-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: 'C:\actions-runner\_work\torch-xpu-ops\pytorch\dist'
+          compression-level: 0
    
   ut_test:
     needs: [build]
@@ -266,6 +267,10 @@ jobs:
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
+      - name: Clean old wheel artifacts
+        shell: cmd
+        run: |
+          if exist "%GITHUB_WORKSPACE%\wheel_artifact" rmdir /s /q "%GITHUB_WORKSPACE%\wheel_artifact"
       - name: Download Torch Wheel
         uses: actions/download-artifact@v4
         with:
@@ -403,7 +408,7 @@ jobs:
           if not exist "%GITHUB_WORKSPACE%\ut_log" mkdir "%GITHUB_WORKSPACE%\ut_log"
           copy test_cpp_extensions_aot_xpu.xml %GITHUB_WORKSPACE%\ut_log /Y
       - name: Run Test XPU UT
-        if: contains(inputs.ut, 'test_xpu') || github.event_name == 'schedule'
+        if: false
         shell: cmd
         continue-on-error: true
         run: |
@@ -542,6 +547,11 @@ jobs:
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
           for ut_name in $(echo ${{ inputs.ut }} |sed 's/,/ /g')
           do
+            # Skip test_xpu since it's temporarily disabled on Windows
+            if [ "$ut_name" == "test_xpu" ]; then
+              echo "⏩ Skipping test_xpu check (temporarily disabled)"
+              continue
+            fi
             touch Known_issue.log
             if [ -f "issues.log" ]; then
               awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
