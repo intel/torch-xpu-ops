@@ -34,6 +34,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
   NEW_PASSED_ISSUE: 2333
 
@@ -61,9 +62,6 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
       image: intelgpu/ubuntu-24.04-lts2:2523.40
-      credentials:
-        username: ${{ secrets.DOCKER_HUB_USER }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g

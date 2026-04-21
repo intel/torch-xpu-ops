@@ -31,6 +31,8 @@ permissions: read-all
 defaults:
   run:
     shell: bash -xe {0}
+env:
+  DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
   runner:
@@ -58,9 +60,6 @@ jobs:
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
       image: 'pytorch/manylinux2_28-builder:xpu-main'
-      credentials:
-        username: ${{ secrets.DOCKER_HUB_USER }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       env:

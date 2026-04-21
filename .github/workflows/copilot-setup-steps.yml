@@ -19,9 +19,6 @@ jobs:
 
     container:
       image: intelgpu/ubuntu-24.04-rolling:26.05
-      credentials:
-        username: ${{ secrets.DOCKER_HUB_USER }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --group-add 991 --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
