@@ -16120,8 +16120,13 @@ if __name__ == '__main__':
         # CUDA says "device-side assert triggered", ROCm says "unspecified launch failure"
         has_cuda_assert = "CUDA error: device-side assert triggered" in stderr
         has_hip_assert = "HIP error" in stderr and "launch failure" in stderr
+        # XPU/SYCL: Windows DPC++ runtime produces "AssertHandler::printMessage",
+        # Linux __assert_fail produces "Assertion `expr` failed."
+        has_xpu_assert = "AssertHandler" in stderr or (
+            "Assertion" in stderr and "failed" in stderr
+        )
         self.assertTrue(
-            has_cuda_assert or has_hip_assert,
+            has_cuda_assert or has_hip_assert or has_xpu_assert,
             f"Expected device assert error in stderr, got: {stderr}",
         )
 
