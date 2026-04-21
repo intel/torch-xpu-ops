@@ -269,8 +269,11 @@ struct ScatterGatherInternalKernelLoopFunctor {
   func_t f_;
 };
 
-template <bool is_scatter_like, typename scalar_t, typename index_t,
-          bool enable_vectorized_scatter = false>
+template <
+    bool is_scatter_like,
+    typename scalar_t,
+    typename index_t,
+    bool enable_vectorized_scatter = false>
 struct ScatterGatherInternalKernel {
   template <typename func_t>
   void operator()(
@@ -281,8 +284,11 @@ struct ScatterGatherInternalKernel {
       func_t f) {
     if (!iter.can_use_32bit_indexing()) {
       for (auto& sub_iter : iter.with_32bit_indexing()) {
-        ScatterGatherInternalKernel<is_scatter_like, scalar_t, index_t,
-                                    enable_vectorized_scatter>()(
+        ScatterGatherInternalKernel<
+            is_scatter_like,
+            scalar_t,
+            index_t,
+            enable_vectorized_scatter>()(
             sub_iter, index_size, index_stride, numel, f);
       }
       return;
@@ -494,8 +500,11 @@ struct ScatterGatherBaseKernel {
             scalar_t>::type;
         AT_DISPATCH_INDEX_TYPES(
             index.scalar_type(), "xpu_scatter_gather_base_kernel_func", [&]() {
-              ScatterGatherInternalKernel<is_scatter_like, dtype, index_t,
-                                          /*enable_vectorized_scatter=*/true>()(
+              ScatterGatherInternalKernel<
+                  is_scatter_like,
+                  dtype,
+                  index_t,
+                  /*enable_vectorized_scatter=*/true>()(
                   iter, index_size, index_stride, self.numel(), f);
             });
       });
