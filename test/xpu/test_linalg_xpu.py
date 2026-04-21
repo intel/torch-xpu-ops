@@ -72,10 +72,16 @@ def preferred_blas_library(self):
     m1 = torch.randint(2, 5, (2048, 2400), device="xpu", dtype=torch.float)
     m2 = torch.randint(2, 5, (128, 2400), device="xpu", dtype=torch.float)
 
-    torch.backends.cuda.preferred_blas_library("cublaslt")
+    try:
+        torch.backends.cuda.preferred_blas_library("cublaslt")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
     out1 = torch.nn.functional.linear(m1, m2)
 
-    torch.backends.cuda.preferred_blas_library("cublas")
+    try:
+        torch.backends.cuda.preferred_blas_library("cublas")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
     out2 = torch.nn.functional.linear(m1, m2)
 
     # Although blas preferred flags doesn't affect CPU currently,

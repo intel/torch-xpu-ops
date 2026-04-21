@@ -1383,7 +1383,8 @@ def forward(self, arg0_1):
             "arg0_1, dtype = torch.float32, layout = torch.strided, device = 'cuda'"
             ");  arg0_1 = None\n"
             "    add = torch.ops.aten.add.Tensor(to, to);  to = None\n"
-            "    return (add,)"
+            "    return (add,)\n"
+            "    "
         ).replace("'cuda'", repr(device_type))
         self.assertExpectedInline(
             ep.graph_module.submod_1.code.strip("\n"),

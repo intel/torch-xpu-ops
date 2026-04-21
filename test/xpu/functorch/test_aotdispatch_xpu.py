@@ -7960,7 +7960,7 @@ Expected a .* tangent but got a plain Tensor.""",
         def fn(x):
             return F.rms_norm(x, normalized_shape=(8,))
 
-        x = torch.randn(2, 4, 8, device="cuda")
+        x = torch.randn(2, 4, 8, device="xpu")
         eager = fn(x)
         aot_eager = torch.compile(backend="aot_eager")(fn)(x)
         self.assertEqual(eager, aot_eager, atol=0, rtol=0)
@@ -8105,7 +8105,7 @@ Expected a .* tangent but got a plain Tensor.""",
 
     @parametrize("dynamic_shapes", [True, False])
     @parametrize("test_subclasses", [True, False])
-    @parametrize("device", ["cuda", "cpu"])
+    @parametrize("device", ["xpu", "cpu"])
     @patch("torch._functorch.config.guess_tangent_strides_as_outputs", True)
     def test_noncontig_nonmemformat_tangents(
         self, dynamic_shapes, test_subclasses, device
@@ -8200,12 +8200,12 @@ Expected a .* tangent but got a plain Tensor.""",
 
                     return y.transpose(1, 2).contiguous().view(B, T, E)
 
-            m = M().cuda()
+            m = M().to("xpu")
             B = 1
             T = 8
 
             def _inp():
-                return torch.randn(B, T, E, requires_grad=True, device="cuda")
+                return torch.randn(B, T, E, requires_grad=True, device="xpu")
 
             x = _inp()
             y = m(x)
@@ -8325,7 +8325,7 @@ Expected a .* tangent but got a plain Tensor.""",
                 x = SAF.apply(x, y)
                 return x
 
-            device = torch.device("cuda:0")
+            device = torch.device("xpu:0")
 
             def inp_fn():
                 x = torch.ones(2, 2, device=device, requires_grad=True)

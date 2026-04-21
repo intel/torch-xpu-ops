@@ -5680,7 +5680,7 @@ def forward(self, x):
         with torch._export.config.patch(detect_non_strict_fake_tensor_leaks=True):
             warn_re = re.compile(
                 r"Detected\s+\d+\s+fake\s+tensors?"
-                r'.*?[/\\]test_export\.py",\s+line\s+\d+,\s+in\s+forward'
+                r'.*?[/\\]test_export(?:_xpu)?\.py",\s+line\s+\d+,\s+in\s+forward'
                 r"(?:\\n|\n)\s*z\s*=\s*x\s*\+\s*y",
                 re.S,
             )

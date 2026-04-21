@@ -1004,7 +1004,7 @@ def f(x):
         except RuntimeError as e:
             self.assertRegex(
                 format_traceback_short(e.__traceback__),
-                r".*test_utils.py:\d+ in test_format_traceback_short",
+                r".*test_utils(?:_xpu)?\.py:\d+ in test_format_traceback_short",
             )
 
     def test_captured_traceback(self):
