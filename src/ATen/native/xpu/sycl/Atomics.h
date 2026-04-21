@@ -14,7 +14,6 @@
 #include <comm/SYCLHelpers.h>
 #include <comm/Scalar.h>
 #include <sycl/sycl.hpp>
-#include <type_traits>
 
 namespace at::native::xpu {
 
