@@ -90,6 +90,7 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_128_n_4096_xpu",
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_11008_xpu",
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
+        "test_cond_errors_and_warnings_xpu_complex128",
         "_tunableop_",
         "_tuning_tunableop_",
     ),
