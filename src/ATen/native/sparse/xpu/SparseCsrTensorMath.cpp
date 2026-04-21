@@ -30,6 +30,7 @@
 #include <ATen/ops/mul.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
+#include <ATen/ops/triangular_solve.h>
 #endif
 
 namespace at::native {
@@ -478,4 +479,25 @@ Tensor& addmv_out_sparse_compressed_xpu(
 
   return result;
 }
+
+std::tuple<Tensor&, Tensor&> triangular_solve_out_sparse_csr_xpu(
+    const Tensor& B,
+    const Tensor& A,
+    bool upper,
+    bool transpose,
+    bool unitriangular,
+    Tensor& X,
+    Tensor& clone_A) {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(A.is_sparse_csr());
+
+  if (B.numel() == 0 || X.numel() == 0 || A._nnz() == 0) {
+    X.fill_(NAN);
+    return std::tuple<Tensor&, Tensor&>(X, clone_A);
+  }
+  Tensor temp_clone_A = at::empty({0}, A.options().layout(at::kStrided));
+  at::triangular_solve_out(
+      X, temp_clone_A, B, A.to_dense(), upper, transpose, unitriangular);
+  return std::tuple<Tensor&, Tensor&>(X, clone_A);
+}
+
 } // namespace at::native
