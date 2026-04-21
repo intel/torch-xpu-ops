@@ -171,6 +171,177 @@ class SparseType(enum.IntEnum):
     BF16 = 5
 
 
+def _generate_uniq_cache_locations_data(
+    T: int,
+    B: int,
+    D: int,
+    num_rows_per_table: int,
+    L: int,
+    placements: List[int],
+    learning_rate: float = 0.5,
+    eps: float = 0.2,
+    output_dtype: SparseType = SparseType.FP32,
+    num_cache_slots: int = 64,
+    info_B_num_bits: int = 29,
+    use_homogeneous_placements: bool = False,
+    seed: int = 42,
+):
+    """
+    Generate data with use_uniq_cache_locations=True.
+
+    Each row appears at most once per table and indices are pre-sorted so
+    natural order matches sorted linear index order. Cache slots are unique
+    (each slot used by at most one row). This exercises the
+    lxu_cache_locations.size(0) > 0 branch with use_uniq_cache_locations=true
+    in the backward kernel.
+
+    L must be <= num_rows_per_table to guarantee uniqueness.
+    """
+    assert len(placements) == T
+    assert L <= num_rows_per_table
+    torch.manual_seed(seed)
+
+    total_rows = T * num_rows_per_table
+    total_D = T * D
+    max_D = D
+
+    weights_placements = torch.tensor(placements, dtype=torch.int32)
+
+    dev_offset = 0
+    uvm_offset = 0
+    offsets_list = []
+    for t in range(T):
+        if placements[t] == PlacementType.DEVICE:
+            offsets_list.append(dev_offset)
+            dev_offset += num_rows_per_table * D
+        else:
+            offsets_list.append(uvm_offset)
+            uvm_offset += num_rows_per_table * D
+
+    weights_offsets = torch.tensor(offsets_list, dtype=torch.int64)
+    dev_weights = torch.randn(dev_offset, dtype=torch.float32) if dev_offset > 0 else torch.zeros(0, dtype=torch.float32)
+    uvm_weights = torch.randn(uvm_offset, dtype=torch.float32) if uvm_offset > 0 else torch.zeros(0, dtype=torch.float32)
+
+    has_caching = any(p == PlacementType.MANAGED_CACHING for p in placements)
+    if has_caching and num_cache_slots > 0:
+        lxu_cache_weights = torch.randn(num_cache_slots, D, dtype=torch.float32)
+    else:
+        lxu_cache_weights = torch.zeros(0, 0, dtype=torch.float32)
+
+    D_offsets = torch.tensor([i * D for i in range(T + 1)], dtype=torch.int32)
+    hash_size_cumsum = torch.tensor(
+        [i * num_rows_per_table for i in range(T + 1)], dtype=torch.int64
+    )
+    total_hash_size_bits = int(math.ceil(math.log2(max(total_rows, 1)))) + 1
+
+    total_indices = T * B * L
+    indices = torch.zeros(total_indices, dtype=torch.int64)
+    for t in range(T):
+        for b in range(B):
+            perm = torch.randperm(num_rows_per_table)[:L]
+            start = (t * B + b) * L
+            indices[start:start + L] = perm
+
+    offsets = torch.arange(0, total_indices + 1, L, dtype=torch.int64)
+    assert offsets.numel() == T * B + 1
+
+    # Pre-sort within each table section so natural order == sorted linear index order
+    for t in range(T):
+        start_idx = t * B * L
+        end_idx = (t + 1) * B * L
+        section = indices[start_idx:end_idx]
+        sorted_section, _ = torch.sort(section)
+        indices[start_idx:end_idx] = sorted_section
+
+    if has_caching and num_cache_slots > 0:
+        lxu_cache_locations = torch.full((total_indices,), -1, dtype=torch.int32)
+        global_slot_idx = 0
+        for t in range(T):
+            if placements[t] != PlacementType.MANAGED_CACHING:
+                continue
+            table_offset = offsets_list[t]
+            start_idx = t * B * L
+            end_idx = (t + 1) * B * L
+            unique_rows = indices[start_idx:end_idx].unique().sort()[0].tolist()
+
+            row_to_slot = {}
+            for row in unique_rows:
+                if global_slot_idx >= num_cache_slots:
+                    break
+                row_to_slot[row] = global_slot_idx
+                src_start = table_offset + row * D
+                lxu_cache_weights[global_slot_idx] = uvm_weights[src_start:src_start + D]
+                global_slot_idx += 1
+
+            for i in range(start_idx, end_idx):
+                row_idx = indices[i].item()
+                if row_idx in row_to_slot:
+                    lxu_cache_locations[i] = row_to_slot[row_idx]
+    else:
+        lxu_cache_locations = torch.zeros(0, dtype=torch.int32)
+
+    momentum1_dev = torch.zeros(total_rows, dtype=torch.float32)
+    momentum1_host = torch.zeros(0, dtype=torch.float32)
+    momentum1_placements = torch.zeros(T, dtype=torch.int32)
+    momentum1_offsets = torch.tensor(
+        [i * num_rows_per_table for i in range(T)], dtype=torch.int64
+    )
+
+    weights = [dev_weights, uvm_weights, weights_placements, weights_offsets, lxu_cache_weights]
+    momentum1 = [momentum1_dev, momentum1_host, momentum1_placements, momentum1_offsets]
+
+    learning_rate_tensor = torch.tensor(learning_rate, dtype=torch.float32)
+    info_B_mask = (1 << info_B_num_bits) - 1
+
+    aux_tensor: List[Optional[torch.Tensor]] = [
+        None, None, None, lxu_cache_locations, None, None, None
+    ]
+    aux_int = [0, info_B_num_bits, info_B_mask]
+    aux_float = [0.0, 1.0]
+    # Matches C++ ArgIndex_aux_bool enum in pt2_arg_utils.h
+    aux_bool = [
+        False,                       # IDX_IS_EXPERIMENTAL_TBE = 0
+        True,                        # IDX_USE_UNIQ_CACHE_LOCATIONS_BWD = 1
+        use_homogeneous_placements,  # IDX_USE_HOMOGENEOUS_PLACEMENTS = 2
+        False,                       # IDX_APPLY_GLOBAL_WEIGHT_DECAY = 3
+        False,                       # IDX_GRADIENT_CLIPPING = 4
+        False,                       # IDX_STOCHASTIC_ROUNDING = 5
+        False,                       # IDX_MIXED_D = 6
+        False,                       # reserved
+    ]
+
+    optim_float = [eps, 0.0, 0.0]
+    optim_int = [0]
+
+    inputs = {
+        "placeholder_autograd_tensor": torch.zeros(0, dtype=torch.float32),
+        "weights": weights,
+        "D_offsets": D_offsets,
+        "total_D": total_D,
+        "max_D": max_D,
+        "hash_size_cumsum": hash_size_cumsum,
+        "total_hash_size_bits": total_hash_size_bits,
+        "indices": indices,
+        "offsets": offsets,
+        "pooling_mode": int(PoolingMode.NONE),
+        "indice_weights": None,
+        "feature_requires_grad": None,
+        "output_dtype": int(output_dtype),
+        "max_B": -1,
+        "max_B_feature_rank": -1,
+        "vbe_output_size": -1,
+        "aux_tensor": aux_tensor,
+        "aux_int": aux_int,
+        "aux_float": aux_float,
+        "aux_bool": aux_bool,
+        "learning_rate_tensor": learning_rate_tensor,
+        "momentum1": momentum1,
+        "optim_int": optim_int,
+        "optim_float": optim_float,
+    }
+    return inputs
+
+
 def _generate_synthetic_data(
     T: int,
     B: int,
@@ -1155,6 +1326,349 @@ class TestSplitLookupBackwardSynthetic(unittest.TestCase):
         total_indices = inputs["indices"].numel()
         D = inputs["max_D"]
         self.assertEqual(result.shape, (total_indices, D))
+
+
+class TestSplitLookupBackwardUniqCacheLocations(unittest.TestCase):
+    """
+    Tests for the backward kernel with use_uniq_cache_locations=True.
+
+    This flag indicates that lxu_cache_locations contain unique slot values
+    (each cache slot used by at most one row) and indices are pre-sorted so
+    natural order matches sorted linear index order. This exercises the
+    lxu_cache_locations.size(0) > 0 code path with the uniq flag set.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not hasattr(torch, "xpu") or not torch.xpu.is_available():
+            raise unittest.SkipTest("XPU is not available")
+
+    def setUp(self):
+        torch.xpu.synchronize()
+
+    def tearDown(self):
+        torch.xpu.empty_cache()
+        torch.xpu.synchronize()
+
+    def _run_forward_backward(self, inputs_xpu, grad_output_xpu):
+        weights = inputs_xpu["weights"]
+        weights[0].requires_grad_(True)
+        if weights[1].numel() > 0:
+            weights[1].requires_grad_(True)
+
+        result = torch.ops.fbgemm.split_embedding_codegen_lookup_rowwise_adagrad_function_pt2(
+            placeholder_autograd_tensor=inputs_xpu["placeholder_autograd_tensor"],
+            weights=weights,
+            D_offsets=inputs_xpu["D_offsets"],
+            total_D=inputs_xpu["total_D"],
+            max_D=inputs_xpu["max_D"],
+            hash_size_cumsum=inputs_xpu["hash_size_cumsum"],
+            total_hash_size_bits=inputs_xpu["total_hash_size_bits"],
+            indices=inputs_xpu["indices"],
+            offsets=inputs_xpu["offsets"],
+            pooling_mode=inputs_xpu["pooling_mode"],
+            indice_weights=inputs_xpu["indice_weights"],
+            feature_requires_grad=inputs_xpu["feature_requires_grad"],
+            output_dtype=inputs_xpu["output_dtype"],
+            max_B=inputs_xpu["max_B"],
+            max_B_feature_rank=inputs_xpu["max_B_feature_rank"],
+            vbe_output_size=inputs_xpu["vbe_output_size"],
+            aux_tensor=inputs_xpu["aux_tensor"],
+            aux_int=inputs_xpu["aux_int"],
+            aux_float=inputs_xpu["aux_float"],
+            aux_bool=inputs_xpu["aux_bool"],
+            learning_rate_tensor=inputs_xpu["learning_rate_tensor"].cpu(),
+            momentum1=inputs_xpu["momentum1"],
+            optim_int=inputs_xpu["optim_int"],
+            optim_float=inputs_xpu["optim_float"],
+        )
+
+        result.backward(grad_output_xpu)
+        torch.xpu.synchronize()
+        return result
+
+    def _verify_backward(self, inputs, atol, rtol):
+        total_indices = inputs["indices"].numel()
+        D = inputs["max_D"]
+        output_dtype_enum = SparseType(inputs["output_dtype"])
+        if output_dtype_enum == SparseType.FP32:
+            grad_dtype = torch.float32
+        elif output_dtype_enum == SparseType.FP16:
+            grad_dtype = torch.float16
+        else:
+            grad_dtype = torch.bfloat16
+
+        torch.manual_seed(1234)
+        grad_output = torch.randn(total_indices, D, dtype=grad_dtype)
+
+        flat_weights = _get_flattened_weights(inputs)
+        ref_weights, ref_momentum = _reference_adagrad_update(
+            flat_weights=flat_weights,
+            momentum1=inputs["momentum1"][0].clone(),
+            grad_output=grad_output,
+            indices=inputs["indices"],
+            offsets=inputs["offsets"],
+            hash_size_cumsum=inputs["hash_size_cumsum"],
+            D_offsets=inputs["D_offsets"],
+            learning_rate=inputs["learning_rate_tensor"].item(),
+            eps=inputs["optim_float"][0],
+        )
+        ref_dev, ref_uvm = _scatter_weights_back(inputs, ref_weights)
+
+        inputs_xpu = _move_to_device(copy.deepcopy(inputs), "xpu")
+        grad_xpu = grad_output.to("xpu")
+        self._run_forward_backward(inputs_xpu, grad_xpu)
+
+        actual_dev = inputs_xpu["weights"][0].cpu().float()
+        if actual_dev.numel() > 0:
+            torch.testing.assert_close(
+                actual_dev, ref_dev, atol=atol, rtol=rtol,
+                msg="dev_weights update mismatch vs reference AdaGrad",
+            )
+
+        placements = inputs["weights"][2].tolist()
+        has_caching = any(p == PlacementType.MANAGED_CACHING for p in placements)
+
+        if has_caching:
+            self._verify_caching_weights(
+                inputs, inputs_xpu, ref_uvm, atol, rtol
+            )
+        else:
+            actual_uvm = inputs_xpu["weights"][1].cpu().float()
+            if actual_uvm.numel() > 0:
+                torch.testing.assert_close(
+                    actual_uvm, ref_uvm, atol=atol, rtol=rtol,
+                    msg="uvm_weights update mismatch vs reference AdaGrad",
+                )
+
+        actual_momentum = inputs_xpu["momentum1"][0].cpu().float()
+        torch.testing.assert_close(
+            actual_momentum, ref_momentum, atol=atol, rtol=rtol,
+            msg="Momentum update mismatch vs reference AdaGrad",
+        )
+
+    def _verify_caching_weights(self, inputs, inputs_xpu, ref_uvm, atol, rtol):
+        placements = inputs["weights"][2].tolist()
+        offsets_list = inputs["weights"][3].tolist()
+        hash_size_cumsum = inputs["hash_size_cumsum"]
+        D_offsets = inputs["D_offsets"]
+        T = len(placements)
+
+        actual_uvm = inputs_xpu["weights"][1].cpu().float()
+        actual_cache = inputs_xpu["weights"][4].cpu().float()
+        lxu_cache_locations = inputs["aux_tensor"][3]
+        indices = inputs["indices"]
+        input_offsets = inputs["offsets"]
+        B = (input_offsets.numel() - 1) // T
+
+        for t in range(T):
+            if placements[t] != PlacementType.MANAGED_CACHING:
+                continue
+
+            D = (D_offsets[t + 1] - D_offsets[t]).item()
+            num_rows = (hash_size_cumsum[t + 1] - hash_size_cumsum[t]).item()
+            buf_offset = offsets_list[t]
+
+            for row in range(num_rows):
+                ref_start = buf_offset + row * D
+                ref_row = ref_uvm[ref_start:ref_start + D]
+
+                cache_slot = -1
+                table_start_idx = t * B
+                for b in range(B):
+                    bag_idx = table_start_idx + b
+                    idx_start = input_offsets[bag_idx].item()
+                    idx_end = input_offsets[bag_idx + 1].item()
+                    for l_idx in range(idx_start, idx_end):
+                        if indices[l_idx].item() == row:
+                            loc = lxu_cache_locations[l_idx].item()
+                            if loc >= 0:
+                                cache_slot = loc
+
+                if cache_slot >= 0:
+                    actual_row = actual_cache[cache_slot, :D]
+                else:
+                    actual_row = actual_uvm[ref_start:ref_start + D]
+
+                torch.testing.assert_close(
+                    actual_row, ref_row, atol=atol, rtol=rtol,
+                    msg=f"MANAGED_CACHING table {t} row {row} mismatch",
+                )
+
+    # ===================================================================
+    # use_uniq_cache_locations=True, mixed placements (non-homogeneous)
+    # Exercises lxu_cache_locations.size(0) > 0 with unique cache slots
+    # ===================================================================
+
+    def test_uniq_cache_mixed_device_caching_fp32(self):
+        """Mixed DEVICE + MANAGED_CACHING, unique cache locations, FP32."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=4, B=16, D=64, num_rows_per_table=10, L=6,
+            placements=[0, 2, 0, 2],
+            output_dtype=SparseType.FP32,
+            num_cache_slots=64,
+            use_homogeneous_placements=False,
+            seed=1000,
+        )
+        self._verify_backward(inputs, atol=1e-3, rtol=1e-3)
+
+    def test_uniq_cache_mixed_device_caching_fp16(self):
+        """Mixed DEVICE + MANAGED_CACHING, unique cache locations, FP16."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=4, B=16, D=64, num_rows_per_table=10, L=6,
+            placements=[2, 0, 2, 1],
+            output_dtype=SparseType.FP16,
+            num_cache_slots=64,
+            use_homogeneous_placements=False,
+            seed=1003,
+        )
+        self._verify_backward(inputs, atol=1e-1, rtol=1e-1)
+
+    def test_uniq_cache_mixed_device_caching_bf16(self):
+        """Mixed DEVICE + MANAGED_CACHING, unique cache locations, BF16."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=4, B=16, D=128, num_rows_per_table=10, L=6,
+            placements=[0, 2, 1, 2],
+            output_dtype=SparseType.BF16,
+            num_cache_slots=64,
+            use_homogeneous_placements=False,
+            seed=1005,
+        )
+        self._verify_backward(inputs, atol=1e-1, rtol=1e-1)
+
+    # ===================================================================
+    # use_uniq_cache_locations=True, all three placement types
+    # Maximum divergence between lxu_cache_locations sort order and
+    # sorted_linear_indices sort order
+    # ===================================================================
+
+    def test_uniq_cache_three_placements_fp32(self):
+        """DEVICE + MANAGED + MANAGED_CACHING, unique cache locations."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=6, B=16, D=64, num_rows_per_table=10, L=5,
+            placements=[0, 2, 1, 2, 0, 2],
+            output_dtype=SparseType.FP32,
+            num_cache_slots=128,
+            use_homogeneous_placements=False,
+            seed=1002,
+        )
+        self._verify_backward(inputs, atol=1e-3, rtol=1e-3)
+
+    def test_uniq_cache_three_placements_fp16(self):
+        """DEVICE + MANAGED + MANAGED_CACHING, unique cache, FP16."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=6, B=16, D=64, num_rows_per_table=10, L=5,
+            placements=[2, 0, 1, 0, 2, 1],
+            output_dtype=SparseType.FP16,
+            num_cache_slots=128,
+            use_homogeneous_placements=False,
+            seed=1006,
+        )
+        self._verify_backward(inputs, atol=1e-1, rtol=1e-1)
+
+    # ===================================================================
+    # use_uniq_cache_locations=True, all MANAGED_CACHING (non-homogeneous)
+    # ===================================================================
+
+    def test_uniq_cache_all_caching_non_homogeneous_fp32(self):
+        """All MANAGED_CACHING with use_homogeneous=False, unique cache."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=3, B=32, D=128, num_rows_per_table=10, L=8,
+            placements=[2, 2, 2],
+            output_dtype=SparseType.FP32,
+            num_cache_slots=128,
+            use_homogeneous_placements=False,
+            seed=1001,
+        )
+        self._verify_backward(inputs, atol=1e-3, rtol=1e-3)
+
+    def test_uniq_cache_all_caching_homogeneous_fp32(self):
+        """All MANAGED_CACHING with use_homogeneous=True, unique cache."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=4, B=16, D=64, num_rows_per_table=10, L=6,
+            placements=[2, 2, 2, 2],
+            output_dtype=SparseType.FP32,
+            num_cache_slots=64,
+            use_homogeneous_placements=True,
+            seed=1007,
+        )
+        self._verify_backward(inputs, atol=1e-3, rtol=1e-3)
+
+    # ===================================================================
+    # use_uniq_cache_locations=True, large embedding dimension
+    # ===================================================================
+
+    def test_uniq_cache_large_D(self):
+        """Large embedding dimension with unique cache locations."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=3, B=8, D=256, num_rows_per_table=10, L=5,
+            placements=[2, 0, 2],
+            output_dtype=SparseType.FP32,
+            num_cache_slots=64,
+            use_homogeneous_placements=False,
+            seed=1004,
+        )
+        self._verify_backward(inputs, atol=1e-3, rtol=1e-3)
+
+    def test_uniq_cache_large_D_fp16(self):
+        """Large D with unique cache locations, FP16."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=3, B=8, D=512, num_rows_per_table=10, L=5,
+            placements=[0, 2, 2],
+            output_dtype=SparseType.FP16,
+            num_cache_slots=64,
+            use_homogeneous_placements=False,
+            seed=1008,
+        )
+        self._verify_backward(inputs, atol=1e-1, rtol=1e-1)
+
+    # ===================================================================
+    # use_uniq_cache_locations=True, determinism
+    # ===================================================================
+
+    def test_uniq_cache_determinism(self):
+        """Determinism with unique cache locations, mixed placements."""
+        inputs = _generate_uniq_cache_locations_data(
+            T=4, B=16, D=64, num_rows_per_table=10, L=6,
+            placements=[0, 2, 0, 2],
+            output_dtype=SparseType.FP32,
+            num_cache_slots=64,
+            use_homogeneous_placements=False,
+            seed=1009,
+        )
+        total_indices = inputs["indices"].numel()
+        D = inputs["max_D"]
+        torch.manual_seed(700)
+        grad_output = torch.randn(total_indices, D, dtype=torch.float32)
+
+        results_dev = []
+        results_uvm = []
+        results_cache = []
+        for _ in range(3):
+            inputs_copy = copy.deepcopy(inputs)
+            inputs_xpu = _move_to_device(inputs_copy, "xpu")
+            grad_xpu = grad_output.to("xpu")
+            self._run_forward_backward(inputs_xpu, grad_xpu)
+            results_dev.append(inputs_xpu["weights"][0].cpu().clone())
+            results_uvm.append(inputs_xpu["weights"][1].cpu().clone())
+            results_cache.append(inputs_xpu["weights"][4].cpu().clone())
+
+        for i in range(1, len(results_dev)):
+            if results_dev[0].numel() > 0:
+                torch.testing.assert_close(
+                    results_dev[0], results_dev[i], atol=0, rtol=0,
+                    msg=f"dev_weights: run {i} differs from run 0",
+                )
+            if results_uvm[0].numel() > 0:
+                torch.testing.assert_close(
+                    results_uvm[0], results_uvm[i], atol=0, rtol=0,
+                    msg=f"uvm_weights: run {i} differs from run 0",
+                )
+            if results_cache[0].numel() > 0:
+                torch.testing.assert_close(
+                    results_cache[0], results_cache[i], atol=0, rtol=0,
+                    msg=f"lxu_cache_weights: run {i} differs from run 0",
+                )
 
 
 if __name__ == "__main__":
