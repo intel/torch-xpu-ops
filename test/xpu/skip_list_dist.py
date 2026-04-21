@@ -52,4 +52,12 @@ skip_dict = {
     "../../../../test/distributed/tensor/test_math_ops.py": None,
     "../../../../test/distributed/pipelining/test_backward.py": None,
     "../../../../test/distributed/pipelining/test_microbatch.py": None,
+    "../../../../test/distributed/test_data_parallel.py": (
+        # skipped due to #2737/#2747, torch._C._scatter or torch._C._gather
+        "test_scatter_cpu",
+        "test_scatter_gpu",
+        "test_gather_cpu",
+        "test_gather_gpu",
+        "test_gather_different_len_dicts",
+    ),
 }
