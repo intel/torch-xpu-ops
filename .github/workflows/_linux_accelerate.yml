@@ -50,6 +50,7 @@ defaults:
     shell: bash {0}
 env:
   GH_TOKEN: ${{ github.token }}
+  DISPLAY: ''
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:

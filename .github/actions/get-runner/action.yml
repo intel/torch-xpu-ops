@@ -116,6 +116,7 @@ runs:
       shell: bash -xe {0}
       run: |
         # clean docker cache
+        docker logout docker.io || true
         docker system prune -af || true
         # fix potential permission issue
         sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R

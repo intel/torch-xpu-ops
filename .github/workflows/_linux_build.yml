@@ -32,6 +32,7 @@ defaults:
   run:
     shell: bash -xe {0}
 env:
+  DISPLAY: ''
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
 
 jobs:
