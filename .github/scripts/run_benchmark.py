@@ -29,10 +29,129 @@ class TestTask:
     model: str
 
 # Monitor for OutOfMemoryError or UR_RESULT_ERROR
-error_patterns = ["out of memory", "OutOfMemory", "UR_RESULT_ERROR"]
+error_patterns = ["out of memory", "OutOfMemory", "UR_RESULT_ERROR", "Memory>0.95"]
 
 # Lock for thread-safe CSV writes
 _csv_lock = threading.Lock()
+
+
+# Parse memory utilization threshold from error_patterns (e.g. "Memory>0.95" → 0.95)
+def _parse_memory_threshold() -> float | None:
+    for pattern in error_patterns:
+        m = re.match(r'Memory>(\d+\.?\d*)', pattern)
+        if m:
+            return float(m.group(1))
+    return None
+
+
+# Cache for tile count per device (device_id → number of tiles)
+_tile_count_cache: dict[int, int] = {}
+_tile_count_cache_lock = threading.Lock()
+
+# Cache for xpu-smi availability (None = not checked yet)
+_xpu_smi_available: bool | None = None
+_xpu_smi_lock = threading.Lock()
+
+
+def _is_xpu_smi_available() -> bool:
+    global _xpu_smi_available
+    with _xpu_smi_lock:
+        if _xpu_smi_available is None:
+            _xpu_smi_available = shutil.which("xpu-smi") is not None
+        return _xpu_smi_available
+
+
+def _detect_tile_count(device_id: int) -> int:
+    """Detect the number of tiles for a device using xpu-smi stats."""
+    try:
+        result = subprocess.run(
+            ["xpu-smi", "stats", "-d", str(device_id)],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode != 0:
+            return 1
+        # Count distinct "Tile N" references in the output
+        tile_ids = {int(m.group(1)) for m in re.finditer(r'Tile\s+(\d+)', result.stdout)}
+        return max(len(tile_ids), 1)
+    except Exception:
+        return 1
+
+
+def _get_tile_count(device_id: int) -> int:
+    """Cached tile count for a device."""
+    with _tile_count_cache_lock:
+        if device_id not in _tile_count_cache:
+            _tile_count_cache[device_id] = _detect_tile_count(device_id)
+        return _tile_count_cache[device_id]
+
+
+def _get_gpu_memory_utilization(card: int, memory_threshold: float | None = None) -> float | None:
+    """
+    Get GPU memory utilization for the given card using ``xpu-smi dump``.
+    Returns utilization as a fraction (0.0 – 1.0), or *None* on failure.
+
+    Multi-tile layout (N tiles/device): card C maps to device C//N, tile C%N.
+    Single-tile layout: card C maps to device C directly.
+    """
+    if not _is_xpu_smi_available():
+        return None
+
+    try:
+        # Probe device 0 to learn tiles-per-device, then compute mapping
+        tiles_per_device = _get_tile_count(card)
+        if tiles_per_device <= 0:
+            tiles_per_device = 1
+        if tiles_per_device > 1:
+            device_id = card // tiles_per_device
+            tile_id = card % tiles_per_device
+            cmd = ["xpu-smi", "dump", "-d", str(device_id),
+                   "-t", str(tile_id), "-m", "5", "-n", "1"]
+        else:
+            device_id = card
+            tile_id = None
+            cmd = ["xpu-smi", "dump", "-d", str(device_id),
+                   "-m", "5", "-n", "1"]
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            return None
+
+        lines = [l.strip() for l in result.stdout.strip().splitlines() if l.strip()]
+        if len(lines) < 2:
+            return None
+
+        # Find the column index for GPU Memory Utilization
+        headers = [h.strip() for h in lines[0].split(',')]
+        mem_util_idx = None
+        for i, h in enumerate(headers):
+            if "GPU Memory Utilization" in h:
+                mem_util_idx = i
+                break
+        if mem_util_idx is None:
+            return None
+
+        # Parse the last data line
+        values = [v.strip() for v in lines[-1].split(',')]
+        if mem_util_idx >= len(values):
+            return None
+
+        val_str = values[mem_util_idx]
+        if val_str in ("N/A", ""):
+            return None
+
+        val = float(val_str)
+        # Normalise: values > 1 are in 0-100 percentage scale
+        if val > 1.0:
+            val = val / 100.0
+        if tiles_per_device > 1:
+            loc = f"GPU {card} (Device {device_id} Tile {tile_id})"
+        else:
+            loc = f"GPU {card}"
+        threshold_info = f"; threshold: {memory_threshold:.2%}" if memory_threshold is not None else ""
+        print(f"{loc} memory utilization: {val:.2%}{threshold_info}")
+        return val
+    except Exception:
+        return None
 
 
 # Helper to parse string to list
@@ -187,29 +306,35 @@ def run_benchmark_with_prefix(
     if IS_WINDOWS:
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
+    log_f = None
     try:
         log_f = open(log_file, "w")
         proc = subprocess.Popen(full_cmd_list, **popen_kwargs)
     except Exception as e:
-        if 'log_f' in locals() and not log_f.closed:
+        if log_f is not None and not log_f.closed:
             log_f.close()
         raise RuntimeError(f"Failed to start benchmark for {task.model}: {e}") from e
 
     # Output reader with timestamps
     def output_reader():
-        for line in iter(proc.stdout.readline, ""):
-            timestamp = time.strftime("[%Y-%m-%d %H:%M:%S]")
-            formatted = f"{timestamp} {line.rstrip()}"
-            print(formatted)
+        if proc.stdout is None:
+            return
+        try:
+            for line in iter(proc.stdout.readline, ""):
+                timestamp = time.strftime("[%Y-%m-%d %H:%M:%S]")
+                formatted = f"{timestamp} {line.rstrip()}"
+                print(formatted)
 
-            with log_buffer_lock:
-                log_buffer.append(formatted)
+                with log_buffer_lock:
+                    log_buffer.append(formatted)
 
-            try:
-                log_f.write(formatted + "\n")
-                log_f.flush()
-            except ValueError:
-                pass  # file already closed
+                try:
+                    log_f.write(formatted + "\n")
+                    log_f.flush()
+                except (ValueError, OSError):
+                    pass  # file already closed or I/O error
+        except (ValueError, OSError):
+            pass  # stdout closed unexpectedly
 
     reader_thread = threading.Thread(target=output_reader, daemon=True)
     reader_thread.start()
@@ -218,33 +343,63 @@ def run_benchmark_with_prefix(
         timeout = 10800  # seconds
         start = time.time()
         scan_pos = 0
+        memory_threshold = _parse_memory_threshold()
         while proc.poll() is None and (time.time() - start) < timeout:
+            # --- Check log buffer for text-based error patterns ---
             with log_buffer_lock:
                 new_lines = log_buffer[scan_pos:]
                 scan_pos = len(log_buffer)
             if new_lines:
                 content = "\n".join(new_lines).lower()
                 for pattern in error_patterns:
+                    # Skip Memory>N patterns; handled via GPU polling below
+                    if pattern.startswith("Memory>"):
+                        continue
                     if pattern.lower() in content:
                         print(f"  [Worker {worker_id}] Detected '{pattern}', killing process")
                         proc.kill()
                         return
-            time.sleep(30)
+
+            # --- Poll GPU memory utilization via xpu-smi ---
+            if memory_threshold is not None:
+                try:
+                    mem_util = _get_gpu_memory_utilization(card, memory_threshold)
+                except Exception as e:
+                    print(f"  [Worker {worker_id}] GPU memory poll error: {e}")
+                    mem_util = None
+                if mem_util is not None and mem_util >= memory_threshold:
+                    print(
+                        f"  [Worker {worker_id}] GPU memory utilization "
+                        f"{mem_util:.2%} >= threshold {memory_threshold:.0%}, "
+                        f"killing process"
+                    )
+                    proc.kill()
+                    return
+
+            time.sleep(3)
 
     monitor_thread = threading.Thread(target=error_monitor, daemon=True)
     monitor_thread.start()
 
-    exit_code = proc.wait()
-    reader_thread.join(timeout=10)
-    log_f.close()
-    monitor_thread.join(timeout=1)
-    collect_csv_results(log_csv, tmp_log_csv, device, task)
-
-    # Clean up temp file
     try:
-        os.unlink(tmp_log_csv)
-    except OSError:
-        pass
+        exit_code = proc.wait()
+    except Exception:
+        exit_code = -1
+    reader_thread.join(timeout=10)
+    if log_f is not None and not log_f.closed:
+        log_f.close()
+    monitor_thread.join(timeout=1)
+
+    try:
+        collect_csv_results(log_csv, tmp_log_csv, device, task)
+    except Exception as e:
+        print(f"  [Worker {worker_id}] CSV collection error for {task.model}: {e}")
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_log_csv)
+        except OSError:
+            pass
 
     # Determine success based on last non-empty line of log file
     def check_success_from_log(log_path: Path) -> tuple[str, bool]:
@@ -303,7 +458,7 @@ def collect_csv_results(
                     if row and condition(row):
                         last_match = row
         except Exception as e:
-            raise RuntimeError(f"Error reading source file: {e}") from e
+            print(f"Warning: Error reading temp CSV {tmp_log_csv}: {e}")
 
     if not last_match:
         if task.scenario == "accuracy":
@@ -456,57 +611,6 @@ def generate_command_prefixes(num_gpus: int) -> list[tuple[int, str, dict]]:
     return prefixes
 
 
-# Earlyoom handling
-def start_earlyoom() -> subprocess.Popen | None:
-    """Start earlyoom process if available. Return Popen object or None."""
-    if IS_WINDOWS:
-        print("INFO: earlyoom is not supported on Windows. Memory pressure monitoring disabled.")
-        return None
-
-    earlyoom_path = shutil.which("earlyoom")
-    if not earlyoom_path:
-        print("INFO: earlyoom not found in PATH. Memory pressure monitoring disabled.")
-        return None
-
-    # Arguments as requested: -m 3 -s 100 -r 3600 --prefer '^(python|pytest)'
-    cmd = [
-        earlyoom_path,
-        "-m", "3",
-        "-s", "100",
-        "-r", "600",
-        "--prefer", "^(python|pytest)"
-    ]
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        print(f"Started earlyoom (PID {proc.pid}) to monitor memory pressure.")
-        return proc
-    except Exception as e:
-        print(f"WARNING: Failed to start earlyoom: {e}. Continuing without it.")
-        return None
-
-
-def stop_earlyoom(proc: subprocess.Popen | None) -> None:
-    """Terminate earlyoom process if it is running."""
-    if proc is None:
-        return
-    try:
-        proc.terminate()
-        proc.wait(timeout=5)
-        print("earlyoom process terminated.")
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
-        print("earlyoom process killed (timeout).")
-    except Exception as e:
-        print(f"Warning while stopping earlyoom: {e}")
-
-
 # Main orchestrator
 def main():
     parser = argparse.ArgumentParser(description="Run E2E tests with per‑GPU job queue and hang detection")
@@ -529,10 +633,15 @@ def main():
     args = parser.parse_args()
 
     # Check required environment variables
-    num_gpus = os.getenv('NUM_GPUS')
-    if num_gpus is None:
+    num_gpus_str = os.getenv('NUM_GPUS')
+    if num_gpus_str is None:
         sys.exit("ERROR: Environment variable NUM_GPUS is not set.")
-    num_gpus = int(num_gpus)
+    try:
+        num_gpus = int(num_gpus_str)
+    except ValueError:
+        sys.exit(f"ERROR: NUM_GPUS must be an integer, got '{num_gpus_str}'.")
+    if num_gpus <= 0:
+        sys.exit(f"ERROR: NUM_GPUS must be positive, got {num_gpus}.")
 
     print(f"NUM_GPUS = {num_gpus}")
 
@@ -603,13 +712,7 @@ def main():
         workers = generate_command_prefixes(num_gpus)
         print(f"Auto-generated {len(workers)} workers from ZE_AFFINITY_MASK")
 
-    # Start earlyoom if available
-    earlyoom_proc = start_earlyoom()
-
-    try:
-        _run_workers(tasks, workers, args)
-    finally:
-        stop_earlyoom(earlyoom_proc)
+    _run_workers(tasks, workers, args)
 
 
 def _run_workers(tasks, workers, args):
