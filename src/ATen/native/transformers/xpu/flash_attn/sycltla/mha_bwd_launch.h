@@ -8,9 +8,8 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-// Splitting the different head dimensions to different files to speed up
-// compilation. This file contains the template definitions shared by all
-// per-headdim backward compilation units.
+// This file contains the template definitions for per-headdim backward kernels.
+// All explicit specializations are instantiated in mha_bwd.cpp.
 
 #pragma once
 #pragma GCC diagnostic push
@@ -28,8 +27,7 @@ using ProblemShapeRegular = cute::tuple<int, int, int, int, int, int, int>;
 
 namespace cute {
 
-// Primary template declaration -- explicit specializations are provided by
-// the per-headdim compilation units (mha_bwd_hdim*.cpp).
+// Primary template declaration -- explicit specializations are in mha_bwd.cpp.
 template <typename T, int Headdim, bool is_causal>
 void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
 
