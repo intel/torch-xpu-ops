@@ -48,6 +48,11 @@ on:
         type: string
         default: 'false'
         description: Check if labelled
+      disable_ut:
+        required: false
+        type: string
+        default: 'false'
+        description: Disable UT test when set to true
 
 permissions: read-all
 
@@ -261,7 +266,7 @@ jobs:
   ut_test:
     needs: [build]
     runs-on: ${{ inputs.runner }}
-    if: ${{ inputs.src_changed == 'true' || inputs.has_label == 'true' }}
+    if: ${{ inputs.disable_ut != 'true' && (inputs.src_changed == 'true' || inputs.has_label == 'true') }}
     timeout-minutes: 1000
     steps:
       - name: Checkout torch-xpu-ops
