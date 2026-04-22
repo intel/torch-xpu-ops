@@ -37,9 +37,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-// Splitting the different head dimensions to different files to speed up
-// compilation. This file contains the template definitions shared by all
-// per-headdim forward compilation units.
+// This file contains the template definitions for per-headdim forward kernels.
+// All explicit specializations are instantiated in mha_fwd.cpp.
 
 #pragma once
 
@@ -269,11 +268,6 @@ void run_mha_fwd_impl(sycl::queue& queue, FLASH_FWD_params& params) {
       SubgroupLayoutQK_,         \
       PipelineStages_>(queue, params)
 
-// Per-headdim dispatch functions.
-// The template functions below are implementation details used by the
-// per-headdim .cpp files. The non-template entry points declared after
-// them are what mha_fwd.cpp calls for runtime headdim dispatch.
-
 template <typename T, bool IS_CAUSAL>
 void run_mha_fwd_hdim32(sycl::queue& queue, FLASH_FWD_params& params) {
   constexpr int PipelineStages = 2;
@@ -380,8 +374,7 @@ void run_mha_fwd_hdim256(sycl::queue& queue, FLASH_FWD_params& params) {
       PipelineStages);
 }
 
-// Primary template declaration -- explicit specializations are provided by
-// the per-headdim compilation units (mha_fwd_hdim*.cpp).
+// Primary template declaration -- explicit specializations are in mha_fwd.cpp.
 template <typename T, int Headdim, bool IS_CAUSAL>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params);
 
