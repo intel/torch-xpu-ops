@@ -183,94 +183,18 @@ jobs:
     with:
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
 
-  reproducer-runner:
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
-    runs-on: pvc_rolling
-    name: reproducer-get-runner
-    outputs:
-      runner_id: ${{ steps.runner-info.outputs.runner_id }}
-      user_id: ${{ steps.runner-info.outputs.user_id }}
-      render_id: ${{ steps.runner-info.outputs.render_id }}
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
-        id: runner-info
-        uses: ./.github/actions/get-runner
-
   reproducer-test:
-    needs: [linux-build, reproducer-runner]
+    needs: [linux-build]
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
-    runs-on: ${{ needs.reproducer-runner.outputs.runner_id }}
-    timeout-minutes: 30
+    secrets: inherit
     permissions:
       contents: read
       issues: write
-    container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
-      volumes:
-        - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.reproducer-runner.outputs.user_id }}:${{ needs.reproducer-runner.outputs.render_id }}
-              -e ZE_AFFINITY_MASK
-      env:
-        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env
-        uses: ./.github/actions/linux-testenv
-        with:
-          pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-          torch_xpu_ops: main
-      - name: Run reproducer tests
-        id: reproducer
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          cd pytorch
-          pytest ../torch-xpu-ops/test/repro/ -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
-      - name: Comment on PR
-        uses: actions/github-script@v7
-        env:
-          REPRODUCER_RESULT: ${{ steps.reproducer.outcome }}
-        with:
-          script: |
-            const fs = require('fs');
-            const outcome = process.env.REPRODUCER_RESULT;
-            const prNumber = context.issue.number;
-            let body;
-            if (outcome === 'success') {
-              body = '✅ Reproducer test passed. All tests in `test/repro/` executed successfully.';
-            } else {
-              const output = fs.readFileSync('${{ github.workspace }}/reproducer_output.txt', 'utf8');
-              body = [
-                '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
-                '',
-                '<details><summary>Reproducer test output</summary>',
-                '',
-                '```',
-                output,
-                '```',
-                '',
-                '</details>',
-                '',
-                'Instructions:',
-                '1. Review the test failure output above',
-                '2. Identify the root cause of the failure',
-                '3. Update the relevant source code to fix the issue',
-                '4. Ensure the reproducer in test/repro/ passes after your fix'
-              ].join('\n');
-            }
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNumber,
-              body: body
-            });
-      - name: Fail if reproducer failed
-        if: ${{ steps.reproducer.outcome == 'failure' }}
-        run: exit 1
+    uses: ./.github/workflows/_linux_reproducer.yml
+    with:
+      runner: pvc_rolling
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
 
   windows:
     name: windows
