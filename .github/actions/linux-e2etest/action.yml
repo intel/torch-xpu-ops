@@ -47,9 +47,9 @@ runs:
         model_list_arg=""
         if [[ "${CATEGORY}" != "pr" \
               && "${CATEGORY}" != "target" && "${CATEGORY}" != "baseline" ]]; then
+          rsync -avz "${GITHUB_WORKSPACE}/.ci/benchmarks/" ./benchmarks/dynamo/
           if [[ -f "${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt" ]]; then
             model_list_arg="--model-only ${GITHUB_WORKSPACE}/.ci/benchmarks/models_list.txt"
-            cp "${GITHUB_WORKSPACE}/.ci/benchmarks/"*.txt ./benchmarks/dynamo/
           fi
         fi
         if [[ -n "${MODEL_ONLY_NAME}" ]]; then

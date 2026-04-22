@@ -196,16 +196,14 @@ runs:
           else
             pip install transformers==4.54.0 soxr==0.5.0
           fi
-        fi
 
         # ── timm_models ─────────────────────────────────────────────────────
-        if suite_has timm_models; then
+        elif suite_has timm_models; then
           TIMM=$(cat .ci/docker/ci_commit_pins/timm.txt 2>/dev/null || echo v1.0.14)
           pip install "git+https://github.com/huggingface/pytorch-image-models@${TIMM}" || exit 1
-        fi
 
         # ── torchbench ──────────────────────────────────────────────────────
-        if suite_has torchbench; then
+        elif suite_has torchbench; then
           TB=$(cat .ci/docker/ci_commit_pins/torchbench.txt 2>/dev/null || echo e03a63be)
           cd ..
           rm -rf benchmark
@@ -235,10 +233,9 @@ runs:
 
           echo "PYTHONPATH=${PWD}:${PYTHONPATH:-}" >> "${GITHUB_ENV}"
           cd ../pytorch
-        fi
 
         # ── pt2e ────────────────────────────────────────────────────────────
-        if suite_has pt2e; then
+        elif suite_has pt2e; then
           cd ..
           rm -rf pt2e-accuracy pt2e-performance
           git clone -b main https://github.com/chuanqi129/inductor-tools pt2e-accuracy
