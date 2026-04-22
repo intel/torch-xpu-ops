@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
-import os
-import sys
-import subprocess
-import threading
-import time
-import re
-import platform
-from pathlib import Path
-from dataclasses import dataclass
 import argparse
-import tempfile
+import csv
+import os
+import platform
 import queue
+import re
 import shlex
 import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from contextlib import suppress
+from dataclasses import dataclass
+from functools import lru_cache
+from itertools import product
+from pathlib import Path
+
 from packaging import version
 
+# Constants & globals
 IS_WINDOWS = platform.system() == "Windows"
-import pandas as pd
 
 
-# Data structures
 @dataclass
 class TestTask:
     suite: str
@@ -28,11 +32,49 @@ class TestTask:
     scenario: str
     model: str
 
-# Monitor for OutOfMemoryError or UR_RESULT_ERROR
-error_patterns = ["out of memory", "OutOfMemory", "UR_RESULT_ERROR", "Memory>0.95"]
 
-# Lock for thread-safe CSV writes
+# Patterns that trigger process kill when detected in output or GPU metrics.
+# Text patterns are matched case-insensitively; "Memory>N" triggers GPU memory
+# utilisation polling with threshold N.
+gpu_memory_threshold = 0.8 if IS_WINDOWS else 0.9
+error_patterns: list[str] = [
+    "out of memory",
+    "OutOfMemory",
+    "UR_RESULT_ERROR",
+    f"Memory>{gpu_memory_threshold}",
+]
+
 _csv_lock = threading.Lock()
+
+
+# Logging helpers — consistent, readable output
+
+def _log(msg: str, *, level: str = "INFO", worker: int | None = None) -> None:
+    """Print a timestamped, consistently-formatted log line."""
+    ts = time.strftime("%H:%M:%S")
+    prefix = f"[{ts}] [{level}]"
+    if worker is not None:
+        prefix += f" [Worker {worker}]"
+    print(f"{prefix} {msg}", flush=True)
+
+
+def _banner(title: str) -> None:
+    """Print a visible section separator."""
+    line = "=" * 60
+    print(f"\n{line}", flush=True)
+    print(f"  {title}", flush=True)
+    print(f"{line}", flush=True)
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Format seconds into a human-readable duration string."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    m, s = divmod(int(seconds), 60)
+    if m < 60:
+        return f"{m}m {s}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m {s}s"
 
 
 # Parse memory utilization threshold from error_patterns (e.g. "Memory>0.95" → 0.95)
@@ -44,13 +86,13 @@ def _parse_memory_threshold() -> float | None:
     return None
 
 
-# Cache for tile count per device (device_id → number of tiles)
-_tile_count_cache: dict[int, int] = {}
-_tile_count_cache_lock = threading.Lock()
-
 # Cache for xpu-smi availability (None = not checked yet)
 _xpu_smi_available: bool | None = None
 _xpu_smi_lock = threading.Lock()
+
+# Cache for tiles-per-device (probed once from device 0)
+_tiles_per_device: int | None = None
+_tiles_per_device_lock = threading.Lock()
 
 
 def _is_xpu_smi_available() -> bool:
@@ -61,56 +103,48 @@ def _is_xpu_smi_available() -> bool:
         return _xpu_smi_available
 
 
-def _detect_tile_count(device_id: int) -> int:
-    """Detect the number of tiles for a device using xpu-smi stats."""
-    try:
-        result = subprocess.run(
-            ["xpu-smi", "stats", "-d", str(device_id)],
-            capture_output=True, text=True, timeout=10,
-        )
-        if result.returncode != 0:
-            return 1
-        # Count distinct "Tile N" references in the output
-        tile_ids = {int(m.group(1)) for m in re.finditer(r'Tile\s+(\d+)', result.stdout)}
-        return max(len(tile_ids), 1)
-    except Exception:
-        return 1
+def _get_tiles_per_device() -> int:
+    """Return tiles-per-device, probed once from device 0 via xpu-smi stats."""
+    global _tiles_per_device
+    with _tiles_per_device_lock:
+        if _tiles_per_device is None:
+            try:
+                result = subprocess.run(
+                    ["xpu-smi", "stats", "-d", "0"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode == 0:
+                    tile_ids = {int(m.group(1)) for m in re.finditer(r'Tile\s+(\d+)', result.stdout)}
+                    _tiles_per_device = max(len(tile_ids), 1)
+                else:
+                    _tiles_per_device = 1
+            except Exception:
+                _tiles_per_device = 1
+            _log(f"Detected {_tiles_per_device} tile(s) per device")
+        return _tiles_per_device
 
 
-def _get_tile_count(device_id: int) -> int:
-    """Cached tile count for a device."""
-    with _tile_count_cache_lock:
-        if device_id not in _tile_count_cache:
-            _tile_count_cache[device_id] = _detect_tile_count(device_id)
-        return _tile_count_cache[device_id]
+def _get_gpu_memory_utilization(
+    card: int,
+    memory_threshold: float | None = None,
+    task: TestTask | None = None,
+) -> float | None:
+    """Return GPU memory utilisation for *card* as a 0.0-1.0 fraction, or *None*.
 
-
-def _get_gpu_memory_utilization(card: int, memory_threshold: float | None = None) -> float | None:
-    """
-    Get GPU memory utilization for the given card using ``xpu-smi dump``.
-    Returns utilization as a fraction (0.0 – 1.0), or *None* on failure.
-
-    Multi-tile layout (N tiles/device): card C maps to device C//N, tile C%N.
-    Single-tile layout: card C maps to device C directly.
+    Multi-tile layout (N tiles/device): card C → device C//N, tile C%N.
+    Single-tile layout: card C → device C.
     """
     if not _is_xpu_smi_available():
         return None
 
     try:
-        # Probe device 0 to learn tiles-per-device, then compute mapping
-        tiles_per_device = _get_tile_count(card)
-        if tiles_per_device <= 0:
-            tiles_per_device = 1
-        if tiles_per_device > 1:
-            device_id = card // tiles_per_device
-            tile_id = card % tiles_per_device
-            cmd = ["xpu-smi", "dump", "-d", str(device_id),
-                   "-t", str(tile_id), "-m", "5", "-n", "1"]
-        else:
-            device_id = card
-            tile_id = None
-            cmd = ["xpu-smi", "dump", "-d", str(device_id),
-                   "-m", "5", "-n", "1"]
+        tiles = _get_tiles_per_device()
+        device_id, tile_id = (card // tiles, card % tiles) if tiles > 1 else (card, None)
+
+        cmd = ["xpu-smi", "dump", "-d", str(device_id)]
+        if tile_id is not None:
+            cmd += ["-t", str(tile_id)]
+        cmd += ["-m", "5", "-n", "1"]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         if result.returncode != 0:
@@ -120,35 +154,71 @@ def _get_gpu_memory_utilization(card: int, memory_threshold: float | None = None
         if len(lines) < 2:
             return None
 
-        # Find the column index for GPU Memory Utilization
         headers = [h.strip() for h in lines[0].split(',')]
-        mem_util_idx = None
-        for i, h in enumerate(headers):
-            if "GPU Memory Utilization" in h:
-                mem_util_idx = i
-                break
-        if mem_util_idx is None:
+        try:
+            col_idx = next(i for i, h in enumerate(headers) if "GPU Memory Utilization" in h)
+        except StopIteration:
             return None
 
-        # Parse the last data line
         values = [v.strip() for v in lines[-1].split(',')]
-        if mem_util_idx >= len(values):
+        if col_idx >= len(values) or values[col_idx] in ("N/A", ""):
             return None
 
-        val_str = values[mem_util_idx]
-        if val_str in ("N/A", ""):
-            return None
+        val = float(values[col_idx])
+        if val > 1.0:  # normalise 0-100 → 0-1
+            val /= 100.0
 
-        val = float(val_str)
-        # Normalise: values > 1 are in 0-100 percentage scale
-        if val > 1.0:
-            val = val / 100.0
-        if tiles_per_device > 1:
-            loc = f"GPU {card} (Device {device_id} Tile {tile_id})"
+        loc = f"GPU {card} (Device {device_id} Tile {tile_id})" if tiles > 1 else f"GPU {card}"
+        thr = f" (threshold {memory_threshold:.0%})" if memory_threshold is not None else ""
+        model_name = task.model if task is not None else "N/A"
+        _log(f"{loc} memory: {val:.2%}{thr} | {model_name}")
+        return val
+    except Exception:
+        return None
+
+
+def _get_host_memory_utilization(
+    memory_threshold: float | None = None,
+    task: TestTask | None = None,
+) -> float | None:
+    """Return host RAM utilisation as a 0.0-1.0 fraction, or *None*.
+
+    Reads /proc/meminfo on Linux; falls back to os-level heuristics on Windows.
+    """
+    try:
+        if IS_WINDOWS:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong),
+                            ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong),
+                            ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong),
+                            ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong),
+                            ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            stat = MEMORYSTATUSEX(dwLength=ctypes.sizeof(MEMORYSTATUSEX))
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            total = stat.ullTotalPhys
+            avail = stat.ullAvailPhys
         else:
-            loc = f"GPU {card}"
-        threshold_info = f"; threshold: {memory_threshold:.2%}" if memory_threshold is not None else ""
-        print(f"{loc} memory utilization: {val:.2%}{threshold_info}")
+            meminfo: dict[str, int] = {}
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        meminfo[parts[0].rstrip(':')] = int(parts[1]) * 1024  # kB → bytes
+            total = meminfo.get("MemTotal", 0)
+            avail = meminfo.get("MemAvailable", 0)
+
+        if total <= 0:
+            return None
+        val = 1.0 - avail / total
+
+        thr = f" (threshold {memory_threshold:.0%})" if memory_threshold is not None else ""
+        model_name = task.model if task is not None else "N/A"
+        _log(f"Host memory: {val:.2%}{thr} | {model_name}")
         return val
     except Exception:
         return None
@@ -164,10 +234,11 @@ def parse_string_list(s: str) -> list[str]:
 
 
 # Model list extraction
-def get_model_list(suite: str, mode: str, model_only: str) -> list[str]:
+def get_model_list(suite: str, mode: str, model_only: str | None) -> list[str]:
     """Retrieve a list of model names from either a CSV file, a string list, or a default text file."""
     if model_only is not None:
         if os.path.isfile(model_only):
+            import pandas as pd
             df = pd.read_csv(model_only)
             col_header = suite if suite != "torchbench" else f"{suite} {mode}"
             if col_header not in df.columns:
@@ -182,38 +253,100 @@ def get_model_list(suite: str, mode: str, model_only: str) -> list[str]:
     if not list_file.exists():
         raise FileNotFoundError(f"Model list file not found: {list_file}")
 
-    models = []
     with list_file.open() as f:
-        for line in f:
-            line = line.split('#', 1)[0].strip()
-            if not line:
-                continue
-            parts = parse_string_list(line)
-            if parts:
-                model_name = parts[0].strip()
-                if model_name:
-                    models.append(model_name)
+        models = [
+            parts[0].strip()
+            for raw in f
+            if (line := raw.split('#', 1)[0].strip())
+            and (parts := parse_string_list(line))
+            and parts[0].strip()
+        ]
     return models
 
 
-# Cached torch version (computed once)
-_torch_version_cache = None
-
+@lru_cache(maxsize=1)
 def _get_torch_version() -> str:
-    global _torch_version_cache
-    if _torch_version_cache is not None:
-        return _torch_version_cache
     pip_cmd = "pip.exe" if IS_WINDOWS else "pip"
     try:
         result = subprocess.run([pip_cmd, "list", "--format=freeze"], capture_output=True, text=True, check=True)
-        torch_line = [line for line in result.stdout.splitlines() if line.startswith("torch==")]
-        _torch_version_cache = torch_line[0].split("==")[1].split("+")[0] if torch_line else "0.0.0"
+        torch_line = next((l for l in result.stdout.splitlines() if l.startswith("torch==")), None)
+        return torch_line.split("==")[1].split("+")[0] if torch_line else "0.0.0"
     except Exception:
-        _torch_version_cache = "0.0.0"
-    return _torch_version_cache
+        return "0.0.0"
 
 
 # Benchmark execution (merged from inductor_xpu_test.sh)
+def _build_benchmark_cmd(task: TestTask, device: str, shape: str, output_csv: str) -> str:
+    """Build the benchmark command string for a single model run."""
+    torch_ver = _get_torch_version()
+
+    # Determine mode flag
+    if task.mode == "training":
+        mode_flag = "--training"
+    elif version.parse(torch_ver) >= version.parse("2.0.2"):
+        mode_flag = "--inference"
+    else:
+        mode_flag = ""
+
+    # Resolve dtype: amp_bf16/amp_fp16 → --amp --amp-dtype ...
+    dt_map = {"amp_bf16": ("amp", "--amp-dtype bfloat16"),
+              "amp_fp16": ("amp", "--amp-dtype float16")}
+    real_dt, dt_extra = dt_map.get(task.dt, (task.dt, ""))
+
+    shape_flags = "--dynamic-shapes --dynamic-batch-only" if shape == "dynamic" else ""
+
+    parts = [
+        f"python benchmarks/dynamo/{task.suite}.py",
+        f"-d {device}",
+        f"--{task.scenario}",
+        f"--{real_dt}",
+        dt_extra,
+        mode_flag,
+        shape_flags,
+        f"--only {task.model}" if task.model else "",
+        "--backend=inductor",
+        "--cold-start-latency",
+        "-n10",
+        "--timeout=10800",
+        "--disable-cudagraphs",
+        f"--output={output_csv}",
+    ]
+    return " ".join(p for p in parts if p)
+
+
+def _check_success_from_log(log_path: Path) -> tuple[str, bool]:
+    """Check the last line of the log to determine pass/fail.
+
+    Returns (test_result, True) if last token is 'pass', 'pass_due_to_skip',
+    or a speedup like '1.23x'.
+    """
+    if not log_path.exists():
+        return "None", False
+    last_non_empty = ""
+    with open(log_path) as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped:
+                last_non_empty = stripped
+    if not last_non_empty:
+        return "None", False
+    test_result = last_non_empty.split()[-1]
+    success = test_result in ('pass', 'pass_due_to_skip') or bool(re.fullmatch(r'[0-9.]+x', test_result))
+    return test_result, success
+
+
+def _build_cmd_list(cmd: str, cmd_prefix: str) -> tuple[list[str], str]:
+    """Split command (with optional prefix) into an argv list and display string."""
+    _posix = not IS_WINDOWS
+    if cmd_prefix:
+        cmd_list = shlex.split(cmd_prefix, posix=_posix) + shlex.split(cmd, posix=_posix)
+        cmd_str = f"{cmd_prefix} {cmd}"
+    else:
+        cmd_list = shlex.split(cmd, posix=_posix)
+        cmd_str = cmd
+    return cmd_list, cmd_str
+
+
 def run_benchmark_with_prefix(
     task: TestTask,
     card: int,
@@ -223,86 +356,32 @@ def run_benchmark_with_prefix(
     worker_id: int,
     device: str,
     shape: str,
-) -> tuple[int, bool, Path]:
-    """Run a single benchmark and return `(exit_code, success, test_result)`."""
-    model_only = task.model
-    suite = task.suite
-    dt = task.dt
-    mode = task.mode
-    scenario = task.scenario
-
+) -> tuple[int, bool, str, str | None]:
+    """Run a single benchmark and return `(exit_code, success, test_result, kill_reason)`."""
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / f"inductor-logs-{task.model.replace('/', '_')}-worker{worker_id}-card{card}.log"
-    log_csv = log_dir / f"inductor-results-{suite}-{dt}-{mode}-{device}-{scenario}.csv"
-    tmp_file = tempfile.NamedTemporaryFile(delete=False, prefix='tmp_', suffix='.csv')
-    tmp_log_csv = tmp_file.name
-    tmp_file.close()
+    log_csv = log_dir / f"inductor-results-{task.suite}-{task.dt}-{task.mode}-{device}-{task.scenario}.csv"
+    tmp_fd, tmp_log_csv = tempfile.mkstemp(prefix='tmp_', suffix='.csv')
+    os.close(tmp_fd)
 
-    # Model only extra
-    model_only_extra = ""
-    if model_only:
-        model_only_extra = f"--only {model_only}"
+    cmd = _build_benchmark_cmd(task, device, shape, tmp_log_csv)
+    full_cmd_list, full_cmd_str = _build_cmd_list(cmd, cmd_prefix)
+    _log(f"Running: {full_cmd_str[:200]}...", worker=worker_id)
 
-    # Version check
-    torch_ver = _get_torch_version()
+    env = {**os.environ, **env_vars}
+    if device != "cpu":
+        env["ZE_AFFINITY_MASK"] = str(card)
 
-    mode_extra = ""
-    if version.parse(torch_ver) >= version.parse("2.0.2"):
-        mode_extra = "--inference "
-    if mode == "training":
-        mode_extra = "--training "
-
-    real_dt = dt
-    dt_extra = ""
-    if dt == "amp_bf16":
-        real_dt = "amp"
-        dt_extra = "--amp-dtype bfloat16 "
-    elif dt == "amp_fp16":
-        real_dt = "amp"
-        dt_extra = "--amp-dtype float16 "
-
-    shape_extra = ""
-    if shape == "dynamic":
-        shape_extra = "--dynamic-shapes --dynamic-batch-only "
-
-    # Partition flags: we are not using sharding per model, so set to empty
-    partition_flags = ""
-
-    cmd = (
-        f"python benchmarks/dynamo/{suite}.py  -d {device} --{scenario} --{real_dt} "
-        f"{dt_extra}{mode_extra}{shape_extra}{partition_flags}{model_only_extra} "
-        f"--backend=inductor --cold-start-latency "
-        f"-n10 --timeout=10800 --disable-cudagraphs --output={tmp_log_csv} "
-    )
-    cmd = re.sub(r'\s+', ' ', cmd).strip()
-
-    # Build command as list for safe execution (no shell=True)
-    _posix = not IS_WINDOWS
-    if cmd_prefix:
-        full_cmd_list = shlex.split(cmd_prefix, posix=_posix) + shlex.split(cmd, posix=_posix)
-        full_cmd_str = f"{cmd_prefix} {cmd}"
-    else:
-        full_cmd_list = shlex.split(cmd, posix=_posix)
-        full_cmd_str = cmd
-
-    print(f" [Worker {worker_id}] Running: {full_cmd_str[:200]}...")
-
-    env = os.environ.copy()
-    env["ZE_AFFINITY_MASK"] = str(card)
-    env.update(env_vars)
-
-    # Thread-safe buffer for error monitoring
-    log_buffer = []
+    # Shared state for threads
+    log_buffer: list[str] = []
     log_buffer_lock = threading.Lock()
+    kill_reason: list[str | None] = [None]
+    kill_reason_lock = threading.Lock()
 
-    popen_kwargs = dict(
-        shell=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=env,
-        bufsize=1,
-    )
+    popen_kwargs = {
+        "shell": False, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT,
+        "text": True, "env": env, "bufsize": 1,
+    }
     if IS_WINDOWS:
         popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
@@ -315,72 +394,84 @@ def run_benchmark_with_prefix(
             log_f.close()
         raise RuntimeError(f"Failed to start benchmark for {task.model}: {e}") from e
 
-    # Output reader with timestamps
+    # --- Output reader thread ---
     def output_reader():
         if proc.stdout is None:
             return
         try:
             for line in iter(proc.stdout.readline, ""):
-                timestamp = time.strftime("[%Y-%m-%d %H:%M:%S]")
-                formatted = f"{timestamp} {line.rstrip()}"
-                print(formatted)
-
+                formatted = f"{time.strftime('[%Y-%m-%d %H:%M:%S]')} {line.rstrip()}"
+                print(formatted, flush=True)
                 with log_buffer_lock:
                     log_buffer.append(formatted)
-
                 try:
                     log_f.write(formatted + "\n")
                     log_f.flush()
                 except (ValueError, OSError):
-                    pass  # file already closed or I/O error
+                    pass
         except (ValueError, OSError):
-            pass  # stdout closed unexpectedly
+            pass
 
-    reader_thread = threading.Thread(target=output_reader, daemon=True)
-    reader_thread.start()
-
+    # --- Error monitor thread ---
     def error_monitor():
-        timeout = 10800  # seconds
-        start = time.time()
         scan_pos = 0
         memory_threshold = _parse_memory_threshold()
-        while proc.poll() is None and (time.time() - start) < timeout:
-            # --- Check log buffer for text-based error patterns ---
+        deadline = time.time() + 10800
+
+        while proc.poll() is None and time.time() < deadline:
+            # Check log buffer for text-based error patterns
             with log_buffer_lock:
                 new_lines = log_buffer[scan_pos:]
                 scan_pos = len(log_buffer)
             if new_lines:
                 content = "\n".join(new_lines).lower()
                 for pattern in error_patterns:
-                    # Skip Memory>N patterns; handled via GPU polling below
                     if pattern.startswith("Memory>"):
                         continue
                     if pattern.lower() in content:
-                        print(f"  [Worker {worker_id}] Detected '{pattern}', killing process")
+                        _log(f"Detected '{pattern}' — killing process", level="WARN", worker=worker_id)
+                        with kill_reason_lock:
+                            kill_reason[0] = pattern
                         proc.kill()
                         return
 
-            # --- Poll GPU memory utilization via xpu-smi ---
+            # Poll memory utilization (GPU or host depending on device)
             if memory_threshold is not None:
                 try:
-                    mem_util = _get_gpu_memory_utilization(card, memory_threshold)
+                    if device == "cpu":
+                        mem_util = _get_host_memory_utilization(memory_threshold, task)
+                    else:
+                        mem_util = _get_gpu_memory_utilization(card, memory_threshold, task)
                 except Exception as e:
-                    print(f"  [Worker {worker_id}] GPU memory poll error: {e}")
+                    _log(f"Memory poll error: {e}", level="WARN", worker=worker_id)
                     mem_util = None
                 if mem_util is not None and mem_util >= memory_threshold:
-                    print(
-                        f"  [Worker {worker_id}] GPU memory utilization "
-                        f"{mem_util:.2%} >= threshold {memory_threshold:.0%}, "
-                        f"killing process"
+                    mem_kind = "Host" if device == "cpu" else "GPU"
+                    _log(
+                        f"{mem_kind} memory {mem_util:.2%} >= threshold {memory_threshold:.0%} — killing process",
+                        level="WARN", worker=worker_id,
                     )
+                    with kill_reason_lock:
+                        kill_reason[0] = f"Memory>{memory_threshold}"
                     proc.kill()
                     return
 
             time.sleep(3)
 
+        # Deadline reached — kill the process if still running
+        if proc.poll() is None:
+            _log("Monitor deadline reached — killing process", level="WARN", worker=worker_id)
+            with kill_reason_lock:
+                kill_reason[0] = "timeout"
+            proc.kill()
+
+    # Launch threads
+    reader_thread = threading.Thread(target=output_reader, daemon=True)
     monitor_thread = threading.Thread(target=error_monitor, daemon=True)
+    reader_thread.start()
     monitor_thread.start()
 
+    # Wait for process and threads
     try:
         exit_code = proc.wait()
     except Exception:
@@ -390,43 +481,57 @@ def run_benchmark_with_prefix(
         log_f.close()
     monitor_thread.join(timeout=1)
 
+    # Collect CSV results and clean up temp file
+    with kill_reason_lock:
+        matched_pattern = kill_reason[0]
     try:
-        collect_csv_results(log_csv, tmp_log_csv, device, task)
+        collect_csv_results(log_csv, tmp_log_csv, device, task, kill_reason=matched_pattern)
     except Exception as e:
-        print(f"  [Worker {worker_id}] CSV collection error for {task.model}: {e}")
+        _log(f"CSV collection error for {task.model}: {e}", level="ERROR", worker=worker_id)
     finally:
-        # Clean up temp file
-        try:
+        with suppress(OSError):
             os.unlink(tmp_log_csv)
-        except OSError:
-            pass
 
-    # Determine success based on last non-empty line of log file
-    def check_success_from_log(log_path: Path) -> tuple[str, bool]:
-        """
-        Return (test_result, True) if last line ends with 'pass' or 'pass_due_to_skip'.
-        test_result is the last whitespace-separated part of the last non-empty line.
-        """
-        if not log_path.exists():
-            return "None", False
-        last_non_empty = ""
-        with open(log_path) as f:
-            for line in f:
-                stripped = line.strip()
-                if stripped:
-                    last_non_empty = stripped
-        if last_non_empty:
-            # Split by whitespace and take the last part
-            parts = last_non_empty.split()
-            test_result = parts[-1] if parts else ""
-            if test_result in ('pass', 'pass_due_to_skip') or re.fullmatch(r'[0-9.]+x', test_result):
-                return test_result, True
-            return test_result, False
-        return "None", False
+    test_result, success = _check_success_from_log(log_file)
+    return exit_code, success, test_result, matched_pattern
 
-    test_result, success = check_success_from_log(log_file)
 
-    return exit_code, success, test_result
+def _read_last_matching_row(tmp_log_csv: str, device: str) -> tuple[list[str], list[str]]:
+    """Read header and last device-matching row from a temp CSV. Returns (header, row)."""
+    if not os.path.isfile(tmp_log_csv):
+        return [], []
+    try:
+        with open(tmp_log_csv, newline='', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            rows = [row for row in reader if row]
+        if not rows:
+            return [], []
+        header = rows[0]
+        matching = [r for r in rows[1:] if r and r[0] == device]
+        return header, matching[-1] if matching else []
+    except Exception as e:
+        _log(f"Error reading temp CSV {tmp_log_csv}: {e}", level="WARN")
+        return [], []
+
+
+def _build_fallback_row(
+    device: str, task: TestTask, kill_reason: str | None,
+) -> tuple[list[str], list[str]]:
+    """Build a fallback (header, row) when the benchmark produced no CSV output."""
+    fail_status = kill_reason or "core_dump"
+    fallbacks = {
+        "accuracy": (
+            ["dev", "name", "batch_size", "accuracy"],
+            [device, task.model, "0", fail_status],
+        ),
+        "performance": (
+            ["dev", "name", "batch_size", "speedup", "abs_latency"],
+            [device, task.model, "0", "0", "0"],
+        ),
+    }
+    if task.scenario not in fallbacks:
+        raise ValueError(f"Unknown task.scenario: {task.scenario}")
+    return fallbacks[task.scenario]
 
 
 def collect_csv_results(
@@ -434,60 +539,28 @@ def collect_csv_results(
     tmp_log_csv: str,
     device: str,
     task: TestTask,
+    kill_reason: str | None = None,
 ) -> None:
-    """Append a crash row to the CSV file."""
-    import csv
+    """Collect benchmark results from *tmp_log_csv* and append to *log_csv*."""
+    header, row = _read_last_matching_row(tmp_log_csv, device)
+    if not row:
+        header, row = _build_fallback_row(device, task, kill_reason)
 
-    header = []
-    last_match = []
-
-    def condition(row: list[str]) -> bool:
-        return row and row[0] == device
-
-    if os.path.isfile(tmp_log_csv):
-        try:
-            with open(tmp_log_csv, newline='', encoding='utf-8') as f:
-                reader = csv.reader(f)
-                # Find first non-empty row as header
-                for row in reader:
-                    if row:  # skip empty rows
-                        header = row
-                        break
-                # Continue scanning for matching row
-                for row in reader:
-                    if row and condition(row):
-                        last_match = row
-        except Exception as e:
-            print(f"Warning: Error reading temp CSV {tmp_log_csv}: {e}")
-
-    if not last_match:
-        if task.scenario == "accuracy":
-            header = ["dev","name","batch_size","accuracy"]
-            last_match = [device, task.model, 0, "crashed"]
-        elif task.scenario == "performance":
-            header = ["dev","name","batch_size","speedup","abs_latency"]
-            last_match = [device, task.model, 0, 0, 0]
-        else:
-            raise ValueError(f"Unknown task.scenario: {task.scenario}")
-
-    # Build the final row
+    prefix = [task.scenario, task.suite, task.dt, task.mode]
     final_header = ["scenario", "suite", "dtype", "mode"] + header
-    final_row = [task.scenario, task.suite, task.dt, task.mode] + last_match
+    final_row = prefix + row
 
     with _csv_lock:
-        try:
-            exists = os.path.isfile(log_csv)
-            mode = 'a' if exists else 'w'
-            with open(log_csv, mode, newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                if not exists:
-                    writer.writerow(final_header)
-                writer.writerow(final_row)
-        except Exception as e:
-            raise RuntimeError(f"Error writing to destination file: {e}") from e
+        write_header = not log_csv.exists()
+        with open(log_csv, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(final_header)
+            writer.writerow(final_row)
 
 
 # CPU topology and command prefix generation
+@lru_cache(maxsize=1)
 def get_cpu_topology() -> int:
     """Return number of physical cores."""
     if IS_WINDOWS:
@@ -506,15 +579,28 @@ def _get_cpu_topology_windows() -> int:
             if line.isdigit():
                 physical_cores = int(line)
                 logical = os.cpu_count() or physical_cores
-                print(f"Detected (Windows): {logical} logical CPUs, {physical_cores} physical cores")
+                _log(f"CPU topology (Windows): {logical} logical, {physical_cores} physical cores")
                 return physical_cores
     except Exception:
         pass
     # Fallback: assume half of logical CPUs are physical cores
     logical = os.cpu_count() or 1
     physical_cores = max(logical // 2, 1)
-    print(f"Detected (Windows fallback): {logical} logical CPUs, estimated {physical_cores} physical cores")
+    _log(f"CPU topology (Windows fallback): {logical} logical, ~{physical_cores} physical cores")
     return physical_cores
+
+
+def _parse_cpu_range(range_str: str) -> int:
+    """Count CPUs from a range string like '0-7,12-19'."""
+    total = 0
+    for seg in range_str.split(','):
+        seg = seg.strip()
+        if '-' in seg:
+            lo, hi = map(int, seg.split('-'))
+            total += hi - lo + 1
+        else:
+            total += 1
+    return total
 
 
 def _get_cpu_topology_linux() -> int:
@@ -522,285 +608,470 @@ def _get_cpu_topology_linux() -> int:
     try:
         output = subprocess.check_output(["lscpu"], text=True)
     except Exception as e:
-        print(f"ERROR: Could not run lscpu: {e}")
-        sys.exit(1)
+        sys.exit(f"ERROR: Could not run lscpu: {e}")
 
-    online_cpus = None
-    threads_per_core = None
-
+    fields: dict[str, str] = {}
     for line in output.splitlines():
-        if "On-line CPU(s) list:" in line:
-            parts = line.split(':')
-            if len(parts) >= 2:
-                cpu_range = parts[1].strip()
-                count = 0
-                for segment in cpu_range.split(','):
-                    segment = segment.strip()
-                    if '-' in segment:
-                        lo, hi = map(int, segment.split('-'))
-                        count += hi - lo + 1
-                    else:
-                        count += 1
-                online_cpus = count
-        elif "Thread(s) per core:" in line:
-            parts = line.split(':')
-            if len(parts) >= 2:
-                threads_per_core = int(parts[1].strip())
+        if ':' in line:
+            key, _, val = line.partition(':')
+            fields[key.strip()] = val.strip()
 
-    if online_cpus is None or threads_per_core is None:
-        print("ERROR: Could not parse CPU topology")
-        sys.exit(1)
+    try:
+        online_cpus = _parse_cpu_range(fields["On-line CPU(s) list"])
+        threads_per_core = int(fields["Thread(s) per core"])
+    except (KeyError, ValueError) as e:
+        sys.exit(f"ERROR: Could not parse CPU topology: {e}")
 
     physical_cores = online_cpus // threads_per_core
-    print(f"Detected: {online_cpus} logical CPUs, {threads_per_core} threads/core → {physical_cores} physical cores")
+    _log(f"CPU topology: {online_cpus} logical, {threads_per_core} threads/core → {physical_cores} physical cores")
     return physical_cores
 
 
-def generate_command_prefixes(num_gpus: int) -> list[tuple[int, str, dict]]:
-    """
-    Read ZE_AFFINITY_MASK and CPU topology.
-    Returns list of (card_number, command_prefix, env_vars) for each GPU to use.
-    command_prefix includes numactl CPU binding; env_vars includes OMP_NUM_THREADS.
-    """
+def _parse_ze_affinity_mask(num_gpus: int) -> list[int]:
+    """Parse ZE_AFFINITY_MASK into a list of GPU indices, defaulting to 0..num_gpus-1."""
     ze_mask = os.environ.get("ZE_AFFINITY_MASK", "")
     if not ze_mask:
-        gpu_list = list(range(num_gpus))
-        print(f"ZE_AFFINITY_MASK not set, using all {num_gpus} GPUs")
-    else:
-        gpu_list = []
-        try:
-            for part in ze_mask.split(','):
-                part = part.strip()
-                if not part:
-                    continue
-                if '-' in part:
-                    parts = part.split('-')
-                    if len(parts) != 2:
-                        raise ValueError(f"Invalid range format: '{part}'")
-                    start, end = int(parts[0]), int(parts[1])
-                    gpu_list.extend(range(start, end+1))
-                else:
-                    gpu_list.append(int(part))
-        except (ValueError, IndexError) as e:
-            print(f"ERROR: Invalid ZE_AFFINITY_MASK format '{ze_mask}': {e}")
-            sys.exit(1)
-        if not gpu_list:
-            print("ERROR: ZE_AFFINITY_MASK produced no GPUs")
-            sys.exit(1)
-        print(f"ZE_AFFINITY_MASK: using GPUs {gpu_list}")
+        _log(f"ZE_AFFINITY_MASK not set — using all {num_gpus} GPUs")
+        return list(range(num_gpus))
 
+    gpu_list: list[int] = []
+    try:
+        for part in ze_mask.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            if '-' in part:
+                lo, hi = part.split('-', maxsplit=1)
+                gpu_list.extend(range(int(lo), int(hi) + 1))
+            else:
+                gpu_list.append(int(part))
+    except (ValueError, IndexError) as e:
+        sys.exit(f"ERROR: Invalid ZE_AFFINITY_MASK format '{ze_mask}': {e}")
+
+    if not gpu_list:
+        sys.exit("ERROR: ZE_AFFINITY_MASK produced no GPUs")
+    _log(f"ZE_AFFINITY_MASK → GPUs {gpu_list}")
+    return gpu_list
+
+
+def generate_gpu_workers(num_gpus: int) -> list[tuple[int, str, dict]]:
+    """Return (card, cmd_prefix, env_vars) per GPU with numactl CPU binding.
+
+    GPU list comes from ZE_AFFINITY_MASK (if set) or 0..num_gpus-1.
+    CPU cores are always distributed evenly by num_gpus.
+    """
+    gpu_list = _parse_ze_affinity_mask(num_gpus)
     physical_cores = get_cpu_topology()
-    cores_per_gpu = physical_cores // num_gpus
-    if cores_per_gpu < 1:
-        cores_per_gpu = 1
+    cores_per_gpu = max(physical_cores // num_gpus, 1)
 
-    prefixes = []
+    workers: list[tuple[int, str, dict]] = []
     for gpu in gpu_list:
-        start_core = gpu * cores_per_gpu
-        end_core = min(start_core + cores_per_gpu - 1, physical_cores - 1)
-        core_range = f"{start_core}-{end_core}"
-        env_vars = {}
+        start = gpu * cores_per_gpu
+        end = min(start + cores_per_gpu - 1, physical_cores - 1)
         if IS_WINDOWS:
-            prefix = ""
-            print(f"GPU {gpu} → OMP_NUM_THREADS={cores_per_gpu} (numactl not available on Windows)")
+            _log(f"  GPU {gpu}: OMP_NUM_THREADS={cores_per_gpu} (numactl N/A on Windows)")
+            workers.append((gpu, "", {"OMP_NUM_THREADS": str(cores_per_gpu)}))
         else:
-            env_vars = {"OMP_NUM_THREADS": str(cores_per_gpu)}
-            prefix = f"numactl -l -C {core_range}"
-            print(f"GPU {gpu} → cores {core_range} (OMP_NUM_THREADS={cores_per_gpu})")
-        prefixes.append((gpu, prefix, env_vars))
-    return prefixes
+            core_range = f"{start}-{end}"
+            _log(f"  GPU {gpu}: cores {core_range}, OMP_NUM_THREADS={cores_per_gpu}")
+            workers.append((gpu, f"numactl -l -C {core_range}", {"OMP_NUM_THREADS": str(cores_per_gpu)}))
+    return workers
+
+
+def _get_numa_nodes() -> list[list[int]]:
+    """Return a list of NUMA nodes, each containing its physical core IDs.
+
+    Falls back to a single node with all cores on Windows or parse failure.
+    """
+    if IS_WINDOWS:
+        n = get_cpu_topology()
+        return [list(range(n))]
+
+    try:
+        output = subprocess.check_output(["lscpu", "--parse=CPU,NODE,CORE"], text=True)
+    except Exception:
+        n = get_cpu_topology()
+        return [list(range(n))]
+
+    # lscpu --parse outputs "# ..." comment lines, then "cpu,node,core" data lines
+    # We want one CPU ID per physical core (deduplicate by node+core to skip hyperthreads)
+    seen_cores: set[tuple[int, int]] = set()
+    node_cpus: dict[int, list[int]] = {}
+    for line in output.splitlines():
+        if line.startswith('#') or not line.strip():
+            continue
+        parts = line.split(',')
+        if len(parts) < 3:
+            continue
+        try:
+            cpu_id, node_id, core_id = int(parts[0]), int(parts[1]), int(parts[2])
+        except ValueError:
+            continue
+        key = (node_id, core_id)
+        if key not in seen_cores:
+            seen_cores.add(key)
+            node_cpus.setdefault(node_id, []).append(cpu_id)
+
+    if not node_cpus:
+        n = get_cpu_topology()
+        return [list(range(n))]
+
+    result = [sorted(cpus) for _, cpus in sorted(node_cpus.items())]
+    for i, cores in enumerate(result):
+        _log(f"  NUMA node {i}: {len(cores)} physical cores")
+    return result
+
+
+def generate_cpu_workers(cores_per_instance: int | None = None) -> list[tuple[int, str, dict]]:
+    """Return (worker_id, cmd_prefix, env_vars) for CPU-only benchmarking.
+
+    Workers are created per NUMA node. If *cores_per_instance* is set,
+    total physical cores are split into chunks of that size instead.
+    """
+    if IS_WINDOWS:
+        physical_cores = get_cpu_topology()
+        cpi = cores_per_instance or physical_cores
+        num_workers = max(physical_cores // cpi, 1)
+        workers: list[tuple[int, str, dict]] = []
+        for i in range(num_workers):
+            _log(f"  CPU worker {i}: OMP_NUM_THREADS={cpi} (numactl N/A on Windows)")
+            workers.append((i, "", {"OMP_NUM_THREADS": str(cpi)}))
+        return workers
+
+    numa_nodes = _get_numa_nodes()
+
+    if cores_per_instance is not None:
+        # Flatten all physical cores and chunk by cores_per_instance
+        all_cores: list[int] = []
+        for cores in numa_nodes:
+            all_cores.extend(cores)
+        all_cores.sort()
+        num_workers = max(len(all_cores) // cores_per_instance, 1)
+        workers = []
+        for i in range(num_workers):
+            start = i * cores_per_instance
+            end = min(start + cores_per_instance, len(all_cores))
+            chunk = all_cores[start:end]
+            if not chunk:
+                break
+            core_range = _cores_to_range_str(chunk)
+            _log(f"  CPU worker {i}: cores {core_range}, OMP_NUM_THREADS={len(chunk)}")
+            workers.append((
+                i,
+                f"numactl -l -C {core_range}",
+                {"OMP_NUM_THREADS": str(len(chunk))},
+            ))
+        return workers
+
+    # Default: one worker per NUMA node
+    workers = []
+    for node_idx, cores in enumerate(numa_nodes):
+        core_range = _cores_to_range_str(cores)
+        _log(f"  CPU worker {node_idx} (NUMA {node_idx}): cores {core_range}, OMP_NUM_THREADS={len(cores)}")
+        workers.append((
+            node_idx,
+            f"numactl -m {node_idx} -C {core_range}",
+            {"OMP_NUM_THREADS": str(len(cores))},
+        ))
+    return workers
+
+
+def _cores_to_range_str(cores: list[int]) -> str:
+    """Convert a sorted list of core IDs to a compact range string like '0-7,12-19'."""
+    if not cores:
+        return ""
+    ranges: list[str] = []
+    start = prev = cores[0]
+    for c in cores[1:]:
+        if c == prev + 1:
+            prev = c
+        else:
+            ranges.append(f"{start}-{prev}" if start != prev else str(start))
+            start = prev = c
+    ranges.append(f"{start}-{prev}" if start != prev else str(start))
+    return ",".join(ranges)
+
+
+# Argument validation helpers
+
+VALID_SUITES: set[str] = {"huggingface", "timm_models", "torchbench"}
+VALID_DT: set[str] = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16"}
+VALID_MODES: set[str] = {"inference", "training"}
+VALID_SCENARIOS: set[str] = {"accuracy", "performance"}
+
+
+def _filter_valid(items: list[str], valid_set: set[str], name: str) -> list[str]:
+    """Keep only items in *valid_set*, warning about invalid ones."""
+    if invalid := sorted(set(items) - valid_set):
+        _log(f"Skipping invalid {name}: {', '.join(invalid)}", level="WARN")
+    return [i for i in items if i in valid_set]
+
+
+def _is_numeric(s: str) -> bool:
+    """Return True if *s* looks like a number (int or float)."""
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+
+def _load_tasks_from_file(path: str) -> list[TestTask]:
+    """Load tasks from a delimited file (comma, tab, semicolon, or whitespace).
+
+    Expected columns: suite, dtype, mode, model, result
+    The *result* column determines scenario: numeric → performance, else → accuracy.
+    A header row is auto-detected and skipped.
+    """
+    file_path = Path(path)
+    if not file_path.is_file():
+        sys.exit(f"ERROR: Task file not found: {path}")
+
+    tasks: list[TestTask] = []
+    with open(file_path, encoding="utf-8") as f:
+        for lineno, raw in enumerate(f, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            # Split by comma, semicolon, tab, or whitespace
+            fields = re.split(r'[,;\t]\s*|\s+', line)
+            fields = [f.strip() for f in fields if f.strip()]
+            if len(fields) < 5:
+                _log(f"Skipping line {lineno}: expected 5+ fields, got {len(fields)}: {line!r}", level="WARN")
+                continue
+            suite, dt, mode, model, result = fields[0], fields[1], fields[2], fields[3], fields[4]
+            # Skip header row
+            if suite.lower() == "suite":
+                continue
+            scenario = "performance" if _is_numeric(result) else "accuracy"
+            tasks.append(TestTask(suite, dt, mode, scenario, model))
+
+    # Deduplicate while preserving order
+    seen: set[tuple] = set()
+    unique: list[TestTask] = []
+    for t in tasks:
+        key = (t.suite, t.dt, t.mode, t.scenario, t.model)
+        if key not in seen:
+            seen.add(key)
+            unique.append(t)
+    return unique
+
+
+def _get_num_gpus(required: bool = True) -> int | None:
+    """Read and validate the NUM_GPUS environment variable.
+
+    If *required* is False, returns None when the variable is unset.
+    """
+    raw = os.getenv('NUM_GPUS')
+    if raw is None:
+        if required:
+            sys.exit("ERROR: Environment variable NUM_GPUS is not set.")
+        return None
+    try:
+        n = int(raw)
+    except ValueError:
+        sys.exit(f"ERROR: NUM_GPUS must be an integer, got '{raw}'.")
+    if n <= 0:
+        sys.exit(f"ERROR: NUM_GPUS must be positive, got {n}.")
+    return n
+
+
+def _parse_numactl_args(numactl_args: str, num_gpus: int) -> list[tuple[int, str, dict]]:
+    """Parse user-provided --numactl-args into worker tuples."""
+    prefix_strings = [p.strip().rstrip(';') for p in numactl_args.split(';') if p.strip()]
+    if not prefix_strings:
+        sys.exit("ERROR: --numactl-args produced no valid prefixes.")
+    if len(prefix_strings) < num_gpus:
+        prefix_strings += [prefix_strings[-1]] * (num_gpus - len(prefix_strings))
+    workers: list[tuple[int, str, dict]] = []
+    for i, ps in enumerate(prefix_strings):
+        m = re.search(r'ZE_AFFINITY_MASK=(\d+)', ps)
+        workers.append((int(m.group(1)) if m else i, ps, {}))
+    _log(f"Using user-provided NUMACTL_ARGS ({len(workers)} workers)")
+    return workers
 
 
 # Main orchestrator
+
 def main():
-    parser = argparse.ArgumentParser(description="Run E2E tests with per‑GPU job queue and hang detection")
+    parser = argparse.ArgumentParser(
+        description="Run E2E tests with per-GPU job queue and hang detection",
+    )
     parser.add_argument("--suite", default="",
-                        help="Comma- or space-separated list of suites. Valid: huggingface, timm_models, torchbench. "
-                             "Empty means all.")
-    parser.add_argument("--dt", default="",
-                        help="Comma- or space-separated list of data types. Valid: float32, bfloat16, float16, "
-                             "amp_bf16, amp_fp16. Empty means all.")
+                        help="Comma- or space-separated suites (huggingface, timm_models, torchbench). Empty = all.")
+    parser.add_argument("--dt", "--dtype", default="",
+                        help="Comma- or space-separated dtypes (float32, bfloat16, float16, amp_bf16, amp_fp16). Empty = all.")
     parser.add_argument("--mode", default="",
-                        help="Comma- or space-separated list of modes. Valid: inference, training. Empty means all.")
+                        help="Comma- or space-separated modes (inference, training). Empty = all.")
     parser.add_argument("--scenario", default="",
-                        help="Comma- or space-separated list of scenarios. Valid: accuracy, performance. Empty means all.")
+                        help="Comma- or space-separated scenarios (accuracy, performance). Empty = all.")
     parser.add_argument("--model-only", default=None,
-                        help="Run only a single model (overrides list file).")
-    parser.add_argument("--device", default="xpu", help="Device type (xpu or cuda)")
+                        help="Run only specific model(s) (overrides list file).")
+    parser.add_argument("--device", default="xpu", help="Device type (xpu, cuda, or cpu)")
     parser.add_argument("--shape", default="static", help="Shape mode (static or dynamic)")
+    parser.add_argument("--task-file", default=None,
+                        help="Load tasks from a delimited file (columns: suite dtype mode model result). "
+                             "Overrides --suite/--dt/--mode/--scenario/--model-only.")
+    parser.add_argument("--cores-per-instance", type=int, default=None,
+                        help="CPU-only: cores per worker instance. Default = all cores per NUMA node.")
     parser.add_argument("--numactl-args", default="",
                         help="Override NUMACTL_ARGS (semicolon-separated per GPU)")
     args = parser.parse_args()
 
-    # Check required environment variables
-    num_gpus_str = os.getenv('NUM_GPUS')
-    if num_gpus_str is None:
-        sys.exit("ERROR: Environment variable NUM_GPUS is not set.")
-    try:
-        num_gpus = int(num_gpus_str)
-    except ValueError:
-        sys.exit(f"ERROR: NUM_GPUS must be an integer, got '{num_gpus_str}'.")
-    if num_gpus <= 0:
-        sys.exit(f"ERROR: NUM_GPUS must be positive, got {num_gpus}.")
+    is_cpu = args.device == "cpu"
+    num_gpus = _get_num_gpus(required=not is_cpu)
 
-    print(f"NUM_GPUS = {num_gpus}")
-
-    # Change to pytorch directory (workflow already cd's there)
     if not Path("benchmarks/dynamo").is_dir():
-        print("ERROR: benchmarks/dynamo directory not found. Are you in the pytorch directory?")
-        sys.exit(1)
+        sys.exit("ERROR: benchmarks/dynamo directory not found. Are you in the pytorch directory?")
 
-    VALID_SUITES = {"huggingface", "timm_models", "torchbench"}
-    VALID_DT = {"float32", "bfloat16", "float16", "amp_bf16", "amp_fp16"}
-    VALID_MODES = {"inference", "training"}
-    VALID_SCENARIOS = {"accuracy", "performance"}
-
-    # Parse arguments with support for both comma and space separation
-    suites = parse_string_list(args.suite) if args.suite else list(VALID_SUITES)
-    dts = parse_string_list(args.dt) if args.dt else list(VALID_DT)
-    modes = parse_string_list(args.mode) if args.mode else list(VALID_MODES)
-    scenarios = parse_string_list(args.scenario) if args.scenario else list(VALID_SCENARIOS)
-
-    # Validate and filter
-    def filter_valid(items, valid_set, name):
-        valid_items = [i for i in items if i in valid_set]
-        invalid = [i for i in items if i not in valid_set]
-        if invalid:
-            print(f"Warning: Skipping invalid {name}: {', '.join(invalid)}")
-        return valid_items
-
-    suites = filter_valid(suites, VALID_SUITES, "suite")
-    dts = filter_valid(dts, VALID_DT, "data type")
-    modes = filter_valid(modes, VALID_MODES, "mode")
-    scenarios = filter_valid(scenarios, VALID_SCENARIOS, "scenario")
-
-    if not suites or not dts or not modes or not scenarios:
-        print("ERROR: No valid combinations left after filtering.")
-        sys.exit(1)
-
-    # Build task list
-    tasks: list[TestTask] = []
-    for suite in suites:
-        for mode in modes:
-            for dt in dts:
-                for scenario in scenarios:
-                    models = get_model_list(suite, mode, args.model_only)
-                    for model in sorted(set(models)):
-                        tasks.append(TestTask(suite, dt, mode, scenario, model))
-
-    total_tasks = len(tasks)
-
-    if total_tasks == 0:
-        print("No valid tasks generated.")
-        sys.exit(1)
-
-    print(f"Total tasks to run: {total_tasks}")
-
-    # Determine GPU workers and CPU binding
-    if args.numactl_args and args.numactl_args.strip():
-        prefix_strings = [p.strip().rstrip(';') for p in args.numactl_args.split(';') if p.strip()]
-        if len(prefix_strings) < num_gpus:
-            prefix_strings += [prefix_strings[-1]] * (num_gpus - len(prefix_strings))
-        # Extract card number from ZE_AFFINITY_MASK=N in each prefix, fallback to index
-        workers = []
-        for i, ps in enumerate(prefix_strings):
-            m = re.search(r'ZE_AFFINITY_MASK=(\d+)', ps)
-            card = int(m.group(1)) if m else i
-            workers.append((card, ps, {}))
-        print(f"Using user-provided NUMACTL_ARGS prefixes ({len(workers)} workers)")
+    if args.task_file:
+        # Load tasks from file — overrides suite/dt/mode/scenario/model-only
+        tasks = _load_tasks_from_file(args.task_file)
+        if not tasks:
+            sys.exit(f"No valid tasks found in {args.task_file}.")
+        suites = sorted({t.suite for t in tasks})
+        dts = sorted({t.dt for t in tasks})
+        modes = sorted({t.mode for t in tasks})
+        scenarios = sorted({t.scenario for t in tasks})
     else:
-        workers = generate_command_prefixes(num_gpus)
-        print(f"Auto-generated {len(workers)} workers from ZE_AFFINITY_MASK")
+        # Parse & validate parameter lists
+        suites = _filter_valid(parse_string_list(args.suite) or list(VALID_SUITES), VALID_SUITES, "suite")
+        dts = _filter_valid(parse_string_list(args.dt) or list(VALID_DT), VALID_DT, "data type")
+        modes = _filter_valid(parse_string_list(args.mode) or list(VALID_MODES), VALID_MODES, "mode")
+        scenarios = _filter_valid(parse_string_list(args.scenario) or list(VALID_SCENARIOS), VALID_SCENARIOS, "scenario")
 
-    _run_workers(tasks, workers, args)
+        if not all([suites, dts, modes, scenarios]):
+            sys.exit("ERROR: No valid combinations left after filtering.")
+
+        # Build task list
+        tasks = [
+            TestTask(suite, dt, mode, scenario, model)
+            for suite, mode, dt, scenario in product(suites, modes, dts, scenarios)
+            for model in sorted(set(get_model_list(suite, mode, args.model_only)))
+        ]
+        if not tasks:
+            sys.exit("No valid tasks generated.")
+
+    _banner("Configuration")
+    if num_gpus is not None:
+        _log(f"NUM_GPUS:   {num_gpus}")
+    _log(f"Suites:     {', '.join(suites)}")
+    _log(f"Dtypes:     {', '.join(dts)}")
+    _log(f"Modes:      {', '.join(modes)}")
+    _log(f"Scenarios:  {', '.join(scenarios)}")
+    _log(f"Device:     {args.device}")
+    _log(f"Shape:      {args.shape}")
+    if args.cores_per_instance:
+        _log(f"Cores/inst: {args.cores_per_instance}")
+    _log(f"Tasks:      {len(tasks)}")
+
+    # Determine workers and CPU binding
+    _banner("Worker Setup")
+    if args.numactl_args and args.numactl_args.strip():
+        if num_gpus is None:
+            sys.exit("ERROR: --numactl-args requires NUM_GPUS to be set.")
+        workers = _parse_numactl_args(args.numactl_args, num_gpus)
+    elif is_cpu:
+        workers = generate_cpu_workers(args.cores_per_instance)
+        _log(f"Auto-generated {len(workers)} CPU worker(s)")
+    else:
+        if num_gpus is None:
+            sys.exit("ERROR: NUM_GPUS must be set for GPU devices.")
+        workers = generate_gpu_workers(num_gpus)
+        _log(f"Auto-generated {len(workers)} GPU worker(s)")
+
+    _banner("Running Benchmarks")
+    _run_workers(tasks, workers, args.device, args.shape)
 
 
-def _run_workers(tasks, workers, args):
-    total_tasks = len(tasks)
+def _run_workers(
+    tasks: list[TestTask],
+    workers: list[tuple[int, str, dict]],
+    device: str,
+    shape: str,
+) -> None:
+    total = len(tasks)
+    task_queue: queue.Queue[TestTask] = queue.Queue()
+    for t in tasks:
+        task_queue.put(t)
 
-    # Job queue
-    task_queue = queue.Queue()
-    for task in tasks:
-        task_queue.put(task)
+    results: queue.Queue[tuple[TestTask, bool, str, str | None]] = queue.Queue()
+    completed = 0
+    completed_lock = threading.Lock()
+    base_log_dir = Path.cwd().resolve() / "inductor_log"
+    wall_start = time.monotonic()
 
-    results_queue = queue.Queue()  # (task, success)
-    completed_counter = [0]
-    counter_lock = threading.Lock()
-
-    def worker(worker_id: int, card: int, cmd_prefix: str, env_vars: dict,
-            total_tasks: int, completed_counter: list, counter_lock: threading.Lock,
-            device: str, shape: str):
+    def _worker(worker_id: int, card: int, cmd_prefix: str, env_vars: dict) -> None:
+        nonlocal completed
         while True:
             try:
                 task = task_queue.get_nowait()
             except queue.Empty:
-                break
+                return
 
-            log_dir = Path.cwd().resolve() / "inductor_log" / task.suite / task.dt / task.mode / task.scenario
+            task_start = time.monotonic()
+            log_dir = base_log_dir / task.suite / task.dt / task.mode / task.scenario
+            kill_reason: str | None = None
             try:
-                exit_code, success, test_result = run_benchmark_with_prefix(
-                    task=task,
-                    card=card,
-                    cmd_prefix=cmd_prefix,
-                    env_vars=env_vars,
-                    log_dir=log_dir,
-                    worker_id=worker_id,
-                    device=device,
-                    shape=shape,
+                exit_code, success, test_result, kill_reason = run_benchmark_with_prefix(
+                    task=task, card=card, cmd_prefix=cmd_prefix, env_vars=env_vars,
+                    log_dir=log_dir, worker_id=worker_id, device=device, shape=shape,
                 )
             except Exception as e:
-                print(f"  [Worker {worker_id}] Exception running {task.model}: {e}")
+                _log(f"Exception running {task.model}: {e}", level="ERROR", worker=worker_id)
                 exit_code, success, test_result = -1, False, "exception"
 
-            # Increment completed counter
-            with counter_lock:
-                completed_counter[0] += 1
-                new_completed = completed_counter[0]
-            prefix = f"[Tasks {new_completed}/{total_tasks}]"
+            elapsed = _fmt_duration(time.monotonic() - task_start)
+            with completed_lock:
+                completed += 1
+                n = completed
 
+            pct = n * 100 // total
+            progress = f"[{n}/{total} {pct}%]"
+            model_info = f"{task.suite}/{task.model} ({task.dt}, {task.mode}, {task.scenario})"
             if success:
-                print(f"  {prefix} [Worker {worker_id}] {task} successfully {test_result}.")
+                _log(f"{progress} PASS  {model_info} ({elapsed}) → {test_result}", worker=worker_id)
+            elif kill_reason:
+                _log(f"{progress} KILL  {model_info} ({elapsed}) → {kill_reason}", level="WARN", worker=worker_id)
             elif exit_code == 0:
-                print(f"  {prefix} [Worker {worker_id}] {task} failed {test_result}.")
-            elif exit_code == -9:
-                print(f"  {prefix} [Worker {worker_id}] {task} killed due to hang issue.")
+                _log(f"{progress} FAIL  {model_info} ({elapsed}) → {test_result}", level="WARN", worker=worker_id)
             else:
-                print(f"  {prefix} [Worker {worker_id}] {task} failed with exit code {exit_code}.")
+                _log(f"{progress} FAIL  {model_info} ({elapsed}) → exit code {exit_code}", level="ERROR", worker=worker_id)
 
-            results_queue.put((task, success))
+            results.put((task, success, test_result, kill_reason))
 
-    threads = []
-    for idx, (card, prefix, env_vars) in enumerate(workers):
-        t = threading.Thread(
-            target=worker,
-            args=(idx, card, prefix, env_vars,
-                  total_tasks, completed_counter, counter_lock,
-                  args.device, args.shape),
-            daemon=True
-        )
+    threads = [
+        threading.Thread(target=_worker, args=(idx, card, pfx, ev), daemon=True)
+        for idx, (card, pfx, ev) in enumerate(workers)
+    ]
+    for t in threads:
         t.start()
-        threads.append(t)
-
     for t in threads:
         t.join()
 
-    # Collect results
-    failed_tasks = []
-    while not results_queue.empty():
-        task, success = results_queue.get()
-        if not success:
-            failed_tasks.append(task)
+    # Summary
+    wall_time = _fmt_duration(time.monotonic() - wall_start)
+    all_results = [results.get() for _ in range(results.qsize())]
+    failed = [(task, tr, kr) for task, ok, tr, kr in all_results if not ok]
+    passed = total - len(failed)
 
-    print("\n" + "=" * 40)
-    print("Test execution finished")
-    print(f"Total tasks: {total_tasks}")
-    print(f"Failed tasks: {len(failed_tasks)}")
-    if failed_tasks:
-        print("Failed tasks:")
-        for task in failed_tasks:
-            print(f"  - {task.suite} {task.dt} {task.mode} {task.scenario} {task.model}")
+    _banner("Summary")
+    _log(f"Total:     {total}")
+    _log(f"Passed:    {passed} ({passed * 100 // total}%)")
+    _log(f"Failed:    {len(failed)} ({len(failed) * 100 // total}%)")
+    _log(f"Wall time: {wall_time}")
+    if failed:
+        print(flush=True)
+        _log("Failed tasks:")
+        for task, test_result, kill_reason in failed:
+            reason = kill_reason or test_result
+            _log(f"  ✗ {task.suite}/{task.model} ({task.dt}, {task.mode}, {task.scenario}) → {reason}")
     else:
-        print(f"[Tasks {total_tasks}/{total_tasks}] All tasks completed successfully.")
+        print(flush=True)
+        _log("All tasks completed successfully.")
+
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
