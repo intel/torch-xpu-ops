@@ -806,7 +806,7 @@ struct AtomicCASFP<T, 8, R> {
     unsigned long long assumed;
     unsigned long long newval;
 
-    // 🌟 Using generic AtomicRef
+    // Using generic AtomicRef
     AtomicRef<unsigned long long, R> target(*address_as_ull);
 
     unsigned long long expected_ull = *((unsigned long long*)&expected);
