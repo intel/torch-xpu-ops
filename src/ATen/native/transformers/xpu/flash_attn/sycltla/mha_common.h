@@ -289,14 +289,14 @@ constexpr int kBwdNPad = 128;
 // See: https://github.khronos.org/SPIRV-Registry/extensions/INTEL/
 //      SPV_INTEL_2d_block_io.html#_restrictions
 
-static bool is_64_bytes_aligned(const at::Tensor& t) {
+inline bool is_64_bytes_aligned(const at::Tensor& t) {
   return reinterpret_cast<uintptr_t>(t.data_ptr()) % 64 == 0;
 }
 
 // Ensure tensor satisfies block 2D load 64-byte base address alignment
 // requirement. Tries contiguous() first (may reuse storage), falls back to
 // clone() which always allocates fresh aligned memory.
-static at::Tensor ensure_alignment_for_sdpa(const at::Tensor& t) {
+inline at::Tensor ensure_alignment_for_sdpa(const at::Tensor& t) {
   if (is_64_bytes_aligned(t)) {
     return t;
   }

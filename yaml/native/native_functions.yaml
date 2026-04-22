@@ -9511,6 +9511,15 @@
 
 - func: inverse.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
 
+- func: triangular_solve.X(Tensor self, Tensor A, bool upper=True, bool transpose=False, bool unitriangular=False, *, Tensor(a!) X, Tensor(b!) M) -> (Tensor(a!) solution, Tensor(b!) cloned_coefficient)
+  structured: True
+  dispatch:
+    SparseCsrXPU: triangular_solve_out_sparse_csr_xpu
+
+- func: triangular_solve(Tensor self, Tensor A, bool upper=True, bool transpose=False, bool unitriangular=False) -> (Tensor solution, Tensor cloned_coefficient)
+  structured_delegate: triangular_solve.X
+  variants: method, function
+
 - func: addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
   structured_delegate: addmm.out
   variants: function, method
