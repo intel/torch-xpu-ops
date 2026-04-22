@@ -24,6 +24,9 @@ jobs:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -39,6 +42,44 @@ jobs:
           cd ./torch-xpu-ops
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
           bash .github/scripts/lintrunner.sh
+      - name: Check reproducer exists for AI-generated PR
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd ./torch-xpu-ops
+          FAIL_MSG=""
+          # Check if reproducer files exist
+          if ! ls test/repro/test_*.py 1>/dev/null 2>&1; then
+            FAIL_MSG="No reproducer test found. AI-generated PRs must include at least one reproducer in \`test/repro/test_*.py\`."
+          else
+            # Validate pytest format: must contain test functions or test classes
+            VALID=false
+            for f in test/repro/test_*.py; do
+              if grep -qE '^\s*(def test_|class Test)' "$f"; then
+                VALID=true
+              else
+                FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
+                break
+              fi
+            done
+            if [ "$VALID" = true ] && [ -z "$FAIL_MSG" ]; then
+              echo "All reproducer tests are valid pytest format:"
+              ls test/repro/test_*.py
+            fi
+          fi
+          if [ -n "$FAIL_MSG" ]; then
+            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+            gh pr comment ${{ github.event.pull_request.number }} \
+              --body "@${PR_AUTHOR} ${FAIL_MSG}
+
+          Please ensure your reproducer follows pytest conventions:
+          - File name: \`test/repro/test_<description>.py\`
+          - Contains \`def test_...()\` functions or \`class Test...\` classes
+          - Runnable via \`pytest test/repro/\`"
+            echo "::error::${FAIL_MSG}"
+            exit 1
+          fi
 
   conditions-filter-win:
     if: >-
@@ -141,6 +182,65 @@ jobs:
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
+
+  reproducer-test:
+    needs: [linux-build]
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+    runs-on: pvc_rolling
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Run reproducer tests
+        id: reproducer
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pytest test/repro/ -v 2>&1 | tee reproducer_output.txt
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        env:
+          REPRODUCER_RESULT: ${{ steps.reproducer.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+            const outcome = process.env.REPRODUCER_RESULT;
+            const prNumber = context.issue.number;
+            let body;
+            if (outcome === 'success') {
+              body = '✅ Reproducer test passed. All tests in `test/repro/` executed successfully.';
+            } else {
+              const output = fs.readFileSync('reproducer_output.txt', 'utf8');
+              body = [
+                '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
+                '',
+                '<details><summary>Reproducer test output</summary>',
+                '',
+                '```',
+                output,
+                '```',
+                '',
+                '</details>',
+                '',
+                'Instructions:',
+                '1. Review the test failure output above',
+                '2. Identify the root cause of the failure',
+                '3. Update the relevant source code to fix the issue',
+                '4. Ensure the reproducer in test/repro/ passes after your fix'
+              ].join('\n');
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
+      - name: Fail if reproducer failed
+        if: ${{ steps.reproducer.outcome == 'failure' }}
+        run: exit 1
 
   windows:
     name: windows
