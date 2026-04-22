@@ -84,9 +84,7 @@ jobs:
 
   conditions-filter-win:
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
-      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
-      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -201,6 +199,9 @@ jobs:
   windows:
     name: windows
     needs: [conditions-filter-win, preci-lint-check]
+    if: >-
+      ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
@@ -208,5 +209,5 @@ jobs:
       runner: Windows_CI
       build_runner: Windows_CI_Build
       src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
-      has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
+      has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ut')}}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}

@@ -76,7 +76,6 @@ env:
 jobs:
   build:
     runs-on: ${{ inputs.build_runner }}
-    if: ${{ inputs.src_changed == 'true' || inputs.has_label == 'true' }}
     timeout-minutes: 1000
     outputs:
       torch_whl_name: ${{ steps.find_whl.outputs.torch_whl_name }}
