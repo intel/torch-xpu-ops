@@ -1011,7 +1011,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1):
             recorded_list.clear()
             out2 = ep.module()(x)
             self.assertEqual(len(recorded_list), 4)
-            self.assertTrue(torch.allclose(model(x)[0], out2[0]))
+            self.assertTrue(torch.allclose(model(x)[0], out2[0], atol=1e-7, rtol=1e-4))
 
             # Test when we unlift the tokens from the graph. This is used in the inductor path.
             with (

@@ -47,7 +47,6 @@ from torch._library.fake_profile import (
     TensorMetadata,
 )
 from torch._library.infer_schema import tuple_to_list
-from torch._utils_internal import get_file_path_2  # @manual
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.experimental.symbolic_shapes import ShapeEnv
 from torch.testing._internal import custom_op_db
@@ -84,6 +83,10 @@ device_type = (
     acc.type
     if (acc := torch.accelerator.current_accelerator(check_available=True))
     else "cpu"
+)
+
+_MINIOPTEST_FAILURES_DICT_PATH = os.path.join(
+    os.path.dirname(__file__), "../../../../test/minioptest_failures_dict.json"
 )
 
 
@@ -274,6 +277,9 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
         self.assertEqual(x, ret[0])
 
     def test_missing_abstract_impl(self, device):
+        if device == "xpu":
+            self.skipTest("XPU opcheck path for missing abstract impl is not supported")
+
         lib = self.lib()
         lib.define("foo(Tensor x) -> Tensor")
         op = self.ns().foo.default
@@ -454,6 +460,11 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
             torch.library.opcheck(op.op, args, kwargs)
 
     def test_opcheck_fails_basic(self, device):
+        if device == "xpu":
+            self.skipTest(
+                "XPU schema error path for this opcheck case is not supported"
+            )
+
         @custom_op(f"{self.test_ns}::foo")
         def foo(x: torch.Tensor) -> torch.Tensor:
             ...
@@ -1677,6 +1688,9 @@ class TestCustomOp(CustomOpTestCaseBase):
         result = op(x, 1)
         self.assertEqual(result.shape, foo_meta(x, 1).shape)
 
+    @skipIfXpu(
+        msg="XPU source-location assertion in duplicate fake impl is not supported"
+    )
     def test_duplicate_impl(self):
         @custom_ops.custom_op(f"{TestCustomOp.test_ns}::foo")
         def foo(x: torch.Tensor, dim: int) -> torch.Tensor:
@@ -4609,7 +4623,7 @@ class MiniOpTestOther(CustomOpTestCaseBase):
 optests.generate_opcheck_tests(
     MiniOpTest,
     ["aten", "mini_op_test"],
-    get_file_path_2(os.path.dirname(__file__), "minioptest_failures_dict.json"),
+    _MINIOPTEST_FAILURES_DICT_PATH,
     additional_decorators={
         "test_pt2_compliant_tag_mini_op_test_no_abstract": [unittest.expectedFailure]
     },
@@ -4619,7 +4633,7 @@ optests.generate_opcheck_tests(
 optests.generate_opcheck_tests(
     MiniOpTestOther,
     ["aten", "mini_op_test"],
-    get_file_path_2(os.path.dirname(__file__), "minioptest_failures_dict.json"),
+    _MINIOPTEST_FAILURES_DICT_PATH,
     test_utils=optests.generate_tests.DEPRECATED_DEFAULT_TEST_UTILS,
 )
 

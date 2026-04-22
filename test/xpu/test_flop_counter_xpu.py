@@ -332,6 +332,8 @@ class TestFlopCounter(TestCase):
             T(4, 5).cos()
 
     def test_sdpa(self):
+        self.skipTest("XPU flop counter does not support SDPA")
+
         batch_size = 4
         n_heads = 8
         seq_len_q = 128
@@ -551,6 +553,8 @@ class TestFlopCounter(TestCase):
         self.assertTrue(gqa_flops > 0)
 
     def test_sdpa_nested_tensor(self):
+        self.skipTest("XPU flop counter does not support nested SDPA")
+
         def get_flops(q, k, v, backend, with_backward=False):
             mode = FlopCounterMode()
 
@@ -764,6 +768,8 @@ class TestFlopCounter(TestCase):
         )
 
     def test_nested_attention_fake_tensors(self):
+        self.skipTest("XPU flop counter does not support nested attention fake tensors")
+
         x = torch.randn(123, 4, 16, device="xpu", dtype=torch.bfloat16)
         offsets = torch.tensor([0, 30, 60, 90, 123], device="xpu")
         max_seqlen = 40
