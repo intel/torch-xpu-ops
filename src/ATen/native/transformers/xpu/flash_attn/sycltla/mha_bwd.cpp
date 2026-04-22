@@ -8,15 +8,36 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-#include <sycltla/mha_bwd.h>
+#include <sycltla/mha_bwd_launch.h>
 #include <sycltla/mha_common.h>
 
 namespace cute {
 
-// Declared but not defined here -- explicit specializations are provided by
-// the per-headdim compilation units (mha_bwd_hdim*.cpp).
-template <typename T, int Headdim, bool is_causal>
-void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params);
+// Explicit specializations for all headdim variants (merged into a single
+// compilation unit to reduce peak memory during parallel builds).
+
+#define INSTANTIATE_BWD_HDIM(T, HDIM, CAUSAL, hdim_fn)  \
+  template <>                                           \
+  void run_mha_bwd_<T, HDIM, CAUSAL>(                   \
+      sycl::queue & queue, FLASH_BWD_params & params) { \
+    hdim_fn<T, CAUSAL>(queue, params);                  \
+  }
+
+#define INSTANTIATE_BWD_HDIM_ALL(HDIM, hdim_fn)                \
+  INSTANTIATE_BWD_HDIM(cute::half_t, HDIM, false, hdim_fn)     \
+  INSTANTIATE_BWD_HDIM(cute::half_t, HDIM, true, hdim_fn)      \
+  INSTANTIATE_BWD_HDIM(cute::bfloat16_t, HDIM, false, hdim_fn) \
+  INSTANTIATE_BWD_HDIM(cute::bfloat16_t, HDIM, true, hdim_fn)
+
+INSTANTIATE_BWD_HDIM_ALL(32, run_mha_bwd_hdim32)
+INSTANTIATE_BWD_HDIM_ALL(64, run_mha_bwd_hdim64)
+INSTANTIATE_BWD_HDIM_ALL(96, run_mha_bwd_hdim96)
+INSTANTIATE_BWD_HDIM_ALL(128, run_mha_bwd_hdim128)
+INSTANTIATE_BWD_HDIM_ALL(192, run_mha_bwd_hdim192)
+INSTANTIATE_BWD_HDIM_ALL(256, run_mha_bwd_hdim256)
+
+#undef INSTANTIATE_BWD_HDIM_ALL
+#undef INSTANTIATE_BWD_HDIM
 
 template <typename T, bool is_causal>
 void run_mha_bwd_(sycl::queue& queue, FLASH_BWD_params& params) {
