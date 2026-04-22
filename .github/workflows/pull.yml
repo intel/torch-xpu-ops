@@ -70,12 +70,13 @@ jobs:
           fi
           if [ -n "$FAIL_MSG" ]; then
             PR_AUTHOR="${{ github.event.pull_request.user.login }}"
-            COMMENT_BODY="@${PR_AUTHOR} ${FAIL_MSG}
-
-Please ensure your reproducer follows pytest conventions:
-- File name: \`test/repro/test_<description>.py\`
-- Contains \`def test_...()\` functions or \`class Test...\` classes
-- Runnable via \`pytest test/repro/\`"
+            printf -v COMMENT_BODY '%s\n' \
+              "@${PR_AUTHOR} ${FAIL_MSG}" \
+              "" \
+              "Please ensure your reproducer follows pytest conventions:" \
+              "- File name: \`test/repro/test_<description>.py\`" \
+              "- Contains \`def test_...()\` functions or \`class Test...\` classes" \
+              "- Runnable via \`pytest test/repro/\`"
             gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
