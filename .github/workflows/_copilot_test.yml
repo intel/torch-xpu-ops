@@ -1,0 +1,167 @@
+name: Copilot Test Runner
+
+# Reusable workflow that runs only the specific test files passed in.
+# Used by copilot-ci.yml to run only tests that Copilot's PR changed/added.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+        description: Runner label
+      pytorch:
+        type: string
+        default: 'nightly_wheel'
+        description: Pytorch version, 'commit/branch', 'nightly_wheel', etc.
+      torch_xpu_ops:
+        type: string
+        default: 'pinned'
+        description: Torch-xpu-ops version
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+      changed_tests:
+        required: true
+        type: string
+        description: Newline-separated list of changed test file paths (relative to repo root)
+
+permissions:
+  contents: read
+  pull-requests: write
+
+defaults:
+  run:
+    shell: bash -xe {0}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  runner:
+    runs-on: ${{ inputs.runner }}
+    name: get-runner
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+      hostname: ${{ steps.runner-info.outputs.hostname }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  run-changed-tests:
+    needs: runner
+    timeout-minutes: 60
+    runs-on: ${{ needs.runner.outputs.runner_id }}
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+              -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+
+      - name: Prepare test env
+        uses: ./.github/actions/linux-testenv
+        with:
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+          python: ${{ inputs.python }}
+
+      - name: Run changed test files
+        run: |
+          log_dir="${{ github.workspace }}/ut_log/copilot"
+          mkdir -p ${log_dir}
+
+          # The changed test files from the PR
+          changed_tests="${{ inputs.changed_tests }}"
+
+          echo "=== Changed test files ==="
+          echo "$changed_tests"
+          echo "========================="
+
+          cd pytorch/third_party/torch-xpu-ops
+
+          # Count test files to calculate per-file budget (job timeout=60min, reserve 5min)
+          num_files=$(echo "$changed_tests" | grep -c . || echo 1)
+          per_file_timeout=$(( (55 * 60) / num_files ))
+          # Cap per-file timeout between 60s and 600s
+          if [ $per_file_timeout -gt 600 ]; then per_file_timeout=600; fi
+          if [ $per_file_timeout -lt 60 ]; then per_file_timeout=60; fi
+          echo "Running $num_files test file(s), per-file timeout: ${per_file_timeout}s"
+
+          exit_code=0
+          failed_files=""
+          while IFS= read -r test_file; do
+            [ -z "$test_file" ] && continue
+
+            if [ ! -f "$test_file" ]; then
+              echo "WARNING: $test_file does not exist, skipping"
+              continue
+            fi
+
+            echo ">>> Running: $test_file"
+            test_name=$(basename "$test_file" .py)
+            pytest -v --timeout $per_file_timeout "$test_file" \
+              --junit-xml="${log_dir}/${test_name}.xml" \
+              2>&1 | tee "${log_dir}/${test_name}.log"
+            pytest_exit=${PIPESTATUS[0]}
+            if [ $pytest_exit -ne 0 ]; then
+              exit_code=$pytest_exit
+              failed_files="${failed_files}${test_file}\n"
+            fi
+          done <<< "$changed_tests"
+
+          # Save failure summary for the comment step
+          if [ -n "$failed_files" ]; then
+            echo -e "$failed_files" > "${log_dir}/failed_files.txt"
+          fi
+
+          exit $exit_code
+
+      - name: Upload test logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Copilot-Test-Logs-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          path: ${{ github.workspace }}/ut_log
+          if-no-files-found: ignore
+
+      - name: Comment failure summary on PR
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let failedFiles = '';
+            try {
+              failedFiles = fs.readFileSync('${{ github.workspace }}/ut_log/copilot/failed_files.txt', 'utf8').trim();
+            } catch (e) {
+              failedFiles = '(could not read failure list)';
+            }
+            const body = [
+              '### :x: Copilot CI — Test Failure',
+              '',
+              '**Failed test files:**',
+              '```',
+              failedFiles,
+              '```',
+              '',
+              `[View full logs](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });

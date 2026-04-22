@@ -1,0 +1,145 @@
+name: Copilot CI
+
+# Lightweight CI for PRs created by GitHub Copilot.
+# - Detects whether C++/build files changed (needs PyTorch source build)
+#   or only Python/test files changed (nightly wheel is sufficient).
+# - Runs only the test files that the PR actually changed or added.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - release/*
+
+permissions: read-all
+
+concurrency:
+  group: copilot-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  detect-changes:
+    if: >-
+      github.repository_owner == 'intel' &&
+      github.event.pull_request.user.login == 'copilot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      needs_build: ${{ steps.changes.outputs.needs_build }}
+      changed_tests: ${{ steps.find-tests.outputs.changed_tests }}
+      pytorch_version: ${{ steps.set-versions.outputs.pytorch_version }}
+      torch_xpu_ops_version: ${{ steps.set-versions.outputs.torch_xpu_ops_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            needs_build:
+              - 'src/**'
+              - 'cmake/**'
+              - 'CMakeLists.txt'
+              - 'yaml/**'
+              - 'tools/codegen/**'
+      - name: Find changed test files
+        id: find-tests
+        run: |
+          # Use git pathspec (not shell glob) to find changed/added test files.
+          # git diff handles 'test/**/*.py' as a pathspec, matching all depths.
+          changed_tests=$(git diff --name-only --diff-filter=ACMR \
+            origin/${{ github.base_ref }}...HEAD -- 'test/*.py' 'test/**/*.py' \
+            | grep -E 'test_.*\.py$' || true)
+          if [ -n "$changed_tests" ]; then
+            echo "changed_tests<<EOF" >> $GITHUB_OUTPUT
+            echo "$changed_tests" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changed_tests=" >> $GITHUB_OUTPUT
+          fi
+          echo "Found changed test files:"
+          echo "$changed_tests"
+      - name: Set pytorch/torch_xpu_ops versions
+        id: set-versions
+        run: |
+          if [ "${{ steps.changes.outputs.needs_build }}" == "true" ]; then
+            echo "pytorch_version=${{ github.base_ref }}" >> $GITHUB_OUTPUT
+            echo "torch_xpu_ops_version=main" >> $GITHUB_OUTPUT
+          else
+            echo "pytorch_version=nightly_wheel" >> $GITHUB_OUTPUT
+            echo "torch_xpu_ops_version=pinned" >> $GITHUB_OUTPUT
+          fi
+
+  lint:
+    needs: detect-changes
+    if: needs.detect-changes.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+        with:
+          path: torch-xpu-ops
+      - name: Run lint check
+        run: |
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+          cd ./torch-xpu-ops
+          bash .github/scripts/lintrunner.sh
+      - name: Run lint check with Clang
+        run: |
+          cd ./torch-xpu-ops
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
+          bash .github/scripts/lintrunner.sh
+
+  # Build PyTorch from source only when C++/build/yaml files changed
+  build:
+    needs: [detect-changes, lint]
+    if: needs.detect-changes.outputs.needs_build == 'true'
+    secrets: inherit
+    uses: ./.github/workflows/_linux_build.yml
+    with:
+      runner: pvc_rolling
+      pytorch: ${{ needs.detect-changes.outputs.pytorch_version }}
+
+  # Run only the specific test files that the PR changed/added.
+  # Uses source-built PyTorch when C++ changed, nightly wheel otherwise.
+  test:
+    needs: [detect-changes, build]
+    if: >-
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.changed_tests != '' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_copilot_test.yml
+    with:
+      runner: pvc_rolling
+      pytorch: ${{ needs.detect-changes.outputs.pytorch_version }}
+      torch_xpu_ops: ${{ needs.detect-changes.outputs.torch_xpu_ops_version }}
+      changed_tests: ${{ needs.detect-changes.outputs.changed_tests }}
+
+  # Fallback: if C++/build files changed but no test files were touched,
+  # run basic regression tests as a sanity check.
+  test-fallback:
+    needs: [detect-changes, build]
+    if: >-
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.detect-changes.outputs.changed_tests == '' &&
+      needs.detect-changes.outputs.needs_build == 'true' &&
+      needs.build.result == 'success'
+    secrets: inherit
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/_linux_ut.yml
+    with:
+      runner: pvc_rolling
+      pytorch: ${{ needs.detect-changes.outputs.pytorch_version }}
+      torch_xpu_ops: ${{ needs.detect-changes.outputs.torch_xpu_ops_version }}
+      ut: op_regression
