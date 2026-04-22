@@ -186,6 +186,12 @@ SparseTensor& hspmm_out_sparse_xpu(
   SparseTensor sparse = sparse_.coalesce();
   int64_t nnz = sparse._nnz();
 
+  // Handle empty sparse tensor case
+  if (nnz == 0) {
+    // Result is already cleared with correct shape above
+    return r_;
+  }
+
   Tensor indices = at::empty({1, nnz}, sparse._indices().options());
 
   Tensor values = at::empty({n, nnz}, dense.options());
