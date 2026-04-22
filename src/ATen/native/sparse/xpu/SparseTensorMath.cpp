@@ -139,47 +139,42 @@ Tensor& s_addmm_sparse_dense_xpu_(
 }
 
 SparseTensor& hspmm_out_sparse_xpu(
-  const SparseTensor& sparse_,
-  const Tensor& dense,
-  SparseTensor& r_) {
+    const SparseTensor& sparse_,
+    const Tensor& dense,
+    SparseTensor& r_) {
   TORCH_CHECK(
-    sparse_.is_xpu(),
-    "hspmm: expected 'self' to be XPU, but got CPU");
-  TORCH_CHECK(
-    r_.is_xpu(),
-    "hspmm: expected 'out' to be XPU, but got CPU");
-  TORCH_CHECK(
-    dense.is_xpu(),
-    "hspmm: expected 'mat2' to be XPU, but got CPU");
+      sparse_.is_xpu(), "hspmm: expected 'self' to be XPU, but got CPU");
+  TORCH_CHECK(r_.is_xpu(), "hspmm: expected 'out' to be XPU, but got CPU");
+  TORCH_CHECK(dense.is_xpu(), "hspmm: expected 'mat2' to be XPU, but got CPU");
 
   TORCH_CHECK(at::xpu::check_device({r_, sparse_, dense}));
 
   TORCH_CHECK(
-    sparse_.sparse_dim() == 2,
-    "hspmm: Argument #2: 2D tensor expected, got ",
-    sparse_.sparse_dim(),
-    "D tensor");
+      sparse_.sparse_dim() == 2,
+      "hspmm: Argument #2: 2D tensor expected, got ",
+      sparse_.sparse_dim(),
+      "D tensor");
   TORCH_CHECK(
-    sparse_.dense_dim() == 0,
-    "hspmm: Argument #2: scalar values expected, got ",
-    sparse_.dense_dim(),
-    "D values");
+      sparse_.dense_dim() == 0,
+      "hspmm: Argument #2: scalar values expected, got ",
+      sparse_.dense_dim(),
+      "D values");
   TORCH_CHECK(
-    dense.dim() == 2,
-    "hspmm: Argument #3: 2D tensor expected, got ",
-    dense.dim(),
-    "D tensor");
+      dense.dim() == 2,
+      "hspmm: Argument #3: 2D tensor expected, got ",
+      dense.dim(),
+      "D tensor");
 
   int64_t m = sparse_.size(0);
   int64_t k = sparse_.size(1);
   int64_t n = dense.size(1);
 
   TORCH_CHECK(
-    dense.size(0) == k,
-    "hspmm: Argument #3: Expected dim 0 size ",
-    k,
-    ", got ",
-    dense.size(0));
+      dense.size(0) == k,
+      "hspmm: Argument #3: Expected dim 0 size ",
+      k,
+      ", got ",
+      dense.size(0));
 
   get_sparse_impl(r_)->resize_and_clear_(1, 1, {m, n});
 
@@ -207,9 +202,9 @@ SparseTensor& hspmm_out_sparse_xpu(
   std::vector<int64_t> new_size = get_sparse_impl(newSparse)->sizes().vec();
   new_size[0] = nnz;
   get_sparse_impl(newSparse)->raw_resize_(
-    get_sparse_impl(newSparse)->sparse_dim(),
-    get_sparse_impl(newSparse)->dense_dim(),
-    new_size);
+      get_sparse_impl(newSparse)->sparse_dim(),
+      get_sparse_impl(newSparse)->dense_dim(),
+      new_size);
 
   s_addmm_out_sparse_dense_xpu(values, values, newSparse, dense, 0, 1);
   get_sparse_impl(r_)->set_indices_and_values_unsafe(indices, values);

@@ -23,6 +23,7 @@ from numbers import Number
 from typing import Any
 
 import torch
+
 # Some editable/source-tree setups may import distributed helpers before torch exposes _opaque_base.
 import torch._opaque_base  # noqa: F401
 import torch.testing._internal.common_device_type as common_device_type_mod
@@ -99,7 +100,6 @@ from torch.testing._internal.opinfo.refs import (
     ReductionPythonRefInfo,
 )
 
-
 if os.getenv("PYTORCH_FORCE_XPU_TEST_COLLECTION", "0") == "1":
     common_device_type_mod.TEST_XPU = True
 
@@ -112,7 +112,9 @@ if os.getenv("PYTORCH_FORCE_XPU_TEST_COLLECTION", "0") == "1":
         return [cls.get_primary_device()]
 
     common_device_type_mod.XPUTestBase.setUpClass = _xpu_collect_only_setup_class
-    common_device_type_mod.XPUTestBase.get_all_devices = _xpu_collect_only_get_all_devices
+    common_device_type_mod.XPUTestBase.get_all_devices = (
+        _xpu_collect_only_get_all_devices
+    )
 
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
@@ -2272,13 +2274,17 @@ class TestSparse(TestSparseBase):
         out = torch.empty(0, dtype=dtype, device=device).to_sparse()
 
         with self.assertRaisesRegex(RuntimeError, "Expected dim 0 size 3"):
-            torch.ops.aten.hspmm.out(x, self.randn(2, 5, dtype=dtype, device=device), out=out)
+            torch.ops.aten.hspmm.out(
+                x, self.randn(2, 5, dtype=dtype, device=device), out=out
+            )
 
         with self.assertRaisesRegex(
             RuntimeError,
             "expected 'mat2' to be XPU|mat2 is on cpu",
         ):
-            torch.ops.aten.hspmm.out(x, self.randn(3, 5, dtype=dtype, device="cpu"), out=out)
+            torch.ops.aten.hspmm.out(
+                x, self.randn(3, 5, dtype=dtype, device="cpu"), out=out
+            )
 
         with self.assertRaisesRegex(
             RuntimeError,
