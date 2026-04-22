@@ -75,50 +75,57 @@ jobs:
           cd pytorch
           pytest ../torch-xpu-ops/test/repro/ -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
       - name: Comment on PR
+        if: ${{ steps.reproducer.outcome == 'failure' }}
         uses: actions/github-script@v7
         env:
           REPRODUCER_RESULT: ${{ steps.reproducer.outcome }}
         with:
           script: |
             const fs = require('fs');
-            const outcome = process.env.REPRODUCER_RESULT;
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            let body;
-            if (outcome === 'success') {
-              body = '✅ Reproducer test passed. All tests in `test/repro/` executed successfully.';
-            } else {
-              const rawOutput = fs.readFileSync('${{ github.workspace }}/reproducer_output.txt', 'utf8');
+            const outputFile = '${{ github.workspace }}/reproducer_output.txt';
+            let outputSection;
+            if (fs.existsSync(outputFile)) {
+              const rawOutput = fs.readFileSync(outputFile, 'utf8');
               const maxLen = 60000;
               const output = rawOutput.length > maxLen
                 ? '... (truncated, see full log in job link below)\n' + rawOutput.slice(-maxLen)
                 : rawOutput;
-              body = [
-                '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
-                '',
-                `Full log: ${jobUrl}`,
-                '',
+              outputSection = [
                 '<details><summary>Reproducer test output</summary>',
                 '',
                 '```',
                 output,
                 '```',
                 '',
-                '</details>',
-                '',
-                'Instructions:',
-                '1. Review the test failure output above (or the full log via the link)',
-                '2. Identify the root cause of the failure',
-                '3. Update the relevant source code to fix the issue',
-                '4. Ensure the reproducer in test/repro/ passes after your fix'
+                '</details>'
               ].join('\n');
+            } else {
+              outputSection = '_No test output captured. See the full log for details._';
             }
+            const body = [
+              '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
+              '',
+              `Full log: ${jobUrl}`,
+              '',
+              outputSection,
+              '',
+              'Instructions:',
+              '1. Review the test failure output above (or the full log via the link)',
+              '2. Identify the root cause of the failure',
+              '3. Update the relevant source code to fix the issue',
+              '4. Ensure the reproducer in test/repro/ passes after your fix'
+            ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
               body: body
             });
+      - name: Write summary
+        if: ${{ steps.reproducer.outcome == 'success' }}
+        run: echo "✅ Reproducer test passed. All tests in \`test/repro/\` executed successfully." >> $GITHUB_STEP_SUMMARY
       - name: Fail if reproducer failed
         if: ${{ steps.reproducer.outcome == 'failure' }}
         run: exit 1

@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: write
+      issues: write
     steps:
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
@@ -187,7 +187,6 @@ jobs:
   reproducer-test:
     needs: [linux-build]
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
-    secrets: inherit
     permissions:
       contents: read
       issues: write
