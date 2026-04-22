@@ -738,7 +738,7 @@ struct AtomicCASFP<T, 2, R> {
     unsigned int assumed;
     unsigned int newval;
 
-    // 🌟 Using generic AtomicRef
+    // Using generic AtomicRef
     AtomicRef<unsigned int, R> target(*address_as_ui);
 
     unsigned int expected_half_word = expected.x;
