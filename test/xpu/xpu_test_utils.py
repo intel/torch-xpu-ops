@@ -378,11 +378,12 @@ _cuda_xfail_xpu_pass = [
     ("sort", "test_non_standard_bool_values"),
 ]
 
-# Subset of _cuda_xfail_xpu_pass where an unscoped (device_type=None)
-# expectedFailure should also be stripped for XPU.  Derived from
-# _cuda_xfail_xpu_pass to keep a single source of truth.  Kept separate so
-# that unscoped xfails that genuinely fail on XPU (e.g. complex-dtype
-# memory-format tests for ConvTranspose2d) are preserved.
+# Additional unscoped (device_type=None) expectedFailure entries that should
+# also be stripped for XPU.  This list is maintained separately from
+# _cuda_xfail_xpu_pass because it is related to, but not necessarily a literal
+# subset of, the CUDA-scoped overrides above.  Keeping it separate preserves
+# unscoped xfails that genuinely fail on XPU (e.g. complex-dtype memory-format
+# tests for ConvTranspose2d).
 _none_device_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref_executor"),
     ("_refs.pow", "test_python_ref_executor"),
