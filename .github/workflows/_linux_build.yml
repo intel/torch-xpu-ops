@@ -53,9 +53,41 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
+  snapshot-skipped-issues:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UT_SKIP_ISSUE: 1624
+    steps:
+      - name: Snapshot open skipped issues at build start
+        run: |
+          # Capture static distributed known issues baseline.
+          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body \
+            | sed -E '/^(#|$)/d' > known_issue_static.log || touch known_issue_static.log
+          # Capture open skipped issues at build start time.
+          count=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
+          if [ "$count" -gt 0 ]; then
+            echo "$count issues with skipped label found at build start"
+            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
+              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues_snapshot.log
+          else
+            touch issues_snapshot.log
+          fi
+      - name: Upload skipped issues snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          path: |
+            known_issue_static.log
+            issues_snapshot.log
+
   build:
     name: ${{ inputs.pytorch }}
-    needs: runner
+    needs: [runner, snapshot-skipped-issues]
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
