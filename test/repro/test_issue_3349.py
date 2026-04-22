@@ -1,3 +1,5 @@
+# Owner(s): ["module: intel"]
+
 """
 Reproducer for https://github.com/intel/torch-xpu-ops/issues/3349
 
@@ -42,6 +44,10 @@ def test_native_batch_norm_eval_output_shapes():
     )
 
     for i, (cpu_item, xpu_item) in enumerate(zip(cpu_out, xpu_out)):
-        assert cpu_item.shape == xpu_item.cpu().shape, (
-            f"Output {i} shape mismatch: CPU {cpu_item.shape} vs XPU {xpu_item.shape}"
-        )
+        assert (
+            cpu_item.shape == xpu_item.cpu().shape
+        ), f"Output {i} shape mismatch: CPU {cpu_item.shape} vs XPU {xpu_item.shape}"
+
+
+if __name__ == "__main__":
+    raise RuntimeError("This test is run via pytest, use: pytest test/repro/")
