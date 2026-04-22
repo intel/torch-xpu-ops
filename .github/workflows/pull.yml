@@ -56,7 +56,7 @@ jobs:
             # Validate pytest format: must contain test functions or test classes
             VALID=false
             for f in test/repro/test_*.py; do
-              if grep -qE '^\s*(def test_|class Test)' "$f"; then
+              if grep -qE '^[[:space:]]*(def test_|class Test)' "$f"; then
                 VALID=true
               else
                 FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
@@ -70,13 +70,13 @@ jobs:
           fi
           if [ -n "$FAIL_MSG" ]; then
             PR_AUTHOR="${{ github.event.pull_request.user.login }}"
-            gh pr comment ${{ github.event.pull_request.number }} \
-              --body "@${PR_AUTHOR} ${FAIL_MSG}
+            COMMENT_BODY="@${PR_AUTHOR} ${FAIL_MSG}
 
-          Please ensure your reproducer follows pytest conventions:
-          - File name: \`test/repro/test_<description>.py\`
-          - Contains \`def test_...()\` functions or \`class Test...\` classes
-          - Runnable via \`pytest test/repro/\`"
+Please ensure your reproducer follows pytest conventions:
+- File name: \`test/repro/test_<description>.py\`
+- Contains \`def test_...()\` functions or \`class Test...\` classes
+- Runnable via \`pytest test/repro/\`"
+            gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
           fi

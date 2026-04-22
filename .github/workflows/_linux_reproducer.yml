@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 defaults:
   run:
@@ -82,13 +83,20 @@ jobs:
             const fs = require('fs');
             const outcome = process.env.REPRODUCER_RESULT;
             const prNumber = context.issue.number;
+            const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             let body;
             if (outcome === 'success') {
               body = '✅ Reproducer test passed. All tests in `test/repro/` executed successfully.';
             } else {
-              const output = fs.readFileSync('${{ github.workspace }}/reproducer_output.txt', 'utf8');
+              const rawOutput = fs.readFileSync('${{ github.workspace }}/reproducer_output.txt', 'utf8');
+              const maxLen = 60000;
+              const output = rawOutput.length > maxLen
+                ? '... (truncated, see full log in job link below)\n' + rawOutput.slice(-maxLen)
+                : rawOutput;
               body = [
                 '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
+                '',
+                `Full log: ${jobUrl}`,
                 '',
                 '<details><summary>Reproducer test output</summary>',
                 '',
@@ -99,7 +107,7 @@ jobs:
                 '</details>',
                 '',
                 'Instructions:',
-                '1. Review the test failure output above',
+                '1. Review the test failure output above (or the full log via the link)',
                 '2. Identify the root cause of the failure',
                 '3. Update the relevant source code to fix the issue',
                 '4. Ensure the reproducer in test/repro/ passes after your fix'
