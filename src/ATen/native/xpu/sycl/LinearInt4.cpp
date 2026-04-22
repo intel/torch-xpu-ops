@@ -85,8 +85,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
             scalarx2_t tmpB = {
-                static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
             scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += static_cast<float>(tmpAmulB[0]);
             tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -135,8 +135,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
             scalarx2_t tmpB = {
-                static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
             scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += static_cast<float>(tmpAmulB[0]);
             tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -161,8 +161,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             for (int ikk = 0; ikk < TileK2; ikk += 2) {
               scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK2 + ikk);
               scalarx2_t tmpB = {
-                  static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                  static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+                  static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                  static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
               scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
               tmpAcc += static_cast<float>(tmpAmulB[0]);
               tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -184,8 +184,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
           scalarx2_t tmpB = {
-              static_cast<int8_t>((tmps8 & 0x0f) - 8),
-              static_cast<int8_t>((tmps8 >> 4) - 8)};
+              static_cast<scalar_t>((tmps8 & 0x0f) - 8),
+              static_cast<scalar_t>((tmps8 >> 4) - 8)};
           scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
           tmpAcc += static_cast<float>(tmpAmulB[0]);
           tmpAcc += static_cast<float>(tmpAmulB[1]);
