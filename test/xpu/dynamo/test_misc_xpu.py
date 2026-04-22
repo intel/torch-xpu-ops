@@ -11672,7 +11672,7 @@ ShapeEnv not equal: field values don't match:
         self._replay_and_check(main)
 
     @onlyIfTranslationValidation
-    def test_shape_env_equal_unbacked(self):
+    def test_shape_env_equal_unbacked(self):  # noqa: META_NO_CREATE_UNBACKED
         main, other = ShapeEnv(), ShapeEnv()
         main.create_unbacked_symint()
         main.create_unbacked_symfloat()
