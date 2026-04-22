@@ -48,9 +48,27 @@ from torch.testing._internal.common_utils import TestCase, run_tests
 # define fbgemm ops schemas here since we cannot register them in torch-xpu-ops.
 # otherwise, it will fail fbgemm lib due to duplicate schema registration.
 # for user, they can import fbgemm_gpu first before accessing fbgemm ops on xpu.
-lib = torch.library.Library("fbgemm", "DEF")  # noqa: TOR901
+try:
+    lib = torch.library.Library("fbgemm", "DEF")  # noqa: TOR901
+except RuntimeError as err:
+    # Pytest can import multiple test files in one process.
+    # Re-open the namespace as a fragment if it was already defined.
+    if "Only a single TORCH_LIBRARY can be used" not in str(err):
+        raise
+    lib = torch.library.Library("fbgemm", "FRAGMENT")  # noqa: TOR901
 
-lib.define("jagged_index_select_2d_forward(Tensor values, Tensor indices, Tensor input_offsets, Tensor output_offsets, int num_dense_output_rows) -> Tensor")
+
+def _safe_define(schema: str) -> None:
+    try:
+        lib.define(schema)
+    except RuntimeError as err:
+        err_msg = str(err)
+        if "multiple times" in err_msg or "already" in err_msg:
+            return
+        raise
+
+
+_safe_define("jagged_index_select_2d_forward(Tensor values, Tensor indices, Tensor input_offsets, Tensor output_offsets, int num_dense_output_rows) -> Tensor")
 
 class TestJaggedIndexSelect(TestCase):
     

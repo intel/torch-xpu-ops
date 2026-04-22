@@ -57,9 +57,27 @@ from typing import Optional, Tuple
 # define fbgemm ops schemas here since we cannot register them in torch-xpu-ops.
 # otherwise, it will fail fbgemm lib due to duplicate schema registration.
 # for user, they can import fbgemm_gpu first before accessing fbgemm ops on xpu.
-lib = torch.library.Library("fbgemm", "DEF")  # noqa: TOR901
+try:
+    lib = torch.library.Library("fbgemm", "DEF")  # noqa: TOR901
+except RuntimeError as err:
+    # Pytest can import multiple test files in one process.
+    # Re-open the namespace as a fragment if it was already defined.
+    if "Only a single TORCH_LIBRARY can be used" not in str(err):
+        raise
+    lib = torch.library.Library("fbgemm", "FRAGMENT")  # noqa: TOR901
 
-lib.define("permute_1D_sparse_data(Tensor permute, Tensor lengths, Tensor indices, Tensor? weights=None, int? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)")
+
+def _safe_define(schema: str) -> None:
+    try:
+        lib.define(schema)
+    except RuntimeError as err:
+        err_msg = str(err)
+        if "multiple times" in err_msg or "already" in err_msg:
+            return
+        raise
+
+
+_safe_define("permute_1D_sparse_data(Tensor permute, Tensor lengths, Tensor indices, Tensor? weights=None, int? permuted_lengths_sum=None) -> (Tensor, Tensor, Tensor?)")
 
 # Reproducible seed for all random tests
 SEED = 42
