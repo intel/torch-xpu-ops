@@ -1900,6 +1900,7 @@ class TestTransformers(NNTestCase):
         torch.jit.script(mha)
 
     @unittest.skipIf(TEST_WITH_CROSSREF, "Fastpath not available with crossref")
+    @skipIfXpu(msg="MHA fastpath is not available on XPU")
     @torch.no_grad()
     def test_disable_fastpath(self, device):
         def _test_te_fastpath_called(
