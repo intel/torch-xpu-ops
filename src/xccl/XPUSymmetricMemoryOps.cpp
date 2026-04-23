@@ -28,6 +28,8 @@
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
+#include <xccl/Signal.hpp>
+
 namespace c10d {
 namespace symmetric_memory {
 
@@ -112,17 +114,23 @@ struct OneShotAllReduceSumKernel {
   scalar_t* output_ptr;
   int64_t input_offset;
   int64_t numel;
+  int my_rank;
 
   void operator()(sycl::nd_item<1> item) const {
     const int64_t tid = static_cast<int64_t>(item.get_global_linear_id());
     const int64_t stride = static_cast<int64_t>(item.get_global_range(0));
     const int64_t vec_total = numel / kN;
 
+    // Rank rotation: each rank starts reading from its own (local) buffer
+    // and then fans out to peers in order (my_rank+step) % kWorldSize. This
+    // staggers peer reads so at any instant the kWorldSize ranks target
+    // distinct peers, avoiding an all-to-one fabric hot-spot on PCIe-P2P.
     for (int64_t v = tid; v < vec_total; v += stride) {
       const int64_t elem_idx = v * kN + input_offset;
-      Vec acc = *reinterpret_cast<const Vec*>(peer_ptrs[0] + elem_idx);
+      Vec acc = *reinterpret_cast<const Vec*>(peer_ptrs[my_rank] + elem_idx);
 #pragma unroll
-      for (int p = 1; p < kWorldSize; ++p) {
+      for (int step = 1; step < kWorldSize; ++step) {
+        const int p = (my_rank + step) % kWorldSize;
         Vec rhs = *reinterpret_cast<const Vec*>(peer_ptrs[p] + elem_idx);
 #pragma unroll
         for (int i = 0; i < kN; ++i) {
@@ -137,14 +145,145 @@ struct OneShotAllReduceSumKernel {
     // Tail
     if (tid == 0) {
       for (int64_t i = vec_total * kN; i < numel; ++i) {
-        float a = static_cast<float>(peer_ptrs[0][i + input_offset]);
+        float a = static_cast<float>(peer_ptrs[my_rank][i + input_offset]);
 #pragma unroll
-        for (int p = 1; p < kWorldSize; ++p) {
+        for (int step = 1; step < kWorldSize; ++step) {
+          const int p = (my_rank + step) % kWorldSize;
           a += static_cast<float>(peer_ptrs[p][i + input_offset]);
         }
         output_ptr[i] = static_cast<scalar_t>(a);
       }
     }
+  }
+};
+
+// ============================================================================
+// Fused one-shot all-reduce: inlined per-workgroup signal-pad barrier.
+// ============================================================================
+// Signal-pad layout for this kernel (per rank, in uint32 slots):
+//   [kFusedSignalBaseU32 ..                                ) pre-barrier
+//   [kFusedSignalBaseU32 + kOneShotMaxNumGroups*kWorldSize ) post-barrier
+// Slot [base+region_off + group_id*ws + src_rank] is written by src_rank
+// (put_signal into peer's pad) and cleared by the owner rank (wait_signal).
+// After an exchange round all slots return to 0, so the region can be reused
+// across consecutive fused calls without an explicit reset.
+//
+// kFusedSignalBaseU32 is placed well beyond the `channel 0` region used by
+// symm_mem->barrier(channel=0) so the two paths don't collide if mixed.
+constexpr int kFusedSignalBaseU32 = 512;
+
+template <typename scalar_t, int kWorldSize>
+struct FusedOneShotAllReduceSumKernel {
+  static constexpr int kN = elems_per_vec<scalar_t>();
+  using Vec = VecT<scalar_t, kN>;
+
+  scalar_t** peer_ptrs;
+  scalar_t* output_ptr;
+  uint32_t** signal_pads;
+  int64_t input_offset;
+  int64_t numel;
+  int my_rank;
+
+  static inline uint32_t* slot_of(
+      uint32_t** signal_pads,
+      int owner_rank,
+      int region,
+      int group_id,
+      int src_rank) {
+    const int64_t region_off =
+        (int64_t)region * kOneShotMaxNumGroups * kWorldSize;
+    return signal_pads[owner_rank] + kFusedSignalBaseU32 + region_off +
+        (int64_t)group_id * kWorldSize + src_rank;
+  }
+
+  inline void wg_barrier_pre(sycl::nd_item<1> item) const {
+    const auto lid = item.get_local_id(0);
+    const auto group_id = item.get_group(0);
+    if (lid < (size_t)kWorldSize) {
+      int peer = static_cast<int>(lid);
+      if (peer != my_rank) {
+        uint32_t* put_addr = slot_of(
+            signal_pads, peer, /*region=*/0, group_id, my_rank);
+        uint32_t* wait_addr = slot_of(
+            signal_pads, my_rank, /*region=*/0, group_id, peer);
+        ::c10d::symmetric_memory::put_signal<
+            std::memory_order_release>(put_addr);
+        ::c10d::symmetric_memory::wait_signal<
+            std::memory_order_acquire>(wait_addr);
+      }
+    }
+    // Gate the non-barrier threads in this WG on the signal exchange above.
+    // Local-scope fence is sufficient: the put/wait already issue
+    // system-scope atomic_fence(release/acquire) internally, so cross-device
+    // memory ordering is already guaranteed.
+    item.barrier(sycl::access::fence_space::local_space);
+  }
+
+  inline void wg_barrier_post(sycl::nd_item<1> item) const {
+    // First ensure all threads in this WG have finished their reads from
+    // peer buffers before we signal peers that their buffers are free.
+    item.barrier(sycl::access::fence_space::local_space);
+
+    const auto lid = item.get_local_id(0);
+    const auto group_id = item.get_group(0);
+    if (lid < (size_t)kWorldSize) {
+      int peer = static_cast<int>(lid);
+      if (peer != my_rank) {
+        uint32_t* put_addr = slot_of(
+            signal_pads, peer, /*region=*/1, group_id, my_rank);
+        uint32_t* wait_addr = slot_of(
+            signal_pads, my_rank, /*region=*/1, group_id, peer);
+        ::c10d::symmetric_memory::put_signal<
+            std::memory_order_release>(put_addr);
+        ::c10d::symmetric_memory::wait_signal<
+            std::memory_order_acquire>(wait_addr);
+      }
+    }
+    // No trailing item.barrier: nothing in this WG runs after the post
+    // barrier; the kernel exits immediately and the XPU stream provides
+    // queue-level ordering for the caller.
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    // pre-barrier: all peers have their buffers filled.
+    wg_barrier_pre(item);
+
+    const int64_t tid = static_cast<int64_t>(item.get_global_linear_id());
+    const int64_t stride = static_cast<int64_t>(item.get_global_range(0));
+    const int64_t vec_total = numel / kN;
+
+    // Rank rotation: see OneShotAllReduceSumKernel comment.
+    for (int64_t v = tid; v < vec_total; v += stride) {
+      const int64_t elem_idx = v * kN + input_offset;
+      Vec acc = *reinterpret_cast<const Vec*>(peer_ptrs[my_rank] + elem_idx);
+#pragma unroll
+      for (int step = 1; step < kWorldSize; ++step) {
+        const int p = (my_rank + step) % kWorldSize;
+        Vec rhs = *reinterpret_cast<const Vec*>(peer_ptrs[p] + elem_idx);
+#pragma unroll
+        for (int i = 0; i < kN; ++i) {
+          acc.data[i] = static_cast<scalar_t>(
+              static_cast<float>(acc.data[i]) +
+              static_cast<float>(rhs.data[i]));
+        }
+      }
+      *reinterpret_cast<Vec*>(output_ptr + v * kN) = acc;
+    }
+    if (tid == 0) {
+      for (int64_t i = vec_total * kN; i < numel; ++i) {
+        float a = static_cast<float>(peer_ptrs[my_rank][i + input_offset]);
+#pragma unroll
+        for (int step = 1; step < kWorldSize; ++step) {
+          const int p = (my_rank + step) % kWorldSize;
+          a += static_cast<float>(peer_ptrs[p][i + input_offset]);
+        }
+        output_ptr[i] = static_cast<scalar_t>(a);
+      }
+    }
+
+    // post-barrier: prevent peers from overwriting their buffers before we
+    // have finished reading them.
+    wg_barrier_post(item);
   }
 };
 
@@ -219,6 +358,7 @@ template <typename scalar_t, int kWorldSize>
 static void launch_one_shot_all_reduce_sum(
     scalar_t** peer_ptrs,
     scalar_t* output_ptr,
+    int my_rank,
     int64_t input_offset,
     int64_t numel,
     sycl::queue& q) {
@@ -233,7 +373,45 @@ static void launch_one_shot_all_reduce_sum(
       num_threads);
 
   OneShotAllReduceSumKernel<scalar_t, kWorldSize> ker{
-      peer_ptrs, output_ptr, input_offset, numel};
+      peer_ptrs, output_ptr, input_offset, numel, my_rank};
+  sycl_kernel_submit(
+      /*global_range=*/num_groups * num_threads,
+      /*local_range=*/num_threads,
+      q,
+      ker);
+}
+
+template <typename scalar_t, int kWorldSize>
+static void launch_fused_one_shot_all_reduce_sum(
+    scalar_t** peer_ptrs,
+    scalar_t* output_ptr,
+    uint32_t** signal_pads,
+    int my_rank,
+    int64_t input_offset,
+    int64_t numel,
+    sycl::queue& q) {
+  constexpr int kN = elems_per_vec<scalar_t>();
+  int64_t num_groups = 0, num_threads = 0;
+  init_launch_cfg_1d(
+      numel,
+      kN,
+      kOneShotMaxNumGroups,
+      kOneShotMaxNumThreads,
+      num_groups,
+      num_threads);
+  // Ensure local_size >= kWorldSize so the first kWorldSize threads can each
+  // handle one peer for the inlined barrier.
+  if (num_threads < kWorldSize) {
+    num_threads = kWorldSize;
+  }
+
+  FusedOneShotAllReduceSumKernel<scalar_t, kWorldSize> ker{
+      peer_ptrs,
+      output_ptr,
+      signal_pads,
+      input_offset,
+      numel,
+      my_rank};
   sycl_kernel_submit(
       /*global_range=*/num_groups * num_threads,
       /*local_range=*/num_threads,
@@ -356,29 +534,57 @@ at::Tensor one_shot_all_reduce_out_impl(
     return out;
   }
 
+  c10::DeviceGuard guard(input.device());
   auto symm_mem = c10d::symmetric_memory::rendezvous(input, group_name);
   TORCH_CHECK(
       symm_mem != nullptr,
       "one_shot_all_reduce(xpu): input must be allocated with symm_mem.empty().");
-
   const int world_size = symm_mem->get_world_size();
+  const int my_rank = symm_mem->get_rank();
   const int64_t numel = input.numel();
   const int64_t input_offset = input.storage_offset();
 
-  symm_mem->barrier(0, /*timeout_ms=*/0);
+  // Kernel-fused signal-pad barrier (inlined put/wait) is the default path.
+  // Set USE_FUSED_ONESHOT=0 to fall back to the two-host-barrier path (uses
+  // symm_mem->barrier(channel=0) around a plain reduce kernel).
+  static const bool kUseFusedOneShot = []() {
+    const char* env = std::getenv("USE_FUSED_ONESHOT");
+    return !(env && env[0] == '0');
+  }();
 
-  c10::DeviceGuard guard(input.device());
   sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
 
   void** peer_ptrs_raw = symm_mem->get_buffer_ptrs_dev();
   void* out_ptr_raw = out.data_ptr();
+
+  if (kUseFusedOneShot) {
+    uint32_t** signal_pads =
+        reinterpret_cast<uint32_t**>(symm_mem->get_signal_pad_ptrs_dev());
+    XPU_DISPATCH_FLOAT_HALF_BF16(dtype, "one_shot_all_reduce(xpu)", [&]() {
+      scalar_t** peer_ptrs = reinterpret_cast<scalar_t**>(peer_ptrs_raw);
+      scalar_t* out_ptr = reinterpret_cast<scalar_t*>(out_ptr_raw);
+      XPU_DISPATCH_WORLD_SIZES(world_size, [&]() {
+        launch_fused_one_shot_all_reduce_sum<scalar_t, k_world_size>(
+            peer_ptrs,
+            out_ptr,
+            signal_pads,
+            my_rank,
+            input_offset,
+            numel,
+            q);
+      });
+    });
+    return out;
+  }
+
+  symm_mem->barrier(0, /*timeout_ms=*/0);
 
   XPU_DISPATCH_FLOAT_HALF_BF16(dtype, "one_shot_all_reduce(xpu)", [&]() {
     scalar_t** peer_ptrs = reinterpret_cast<scalar_t**>(peer_ptrs_raw);
     scalar_t* out_ptr = reinterpret_cast<scalar_t*>(out_ptr_raw);
     XPU_DISPATCH_WORLD_SIZES(world_size, [&]() {
       launch_one_shot_all_reduce_sum<scalar_t, k_world_size>(
-          peer_ptrs, out_ptr, input_offset, numel, q);
+          peer_ptrs, out_ptr, my_rank, input_offset, numel, q);
     });
   });
 
@@ -469,11 +675,11 @@ at::Tensor two_shot_all_reduce_out_impl(
     return output;
   }
 
+  c10::DeviceGuard guard(input.device());
   auto symm_mem = c10d::symmetric_memory::rendezvous(input, group_name);
   TORCH_CHECK(
       symm_mem != nullptr,
       "two_shot_all_reduce(xpu): input must be allocated with symm_mem.empty().");
-
   const int world_size = symm_mem->get_world_size();
   const int rank = symm_mem->get_rank();
   const int64_t numel = input.numel();
@@ -489,7 +695,6 @@ at::Tensor two_shot_all_reduce_out_impl(
       elems_per_vec_val;
   int64_t shard_start = shard_numel * rank;
 
-  c10::DeviceGuard guard(input.device());
   sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
 
   void** peer_ptrs_raw = symm_mem->get_buffer_ptrs_dev();
