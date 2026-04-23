@@ -47,6 +47,8 @@ skip_dict = {
         "test_profiler_emit_nvtx_xpu",
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
+        # CUDA-specific bogus autograd registration test, not applicable to XPU
+        "test_view_copy_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_comparison_utils_xpu.py": None,
