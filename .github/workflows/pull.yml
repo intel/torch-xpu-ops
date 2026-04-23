@@ -187,6 +187,7 @@ jobs:
   reproducer-test:
     needs: [linux-build]
     if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+    secrets: inherit
     permissions:
       contents: read
       issues: write
