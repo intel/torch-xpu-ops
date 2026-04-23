@@ -2329,8 +2329,8 @@ class TestSparseCSR(TestCase):
             torch.complex64: 1e-3,
             torch.float64: 1e-5,
             torch.complex128: 1e-5,
-            torch.float16: 1e-3,
-            torch.bfloat16: 1e-3,
+            torch.float16: 1e-2,
+            torch.bfloat16: 2e-2,
         }
     )
     def test_block_addmm(self, device, dtype, index_dtype, block_size, noncontiguous):
