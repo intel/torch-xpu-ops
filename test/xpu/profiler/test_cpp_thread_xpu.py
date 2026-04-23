@@ -16,7 +16,6 @@ import torch.utils.cpp_extension
 from torch._environment import is_fbcode
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
-
 if is_fbcode():
     import caffe2.test.profiler_test_cpp_thread_lib as cpp  # @manual=//caffe2/test:profiler_test_cpp_thread_lib
 else:
