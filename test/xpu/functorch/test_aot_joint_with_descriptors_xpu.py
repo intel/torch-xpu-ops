@@ -6,6 +6,8 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# flake8: noqa
+
 # Owner(s): ["module: intel"]
 
 from contextlib import ExitStack
