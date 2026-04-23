@@ -38,14 +38,35 @@
  */
 
 #include <sycltla/mha_common.h>
-#include <sycltla/mha_fwd.h>
+#include <sycltla/mha_fwd_launch.h>
 
 namespace cute {
 
-// Declared but not defined here -- explicit specializations are provided by
-// the per-headdim compilation units (mha_fwd_hdim*.cpp).
-template <typename T, int Headdim, bool IS_CAUSAL>
-void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params);
+// Explicit specializations for all headdim variants (merged into a single
+// compilation unit to reduce peak memory during parallel builds).
+
+#define INSTANTIATE_FWD_HDIM(T, HDIM, CAUSAL, hdim_fn)  \
+  template <>                                           \
+  void run_mha_fwd_<T, HDIM, CAUSAL>(                   \
+      sycl::queue & queue, FLASH_FWD_params & params) { \
+    hdim_fn<T, CAUSAL>(queue, params);                  \
+  }
+
+#define INSTANTIATE_FWD_HDIM_ALL(HDIM, hdim_fn)                \
+  INSTANTIATE_FWD_HDIM(cute::half_t, HDIM, false, hdim_fn)     \
+  INSTANTIATE_FWD_HDIM(cute::half_t, HDIM, true, hdim_fn)      \
+  INSTANTIATE_FWD_HDIM(cute::bfloat16_t, HDIM, false, hdim_fn) \
+  INSTANTIATE_FWD_HDIM(cute::bfloat16_t, HDIM, true, hdim_fn)
+
+INSTANTIATE_FWD_HDIM_ALL(32, run_mha_fwd_hdim32)
+INSTANTIATE_FWD_HDIM_ALL(64, run_mha_fwd_hdim64)
+INSTANTIATE_FWD_HDIM_ALL(96, run_mha_fwd_hdim96)
+INSTANTIATE_FWD_HDIM_ALL(128, run_mha_fwd_hdim128)
+INSTANTIATE_FWD_HDIM_ALL(192, run_mha_fwd_hdim192)
+INSTANTIATE_FWD_HDIM_ALL(256, run_mha_fwd_hdim256)
+
+#undef INSTANTIATE_FWD_HDIM_ALL
+#undef INSTANTIATE_FWD_HDIM
 
 template <typename T, bool IS_CAUSAL>
 void run_mha_fwd_(sycl::queue& queue, FLASH_FWD_params& params) {
