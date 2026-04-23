@@ -37,23 +37,5 @@ Domain-specific coding rules:
 - XPU tests: `.github/instructions/xpu-tests.instructions.md`
 - YAML ops: `.github/instructions/xpu-yaml.instructions.md`
 
-## Pull request requirements
-
-Every PR must include validation so CI can verify the fix:
-
-1. **Include a reproducer test** under `test/regressions/test_<description>.py` that:
-   - Contains `def test_...()` functions or `class Test...` classes
-   - Is runnable via `pytest test/regressions/test_<description>.py`
-   - Imports `torch` and targets `xpu` device
-
-2. **If no reproducer is possible** (CI-only, docs, build fixes), state in the PR body which existing tests validate the change:
-   ```
-   Test: test/regressions/test_foo.py
-   ```
-   Or if none apply:
-   ```
-   Test: none (reason)
-   ```
-
 This file provides repository-wide context and applies to all Copilot interactions
 within this repository.
