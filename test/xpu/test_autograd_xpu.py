@@ -19,7 +19,6 @@ from copy import deepcopy
 from functools import partial
 
 import torch
-import torch.autograd.forward_ad as fwAD
 import torch.utils.checkpoint
 from torch import nn
 from torch.autograd import Function
