@@ -107,7 +107,7 @@ def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     # Basic smoke test: op should run without error and return a tensor on the correct device
     # Some spectral ops (e.g., irfft/irfft2/irfftn/hfft) produce real outputs, so we cannot
     # unconditionally assert that the result is complex.
-    real_output_transforms = {"irfft", "irfft2", "irfftn", "hfft"}
+    real_output_transforms = {"fft.irfft", "fft.irfft2", "fft.irfftn", "fft.hfft"}
     is_real_output = op.name in real_output_transforms
     result_default = op(t)
     self.assertIsInstance(result_default, torch.Tensor)
@@ -135,7 +135,7 @@ def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     # Verify that the requested size parameters affect the last dimension(s)
     # This simple shape rule (directly setting the last dim(s) to n/s) is only
     # valid for complex-to-complex FFT variants such as fft/ifft/fft2/ifft2/fftn/ifftn.
-    complex_to_complex_ops = {"fft", "ifft", "fft2", "ifft2", "fftn", "ifftn"}
+    complex_to_complex_ops = {"fft.fft", "fft.ifft", "fft.fft2", "fft.ifft2", "fft.fftn", "fft.ifftn"}
     if op.name in complex_to_complex_ops:
         if "n" in kwargs:
             expected_shape = list(t.shape)
