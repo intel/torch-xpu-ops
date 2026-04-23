@@ -40,11 +40,7 @@ from torch._functorch.aot_autograd import (
 )
 from torch._guards import tracing, TracingContext
 from torch.nn.attention.flex_attention import create_block_mask, flex_attention
-from torch.testing._internal.common_utils import (
-    run_tests,
-    skipIfCrossRef,
-    TestCase,
-)
+from torch.testing._internal.common_utils import run_tests, skipIfCrossRef, TestCase
 
 
 def graph_capture(model, inputs, with_export):

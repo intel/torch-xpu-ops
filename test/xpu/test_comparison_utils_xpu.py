@@ -8,7 +8,6 @@
 
 # Owner(s): ["module: intel"]
 
-import unittest
 
 import torch
 from torch.testing._internal.common_utils import run_tests, TestCase

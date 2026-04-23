@@ -17,7 +17,6 @@ from typing import Any
 from unittest.mock import patch
 
 import numpy as np
-
 import torch
 import torch.nn as nn
 from torch import _dynamo as torchdynamo
@@ -43,12 +42,10 @@ from torch.testing._internal.common_utils import (
     skipIfHpu,
     skipIfTorchDynamo,
     TemporaryFileName,
-    TEST_HPU,
     TEST_XPU,
     TestCase,
 )
 from torch.utils._triton import has_triton
-
 
 # if tqdm is not shutdown properly, it will leave the monitor thread alive.
 # This causes an issue in the multithreading test because we check all events
