@@ -31,7 +31,7 @@ Branch must follow: `agent/<slug>` (lowercase, hyphens, max 50 chars).
 
 ## Step 2: Write a reproducer test (mandatory)
 
-Every PR must include a pytest-compatible test under `test/regressions/` if it is newly introduced. If the test is in PyTorch or torch-xpu-ops tests, you should explicitly write the run command in the PR body (see Step 3).:
+Every PR must include a pytest-compatible test under `test/repro/` if it is newly introduced. If the test is in PyTorch or torch-xpu-ops tests, you should explicitly write the run command in the PR body (see Step 3).:
 
 - File name: `test_<description>.py`
 - Contains `def test_...()` functions or `class Test...` classes
