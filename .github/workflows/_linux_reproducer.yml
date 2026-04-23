@@ -22,7 +22,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 defaults:
   run:
@@ -74,20 +73,49 @@ jobs:
           set -o pipefail
           cd pytorch
           pytest ../torch-xpu-ops/test/repro/ -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
-      - name: Comment on PR
+      - name: Upload reproducer log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reproducer-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/reproducer_output.txt
+          if-no-files-found: ignore
+      - name: Write summary
+        if: ${{ steps.reproducer.outcome == 'success' }}
+        run: echo "✅ Reproducer test passed. All tests in \`test/repro/\` executed successfully." >> $GITHUB_STEP_SUMMARY
+      - name: Fail if reproducer failed
         if: ${{ steps.reproducer.outcome == 'failure' }}
+        run: exit 1
+
+  summary:
+    needs: [reproducer-test]
+    if: ${{ ! cancelled() && needs.reproducer-test.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Download reproducer log
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Reproducer-Log-${{ github.event.pull_request.number || github.sha }}-*
+          path: ${{ github.workspace }}/reproducer_log
+      - name: Comment on PR
         uses: actions/github-script@v7
-        env:
-          REPRODUCER_RESULT: ${{ steps.reproducer.outcome }}
         with:
           script: |
             const fs = require('fs');
+            const path = require('path');
             const prNumber = context.issue.number;
             const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const outputFile = '${{ github.workspace }}/reproducer_output.txt';
             let outputSection;
-            if (fs.existsSync(outputFile)) {
-              const rawOutput = fs.readFileSync(outputFile, 'utf8');
+            const logDir = '${{ github.workspace }}/reproducer_log';
+            const logFiles = fs.existsSync(logDir)
+              ? fs.readdirSync(logDir, { recursive: true }).filter(f => f.endsWith('.txt'))
+              : [];
+            if (logFiles.length > 0) {
+              const rawOutput = fs.readFileSync(path.join(logDir, logFiles[0]), 'utf8');
               const maxLen = 60000;
               const output = rawOutput.length > maxLen
                 ? '... (truncated, see full log in job link below)\n' + rawOutput.slice(-maxLen)
@@ -123,9 +151,3 @@ jobs:
               issue_number: prNumber,
               body: body
             });
-      - name: Write summary
-        if: ${{ steps.reproducer.outcome == 'success' }}
-        run: echo "✅ Reproducer test passed. All tests in \`test/repro/\` executed successfully." >> $GITHUB_STEP_SUMMARY
-      - name: Fail if reproducer failed
-        if: ${{ steps.reproducer.outcome == 'failure' }}
-        run: exit 1
