@@ -191,6 +191,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     uses: ./.github/workflows/_linux_reproducer.yml
     with:
       runner: pvc_rolling
