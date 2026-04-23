@@ -111,10 +111,10 @@ void mkl_getrs(
     oneapi::mkl::transpose trans,
     int64_t n,
     int64_t nrhs,
-    scalar_t* a,
+    const scalar_t* a,
     int64_t lda,
     int64_t stride_a,
-    int64_t* ipiv,
+    const int64_t* ipiv,
     int64_t stride_ipiv,
     scalar_t* b,
     int64_t ldb,
@@ -241,7 +241,7 @@ static void apply_lu_solve_xpu_(
   int64_t ldb = b_.size(-2);
   int64_t stride_b = native::matrixStride(b_);
 
-  scalar_t* a = reinterpret_cast<scalar_t*>(lu_.data_ptr());
+  const auto* a = static_cast<const scalar_t*>(lu_.const_data_ptr());
   Tensor pivots = pivots_;
   if (pivots_.scalar_type() == at::ScalarType::Int)
     pivots = pivots_.to(kLong);
@@ -251,41 +251,43 @@ static void apply_lu_solve_xpu_(
   std::vector<int32_t> info_vec(batch_size, 0);
   int32_t* info_data = info_vec.data();
 
-  auto execute_mkl_getrs =
-      [&](scalar_t* a, scalar_t* b, int64_t* ipiv, int64_t batch_size) {
-        int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
-            queue,
-            trans,
-            n,
-            nrhs,
-            lda,
-            stride_a,
-            stride_ipiv,
-            ldb,
-            stride_b,
-            batch_size);
-        Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
-        try {
-          mkl_getrs<scalar_t>(
-              queue,
-              trans,
-              n,
-              nrhs,
-              a,
-              lda,
-              stride_a,
-              ipiv,
-              stride_ipiv,
-              b,
-              ldb,
-              stride_b,
-              batch_size,
-              reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
-              scratchpad_size);
-        } catch (const oneapi::mkl::lapack::batch_error& be) {
-          error_handle(info_data, be);
-        }
-      };
+  auto execute_mkl_getrs = [&](const scalar_t* a,
+                               scalar_t* b,
+                               const int64_t* ipiv,
+                               int64_t batch_size) {
+    int64_t scratchpad_size = mkl_getrs_scratchpad<scalar_t>(
+        queue,
+        trans,
+        n,
+        nrhs,
+        lda,
+        stride_a,
+        stride_ipiv,
+        ldb,
+        stride_b,
+        batch_size);
+    Tensor scratchpad_at = at::empty({scratchpad_size}, b_.options());
+    try {
+      mkl_getrs<scalar_t>(
+          queue,
+          trans,
+          n,
+          nrhs,
+          a,
+          lda,
+          stride_a,
+          ipiv,
+          stride_ipiv,
+          b,
+          ldb,
+          stride_b,
+          batch_size,
+          reinterpret_cast<scalar_t*>(scratchpad_at.data_ptr()),
+          scratchpad_size);
+    } catch (const oneapi::mkl::lapack::batch_error& be) {
+      error_handle(info_data, be);
+    }
+  };
 
   bool is_broadcast = false;
   IntArrayRef lu_batch_shape(lu_.sizes().data(), lu_.dim() - 2);
@@ -308,9 +310,9 @@ static void apply_lu_solve_xpu_(
 
   for (const auto i : c10::irange(batch_size)) {
     int64_t lu_index_i = lu_index(i);
-    scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
+    const scalar_t* a_working_ptr = &a[lu_index_i * stride_a];
     scalar_t* b_working_ptr = &b[i * stride_b];
-    int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
+    const int64_t* ipiv_working_ptr = &ipiv[lu_index_i * stride_ipiv];
 
     execute_mkl_getrs(a_working_ptr, b_working_ptr, ipiv_working_ptr, 1);
   }
