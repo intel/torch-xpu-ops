@@ -33,6 +33,8 @@ Branch must follow: `agent/<slug>` (lowercase, hyphens, max 50 chars).
 
 Every PR must include a pytest-compatible test under `test/repro/` if it is newly introduced. If the test is in PyTorch or torch-xpu-ops tests, you should explicitly write the run command in the PR body (see Step 3).:
 
+Note: For now, if the test is in PyTorch, explicitly point it out in PR message with bold font!
+
 - File name: `test_<description>.py`
 - Contains `def test_...()` functions or `class Test...` classes
 - Runnable: `pytest test/regressions/test_<description>.py`
