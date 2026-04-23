@@ -124,6 +124,8 @@ skip_dict = {
         # FakeTensor mismatch in outputs_alias_inputs for aten.view.default
         # Known upstream issue: https://github.com/pytorch/pytorch/issues/159150
         "test_fake_crossref_backward_amp_nn_functional_bilinear_xpu_float32",
+        # Known upstream issue: https://github.com/pytorch/pytorch/issues/159151
+        "test_fake_crossref_backward_no_amp_nn_functional_bilinear_xpu_float32",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
