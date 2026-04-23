@@ -19,17 +19,17 @@
 namespace c10::xpu::compat {
 
 __MATH_FUNCTIONS_DECL__ float exp(float x) {
-  return ::expf(x);
+  return sycl::exp(x);
 }
 __MATH_FUNCTIONS_DECL__ double exp(double x) {
-  return ::exp(x);
+  return sycl::exp(x);
 }
 
 __MATH_FUNCTIONS_DECL__ float tanh(float x) {
-  return ::tanhf(x);
+  return sycl::tanh(x);
 }
 __MATH_FUNCTIONS_DECL__ double tanh(double x) {
-  return ::tanh(x);
+  return sycl::tanh(x);
 }
 
 __MATH_FUNCTIONS_DECL__ float rsqrt(float x) {

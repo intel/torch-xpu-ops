@@ -212,7 +212,7 @@ struct SparseCooSoftmaxFunctor {
           auto values_row = input_values_acc[i];
           auto out_values_row = output_values_acc[i];
 
-          auto v = std::exp(values_row[j] - mx_row[j]);
+          auto v = sycl::exp(values_row[j] - mx_row[j]);
           if (!LogSoftMax) {
             out_values_row[j] = v;
           }
@@ -224,7 +224,7 @@ struct SparseCooSoftmaxFunctor {
           auto out_values_row = output_values_acc[i];
 
           if (LogSoftMax) {
-            out_values_row[j] = values_row[j] - mx_row[j] - std::log(exp_sums);
+            out_values_row[j] = values_row[j] - mx_row[j] - sycl::log(exp_sums);
           } else {
             out_values_row[j] *= 1.0 / exp_sums;
           }
@@ -315,14 +315,14 @@ struct SparseCooSoftmaxbBackwardFunctor {
             auto grad_values_row = grad_values_accessor[j];
             if (LogSoftMax) {
               values_row[k] =
-                  grad_values_row[k] + std::exp(out_values_row[k]) * tmp_row;
+                  grad_values_row[k] + sycl::exp(out_values_row[k]) * tmp_row;
             } else {
               values_row[k] =
                   out_values_row[k] * (grad_values_row[k] + tmp_row);
             }
           } else {
             if (LogSoftMax) {
-              values_row[k] = std::exp(out_values_row[k]) * tmp_row;
+              values_row[k] = sycl::exp(out_values_row[k]) * tmp_row;
             } else {
               values_row[k] = out_values_row[k] * tmp_row;
             }

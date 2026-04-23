@@ -29,7 +29,7 @@ struct SigmoidFunctor {
   scalar_t operator()(scalar_t a) const {
     using opmath_t = at::opmath_type<scalar_t>;
     const auto one = opmath_t{1.0};
-    return one / (one + std::exp(-static_cast<opmath_t>(a)));
+    return one / (one + sycl::exp(-static_cast<opmath_t>(a)));
   }
 };
 
@@ -46,28 +46,28 @@ void sigmoid_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct ErfFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erf(float(a));
+    return sycl::erf(float(a));
   }
 };
 
 template <>
 struct ErfFunctor<double> {
   double operator()(double a) const {
-    return std::erf(a);
+    return sycl::erf(a);
   }
 };
 
 template <typename scalar_t>
 struct ErfcFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::erfc(float(a));
+    return sycl::erfc(float(a));
   }
 };
 
 template <>
 struct ErfcFunctor<double> {
   double operator()(double a) const {
-    return std::erfc(a);
+    return sycl::erfc(a);
   }
 };
 
@@ -115,17 +115,17 @@ void erfinv_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct Exp2Functor {
   scalar_t operator()(scalar_t a) const {
-    return std::exp2(a);
+    return sycl::exp2(a);
   }
 };
 
 template <typename T>
 struct Exp2Functor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> x) const {
-    // There is no std::exp2 overload for complex, so instead
+    // There is no sycl::exp2 overload for complex, so instead
     // use the identity 2^x = e^(ln(2) * x)
     const auto ln_2 = static_cast<T>(0.693147180559945309417232121458176);
-    return std::exp(ln_2 * x);
+    return sycl::exp(ln_2 * x);
   }
 };
 
@@ -144,7 +144,7 @@ struct Logit0Functor {
   scalar_t operator()(scalar_t x) const {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(x_acc / (T_ACC(1) - x_acc));
+    volatile T_ACC res = sycl::log(x_acc / (T_ACC(1) - x_acc));
     return res;
   }
 };
@@ -156,7 +156,7 @@ struct Logit1Functor {
     const T_ACC x_acc = static_cast<T_ACC>(x);
     T_ACC z = x_acc < lo_ ? lo_ : (x_acc > hi_ ? hi_ : x_acc);
     // suppress compiler optimization on data type promotion.
-    volatile T_ACC res = std::log(z / (T_ACC(1) - z));
+    volatile T_ACC res = sycl::log(z / (T_ACC(1) - z));
     return res;
   }
   Logit1Functor(const T_ACC lo, const T_ACC hi) : lo_(lo), hi_(hi) {}
@@ -285,7 +285,7 @@ struct EntrFunctor {
     if (at::_isnan(x)) {
       return x;
     } else if (x > 0) {
-      return -x * std::log(x);
+      return -x * sycl::log(x);
     } else if (x == 0) {
       return 0;
     }
@@ -323,7 +323,7 @@ struct SincFunctor {
     } else {
       using opmath_t = at::opmath_type<scalar_t>;
       opmath_t product = c10::detail::pi<opmath_t>() * opmath_t{a};
-      return static_cast<scalar_t>(std::sin(product) / product);
+      return static_cast<scalar_t>(sycl::sin(product) / product);
     }
   }
 };
@@ -344,7 +344,7 @@ struct KaiserWindowFunctor {
   scalar_t operator()(scalar_t a) const {
     opmath_t norm = static_cast<opmath_t>(a) * inv_alpha_ - 1;
     opmath_t sqrt_term = std::max<opmath_t>(0, 1 - norm * norm);
-    return calc_i0(beta_ * std::sqrt(sqrt_term)) * inv_i0_beta_;
+    return calc_i0(beta_ * sycl::sqrt(sqrt_term)) * inv_i0_beta_;
   }
 
   KaiserWindowFunctor(opmath_t beta, opmath_t inv_alpha, opmath_t inv_i0_beta)

@@ -241,11 +241,15 @@ Tensor& linspace_kernel(
 template <typename scalar_t, typename step_type>
 struct LogspaceFunctor {
   scalar_t operator()(int64_t ind) const {
+    const auto base = static_cast<scalar_t>(scalar_base_);
     if (ind < halfway_) {
-      return std::pow(scalar_base_, scalar_start_ + step_ * ind);
+      const auto exp = static_cast<scalar_t>(scalar_start_ + step_ * ind);
+      return sycl::pow(base, exp);
     }
 
-    return std::pow(scalar_base_, scalar_end_ - step_ * (steps_ - ind - 1));
+    const auto exp =
+        static_cast<scalar_t>(scalar_end_ - step_ * (steps_ - ind - 1));
+    return sycl::pow(base, exp);
   }
   LogspaceFunctor(
       scalar_t scalar_start,
@@ -264,6 +268,38 @@ struct LogspaceFunctor {
  private:
   scalar_t scalar_start_;
   scalar_t scalar_end_;
+  step_type scalar_base_;
+  int64_t steps_;
+  step_type step_;
+  int64_t halfway_;
+};
+
+template <typename T, typename step_type>
+struct LogspaceFunctor<c10::complex<T>, step_type> {
+  c10::complex<T> operator()(int64_t ind) const {
+    if (ind < halfway_) {
+      return std::pow(scalar_base_, scalar_start_ + step_ * ind);
+    }
+
+    return std::pow(scalar_base_, scalar_end_ - step_ * (steps_ - ind - 1));
+  }
+  LogspaceFunctor(
+      c10::complex<T> scalar_start,
+      c10::complex<T> scalar_end,
+      step_type scalar_base,
+      int64_t steps,
+      step_type step,
+      int64_t halfway)
+      : scalar_start_(scalar_start),
+        scalar_end_(scalar_end),
+        scalar_base_(scalar_base),
+        steps_(steps),
+        step_(step),
+        halfway_(halfway) {}
+
+ private:
+  c10::complex<T> scalar_start_;
+  c10::complex<T> scalar_end_;
   step_type scalar_base_;
   int64_t steps_;
   step_type step_;

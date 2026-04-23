@@ -70,7 +70,7 @@ void reciprocal_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct FracFunctor {
   scalar_t operator()(scalar_t a) const {
-    return a - std::trunc(a);
+    return a - sycl::trunc(a);
   }
 };
 
@@ -84,14 +84,14 @@ void frac_kernel(TensorIteratorBase& iter) {
 template <typename scalar_t>
 struct CeilFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::ceil(a);
+    return sycl::ceil(a);
   }
 };
 
 template <typename T>
 struct CeilFunctor<c10::complex<T>> {
   c10::complex<T> operator()(const c10::complex<T> a) const {
-    return c10::complex<T>(std::ceil(a.real()), std::ceil(a.imag()));
+    return c10::complex<T>(sycl::ceil(a.real()), sycl::ceil(a.imag()));
   }
 };
 
@@ -172,14 +172,14 @@ void round_decimals_kernel(TensorIteratorBase& iter, int64_t decimals) {
 template <typename scalar_t>
 struct FloorFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::floor(a);
+    return sycl::floor(a);
   }
 };
 
 template <typename T>
 struct FloorFunctor<c10::complex<T>> {
   c10::complex<T> operator()(c10::complex<T> v) const {
-    return c10::complex<T>(std::floor(v.real()), std::floor(v.imag()));
+    return c10::complex<T>(sycl::floor(v.real()), sycl::floor(v.imag()));
   }
 };
 
@@ -194,23 +194,23 @@ void floor_kernel(TensorIteratorBase& iter) {
 // types and ROCm.
 template <typename scalar_t>
 inline scalar_t trunc_wrapper(scalar_t a) {
-  return static_cast<scalar_t>(std::truncf(static_cast<float>(a)));
+  return static_cast<scalar_t>(sycl::trunc(static_cast<float>(a)));
 }
 
 inline double trunc_wrapper(double a) {
-  return std::trunc(a);
+  return sycl::trunc(a);
 }
 
 inline c10::complex<float> trunc_wrapper(c10::complex<float> a) {
   return c10::complex<float>(
-      std::truncf(static_cast<float>(a.real())),
-      std::truncf(static_cast<float>(a.imag())));
+      sycl::trunc(static_cast<float>(a.real())),
+      sycl::trunc(static_cast<float>(a.imag())));
 }
 
 inline c10::complex<double> trunc_wrapper(c10::complex<double> a) {
   return c10::complex<double>(
-      std::trunc(static_cast<double>(a.real())),
-      std::trunc(static_cast<double>(a.imag())));
+      sycl::trunc(static_cast<double>(a.real())),
+      sycl::trunc(static_cast<double>(a.imag())));
 }
 
 template <typename scalar_t>

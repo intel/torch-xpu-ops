@@ -56,8 +56,8 @@ struct GridSampler2dKernelFunctor {
 
     if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
       // get NE, NW, SE, SW pixel values from (x, y)
-      index_t ix_nw = static_cast<index_t>(std::floor(ix));
-      index_t iy_nw = static_cast<index_t>(std::floor(iy));
+      index_t ix_nw = static_cast<index_t>(sycl::floor(ix));
+      index_t iy_nw = static_cast<index_t>(sycl::floor(iy));
       index_t ix_ne = ix_nw + 1;
       index_t iy_ne = iy_nw;
       index_t ix_sw = ix_nw;
@@ -113,8 +113,8 @@ struct GridSampler2dKernelFunctor {
       ix = grid_sampler_unnormalize(x, inp_W_, align_corners_);
       iy = grid_sampler_unnormalize(y, inp_H_, align_corners_);
 
-      opmath_t ix_nw = std::floor(ix);
-      opmath_t iy_nw = std::floor(iy);
+      opmath_t ix_nw = sycl::floor(ix);
+      opmath_t iy_nw = sycl::floor(iy);
 
       const opmath_t tx = ix - ix_nw;
       const opmath_t ty = iy - iy_nw;
@@ -392,8 +392,8 @@ struct GridSampler2dBackwardKernelFunctor {
 
     if (interpolation_mode_ == GridSamplerInterpolation::Bilinear) {
       // get NE, NW, SE, SW pixel values from (x, y)
-      index_t ix_nw = static_cast<index_t>(std::floor(ix));
-      index_t iy_nw = static_cast<index_t>(std::floor(iy));
+      index_t ix_nw = static_cast<index_t>(sycl::floor(ix));
+      index_t iy_nw = static_cast<index_t>(sycl::floor(iy));
       index_t ix_ne = ix_nw + 1;
       index_t iy_ne = iy_nw;
       index_t ix_sw = ix_nw;
@@ -530,8 +530,8 @@ struct GridSampler2dBackwardKernelFunctor {
       iy = grid_sampler_unnormalize_set_grad(
           y, inp_H_, align_corners_, &giy_mult);
 
-      scalar_t ix_nw = std::floor(ix);
-      scalar_t iy_nw = std::floor(iy);
+      scalar_t ix_nw = sycl::floor(ix);
+      scalar_t iy_nw = sycl::floor(iy);
 
       const scalar_t tx = ix - ix_nw;
       const scalar_t ty = iy - iy_nw;
@@ -882,9 +882,9 @@ struct GridSampler3dKernelFunctor {
       // get corner pixel values from (x, y, z)
       // for 4d, we used north-east-south-west
       // for 5d, we add top-bottom
-      index_t ix_tnw = static_cast<index_t>(std::floor(ix));
-      index_t iy_tnw = static_cast<index_t>(std::floor(iy));
-      index_t iz_tnw = static_cast<index_t>(std::floor(iz));
+      index_t ix_tnw = static_cast<index_t>(sycl::floor(ix));
+      index_t iy_tnw = static_cast<index_t>(sycl::floor(iy));
+      index_t iz_tnw = static_cast<index_t>(sycl::floor(iz));
 
       index_t ix_tne = ix_tnw + 1;
       index_t iy_tne = iy_tnw;
@@ -1257,9 +1257,9 @@ struct GridSampler3dBackwardKernelFunctor {
       // get corner pixel values from (x, y, z)
       // for 4d, we used north-east-south-west
       // for 5d, we add top-bottom
-      index_t ix_tnw = static_cast<index_t>(std::floor(ix));
-      index_t iy_tnw = static_cast<index_t>(std::floor(iy));
-      index_t iz_tnw = static_cast<index_t>(std::floor(iz));
+      index_t ix_tnw = static_cast<index_t>(sycl::floor(ix));
+      index_t iy_tnw = static_cast<index_t>(sycl::floor(iy));
+      index_t iz_tnw = static_cast<index_t>(sycl::floor(iz));
 
       index_t ix_tne = ix_tnw + 1;
       index_t iy_tne = iy_tnw;
@@ -1490,9 +1490,9 @@ struct GridSampler3dBackwardKernelFunctor {
       gGrid_ptr_NDHW[2] = giz_mult * giz;
     } else if (interpolation_mode_ == GridSamplerInterpolation::Nearest) {
       if (input_requires_grad_) {
-        auto ix_nearest = static_cast<index_t>(std::round(ix));
-        auto iy_nearest = static_cast<index_t>(std::round(iy));
-        auto iz_nearest = static_cast<index_t>(std::round(iz));
+        auto ix_nearest = static_cast<index_t>(sycl::round(ix));
+        auto iy_nearest = static_cast<index_t>(sycl::round(iy));
+        auto iz_nearest = static_cast<index_t>(sycl::round(iz));
 
         // assign nearest neighor pixel value to output pixel
         const scalar_t* gOut_ptr_NCDHW = grad_output_.data + n * gOut_sN_ +

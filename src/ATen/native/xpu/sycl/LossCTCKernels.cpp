@@ -171,9 +171,9 @@ struct CTCLossLogAlphaKernelFunctor {
 
           log_alpha_data_
               [la_batch_offset + la_input_stride_ * t + la_target_stride_ * s] =
-                  std::log(
-                      std::exp(la1 - lamax) + std::exp(la2 - lamax) +
-                      std::exp(la3 - lamax)) +
+                  sycl::log(
+                      sycl::exp(la1 - lamax) + sycl::exp(la2 - lamax) +
+                      sycl::exp(la3 - lamax)) +
               lamax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
@@ -205,7 +205,7 @@ struct CTCLossLogAlphaKernelFunctor {
       scalar_t m = ((l1 > l2) ? l1 : l2);
       m = ((m == neginf) ? 0 : m);
       scalar_t log_likelihood =
-          std::log(std::exp(l1 - m) + std::exp(l2 - m)) + m;
+          sycl::log(sycl::exp(l1 - m) + sycl::exp(l2 - m)) + m;
       neg_log_likelihood_data_[b] = -log_likelihood;
     }
   }
@@ -553,9 +553,9 @@ struct CTCLossBackwardLogBetaKernelFunctor {
           if (lbmax == neginf)
             lbmax = 0;
 
-          scalar_t lb = std::log(
-                            std::exp(lb1 - lbmax) + std::exp(lb2 - lbmax) +
-                            std::exp(lb3 - lbmax)) +
+          scalar_t lb = sycl::log(
+                            sycl::exp(lb1 - lbmax) + sycl::exp(lb2 - lbmax) +
+                            sycl::exp(lb3 - lbmax)) +
               lbmax +
               log_probs_data_
                   [lp_batch_offset + t * lp_input_stride_ +
@@ -670,7 +670,7 @@ struct CTCLossBackwardCollectNonblankKernelFunctor {
           &gradient_data_
               [gr_batch_offset + t * gr_input_stride_ +
                gr_char_stride_ * target],
-          -std::exp(
+          -sycl::exp(
               log_alpha_data_
                   [la_batch_offset + la_input_stride_ * t +
                    la_target_stride_ * (s * 2 + 1)] +
@@ -807,7 +807,7 @@ struct CTCLossBackwardCollectKernelFunctor {
         } else {
           scalar_t max = ((lcab > log_alpha_beta) ? lcab : log_alpha_beta);
           lcab =
-              std::log(std::exp(lcab - max) + std::exp(log_alpha_beta - max)) +
+              sycl::log(sycl::exp(lcab - max) + sycl::exp(log_alpha_beta - max)) +
               max;
         }
       }
@@ -822,7 +822,7 @@ struct CTCLossBackwardCollectKernelFunctor {
       if (t < input_length && (!zero_infinity_ || nll != INFINITY)) {
         scalar_t lp = log_probs_data_
             [lp_batch_offset + t * lp_input_stride_ + lp_char_stride_ * c];
-        res = (std::exp(lp) - std::exp(res + nll - lp)) * gr;
+        res = (sycl::exp(lp) - sycl::exp(res + nll - lp)) * gr;
       } else {
         res = 0.;
       }

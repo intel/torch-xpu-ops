@@ -70,10 +70,10 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         for (int ii = 0; ii < kILP; ii++) {
           opmath_t next = static_cast<opmath_t>(r_x[ii]);
           if constexpr (norm_type == NormType::LInf) {
-            vals[ii] = max_impl(vals[ii], std::fabs((opmath_t)next));
+            vals[ii] = max_impl(vals[ii], sycl::fabs((opmath_t)next));
           } else {
             vals[ii] += norm_type == NormType::L1
-                ? static_cast<opmath_t>(std::fabs((opmath_t)next))
+                ? static_cast<opmath_t>(sycl::fabs((opmath_t)next))
                 : static_cast<opmath_t>(next * next);
           }
         }
@@ -87,10 +87,10 @@ struct LpNormFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           if (i < n && i < chunk_size) {
             opmath_t next = static_cast<opmath_t>(x[i]);
             if constexpr (norm_type == NormType::LInf) {
-              vals[ii] = max_impl(vals[ii], ::abs(std::fabs((opmath_t)next)));
+              vals[ii] = max_impl(vals[ii], ::abs(sycl::fabs((opmath_t)next)));
             } else {
               vals[ii] += norm_type == NormType::L1
-                  ? static_cast<opmath_t>(std::fabs((opmath_t)next))
+                  ? static_cast<opmath_t>(sycl::fabs((opmath_t)next))
                   : static_cast<opmath_t>(next * next);
             }
           }
@@ -149,7 +149,7 @@ struct lpnormChunkReduceKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       *(ret_per_tensor_[group_id]) =
           norm_type == NormType::L1 || norm_type == NormType::LInf
           ? sum_val
-          : std::sqrt((opmath_t)sum_val);
+          : sycl::sqrt((opmath_t)sum_val);
     }
   }
   void sycl_ker_config_convention(sycl::handler& cgh) {

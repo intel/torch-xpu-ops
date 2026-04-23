@@ -22,7 +22,7 @@ namespace at::native::xpu {
 template <typename scalar_t>
 struct CosFunctor {
   scalar_t operator()(const scalar_t a) const {
-    return std::cos(a);
+    return sycl::cos(a);
   }
 };
 

@@ -865,7 +865,7 @@ struct ExponentialFunctor {
             std::numeric_limits<scalar_t>::epsilon() / 2.f) {
       log = -std::numeric_limits<scalar_t>::epsilon() / 2.f;
     } else {
-      log = std::log(val);
+      log = sycl::log(val);
     }
     return static_cast<accscalar_t>(-1.f) / lambd_ * log;
   }
@@ -976,8 +976,8 @@ void cauchy_kernel(
 template <typename scalar_t, typename accscalar_t>
 struct GeometricFunctor {
   scalar_t operator()(accscalar_t rand) const {
-    return static_cast<scalar_t>(std::ceil(
-        std::log(rand) / std::log(static_cast<accscalar_t>(1.0) - p_)));
+    return static_cast<scalar_t>(sycl::ceil(
+        sycl::log(rand) / sycl::log(static_cast<accscalar_t>(1.0) - p_)));
   }
 
   GeometricFunctor(accscalar_t p) : p_(p) {}

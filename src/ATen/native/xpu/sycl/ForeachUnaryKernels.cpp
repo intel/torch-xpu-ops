@@ -369,7 +369,7 @@ template <typename T>
 struct Sigmoid {
   T one = T(1);
   T operator()(T t) const {
-    return (one / (one + std::exp(-t)));
+    return (one / (one + sycl::exp(-t)));
   }
 };
 
@@ -383,7 +383,7 @@ struct Round {
 template <typename T>
 struct Trunc {
   T operator()(T t) const {
-    return t - std::trunc(t);
+    return t - sycl::trunc(t);
   }
 };
 
@@ -413,7 +413,9 @@ template <>
 struct Rsqrt<c10::complex<float>> {
   c10::complex<float> operator()(c10::complex<float> t) const {
     const auto one = c10::complex<float>(1.0, 0);
-    return one / std::sqrt(t);
+    return one /
+        static_cast<c10::complex<float>>(
+            std::sqrt(static_cast<std::complex<float>>(t)));
   }
 };
 
@@ -421,7 +423,9 @@ template <>
 struct Rsqrt<c10::complex<double>> {
   c10::complex<double> operator()(c10::complex<double> t) const {
     const auto one = c10::complex<double>(1.0, 0);
-    return one / std::sqrt(t);
+    return one /
+        static_cast<c10::complex<double>>(
+            std::sqrt(static_cast<std::complex<double>>(t)));
   }
 };
 

@@ -167,8 +167,8 @@ void ChooseQuantizationParamsKernelImpl(
       int symmetric_qmax = (qmax - qmin) / 2;
 
       float max_scale = std::max(
-          std::fabs(min_val / symmetric_qmin),
-          std::fabs(max_val / symmetric_qmax));
+          sycl::fabs(min_val / symmetric_qmin),
+          sycl::fabs(max_val / symmetric_qmax));
       min_val = max_scale * symmetric_qmin;
       max_val = max_scale * symmetric_qmax;
     }

@@ -48,9 +48,9 @@ template <typename scalar_t>
 c10::complex<scalar_t> _fast_build_exp(const c10::complex<scalar_t>& x) {
   auto xreal = std::real(x);
   auto ximag = std::imag(x);
-  auto exp_x_abs = std::exp(xreal);
-  auto exp_x_real = exp_x_abs * std::cos(ximag);
-  auto exp_x_imag = exp_x_abs * std::sin(ximag);
+  auto exp_x_abs = sycl::exp(xreal);
+  auto exp_x_real = exp_x_abs * sycl::cos(ximag);
+  auto exp_x_imag = exp_x_abs * sycl::sin(ximag);
   return {exp_x_real, exp_x_imag};
 }
 
@@ -62,8 +62,8 @@ c10::complex<scalar_t> _fast_build_exp_inf(const c10::complex<scalar_t>& x) {
   if (!std::isfinite(ximag)) { // Consistent with std::exp behavior
     return {exp_x_abs, std::numeric_limits<scalar_t>::quiet_NaN()};
   }
-  auto sin = std::sin(ximag);
-  auto cos = std::cos(ximag);
+  auto sin = sycl::sin(ximag);
+  auto cos = sycl::cos(ximag);
   // Handle exact multiples of pi/2 to avoid inf * 0 = NaN
   auto exp_x_real = (cos == 0) ? (scalar_t)0.0 : exp_x_abs * cos;
   auto exp_x_imag = (sin == 0) ? (scalar_t)0.0 : exp_x_abs * sin;
@@ -121,7 +121,7 @@ struct LogAddExpFunctor {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + std::log1p(std::exp(-std::abs(a - b)));
+      return m + sycl::log1p(sycl::exp(-sycl::fabs(a - b)));
     }
   }
 };
@@ -158,7 +158,7 @@ struct LogAddExp2Functor {
       return a;
     } else {
       const auto m = std::max(a, b);
-      return m + std::log1p(std::exp2(-std::abs(a - b))) * inv_log_2;
+      return m + sycl::log1p(sycl::exp2(-sycl::fabs(a - b))) * inv_log_2;
     }
   }
 };

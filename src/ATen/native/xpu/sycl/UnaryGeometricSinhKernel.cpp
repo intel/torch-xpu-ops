@@ -21,14 +21,14 @@ template <typename scalar_t>
 struct SinhComplexFunctor {
   using opmath_t = at::opmath_type<scalar_t>;
   scalar_t operator()(scalar_t a) const {
-    return std::sinh(static_cast<opmath_t>(a));
+    return sycl::sinh(static_cast<opmath_t>(a));
   }
 };
 
 template <typename scalar_t>
 struct SinhFunctor {
   scalar_t operator()(scalar_t a) const {
-    return std::sinh(a);
+    return sycl::sinh(a);
   }
 };
 
