@@ -23,11 +23,17 @@ jobs:
   preci-lint-check:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
     steps:
+      - name: Setup container environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates gh jq
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
         with:
@@ -88,10 +94,16 @@ jobs:
       && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
       && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     timeout-minutes: 10
     outputs:
       src_changed: ${{ steps.check-files.outputs.src_changed }}
     steps:
+      - name: Setup container environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git
       - uses: dorny/paths-filter@v3
         id: check-files
         with:
