@@ -49,6 +49,8 @@ skip_dict = {
         "test_dataparallel_saved_tensors_hooks",
         # CUDA-specific bogus autograd registration test, not applicable to XPU
         "test_view_copy_xpu",
+        "test_autograd_multiple_dispatch_registrations_xpu",
+        "test_foward_mode_AD_xpu"
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_comparison_utils_xpu.py": None,

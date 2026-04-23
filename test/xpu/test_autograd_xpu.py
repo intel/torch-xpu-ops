@@ -43,80 +43,6 @@ from torch.utils.checkpoint import (
 from torch.utils.flop_counter import FlopCounterMode
 
 
-def autograd_multiple_dispatch_registrations(self, device):
-    t = torch.randn(3, 3, device=device, requires_grad=True)
-    # using _test_autograd_multiple_dispatch.fullcoverage which has
-    # registrations in derivatives.yaml for Default, AutogradCUDA and NestedTensorAutograd
-    out = torch._test_autograd_multiple_dispatch(t)
-    grad = torch.randn(3, 3, device=device)
-    out.backward(grad)
-    if "XPU" not in device:
-        # bogus default gradient registered for Autograd is grad + 1
-        self.assertEqual(t.grad, grad + 1)
-    else:
-        # bogus gradient registered for AutogradCUDA is grad * 2
-        self.assertEqual(t.grad, grad * 2)
-    # test registered AutogradNestedTensor formula
-    a = (
-        torch.arange(6, dtype=torch.float, device=device)
-        .reshape(2, 3)
-        .requires_grad_(True)
-    )
-    b = (
-        torch.arange(8, dtype=torch.float, device=device)
-        .reshape(2, 4)
-        .requires_grad_(True)
-    )
-    nt = torch.nested.as_nested_tensor([a, b], dtype=torch.float, device=device)
-    nt_out = torch._test_autograd_multiple_dispatch(nt)
-    c = torch.randn(2, 3, device=device)
-    d = torch.randn(2, 4, device=device)
-    nt_grad = torch.nested.nested_tensor([c, d], dtype=torch.float, device=device)
-    nt_out.backward(nt_grad)
-    # bogus gradient for AutogradNestedTensor is grad * grad
-    self.assertEqual(a.grad, c * c)
-    self.assertEqual(b.grad, d * d)
-
-
-def foward_mode_AD(self, device):
-    # check that forward mode AD is only registered for the Default
-    # dispatch for _test_autograd_multiple_dispatch.fullcoverage and not AutogradCUDA
-    primal = torch.randn(3, device=device)
-    tangent = torch.randn(3, device=device)
-    with fwAD.dual_level():
-        dual_input = fwAD.make_dual(primal, tangent)
-        err_msg = r"Trying to use forward AD with .* that does not support it"
-        hint_msg = "Running forward AD for an OP that does not implement it should raise a NotImplementedError"
-        if "XPU" in device:
-            with self.assertRaisesRegex(NotImplementedError, err_msg, msg=hint_msg):
-                torch._test_autograd_multiple_dispatch(dual_input)
-        else:
-            torch._test_autograd_multiple_dispatch(dual_input)
-
-
-def view_copy(self, device):
-    # tests that view_copy derivative formulas are also generated per dispatch key
-    # from their respective view ops in derivatives.yaml
-    t = torch.randn(2, 2, device=device, requires_grad=True)
-    t_ref = t.clone().detach().requires_grad_()
-    # _test_autograd_multiple_dispatch_view does a .view(-1) on the input
-    t_view = torch._test_autograd_multiple_dispatch_view(t_ref)
-    t_view_copy = torch._test_autograd_multiple_dispatch_view_copy(t)
-    grad = torch.randn(4, device=device)
-    t_view_copy.backward(grad)
-    t_view.backward(grad.clone())
-    # forward and backward give the same shape + result
-    self.assertEqual(t_view_copy, t_view)
-    self.assertEqual(t.grad, t_ref.grad)
-    # backward results are per-dispatch-key in derivatives.yaml
-    if "XPU" in device:
-        # gradient registered to AutogradCUDA is grad.reshape_as(self) + 1
-        self.assertEqual(t.grad, grad.reshape_as(t) + 1)
-    else:
-        # Default gradient registered is grad.reshape_as(self)
-        self.assertEqual(t.grad, grad.reshape_as(t))
-
-
 @onlyXPU
 def backward_single_threaded(self, device):
     threads_eq = None
@@ -777,11 +703,6 @@ with XPUPatchForImport(False):
     TestMultithreadAutograd.test_custom_function_propagates_errors_from_device_thread = (
         custom_function_propagates_errors_from_device_thread
     )
-    TestAutogradMultipleDispatch.test_autograd_multiple_dispatch_registrations = (
-        autograd_multiple_dispatch_registrations
-    )
-    TestAutogradMultipleDispatch.test_foward_mode_AD = foward_mode_AD
-    TestAutogradMultipleDispatch.test_view_copy = view_copy
     TestAutogradMultipleDispatch.test_backward_single_threaded = (
         backward_single_threaded
     )
