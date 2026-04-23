@@ -537,8 +537,18 @@ void linalg_cholesky_ex_kernel(
     bool check_errors,
     const Tensor& L,
     const Tensor& info) {
-  AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "linalg_cholesky_ex_xpu", [&] {
-    linalg_cholesky_ex_kernel_impl<scalar_t>(A, upper, check_errors, L, info);
-  });
+  if (A.is_complex()) {
+    // CPU fallback for complex types
+    auto A_cpu = A.to(A.options().device(kCPU));
+    auto L_cpu = at::empty_like(L, L.options().device(kCPU));
+    auto info_cpu = at::empty_like(info, info.options().device(kCPU));
+    at::linalg_cholesky_ex_out(L_cpu, info_cpu, A_cpu, upper, check_errors);
+    L.copy_(L_cpu);
+    info.copy_(info_cpu);
+  } else {
+    AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "linalg_cholesky_ex_xpu", [&] {
+      linalg_cholesky_ex_kernel_impl<scalar_t>(A, upper, check_errors, L, info);
+    });
+  }
 }
 } // namespace at::native::xpu
