@@ -31,12 +31,12 @@ Branch must follow: `agent/<slug>` (lowercase, hyphens, max 50 chars).
 
 ## Step 2: Write a reproducer test (mandatory)
 
-Every PR must include a pytest-compatible test under `test/regressions/`:
+Every PR must include a pytest-compatible test under `test/regressions/` if it is newly introduced. If the test is in PyTorch or torch-xpu-ops tests, you should explicitly write the run command in the PR body (see Step 3).:
 
 - File name: `test_<description>.py`
 - Contains `def test_...()` functions or `class Test...` classes
 - Runnable: `pytest test/regressions/test_<description>.py`
-- Imports `torch`, targets `xpu` device
+- Imports `torch`, targets `xpu` device (also `cuda` if relevant)
 
 **Exceptions** (CI-only changes, docs, build fixes): no new test file required, but you
 must name existing tests that validate the change.
@@ -74,7 +74,24 @@ The `Test:` line is required in every PR body. CI reviewers look for it.
 
 ---
 
-## Step 4: Push your branch
+## Step 4: Run linting checks
+
+Before pushing, run pre-commit and/or lintrunner to catch style and lint issues:
+
+```bash
+# Option A — pre-commit (if configured)
+pre-commit run --files $(git diff main --name-only)
+
+# Option B — lintrunner (if configured)
+lintrunner --take FLAKE8,MYPY,CLANGFORMAT -a $(git diff main --name-only)
+```
+
+Fix any reported issues and amend your commit before proceeding.
+If neither tool is configured in the repo, skip this step and note it in your summary.
+
+---
+
+## Step 6: Push your branch
 
 ```bash
 git push origin agent/<slug>
@@ -85,7 +102,7 @@ to origin. **Do not push to `main`.**
 
 ---
 
-## Step 5: Open the PR (or hand off)
+## Step 7: Open the PR (or hand off)
 
 Agents do not auto-open PRs for this repo. Output your summary so a human can review
 and open the PR.
@@ -115,6 +132,7 @@ Test: <test line>
 
 ## Checklist before handing off
 
+- [ ] pre-commit / lintrunner passed (or not configured — noted in summary)
 - [ ] `yaml/`, `src/`, and `test/` are consistent (if any were touched)
 - [ ] Test file added to `test/regressions/` or `Test: none (reason)` written
 - [ ] No unrelated files changed
