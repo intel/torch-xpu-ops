@@ -17,6 +17,8 @@ from packaging import version
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     ops,
+    tol,
+    toleranceOverride,
 )
 from torch.testing._internal.common_methods_invocations import (
     spectral_funcs,
@@ -102,54 +104,46 @@ def _test_reference_1d(self, device, dtype, op):
 
 
 @ops(spectral_funcs, allowed_dtypes=(torch.half, torch.chalf))
+@toleranceOverride(
+    {
+        torch.half: tol(1e-2, 1e-2),
+        torch.chalf: tol(1e-2, 1e-2),
+    }
+)
 def _test_fft_half_and_chalf_not_power_of_two(self, device, dtype, op):
     t = torch.randn(13, 13, device=device, dtype=dtype)
-    # Basic smoke test: op should run without error and return a tensor on the correct device
-    # Some spectral ops (e.g., irfft/irfft2/irfftn/hfft) produce real outputs, so we cannot
-    # unconditionally assert that the result is complex.
-    real_output_transforms = {"fft.irfft", "fft.irfft2", "fft.irfftn", "fft.hfft"}
-    is_real_output = op.name in real_output_transforms
-    result_default = op(t)
-    self.assertIsInstance(result_default, torch.Tensor)
-    self.assertEqual(result_default.device, t.device)
-    # For complex-output transforms, FFT results should be complex; allow upcasting (e.g., half -> cfloat)
-    if is_real_output:
-        self.assertFalse(result_default.is_complex())
-    else:
-        self.assertTrue(result_default.is_complex())
 
     if op.ndimensional in (SpectralFuncType.ND, SpectralFuncType.TwoD):
         kwargs = {"s": (12, 12)}
     else:
         kwargs = {"n": 12}
 
-    result = op(t, **kwargs)
-    self.assertIsInstance(result, torch.Tensor)
-    self.assertEqual(result.device, t.device)
-    # Match the real-vs-complex expectations used for result_default above.
-    if is_real_output:
-        self.assertFalse(result.is_complex())
-    else:
-        self.assertTrue(result.is_complex())
+    # Promote to higher precision for CPU reference calculations.
+    cpu_input = t.to(torch.complex64 if dtype.is_complex else torch.float32).cpu()
 
-    # Verify that the requested size parameters affect the last dimension(s)
-    # This simple shape rule (directly setting the last dim(s) to n/s) is only
-    # valid for complex-to-complex FFT variants such as fft/ifft/fft2/ifft2/fftn/ifftn.
-    complex_to_complex_ops = {"fft.fft", "fft.ifft", "fft.fft2", "fft.ifft2", "fft.fftn", "fft.ifftn"}
-    if op.name in complex_to_complex_ops:
-        if "n" in kwargs:
-            expected_shape = list(t.shape)
-            expected_shape[-1] = kwargs["n"]
-        else:
-            expected_shape = list(t.shape)
-            s0, s1 = kwargs["s"]
-            expected_shape[-2] = s0
-            expected_shape[-1] = s1
-        self.assertEqual(result.shape, torch.Size(expected_shape))
+    # Validate default call
+    cpu_default = op(cpu_input)
+    xpu_default = op(t)
+    self._compare_xpu_cpu(xpu_default, cpu_default, t)
+
+    # Validate sized call
+    cpu_sized = op(cpu_input, **kwargs)
+    xpu_sized = op(t, **kwargs)
+    self._compare_xpu_cpu(xpu_sized, cpu_sized, t)
+
+
+def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
+    self.assertEqual(xpu_result.device, t.device)
+    self.assertEqual(xpu_result.is_complex(), cpu_result.is_complex())
+    self.assertEqual(xpu_result, cpu_result, exact_dtype=False)
 
 
 TestFFT.test_reference_1d = _test_reference_1d
+TestFFT._compare_xpu_cpu = _compare_xpu_cpu
 TestFFT.test_fft_half_and_chalf_not_power_of_two = (
+    _test_fft_half_and_chalf_not_power_of_two
+)
+TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
     _test_fft_half_and_chalf_not_power_of_two
 )
 
