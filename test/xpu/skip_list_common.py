@@ -48,6 +48,7 @@ skip_dict = {
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
         # CUDA-specific bogus autograd registration test, not applicable to XPU
+        # As stated in https://github.com/pytorch/pytorch/pull/180969#issuecomment-4293183745
         "test_view_copy_xpu",
         "test_autograd_multiple_dispatch_registrations_xpu",
         "test_foward_mode_AD_xpu",
