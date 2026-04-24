@@ -12,7 +12,12 @@ import os
 import sys
 from unittest import skipIf
 
-sys.path.append("../../../../test/profiler")
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_PYTORCH_PROFILER_TEST_DIR = os.path.abspath(
+    os.path.join(_THIS_DIR, "../../../../test/profiler")
+)
+
+sys.path.append(_PYTORCH_PROFILER_TEST_DIR)
 
 import torch
 import torch.utils.cpp_extension
@@ -25,12 +30,12 @@ else:
     # cpp extensions use relative paths. Those paths are relative to
     # this file, so we'll change the working directory temporarily
     old_working_dir = os.getcwd()
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(_THIS_DIR)
 
     cpp = torch.utils.cpp_extension.load(
         name="profiler_test_cpp_thread_lib",
         sources=[
-            "test_cpp_thread.cpp",
+            os.path.join(_PYTORCH_PROFILER_TEST_DIR, "test_cpp_thread.cpp"),
         ],
         verbose=True,
     )
