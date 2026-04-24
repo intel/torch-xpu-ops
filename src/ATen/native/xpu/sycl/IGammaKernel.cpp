@@ -25,8 +25,7 @@ struct IgammaFunctor {
 #elif defined(__GNUC__)
   __attribute__((optimize("O0")))
 #endif
-  scalar_t
-  operator()(scalar_t a, scalar_t b) const {
+  scalar_t operator()(scalar_t a, scalar_t b) const {
     if (calc_igammac_) {
       return calc_igammac<scalar_t>(a, b);
     } else {

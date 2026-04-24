@@ -252,8 +252,7 @@ struct FlattenIndicesFunctor {
 };
 
 template <
-    template <typename func_t>
-    class kernel_t,
+    template <typename func_t> class kernel_t,
     typename index_t,
     int64_t max_static_len = 0>
 Tensor _flatten_indices_impl(const Tensor& indices, IntArrayRef size) {

@@ -33,8 +33,7 @@ template <
     template <
         typename scalar_t,
         typename acc_t = scalar_t,
-        typename out_t = scalar_t>
-    typename OpFunctor,
+        typename out_t = scalar_t> typename OpFunctor,
     typename GeneralDispatcher>
 static void reduce_dispatch(TensorIterator& iter, GeneralDispatcher op) {
   if (iter.dtype() == kHalf) {
