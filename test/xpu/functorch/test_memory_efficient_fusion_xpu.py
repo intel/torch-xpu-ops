@@ -13,16 +13,12 @@
 # Owner(s): ["module: functorch"]
 
 import inspect
-import random
 import unittest
 from collections.abc import Callable
 
 import torch
-import torch.fx as fx
 import torch.nn as nn
-from functorch import make_fx
 from functorch.compile import memory_efficient_fusion
-from torch._functorch.compile_utils import fx_graph_cse
 from torch.nn import functional as F
 from torch.testing._internal.common_utils import run_tests, TestCase
 
@@ -142,3 +138,7 @@ class TestMemoryEfficientOpAuthoring(TestCase):
         t5_norm = T5LayerNorm(hidden)
         t5_norm_inputs = [(bs, seq, hidden)]
         run_and_compare_activation(self, t5_norm, t5_norm_inputs)
+
+
+if __name__ == "__main__":
+    run_tests()
