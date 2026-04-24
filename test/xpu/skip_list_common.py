@@ -56,6 +56,8 @@ skip_dict = {
     "test_decomp_xpu.py": (
         # Slow test case: it takes more than 10 minutes to run on XPU.
         "test_quick_core_backward_baddbmm_xpu_float64",
+        # Slow test case: it takes more than 10 minutes to run on XPU.
+        "test_quick_core_backward__unsafe_masked_index_put_accumulate_xpu_float64",
     ),
     "test_distributions_xpu.py": None,
     "test_dynamic_shapes_xpu.py": None,
@@ -136,27 +138,8 @@ skip_dict = {
         # due to #2164, CUDA specific test
         "test_no_cuda_monkeypatch",
         # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_storage_setitem_xpu_float32",
-        "test_storage_error_no_attribute",
-        "test_storage_setitem_xpu_uint8",
-        "test_tensor_storage_type_xpu_bfloat16",
-        "test_tensor_storage_type_xpu_int16",
-        "test_tensor_storage_type_xpu_float16",
-        "test_storage_setitem_xpu_int16",
-        "test_storage_setitem_xpu_float64",
-        "test_tensor_storage_type_xpu_bool",
         "test_pickle_gradscaler_xpu",
-        "test_tensor_storage_type_xpu_float64",
-        "test_tensor_storage_type_xpu_float32",
-        "test_tensor_storage_type_xpu_int8",
-        "test_storage_setitem_xpu_int32",
-        "test_tensor_storage_type_xpu_uint8",
-        "test_tensor_storage_type_xpu_int32",
-        "test_storage_setitem_xpu_int64",
         "test_grad_scaler_pass_itself_xpu",
-        "test_storage_setitem_xpu_bool",
-        "test_tensor_storage_type_xpu_int64",
-        "test_storage_setitem_xpu_int8",
         "test_grad_scaling_state_dict_xpu",
         "test_typed_storage_deprecation_warning",
         "test_typed_storage_internal_no_warning",
@@ -165,6 +148,17 @@ skip_dict = {
         "test_broadcast_fn_map_xpu",
         # RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
+        # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
+        # UntypedStorage paired with torch.dtype. XPU does not provide typed storage classes
+        # (e.g., torch.xpu.FloatStorage, torch.xpu.BFloat16Storage). See NOTE in
+        # torch.storage._dtype_to_storage_type_map() upstream:
+        # https://github.com/pytorch/pytorch/blob/main/torch/storage.py
+        "test_storage_setitem_xpu",
+        "test_storage_error",
+        # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
+        # under pytest -k substring semantics used by the XPU skip runner.
+        "test_print",
+        "test_tensor_storage_type_xpu",
     ),
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
