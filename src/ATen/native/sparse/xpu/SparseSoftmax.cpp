@@ -20,14 +20,7 @@ Tensor softmax_sparse_xpu(
     const Tensor& input_,
     const int64_t dim_,
     const bool half_to_float) {
-  return xpu::softmax_sparse_xpu_kernel(input_, dim_, half_to_float);
-}
-
-Tensor log_softmax_sparse_xpu(
-    const Tensor& input_,
-    const int64_t dim_,
-    const bool half_to_float) {
-  return xpu::log_softmax_sparse_xpu_kernel(input_, dim_, half_to_float);
+  return xpu::softmax_forward_sparse_xpu_kernel(input_, dim_, half_to_float);
 }
 
 Tensor softmax_backward_sparse_xpu(
