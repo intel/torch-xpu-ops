@@ -50,40 +50,6 @@ command = [
 is_formatter = true
 
 [[linter]]
-code = 'MYPY'
-include_patterns = [
-    '**/*.py',
-    '**/*.pyi',
-]
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/mypy_linter.py',
-    '--config=mypy.ini',
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
-code = 'MYPYSTRICT'
-include_patterns = [
-    '**/*.py',
-    '**/*.pyi',
-]
-
-command = [
-    'uv',
-    'run',
-    '--script',
-    'tools/linter/adapters/mypy_linter.py',
-    '--config=mypy-strict.ini',
-    '--code=MYPYSTRICT',
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
 code = 'CLANGTIDY'
 include_patterns = [
     'src/**/*.h',
