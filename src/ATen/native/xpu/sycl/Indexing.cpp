@@ -1037,7 +1037,8 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     item.barrier(sycl::access::fence_space::local_space);
 
-    for (int i = item.get_local_id(0); i < SMEM_SIZE; i += item.get_local_range(0)) {
+    for (int i = item.get_local_id(0); i < SMEM_SIZE;
+         i += item.get_local_range(0)) {
       IndexType final_dstOffset = smem_offsets[i];
 
       if (final_dstOffset != (IndexType)-1) {
