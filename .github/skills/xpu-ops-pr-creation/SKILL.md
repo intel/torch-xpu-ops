@@ -13,7 +13,7 @@ placeholders:
 
 # PR Creation — torch-xpu-ops
 
-Read `.github/copilot-instructions.md` for full repo context before starting.
+Read `copilot-instructions.md` for full repo context before starting.
 
 ---
 
