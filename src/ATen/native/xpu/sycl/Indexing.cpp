@@ -1015,7 +1015,7 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       srcOffset += srcIndex * src_.strides[srcAddDim_];
 
       T val = src_.data[srcOffset] * alpha_;
-      const int smem_idx = (dstOffset / sizeof(T)) & (SMEM_SIZE - 1);
+      const int smem_idx = dstOffset & (SMEM_SIZE - 1);
       IndexType current_offset = smem_offsets[smem_idx];
 
       if (current_offset == dstOffset) {
@@ -1037,11 +1037,11 @@ struct IndexFuncLargeIndexFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     item.barrier(sycl::access::fence_space::local_space);
 
-    if (item.get_local_id(0) < SMEM_SIZE) {
-      IndexType final_dstOffset = smem_offsets[item.get_local_id(0)];
+    for (int i = item.get_local_id(0); i < SMEM_SIZE; i += item.get_local_range(0)) {
+      IndexType final_dstOffset = smem_offsets[i];
 
-      if (final_dstOffset != -1) {
-        T final_val = smem_values[item.get_local_id(0)];
+      if (final_dstOffset != (IndexType)-1) {
+        T final_val = smem_values[i];
 
         op_(dst_.data, final_dstOffset, dstNumel_, &final_val);
       }
