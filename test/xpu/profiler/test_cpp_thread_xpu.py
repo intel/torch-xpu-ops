@@ -6,42 +6,32 @@
 #
 # http://www.apache.org/licenses/LICENSE-2.0
 
+# flake8: noqa
+
 # Owner(s): ["module: intel"]
 
 import os
-import sys
 from unittest import skipIf
-
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_PYTORCH_PROFILER_TEST_DIR = os.path.abspath(
-    os.path.join(_THIS_DIR, "../../../../test/profiler")
-)
-
-sys.path.append(_PYTORCH_PROFILER_TEST_DIR)
 
 import torch
 import torch.utils.cpp_extension
 from torch._environment import is_fbcode
 from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_CPP_THREAD_SOURCE = os.path.abspath(
+    os.path.join(_THIS_DIR, "../../../../../test/profiler/test_cpp_thread.cpp")
+)
+
+
 if is_fbcode():
     import caffe2.test.profiler_test_cpp_thread_lib as cpp  # @manual=//caffe2/test:profiler_test_cpp_thread_lib
 else:
-    # cpp extensions use relative paths. Those paths are relative to
-    # this file, so we'll change the working directory temporarily
-    old_working_dir = os.getcwd()
-    os.chdir(_THIS_DIR)
-
     cpp = torch.utils.cpp_extension.load(
         name="profiler_test_cpp_thread_lib",
-        sources=[
-            os.path.join(_PYTORCH_PROFILER_TEST_DIR, "test_cpp_thread.cpp"),
-        ],
+        sources=[_CPP_THREAD_SOURCE],
         verbose=True,
     )
-
-    # return the working directory (see setUp)
-    os.chdir(old_working_dir)
 
 
 KinetoProfiler = None
