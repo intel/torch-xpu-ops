@@ -45,7 +45,9 @@ If the user relies on a non-default interpreter, replace `python` in both comman
 
 ## Suggested environment collection command
 ```bash
-python -W ignore::RuntimeWarning -m torch.utils.collect_env
+wget https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
+# For security purposes, please check the contents of collect_env.py before running it.
+python collect_env.py
 ```
 
 ## What counts as a confirmed bug
