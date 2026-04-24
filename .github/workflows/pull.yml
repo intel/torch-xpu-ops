@@ -34,7 +34,7 @@ jobs:
           path: torch-xpu-ops
       - name: Run lint check
         run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV,PYFMT --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           cd ./torch-xpu-ops
           bash .github/scripts/lintrunner.sh
       - name: Run lint check with Clang
