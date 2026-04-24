@@ -1,52 +1,17 @@
-# GitHub MCP reference for this workflow
-
-## Server setup
-This skill uses GitHub MCP for all GitHub metadata access.
-The hosted GitHub MCP endpoint authenticates via `GITHUB_PAT`.
-
-Required token scope: `repo`
-Optional: `read:org` for org metadata
-
-Do not commit a token into any repository.
-Use one of these local-only options instead:
-- `export GITHUB_PAT` in your shell before starting the agent
-- store it in a local `.env` that stays gitignored and source it in your shell
-
-Remote GitHub MCP is preferred here because it avoids a local Docker dependency,
-exposes issue, PR, commit, and code search tools in one endpoint, and can be
-scoped per agent in your OpenCode configuration.
-
-## Most useful GitHub MCP capabilities for CUDA-fix mining
-- `search_issues` — Find closed issues and PRs using GitHub search syntax.
-  - `repo:pytorch/pytorch is:issue is:closed CUDA incorrect result`
-  - `repo:pytorch/pytorch is:pr is:merged fix cuda non-contiguous`
-  - `repo:pytorch/pytorch is:pr is:merged "incorrect on cuda"`
-- `issue_read` — Fetch issue body, comments, sub-issues, and labels.
-- `search_pull_requests` — Search merged PRs directly with GitHub syntax.
-- `pull_request_read` — Use get, get_files, get_diff, get_comments, and get_reviews selectively.
-- `list_commits` and `get_commit` — Walk from PR to the landing commit and inspect the exact fix.
-- `get_file_contents` — Read only the specific regression test or source file touched by the PR.
-- `issue_write` — Create the final XPU issue once local validation is complete.
-
-## Duplicate search for intel/torch-xpu-ops
-Before creating an issue, search the target repo directly.
-
-Use strong anchors first:
-- exact upstream PyTorch issue URL
-- exact upstream PR URL
-- exact upstream commit SHA or commit URL
-- plain bug statement without the `[ai_generated]` prefix
-
-Then fall back to semantic search:
-- `repo:intel/torch-xpu-ops is:issue is:open xpu non-contiguous`
-- `repo:intel/torch-xpu-ops is:issue is:open xpu empty tensor`
-- `repo:intel/torch-xpu-ops is:issue is:open xpu dtype promotion`
-- `repo:intel/torch-xpu-ops is:issue is:open xpu reduction mismatch`
-- `repo:intel/torch-xpu-ops is:issue is:open xpu masked scatter`
-
-When filing, prefer `issue_read` on the strongest duplicate candidate before
-deciding whether to create a new report. Also check recently closed issues when
 the anchor search already matches the same upstream issue, PR, or commit.
+# GitHub tool reference for this skill
+
+This skill assumes GitHub Copilot can search issues, pull requests, commits, and changed files. Keep this workflow read-only. Issue creation belongs to the separate `xpu-ops-issue-creation` skill.
+
+## Useful GitHub capabilities
+- `search_issues` — Find closed issues and PRs using GitHub search syntax.
+- `issue_read` — Fetch issue body, comments, and labels.
+- `search_pull_requests` — Search merged PRs directly.
+- `pull_request_read` — Read PR summary, files, diff, comments, and reviews selectively.
+- `list_commits` and `get_commit` — Walk from PR to the landing commit and inspect the exact fix.
+- `get_file_contents` — Read only the regression test or source file touched by the PR.
+
+If the current Copilot environment does not expose these GitHub tools, stop and tell the user what upstream search still needs to be done manually.
 
 ## Query patterns that work well
 ### Issues
@@ -78,4 +43,4 @@ After identifying a PR, inspect:
 - Do not treat every CUDA fix as an XPU candidate.
 - Do not mine huge compiler or infra PRs first.
 - Do not read whole-file diffs when a single test name gives the bug shape.
-- Do not create issues before local validation.
+- Do not mix issue filing into this skill.
