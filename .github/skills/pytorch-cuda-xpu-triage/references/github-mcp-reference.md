@@ -1,4 +1,3 @@
-the anchor search already matches the same upstream issue, PR, or commit.
 # GitHub tool reference for this skill
 
 This skill assumes GitHub Copilot can search issues, pull requests, commits, and changed files. Keep this workflow read-only. Issue creation belongs to the separate `xpu-ops-issue-creation` skill.
