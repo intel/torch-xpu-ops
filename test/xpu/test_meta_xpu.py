@@ -18,7 +18,6 @@ from functools import partial, wraps
 import numpy as np
 import torch
 import torch.utils._python_dispatch
-
 import yaml
 from torch._dispatch.python import enable_python_dispatcher
 from torch._ops import OpOverload, OpOverloadPacket
@@ -624,7 +623,7 @@ def run_meta_crossref(
             meta_kwargs = tree_map(to_meta, kwargs)
         except Exception as e:
             raise RuntimeError(
-                f"failed to convert args to meta; " f"originally (*{args}, **{kwargs})"
+                f"failed to convert args to meta; originally (*{args}, **{kwargs})"
             ) from e
     try:
         rs = func(*args, **kwargs)

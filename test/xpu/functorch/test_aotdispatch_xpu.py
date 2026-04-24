@@ -145,9 +145,7 @@ def _pack_fp8_wrap(x):
     if type(x) is not torch.Tensor:
         # Check only during compilation
         # Test calls hooks to get reference output
-        ctx = (
-            torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
-        )
+        ctx = torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
         if ctx["_fw_graph"] is None:
             raise AssertionError("Expected _fw_graph to not be None")
         if ctx["_bw_graph"] is None:
@@ -167,9 +165,7 @@ def _unpack_fp8_wrap(x):
     if type(tensor) is not torch.Tensor:
         # Check only during compilation
         # Test calls hooks to get reference output
-        ctx = (
-            torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
-        )
+        ctx = torch._functorch._aot_autograd.graph_compile._get_saved_tensor_hook_context()
         if ctx["_fw_graph"] is None:
             raise AssertionError("Expected _fw_graph to not be None")
         if ctx["_bw_graph"] is None:
