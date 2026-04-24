@@ -22,7 +22,7 @@ from torch.testing._internal.common_methods_invocations import (
     spectral_funcs,
     SpectralFuncType,
 )
-from torch.testing._internal.common_utils import run_tests
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 try:
     from .xpu_test_utils import XPUPatchForImport
@@ -104,6 +104,24 @@ def _test_reference_1d(self, device, dtype, op):
 TestFFT.test_reference_1d = _test_reference_1d
 
 instantiate_device_type_tests(TestFFT, globals(), only_for=("xpu"), allow_xpu=True)
+
+
+# Regression test for https://github.com/pytorch/pytorch/issues/141448:
+# _fft_c2r used to crash (trip an INTERNAL ASSERT on the MKL path) when
+# last_dim_size was inconsistent with the input's last transformed dimension.
+class TestFftC2rInputValidationXPU(TestCase):
+    def test_fft_c2r_invalid_last_dim_size(self):
+        if not torch.xpu.is_available():
+            raise unittest.SkipTest("XPU not available")
+        t = torch.full((3, 1, 3, 1), 0.372049, dtype=torch.cfloat, device="xpu")
+        with self.assertRaisesRegex(
+            RuntimeError,
+            r"Expected size of last transformed dimension of input to be",
+        ):
+            torch._fft_c2r(t, [2], 2, 536870912)
+
+        with self.assertRaisesRegex(RuntimeError, r"Invalid number of data points"):
+            torch._fft_c2r(t, [2], 2, 0)
 
 
 if __name__ == "__main__":
