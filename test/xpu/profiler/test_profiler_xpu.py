@@ -35,7 +35,6 @@ from typing import Optional, TYPE_CHECKING
 from unittest.mock import patch
 
 import expecttest
-
 import torch
 import torch.nn as nn
 import torch.optim
@@ -88,7 +87,6 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 
-
 if TYPE_CHECKING:
     from torch.autograd.profiler_util import FunctionEvent
 
@@ -116,7 +114,11 @@ except ModuleNotFoundError:
 
 
 def _current_accelerator_device_type():
-    acc = torch.accelerator.current_accelerator() if torch.accelerator.is_available() else None
+    acc = (
+        torch.accelerator.current_accelerator()
+        if torch.accelerator.is_available()
+        else None
+    )
     return acc.type if acc else None
 
 
@@ -1632,9 +1634,7 @@ class TestProfiler(TestCase):
             )
             self.assertTrue(
                 any(event_name in cats for event_name in event_names)
-                or any(
-                    cat is not None and "sync" in str(cat).lower() for cat in cats
-                ),
+                or any(cat is not None and "sync" in str(cat).lower() for cat in cats),
                 f"Expected to find sync event found = {cats}",
             )
 
@@ -2522,7 +2522,9 @@ if KinetoStepTracker.current_step() != initial_step + 2 * niters:
                         if "cat" in event:
                             seen_event_types.add(event["cat"])
                     self.assertTrue({"gpu_memcpy", "kernel"}.issubset(seen_event_types))
-                    self.assertTrue(any(is_runtime_category(cat) for cat in seen_event_types))
+                    self.assertTrue(
+                        any(is_runtime_category(cat) for cat in seen_event_types)
+                    )
 
         # Run with External Id for CUDA events on and off
         for disable_external_correlation in [False, True]:
@@ -3424,9 +3426,7 @@ aten::mm""",
         num_matched = len(pattern.matched_events())
         self.assertEqual(num_matched, has_tf32)
 
-    @unittest.skipIf(
-        not torch.accelerator.is_available(), "Accelerator is required"
-    )
+    @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is required")
     def test_profiler_extra_cuda_copy_pattern_benchmark(self):
         device = _current_accelerator_device_type()
         self.assertIsNotNone(device)
