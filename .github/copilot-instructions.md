@@ -27,7 +27,7 @@ This repository implements Torch XPU Operators for Intel GPU support.
 
 ## Skills index
 
-- If you find the skill is suitable for your current task, you MUST read the skill before you do any change.
+- If you find a skill is suitable for your current task, you MUST read the skill before you make any changes.
 - In any task, you MUST explictly output what skill you are using. 
 
 | Task | Skill file |
