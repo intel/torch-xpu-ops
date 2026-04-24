@@ -26,17 +26,18 @@ void ldl_solve_kernel_xpu(
     const Tensor& result,
     bool upper,
     bool hermitian) {
+  const auto pivots_cpu = pivots.to(pivots.options().device(kCPU));
+
   TORCH_CHECK(
-      pivots.abs().ge(1).all().item<bool>(),
+      pivots_cpu.abs().ge(1).all().item<bool>(),
       "Pivots given to ldl_solve must all satisfy |pivot| >= 1. "
       "Did you properly pass the result of ldl_factor?");
   TORCH_CHECK(
-      pivots.abs().le(LD.size(-2)).all().item<bool>(),
+      pivots_cpu.abs().le(LD.size(-2)).all().item<bool>(),
       "Pivots given to ldl_solve must all satisfy |pivot| <= LD.size(-2). "
       "Did you properly pass the result of ldl_factor?");
 
   const auto LD_cpu = copy_to_cpu_preserving_strides_and_conj(LD);
-  const auto pivots_cpu = pivots.to(pivots.options().device(kCPU));
   auto result_cpu = copy_to_cpu_preserving_strides_and_conj(result);
 
   ldl_solve_stub(at::kCPU, LD_cpu, pivots_cpu, result_cpu, upper, hermitian);
