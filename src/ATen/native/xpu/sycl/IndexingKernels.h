@@ -19,11 +19,11 @@ TORCH_XPU_API void index_kernel(
     at::IntArrayRef index_size,
     at::IntArrayRef index_stride);
 
-TORCH_XPU_API void index_select_kernel(
+TORCH_XPU_API Tensor& index_select_kernel(
     const Tensor& self,
     int64_t dim,
     const Tensor& index,
-    const Tensor& out);
+    Tensor& out);
 
 TORCH_XPU_API void masked_fill_kernel(
     TensorIterator& iter,
