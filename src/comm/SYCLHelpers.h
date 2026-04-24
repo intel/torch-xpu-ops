@@ -15,6 +15,9 @@ DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
 // host-only compilation (without -fsycl).
 #define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <comm/Scalar.h>
+#include <sycl/ext/intel/experimental/grf_size_properties.hpp>
+#include <sycl/ext/oneapi/experimental/enqueue_functions.hpp>
+#include <sycl/ext/oneapi/properties/properties.hpp>
 #include <sycl/sycl.hpp>
 #undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 DISABLE_SYCL_DEPRECATED_WARNING_END
@@ -144,6 +147,52 @@ sycl_kernel_submit(
         ::sycl::nd_range<1>(
             ::sycl::range<1>(global_range), ::sycl::range<1>(local_range)),
         ker);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t>
+struct SmallGRF;
+
+template <typename ker_t>
+static inline typename std::enable_if<
+    std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit_small_grf(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    ker_t ker) {
+  ::sycl::ext::oneapi::experimental::properties kernel_props{
+      ::sycl::ext::intel::experimental::grf_size<128>};
+  auto range = ::sycl::nd_range<1>(
+      ::sycl::range<1>(global_range), ::sycl::range<1>(local_range));
+  ::sycl::ext::oneapi::experimental::launch_config config(range, kernel_props);
+  auto cgf = [&](::sycl::handler& cgh) {
+    ker.sycl_ker_config_convention(cgh);
+    ::sycl::ext::oneapi::experimental::nd_launch<SmallGRF<ker_t>>(
+        cgh, config, ker);
+  };
+  q.submit(cgf);
+}
+
+template <typename ker_t>
+static inline typename std::enable_if<
+    !std::is_base_of_v<__SYCL_KER_CONFIG_CONVENTION__, ker_t>,
+    void>::type
+sycl_kernel_submit_small_grf(
+    int64_t global_range,
+    int64_t local_range,
+    ::sycl::queue q,
+    ker_t ker) {
+  ::sycl::ext::oneapi::experimental::properties kernel_props{
+      ::sycl::ext::intel::experimental::grf_size<128>};
+  auto range = ::sycl::nd_range<1>(
+      ::sycl::range<1>(global_range), ::sycl::range<1>(local_range));
+  ::sycl::ext::oneapi::experimental::launch_config config(range, kernel_props);
+  auto cgf = [&](::sycl::handler& cgh) {
+    ::sycl::ext::oneapi::experimental::nd_launch<SmallGRF<ker_t>>(
+        cgh, config, ker);
   };
   q.submit(cgf);
 }
