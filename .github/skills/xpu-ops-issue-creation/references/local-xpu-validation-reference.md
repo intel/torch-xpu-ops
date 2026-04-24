@@ -3,6 +3,16 @@
 ## Goal
 Confirm that a reproducer demonstrates a real XPU backend bug before filing an issue.
 
+## Environment assumptions
+- If the correct Python environment is unclear, ask the user which interpreter contains `torch.xpu`.
+- When shell access is available, collect environment details with:
+
+```bash
+python -W ignore::RuntimeWarning -m torch.utils.collect_env
+```
+
+- When shell access is not available, ask the user to run the same command locally and paste the output.
+
 ## What counts as a confirmed bug
 One of the following on XPU, when CPU and current PyTorch semantics indicate otherwise:
 - crash or internal error
@@ -17,7 +27,8 @@ One of the following on XPU, when CPU and current PyTorch semantics indicate oth
 - failures caused by an invalid repro unrelated to the upstream CUDA fix
 
 ## Capture before filing
-- exact command used: `scripts/run_collect_env.sh` output
+- exact reproducer command used and its output
+- collect_env command and its output: `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
 - full exception text or mismatch summary
 - minimal repro script
 - upstream issue, PR, and commit links

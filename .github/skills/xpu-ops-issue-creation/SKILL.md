@@ -1,25 +1,38 @@
 ---
-name: xpu-bug-issue-filer
-description: Turn a locally reproduced XPU backend bug into a clean GitHub issue for the XPU ops repository. Normalizes repro results, cross-links upstream PyTorch issue/PR/commit, drafts a structured report with ai_generated labeling and folded collect_env output, and optionally creates the issue via GitHub MCP. Use only after a local XPU nightly run confirms a real bug or semantic mismatch.
+name: xpu-ops-issue-creation
+description: >
+  How to create an intel/torch-xpu-ops issue from a validated XPU bug.
+  Use when GitHub Copilot already has a confirmed local repro and needs
+  to check duplicates, draft the issue body, and optionally create the issue.
 license: Apache-2.0
-compatibility: Requires OpenCode with GitHub MCP configured (GITHUB_PAT set) for issue creation. A local XPU nightly run confirming the bug is required before this skill may be invoked.
+compatibility: Designed for GitHub Copilot skills under .github/skills. Works best when GitHub issue search and create tools are available; if shell access is unavailable, ask the user to run collect_env locally and paste the output.
 metadata:
   workflow: validated-bug-to-issue
   audience: backend-triage
   author: laifenxiawucha
-  version: "1.0"
+  version: "1.1"
 ---
+
+# Issue Creation - torch-xpu-ops
+
+This skill is written for GitHub Copilot. Keep it text-first and avoid depending on repo-local helper scripts.
+
 ## What I do
 - Normalize local repro results into a concise issue report.
 - Cross-link the upstream PyTorch issue, PR, and commit that motivated the test.
-- Draft the title and body for the XPU ops repository.
-- Optionally use GitHub MCP to create the issue after the content is confirmed.
+- Draft the title and body for the `intel/torch-xpu-ops` repository.
+- Optionally use the GitHub issue tools available in the current Copilot environment to create the issue after the content is confirmed.
 
 ## When to use me
 Use this only after a local XPU nightly run has demonstrated a real bug, semantic mismatch, or missing supported behavior.
 
+## Required tools and context
+- Use the GitHub issue search, read, and create tools available in the current Copilot environment.
+- If issue creation tools are unavailable, stop after drafting the issue body and explain the blocker.
+- If shell access is unavailable, ask the user to run the environment collection command locally and paste the output.
+
 ## Preconditions
-Default filing target: intel/torch-xpu-ops. Search for duplicates there before drafting unless the user explicitly names a different repository.
+Default filing target: `intel/torch-xpu-ops`. Search for duplicates there before drafting unless the user explicitly names a different repository.
 
 Do not proceed to issue creation without all of the following:
 - a minimal reproducer script
@@ -30,16 +43,16 @@ Do not proceed to issue creation without all of the following:
 ## Duplicate detection policy
 Use a two-stage duplicate check before drafting or creating an issue:
 1. Strong-anchor search: upstream PyTorch issue URL, PR URL, commit SHA, or the plain bug statement without the `[ai_generated]` prefix.
-2. Semantic search: operator name, validation/error string, short bug statement.
+2. Semantic search: operator name, validation or error string, short bug statement.
 
 Treat an existing issue as a duplicate when it already tracks the same upstream reference or the same validated XPU mismatch, even if the wording differs.
 Check open issues first, then recently closed issues.
 
 ## Issue structure
-Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the structural reference.
+Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body template.
 
-**Title:** `[ai_generated] <plain bug statement>` — e.g.:
-- XPU validation mismatch for invalid torch.native_channel_shuffle inputs
+**Title:** `[ai_generated] <plain bug statement>` — for example:
+- XPU validation mismatch for invalid `torch.native_channel_shuffle` inputs
 - XPU crash on empty-tensor reduction validation path
 - XPU wrong result for non-contiguous masked op input
 
@@ -51,15 +64,14 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the structur
   - Date, Build, upstream issue URL, upstream PR URL, upstream commit SHA
   - `Assisted-by: opencode: <actual-model> [GitHub-API] [collect_env]`
     (use the active model string; repository default is `github-copilot/gpt-5.4` unless overridden)
-- `### Versions`: collect_env output wrapped in
-  `<details><summary>Collected with torch/utils/collect_env.py</summary>` + fenced `text` block + `</details>`.
+- `### Versions`: collect_env output wrapped in `<details><summary>Collected with torch/utils/collect_env.py</summary>` plus a fenced `text` block.
 
 **Environment to capture:**
-- torch.__version__, torch.version.git_version, platform, Python version, XPU availability
+- `torch.__version__`, `torch.version.git_version`, platform, Python version, XPU availability
 - oneAPI or driver/runtime details if already present in the local environment output
-- collect_env output via `scripts/run_collect_env.sh`
+- collect_env output via `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
 
-See [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) for bug confirmation criteria.
+See [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) for confirmation criteria and capture requirements.
 
 ## Issue creation workflow
 1. Run the duplicate detection policy and stop early if the issue already exists.

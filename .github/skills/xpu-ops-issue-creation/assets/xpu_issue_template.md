@@ -1,5 +1,3 @@
-Title: [ai_generated] <plain bug statement>
-
 ### 🐛 Describe the bug
 
 <sentence 1: what fails on XPU and on which build channel>
