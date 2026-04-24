@@ -51,9 +51,7 @@ class TestHOP(TestCase):
         export_kwargs = copy.deepcopy(kwargs)
 
         flat_orig_outputs = pytree.tree_leaves(eager_model(*eager_args, **eager_kwargs))
-        flat_loaded_outputs = pytree.tree_leaves(
-            exported_program.module()(*export_args, **export_kwargs)
-        )
+        flat_loaded_outputs = pytree.tree_leaves(exported_program.module()(*export_args, **export_kwargs))
 
         for orig, loaded in zip(flat_orig_outputs, flat_loaded_outputs):
             self.assertEqual(type(orig), type(loaded))

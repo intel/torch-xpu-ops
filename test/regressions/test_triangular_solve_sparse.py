@@ -61,17 +61,13 @@ class TestTriangularSolveSparseCSR(TestCase):
         # Validate solution
         self.assertEqual(expected, result.cpu(), atol=atol, rtol=rtol)
         # Validate cloned_coefficient: sparse CSR triangular solve should NOT clone A
-        self.assertEqual(
-            cloned_A.numel(), 0, "cloned_coefficient should be empty for sparse CSR"
-        )
+        self.assertEqual(cloned_A.numel(), 0, "cloned_coefficient should be empty for sparse CSR")
         self.assertEqual(
             cloned_A.device,
             result.device,
             "cloned_coefficient should be on same device",
         )
-        self.assertEqual(
-            cloned_A.dtype, result.dtype, "cloned_coefficient should have same dtype"
-        )
+        self.assertEqual(cloned_A.dtype, result.dtype, "cloned_coefficient should have same dtype")
 
     def test_upper_triangular(self):
         """Solve with upper triangular sparse CSR matrix."""
@@ -112,9 +108,7 @@ class TestTriangularSolveSparseCSR(TestCase):
         """Solve with float32 precision."""
         A_csr = self._make_triangular_csr(5, upper=True, dtype=torch.float32)
         B = torch.randn(5, 2, dtype=torch.float32)
-        self._assert_triangular_solve_matches(
-            A_csr, B, upper=True, atol=1e-3, rtol=1e-3
-        )
+        self._assert_triangular_solve_matches(A_csr, B, upper=True, atol=1e-3, rtol=1e-3)
 
     def test_empty_rhs(self):
         """Solve with zero-element B should not error and preserve empty output shape."""
@@ -126,9 +120,7 @@ class TestTriangularSolveSparseCSR(TestCase):
             upper=True,
         )
         self.assertEqual(X.shape, (3, 0))
-        self.assertEqual(
-            cloned_A.numel(), 0, "cloned_coefficient should be empty for sparse CSR"
-        )
+        self.assertEqual(cloned_A.numel(), 0, "cloned_coefficient should be empty for sparse CSR")
 
     def test_zero_nnz(self):
         """Solve with an all-zero sparse CSR matrix should return NaN-filled output."""
@@ -147,9 +139,7 @@ class TestTriangularSolveSparseCSR(TestCase):
         )
         self.assertEqual(X.shape, (n, 2))
         self.assertTrue(X.isnan().all(), "Expected all NaN output for zero-nnz A")
-        self.assertEqual(
-            cloned_A.numel(), 0, "cloned_coefficient should be empty for sparse CSR"
-        )
+        self.assertEqual(cloned_A.numel(), 0, "cloned_coefficient should be empty for sparse CSR")
 
 
 if __name__ == "__main__":

@@ -59,9 +59,7 @@ for shape in shape_list:
             ) as prof:
                 for i in range(num_iter):
                     cache_r = cache_w + 1
-                    output_xpu, grad_input_xpu = _do_test(
-                        loss, input, target, dtype, device
-                    )
+                    output_xpu, grad_input_xpu = _do_test(loss, input, target, dtype, device)
             print(prof.key_averages().table(sort_by="xpu_time_total"))
 
             # E2E time
@@ -69,9 +67,7 @@ for shape in shape_list:
             t1 = time.time()
             for i in range(num_iter):
                 cache_r = cache_w + 1
-                output_xpu, grad_input_xpu = _do_test(
-                    loss, input, target, dtype, device
-                )
+                output_xpu, grad_input_xpu = _do_test(loss, input, target, dtype, device)
             torch.xpu.synchronize()
             t2 = time.time()
             e2e_time = (t2 - t1) / num_iter

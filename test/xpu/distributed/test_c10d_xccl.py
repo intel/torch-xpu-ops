@@ -79,8 +79,7 @@ def init_multigpu_helper(world_size: int, backend: str):
     if world_size > nGPUs:
         nGPUs_per_process = nGPUs // world_size
     rank_to_GPU = {
-        i: list(visible_devices[i * nGPUs_per_process : (i + 1) * nGPUs_per_process])
-        for i in range(world_size)
+        i: list(visible_devices[i * nGPUs_per_process : (i + 1) * nGPUs_per_process]) for i in range(world_size)
     }
     return rank_to_GPU
 
@@ -216,9 +215,7 @@ class RendezvousEnvTest(TestCase):
 
 
 class ProcessGroupXCCLTest(MultiProcessTestCase):
-    def _create_process_group_xccl(
-        self, timeout=timedelta(seconds=600), device_id=None
-    ):
+    def _create_process_group_xccl(self, timeout=timedelta(seconds=600), device_id=None):
         store = c10d.FileStore(self.file_name, self.world_size)
         c10d.init_process_group(
             "xccl",
@@ -276,9 +273,7 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
                 dist.recv(block, src=0)
 
     @requires_xccl()
-    @skip_but_pass_in_sandcastle_if(
-        torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
-    )
+    @skip_but_pass_in_sandcastle_if(torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs")
     def test_close_multi_pg_unordered(self):
         pg = self._create_process_group_xccl()
         device = self.rank_to_GPU[self.rank][0]
@@ -307,16 +302,12 @@ class ProcessGroupXCCLTest(MultiProcessTestCase):
         dist.destroy_process_group()
 
     @requires_xccl()
-    @skip_but_pass_in_sandcastle_if(
-        torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs"
-    )
+    @skip_but_pass_in_sandcastle_if(torch.xpu.device_count() < 2, "XCCL test requires 2+ GPUs")
     def test_file_store_check(self):
         # self.file_name is created using "delete=False"
         # e.g., self.file_name = tempfile.NamedTemporaryFile(delete=False).name
         store = dist.FileStore(self.file_name, self.world_size)
-        dist.init_process_group(
-            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
-        )
+        dist.init_process_group(backend="xccl", rank=self.rank, world_size=self.world_size, store=store)
         pg = dist.distributed_c10d._get_default_group()
         self.assertEqual(pg.rank(), self.rank)
         self.assertEqual(pg.size(), self.world_size)
@@ -467,9 +458,7 @@ class CommTest(MultiProcessTestCase):
         if self.rank != root_rank:
             self.assertNotEqual(tensors, target)
 
-        c10d._broadcast_coalesced(
-            process_group, tensors, buffer_size=256, src=root_rank
-        )
+        c10d._broadcast_coalesced(process_group, tensors, buffer_size=256, src=root_rank)
 
         if self.rank != root_rank:
             self.assertEqual(tensors, target)
@@ -504,9 +493,7 @@ class CommTest(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_broadcast_coalesced_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", store=store, rank=self.rank, world_size=self.world_size
-        )
+        c10d.init_process_group(backend="xccl", store=store, rank=self.rank, world_size=self.world_size)
         process_group = c10d.distributed_c10d._get_default_group()
         device = torch.device(f"xpu:{self.rank}")
         ranks = [0, 1]
@@ -517,40 +504,26 @@ class CommTest(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_all_reduce_coalesced_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", store=store, rank=self.rank, world_size=self.world_size
-        )
+        c10d.init_process_group(backend="xccl", store=store, rank=self.rank, world_size=self.world_size)
         process_group = c10d.distributed_c10d._get_default_group()
         device = torch.device(f"xpu:{self.rank}")
-        tensors = [
-            torch.full((60 + i,), self.rank + 1 + i, device=device, dtype=torch.float)
-            for i in range(5)
-        ]
+        tensors = [torch.full((60 + i,), self.rank + 1 + i, device=device, dtype=torch.float) for i in range(5)]
         torch.distributed.all_reduce_coalesced(tensors, group=process_group)
         for i, t in enumerate(tensors):
             self.assertEqual(
                 t,
-                torch.full_like(
-                    t, self.world_size * (i + (self.world_size + 1.0) / 2.0)
-                ),
+                torch.full_like(t, self.world_size * (i + (self.world_size + 1.0) / 2.0)),
             )
 
     @requires_xccl()
     @skip_if_lt_x_gpu(2)
     def test_all_reduce_coalesced_manager_xccl(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", store=store, rank=self.rank, world_size=self.world_size
-        )
+        c10d.init_process_group(backend="xccl", store=store, rank=self.rank, world_size=self.world_size)
         process_group = c10d.distributed_c10d._get_default_group()
         device = torch.device(f"xpu:{self.rank}")
-        tensors = [
-            torch.full((60 + i,), self.rank + 1 + i, device=device, dtype=torch.float)
-            for i in range(5)
-        ]
-        with torch.distributed._coalescing_manager(
-            group=process_group, device=device, async_ops=True
-        ) as cm:
+        tensors = [torch.full((60 + i,), self.rank + 1 + i, device=device, dtype=torch.float) for i in range(5)]
+        with torch.distributed._coalescing_manager(group=process_group, device=device, async_ops=True) as cm:
             for tensor in tensors:
                 torch.distributed.all_reduce(tensor)
         self.assertEqual(len(cm.works), 1)
@@ -558,18 +531,14 @@ class CommTest(MultiProcessTestCase):
         for i, t in enumerate(tensors):
             self.assertEqual(
                 t,
-                torch.full_like(
-                    t, self.world_size * (i + (self.world_size + 1.0) / 2.0)
-                ),
+                torch.full_like(t, self.world_size * (i + (self.world_size + 1.0) / 2.0)),
             )
 
     @requires_xccl()
     @skip_if_lt_x_gpu(4)
     def test_xccl_barrier(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
-        )
+        c10d.init_process_group(backend="xccl", rank=self.rank, world_size=self.world_size, store=store)
 
         t = torch.tensor([self.rank + 1] * 10).xpu(2 * self.rank)
         c10d.all_reduce(t)
@@ -600,9 +569,7 @@ class CommTest(MultiProcessTestCase):
     @skip_if_lt_x_gpu(2)
     def test_xccl_barrier_device_ids(self):
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
-        )
+        c10d.init_process_group(backend="xccl", rank=self.rank, world_size=self.world_size, store=store)
 
         c10d.barrier(device_ids=[self.rank])
 
@@ -617,9 +584,7 @@ class CommTest(MultiProcessTestCase):
             store=store,
         )
         output_tensor = torch.zeros(2, dtype=torch.int64).to(self.rank)
-        input_tensors = torch.arange(self.world_size * 2, dtype=torch.int64).to(
-            self.rank
-        )
+        input_tensors = torch.arange(self.world_size * 2, dtype=torch.int64).to(self.rank)
         input_tensors = torch.reshape(input_tensors, (self.world_size, 2))
         dist.reduce_scatter_tensor(output_tensor, input_tensors)
         self.assertEqual(output_tensor, input_tensors[self.rank] * self.world_size)
@@ -674,9 +639,7 @@ class CommTest(MultiProcessTestCase):
         )
         tensor = torch.rand(2, device=self.device)
         tensor_c = torch.view_as_complex(tensor)
-        tensor_list = [
-            torch.rand(2, device=self.device) for _ in range(self.world_size)
-        ]
+        tensor_list = [torch.rand(2, device=self.device) for _ in range(self.world_size)]
         tensor_list_c = list(tensor_list)
         tensor_list_c[1] = torch.view_as_complex(tensor_list_c[1])
 
@@ -698,9 +661,7 @@ class CommTest(MultiProcessTestCase):
         device = "xpu"
         for dtype in [torch.float32, torch.float8_e4m3fn, torch.float8_e5m2]:
             tensor = torch.randn(12, 12, device=torch.device(device)).to(dtype)
-            output_tensor = torch.zeros(
-                self.world_size * 12, 12, device=torch.device(device)
-            ).to(dtype)
+            output_tensor = torch.zeros(self.world_size * 12, 12, device=torch.device(device)).to(dtype)
             dist.all_gather_into_tensor(output_tensor, tensor)
             for i in range(self.world_size):
                 start = i * 12
@@ -716,16 +677,12 @@ class CommTest(MultiProcessTestCase):
         # Verify that the process can terminate gracefully
         # even with unwaited tensors
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
-        )
+        c10d.init_process_group(backend="xccl", rank=self.rank, world_size=self.world_size, store=store)
 
         # Case 1: Run collectives under context manager, and don't call wait on them.
         with _functional_collectives.allow_inflight_collective_as_graph_input_ctx():
             self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 0)
-            input = torch.full(
-                (1024, 1024), float(self.rank), device=f"xpu:{self.rank}"
-            )
+            input = torch.full((1024, 1024), float(self.rank), device=f"xpu:{self.rank}")
             dist.all_reduce(input, op=dist.ReduceOp.SUM, async_op=True)
             # Non-functional collectives run under the context manager is registered in the work registry.
             self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 1)
@@ -737,9 +694,7 @@ class CommTest(MultiProcessTestCase):
         # NOTE: Here we intentionally test memory-stressed case.
         self.assertEqual(torch._C._distributed_c10d._get_work_registry_size(), 2)
         for _ in range(500):
-            input = torch.full(
-                (1024, 1024), float(self.rank), device=f"xpu:{self.rank}"
-            )
+            input = torch.full((1024, 1024), float(self.rank), device=f"xpu:{self.rank}")
             dist.all_reduce(input, op=dist.ReduceOp.SUM, async_op=True)
         # Work registry size is unchanged, since non-functional collectives not run under
         # the context manager is not registered in the work registry.
@@ -751,9 +706,7 @@ class CommTest(MultiProcessTestCase):
         # Verify that c10d_functional.wait_tensor() can be invoked on
         # output tensor of non-functional collective
         store = c10d.FileStore(self.file_name, self.world_size)
-        c10d.init_process_group(
-            backend="xccl", rank=self.rank, world_size=self.world_size, store=store
-        )
+        c10d.init_process_group(backend="xccl", rank=self.rank, world_size=self.world_size, store=store)
 
         # Case 1: under context manager (i.e. work is registered in registry)
         with _functional_collectives.allow_inflight_collective_as_graph_input_ctx():
@@ -840,9 +793,7 @@ class XCCLTraceTestBase(MultiProcessTestCase):
 
         self._start_processes(wrap)
 
-    def _create_process_group_xccl(
-        self, timeout=timedelta(seconds=600), device_id=None
-    ):
+    def _create_process_group_xccl(self, timeout=timedelta(seconds=600), device_id=None):
         store = c10d.FileStore(self.file_name, self.world_size)
         c10d.init_process_group(
             "xccl",
@@ -930,9 +881,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
             self.assertEqual(last["collective_seq_id"], 2)
             self.assertEqual(last["timeout_ms"], 600000)
             now = datetime.now()
-            event_created_time = datetime.fromtimestamp(
-                last["time_created_ns"] / 1000000000
-            )
+            event_created_time = datetime.fromtimestamp(last["time_created_ns"] / 1000000000)
             before_test = now - timedelta(minutes=1)
             self.assertTrue(before_test < event_created_time < now)
             if timing_enabled:
@@ -990,11 +939,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         torch.xpu.synchronize(device=device)
         # gah ok so now the duration_ms is populated best-effort since it can only happen outside "dump()" api
         time.sleep(1)
-        t = pickle.loads(
-            torch._C._distributed_c10d._dump_xccl_trace(
-                includeCollectives=include_collectives
-            )
-        )
+        t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace(includeCollectives=include_collectives))
         self._verify_trace(
             t,
             include_collectives=include_collectives,
@@ -1150,30 +1095,20 @@ class XCCLTraceTest(XCCLTraceTestBase):
         for seq in range(num_coalesced_ops):
             first_op = seq * (ops_per_coalesce)
             coalesced_op = first_op + ops_per_coalesce
-            for p2p_op_idx, input_sizes in zip(
-                range(first_op, coalesced_op, 1), op_sizes_per_coalesce
-            ):
+            for p2p_op_idx, input_sizes in zip(range(first_op, coalesced_op, 1), op_sizes_per_coalesce):
                 # the indivudal ops inside the coalescing group the individual op metadata,
                 # but not the timing info coming from the actual coalesced kernel
-                profiling_name = (
-                    "xccl:recv 0<-1" if self.rank == 0 else "xccl:send 1->0"
-                )
-                self.assertEqual(
-                    t["entries"][p2p_op_idx]["record_id"], expected_record_id
-                )
+                profiling_name = "xccl:recv 0<-1" if self.rank == 0 else "xccl:send 1->0"
+                self.assertEqual(t["entries"][p2p_op_idx]["record_id"], expected_record_id)
                 expected_record_id += 1
-                self.assertEqual(
-                    t["entries"][p2p_op_idx]["profiling_name"], profiling_name
-                )
+                self.assertEqual(t["entries"][p2p_op_idx]["profiling_name"], profiling_name)
                 # we don't increment collective_seq_id for p2p ops.
                 self.assertEqual(t["entries"][p2p_op_idx]["collective_seq_id"], 0)
                 self.assertEqual(t["entries"][p2p_op_idx]["p2p_seq_id"], expected_seq)
                 self.assertEqual(t["entries"][p2p_op_idx]["op_id"], expected_op_id)
                 expected_op_id += 1
                 self.assertEqual(t["entries"][p2p_op_idx]["input_sizes"], [input_sizes])
-                self.assertEqual(
-                    t["entries"][p2p_op_idx]["output_sizes"], [input_sizes]
-                )
+                self.assertEqual(t["entries"][p2p_op_idx]["output_sizes"], [input_sizes])
                 # duration doesn't get tagged onto individual ops yet, nor is their state updated
                 self.assertEqual(t["entries"][p2p_op_idx]["state"], "scheduled")
                 self.assertTrue("duration_ms" not in t["entries"][p2p_op_idx])
@@ -1258,9 +1193,7 @@ class XCCLTraceTest(XCCLTraceTestBase):
         expected_tensor = torch.ones(sum_len, 2).to(self.rank)
         input_tensor = torch.ones(output_split_sizes[self.rank], 2).to(self.rank)
 
-        dist.all_gather(
-            list(torch.split(output_tensor, output_split_sizes)), input_tensor
-        )
+        dist.all_gather(list(torch.split(output_tensor, output_split_sizes)), input_tensor)
         torch.xpu.synchronize(device=self.rank)
         self.assertEqual(output_tensor, expected_tensor)
         if timing_enabled:
@@ -1320,12 +1253,8 @@ class XCCLTraceTest(XCCLTraceTestBase):
 
         t = pickle.loads(torch._C._distributed_c10d._dump_xccl_trace())
 
-        self.assertEqual(
-            len(t["entries"]), 1
-        )  # one for the reduce_scatter_tensor_coalesced
-        self.assertEqual(
-            t["entries"][0]["profiling_name"], "xccl:reduce_scatter_tensor_coalesced"
-        )
+        self.assertEqual(len(t["entries"]), 1)  # one for the reduce_scatter_tensor_coalesced
+        self.assertEqual(t["entries"][0]["profiling_name"], "xccl:reduce_scatter_tensor_coalesced")
         # collective_seq_id should be incremented once.
         self.assertEqual(t["entries"][0]["collective_seq_id"], 1)
         self.assertEqual(t["entries"][0]["input_sizes"], [[2, 2], [2, 2]])

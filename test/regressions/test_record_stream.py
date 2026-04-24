@@ -35,9 +35,7 @@ class TestTorchMethod(TestCase):
         with torch.xpu.stream(stream):
             tmp2 = torch.FloatTensor(t.size()).to("xpu")
             tmp2.zero_()
-            self.assertNotEqual(
-                tmp2.data_ptr(), ptr[0], msg="allocation re-used to soon"
-            )
+            self.assertNotEqual(tmp2.data_ptr(), ptr[0], msg="allocation re-used to soon")
 
         self.assertEqual(result.tolist(), [1, 2, 3, 4])
 

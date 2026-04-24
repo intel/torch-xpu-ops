@@ -30,9 +30,7 @@ with XPUPatchForImport(False):
 
 instantiate_device_type_tests(TestBasics, globals(), only_for=("xpu"), allow_xpu=True)
 
-instantiate_device_type_tests(
-    TestOperators, globals(), only_for=("xpu"), allow_xpu=True
-)
+instantiate_device_type_tests(TestOperators, globals(), only_for=("xpu"), allow_xpu=True)
 instantiate_parametrized_tests(TestUnary)
 instantiate_parametrized_tests(TestBinary)
 instantiate_parametrized_tests(TestReductions)

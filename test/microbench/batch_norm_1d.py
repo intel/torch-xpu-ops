@@ -38,9 +38,7 @@ for dtype in [torch.bfloat16, torch.float16, torch.float32]:
             "; backward:",
             backward,
         )
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
             for i in range(num_iter):
                 m = torch.nn.BatchNorm1d(shape[1], device=device)
                 output = m(input)

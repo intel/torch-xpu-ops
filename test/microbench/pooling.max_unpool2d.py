@@ -22,29 +22,19 @@ def maxUnpool2d(shape, dtype, device, channels_last, backward):
     N, C, H, W = int(shape[0]), int(shape[1]), int(shape[2]), int(shape[3])
     kernel_size = 2
 
-    pool = torch.nn.MaxPool2d(kernel_size, return_indices=True).to(
-        device=device, dtype=dtype
-    )
+    pool = torch.nn.MaxPool2d(kernel_size, return_indices=True).to(device=device, dtype=dtype)
     unpool = torch.nn.MaxUnpool2d(kernel_size).to(device=device, dtype=dtype)
     torch.manual_seed(20)
 
     if channels_last:
-        input = (
-            torch.randn([N, C, H, W])
-            .to(memory_format=torch.channels_last)
-            .to(device=device, dtype=dtype)
-        )
+        input = torch.randn([N, C, H, W]).to(memory_format=torch.channels_last).to(device=device, dtype=dtype)
     else:
         input = torch.randn([N, C, H, W]).to(device=device, dtype=dtype)
     output, indices = pool(input)
 
     if channels_last:
-        x_dpcpp = output.to(memory_format=torch.channels_last).to(
-            device=device, dtype=dtype
-        )
-        indices_dpcpp = indices.to(memory_format=torch.channels_last).to(
-            device=device, dtype=torch.int64
-        )
+        x_dpcpp = output.to(memory_format=torch.channels_last).to(device=device, dtype=dtype)
+        indices_dpcpp = indices.to(memory_format=torch.channels_last).to(device=device, dtype=torch.int64)
     else:
         x_dpcpp = output.to(device=device, dtype=dtype)
         indices_dpcpp = indices.to(device=device, dtype=torch.int64)
@@ -52,11 +42,7 @@ def maxUnpool2d(shape, dtype, device, channels_last, backward):
     if backward:
         x_dpcpp.requires_grad_(True)
         if channels_last:
-            grad_dpcpp = (
-                torch.randn([N, C, H, W])
-                .to(memory_format=torch.channels_last)
-                .to(device=device, dtype=dtype)
-            )
+            grad_dpcpp = torch.randn([N, C, H, W]).to(memory_format=torch.channels_last).to(device=device, dtype=dtype)
         else:
             grad_dpcpp = torch.randn([N, C, H, W]).to(device=device, dtype=dtype)
 
@@ -94,9 +80,7 @@ if __name__ == "__main__":
                     record_shapes=True,
                 ) as prof:
                     for i in range(num_iter):
-                        maxUnpool2d(
-                            shape, dtype, device, channels_last, backward=backward
-                        )
+                        maxUnpool2d(shape, dtype, device, channels_last, backward=backward)
                 print(prof.key_averages().table(sort_by="xpu_time_total"))
 
                 # E2E time

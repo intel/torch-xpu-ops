@@ -103,9 +103,7 @@ class TestBatchNormContiguous(TestCase):
         # bfloat16 input reduces precision of accumulated mean/invstd
         save_atol, save_rtol = (5e-4, 5e-4) if dtype == torch.bfloat16 else (1e-4, 1e-4)
         self.assertEqual(ref_mean, save_mean_xpu.cpu(), atol=save_atol, rtol=save_rtol)
-        self.assertEqual(
-            ref_invstd, save_invstd_xpu.cpu(), atol=save_atol, rtol=save_rtol
-        )
+        self.assertEqual(ref_invstd, save_invstd_xpu.cpu(), atol=save_atol, rtol=save_rtol)
 
     # -- BatchNorm2d (N,C,H,W) -- stride[1] = H*W > 1
     def test_bn2d_noncontiguous_save_float32(self):

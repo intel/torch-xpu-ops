@@ -68,24 +68,19 @@ for test_params_dicts, test_instance_class in [
             expected_test_params_dicts.append(test_params_dict)
 
 # Assert that all NN module/functional test dicts appear in the parity test
-assert len(
-    [name for name in TestCppApiParity.__dict__ if "test_torch_nn_" in name]
-) == len(expected_test_params_dicts) * len(devices)
+assert len([name for name in TestCppApiParity.__dict__ if "test_torch_nn_" in name]) == len(
+    expected_test_params_dicts
+) * len(devices)
 
 # Assert that there exists auto-generated tests for `SampleModule` and `sample_functional`.
 # 4 == 2 (number of test dicts that are not skipped) * 2 (number of devices)
 print([name for name in TestCppApiParity.__dict__ if "SampleModule" in name])
 assert len([name for name in TestCppApiParity.__dict__ if "SampleModule" in name]) == 4
 # 4 == 2 (number of test dicts that are not skipped) * 2 (number of devices)
-assert (
-    len([name for name in TestCppApiParity.__dict__ if "sample_functional" in name])
-    == 4
-)
+assert len([name for name in TestCppApiParity.__dict__ if "sample_functional" in name]) == 4
 
 module_impl_check.build_cpp_tests(TestCppApiParity, print_cpp_source=PRINT_CPP_SOURCE)
-functional_impl_check.build_cpp_tests(
-    TestCppApiParity, print_cpp_source=PRINT_CPP_SOURCE
-)
+functional_impl_check.build_cpp_tests(TestCppApiParity, print_cpp_source=PRINT_CPP_SOURCE)
 
 if __name__ == "__main__":
     common.TestCase._default_dtype_check_enabled = True

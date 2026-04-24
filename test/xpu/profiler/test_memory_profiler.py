@@ -25,9 +25,7 @@ from torch.testing._internal.common_device_type import instantiate_device_type_t
 from torch.testing._internal.common_utils import run_tests, skipIfTorchDynamo, TestCase
 from torch.utils import _pytree as pytree
 
-profile = functools.partial(
-    torch.profiler.profile, record_shapes=True, profile_memory=True, with_stack=True
-)
+profile = functools.partial(torch.profiler.profile, record_shapes=True, profile_memory=True, with_stack=True)
 
 
 @skipIfTorchDynamo("TorchDynamo removes profiler altogether.")
@@ -70,9 +68,7 @@ class LazyLinear(torch.nn.Module):
 
     def forward(self, x) -> torch.Tensor:
         if getattr(self, "weight", None) is None:
-            self.weight = torch.nn.Parameter(
-                torch.empty((self.out_features, self.in_features))
-            )
+            self.weight = torch.nn.Parameter(torch.empty((self.out_features, self.in_features)))
             self.bias = torch.nn.Parameter(torch.empty(self.out_features))
 
         return torch.nn.functional.linear(x, self.weight, self.bias)
@@ -89,9 +85,7 @@ class RecordInputOutputDispatchMode(torch.utils._python_dispatch.TorchDispatchMo
     def flat_ids(args):
         flat_args = pytree.tree_leaves(args)
         return tuple(
-            (t._cdata, t.storage().data_ptr())
-            for t in flat_args
-            if isinstance(t, torch.Tensor) and t.storage()
+            (t._cdata, t.storage().data_ptr()) for t in flat_args if isinstance(t, torch.Tensor) and t.storage()
         )
 
     def __torch_dispatch__(self, func, types, args=..., kwargs=None):
@@ -100,9 +94,7 @@ class RecordInputOutputDispatchMode(torch.utils._python_dispatch.TorchDispatchMo
         flat_inputs = self.flat_ids(args) + self.flat_ids(kwargs)
         out = func(*args, **kwargs)
         flat_outputs = self.flat_ids(out)
-        if (
-            flat_inputs or flat_outputs
-        ) and "_record_function_enter" not in func.name():
+        if (flat_inputs or flat_outputs) and "_record_function_enter" not in func.name():
             self.results.append((func.name(), flat_inputs, flat_outputs))
         return out
 
@@ -153,9 +145,7 @@ class TestIdentifyGradients(TestCase):
             f"Failed to identify gradient `{name}` from profile.",
         )
 
-    def assertOnlyGradients(
-        self, prof: torch.profiler.profile, tensors: Iterator[torch.Tensor]
-    ) -> None:
+    def assertOnlyGradients(self, prof: torch.profiler.profile, tensors: Iterator[torch.Tensor]) -> None:
         allowed_set = {t.storage().data_ptr() for t in tensors}
 
         tree = prof.profiler.kineto_results.experimental_event_tree()
@@ -222,9 +212,7 @@ class TestIdentifyGradients(TestCase):
 
             for name, p in named_parameters.items():
                 self.assertGradientDetected(name, prof, _EventType.PyCall, p.grad, p)
-                self.assertFalse(
-                    self.gradient_detected(prof, _EventType.TorchOp, p.grad), name
-                )
+                self.assertFalse(self.gradient_detected(prof, _EventType.TorchOp, p.grad), name)
             assert_only_gradients(prof)
 
         check(cold_start=True)
@@ -298,9 +286,7 @@ class TestIdentifyGradients(TestCase):
             model(torch.ones((2, 2))).sum().backward()
             optimizer.step()
 
-        self.assertGradientDetected(
-            "weight", prof, _EventType.PyCall, model[0].weight.grad, model[0].weight
-        )
+        self.assertGradientDetected("weight", prof, _EventType.PyCall, model[0].weight.grad, model[0].weight)
 
 
 @skipIfTorchDynamo("TorchDynamo removes profiler altogether.")
@@ -310,9 +296,7 @@ class TestDataFlow(TestCase):
         self.maxDiff = None
 
     @staticmethod
-    def formatSchemas(
-        prof: torch.profiler.profile, indent: int = 12
-    ) -> tuple[tuple[str, tuple[bool, ...]], ...]:
+    def formatSchemas(prof: torch.profiler.profile, indent: int = 12) -> tuple[tuple[str, tuple[bool, ...]], ...]:
         tree = prof.profiler.kineto_results.experimental_event_tree()
         out: list[tuple[str, tuple[bool, ...]]] = []
         for node in _utils.traverse_dfs(tree):
@@ -362,9 +346,7 @@ class TestDataFlow(TestCase):
             outputs = [f"T{key.id}(v{v})" for key, v in node.outputs.items()]
             if inputs or outputs:
                 event_name = node._event.name.replace("torch::autograd::", "")
-                lines.append(
-                    f"{event_name:<25} {', '.join(inputs):<15}  ->  {', '.join(outputs)}"
-                )
+                lines.append(f"{event_name:<25} {', '.join(inputs):<15}  ->  {', '.join(outputs)}")
 
         return textwrap.indent("\n".join([l.rstrip() for l in lines]), " " * indent)
 
@@ -562,9 +544,7 @@ class TestDataFlow(TestCase):
             "w": torch.ones((1,), requires_grad=True),
         }
         self.assertExpectedInline(
-            self._run_and_format_data_flow(
-                inputs, lambda x, w: (x * w).sin().backward()
-            ),
+            self._run_and_format_data_flow(inputs, lambda x, w: (x * w).sin().backward()),
             """\
             x:       T0
             w:       T1
@@ -855,9 +835,7 @@ class TestMemoryProfilerE2E(TestCase):
             if key.storage.allocation_id == max(ids | {-1})
         }
 
-    def _run_and_check_parameters_and_gradients(
-        self, inner_fn, model, grads_none: bool = False
-    ):
+    def _run_and_check_parameters_and_gradients(self, inner_fn, model, grads_none: bool = False):
         with profile() as prof:
             inner_fn()
 
@@ -941,9 +919,7 @@ class TestMemoryProfilerE2E(TestCase):
         return textwrap.indent("\n".join(out), " " * indent)
 
     def test_parameters_and_gradients(self):
-        model = torch.nn.Sequential(
-            torch.nn.Linear(2, 2), ScaleLayer(), torch.nn.Linear(2, 1), ScaleLayer()
-        )
+        model = torch.nn.Sequential(torch.nn.Linear(2, 2), ScaleLayer(), torch.nn.Linear(2, 1), ScaleLayer())
         optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
 
         def fwd_only():
@@ -958,9 +934,7 @@ class TestMemoryProfilerE2E(TestCase):
         # If we profile the first step then gradients will not have been
         # created when we call `model.forward`, so if we don't call `.backward`
         # then gradients are never created.
-        self._run_and_check_parameters_and_gradients(
-            inner_fn=fwd_only, model=model, grads_none=True
-        )
+        self._run_and_check_parameters_and_gradients(inner_fn=fwd_only, model=model, grads_none=True)
 
         # On the first step we must rely on `AccumulateGrad`, since gradients
         # did not exist when `model.forward` was called.
@@ -1079,9 +1053,7 @@ class TestMemoryProfilerE2E(TestCase):
         def check(t):
             categories = self._lookup_tensor_categories(t, memory_profile)
             self.assertGreater(len(categories), 0)
-            self.assertTrue(
-                all(i == _memory_profiler.Category.INPUT for i in categories.values())
-            )
+            self.assertTrue(all(i == _memory_profiler.Category.INPUT for i in categories.values()))
 
         for x, targets in inputs_targets:
             check(x)
@@ -1446,10 +1418,7 @@ class TestMemoryProfilerE2E(TestCase):
         times = tuple(t for t, _, _, _ in timeline)
         self.assertTrue(all(t1 >= t0 for t0, t1 in it.pairwise(times)), times)
         self.assertTrue(
-            all(
-                (t == -1) if action == _memory_profiler.Action.PREEXISTING else (t > 0)
-                for t, action, _, _ in timeline
-            )
+            all((t == -1) if action == _memory_profiler.Action.PREEXISTING else (t > 0) for t, action, _, _ in timeline)
         )
 
         def category_name(category):
@@ -1603,9 +1572,7 @@ class TestMemoryProfilerTimeline(TestCase):
         if device == "cpu":
             expected = expected[2:]
             for event in expected:
-                self.assertTrue(
-                    event in actual, f"event: {event} was not found in actual."
-                )
+                self.assertTrue(event in actual, f"event: {event} was not found in actual.")
         else:
             self.assertEqual(
                 actual,

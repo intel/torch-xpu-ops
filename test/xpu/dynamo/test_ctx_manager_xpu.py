@@ -113,23 +113,15 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             return x
 
         with torch.no_grad():
-            torch._dynamo.testing.standard_test(
-                self, fn=fn1, nargs=2, expected_ops=3
-            )  # coalesced noop
-            torch._dynamo.testing.standard_test(
-                self, fn=fn2, nargs=2, expected_ops=3
-            )  # coalesced noop
+            torch._dynamo.testing.standard_test(self, fn=fn1, nargs=2, expected_ops=3)  # coalesced noop
+            torch._dynamo.testing.standard_test(self, fn=fn2, nargs=2, expected_ops=3)  # coalesced noop
             torch._dynamo.testing.standard_test(self, fn=fn3, nargs=2, expected_ops=5)
             torch._dynamo.testing.standard_test(self, fn=fn4, nargs=2, expected_ops=5)
         with torch.enable_grad():
             torch._dynamo.testing.standard_test(self, fn=fn1, nargs=2, expected_ops=5)
             torch._dynamo.testing.standard_test(self, fn=fn2, nargs=2, expected_ops=5)
-            torch._dynamo.testing.standard_test(
-                self, fn=fn3, nargs=2, expected_ops=3
-            )  # coalesced noop
-            torch._dynamo.testing.standard_test(
-                self, fn=fn4, nargs=2, expected_ops=3
-            )  # coalesced noop
+            torch._dynamo.testing.standard_test(self, fn=fn3, nargs=2, expected_ops=3)  # coalesced noop
+            torch._dynamo.testing.standard_test(self, fn=fn4, nargs=2, expected_ops=3)  # coalesced noop
 
     def test_grad_mode_guard(self):
         def fn(a, b):
@@ -411,9 +403,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(ref0, res0)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    @unittest.skip(
-        "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
-    )
+    @unittest.skip("Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257")
     def test_cuda_event_reconstruct(self):
         def fn(x):
             e = torch.get_device_module(device_type).Event()
@@ -431,9 +421,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.op_count, 3)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    @unittest.skip(
-        "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
-    )
+    @unittest.skip("Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257")
     def test_cuda_event_across_graph_break(self):
         def fn(x):
             e = torch.get_device_module(device_type).Event()
@@ -458,9 +446,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.op_count, 10)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    @unittest.skip(
-        "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
-    )
+    @unittest.skip("Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257")
     def test_cuda_event_created_outside_of_graph(self):
         user_stream = torch.Stream()
         event = torch.get_device_module(device_type).Event()
@@ -493,9 +479,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         self.assertEqual(cnts.op_count, 4)
 
     @unittest.skipIf(not requires_gpu, "requires cuda or xpu")
-    @unittest.skip(
-        "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
-    )
+    @unittest.skip("Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257")
     def test_cuda_event_method_create_stream_outside_of_compile(self):
         def fn(x, cur_stream, new_stream):
             x = torch.mul(x, 1)
@@ -689,9 +673,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             def forward(self, query, key, value):
                 with torch.autocast("cpu"):
                     with torch.autocast(device_type, dtype=torch.float32):
-                        out = F.scaled_dot_product_attention(
-                            query, key, value, None, 0.0, True
-                        )
+                        out = F.scaled_dot_product_attention(query, key, value, None, 0.0, True)
                 return out
 
         dtype = torch.float32
@@ -824,9 +806,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
 
                 with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
                     torch._dynamo.graph_break()
-                    with torch.autocast(
-                        device_type="cpu", dtype=torch.bfloat16, enabled=False
-                    ):
+                    with torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=False):
                         torch._dynamo.graph_break()
                         g_float32 = torch.mm(a_float32, b_float32)
                         with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
@@ -876,15 +856,11 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
                 b_float32 = torch.rand((8, 8), device="cpu")
 
                 with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
-                    with torch.autocast(
-                        device_type="cpu", dtype=torch.bfloat16, enabled=False
-                    ):
+                    with torch.autocast(device_type="cpu", dtype=torch.bfloat16, enabled=False):
                         g_float32 = torch.mm(a_float32, b_float32)
                     f_float16 = self.mm_breaks(a_float32, b_float32)
 
-                    assert (
-                        f_float16[0][0] == self.mm_not_break(a_float32, b_float32)[0][0]
-                    )
+                    assert f_float16[0][0] == self.mm_not_break(a_float32, b_float32)[0][0]
                 return f_float16, g_float32
 
         module = MyModule(bias=torch.rand((8, 8), device="cpu", dtype=torch.bfloat16))
@@ -1272,9 +1248,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
 
     def test_graph_break_inlining_autocast(self):
         for device in ["cuda", "cpu", "xpu"]:
-            if device == "cuda" and not (
-                torch.cuda.is_available() and torch.cuda.is_bf16_supported()
-            ):
+            if device == "cuda" and not (torch.cuda.is_available() and torch.cuda.is_bf16_supported()):
                 continue
             if device == "xpu" and not torch.xpu.is_available():
                 continue
@@ -1337,9 +1311,7 @@ class GraphModule(torch.nn.Module):
             return f(x, y)
 
         eager = EagerAndRecordGraphs()
-        with torch.autograd.graph.disable_saved_tensors_hooks(
-            "Previously disabled message"
-        ):
+        with torch.autograd.graph.disable_saved_tensors_hooks("Previously disabled message"):
             torch.compile(fn, backend=eager, fullgraph=True)(torch.randn(()))
 
         graph = eager.graphs[0]
@@ -1367,9 +1339,7 @@ class GraphModule(torch.nn.Module):
         def fn(z):
             @torch.autograd.graph.disable_saved_tensors_hooks("This is not supported")
             def f(x, y):
-                @torch.autograd.graph.disable_saved_tensors_hooks(
-                    "This is not supported inner"
-                )
+                @torch.autograd.graph.disable_saved_tensors_hooks("This is not supported inner")
                 def inner_fn(x, y):
                     return x + y
 
@@ -1386,9 +1356,7 @@ class GraphModule(torch.nn.Module):
             return f(x, y)
 
         eager = EagerAndRecordGraphs()
-        with torch.autograd.graph.disable_saved_tensors_hooks(
-            "Previously disabled message"
-        ):
+        with torch.autograd.graph.disable_saved_tensors_hooks("Previously disabled message"):
             torch.compile(fn, backend=eager, fullgraph=True)(torch.randn(()))
 
         graph = eager.graphs[0]
@@ -1420,9 +1388,7 @@ class GraphModule(torch.nn.Module):
 
     def test_disable_saved_tensors_hooks_graph_break(self):
         def fn(x):
-            with torch.autograd.graph.disable_saved_tensors_hooks(
-                "This is not supported"
-            ):
+            with torch.autograd.graph.disable_saved_tensors_hooks("This is not supported"):
                 y = x + 1
                 torch._dynamo.graph_break()
                 return y * 2
@@ -1670,18 +1636,14 @@ class GraphModule(torch.nn.Module):
 
         @torch._dynamo.allow_in_graph
         def check_backend_state_is_modified():
-            self.assertEqual(
-                torch.nn.attention._cur_sdpa_kernel_backends(), modified_backend_state
-            )
+            self.assertEqual(torch.nn.attention._cur_sdpa_kernel_backends(), modified_backend_state)
 
         def f(x):
             with torch.nn.attention.sdpa_kernel(
                 # pyre-fixme[16]: Module `torch.nn.attention` has no attribute `SDPBackend`.
                 [torch.nn.attention.SDPBackend.MATH]
             ):
-                output = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(
-                    torch.float32
-                )
+                output = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(torch.float32)
                 check_backend_state_is_modified()
 
             return output
@@ -1702,15 +1664,11 @@ class GraphModule(torch.nn.Module):
 
         @torch._dynamo.allow_in_graph
         def check_backend_state_is_modified():
-            self.assertEqual(
-                torch.nn.attention._cur_sdpa_kernel_backends(), modified_backend_state
-            )
+            self.assertEqual(torch.nn.attention._cur_sdpa_kernel_backends(), modified_backend_state)
 
         def g(x):
             torch._dynamo.graph_break()
-            output = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(
-                torch.float32
-            )
+            output = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(torch.float32)
             check_backend_state_is_modified()
             return output
 
@@ -1720,17 +1678,13 @@ class GraphModule(torch.nn.Module):
                 # pyre-fixme[16]: Module `torch.nn.attention` has no attribute `SDPBackend`.
                 [torch.nn.attention.SDPBackend.MATH]
             ):
-                output1 = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(
-                    torch.float32
-                )
+                output1 = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(torch.float32)
                 check_backend_state_is_modified()
 
                 # graph break
                 output2 = g(x)
 
-                output3 = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(
-                    torch.float32
-                )
+                output3 = torch.nn.functional.scaled_dot_product_attention(x, x, x).to(torch.float32)
                 check_backend_state_is_modified()
 
             check_backend_state_is_original()
@@ -1807,13 +1761,9 @@ class GraphModule(torch.nn.Module):
             torch.nn.attention.SDPBackend.FLASH_ATTENTION,
         ]
 
-        @torch.nn.attention.sdpa_kernel(
-            backends=SDPA_BACKEND_PRIORITY, set_priority=True
-        )
+        @torch.nn.attention.sdpa_kernel(backends=SDPA_BACKEND_PRIORITY, set_priority=True)
         def scaled_dot_product_attention(q, k, v, *args, **kwargs):
-            return torch.nn.functional.scaled_dot_product_attention(
-                q, k, v, *args, **kwargs
-            )
+            return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
 
         def f(x):
             return scaled_dot_product_attention(x, x, x)
@@ -1923,9 +1873,7 @@ class GraphModule(torch.nn.Module):
         self.assertGreater(len(counters["graph_break"]), 0)
 
 
-class ContextlibContextManagerTests(
-    torch._dynamo.test_case.TestCaseWithNestedGraphBreaks
-):
+class ContextlibContextManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
     def setUp(self):
         super().setUp()
         self._prev = torch._dynamo.config.enable_trace_contextlib

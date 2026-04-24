@@ -25,10 +25,7 @@ from torch.testing._internal.common_methods_invocations import op_db
 from torch.testing._internal.common_utils import run_tests, TestCase
 
 for op in op_db:
-    if (
-        op.name == "nn.functional.batch_norm"
-        and op.variant_test_name == "without_cudnn"
-    ):
+    if op.name == "nn.functional.batch_norm" and op.variant_test_name == "without_cudnn":
         # Assign XPU-specific dtypes
         if hasattr(op, "_dispatch_dtypes"):
             cuda_dtypes = op._dispatch_dtypes.get("cuda")
@@ -37,9 +34,7 @@ for op in op_db:
         # Keep others like 'disablecuDNN' which are usually harmless or handled
         if hasattr(op, "supported_device_types"):
             op.supported_device_types = op.supported_device_types.union({"xpu"})
-        op.decorators = tuple(
-            d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d))
-        )
+        op.decorators = tuple(d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d)))
 
         break
 
@@ -125,9 +120,7 @@ for op in ops:
         self.assertEqual(r, "")
 
 
-instantiate_device_type_tests(
-    TestExportOnFakeCuda, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestExportOnFakeCuda, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

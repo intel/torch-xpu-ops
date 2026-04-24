@@ -102,14 +102,10 @@ def _test_learnable_forward_per_channel_cuda(self):
     for dtype in [torch.float32, torch.bfloat16]:
         X_base = torch.randn(shape, device="xpu").to(dtype)
         channel_size = X_base.size(axis)
-        scale_base = (
-            torch.normal(mean=0, std=1, size=(channel_size,)).clamp(1e-4, 100).to(dtype)
-        )
+        scale_base = torch.normal(mean=0, std=1, size=(channel_size,)).clamp(1e-4, 100).to(dtype)
         zero_point_base = torch.normal(mean=0, std=128, size=(channel_size,)).to(dtype)
 
-        self._test_learnable_forward_per_channel(
-            X_base, "xpu", scale_base, zero_point_base, axis
-        )
+        self._test_learnable_forward_per_channel(X_base, "xpu", scale_base, zero_point_base, axis)
 
 
 @unittest.skipIf(not TEST_CUDA, "No gpu is not available.")
@@ -129,21 +125,13 @@ def _test_learnable_backward_per_channel_cuda(self):
     for dtype in [torch.bfloat16, torch.float32]:
         X_base = torch.randn(x_shape, dtype=dtype, device="xpu")
         scale_base = torch.randn(scale_shape, dtype=dtype, device="xpu")
-        zero_point_base = torch.randint(0, 10, zero_point_shape, device="xpu").to(
-            dtype=dtype
-        )
-        self._test_learnable_backward_per_channel(
-            X_base, "xpu", scale_base, zero_point_base, axis, dtype
-        )
+        zero_point_base = torch.randint(0, 10, zero_point_shape, device="xpu").to(dtype=dtype)
+        self._test_learnable_backward_per_channel(X_base, "xpu", scale_base, zero_point_base, axis, dtype)
 
 
 def rewrap_hypothesis_test(test, extra_given_kwargs=None, additional_wrapper=None):
     innert_test = test.hypothesis.inner_test
-    given_kwargs = {
-        "device": st.sampled_from(
-            ["cpu", "xpu"] if torch.xpu.is_available() else ["cpu"]
-        )
-    }
+    given_kwargs = {"device": st.sampled_from(["cpu", "xpu"] if torch.xpu.is_available() else ["cpu"])}
     if extra_given_kwargs is not None:
         for k, v in extra_given_kwargs.items():
             given_kwargs[k] = v
@@ -200,35 +188,18 @@ TestFakeQuantizeOps.test_backward_per_channel = rewrap_hypothesis_test(
     TestFakeQuantizeOps.test_backward_per_channel,
     extra_given_kwargs=given_kwargs_dict2,
     additional_wrapper=unittest.skip(
-        "this is broken without changes to any relevant code, "
-        "we need to remove hypothesis testing in CI"
+        "this is broken without changes to any relevant code, we need to remove hypothesis testing in CI"
     ),
 )
 
-TestFakeQuantizeOps.test_forward_per_tensor_cachemask_cuda = (
-    _test_forward_per_tensor_cachemask_cuda
-)
-TestFakeQuantizeOps.test_backward_per_tensor_cachemask_cuda = (
-    _test_backward_per_tensor_cachemask_cuda
-)
-TestFakeQuantizeOps.test_learnable_forward_per_tensor_cuda = (
-    _test_learnable_forward_per_tensor_cuda
-)
-TestFakeQuantizeOps.test_learnable_backward_per_tensor_cuda = (
-    _test_learnable_backward_per_tensor_cuda
-)
-TestFakeQuantizeOps.test_forward_per_channel_cachemask_cuda = (
-    _test_forward_per_channel_cachemask_cuda
-)
-TestFakeQuantizeOps.test_learnable_forward_per_channel_cuda = (
-    _test_learnable_forward_per_channel_cuda
-)
-TestFakeQuantizeOps.test_backward_per_channel_cachemask_cuda = (
-    _test_backward_per_channel_cachemask_cuda
-)
-TestFakeQuantizeOps.test_learnable_backward_per_channel_cuda = (
-    _test_learnable_backward_per_channel_cuda
-)
+TestFakeQuantizeOps.test_forward_per_tensor_cachemask_cuda = _test_forward_per_tensor_cachemask_cuda
+TestFakeQuantizeOps.test_backward_per_tensor_cachemask_cuda = _test_backward_per_tensor_cachemask_cuda
+TestFakeQuantizeOps.test_learnable_forward_per_tensor_cuda = _test_learnable_forward_per_tensor_cuda
+TestFakeQuantizeOps.test_learnable_backward_per_tensor_cuda = _test_learnable_backward_per_tensor_cuda
+TestFakeQuantizeOps.test_forward_per_channel_cachemask_cuda = _test_forward_per_channel_cachemask_cuda
+TestFakeQuantizeOps.test_learnable_forward_per_channel_cuda = _test_learnable_forward_per_channel_cuda
+TestFakeQuantizeOps.test_backward_per_channel_cachemask_cuda = _test_backward_per_channel_cachemask_cuda
+TestFakeQuantizeOps.test_learnable_backward_per_channel_cuda = _test_learnable_backward_per_channel_cuda
 TestFakeQuantizeOps.test_fixed_qparams_fq_module = rewrap_hypothesis_test(
     TestFakeQuantizeOps.test_fixed_qparams_fq_module,
     extra_given_kwargs=given_kwargs_dict1,
@@ -238,11 +209,9 @@ TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg = rewrap_hypothesis_t
     TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg,
     extra_given_kwargs=given_kwargs_dict4,
 )
-TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel = (
-    rewrap_hypothesis_test(
-        TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel,
-        extra_given_kwargs=given_kwargs_dict3,
-    )
+TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel = rewrap_hypothesis_test(
+    TestFusedObsFakeQuant.test_fused_obs_fake_quant_moving_avg_per_channel,
+    extra_given_kwargs=given_kwargs_dict3,
 )
 TestFusedObsFakeQuant.test_fused_obs_fake_quant_backward_op = rewrap_hypothesis_test(
     TestFusedObsFakeQuant.test_fused_obs_fake_quant_backward_op
@@ -252,12 +221,8 @@ TestFusedObsFakeQuant.test_fused_backward_op_fake_quant_off = rewrap_hypothesis_
 )
 
 
-instantiate_device_type_tests(
-    TestFusedObsFakeQuant, globals(), only_for="xpu", allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestFakeQuantizeOps, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestFusedObsFakeQuant, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestFakeQuantizeOps, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

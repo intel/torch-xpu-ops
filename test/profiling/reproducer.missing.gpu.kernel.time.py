@@ -19,11 +19,7 @@ def maxUnpool2d(shape, dtype, channels_last, backward):
     # torch.manual_seed(20)
 
     if channels_last:
-        input = (
-            torch.randn([N, C, H, W])
-            .to(memory_format=torch.channels_last)
-            .to(device="cpu", dtype=torch.float32)
-        )
+        input = torch.randn([N, C, H, W]).to(memory_format=torch.channels_last).to(device="cpu", dtype=torch.float32)
     else:
         input = torch.randn([N, C, H, W]).to(device="cpu", dtype=torch.float32)
     output, indices = pool(input)
@@ -31,12 +27,8 @@ def maxUnpool2d(shape, dtype, channels_last, backward):
     # pool.to(device="xpu", dtype=dtype)
     # unpool.to(device="xpu", dtype=dtype)
     if channels_last:
-        x_dpcpp = output.to(memory_format=torch.channels_last).to(
-            device="xpu", dtype=dtype
-        )
-        indices_dpcpp = indices.to(memory_format=torch.channels_last).to(
-            device="xpu", dtype=torch.int64
-        )
+        x_dpcpp = output.to(memory_format=torch.channels_last).to(device="xpu", dtype=dtype)
+        indices_dpcpp = indices.to(memory_format=torch.channels_last).to(device="xpu", dtype=torch.int64)
     else:
         x_dpcpp = output.to(device="xpu", dtype=dtype)
         indices_dpcpp = indices.to(device="xpu", dtype=torch.int64)
@@ -44,17 +36,11 @@ def maxUnpool2d(shape, dtype, channels_last, backward):
     if backward:
         x_dpcpp.requires_grad_(True)
         if channels_last:
-            grad_dpcpp = (
-                torch.randn([N, C, H, W])
-                .to(memory_format=torch.channels_last)
-                .to(device="xpu", dtype=dtype)
-            )
+            grad_dpcpp = torch.randn([N, C, H, W]).to(memory_format=torch.channels_last).to(device="xpu", dtype=dtype)
         else:
             grad_dpcpp = torch.randn([N, C, H, W]).to(device="xpu", dtype=dtype)
 
-    y_dpcpp = unpool(x_dpcpp, indices_dpcpp, output_size=torch.Size([N, C, H, W])).to(
-        "xpu"
-    )
+    y_dpcpp = unpool(x_dpcpp, indices_dpcpp, output_size=torch.Size([N, C, H, W])).to("xpu")
 
     if backward:
         y_dpcpp.backward(grad_dpcpp)

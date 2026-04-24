@@ -30,27 +30,17 @@ for shape in shape_list:
                 num_groups = shape[0]
                 shape_input = (shape[1], shape[2], shape[3], shape[4])
                 C = shape[2]
-                memory_format = (
-                    torch.channels_last_3d
-                    if len(shape_input) == 5
-                    else torch.channels_last
-                )
+                memory_format = torch.channels_last_3d if len(shape_input) == 5 else torch.channels_last
 
                 if channels_last:
-                    input = (
-                        torch.randn(shape_input)
-                        .to(memory_format=memory_format)
-                        .to(device=device, dtype=dtype)
-                    )
+                    input = torch.randn(shape_input).to(memory_format=memory_format).to(device=device, dtype=dtype)
                 else:
                     input = torch.randn(shape_input).to(device=device, dtype=dtype)
 
                 if backward:
                     input.requires_grad_(True)
 
-                m = torch.nn.GroupNorm(num_groups, C, affine=affine, dtype=dtype).to(
-                    device
-                )
+                m = torch.nn.GroupNorm(num_groups, C, affine=affine, dtype=dtype).to(device)
 
                 # warm up
                 for i in range(5):

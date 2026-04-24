@@ -19,9 +19,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_ops_gradients import TestBwdGradients
 
-instantiate_device_type_tests(
-    TestBwdGradients, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestBwdGradients, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()

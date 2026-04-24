@@ -60,51 +60,21 @@ aten = torch.ops.aten
 SKIPS = {
     Descriptor(op=aten.empty_like, variant=None): "Non-deterministic output",
     Descriptor(op=aten.randn_like, variant=None): "Non-deterministic output",
-    Descriptor(
-        op=aten.any, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.all, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.allclose, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.conj_physical, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten._conj_physical, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.cumprod, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.index_add, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.diagonal_scatter, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.flip, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.masked_fill, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.masked_scatter, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.rsub, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.ne, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.squeeze, variant=Variant.Distributed
-    ): "does not have a sharding strategy registered",
-    Descriptor(
-        op=aten.index_select, variant=Variant.Distributed
-    ): "Sharding propagation failed",
+    Descriptor(op=aten.any, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.all, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.allclose, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.conj_physical, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten._conj_physical, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.cumprod, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.index_add, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.diagonal_scatter, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.flip, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.masked_fill, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.masked_scatter, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.rsub, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.ne, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.squeeze, variant=Variant.Distributed): "does not have a sharding strategy registered",
+    Descriptor(op=aten.index_select, variant=Variant.Distributed): "Sharding propagation failed",
     Descriptor(op=aten.real, variant=Variant.Distributed): "No scalar support",
     Descriptor(op=aten.imag, variant=Variant.Distributed): "No scalar support",
     Descriptor(op=aten.isfinite, variant=Variant.Distributed): "No scalar support",
@@ -173,12 +143,8 @@ class TestComplexBwdGradients(TestCase):
         self.check_grad(device, dtype, op)
 
 
-instantiate_device_type_tests(
-    TestComplexTensor, globals(), only_for="xpu", allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestComplexBwdGradients, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestComplexTensor, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestComplexBwdGradients, globals(), only_for="xpu", allow_xpu=True)
 
 
 if dist.is_available():
@@ -190,9 +156,7 @@ if dist.is_available():
         def test_distributed(self, device, dtype, op: OpInfo):
             self.check_consistency(device, dtype, op, Variant.Distributed)
 
-    instantiate_device_type_tests(
-        TestComplexDistributed, globals(), only_for="xpu", allow_xpu=True
-    )
+    instantiate_device_type_tests(TestComplexDistributed, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()

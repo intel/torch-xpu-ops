@@ -24,9 +24,7 @@ class TestLinalg(TestCase):
         """Verify CPU and XPU results match (including NaN patterns)."""
         result_cpu = torch.linalg.solve(A, b)
         result_xpu = torch.linalg.solve(A.to(xpu_device), b.to(xpu_device))
-        self.assertEqual(
-            result_cpu, result_xpu.cpu(), atol=atol, rtol=rtol, equal_nan=True
-        )
+        self.assertEqual(result_cpu, result_xpu.cpu(), atol=atol, rtol=rtol, equal_nan=True)
 
     def test_solve_nan_variants(self):
         """Test NaN in matrix (all/partial) and in b vector."""
@@ -39,9 +37,7 @@ class TestLinalg(TestCase):
         self._assert_results_match(A, torch.randn(4))
 
         # NaN in b vector
-        self._assert_results_match(
-            torch.randn(3, 3), torch.tensor([1.0, float("nan"), 2.0])
-        )
+        self._assert_results_match(torch.randn(3, 3), torch.tensor([1.0, float("nan"), 2.0]))
 
     def test_solve_batch_mixed_nan(self):
         """Test batch: some with NaN, others without."""

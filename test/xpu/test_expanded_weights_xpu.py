@@ -55,13 +55,9 @@ class TestExpandedWeightHelperFunction(TestCase):
             maybe_batched_weight = weight
             maybe_batched_bias = bias
             if weight_batched:
-                maybe_batched_weight = ExpandedWeight(
-                    weight.clone().requires_grad_(), 3, loss_reduction="sum"
-                )
+                maybe_batched_weight = ExpandedWeight(weight.clone().requires_grad_(), 3, loss_reduction="sum")
             if bias_batched:
-                maybe_batched_bias = ExpandedWeight(
-                    bias.clone().requires_grad_(), 3, loss_reduction="sum"
-                )
+                maybe_batched_bias = ExpandedWeight(bias.clone().requires_grad_(), 3, loss_reduction="sum")
             args = (input, maybe_batched_weight, maybe_batched_bias)
             expanded_args, expanded_kwargs = standard_kwargs(("bias",), args)
             res = forward_helper(nn.functional.linear, expanded_args, expanded_kwargs)
@@ -72,43 +68,23 @@ class TestExpandedWeightHelperFunction(TestCase):
             assert expanded_args[0] is args[0]  # avoids property checks in assertEquals
             assert expanded_args[1] is args[1]  # avoids property checks in assertEquals
             self.assertEqual(len(expanded_kwargs), 1)
-            assert (
-                expanded_kwargs["bias"] is args[2]
-            )  # avoids property checks in assertEquals
+            assert expanded_kwargs["bias"] is args[2]  # avoids property checks in assertEquals
 
     def test_forward_helper_failure_args(self, device):
         weight = torch.randn(5, 4, device=device)
         bias = torch.randn(5, device=device)
-        with self.assertRaisesRegex(
-            RuntimeError, r"do not support inputs that are also ExpandedWeights."
-        ):
-            input = ExpandedWeight(
-                torch.randn(3, 4, requires_grad=True), 3, loss_reduction="sum"
-            )
-            expanded_args, expanded_kwargs = standard_kwargs(
-                ("bias",), (input, weight, bias)
-            )
+        with self.assertRaisesRegex(RuntimeError, r"do not support inputs that are also ExpandedWeights."):
+            input = ExpandedWeight(torch.randn(3, 4, requires_grad=True), 3, loss_reduction="sum")
+            expanded_args, expanded_kwargs = standard_kwargs(("bias",), (input, weight, bias))
             forward_helper(nn.functional.linear, expanded_args, expanded_kwargs)
-        with self.assertRaisesRegex(
-            RuntimeError, r"requires a Tensor as the first input"
-        ):
-            expanded_args, expanded_kwargs = standard_kwargs(
-                ("bias",), (3, weight, bias)
-            )
+        with self.assertRaisesRegex(RuntimeError, r"requires a Tensor as the first input"):
+            expanded_args, expanded_kwargs = standard_kwargs(("bias",), (3, weight, bias))
             forward_helper(nn.functional.linear, expanded_args, expanded_kwargs)
-        with self.assertRaisesRegex(
-            RuntimeError, r"requires a batch dimension but got an input of size 0"
-        ):
-            expanded_args, expanded_kwargs = standard_kwargs(
-                ("bias",), (torch.tensor(3), weight, bias)
-            )
+        with self.assertRaisesRegex(RuntimeError, r"requires a batch dimension but got an input of size 0"):
+            expanded_args, expanded_kwargs = standard_kwargs(("bias",), (torch.tensor(3), weight, bias))
             forward_helper(nn.functional.linear, expanded_args, expanded_kwargs)
-        with self.assertRaisesRegex(
-            RuntimeError, r"0 is not a valid batch size for Expanded Weights"
-        ):
-            expanded_args, expanded_kwargs = standard_kwargs(
-                ("bias",), (torch.randn(0, 1, 2), weight, bias)
-            )
+        with self.assertRaisesRegex(RuntimeError, r"0 is not a valid batch size for Expanded Weights"):
+            expanded_args, expanded_kwargs = standard_kwargs(("bias",), (torch.randn(0, 1, 2), weight, bias))
             forward_helper(nn.functional.linear, expanded_args, expanded_kwargs)
         input = torch.randn(3, 4)
         for weight_batched, bias_batched in product([True, False], [True, False]):
@@ -117,13 +93,9 @@ class TestExpandedWeightHelperFunction(TestCase):
             maybe_batched_weight = weight
             maybe_batched_bias = bias
             if weight_batched:
-                maybe_batched_weight = ExpandedWeight(
-                    weight.clone().requires_grad_(), 4, loss_reduction="sum"
-                )
+                maybe_batched_weight = ExpandedWeight(weight.clone().requires_grad_(), 4, loss_reduction="sum")
             if bias_batched:
-                maybe_batched_bias = ExpandedWeight(
-                    bias.clone().requires_grad_(), 4, loss_reduction="sum"
-                )
+                maybe_batched_bias = ExpandedWeight(bias.clone().requires_grad_(), 4, loss_reduction="sum")
             with self.assertRaisesRegex(
                 RuntimeError,
                 r"Expected ExpandedWeights to have batch size matching input",
@@ -167,9 +139,7 @@ class TestExpandedWeightHelperFunction(TestCase):
         input = torch.randn(3, requires_grad=True, device=device)
         self.assertEqual(
             input,
-            unpack_expanded_weight_or_tensor(
-                ExpandedWeight(input, 3, loss_reduction="sum")
-            ),
+            unpack_expanded_weight_or_tensor(ExpandedWeight(input, 3, loss_reduction="sum")),
         )
 
         input.requires_grad_(False)
@@ -179,16 +149,12 @@ class TestExpandedWeightHelperFunction(TestCase):
     def test_unpack_expanded_weight_or_tensor_with_custom_function(self, device):
         input = torch.randn(3, requires_grad=True, device=device)
         self.assertTrue(
-            unpack_expanded_weight_or_tensor(
-                ExpandedWeight(input, 3, loss_reduction="sum"), lambda x: x is input
-            )
+            unpack_expanded_weight_or_tensor(ExpandedWeight(input, 3, loss_reduction="sum"), lambda x: x is input)
         )
 
         input.requires_grad_(False)
         self.assertTrue(unpack_expanded_weight_or_tensor(input, lambda x: x is input))
-        self.assertTrue(
-            unpack_expanded_weight_or_tensor(4, lambda x: x is input) is None
-        )
+        self.assertTrue(unpack_expanded_weight_or_tensor(4, lambda x: x is input) is None)
 
     def test_unpack_expanded_weight_or_tensor_failure(self, device):
         input = torch.randn(3, requires_grad=True, device=device)
@@ -227,32 +193,20 @@ class TestExpandedWeightFunctional(TestCase):
 
         # get per sample grads with ExpandedWeights objects
         loss_reduction = "sum" if reduction == torch.sum else "mean"
-        (ew_input, ew_args, ew_kwargs) = make_expanded_weight(
-            sample_input, batch_size, loss_reduction
-        )
+        (ew_input, ew_args, ew_kwargs) = make_expanded_weight(sample_input, batch_size, loss_reduction)
         diff_input_list = (ew_input,) + tuple(ew_args) + tuple(ew_kwargs.values())
         diff_input_list = [i for i in diff_input_list if is_diff_tensor(i)]
-        diff_input_list = [
-            i.orig_weight if isinstance(i, ExpandedWeight) else i
-            for i in diff_input_list
-        ]
+        diff_input_list = [i.orig_weight if isinstance(i, ExpandedWeight) else i for i in diff_input_list]
         if not diff_input_list:
             return
         result = run_op(op, ew_input, *ew_args, **ew_kwargs)
-        reduction(
-            result
-        ).backward()  # grad doesn't work with ExpandedWeight because it calls __torch_function__
-        expanded_weight_grad = tuple(
-            i.grad_sample if hasattr(i, "grad_sample") else i.grad
-            for i in diff_input_list
-        )
+        reduction(result).backward()  # grad doesn't work with ExpandedWeight because it calls __torch_function__
+        expanded_weight_grad = tuple(i.grad_sample if hasattr(i, "grad_sample") else i.grad for i in diff_input_list)
 
         # get per sample grads with for loop
         func = partial(run_op, op)
 
-        per_sample_grad = for_loop_per_sample_grad(
-            batch_size, reduction, input, func, *args, **kwargs
-        )
+        per_sample_grad = for_loop_per_sample_grad(batch_size, reduction, input, func, *args, **kwargs)
 
         # check equality
         self.assertEqual(len(per_sample_grad), len(expanded_weight_grad))
@@ -271,9 +225,7 @@ class TestExpandedWeightFunctional(TestCase):
     def test_expanded_weight_per_sample_grad_sum(self, device, dtype, op):
         sample_inputs = op.sample_inputs(device, dtype, requires_grad=True)
         for sample_input in supported_inputs(op, sample_inputs):
-            if (
-                op.name == "nn.functional.embedding"
-            ):  # embedding flips its argument order for autograd tests
+            if op.name == "nn.functional.embedding":  # embedding flips its argument order for autograd tests
                 sample_input = SampleInput(
                     sample_input.args[0],
                     args=(sample_input.input,),
@@ -290,9 +242,7 @@ class TestExpandedWeightFunctional(TestCase):
     def test_expanded_weight_per_sample_grad_mean(self, device, dtype, op):
         sample_inputs = op.sample_inputs(device, dtype, requires_grad=True)
         for sample_input in supported_inputs(op, sample_inputs):
-            if (
-                op.name == "nn.functional.embedding"
-            ):  # embedding flips its argument order for autograd tests
+            if op.name == "nn.functional.embedding":  # embedding flips its argument order for autograd tests
                 sample_input = SampleInput(
                     sample_input.args[0],
                     args=(sample_input.input,),
@@ -309,9 +259,7 @@ class TestExpandedWeightFunctional(TestCase):
     def test_expanded_weights_per_sample_grad_input_no_grad(self, device, dtype, op):
         sample_inputs = op.sample_inputs(device, dtype, requires_grad=True)
         for sample_input in supported_inputs(op, sample_inputs):
-            if (
-                op.name == "nn.functional.embedding"
-            ):  # embedding flips its argument order for autograd tests
+            if op.name == "nn.functional.embedding":  # embedding flips its argument order for autograd tests
                 sample_input = SampleInput(
                     sample_input.args[0],
                     args=(sample_input.input,),
@@ -332,9 +280,7 @@ class TestExpandedWeightFunctional(TestCase):
         unsupported_inputs = supported_inputs(op, sample_inputs, supported_inputs=False)
         for sample_input in unsupported_inputs:
             with self.assertRaisesRegex(RuntimeError, r"Expanded Weights"):
-                if (
-                    op.name == "nn.functional.embedding"
-                ):  # embedding flips its argument order for autograd tests
+                if op.name == "nn.functional.embedding":  # embedding flips its argument order for autograd tests
                     sample_input = SampleInput(
                         sample_input.args[0],
                         args=(sample_input.input,),
@@ -345,66 +291,37 @@ class TestExpandedWeightFunctional(TestCase):
                 batch_size = input.shape[0] if len(input.shape) > 1 else 1
 
                 # get per sample grads with ExpandedWeights objects
-                (ew_input, ew_args, ew_kwargs) = make_expanded_weight(
-                    sample_input, batch_size
-                )
+                (ew_input, ew_args, ew_kwargs) = make_expanded_weight(sample_input, batch_size)
                 result = run_op(op, ew_input, *ew_args, **ew_kwargs)
-                diff_input_list = (
-                    (ew_input,) + tuple(ew_args) + tuple(ew_kwargs.values())
-                )
+                diff_input_list = (ew_input,) + tuple(ew_args) + tuple(ew_kwargs.values())
                 diff_input_list = [i for i in diff_input_list if is_diff_tensor(i)]
-                diff_input_list = [
-                    i.orig_weight if isinstance(i, ExpandedWeight) else i
-                    for i in diff_input_list
-                ]
+                diff_input_list = [i.orig_weight if isinstance(i, ExpandedWeight) else i for i in diff_input_list]
                 result.sum().backward()  # grad doesn't work with ExpandedWeight because it calls __torch_function__
 
-    @ops(
-        filter(lambda op: op.supports_expanded_weight, op_db), dtypes=OpDTypes.supported
-    )
+    @ops(filter(lambda op: op.supports_expanded_weight, op_db), dtypes=OpDTypes.supported)
     def test_expanded_weight_forward(self, device, dtype, op):
         sample_inputs = op.sample_inputs(device, dtype)
         for sample_input in supported_inputs(op, sample_inputs):
-            if (
-                op.name == "nn.functional.embedding"
-            ):  # embedding flips its argument order for autograd tests
+            if op.name == "nn.functional.embedding":  # embedding flips its argument order for autograd tests
                 sample_input = SampleInput(
                     sample_input.args[0].clone(),
                     args=(sample_input.input.clone(),),
                     kwargs=sample_input.kwargs,
                 )
-                if (
-                    "cuda" in device
-                    and "max_norm" in sample_input.kwargs
-                    and "padding_idx" in sample_input.kwargs
-                ):
-                    self.skipTest(
-                        "embedding is non-determinstic in this case, see issue #74679"
-                    )
-            batch_size = (
-                sample_input.input.shape[0] if len(sample_input.input.shape) > 1 else 1
-            )
+                if "cuda" in device and "max_norm" in sample_input.kwargs and "padding_idx" in sample_input.kwargs:
+                    self.skipTest("embedding is non-determinstic in this case, see issue #74679")
+            batch_size = sample_input.input.shape[0] if len(sample_input.input.shape) > 1 else 1
             for loss_reduction in ["sum", "mean"]:
-                (ew_input, ew_args, ew_kwargs) = make_expanded_weight(
-                    sample_input, batch_size, loss_reduction
-                )
+                (ew_input, ew_args, ew_kwargs) = make_expanded_weight(sample_input, batch_size, loss_reduction)
                 expanded_weight_result = run_op(op, ew_input, *ew_args, **ew_kwargs)
-                normal_result = run_op(
-                    op, sample_input.input, *sample_input.args, **sample_input.kwargs
-                )
+                normal_result = run_op(op, sample_input.input, *sample_input.args, **sample_input.kwargs)
                 self.assertEqual(expanded_weight_result, normal_result)
 
     def test_expanded_weight_error(self, device):
         batch_size = 3
-        sample_input = make_tensor(
-            (batch_size, 4), dtype=torch.float32, device=device, requires_grad=True
-        )
-        sample_weight = make_tensor(
-            (4), dtype=torch.float32, device=device, requires_grad=True
-        )
-        with self.assertRaisesRegex(
-            RuntimeError, r"Expanded Weights encountered but cannot handle function"
-        ):
+        sample_input = make_tensor((batch_size, 4), dtype=torch.float32, device=device, requires_grad=True)
+        sample_weight = make_tensor((4), dtype=torch.float32, device=device, requires_grad=True)
+        with self.assertRaisesRegex(RuntimeError, r"Expanded Weights encountered but cannot handle function"):
             torch.add(
                 sample_input,
                 ExpandedWeight(sample_weight, batch_size, loss_reduction="sum"),
@@ -413,9 +330,7 @@ class TestExpandedWeightFunctional(TestCase):
     def _test_embedding_model(self, model, num_embedding, device):
         batch_size = 32
         input = torch.randint(0, num_embedding, (batch_size, 5, 5), device=device)
-        return self._test_model(
-            partial(model, num_embedding=num_embedding), batch_size, input, device
-        )
+        return self._test_model(partial(model, num_embedding=num_embedding), batch_size, input, device)
 
     def _test_conv_model(
         self,
@@ -464,18 +379,14 @@ class TestExpandedWeightFunctional(TestCase):
         expected = []
         for i in range(batch_size):
             loss = criterion(model(input[i].unsqueeze(0)), targets[i].unsqueeze(0))
-            expected.append(
-                torch.autograd.grad(loss, model.parameters(), torch.ones_like(loss))
-            )
+            expected.append(torch.autograd.grad(loss, model.parameters(), torch.ones_like(loss)))
 
         expected = [torch.stack(grad) for grad in zip(*expected)]
         for res, exp in zip(result, expected):
             self.assertEqual(res, exp, atol=atol, rtol=rtol)
 
     def _compute_tolerances(self, device):
-        is_cuda_sm86 = device.startswith("cuda") and torch.cuda.get_device_capability(
-            0
-        ) == (8, 6)
+        is_cuda_sm86 = device.startswith("cuda") and torch.cuda.get_device_capability(0) == (8, 6)
         return (9e-3, 5e-5) if is_cuda_sm86 else (1e-4, 5e-5)
 
     @tf32_off()
@@ -522,24 +433,14 @@ class TestExpandedWeightFunctional(TestCase):
             )
 
         atol, rtol = self._compute_tolerances(device)
-        return self._test_conv_model(
-            convnet, 28, 2, device, loss_reduction="mean", atol=atol, rtol=rtol
-        )
+        return self._test_conv_model(convnet, 28, 2, device, loss_reduction="mean", atol=atol, rtol=rtol)
 
     @parametrize("num_dim", [1, 2, 3])
     @tf32_off()
     def test_instance_norm_model(self, num_dim, device):
         def instance_norm_model(num_classes, num_dim):
-            conv_layer = (
-                nn.Conv1d if num_dim == 1 else nn.Conv2d if num_dim == 2 else nn.Conv3d
-            )
-            norm_layer = (
-                nn.InstanceNorm1d
-                if num_dim == 1
-                else nn.InstanceNorm2d
-                if num_dim == 2
-                else nn.InstanceNorm3d
-            )
+            conv_layer = nn.Conv1d if num_dim == 1 else nn.Conv2d if num_dim == 2 else nn.Conv3d
+            norm_layer = nn.InstanceNorm1d if num_dim == 1 else nn.InstanceNorm2d if num_dim == 2 else nn.InstanceNorm3d
             return nn.Sequential(
                 conv_layer(3, 32, kernel_size=3, stride=1, padding=1),
                 norm_layer(32, affine=True),
@@ -548,17 +449,13 @@ class TestExpandedWeightFunctional(TestCase):
             )
 
         atol, rtol = self._compute_tolerances(device)
-        return self._test_conv_model(
-            instance_norm_model, 7, num_dim, device, atol=atol, rtol=rtol
-        )
+        return self._test_conv_model(instance_norm_model, 7, num_dim, device, atol=atol, rtol=rtol)
 
     @parametrize("num_dim", [1, 2, 3])
     @tf32_off()
     def test_group_norm_model(self, num_dim, device):
         def group_norm_model(num_classes, num_dim):
-            conv_layer = (
-                nn.Conv1d if num_dim == 1 else nn.Conv2d if num_dim == 2 else nn.Conv3d
-            )
+            conv_layer = nn.Conv1d if num_dim == 1 else nn.Conv2d if num_dim == 2 else nn.Conv3d
             return nn.Sequential(
                 conv_layer(3, 32, kernel_size=3, stride=1, padding=1),
                 nn.GroupNorm(8, 32, affine=True),
@@ -567,17 +464,13 @@ class TestExpandedWeightFunctional(TestCase):
             )
 
         atol, rtol = self._compute_tolerances(device)
-        return self._test_conv_model(
-            group_norm_model, 7, num_dim, device, atol=atol, rtol=rtol
-        )
+        return self._test_conv_model(group_norm_model, 7, num_dim, device, atol=atol, rtol=rtol)
 
     @parametrize("num_dim", [1, 2, 3])
     @tf32_off()
     def test_layer_norm_model(self, num_dim, device):
         def layer_norm_model(num_classes, num_dim):
-            conv_layer = (
-                nn.Conv1d if num_dim == 1 else nn.Conv2d if num_dim == 2 else nn.Conv3d
-            )
+            conv_layer = nn.Conv1d if num_dim == 1 else nn.Conv2d if num_dim == 2 else nn.Conv3d
             normalized_shape = [7] * num_dim
             return nn.Sequential(
                 conv_layer(3, 32, kernel_size=3, stride=1, padding=1),
@@ -587,9 +480,7 @@ class TestExpandedWeightFunctional(TestCase):
             )
 
         atol, rtol = self._compute_tolerances(device)
-        return self._test_conv_model(
-            layer_norm_model, 7, num_dim, device, atol=atol, rtol=rtol
-        )
+        return self._test_conv_model(layer_norm_model, 7, num_dim, device, atol=atol, rtol=rtol)
 
     def test_embedding_model(self, device):
         def embedding_model(num_classes, num_embedding):
@@ -608,9 +499,7 @@ class TestExpandedWeightFunctional(TestCase):
         N = 3
         C = 5
         inp = torch.randn(N, C)
-        with self.assertRaisesRegex(
-            RuntimeError, r"Expected number of channels in input to be divisible"
-        ):
+        with self.assertRaisesRegex(RuntimeError, r"Expected number of channels in input to be divisible"):
             F.group_norm(inp, 2)  # 5 is not divisible by 2
 
 
@@ -652,18 +541,14 @@ class TestExpandedWeightModule(TestCase):
                 input.grad = torch.zeros_like(input.grad)
 
             # get per sample grads with a for loop
-            expected_res = torch.tensor(
-                0.0, device=input.device, dtype=actual_res.dtype
-            )
+            expected_res = torch.tensor(0.0, device=input.device, dtype=actual_res.dtype)
             expected_grads = []
             for i in range(batch_size):
                 input_slice = input.narrow(batch_dim, i, 1)
                 input_slice = input_slice.squeeze(batch_dim)
 
                 # h's batch dim is always the first dim. Must be contiguous for CUDA
-                sliced_args = tree_map_only(
-                    torch.Tensor, lambda t: t.narrow(1, i, 1).contiguous(), args
-                )
+                sliced_args = tree_map_only(torch.Tensor, lambda t: t.narrow(1, i, 1).contiguous(), args)
                 diff_params = module.parameters()
                 if diff_input:
                     diff_params = chain(diff_params, (input_slice,))
@@ -672,9 +557,7 @@ class TestExpandedWeightModule(TestCase):
                     *sliced_args,
                     **kwargs,
                 ).sum()
-                out_grads = torch.autograd.grad(
-                    res, diff_params, torch.ones_like(res), allow_unused=True
-                )
+                out_grads = torch.autograd.grad(res, diff_params, torch.ones_like(res), allow_unused=True)
                 expected_grads.append(out_grads)
                 expected_res += res
             expected_grads = [torch.stack(grad) for grad in zip(*expected_grads)]
@@ -702,9 +585,7 @@ class TestExpandedWeightModule(TestCase):
         with freeze_rng_state():
             # get per sample grads with ExpandedWeights context manager, calling .backward() twice
             test_module = TestModule(module)
-            actual_res = call_for_per_sample_grads(test_module, loss_reduction="sum")(
-                input
-            ).sum()
+            actual_res = call_for_per_sample_grads(test_module, loss_reduction="sum")(input).sum()
             actual_res.backward()
             actual_grads = []
             for param in module.parameters():
@@ -722,24 +603,13 @@ class TestExpandedWeightModule(TestCase):
                 if diff_input:
                     diff_params = chain(diff_params, (input_slice,))
                 res = module(input_slice.unsqueeze(0)).sum()
-                out_grads = torch.autograd.grad(
-                    res, diff_params, torch.ones_like(res), allow_unused=True
-                )
+                out_grads = torch.autograd.grad(res, diff_params, torch.ones_like(res), allow_unused=True)
                 expected_grads.append(out_grads)
         expected_grads = tuple(torch.stack(grad) for grad in zip(*expected_grads))
-        expected_grads = tuple(
-            expected_grad
-            for expected_grad in expected_grads
-            if expected_grad is not None
-        )
-        assert [
-            self.assertEqual(actual, 2 * expected)
-            for (actual, expected) in zip(actual_grads, expected_grads)
-        ]
+        expected_grads = tuple(expected_grad for expected_grad in expected_grads if expected_grad is not None)
+        assert [self.assertEqual(actual, 2 * expected) for (actual, expected) in zip(actual_grads, expected_grads)]
 
-    def _do_test_rnn_packed_sequence(
-        self, module, input, args=None, kwargs=None, atol=None, rtol=None
-    ):
+    def _do_test_rnn_packed_sequence(self, module, input, args=None, kwargs=None, atol=None, rtol=None):
         args = args if args is not None else ()
         kwargs = kwargs if kwargs is not None else {}
 
@@ -747,9 +617,9 @@ class TestExpandedWeightModule(TestCase):
 
         with freeze_rng_state():
             # get per sample grads with ExpandedWeights context manager
-            actual_res = call_for_per_sample_grads(
-                module, batch_size=batch_size, loss_reduction="sum"
-            )(input, *args, **kwargs).data.sum()
+            actual_res = call_for_per_sample_grads(module, batch_size=batch_size, loss_reduction="sum")(
+                input, *args, **kwargs
+            ).data.sum()
             actual_res.backward()
             actual_grads = []
             for param in module.parameters():
@@ -762,18 +632,14 @@ class TestExpandedWeightModule(TestCase):
             # compute the per sample grads with a for loop
             expected_res = torch.zeros_like(actual_res)
             expected_grads = []
-            padded_input, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(
-                input, batch_first=True
-            )
+            padded_input, seq_sizes = torch.nn.utils.rnn.pad_packed_sequence(input, batch_first=True)
             for i in range(len(seq_sizes)):
                 input_slice = padded_input[i].narrow(0, 0, seq_sizes[i])
                 diff_params = module.parameters()
                 batch_dim = 0 if module.m.batch_first else 1
                 res = module(input_slice.unsqueeze(batch_dim), *args, **kwargs).sum()
                 expected_res += res
-                out_grads = torch.autograd.grad(
-                    res, diff_params, torch.ones_like(res), allow_unused=True
-                )
+                out_grads = torch.autograd.grad(res, diff_params, torch.ones_like(res), allow_unused=True)
                 expected_grads.append(out_grads)
 
             expected_grads = [torch.stack(grad) for grad in zip(*expected_grads)]
@@ -785,8 +651,7 @@ class TestExpandedWeightModule(TestCase):
 
     @modules(
         filter(
-            lambda m_info: m_info.module_cls
-            in (torch.nn.RNN, torch.nn.LSTM, torch.nn.GRU),
+            lambda m_info: m_info.module_cls in (torch.nn.RNN, torch.nn.LSTM, torch.nn.GRU),
             module_db,
         )
     )
@@ -847,18 +712,12 @@ class TestExpandedWeightModule(TestCase):
 
                 h = args[1] if len(args) > 1 else None
                 if h is not None:
-                    h = (
-                        batch_hidden(h)
-                        if isinstance(h, torch.Tensor)
-                        else tuple(batch_hidden(hx) for hx in h)
-                    )
+                    h = batch_hidden(h) if isinstance(h, torch.Tensor) else tuple(batch_hidden(hx) for hx in h)
                     args = list(args)
                     args[1] = h
 
             if isinstance(input, torch.nn.utils.rnn.PackedSequence):
-                self._do_test_rnn_packed_sequence(
-                    m, input, args[1:], kwargs, atol=atol, rtol=rtol
-                )
+                self._do_test_rnn_packed_sequence(m, input, args[1:], kwargs, atol=atol, rtol=rtol)
             else:
                 self._do_test(
                     m,
@@ -875,9 +734,7 @@ class TestExpandedWeightModule(TestCase):
         input = torch.randn(64, 10)
         with self.assertRaisesRegex(RuntimeError, r"Module passed must be nn.Module"):
             call_for_per_sample_grads("fail")(input)
-        with self.assertRaisesRegex(
-            RuntimeError, r"Batch size passed must be None or an integer"
-        ):
+        with self.assertRaisesRegex(RuntimeError, r"Batch size passed must be None or an integer"):
             call_for_per_sample_grads(module, batch_size=6.4)(input)
         with self.assertRaisesRegex(RuntimeError, r"Batch size must be positive"):
             call_for_per_sample_grads(module, batch_size=-64)(input)
@@ -887,9 +744,7 @@ class TestExpandedWeightModule(TestCase):
             call_for_per_sample_grads(module)(input)
 
         module = nn.Linear(10, 10)  # reset to not have grad_sample fields
-        with self.assertRaisesRegex(
-            RuntimeError, r"Expected loss_reduction argument to be sum or mean"
-        ):
+        with self.assertRaisesRegex(RuntimeError, r"Expected loss_reduction argument to be sum or mean"):
             call_for_per_sample_grads(module, loss_reduction="")(input)
 
     def test_per_sample_api_compute_batch_size(self):
@@ -943,9 +798,7 @@ class TestExpandedWeightModule(TestCase):
             call_for_per_sample_grads(model)(input, "")
 
         # would prefer for it to error because input is not pytree-able but that's hard to detect
-        with self.assertRaisesRegex(
-            RuntimeError, "Expected ExpandedWeights to have batch size matching input"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Expected ExpandedWeights to have batch size matching input"):
             call_for_per_sample_grads(model)(input, torch.randn(5))
 
         model = CustomModule()  # TODO: functional call bug, sam will fix
@@ -972,26 +825,18 @@ class ContextManagerTests(TestBase):
             kwargs["dtype"] = torch.long
         input = self._get_input().detach().to(**kwargs)
         if len(input.shape) == 0 or input.shape[0] == 0:
-            raise unittest.SkipTest(
-                "Can't get per sample gradients when no batch dim or batch dim is 0"
-            )
+            raise unittest.SkipTest("Can't get per sample gradients when no batch dim or batch dim is 0")
         if self.constructor == torch.nn.Linear and len(input.shape) == 1:
-            raise unittest.SkipTest(
-                "Can't get per sample gradients for input of rank 1"
-            )
+            raise unittest.SkipTest("Can't get per sample gradients for input of rank 1")
         test_case._do_test(module, input)
 
     def test_context_manager_multiple_inputs(self, test_case, device):
         module = self.constructor(*self.constructor_args).to(device)
         input = self._get_input().detach().to(device)
         if len(input.shape) == 0 or input.shape[0] == 0:
-            raise unittest.SkipTest(
-                "Can't get per sample gradients when no batch dim or batch dim is 0"
-            )
+            raise unittest.SkipTest("Can't get per sample gradients when no batch dim or batch dim is 0")
         if self.constructor == torch.nn.Linear and len(input.shape) == 1:
-            raise unittest.SkipTest(
-                "Can't get per sample gradients for input of rank 1"
-            )
+            raise unittest.SkipTest("Can't get per sample gradients for input of rank 1")
         test_case._do_test_multi_input(module, input)
 
 
@@ -1012,9 +857,7 @@ def filter_supported_tests(t):
 
 # TODO: Once all of these use ModuleInfo, replace with ModuleInfo tests
 # These currently use the legacy nn tests
-supported_tests = [
-    t for t in module_tests + get_new_module_tests() if filter_supported_tests(t)
-]
+supported_tests = [t for t in module_tests + get_new_module_tests() if filter_supported_tests(t)]
 for test_param in supported_tests:
     if "constructor" not in test_param:
         name = test_param.pop("module_name")
@@ -1036,11 +879,7 @@ for test_param in supported_tests:
         setattr(
             TestExpandedWeightModule,
             test_name_multi_input,
-            decorator(
-                lambda self, test=test: test.test_context_manager_multiple_inputs(
-                    self, "cpu"
-                )
-            ),
+            decorator(lambda self, test=test: test.test_context_manager_multiple_inputs(self, "cpu")),
         )
     if TEST_CUDA and test.test_cuda:
         # since this checks derivatives, only use double for precision
@@ -1080,10 +919,7 @@ def make_expanded_weight(sample_input, batch_size, loss_reduction="sum"):
 
     ew_input = clone_if_tensor(sample_input.input)
     ew_args = tuple(expanded_weight_or_clone(arg) for arg in sample_input.args)
-    ew_kwargs = {
-        name: expanded_weight_or_clone(arg)
-        for (name, arg) in sample_input.kwargs.items()
-    }
+    ew_kwargs = {name: expanded_weight_or_clone(arg) for (name, arg) in sample_input.kwargs.items()}
     return ew_input, ew_args, ew_kwargs
 
 
@@ -1101,14 +937,10 @@ def supported_inputs(op, sample_inputs, supported_inputs=True):
         ]
         batched_input_size = dict(zip(convolutions, [3, 4, 5]))
         if op.name == "nn.functional.linear":
-            is_supported_input = (
-                input.input.dim() > 1
-            )  # input of rank 1 means no batch dim
+            is_supported_input = input.input.dim() > 1  # input of rank 1 means no batch dim
         elif op.name == "nn.functional.layer_norm":
             normalized_shape = input.args[0]
-            is_supported_input = (
-                input.input.shape != normalized_shape
-            )  # would cause inter-batch operations
+            is_supported_input = input.input.shape != normalized_shape  # would cause inter-batch operations
         elif op.name in convolutions:
             # currently can't deal with padding computation on Python level
             is_supported_input = input.input.dim() == batched_input_size[op.name]
@@ -1117,9 +949,7 @@ def supported_inputs(op, sample_inputs, supported_inputs=True):
             is_supported_input = len(idx.shape) > 1  # there's no batch size
         else:
             is_supported_input = True
-        is_supported_input = (
-            is_supported_input and input.input.shape[0] > 0
-        )  # 0 is not a valid batch size
+        is_supported_input = is_supported_input and input.input.shape[0] > 0  # 0 is not a valid batch size
         return is_supported_input if supported_inputs else not is_supported_input
 
     return [input for input in sample_inputs if filter_fn(input)]
@@ -1132,25 +962,15 @@ def for_loop_per_sample_grad(batch_size, reduction, input, func, *args, **kwargs
         per_sample_input = input[i]
         result = reduction(func(per_sample_input.unsqueeze(0), *args, **kwargs))
         diff_input_list = (per_sample_input,) + tuple(args) + tuple(kwargs.values())
-        diff_input_list = [
-            i
-            for i in diff_input_list
-            if isinstance(i, torch.Tensor) and i.requires_grad
-        ]
-        per_sample_grad.append(
-            torch.autograd.grad(
-                result, diff_input_list, torch.ones_like(result), allow_unused=True
-            )
-        )
+        diff_input_list = [i for i in diff_input_list if isinstance(i, torch.Tensor) and i.requires_grad]
+        per_sample_grad.append(torch.autograd.grad(result, diff_input_list, torch.ones_like(result), allow_unused=True))
     if len(per_sample_grad) == batch_size:
         per_sample_grad = tuple(torch.stack(grad) for grad in zip(*per_sample_grad))
     return per_sample_grad
 
 
 def is_diff_tensor(t):
-    return isinstance(t, ExpandedWeight) or (
-        isinstance(t, torch.Tensor) and t.requires_grad
-    )
+    return isinstance(t, ExpandedWeight) or (isinstance(t, torch.Tensor) and t.requires_grad)
 
 
 def clone_if_tensor(t):
@@ -1162,14 +982,8 @@ def clone_if_tensor(t):
         return t
 
 
-instantiate_device_type_tests(
-    TestExpandedWeightHelperFunction, globals(), only_for=("xpu"), allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestExpandedWeightFunctional, globals(), only_for=("xpu"), allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestExpandedWeightModule, globals(), only_for=("xpu"), allow_xpu=True
-)
+instantiate_device_type_tests(TestExpandedWeightHelperFunction, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(TestExpandedWeightFunctional, globals(), only_for=("xpu"), allow_xpu=True)
+instantiate_device_type_tests(TestExpandedWeightModule, globals(), only_for=("xpu"), allow_xpu=True)
 if __name__ == "__main__":
     run_tests()

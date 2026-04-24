@@ -91,21 +91,15 @@ def check_overlaps(kernels):
         print(f"Found {len(overlaps)} overlapping kernel pairs!")
 
         # Sort by overlap duration (longest first)
-        sorted_overlaps = sorted(
-            overlaps, key=lambda x: x["overlap_duration"], reverse=True
-        )
+        sorted_overlaps = sorted(overlaps, key=lambda x: x["overlap_duration"], reverse=True)
 
         print("Top 10 longest overlaps:\n")
         for idx, overlap in enumerate(sorted_overlaps[:10], 1):
             k1 = overlap["kernel1"]
             k2 = overlap["kernel2"]
             print(f"Overlap #{idx}:")
-            print(
-                f"  Kernel 1: {k1['name']} ({k1['cat']}) - [{k1['ts']} -> {k1['end']}]"
-            )
-            print(
-                f"  Kernel 2: {k2['name']} ({k2['cat']}) - [{k2['ts']} -> {k2['end']}]"
-            )
+            print(f"  Kernel 1: {k1['name']} ({k1['cat']}) - [{k1['ts']} -> {k1['end']}]")
+            print(f"  Kernel 2: {k2['name']} ({k2['cat']}) - [{k2['ts']} -> {k2['end']}]")
             print(f"  Overlap duration: {overlap['overlap_duration']} units\n")
 
         if len(overlaps) > 10:

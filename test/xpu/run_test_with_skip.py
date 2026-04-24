@@ -59,19 +59,13 @@ if os.name == "nt":
                 # Intelligent merge strategy:
                 if should_skip_entire_file(window_skip_list):
                     # If Windows wants to skip entire file, use ONLY Windows skip list
-                    window_skip_entire_file_list = [
-                        item.replace("::", "") for item in window_skip_list
-                    ]
+                    window_skip_entire_file_list = [item.replace("::", "") for item in window_skip_list]
                     merged_skip_dict[key] = window_skip_entire_file_list
-                    print(
-                        f"Windows entire file skip detected for {key}, using: {window_skip_entire_file_list}"
-                    )
+                    print(f"Windows entire file skip detected for {key}, using: {window_skip_entire_file_list}")
                 else:
                     # Otherwise, merge both lists and remove duplicates
                     combined_list = default_skip_list + [
-                        item
-                        for item in window_skip_list
-                        if item not in default_skip_list
+                        item for item in window_skip_list if item not in default_skip_list
                     ]
                     merged_skip_dict[key] = combined_list
                     print(f"Windows merging skip lists for {key}: {combined_list}")

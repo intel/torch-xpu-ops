@@ -40,9 +40,7 @@ def _test_dpcpp(input, target, reduce, dtype):
             backward,
             "; reduce: 0" if (reduce == "none") else "; reduce: 1",
         )
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
             for i in range(num_iter):
                 cache_r = cache_w
                 output = loss(input, target)
@@ -78,9 +76,7 @@ def _test_dpcpp(input, target, reduce, dtype):
             backward,
             "; reduce: 0" if (reduce == "none") else "; reduce: 1",
         )
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
             for i in range(num_iter):
                 cache_r = cache_w
                 output = loss(input, target)

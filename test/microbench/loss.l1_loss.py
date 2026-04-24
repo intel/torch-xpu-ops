@@ -27,9 +27,7 @@ for reduce in ["none", "mean"]:
         for dtype in [torch.bfloat16, torch.float16, torch.float32]:
             B = shape[0]
             S = shape[1]
-            input = torch.randn((B, S), requires_grad=True).to(
-                dtype=dtype, device=device
-            )
+            input = torch.randn((B, S), requires_grad=True).to(dtype=dtype, device=device)
             target = torch.randn((B, S)).to(dtype=dtype, device=device)
             loss = torch.nn.L1Loss(reduction=reduce)
 
@@ -55,9 +53,7 @@ for reduce in ["none", "mean"]:
                     cache_r = cache_w * i
                     output_xpu = loss(input, target)
                     cache_r = cache_w * i
-                    output_xpu.backward(
-                        torch.ones_like(output_xpu, dtype=dtype, device=device)
-                    )
+                    output_xpu.backward(torch.ones_like(output_xpu, dtype=dtype, device=device))
             print(prof.key_averages().table(sort_by="xpu_time_total"))
 
             # E2E time
@@ -67,9 +63,7 @@ for reduce in ["none", "mean"]:
                 cache_r = cache_w * i
                 output_xpu = loss(input, target)
                 cache_r = cache_w * i
-                output_xpu.backward(
-                    torch.ones_like(output_xpu, dtype=dtype, device=device)
-                )
+                output_xpu.backward(torch.ones_like(output_xpu, dtype=dtype, device=device))
             torch.xpu.synchronize()
             t2 = time.time()
             e2e_time = (t2 - t1) / num_iter

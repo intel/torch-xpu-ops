@@ -99,9 +99,7 @@ class TestDropoutNN(NNTestCase):
         input = torch.randn(50, 20, 64, 64)
         self._test_alpha_dropout(nn.FeatureAlphaDropout, input)
 
-    @unittest.skipIf(
-        not (TEST_XPU or TEST_PRIVATEUSE1), "XPU and PRIVATEUSE1 unavailable"
-    )
+    @unittest.skipIf(not (TEST_XPU or TEST_PRIVATEUSE1), "XPU and PRIVATEUSE1 unavailable")
     def test_native_dropout_corner_case(self):
         if TEST_XPU:
             device = "xpu"
@@ -165,9 +163,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         module.__repr__()
         str(module)
 
-    def _test_dropout_discontiguous(
-        self, cls, device, memory_format=torch.contiguous_format
-    ):
+    def _test_dropout_discontiguous(self, cls, device, memory_format=torch.contiguous_format):
         # In this test, we verify that dropout preserves the layout and data for different memory formats.
         # We check whether, we get same values for the output of dropout, when the probability
         # of dropout is 0 or very close to 0.
@@ -175,9 +171,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         close_to_zero_p = 1e-10  # Should be almost zero but not zero, as for p=0 different path is taken
         for p in [0, close_to_zero_p]:
             inp = torch.ones(2, 3, 3, 3, device=device)
-            inp_discontiguous = torch.empty(
-                2, 3, 3, 6, device=device, memory_format=memory_format
-            )[..., ::2]
+            inp_discontiguous = torch.empty(2, 3, 3, 6, device=device, memory_format=memory_format)[..., ::2]
             inp_discontiguous.copy_(inp)
             mod = cls(p=p)
             out = mod(inp_discontiguous)
@@ -198,9 +192,7 @@ class TestDropoutNNDeviceType(NNTestCase):
             for shift in shifts:
                 for p in [1e-10, 0.3, 0.5, 0.7]:
                     mod = cls(p=p)
-                    permuted_inp = (
-                        inp.permute(perm).contiguous().permute(invert_perm(perm))
-                    )
+                    permuted_inp = inp.permute(perm).contiguous().permute(invert_perm(perm))
                     permuted_inp = permuted_inp[shift[0] :, shift[1] :, :, :]
                     out = mod(permuted_inp)
 
@@ -216,9 +208,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         self._test_dropout(nn.Dropout, device, input)
 
         self._test_dropout_discontiguous(nn.Dropout, device)
-        self._test_dropout_discontiguous(
-            nn.Dropout, device, memory_format=torch.channels_last
-        )
+        self._test_dropout_discontiguous(nn.Dropout, device, memory_format=torch.channels_last)
 
         self._test_dropout_stride_mean_preserve(nn.Dropout, device)
 
@@ -260,14 +250,10 @@ class TestDropoutNNDeviceType(NNTestCase):
             input = torch.empty(N, C, L)
             self._test_dropout(nn.Dropout1d, device, input)
 
-            with self.assertRaisesRegex(
-                RuntimeError, "Expected 2D or 3D input, but received a 4D input"
-            ):
+            with self.assertRaisesRegex(RuntimeError, "Expected 2D or 3D input, but received a 4D input"):
                 nn.Dropout1d(p=0.5)(torch.rand(1, 2, 2, 2, device=device))
 
-            with self.assertRaisesRegex(
-                RuntimeError, "Expected 2D or 3D input, but received a 1D input"
-            ):
+            with self.assertRaisesRegex(RuntimeError, "Expected 2D or 3D input, but received a 1D input"):
                 nn.Dropout1d(p=0.5)(torch.rand(2, device=device))
 
             # no batch dims
@@ -288,14 +274,10 @@ class TestDropoutNNDeviceType(NNTestCase):
         num_features = 1000
         input = torch.empty(num_features, b, w, h)
         self._test_dropout(nn.Dropout2d, device, input)
-        self._test_dropout(
-            nn.Dropout2d, device, input, memory_format=torch.channels_last
-        )
+        self._test_dropout(nn.Dropout2d, device, input, memory_format=torch.channels_last)
 
         self._test_dropout_discontiguous(nn.Dropout2d, device)
-        self._test_dropout_discontiguous(
-            nn.Dropout2d, device, memory_format=torch.channels_last
-        )
+        self._test_dropout_discontiguous(nn.Dropout2d, device, memory_format=torch.channels_last)
 
         with self.assertWarnsRegex(UserWarning, "Received a 5-D input to dropout2d"):
             nn.Dropout2d(p=0.5)(torch.rand(1, 2, 2, 2, 2, device=device))
@@ -311,9 +293,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         # self._test_dropoutNd_no_batch(nn.Dropout2d(p=0.5), input)
         # self._test_dropoutNd_no_batch(nn.Dropout2d(p=0.5, inplace=True), input)
 
-        with self.assertWarnsRegex(
-            UserWarning, "assuming that channel-wise 1D dropout behavior is desired"
-        ):
+        with self.assertWarnsRegex(UserWarning, "assuming that channel-wise 1D dropout behavior is desired"):
             nn.Dropout2d(p=0.5)(torch.rand(1, 2, 2, device=device))
 
         # check that complete channels are dropped
@@ -332,9 +312,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         self._test_dropout(nn.Dropout3d, device, input)
 
         self._test_dropout_discontiguous(nn.Dropout3d, device)
-        self._test_dropout_discontiguous(
-            nn.Dropout3d, device, memory_format=torch.channels_last
-        )
+        self._test_dropout_discontiguous(nn.Dropout3d, device, memory_format=torch.channels_last)
 
         with self.assertWarnsRegex(UserWarning, "Received a 6-D input to dropout3d"):
             nn.Dropout3d(p=0.5)(torch.rand(1, 2, 2, 2, 2, 2, device=device))
@@ -358,9 +336,7 @@ class TestDropoutNNDeviceType(NNTestCase):
         self.assertEqual(out.size(), x.size())
 
 
-instantiate_device_type_tests(
-    TestDropoutNNDeviceType, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestDropoutNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestDropoutNN)
 
 if __name__ == "__main__":

@@ -512,9 +512,7 @@ def ModuleTest_test_xpu(self, test_case):
         type_map = {torch.double: torch.float}
         cpu_input_tuple = cpu_input if isinstance(cpu_input, tuple) else (cpu_input,)
 
-        is_any_input_complex = any(
-            isinstance(t, torch.Tensor) and t.dtype.is_complex for t in cpu_input_tuple
-        )
+        is_any_input_complex = any(isinstance(t, torch.Tensor) and t.dtype.is_complex for t in cpu_input_tuple)
 
         xpu_input_tuple = to_xpu(cpu_input_tuple, type_map=type_map)
 
@@ -533,21 +531,15 @@ def ModuleTest_test_xpu(self, test_case):
         if getattr(cpu_module, "return_indices", False):
             cpu_output = cpu_output[0]
             xpu_output = xpu_output[0]
-        test_case.assertEqual(
-            cpu_output, xpu_output, atol=self.precision, rtol=0, exact_dtype=False
-        )
+        test_case.assertEqual(cpu_output, xpu_output, atol=self.precision, rtol=0, exact_dtype=False)
 
         # Run backwards on CPU and xpu and compare results
 
         for _ in range(5):
             cpu_gradOutput = cpu_output.clone().normal_()
             xpu_gradOutput = cpu_gradOutput.type_as(xpu_output)
-            cpu_gradInput = test_case._backward(
-                cpu_module, cpu_input_tuple, cpu_output, cpu_gradOutput
-            )
-            xpu_gradInput = test_case._backward(
-                xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput
-            )
+            cpu_gradInput = test_case._backward(cpu_module, cpu_input_tuple, cpu_output, cpu_gradOutput)
+            xpu_gradInput = test_case._backward(xpu_module, xpu_input_tuple, xpu_output, xpu_gradOutput)
 
             test_case.assertEqual(
                 cpu_gradInput,
@@ -584,21 +576,15 @@ def ModuleTest_test_xpu(self, test_case):
             )
 
             for cpu_d_i, xpu_d_i in zip(cpu_gradInputs, xpu_gradInputs):
-                test_case.assertEqual(
-                    cpu_d_i, xpu_d_i, atol=self.precision, rtol=0, exact_dtype=False
-                )
+                test_case.assertEqual(cpu_d_i, xpu_d_i, atol=self.precision, rtol=0, exact_dtype=False)
             # We mix output into the second backwards computation so that
             # torch.autograd.grad doesn't complain that some inputs
             # are unreachable (which can happen if you differentiate
             # only on the gradient.
 
             if is_any_input_complex:
-                outputs_cpu = cpu_output.sum().abs() + sum(
-                    x.sum().abs() for x in cpu_gradInputs
-                )
-                outputs_xpu = xpu_output.sum().abs() + sum(
-                    x.sum().abs() for x in xpu_gradInputs
-                )
+                outputs_cpu = cpu_output.sum().abs() + sum(x.sum().abs() for x in cpu_gradInputs)
+                outputs_xpu = xpu_output.sum().abs() + sum(x.sum().abs() for x in xpu_gradInputs)
             else:
                 outputs_cpu = cpu_output.sum() + sum(x.sum() for x in cpu_gradInputs)
                 outputs_xpu = xpu_output.sum() + sum(x.sum() for x in xpu_gradInputs)
@@ -620,9 +606,7 @@ def ModuleTest_test_xpu(self, test_case):
                 exact_dtype=False,
             )
             for cpu_d_p, xpu_d_p in zip(cpu_gg, xpu_gg):
-                test_case.assertEqual(
-                    cpu_d_p, xpu_d_p, atol=self.precision, rtol=0, exact_dtype=False
-                )
+                test_case.assertEqual(cpu_d_p, xpu_d_p, atol=self.precision, rtol=0, exact_dtype=False)
         self.test_noncontig(test_case, xpu_module, xpu_input_tuple)
 
 
@@ -668,12 +652,8 @@ def CriterionTest_test_xpu(self, test_case, dtype, extra_args=None):
             # Loss modules with weights require consistent input/module weight types
 
             cpu_module = self.constructor(*self.constructor_args)
-        cpu_output = test_case._forward_criterion(
-            cpu_module, cpu_input, cpu_target, extra_args=extra_args
-        )
-        xpu_output = test_case._forward_criterion(
-            xpu_module, xpu_input, xpu_target, extra_args=extra_args
-        )
+        cpu_output = test_case._forward_criterion(cpu_module, cpu_input, cpu_target, extra_args=extra_args)
+        xpu_output = test_case._forward_criterion(xpu_module, xpu_input, xpu_target, extra_args=extra_args)
         # dtype used to be able to be None, so set precision in this way instead of a precision map
 
         test_case.assertEqual(
@@ -718,9 +698,7 @@ from torch.testing._internal.opinfo.core import SampleInput
 def reference_inputs_cat_nofp64(op, device, dtype, requires_grad, **kwargs):
     yield from sample_inputs_cat_concat(op, device, dtype, requires_grad, **kwargs)
 
-    make_arg = partial(
-        make_tensor, device=device, dtype=dtype, requires_grad=requires_grad
-    )
+    make_arg = partial(make_tensor, device=device, dtype=dtype, requires_grad=requires_grad)
 
     # Noncontiguous type promoting tensors
     a = make_arg((3, 4, 2))
@@ -744,19 +722,12 @@ def index_variable_nofp64(shape, max_indices, device=torch.device("cpu")):
         shape = (shape,)
     # index = torch.rand(*shape, dtype=torch.double, device=device).mul_(max_indices).floor_().long()
     # for platform without fp64 support
-    index = (
-        torch.rand(*shape, dtype=torch.float32, device=device)
-        .mul_(max_indices)
-        .floor_()
-        .long()
-    )
+    index = torch.rand(*shape, dtype=torch.float32, device=device).mul_(max_indices).floor_().long()
     return index
 
 
 def sample_inputs_index_put_nofp64(op_info, device, dtype, requires_grad, **kwargs):
-    make_arg = partial(
-        make_tensor, dtype=dtype, device=device, requires_grad=requires_grad
-    )
+    make_arg = partial(make_tensor, dtype=dtype, device=device, requires_grad=requires_grad)
 
     for accumulate in [False, True]:
         # Test with indices arg
@@ -773,12 +744,8 @@ def sample_inputs_index_put_nofp64(op_info, device, dtype, requires_grad, **kwar
         )
 
         # Test with mask arg
-        mask = (
-            torch.zeros(S, dtype=torch.bool) if accumulate else mask_not_all_zeros((S,))
-        )
-        yield SampleInput(
-            make_arg((S, S)), (mask,), make_arg((S,)), accumulate=accumulate
-        )
+        mask = torch.zeros(S, dtype=torch.bool) if accumulate else mask_not_all_zeros((S,))
+        yield SampleInput(make_arg((S, S)), (mask,), make_arg((S,)), accumulate=accumulate)
 
 
 def sample_inputs_softmax_variant_nofp64(
@@ -790,9 +757,7 @@ def sample_inputs_softmax_variant_nofp64(
     use_zero_dimensions=True,
     **kwargs,
 ):
-    make_arg = partial(
-        make_tensor, device=device, dtype=dtype, requires_grad=requires_grad
-    )
+    make_arg = partial(make_tensor, device=device, dtype=dtype, requires_grad=requires_grad)
     cases = [
         ((S,), (0,)),
         ((S, S), (0,)),
@@ -810,9 +775,7 @@ def sample_inputs_softmax_variant_nofp64(
     if torch.device(device).type != "xla":
         cases.append(((), (0,)))
 
-    return (
-        SampleInput(make_arg(shape), args=dim, kwargs=kwargs) for shape, dim in cases
-    )
+    return (SampleInput(make_arg(shape), args=dim, kwargs=kwargs) for shape, dim in cases)
 
 
 def sample_inputs_like_fns_nofp64(self, device, dtype, requires_grad, **kwargs):
@@ -971,9 +934,7 @@ def get_dtypesIf_mock(src_device_type: str):
 
 class XPUPatchForImport:
     def __init__(self, patch_test_case=True) -> None:
-        test_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "../../../../test"
-        )
+        test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../../test")
         self.test_package = (
             test_dir,
             os.path.join(test_dir, "nn"),
@@ -987,12 +948,8 @@ class XPUPatchForImport:
         self.dtypes_if_cuda_fn = common_device_type.dtypesIfCUDA
         self.dtypes_if_xpu_fn = common_device_type.dtypesIfXPU
         self.only_native_device_types_fn = common_device_type.onlyNativeDeviceTypes
-        self.instantiate_device_type_tests_fn = (
-            common_device_type.instantiate_device_type_tests
-        )
-        self.instantiate_parametrized_tests_fn = (
-            common_utils.instantiate_parametrized_tests
-        )
+        self.instantiate_device_type_tests_fn = common_device_type.instantiate_device_type_tests
+        self.instantiate_parametrized_tests_fn = common_utils.instantiate_parametrized_tests
         self.largeTensorTest = common_device_type.largeTensorTest
         self.TEST_CUDA = common_cuda.TEST_CUDA
         self.TEST_CUDNN = common_cuda.TEST_CUDNN
@@ -1061,14 +1018,10 @@ class XPUPatchForImport:
 
             if opinfo.name in _ops_dtype_different_cuda_support:
                 if "forward" in _ops_dtype_different_cuda_support[opinfo.name]:
-                    opinfo.dtypesIfXPU.update(
-                        _ops_dtype_different_cuda_support[opinfo.name]["forward"]
-                    )
+                    opinfo.dtypesIfXPU.update(_ops_dtype_different_cuda_support[opinfo.name]["forward"])
                 if "backward" in _ops_dtype_different_cuda_support[opinfo.name]:
                     backward_dtypes = set(opinfo.backward_dtypes)
-                    backward_dtypes.update(
-                        _ops_dtype_different_cuda_support[opinfo.name]["backward"]
-                    )
+                    backward_dtypes.update(_ops_dtype_different_cuda_support[opinfo.name]["backward"])
                     opinfo.backward_dtypes = tuple(backward_dtypes)
 
             if "has_fp64=0" in str(torch.xpu.get_device_properties(0)):
@@ -1077,16 +1030,8 @@ class XPUPatchForImport:
                     torch.complex128,
                     torch.double,
                 ]
-                opinfo.dtypesIf["xpu"] = set(
-                    filter(
-                        lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf["xpu"])
-                    )
-                )
-                opinfo.backward_dtypes = tuple(
-                    filter(
-                        lambda x: (x not in fp64_dtypes), list(opinfo.backward_dtypes)
-                    )
-                )
+                opinfo.dtypesIf["xpu"] = set(filter(lambda x: (x not in fp64_dtypes), list(opinfo.dtypesIf["xpu"])))
+                opinfo.backward_dtypes = tuple(filter(lambda x: (x not in fp64_dtypes), list(opinfo.backward_dtypes)))
 
     def filter_fp64_sample_input(self, db):
         # Only for platform without fp64 support
@@ -1101,15 +1046,12 @@ class XPUPatchForImport:
                             "softmax",
                             "nn.functional.softmin",
                         ]
-                        and get_wrapped_fn(opinfo.sample_inputs_func)
-                        != opinfo.sample_inputs_func
+                        and get_wrapped_fn(opinfo.sample_inputs_func) != opinfo.sample_inputs_func
                         and get_wrapped_fn(opinfo.sample_inputs_func).func.__name__
                         == common_methods_invocations.sample_inputs_softmax_variant.__name__
                     ):
                         opinfo.sample_inputs_func = torch.no_grad()(
-                            partial(
-                                sample_inputs_softmax_variant_nofp64, with_dtype=True
-                            )
+                            partial(sample_inputs_softmax_variant_nofp64, with_dtype=True)
                         )
                     elif (
                         opinfo.sample_inputs_func.__name__
@@ -1117,8 +1059,7 @@ class XPUPatchForImport:
                     ):
                         opinfo.sample_inputs_func = sample_inputs_softmax_variant_nofp64
                     elif (
-                        opinfo.sample_inputs_func.__name__
-                        == common_methods_invocations.sample_inputs_like_fns.__name__
+                        opinfo.sample_inputs_func.__name__ == common_methods_invocations.sample_inputs_like_fns.__name__
                     ):
                         opinfo.sample_inputs_func = sample_inputs_like_fns_nofp64
                     elif (
@@ -1148,10 +1089,8 @@ class XPUPatchForImport:
             common_utils.TestCase = common_utils.NoTest
         common_device_type.instantiate_device_type_tests = DO_NOTHING
         common_utils.instantiate_parametrized_tests = DO_NOTHING
-        common_device_type.largeTensorTest = (
-            lambda size, device=None: self.largeTensorTest(
-                size, device if device and device != "cuda" else "xpu"
-            )
+        common_device_type.largeTensorTest = lambda size, device=None: self.largeTensorTest(
+            size, device if device and device != "cuda" else "xpu"
         )
         for db in [
             common_methods_invocations.foreach_unary_op_db,
@@ -1183,12 +1122,8 @@ class XPUPatchForImport:
         common_device_type.dtypesIfCUDA = self.dtypes_if_cuda_fn
         common_device_type.dtypesIfXPU = self.dtypes_if_xpu_fn
         common_device_type.onlyNativeDeviceTypes = self.only_native_device_types_fn
-        common_device_type.instantiate_device_type_tests = (
-            self.instantiate_device_type_tests_fn
-        )
-        common_utils.instantiate_parametrized_tests = (
-            self.instantiate_parametrized_tests_fn
-        )
+        common_device_type.instantiate_device_type_tests = self.instantiate_device_type_tests_fn
+        common_utils.instantiate_parametrized_tests = self.instantiate_parametrized_tests_fn
         common_utils.TestCase = self.test_case_cls
         common_device_type.largeTensorTest = self.largeTensorTest
         common_cuda.TEST_CUDA = self.TEST_CUDA
@@ -1209,24 +1144,14 @@ class XPUPatchForImport:
 # class.
 
 
-def copy_tests(
-    generic_test_class, generic_base_class, applicable_list=None, bypass_list=None
-):
+def copy_tests(generic_test_class, generic_base_class, applicable_list=None, bypass_list=None):
     assert len(generic_base_class.__bases__) > 0
-    generic_base_class_members = set(generic_base_class.__dict__.keys()) - set(
-        generic_test_class.__dict__.keys()
-    )
-    assert not (
-        applicable_list and bypass_list
-    ), "Does not support setting both applicable list and bypass list."
+    generic_base_class_members = set(generic_base_class.__dict__.keys()) - set(generic_test_class.__dict__.keys())
+    assert not (applicable_list and bypass_list), "Does not support setting both applicable list and bypass list."
     if applicable_list:
-        generic_base_class_members = [
-            x for x in generic_base_class_members if x in applicable_list
-        ]
+        generic_base_class_members = [x for x in generic_base_class_members if x in applicable_list]
     if bypass_list:
-        generic_base_class_members = [
-            x for x in generic_base_class_members if x not in bypass_list
-        ]
+        generic_base_class_members = [x for x in generic_base_class_members if x not in bypass_list]
     generic_base_tests = [x for x in generic_base_class_members if x.startswith("test")]
 
     for name in generic_base_class_members:
@@ -1247,9 +1172,7 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             skip_option = " and not " + skip_case
             skip_options += skip_option
         skip_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
-        )
+        test_command = f"pytest --junit-xml=./op_ut_with_skip.{module_name}.xml " + test_case
         test_command += skip_options
     elif exe_list is not None and len(exe_list) > 0:
         exe_options = ' -k "' + exe_list[0]
@@ -1257,12 +1180,8 @@ def launch_test(test_case, skip_list=None, exe_list=None):
             exe_option = " or " + exe_case
             exe_options += exe_option
         exe_options += '"'
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
-        )
+        test_command = f"pytest --junit-xml=./op_ut_with_exe.{module_name}.xml " + test_case
         test_command += exe_options
     else:
-        test_command = (
-            f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
-        )
+        test_command = f"pytest --junit-xml=./op_ut_with_all.{module_name}.xml " + test_case
     return os.system(test_command)

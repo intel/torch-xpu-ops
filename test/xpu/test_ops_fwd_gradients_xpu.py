@@ -19,9 +19,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_ops_fwd_gradients import TestFwdGradients
 TestFwdGradients._default_dtype_check_enabled = True
-instantiate_device_type_tests(
-    TestFwdGradients, globals(), only_for=("xpu"), allow_xpu=True
-)
+instantiate_device_type_tests(TestFwdGradients, globals(), only_for=("xpu"), allow_xpu=True)
 if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True
     run_tests()

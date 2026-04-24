@@ -39,9 +39,7 @@ def AVGPool2d(shape, dtype, channels_last, backward):
             .to(device=device, dtype=dtype)
         )
     else:
-        input = torch.randn(N, C, H, W, requires_grad=True).to(
-            device=device, dtype=dtype
-        )
+        input = torch.randn(N, C, H, W, requires_grad=True).to(device=device, dtype=dtype)
 
     if backward:
         input.requires_grad_(True)
@@ -51,9 +49,7 @@ def AVGPool2d(shape, dtype, channels_last, backward):
         else:
             Wout = (W - kernel_size[1]) / stride[1] + 1
             Hout = (H - kernel_size[0]) / stride[0] + 1
-        grad = torch.rand([C, int(Hout), int(Wout)], requires_grad=True).to(
-            device=device, dtype=dtype
-        )
+        grad = torch.rand([C, int(Hout), int(Wout)], requires_grad=True).to(device=device, dtype=dtype)
 
     AVG2d = torch.nn.AvgPool2d(shape[4], stride=shape[5])
 

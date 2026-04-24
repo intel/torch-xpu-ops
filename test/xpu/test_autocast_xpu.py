@@ -19,9 +19,7 @@ from torch.testing._internal.common_device_type import expectedFailureMPSPre14
 from torch.testing._internal.common_utils import run_tests, skipIfTorchDynamo, TestCase
 from torch.utils._python_dispatch import TorchDispatchMode
 
-device_type = (
-    acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
-)
+device_type = acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 
 
 class TestAutocastCPU(TestAutocast):
@@ -41,9 +39,7 @@ class TestAutocastCPU(TestAutocast):
             args2,
             out_type,
         ) in self.autocast_lists.torch_expect_builtin_promote:
-            self._run_autocast_outofplace(
-                op, args1, torch.float32, device="cpu", out_type=out_type
-            )
+            self._run_autocast_outofplace(op, args1, torch.float32, device="cpu", out_type=out_type)
             self._run_autocast_outofplace(
                 op,
                 args2,
@@ -61,9 +57,7 @@ class TestAutocastCPU(TestAutocast):
             args2,
             out_type,
         ) in self.autocast_lists.methods_expect_builtin_promote:
-            self._run_autocast_outofplace(
-                op, args1, torch.float32, device="cpu", module=None, out_type=out_type
-            )
+            self._run_autocast_outofplace(op, args1, torch.float32, device="cpu", module=None, out_type=out_type)
             self._run_autocast_outofplace(
                 op,
                 args2,
@@ -78,9 +72,7 @@ class TestAutocastCPU(TestAutocast):
     def test_autocast_torch_16(self):
         for op_with_args in self.autocast_lists.torch_16:
             op, args, maybe_kwargs = self.args_maybe_kwargs(op_with_args)
-            self._run_autocast_outofplace(
-                op, args, torch.bfloat16, device="cpu", add_kwargs=maybe_kwargs
-            )
+            self._run_autocast_outofplace(op, args, torch.bfloat16, device="cpu", add_kwargs=maybe_kwargs)
             self._run_autocast_outofplace(
                 op,
                 args,
@@ -116,9 +108,7 @@ class TestAutocastCPU(TestAutocast):
     def test_autocast_torch_fp32(self):
         for op_with_args in self.autocast_lists.torch_fp32:
             op, args, maybe_kwargs = self.args_maybe_kwargs(op_with_args)
-            self._run_autocast_outofplace(
-                op, args, torch.float32, device="cpu", add_kwargs=maybe_kwargs
-            )
+            self._run_autocast_outofplace(op, args, torch.float32, device="cpu", add_kwargs=maybe_kwargs)
             self._run_autocast_outofplace(
                 op,
                 args,
@@ -154,15 +144,10 @@ class TestAutocastCPU(TestAutocast):
     def test_autocast_torch_need_autocast_promote(self):
         for op, args1, args2 in self.autocast_lists.torch_need_autocast_promote:
             self._run_autocast_outofplace(op, args1, torch.float32, device="cpu")
-            self._run_autocast_outofplace(
-                op, args2, torch.float32, device="cpu", amp_dtype=torch.float16
-            )
+            self._run_autocast_outofplace(op, args2, torch.float32, device="cpu", amp_dtype=torch.float16)
 
     def test_autocast_rnn(self):
-        if (
-            torch.backends.mkldnn.is_available()
-            and torch.ops.mkldnn._is_mkldnn_bf16_supported()
-        ):
+        if torch.backends.mkldnn.is_available() and torch.ops.mkldnn._is_mkldnn_bf16_supported():
             x = torch.randn(1, 2, 1)
             hx = torch.randn(2, 2, 1)
             cx = torch.randn(2, 2, 1)
@@ -170,9 +155,7 @@ class TestAutocastCPU(TestAutocast):
             m = torch.nn.LSTM(1, 1, 2).to(torch.bfloat16)
 
             # Raise ValueError when autocast is not enabled
-            with self.assertRaisesRegex(
-                ValueError, r"RNN input dtype .* does not match weight dtype"
-            ):
+            with self.assertRaisesRegex(ValueError, r"RNN input dtype .* does not match weight dtype"):
                 m(x, (hx, cx))
 
             # Should be able to run the below case with autocast
@@ -223,11 +206,7 @@ class WeightDTypeCastCounterMode(TorchDispatchMode):
         self.weight = weight
 
     def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-        if (
-            func is torch.ops.aten._to_copy.default
-            and args[0] is self.weight
-            and kwargs["dtype"] is torch.float16
-        ):
+        if func is torch.ops.aten._to_copy.default and args[0] is self.weight and kwargs["dtype"] is torch.float16:
             self.dtype_cast_counter += 1
         return func(*args, **kwargs)
 
@@ -298,9 +277,7 @@ class TestAutocastGPU(TestCase):
 
         with torch.autocast(device_type=device, enabled=True, dtype=dtype):
             t = torch.randn([3, 4, 5], dtype=dtype, device=device, requires_grad=True)
-            index = torch.randint(
-                low=0, high=3, size=[3, 4, 5], dtype=torch.int64, device=device
-            )
+            index = torch.randint(low=0, high=3, size=[3, 4, 5], dtype=torch.int64, device=device)
             val = torch.randn(1, dtype=dtype, device=device)
 
             res = torch.index_put(t, [index], val)
@@ -332,11 +309,7 @@ class TestAutocastMPS(TestCase):
 
         class WeightDTypeCastCounterMode(TorchDispatchMode):
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-                if (
-                    func is torch.ops.aten._to_copy.default
-                    and args[0] is weight
-                    and kwargs["dtype"] is torch.float16
-                ):
+                if func is torch.ops.aten._to_copy.default and args[0] is weight and kwargs["dtype"] is torch.float16:
                     nonlocal weight_dtype_cast_counter
                     weight_dtype_cast_counter += 1
                 return func(*args, **kwargs)
@@ -410,9 +383,7 @@ class TestTorchAutocast(TestCase):
             # First forward pass in no_grad context (e.g., shape inference)
             with torch.no_grad():
                 out1 = model(inp)
-                self.assertFalse(
-                    out1.requires_grad, "Output in no_grad should not require grad"
-                )
+                self.assertFalse(out1.requires_grad, "Output in no_grad should not require grad")
 
             # Second forward pass with gradients enabled (e.g., training)
             out2 = model(inp)
@@ -420,9 +391,7 @@ class TestTorchAutocast(TestCase):
                 out2.requires_grad,
                 "Output should require gradients after exiting no_grad",
             )
-            self.assertIsNotNone(
-                out2.grad_fn, "Output should have grad_fn after exiting no_grad"
-            )
+            self.assertIsNotNone(out2.grad_fn, "Output should have grad_fn after exiting no_grad")
 
             # Backward pass should work
             loss = out2.mean()
@@ -507,16 +476,12 @@ class TestTorchAutocast(TestCase):
 
     def test_autocast_caching_still_works_with_gradients_cpu(self):
         """Test caching with gradients on CPU"""
-        self._test_autocast_caching_still_works_with_gradients_impl(
-            "cpu", torch.bfloat16
-        )
+        self._test_autocast_caching_still_works_with_gradients_impl("cpu", torch.bfloat16)
 
     @unittest.skipIf(not torch.accelerator.is_available(), "requires GPU")
     def test_autocast_caching_still_works_with_gradients_cuda(self):
         """Test caching with gradients on CUDA"""
-        self._test_autocast_caching_still_works_with_gradients_impl(
-            device_type, torch.float16
-        )
+        self._test_autocast_caching_still_works_with_gradients_impl(device_type, torch.float16)
 
     def _test_autocast_mixed_grad_contexts_impl(self, device, dtype):
         """

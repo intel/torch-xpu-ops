@@ -30,9 +30,7 @@ for shape in shape_list:
                     c.requires_grad_(True)
 
                 # warm up
-                output = torch.nn.utils.rnn.pad_sequence(
-                    ([a, b, c]), batch_first, padding_value
-                )
+                output = torch.nn.utils.rnn.pad_sequence(([a, b, c]), batch_first, padding_value)
                 if backward:
                     gy = torch.empty_like(output)
                     output.backward(gy)
@@ -54,9 +52,7 @@ for shape in shape_list:
                     record_shapes=True,
                 ) as prof:
                     for i in range(num_iter):
-                        output = torch.nn.utils.rnn.pad_sequence(
-                            ([a, b, c]), batch_first, padding_value
-                        )
+                        output = torch.nn.utils.rnn.pad_sequence(([a, b, c]), batch_first, padding_value)
                         if backward:
                             gy = torch.empty_like(output)
                             output.backward(gy)
@@ -66,9 +62,7 @@ for shape in shape_list:
                 torch.xpu.synchronize()
                 t1 = time.time()
                 for i in range(num_iter):
-                    output = torch.nn.utils.rnn.pad_sequence(
-                        ([a, b, c]), batch_first, padding_value
-                    )
+                    output = torch.nn.utils.rnn.pad_sequence(([a, b, c]), batch_first, padding_value)
                     if backward:
                         gy = torch.empty_like(output)
                         output.backward(gy)

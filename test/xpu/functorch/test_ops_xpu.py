@@ -72,10 +72,7 @@ from torch.utils import _pytree as pytree
 from torch.utils._pytree import tree_flatten, tree_map, tree_unflatten
 
 for op in op_db:
-    if (
-        op.name == "nn.functional.batch_norm"
-        and op.variant_test_name == "without_cudnn"
-    ):
+    if op.name == "nn.functional.batch_norm" and op.variant_test_name == "without_cudnn":
         # Assign XPU-specific dtypes
         if hasattr(op, "_dispatch_dtypes"):
             cuda_dtypes = op._dispatch_dtypes.get("cuda")
@@ -84,17 +81,13 @@ for op in op_db:
         # Keep others like 'disablecuDNN' which are usually harmless or handled
         if hasattr(op, "supported_device_types"):
             op.supported_device_types = op.supported_device_types.union({"xpu"})
-        op.decorators = tuple(
-            d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d))
-        )
+        op.decorators = tuple(d for d in op.decorators if "onlyCUDA" not in getattr(d, "__name__", str(d)))
 
         break
 
 aten = torch.ops.aten
 
-device_type = (
-    acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
-)
+device_type = acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 
 
 # Version of autograd.grad with some differences:
@@ -102,17 +95,13 @@ device_type = (
 #     be tensors)
 #   - if an input is not used as part of derivatives, we will return a
 #     zero-filled tensor for the result
-def _autograd_grad(
-    outputs, inputs, grad_outputs=None, retain_graph=False, create_graph=True
-):
+def _autograd_grad(outputs, inputs, grad_outputs=None, retain_graph=False, create_graph=True):
     inputs, inputs_spec = tree_flatten(inputs)
     diff_inputs = tuple(inp for inp in inputs if inp.requires_grad)
     if grad_outputs is None:
         diff_outputs = tuple(out for out in outputs if out.requires_grad)
     else:
-        diff_grad_outputs = [
-            (out, go) for out, go in zip(outputs, grad_outputs) if out.requires_grad
-        ]
+        diff_grad_outputs = [(out, go) for out, go in zip(outputs, grad_outputs) if out.requires_grad]
         if len(diff_grad_outputs) == 0:
             diff_outputs, grad_outputs = (), ()
         else:
@@ -159,15 +148,9 @@ def diff_arg(arg, requires_grad=True):
 # - f' takes only positional arguments
 # - All arguments to f' are floating-point Tensors
 # - All outputs of f' are floating-point Tensors
-def normalize_op_input_output2(
-    f, args, kwargs, output_process_fn_grad=None, requires_grad=True
-):
+def normalize_op_input_output2(f, args, kwargs, output_process_fn_grad=None, requires_grad=True):
     flat_args, args_spec = tree_flatten(args)
-    diff_argnums = tuple(
-        i
-        for i, arg in enumerate(flat_args)
-        if diff_arg(arg, requires_grad=requires_grad)
-    )
+    diff_argnums = tuple(i for i, arg in enumerate(flat_args) if diff_arg(arg, requires_grad=requires_grad))
     assert len(diff_argnums) > 0
     primals = tuple(flat_args[i] for i in diff_argnums)
 
@@ -189,15 +172,11 @@ def normalize_op_input_output2(
 
 
 # TODO: consolidate with normalize_op_input_output2
-def normalize_op_input_output3(
-    f, args, kwargs, sample_args, output_process_fn_grad=None
-):
+def normalize_op_input_output3(f, args, kwargs, sample_args, output_process_fn_grad=None):
     flat_args, args_spec = tree_flatten(args)
     flat_sample_args = pytree.tree_leaves(sample_args)
     diff_argnums = tuple(
-        i
-        for i, (arg, sample) in enumerate(zip(flat_args, flat_sample_args))
-        if diff_arg(sample, requires_grad=True)
+        i for i, (arg, sample) in enumerate(zip(flat_args, flat_sample_args)) if diff_arg(sample, requires_grad=True)
     )
     assert len(diff_argnums) > 0
     primals = tuple(flat_args[i] for i in diff_argnums)
@@ -275,9 +254,7 @@ def get_vjp_fn_and_args_with_cotangents(f, sample, cotangents):
         actual_args = tree_unflatten(actual_args, args_spec)
         cotangents = tree_unflatten(cotangents, cotangents_spec)
 
-        fn, primals = normalize_op_input_output3(
-            f, actual_args, kwargs, flat_args, sample.output_process_fn_grad
-        )
+        fn, primals = normalize_op_input_output3(f, actual_args, kwargs, flat_args, sample.output_process_fn_grad)
         _, vjp_fn = vjp(fn, *primals)
         return vjp_fn(cotangents)
 
@@ -298,9 +275,7 @@ def get_vjpfull_variant2(f, args, kwargs):
 
 def _get_vjpfull_variant(fn, primals):
     result = fn(*primals)
-    cotangents = _as_tuple(
-        tree_map(lambda x: torch.randn_like(x, requires_grad=True), result)
-    )
+    cotangents = _as_tuple(tree_map(lambda x: torch.randn_like(x, requires_grad=True), result))
     num_primals = len(primals)
     args = (*primals, *cotangents)
 
@@ -338,12 +313,8 @@ def get_jvp_variant(f, sample):
     return wrapped, tangents
 
 
-def get_jvp_variant_primals_tangents2(
-    f, args, kwargs, output_process_fn_grad=None, requires_grad=False
-):
-    fn, primals = normalize_op_input_output2(
-        f, args, kwargs, output_process_fn_grad, requires_grad
-    )
+def get_jvp_variant_primals_tangents2(f, args, kwargs, output_process_fn_grad=None, requires_grad=False):
+    fn, primals = normalize_op_input_output2(f, args, kwargs, output_process_fn_grad, requires_grad)
     tangents = _as_tuple(tree_map(lambda x: torch.randn_like(x), primals))
     return _get_jvp_variant(fn, primals, tangents)
 
@@ -439,9 +410,7 @@ bool_unsupported_ordered_ops = {
     "argmax",
     "floor",
 }
-bool_ordered_op_db = tuple(
-    filter(lambda op: op.name in bool_unsupported_ordered_ops, op_db)
-)
+bool_ordered_op_db = tuple(filter(lambda op: op.name in bool_unsupported_ordered_ops, op_db))
 
 complex_unsupported_ordered_ops = {
     "sort",
@@ -460,9 +429,7 @@ complex_unsupported_ordered_ops = {
     "argmax",
     "floor",
 }
-complex_ordered_op_db = tuple(
-    filter(lambda op: op.name in complex_unsupported_ordered_ops, op_db)
-)
+complex_ordered_op_db = tuple(filter(lambda op: op.name in complex_unsupported_ordered_ops, op_db))
 
 
 @unittest.skipIf(TEST_WITH_ASAN, "tests time out with asan, are probably redundant")
@@ -475,15 +442,9 @@ class TestOperators(TestCase):
         "test_grad",
         vjp_fail.union(
             {
-                xfail(
-                    "chalf", "", device_type="cpu"
-                ),  # RuntimeError: "sum_cpu" not implemented for 'ComplexHalf'
-                xfail(
-                    "sparse.sampled_addmm", ""
-                ),  # RuntimeError: Sparse CSR tensors do not have strides
-                xfail(
-                    "sparse.mm", "reduce"
-                ),  # RuntimeError: Sparse CSR tensors do not have strides
+                xfail("chalf", "", device_type="cpu"),  # RuntimeError: "sum_cpu" not implemented for 'ComplexHalf'
+                xfail("sparse.sampled_addmm", ""),  # RuntimeError: Sparse CSR tensors do not have strides
+                xfail("sparse.mm", "reduce"),  # RuntimeError: Sparse CSR tensors do not have strides
                 # Non-contiguous Bugs
                 #
                 # AssertionError: Tensor-likes are not close!
@@ -594,9 +555,7 @@ class TestOperators(TestCase):
             self.assertEqual(result, expected)
 
             if op.name not in skip_noncontig:
-                result_noncontig = grad(wrapped_fn, diff_argnums)(
-                    *noncontig_args, **noncontig_kwargs
-                )
+                result_noncontig = grad(wrapped_fn, diff_argnums)(*noncontig_args, **noncontig_kwargs)
                 self.assertEqual(result_noncontig, expected)
 
     @with_tf32_off  # https://github.com/pytorch/pytorch/issues/86798
@@ -611,13 +570,9 @@ class TestOperators(TestCase):
                 xfail("tensor_split"),
                 # BUG: silent incorrectness: runs and produces numerical differences
                 skip("nn.functional.max_unpool1d"),  # fails everywhere except on mac
-                skip(
-                    "nn.functional.max_unpool2d"
-                ),  # fails everywhere except on windows
+                skip("nn.functional.max_unpool2d"),  # fails everywhere except on windows
                 skip("nn.functional.max_unpool3d"),  # fails everywhere except on mac
-                xfail(
-                    "native_batch_norm"
-                ),  # TODO: fails comparing None to tensor of 0s for saved_mean/var tangents
+                xfail("native_batch_norm"),  # TODO: fails comparing None to tensor of 0s for saved_mean/var tangents
                 xfail(
                     "_native_batch_norm_legit"
                 ),  # TODO: fails comparing None to tensor of 0s for saved_mean/var tangents
@@ -627,12 +582,8 @@ class TestOperators(TestCase):
                 xfail("nn.functional.scaled_dot_product_attention"),
                 xfail("torch.ops.aten._flash_attention_forward"),
                 xfail("torch.ops.aten._efficient_attention_forward"),
-                xfail(
-                    "nn.functional.rrelu"
-                ),  # in-place test errors out with no formula implemented
-                xfail(
-                    "NumpyExpMarkDirtyAutogradFunction"
-                ),  # TODO: https://github.com/pytorch/pytorch/issues/91280
+                xfail("nn.functional.rrelu"),  # in-place test errors out with no formula implemented
+                xfail("NumpyExpMarkDirtyAutogradFunction"),  # TODO: https://github.com/pytorch/pytorch/issues/91280
                 # --- Non-Contiguous Failures! ---
                 # This is expected to fail as the operator
                 # expects last dim to have stride=1
@@ -668,9 +619,7 @@ class TestOperators(TestCase):
                 "nn.functional.binary_cross_entropy_with_logits",
                 {torch.float32: tol(atol=4e-04, rtol=4e-04)},
             ),
-            tol1(
-                "nn.functional.batch_norm", {torch.float32: tol(atol=4e-05, rtol=5e-05)}
-            ),
+            tol1("nn.functional.batch_norm", {torch.float32: tol(atol=4e-05, rtol=5e-05)}),
             tol1("nn.functional.conv2d", {torch.float32: tol(atol=4e-05, rtol=5e-05)}),
             tol1("svd_lowrank", {torch.float32: tol(atol=5e-05, rtol=5e-05)}),
             tol1("pca_lowrank", {torch.float32: tol(atol=5e-05, rtol=5e-05)}),
@@ -678,9 +627,7 @@ class TestOperators(TestCase):
                 "nn.functional.multi_head_attention_forward",
                 {torch.float32: tol(atol=6e-05, rtol=2e-05)},
             ),
-            tol2(
-                "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-5, rtol=2e-5)}
-            ),
+            tol2("linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-5, rtol=2e-5)}),
         ),
     )
     def test_jvp(self, device, dtype, op):
@@ -737,9 +684,7 @@ class TestOperators(TestCase):
         # but don't need that information otherwise
         args = (sample.input,) + sample.args
         kwargs = sample.kwargs
-        contig_fn, primals = normalize_op_input_output2(
-            fn, args, kwargs, output_process_fn, requires_grad=True
-        )
+        contig_fn, primals = normalize_op_input_output2(fn, args, kwargs, output_process_fn, requires_grad=True)
         orig_primals = tree_map(lambda x: x.detach(), primals)
         orig_tangents = tree_map(lambda x: torch.randn_like(x), primals)
 
@@ -751,9 +696,7 @@ class TestOperators(TestCase):
             return orig_primals, orig_tangents
 
         primals, tangents = maybe_clone_inputs()
-        expected_primal_outs, expected_tangent_outs = fixme_ref_jvp_local(
-            contig_fn, primals, tangents
-        )
+        expected_primal_outs, expected_tangent_outs = fixme_ref_jvp_local(contig_fn, primals, tangents)
 
         primals, tangents = maybe_clone_inputs()
         primal_outs, tangent_outs = jvp(contig_fn, primals, tangents)
@@ -773,12 +716,8 @@ class TestOperators(TestCase):
                 requires_grad=True,
             )
             noncontig_primals = tree_map(lambda x: x.detach(), primals)
-            noncontig_tangents = tree_map(
-                lambda x: noncontiguous_like(x), orig_tangents
-            )
-            noncontig_primal_outs, noncontig_tangent_outs = jvp(
-                noncontig_fn, noncontig_primals, noncontig_tangents
-            )
+            noncontig_tangents = tree_map(lambda x: noncontiguous_like(x), orig_tangents)
+            noncontig_primal_outs, noncontig_tangent_outs = jvp(noncontig_fn, noncontig_primals, noncontig_tangents)
 
             self.assertEqual(noncontig_primal_outs, expected_primal_outs)
             self.assertEqual(noncontig_tangent_outs, expected_tangent_outs)
@@ -831,9 +770,7 @@ class TestOperators(TestCase):
             ),
             tol1("__rmatmul__", {torch.float32: tol(atol=1e-05, rtol=1e-05)}),
             tol1("matmul", {torch.float32: tol(atol=1e-05, rtol=1e-05)}),
-            tol2(
-                "linalg.pinv", "hermitian", {torch.float32: tol(atol=1e-05, rtol=1e-05)}
-            ),
+            tol2("linalg.pinv", "hermitian", {torch.float32: tol(atol=1e-05, rtol=1e-05)}),
             tol1("linalg.tensorsolve", {torch.float32: tol(atol=9e-03, rtol=2e-04)}),
             tol1("linalg.multi_dot", {torch.float32: tol(atol=1e-04, rtol=1e-04)}),
             tol1("svd_lowrank", {torch.float32: tol(atol=1e-04, rtol=1e-04)}),
@@ -849,9 +786,7 @@ class TestOperators(TestCase):
 
         def _test(_op, inplace=False):
             for sample in samples:
-                if inplace and not is_valid_inplace_sample_input(
-                    sample, op, op.inplace_variant
-                ):
+                if inplace and not is_valid_inplace_sample_input(sample, op, op.inplace_variant):
                     continue
                 fn, primals = normalize_op_input_output(_op, sample)
                 result = fn(*primals)
@@ -867,12 +802,8 @@ class TestOperators(TestCase):
                 self.assertEqual(result_vjps, expected_vjps)
 
                 if op.name not in skip_noncontig:
-                    noncontig_fn, noncontig_primals = normalize_op_input_output(
-                        _op, sample.noncontiguous()
-                    )
-                    noncontig_cotangents = tree_map(
-                        lambda x: noncontiguous_like(x), cotangents
-                    )
+                    noncontig_fn, noncontig_primals = normalize_op_input_output(_op, sample.noncontiguous())
+                    noncontig_cotangents = tree_map(lambda x: noncontiguous_like(x), cotangents)
                     out_noncontig, vjp_fn = vjp(noncontig_fn, *noncontig_primals)
                     self.assertEqual(out_noncontig, result)
                     noncontig_result_vjps = vjp_fn(noncontig_cotangents)
@@ -897,9 +828,7 @@ class TestOperators(TestCase):
                 skip("nn.functional.max_unpool1d"),  # silent incorrectness; Flaky
                 skip("nn.functional.max_unpool2d"),  # silent incorrectness; Flaky
                 xfail("nn.functional.ctc_loss"),  # Not Implemented
-                xfail(
-                    "native_layer_norm", ""
-                ),  # Expected a proper Tensor but got None for argument #1 'other'
+                xfail("native_layer_norm", ""),  # Expected a proper Tensor but got None for argument #1 'other'
                 xfail("sparse.sampled_addmm", ""),  # sparse tensors have no strides
                 xfail("sparse.mm", "reduce"),  # sparse tensors have no strides
                 skip("nn.functional.scaled_dot_product_attention"),
@@ -941,9 +870,7 @@ class TestOperators(TestCase):
 
         def test(_op, inplace=False):
             for sample in samples:
-                if inplace and not is_valid_inplace_sample_input(
-                    sample, op, op.inplace_variant
-                ):
+                if inplace and not is_valid_inplace_sample_input(sample, op, op.inplace_variant):
                     continue
                 fn, args = get_vjpfull_variant(_op, sample)
                 result = fn(*args)
@@ -990,43 +917,31 @@ class TestOperators(TestCase):
                 xfail("double"),  # rank 4 tensor for channels_last
                 xfail("float"),  # rank 4 tensor for channels_last
                 xfail("half"),  # rank 4 tensor for channels_last
-                xfail(
-                    "NumpyCubeNotComposableAutogradFunction"
-                ),  # Not composable autograd.Function
+                xfail("NumpyCubeNotComposableAutogradFunction"),  # Not composable autograd.Function
                 # It looks like you're either (1) calling .item() on a Tensor or
                 # (2) attempting to use a Tensor in some data-dependent control flow or
                 # (3) encountering this error in PyTorch internals.
                 xfail("index_reduce", "prod"),
-                decorate(
-                    "linalg.householder_product", decorator=runOnRocm
-                ),  # works on ROCm
+                decorate("linalg.householder_product", decorator=runOnRocm),  # works on ROCm
                 xfail(
                     # nans
                     "masked.softmax",
                     device_type="cpu",
                 ),
-                xfail(
-                    "nanquantile", device_type="cpu"
-                ),  # vmap not implemented for at::equal.
+                xfail("nanquantile", device_type="cpu"),  # vmap not implemented for at::equal.
                 xfail("native_layer_norm"),  # vmap: inplace into a regular tensor
                 # got a batched tensor as input while the running_mean or running_var,
                 # which will be updated in place, were not batched.
                 xfail("nn.functional.batch_norm"),
-                xfail(
-                    "nn.functional.binary_cross_entropy"
-                ),  # vmap: inplace into a regular tensor
-                xfail(
-                    "nn.functional.ctc_loss"
-                ),  # derivate not implemented for _ctc_loss_backward
+                xfail("nn.functional.binary_cross_entropy"),  # vmap: inplace into a regular tensor
+                xfail("nn.functional.ctc_loss"),  # derivate not implemented for _ctc_loss_backward
                 # flaky on ROCM needs investigation
                 decorate("nn.functional.conv_transpose2d", decorator=skipIfRocm),
                 skip("nn.functional.dropout"),  # calls random op
                 skip("nn.functional.dropout2d"),  # calls random op
                 skip("nn.functional.dropout3d"),  # calls random op
                 skip("nn.functional.alpha_dropout"),  # calls random op
-                skip(
-                    "nn.functional.feature_alpha_dropout", "with_train"
-                ),  # calls random op
+                skip("nn.functional.feature_alpha_dropout", "with_train"),  # calls random op
                 skip("nn.functional.fractional_max_pool2d"),  # calls random op
                 skip("nn.functional.fractional_max_pool3d"),  # calls random op
                 xfail("nn.functional.scaled_dot_product_attention"),  # randomness
@@ -1039,9 +954,7 @@ class TestOperators(TestCase):
                 # got a batched tensor as input while the running_mean or running_var,
                 # which will be updated in place, were not batched.
                 xfail("nn.functional.instance_norm"),
-                xfail(
-                    "nn.functional.layer_norm"
-                ),  # vmap: inplace into a regular tensor
+                xfail("nn.functional.layer_norm"),  # vmap: inplace into a regular tensor
                 # RuntimeError: NYI: querying is_contiguous inside of vmap
                 # for memory_format other than torch.contiguous_formats
                 xfail("nn.functional.max_pool2d"),
@@ -1053,29 +966,17 @@ class TestOperators(TestCase):
                 # supported with memory_format torch.preserve_format
                 # or torch.contiguous_format (got ChannelsLast)s
                 xfail("nn.functional.max_unpool2d", "grad"),
-                xfail(
-                    "nn.functional.rrelu"
-                ),  # RuntimeError: vmap: we do not yet support aten::rrelu_with_noise.
+                xfail("nn.functional.rrelu"),  # RuntimeError: vmap: we do not yet support aten::rrelu_with_noise.
                 xfail("normal"),  # calls random op
                 xfail("normal", "number_mean"),  # calls random op
                 xfail("pca_lowrank"),  # calls random op
-                xfail(
-                    "quantile", device_type="cpu"
-                ),  # Batching rule not implemented for `at::equal`
-                xfail(
-                    "scatter_reduce", "prod"
-                ),  # vmap (looks like you are calling item/data-dependent)
-                xfail(
-                    "sparse.sampled_addmm"
-                ),  # RuntimeError: Sparse CSR tensors do not have strides
-                xfail(
-                    "sparse.mm", "reduce"
-                ),  # RuntimeError: Sparse CSR tensors do not have strides
+                xfail("quantile", device_type="cpu"),  # Batching rule not implemented for `at::equal`
+                xfail("scatter_reduce", "prod"),  # vmap (looks like you are calling item/data-dependent)
+                xfail("sparse.sampled_addmm"),  # RuntimeError: Sparse CSR tensors do not have strides
+                xfail("sparse.mm", "reduce"),  # RuntimeError: Sparse CSR tensors do not have strides
                 xfail("svd_lowrank"),  # calls random op
                 xfail("to"),  # rank 4 tensor for channels_last
-                xfail(
-                    "view_as_complex"
-                ),  # RuntimeError: Tensor must have a last dimension with stride 1
+                xfail("view_as_complex"),  # RuntimeError: Tensor must have a last dimension with stride 1
                 # got a batched tensor as input while the running_mean or running_var,
                 # which will be updated in place, were not batched.
                 xfail("nn.functional.batch_norm", "without_cudnn"),
@@ -1175,27 +1076,19 @@ class TestOperators(TestCase):
             skip("nn.functional.scaled_dot_product_attention"),  # randomness
             xfail("torch.ops.aten._efficient_attention_forward"),  # outputs ints
             skip("nn.functional.multi_head_attention_forward"),  # randomness
-            xfail(
-                "index_put", ""
-            ),  # not possible due to dynamic shapes; we support a subset
+            xfail("index_put", ""),  # not possible due to dynamic shapes; we support a subset
             xfail("nn.functional.fractional_max_pool2d"),  # random
             xfail("nn.functional.fractional_max_pool3d"),  # random
             xfail("pca_lowrank", ""),  # randomness
             xfail("svd_lowrank", ""),  # randomness
             xfail("to_sparse", ""),  # non-dense output
-            skip(
-                "to"
-            ),  # RuntimeError: required rank 4 tensor to use channels_last format
+            skip("to"),  # RuntimeError: required rank 4 tensor to use channels_last format
             xfail("as_strided", "partial_views"),
-            xfail(
-                "NumpyCubeNotComposableAutogradFunction"
-            ),  # Not composable autograd.Function
+            xfail("NumpyCubeNotComposableAutogradFunction"),  # Not composable autograd.Function
             # ----------------------------------------------------------------------
             # ---------------------------- BUGS ------------------------------------
             # All of the following are bugs and need to be fixed
-            skip(
-                "linalg.svdvals"
-            ),  # # really annoying thing where it passes correctness check but not has_batch_rule
+            skip("linalg.svdvals"),  # # really annoying thing where it passes correctness check but not has_batch_rule
             skip("native_batch_norm"),
             skip("_native_batch_norm_legit"),
             # TODO: implement batching rule
@@ -1312,49 +1205,35 @@ class TestOperators(TestCase):
         skip("nn.functional.alpha_dropout"),  # randomness
         skip("nn.functional.feature_alpha_dropout", "without_train"),
         skip("nn.functional.feature_alpha_dropout", "with_train"),
-        xfail(
-            "nn.functional.fractional_max_pool2d"
-        ),  # Cannot access data pointer of Tensor that doesn't have storage
-        xfail(
-            "nn.functional.fractional_max_pool3d"
-        ),  # Cannot access data pointer of Tensor that doesn't have storage
+        xfail("nn.functional.fractional_max_pool2d"),  # Cannot access data pointer of Tensor that doesn't have storage
+        xfail("nn.functional.fractional_max_pool3d"),  # Cannot access data pointer of Tensor that doesn't have storage
         # Not actually a problem: embedding with max_norm mutates the weight
         # and causes different runs to produce different results.
         # skip because this is flaky depending on what the max_norm is!
         skip("nn.functional.embedding", ""),
         skip("to"),  # RuntimeError: required rank 4 tensor to use channels_last format
-        xfail(
-            "NumpyExpMarkDirtyAutogradFunction"
-        ),  # vmap: inplace into a regular tensor
+        xfail("NumpyExpMarkDirtyAutogradFunction"),  # vmap: inplace into a regular tensor
         # ----------------------------------------------------------------------
         # ---------------------------- BUGS ------------------------------------
         # The following are bugs that we should fix
         xfail("masked.mean"),  # silent incorrectness (nan difference)
         xfail("as_strided", "partial_views"),  # Tensor-likes are not close!
-        xfail(
-            "nn.functional.soft_margin_loss", ""
-        ),  # soft_margin_loss_backward does not support forward-ad
+        xfail("nn.functional.soft_margin_loss", ""),  # soft_margin_loss_backward does not support forward-ad
         xfail("tensor_split"),  # data_ptr composite compliance
         xfail("quantile"),  # at::equal batching rule (cpu), also, in-place vmap (cuda)
         skip("as_strided"),  # Test runner cannot handle this
         # requires special handling, and does not yet have a batching rule. Feel free to file a github issue!
         xfail("as_strided_scatter"),
-        xfail(
-            "nn.functional.gaussian_nll_loss"
-        ),  # .item or data-dependent control flow
+        xfail("nn.functional.gaussian_nll_loss"),  # .item or data-dependent control flow
         xfail("scatter"),  # forward-mode AD does not support at::scatter
-        xfail(
-            "nanquantile"
-        ),  # at::equal batching rule (cpu), also, in-place vmap (cuda)
+        xfail("nanquantile"),  # at::equal batching rule (cpu), also, in-place vmap (cuda)
         xfail("view_as_complex"),  # Tensor must have a last dimension with stride 1
         skip("pca_lowrank", ""),  # randomness
         skip("svd_lowrank", ""),  # randomness
         xfail("double"),  # required rank 4 tensor to use channels_last format
         xfail("cdouble"),  # required rank 4 tensor to use channels_last format
         # potential silent incorrectness
-        skip(
-            "nn.functional.max_unpool1d"
-        ),  # Flaky, seems to sometimes his max_unpool2d
+        skip("nn.functional.max_unpool1d"),  # Flaky, seems to sometimes his max_unpool2d
         skip("nn.functional.max_unpool2d"),  # fails everywhere except on mac
         skip("nn.functional.max_unpool3d"),  # fails everywhere except on mac
         # erroring because running_mean and running_var aren't differentiable
@@ -1427,12 +1306,8 @@ class TestOperators(TestCase):
         "test_vmapjvpall_has_batch_rule",
         vmapjvpall_fail.union(
             {
-                skip(
-                    "to"
-                ),  # RuntimeError: required rank 4 tensor to use channels_last format
-                xfail(
-                    "cdouble"
-                ),  # RuntimeError: required rank 4 tensor to use channels_last format
+                skip("to"),  # RuntimeError: required rank 4 tensor to use channels_last format
+                xfail("cdouble"),  # RuntimeError: required rank 4 tensor to use channels_last format
                 xfail("cumprod"),
                 xfail("masked_fill"),
                 xfail("fill"),
@@ -1487,9 +1362,7 @@ class TestOperators(TestCase):
                 kwarg_values = sample.kwargs
                 args = tuple(arg_values) + tuple(kwarg_values)
                 fn, args = get_jvp_variant_primals_tangents(op, sample)
-                is_batch_norm_and_training = is_batch_norm_training(
-                    op.name, kwarg_values
-                )
+                is_batch_norm_and_training = is_batch_norm_training(op.name, kwarg_values)
                 for loop_out, batched_out in get_fallback_and_vmap_exhaustive(
                     fn,
                     args,
@@ -1508,16 +1381,12 @@ class TestOperators(TestCase):
         "test_vmapvjp_has_batch_rule",
         vmapvjp_fail.union(
             {
-                skip(
-                    "to"
-                ),  # RuntimeError: required rank 4 tensor to use channels_last format
+                skip("to"),  # RuntimeError: required rank 4 tensor to use channels_last format
                 xfail("view_as_complex"),
                 xfail("cummax"),
                 xfail("cummin"),
                 xfail("fill"),
-                xfail(
-                    "narrow"
-                ),  # Batching rule not implemented for `narrow.Tensor` (and view op)
+                xfail("narrow"),  # Batching rule not implemented for `narrow.Tensor` (and view op)
                 xfail("special.log_ndtr"),
                 xfail("linalg.householder_product"),
                 xfail("masked_fill"),
@@ -1564,18 +1433,10 @@ class TestOperators(TestCase):
                 xfail("cdouble", ""),
                 xfail("cfloat", ""),
                 xfail("chalf", ""),
-                xfail(
-                    "index_reduce", "prod"
-                ),  # aten::index_reduce hit the vmap fallback which is currently disabled
-                xfail(
-                    "index_reduce", "mean"
-                ),  # aten::index_reduce hit the vmap fallback which is currently disabled
-                xfail(
-                    "index_reduce", "amax"
-                ),  # aten::index_reduce hit the vmap fallback which is currently disabled
-                xfail(
-                    "index_reduce", "amin"
-                ),  # aten::index_reduce hit the vmap fallback which is currently disabled
+                xfail("index_reduce", "prod"),  # aten::index_reduce hit the vmap fallback which is currently disabled
+                xfail("index_reduce", "mean"),  # aten::index_reduce hit the vmap fallback which is currently disabled
+                xfail("index_reduce", "amax"),  # aten::index_reduce hit the vmap fallback which is currently disabled
+                xfail("index_reduce", "amin"),  # aten::index_reduce hit the vmap fallback which is currently disabled
                 xfail("nn.functional.dropout3d", ""),
                 xfail("as_strided_scatter", ""),
                 xfail("_segment_reduce", "offsets"),
@@ -1586,9 +1447,7 @@ class TestOperators(TestCase):
                 xfail("_native_batch_norm_legit"),
                 # TODO: implement batching rule
                 xfail("_batch_norm_with_update"),
-                xfail(
-                    "index_fill"
-                ),  # aten::_unique hit the vmap fallback which is currently disabled
+                xfail("index_fill"),  # aten::_unique hit the vmap fallback which is currently disabled
                 xfail("squeeze_copy"),
                 xfail("t_copy"),
                 xfail("transpose_copy"),
@@ -1612,9 +1471,7 @@ class TestOperators(TestCase):
             for sample in samples:
                 cotangents = get_sample_cotangents(op, sample)
                 fn, args = get_vjp_fn_and_args_with_cotangents(op, sample, cotangents)
-                is_batch_norm_and_training = is_batch_norm_training(
-                    op.name, sample.kwargs
-                )
+                is_batch_norm_and_training = is_batch_norm_training(op.name, sample.kwargs)
                 for loop_out, batched_out in get_fallback_and_vmap_exhaustive(
                     fn,
                     args,
@@ -1624,9 +1481,7 @@ class TestOperators(TestCase):
                 ):
                     pass
                 for a_op in op.aliases:
-                    fn, args = get_vjp_fn_and_args_with_cotangents(
-                        a_op, sample, cotangents
-                    )
+                    fn, args = get_vjp_fn_and_args_with_cotangents(a_op, sample, cotangents)
                     for loop_out, batched_out in get_fallback_and_vmap_exhaustive(
                         fn,
                         args,
@@ -1646,26 +1501,18 @@ class TestOperators(TestCase):
             {
                 skip("bernoulli", ""),  # vjpvmap testing can't handle randomness
                 skip("normal", ""),  # vjpvmap testing can't handle randomness
-                skip(
-                    "normal", "number_mean"
-                ),  # vjpvmap testing can't handle randomness
+                skip("normal", "number_mean"),  # vjpvmap testing can't handle randomness
                 skip("nn.functional.rrelu"),  # randomness
                 skip("nn.functional.feature_alpha_dropout", "with_train"),  # randomness
-                skip(
-                    "nn.functional.feature_alpha_dropout", "without_train"
-                ),  # randomness
+                skip("nn.functional.feature_alpha_dropout", "without_train"),  # randomness
                 skip("nn.functional.scaled_dot_product_attention"),
                 xfail("torch.ops.aten._efficient_attention_forward"),  # outputs ints
                 skip("nn.functional.multi_head_attention_forward"),  # randomness
                 skip("nn.functional.alpha_dropout"),  # randomness
-                skip(
-                    "to"
-                ),  # RuntimeError: required rank 4 tensor to use channels_last format
+                skip("to"),  # RuntimeError: required rank 4 tensor to use channels_last format
                 skip("to_sparse", ""),  # non-dense output
                 skip("ormqr", ""),  # takes too long
-                xfail(
-                    "NumpyCubeNotComposableAutogradFunction"
-                ),  # Not composable autograd.Function
+                xfail("NumpyCubeNotComposableAutogradFunction"),  # Not composable autograd.Function
                 # fallback path doesn't work
                 # All of the following are bugs and need to be fixed
                 xfail("__getitem__", ""),
@@ -1673,15 +1520,9 @@ class TestOperators(TestCase):
                 xfail("view_as_complex"),
                 xfail("nn.functional.gaussian_nll_loss"),
                 xfail("masked_select"),
-                xfail(
-                    "narrow"
-                ),  # Batching rule not implemented for `narrow.Tensor` (and view op)
-                skip(
-                    "nn.functional.fractional_max_pool3d"
-                ),  # generator works on cpu, fails on cuda
-                skip(
-                    "nn.functional.fractional_max_pool2d"
-                ),  # generator works on cpu, fails on cuda
+                xfail("narrow"),  # Batching rule not implemented for `narrow.Tensor` (and view op)
+                skip("nn.functional.fractional_max_pool3d"),  # generator works on cpu, fails on cuda
+                skip("nn.functional.fractional_max_pool2d"),  # generator works on cpu, fails on cuda
                 xfail("column_stack", ""),
                 xfail("nn.functional.dropout2d", ""),
                 xfail("svd_lowrank", ""),
@@ -1735,12 +1576,8 @@ class TestOperators(TestCase):
             args = [sample.input] + list(sample.args)
             kwargs = sample.kwargs
 
-            is_batch_norm_and_training = is_batch_norm and is_batch_norm_training(
-                op.name, kwargs
-            )
-            generator = generate_vmap_inputs(
-                args, kwargs, is_batch_norm_and_training=is_batch_norm_and_training
-            )
+            is_batch_norm_and_training = is_batch_norm and is_batch_norm_training(op.name, kwargs)
+            generator = generate_vmap_inputs(args, kwargs, is_batch_norm_and_training=is_batch_norm_and_training)
 
             for batched_args, in_dims, kwargs in generator:
                 vmapped_op = vmap(op, in_dims)
@@ -1758,9 +1595,7 @@ class TestOperators(TestCase):
 
                 self.assertEqual(result_vjps, expected_vjps)
 
-    def _compare_jacobians_of_vjp(
-        self, fn, cotangents_and_primals, argnums=None, atol_rtol=None
-    ):
+    def _compare_jacobians_of_vjp(self, fn, cotangents_and_primals, argnums=None, atol_rtol=None):
         if argnums is None:
             argnums = tuple(range(len(cotangents_and_primals)))
 
@@ -1793,49 +1628,29 @@ class TestOperators(TestCase):
                 xfail("normal", ""),
                 xfail("cdist", ""),  # NYI: forward-AD for _cdist_forward
                 xfail("cholesky", ""),  # NYI: forward-AD for cholesky
-                xfail(
-                    "nn.functional.embedding_bag", ""
-                ),  # NYI: forward-AD for _embedding_bag
-                xfail(
-                    "nn.functional.grid_sample", ""
-                ),  # NYI: forward AD for grid_sampler_2d
+                xfail("nn.functional.embedding_bag", ""),  # NYI: forward-AD for _embedding_bag
+                xfail("nn.functional.grid_sample", ""),  # NYI: forward AD for grid_sampler_2d
                 xfail("grid_sampler_2d", ""),  # NYI: forward AD for grid_sampler_2d
-                xfail(
-                    "nn.functional.hardsigmoid", ""
-                ),  # NYI: forward AD for hardsigmoid_backward
-                xfail(
-                    "nn.functional.huber_loss", ""
-                ),  # NYI: forward AD for huber_loss_backward
+                xfail("nn.functional.hardsigmoid", ""),  # NYI: forward AD for hardsigmoid_backward
+                xfail("nn.functional.huber_loss", ""),  # NYI: forward AD for huber_loss_backward
                 xfail("NumpyCubeNotComposableAutogradFunction"),  # not composable
                 xfail("ormqr", ""),  # NYI: forward AD for ormqr
-                xfail(
-                    "nn.functional.multilabel_margin_loss", ""
-                ),  # NYI: multilabel_margin_loss_forward
-                xfail(
-                    "nn.functional.soft_margin_loss", ""
-                ),  # NYI: forward-AD for soft_margin_loss_backward
+                xfail("nn.functional.multilabel_margin_loss", ""),  # NYI: multilabel_margin_loss_forward
+                xfail("nn.functional.soft_margin_loss", ""),  # NYI: forward-AD for soft_margin_loss_backward
                 xfail("nn.functional.ctc_loss", ""),  # NYI: forward-AD for _ctc_loss
                 xfail("nn.functional.pdist", ""),  # NYI: forward-AD with _pdist_forward
                 skip("nn.functional.scaled_dot_product_attention"),
                 xfail("torch.ops.aten._efficient_attention_forward"),  # outputs ints
-                xfail(
-                    "nn.functional.multi_margin_loss", ""
-                ),  # NYI: forward AD with multi_margin_loss
-                skip(
-                    "linalg.householder_product", "", device_type=device_type
-                ),  # flaky, I'm not sure why
+                xfail("nn.functional.multi_margin_loss", ""),  # NYI: forward AD with multi_margin_loss
+                skip("linalg.householder_product", "", device_type=device_type),  # flaky, I'm not sure why
                 xfail("sparse.sampled_addmm", ""),  # Sparse tensors have no strides
-                xfail(
-                    "_segment_reduce", "offsets"
-                ),  # NYI: forward-AD for _segment_reduce
+                xfail("_segment_reduce", "offsets"),  # NYI: forward-AD for _segment_reduce
                 xfail("sparse.mm", "reduce"),  # Sparse tensors have no strides
                 xfail("index_reduce", "prod"),  # NYI: forward-AD for index_reduce
                 xfail("index_reduce", "mean"),  # NYI: forward-AD for index_reduce
                 xfail("index_reduce", "amax"),  # NYI: forward-AD for index_reduce
                 xfail("index_reduce", "amin"),  # NYI: forward-AD for index_reduce
-                xfail(
-                    "_segment_reduce", "lengths"
-                ),  # NYI: forward-AD for _segment_reduce
+                xfail("_segment_reduce", "lengths"),  # NYI: forward-AD for _segment_reduce
                 xfail("native_dropout_backward"),  # NYI
             }
         ),
@@ -1861,12 +1676,8 @@ class TestOperators(TestCase):
                 {torch.float32: tol(atol=1e-04, rtol=1.3e-05)},
                 device_type=device_type,
             ),
-            tol1(
-                "nn.functional.group_norm", {torch.float32: tol(atol=1e-03, rtol=1e-03)}
-            ),
-            tol2(
-                "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-03, rtol=5e-03)}
-            ),
+            tol1("nn.functional.group_norm", {torch.float32: tol(atol=1e-03, rtol=1e-03)}),
+            tol2("linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-03, rtol=5e-03)}),
         ),
     )
     def test_jvpvjp(self, device, dtype, op):
@@ -1893,9 +1704,7 @@ class TestOperators(TestCase):
                 _, vjp_fn = vjp(fn, *primals)
                 return vjp_fn(cotangents)
 
-            result = jvp(
-                push_vjp, (primals, cotangents), (primals_tangents, cotangents_tangents)
-            )
+            result = jvp(push_vjp, (primals, cotangents), (primals_tangents, cotangents_tangents))
             self.assertEqual(len(result), 2)
 
             def tree_map2(fn, first, second):
@@ -1910,18 +1719,13 @@ class TestOperators(TestCase):
                     primal_duals = tree_map2(fwAD.make_dual, primals, primals_tangents)
                     _, vjp_fn = ref_vjp(fn, *primal_duals)
 
-                    cotangent_duals = tree_map2(
-                        fwAD.make_dual, cotangents, cotangents_tangents
-                    )
+                    cotangent_duals = tree_map2(fwAD.make_dual, cotangents, cotangents_tangents)
                     result = vjp_fn(cotangent_duals)
 
                     flat_result, spec = tree_flatten(result)
-                    primals_out, tangents_out = zip(
-                        *[fwAD.unpack_dual(r) for r in flat_result]
-                    )
+                    primals_out, tangents_out = zip(*[fwAD.unpack_dual(r) for r in flat_result])
                     tangents_out = [
-                        t if t is not None else torch.zeros_like(p)
-                        for p, t in zip(primals_out, tangents_out)
+                        t if t is not None else torch.zeros_like(p) for p, t in zip(primals_out, tangents_out)
                     ]
                     expected = (
                         tree_unflatten(primals_out, spec),
@@ -1929,9 +1733,7 @@ class TestOperators(TestCase):
                     )
                 return expected
 
-            expected = reference(
-                primals, cotangents, primals_tangents, cotangents_tangents
-            )
+            expected = reference(primals, cotangents, primals_tangents, cotangents_tangents)
             self.assertEqual(result, expected)
 
     @with_tf32_off  # https://github.com/pytorch/pytorch/issues/86798
@@ -1953,18 +1755,12 @@ class TestOperators(TestCase):
                 skip("ormqr"),
                 # Not actually a problem
                 xfail("NumpyCubeNotComposableAutogradFunction"),  # not composable
-                xfail(
-                    "NumpyExpMarkDirtyAutogradFunction"
-                ),  # vmap: inplace into a regular tensor
+                xfail("NumpyExpMarkDirtyAutogradFunction"),  # vmap: inplace into a regular tensor
                 # Potential bugs/errors
                 xfail("as_strided"),  # AssertionError: Tensor-likes are not close!
-                xfail(
-                    "as_strided", "partial_views"
-                ),  # AssertionError: Tensor-likes are not close!
+                xfail("as_strided", "partial_views"),  # AssertionError: Tensor-likes are not close!
                 xfail("as_strided_copy"),  # AssertionError: Tensor-likes are not close!
-                xfail(
-                    "as_strided_scatter"
-                ),  # AssertionError: Tensor-likes are not close!
+                xfail("as_strided_scatter"),  # AssertionError: Tensor-likes are not close!
                 xfail("bernoulli"),  # calls random op
                 xfail("bfloat16"),  # required rank 4 tensor to use channels_last format
                 xfail("cdist"),  # Forward AD not implemented and no decomposition
@@ -1980,55 +1776,33 @@ class TestOperators(TestCase):
                 xfail("index_reduce", "mean"),  # NYI: forward AD for index_reduce
                 xfail("index_reduce", "amax"),  # NYI: forward AD for index_reduce
                 xfail("index_reduce", "amin"),  # NYI: forward AD for index_reduce
-                xfail(
-                    "mvlgamma", "mvlgamma_p_1"
-                ),  # vmap: inplace into a regular tensor
-                xfail(
-                    "mvlgamma", "mvlgamma_p_3"
-                ),  # vmap: inplace into a regular tensor
-                xfail(
-                    "mvlgamma", "mvlgamma_p_5"
-                ),  # vmap: inplace into a regular tensor
+                xfail("mvlgamma", "mvlgamma_p_1"),  # vmap: inplace into a regular tensor
+                xfail("mvlgamma", "mvlgamma_p_3"),  # vmap: inplace into a regular tensor
+                xfail("mvlgamma", "mvlgamma_p_5"),  # vmap: inplace into a regular tensor
                 xfail("nanquantile"),  # Batching rule not implemented for aten::equal
                 # RuntimeError: Batch norm got a batched tensor as input while the
                 # running_mean or running_var, which will be updated in place,
                 # were not batched.
                 xfail("nn.functional.batch_norm"),
                 xfail("nn.functional.batch_norm", "without_cudnn"),
-                xfail(
-                    "nn.functional.ctc_loss"
-                ),  # ForwardAD not implemented and no decomposition
+                xfail("nn.functional.ctc_loss"),  # ForwardAD not implemented and no decomposition
                 xfail("nn.functional.dropout2d"),  # calls random op
                 xfail("nn.functional.dropout3d"),  # calls random op
                 xfail("nn.functional.dropout"),  # calls random op
                 xfail("nn.functional.scaled_dot_product_attention"),  # randomness
                 xfail("torch.ops.aten._efficient_attention_forward"),  # outputs ints
                 xfail("nn.functional.multi_head_attention_forward"),  # randomness
-                xfail(
-                    "nn.functional.embedding_bag"
-                ),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.embedding_bag"),  # Forward AD not implemented and no decomposition
                 xfail("nn.functional.alpha_dropout"),  # calls randomn op
-                xfail(
-                    "nn.functional.feature_alpha_dropout", "with_train"
-                ),  # calls random op
+                xfail("nn.functional.feature_alpha_dropout", "with_train"),  # calls random op
                 xfail("nn.functional.fractional_max_pool2d"),  # calls random op
                 xfail("nn.functional.fractional_max_pool3d"),  # calls random op
                 xfail("nn.functional.gaussian_nll_loss"),  # data depenedant flow
-                xfail(
-                    "nn.functional.grid_sample"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "grid_sampler_2d"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "nn.functional.hardsigmoid"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "nn.functional.hinge_embedding_loss"
-                ),  # vmap: inplace into a regular tensor
-                xfail(
-                    "nn.functional.huber_loss"
-                ),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.grid_sample"),  # Forward AD not implemented and no decomposition
+                xfail("grid_sampler_2d"),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.hardsigmoid"),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.hinge_embedding_loss"),  # vmap: inplace into a regular tensor
+                xfail("nn.functional.huber_loss"),  # Forward AD not implemented and no decomposition
                 # RuntimeError: Batch norm got a batched tensor as input while the
                 # running_mean or running_var, which will be updated in place,
                 # were not batched.
@@ -2037,48 +1811,24 @@ class TestOperators(TestCase):
                 # memory_format torch.preserve_format or torch.contiguous_format (got ChannelsLast)
                 xfail("nn.functional.max_unpool2d"),
                 xfail("nn.functional.max_unpool2d", "grad"),
-                xfail(
-                    "nn.functional.multi_margin_loss"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "nn.functional.multilabel_margin_loss"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "nn.functional.pdist"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "nn.functional.rrelu"
-                ),  # vmap: we do not yet support aten::rrelu_with_noise.
-                xfail(
-                    "nn.functional.soft_margin_loss"
-                ),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.multi_margin_loss"),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.multilabel_margin_loss"),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.pdist"),  # Forward AD not implemented and no decomposition
+                xfail("nn.functional.rrelu"),  # vmap: we do not yet support aten::rrelu_with_noise.
+                xfail("nn.functional.soft_margin_loss"),  # Forward AD not implemented and no decomposition
                 xfail("normal"),  # calls random op
                 xfail("normal", "number_mean"),  # calls random op
                 xfail("pca_lowrank"),  # calls random op
                 xfail("quantile"),  # Batching rule not implemented for aten::equal
-                xfail(
-                    "scatter_reduce", "prod"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "_segment_reduce", "lengths"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "_segment_reduce", "offsets"
-                ),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "sparse.sampled_addmm"
-                ),  # RuntimeError: Sparse CSR tensors do not have strides
-                xfail(
-                    "sparse.mm", "reduce"
-                ),  # RuntimeError: Sparse CSR tensors do not have strides
+                xfail("scatter_reduce", "prod"),  # Forward AD not implemented and no decomposition
+                xfail("_segment_reduce", "lengths"),  # Forward AD not implemented and no decomposition
+                xfail("_segment_reduce", "offsets"),  # Forward AD not implemented and no decomposition
+                xfail("sparse.sampled_addmm"),  # RuntimeError: Sparse CSR tensors do not have strides
+                xfail("sparse.mm", "reduce"),  # RuntimeError: Sparse CSR tensors do not have strides
                 xfail("svd_lowrank"),  # calls random op
-                xfail(
-                    "to"
-                ),  # RuntimeError: required rank 4 tensor to use channels_last format
+                xfail("to"),  # RuntimeError: required rank 4 tensor to use channels_last format
                 xfail("to_sparse"),  # Forward AD not implemented and no decomposition
-                xfail(
-                    "view_as_complex"
-                ),  # RuntimeError: Tensor must have a last dimension with stride 1
+                xfail("view_as_complex"),  # RuntimeError: Tensor must have a last dimension with stride 1
                 # RuntimeError: Batch norm got a batched tensor as
                 # input while the running_mean or running_var, which will be updated in
                 # place, were not batched.
@@ -2102,9 +1852,7 @@ class TestOperators(TestCase):
                 {torch.float32: tol(atol=5e-03, rtol=5e-03)},
             ),
             tol1("linalg.multi_dot", {torch.float32: tol(atol=5e-04, rtol=5e-04)}),
-            tol2(
-                "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-04, rtol=5e-04)}
-            ),
+            tol2("linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-04, rtol=5e-04)}),
             tol1(
                 "nn.functional.conv_transpose2d",
                 {torch.float32: tol(atol=5e-04, rtol=5e-04)},
@@ -2140,9 +1888,7 @@ class TestOperators(TestCase):
                 _, vjp_fn = vjp(fn, *primals)
                 return vjp_fn(cotangents)
 
-            args, spec = tree_flatten(
-                ((primals, cotangents), (primals_tangents, cotangents_tangents))
-            )
+            args, spec = tree_flatten(((primals, cotangents), (primals_tangents, cotangents_tangents)))
 
             def jvp_of_vjp(*args):
                 (primals, tangents) = tree_unflatten(args, spec)
@@ -2191,21 +1937,15 @@ class TestOperators(TestCase):
         )
         for input_shape, target_shape, weight_shape in shapes:
             input_options = self._make_extremal_inputs(input_shape, device)
-            for input, kwargs in self._arg_and_kwarg_options(
-                (input_options,), kwargs_options
-            ):
+            for input, kwargs in self._arg_and_kwarg_options((input_options,), kwargs_options):
                 if weight_shape is None:
                     weight = None
                 else:
                     weight = torch.randn(weight_shape, device=device)
                 target = torch.randint(0, C, target_shape, device=device)
-                target[
-                    0
-                ] = 1  # since we're ignoring index 0, at least one element must be non-zero
+                target[0] = 1  # since we're ignoring index 0, at least one element must be non-zero
 
-                fn = functools.partial(
-                    torch.nn.functional.nll_loss, target=target, weight=weight, **kwargs
-                )
+                fn = functools.partial(torch.nn.functional.nll_loss, target=target, weight=weight, **kwargs)
                 result = fn(input)
                 cotangents = torch.randn_like(result, device=device)
                 self._compare_jacobians_of_vjp(fn, (cotangents, input))
@@ -2217,14 +1957,10 @@ class TestOperators(TestCase):
         for shape in shapes:
             input_options = self._make_extremal_inputs(shape, device)
             target_options = self._make_extremal_inputs(shape, device)
-            for input, target, kwargs in self._arg_and_kwarg_options(
-                (input_options, target_options), kwargs_options
-            ):
+            for input, target, kwargs in self._arg_and_kwarg_options((input_options, target_options), kwargs_options):
                 result = torch.nn.functional.l1_loss(input, target)
                 cotangents = torch.randn_like(result, device=device)
-                self._compare_jacobians_of_vjp(
-                    torch.nn.functional.l1_loss, (cotangents, input, target)
-                )
+                self._compare_jacobians_of_vjp(torch.nn.functional.l1_loss, (cotangents, input, target))
 
     def test_extremal_numerics_mse_loss(self, device):
         N, C, H, W = 3, 4, 5, 6
@@ -2233,14 +1969,10 @@ class TestOperators(TestCase):
         for shape in shapes:
             input_options = self._make_extremal_inputs(shape, device)
             target_options = self._make_extremal_inputs(shape, device)
-            for input, target, kwargs in self._arg_and_kwarg_options(
-                (input_options, target_options), kwargs_options
-            ):
+            for input, target, kwargs in self._arg_and_kwarg_options((input_options, target_options), kwargs_options):
                 result = torch.nn.functional.mse_loss(input, target)
                 cotangents = torch.randn_like(result, device=device)
-                self._compare_jacobians_of_vjp(
-                    torch.nn.functional.mse_loss, (cotangents, input, target)
-                )
+                self._compare_jacobians_of_vjp(torch.nn.functional.mse_loss, (cotangents, input, target))
 
     def test_extremal_numerics_softmax(self, device):
         N, C, H, W = 3, 4, 5, 6
@@ -2248,14 +1980,10 @@ class TestOperators(TestCase):
         kwargs_options = ({"dim": 1}, {})
         for shape in shapes:
             input_options = self._make_extremal_inputs(shape, device)
-            for input, kwargs in self._arg_and_kwarg_options(
-                (input_options,), kwargs_options
-            ):
+            for input, kwargs in self._arg_and_kwarg_options((input_options,), kwargs_options):
                 result = torch.nn.functional.softmax(input)
                 cotangents = torch.randn_like(result, device=device)
-                self._compare_jacobians_of_vjp(
-                    torch.nn.functional.softmax, (cotangents, input)
-                )
+                self._compare_jacobians_of_vjp(torch.nn.functional.softmax, (cotangents, input))
 
     def test_extremal_numerics_log_softmax(self, device):
         N, C, H, W = 3, 4, 5, 6
@@ -2263,14 +1991,10 @@ class TestOperators(TestCase):
         kwargs_options = ({"dim": 1}, {})
         for shape in shapes:
             input_options = self._make_extremal_inputs(shape, device)
-            for input, kwargs in self._arg_and_kwarg_options(
-                (input_options,), kwargs_options
-            ):
+            for input, kwargs in self._arg_and_kwarg_options((input_options,), kwargs_options):
                 result = torch.nn.functional.log_softmax(input)
                 cotangents = torch.randn_like(result, device=device)
-                self._compare_jacobians_of_vjp(
-                    torch.nn.functional.log_softmax, (cotangents, input)
-                )
+                self._compare_jacobians_of_vjp(torch.nn.functional.log_softmax, (cotangents, input))
 
     def test_extremal_numerics_cross_entropy(self, device):
         N, C = 3, 4
@@ -2295,9 +2019,7 @@ class TestOperators(TestCase):
             if input_shape != target_shape:
                 kwargs_options.append({"ignore_index": 0, "reduction": "mean"})
 
-            for input, kwargs in self._arg_and_kwarg_options(
-                (input_options,), kwargs_options
-            ):
+            for input, kwargs in self._arg_and_kwarg_options((input_options,), kwargs_options):
                 if weight_shape is None:
                     weight = None
                 else:
@@ -2306,9 +2028,7 @@ class TestOperators(TestCase):
                 if input_shape == target_shape:
                     target = torch.rand(target_shape, device=device)
                 elif len(target_shape) == 0:
-                    target = torch.tensor(
-                        1, device=device
-                    )  # must be non-zero since ignore_index may be 0
+                    target = torch.tensor(1, device=device)  # must be non-zero since ignore_index may be 0
                 else:
                     target = torch.randint(0, C, target_shape, device=device)
 
@@ -2320,9 +2040,7 @@ class TestOperators(TestCase):
                 )
                 result = fn(input)
                 cotangents = torch.randn_like(result, device=device)
-                self._compare_jacobians_of_vjp(
-                    fn, (cotangents, input), atol_rtol=(1e-4, 1e-5)
-                )
+                self._compare_jacobians_of_vjp(fn, (cotangents, input), atol_rtol=(1e-4, 1e-5))
 
     def test_extremal_numerics_binary_cross_entropy(self, device):
         N, C, H, W = 3, 4, 5, 6
@@ -2331,9 +2049,7 @@ class TestOperators(TestCase):
             weight_options = self._make_extremal_inputs(shape, device)
             kwargs_options = [{"reduction": "sum"}, {"reduction": "none"}, {}]
 
-            for weight, kwargs in self._arg_and_kwarg_options(
-                (weight_options,), kwargs_options
-            ):
+            for weight, kwargs in self._arg_and_kwarg_options((weight_options,), kwargs_options):
                 input = torch.rand(shape, device=device)
                 target = torch.rand(shape, device=device)
                 fn = functools.partial(
@@ -2344,9 +2060,7 @@ class TestOperators(TestCase):
                 )
                 result = fn(input)
                 cotangents = torch.randn_like(result, device=device)
-                self._compare_jacobians_of_vjp(
-                    fn, (cotangents, input), atol_rtol=(1e-4, 2e-5)
-                )
+                self._compare_jacobians_of_vjp(fn, (cotangents, input), atol_rtol=(1e-4, 2e-5))
 
     def test_extremal_numerics_layer_norm(self, device):
         N, C, H, W = 3, 4, 5, 6
@@ -2357,14 +2071,10 @@ class TestOperators(TestCase):
             weight_options = self._make_extremal_inputs(normalized_shape, device)
             bias_options = self._make_extremal_inputs(normalized_shape, device)
 
-            for input, bias, weight in self._arg_and_kwarg_options(
-                (input_options, bias_options, weight_options), ()
-            ):
+            for input, bias, weight in self._arg_and_kwarg_options((input_options, bias_options, weight_options), ()):
 
                 def fn(input, weight, bias):
-                    return torch.nn.functional.layer_norm(
-                        input, normalized_shape, weight=weight, bias=bias
-                    )
+                    return torch.nn.functional.layer_norm(input, normalized_shape, weight=weight, bias=bias)
 
                 result = fn(input, weight, bias)
                 cotangents = torch.randn_like(result, device=device)
@@ -2389,26 +2099,16 @@ class TestOperators(TestCase):
             # ** minor accuracy issue for float32 on ROCm
             decorate("xlogy", decorator=skipIfRocm),
             # numerical inconsistencies, look like bugs
-            skip(
-                "matrix_exp", dtypes=(torch.float32,), device_type=device_type
-            ),  # fails on linux, passes on windows
-            skip(
-                "ldexp", dtypes=(torch.float32,), device_type="cpu"
-            ),  # fails on all but mac
+            skip("matrix_exp", dtypes=(torch.float32,), device_type=device_type),  # fails on linux, passes on windows
+            skip("ldexp", dtypes=(torch.float32,), device_type="cpu"),  # fails on all but mac
             skip("__rmatmul__"),  # flaky needs investigation
             skip("matmul"),  # flaky needs investigation
             skip("nn.functional.conv_transpose3d"),  # flaky needs investigation
             skip("nn.functional.conv_transpose2d"),  # flaky needs investigation
             skip("nn.functional.conv_transpose1d"),  # flaky needs investigation
-            skip(
-                "nn.functional.layer_norm", dtypes=(torch.float32,), device_type="cpu"
-            ),  # fails on windows
-            skip(
-                "linalg.lu_factor", dtypes=(torch.float32,), device_type=device_type
-            ),  # fails on all but windows
-            skip(
-                "linalg.lu_factor_ex", dtypes=(torch.float32,), device_type=device_type
-            ),  # fails on all but windows
+            skip("nn.functional.layer_norm", dtypes=(torch.float32,), device_type="cpu"),  # fails on windows
+            skip("linalg.lu_factor", dtypes=(torch.float32,), device_type=device_type),  # fails on all but windows
+            skip("linalg.lu_factor_ex", dtypes=(torch.float32,), device_type=device_type),  # fails on all but windows
             skip("linalg.multi_dot", "", device_type="cpu"),
             skip("sparse.sampled_addmm", ""),
             skip("sparse.mm", "reduce"),
@@ -2439,9 +2139,7 @@ class TestOperators(TestCase):
                 {torch.float32: tol(atol=2e-04, rtol=1e-04)},
                 device_type=device_type,
             ),
-            tol2(
-                "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-06, rtol=5e-06)}
-            ),
+            tol2("linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-06, rtol=5e-06)}),
             tol1("nn.functional.conv3d", {torch.float32: tol(atol=5e-04, rtol=9e-03)}),
             tol1(
                 "nn.functional.conv2d",
@@ -2454,9 +2152,7 @@ class TestOperators(TestCase):
     )
     def test_vmap_autograd_grad(self, device, dtype, op):
         def is_differentiable(inp):
-            return isinstance(inp, Tensor) and (
-                inp.grad_fn is not None or inp.requires_grad
-            )
+            return isinstance(inp, Tensor) and (inp.grad_fn is not None or inp.requires_grad)
 
         def get_flat_differentiable(tree):
             flattened = pytree.tree_leaves(tree)
@@ -2464,11 +2160,7 @@ class TestOperators(TestCase):
 
         def get_differentiable_linked(list1, list2):
             paired_list = zip(list1, list2)
-            paired_list = tuple(
-                (first, second)
-                for (first, second) in paired_list
-                if is_differentiable(first)
-            )
+            paired_list = tuple((first, second) for (first, second) in paired_list if is_differentiable(first))
             return zip(*paired_list)
 
         def filter_none(out):
@@ -2492,9 +2184,7 @@ class TestOperators(TestCase):
                 if not isinstance(out_flattened, torch.Tensor):
                     out_flattened = pytree.tree_leaves(out)
                     cotangents_flattened = pytree.tree_leaves(cotangents)
-                    out_flattened, cotangents_flattened = get_differentiable_linked(
-                        out_flattened, cotangents_flattened
-                    )
+                    out_flattened, cotangents_flattened = get_differentiable_linked(out_flattened, cotangents_flattened)
 
                 return filter_none(
                     torch.autograd.grad(
@@ -2530,9 +2220,7 @@ class TestOperators(TestCase):
         # non-contiguous because vmap will expand. This will happen during both levels of vmap
         A = torch.randn(4, 4)
         k = torch.randn(4, 5, B1, B0)
-        fn, args = get_jvp_variant_primals_tangents(
-            torch.linalg.solve, SampleInput(A, args=(k,))
-        )
+        fn, args = get_jvp_variant_primals_tangents(torch.linalg.solve, SampleInput(A, args=(k,)))
 
         in_dims_all = (None, -1, None, -1)
         batched_out = vmap(vmap(fn, in_dims=in_dims_all), in_dims=in_dims_all)(*args)
@@ -2548,14 +2236,10 @@ class TestOperators(TestCase):
         for sample_input in op.sample_inputs(device, dtype):
 
             def f(x):
-                op(sample_input.input, *sample_input.args, **sample_input.kwargs).copy_(
-                    x
-                )
+                op(sample_input.input, *sample_input.args, **sample_input.kwargs).copy_(x)
                 return x
 
-            without_grad = op(
-                sample_input.input, *sample_input.args, **sample_input.kwargs
-            )
+            without_grad = op(sample_input.input, *sample_input.args, **sample_input.kwargs)
             if grad_op == "jvp":
                 with self.assertRaisesRegex(
                     RuntimeError,
@@ -2575,9 +2259,7 @@ class TestOperators(TestCase):
                     vjp(f, torch.randn_like(without_grad))
 
     @ops(
-        filter(
-            lambda op: op.name in aliasing_ops_list_return, op_db + additional_op_db
-        ),
+        filter(lambda op: op.name in aliasing_ops_list_return, op_db + additional_op_db),
         allowed_dtypes=(torch.float,),
     )
     @parametrize("grad_op", ["jvp", "vjp"])
@@ -2585,17 +2267,11 @@ class TestOperators(TestCase):
         for sample_input in op.sample_inputs(device, dtype):
 
             def f(x):
-                op(sample_input.input, *sample_input.args, **sample_input.kwargs)[
-                    0
-                ].copy_(x)
+                op(sample_input.input, *sample_input.args, **sample_input.kwargs)[0].copy_(x)
                 return x
 
-            without_grad = op(
-                sample_input.input, *sample_input.args, **sample_input.kwargs
-            )[0]
-            with self.assertRaisesRegex(
-                RuntimeError, "During a grad .* attempted to call in-place operation"
-            ):
+            without_grad = op(sample_input.input, *sample_input.args, **sample_input.kwargs)[0]
+            with self.assertRaisesRegex(RuntimeError, "During a grad .* attempted to call in-place operation"):
                 if grad_op == "jvp":
                     jvp(
                         f,
@@ -2767,12 +2443,8 @@ class TestOperators(TestCase):
                 inner_vmapped_op = vmap(op, in_dims)
                 inner_mapped_op = functools.partial(loop, op, in_dims, 0, B)
 
-                vjpmap_fn, args = get_vjpfull_variant2(
-                    inner_mapped_op, batched_args, kwargs
-                )
-                vjpvmap_fn, _ = get_vjpfull_variant2(
-                    inner_vmapped_op, batched_args, kwargs
-                )
+                vjpmap_fn, args = get_vjpfull_variant2(inner_mapped_op, batched_args, kwargs)
+                vjpvmap_fn, _ = get_vjpfull_variant2(inner_vmapped_op, batched_args, kwargs)
 
                 vjpvjpvmap_fn, new_args = get_vjpfull_variant2(vjpvmap_fn, args, {})
                 vjpvjpmap_fn, _ = get_vjpfull_variant2(vjpmap_fn, args, {})
@@ -2926,9 +2598,7 @@ class TestOperators(TestCase):
                     sample.output_process_fn_grad,
                 )
 
-                jvpjvpvmap_fn, new_args = get_jvp_variant_primals_tangents2(
-                    jvpvmap_fn, args, {}
-                )
+                jvpjvpvmap_fn, new_args = get_jvp_variant_primals_tangents2(jvpvmap_fn, args, {})
                 jvpjvpmap_fn, _ = get_jvp_variant_primals_tangents2(jvpmap_fn, args, {})
 
                 expected = jvpjvpmap_fn(*new_args)
@@ -2955,16 +2625,10 @@ class TestOperators(TestCase):
                 inner_vmapped_op = vmap(op, in_dims)
                 inner_mapped_op = functools.partial(loop, op, in_dims, 0, B)
 
-                vjpmap_fn, args = get_vjpfull_variant2(
-                    inner_mapped_op, batched_args, kwargs
-                )
-                vjpvmap_fn, _ = get_vjpfull_variant2(
-                    inner_vmapped_op, batched_args, kwargs
-                )
+                vjpmap_fn, args = get_vjpfull_variant2(inner_mapped_op, batched_args, kwargs)
+                vjpvmap_fn, _ = get_vjpfull_variant2(inner_vmapped_op, batched_args, kwargs)
 
-                jvpvjpvmap_fn, new_args = get_jvp_variant_primals_tangents2(
-                    vjpvmap_fn, args, {}
-                )
+                jvpvjpvmap_fn, new_args = get_jvp_variant_primals_tangents2(vjpvmap_fn, args, {})
                 jvpvjpmap_fn, _ = get_jvp_variant_primals_tangents2(vjpmap_fn, args, {})
 
                 expected = jvpvjpmap_fn(*new_args)
@@ -3040,9 +2704,7 @@ class TestOperators(TestCase):
             )
 
 
-instantiate_device_type_tests(
-    TestOperators, globals(), only_for=("xpu"), allow_xpu=True
-)
+instantiate_device_type_tests(TestOperators, globals(), only_for=("xpu"), allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()

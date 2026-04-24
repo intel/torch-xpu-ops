@@ -38,9 +38,7 @@ from torch.testing._internal.common_utils import (
     TestCase,
 )
 
-requires_accelerator = unittest.skipUnless(
-    torch.accelerator.is_available(), "Accelerator is needed"
-)
+requires_accelerator = unittest.skipUnless(torch.accelerator.is_available(), "Accelerator is needed")
 
 
 # TODO: pull these helpers from AOTAutograd later
@@ -241,9 +239,7 @@ def _while_loop_tests():
                 def body_fn_nested(i2, j2, x2, y2):
                     return i2.clone(), j2 - 1, x2 + 3.14, y2 - 2.71
 
-                i1, j1, x1, y1 = while_loop(
-                    cond_fn_nested, body_fn_nested, [i1, j1, x1, y1]
-                )
+                i1, j1, x1, y1 = while_loop(cond_fn_nested, body_fn_nested, [i1, j1, x1, y1])
                 return i1 - 1, j1.clone(), x1 * 2, y1 / 2
 
             return while_loop(cond_fn, body_fn, (ci, cj, a, b))
@@ -334,9 +330,7 @@ def _while_loop_tests():
                 return it + 1, x_clone
 
             # We invoke the hop directly to avoid triggering dyanmo tracing
-            out_it, out_x = torch.ops.higher_order.while_loop(
-                cond_fn, body_fn, (0, x), tuple()
-            )
+            out_it, out_x = torch.ops.higher_order.while_loop(cond_fn, body_fn, (0, x), tuple())
             # We need torch._check to use it in torch.ones call
             torch._check(out_it > 0)
             return (
@@ -412,9 +406,7 @@ def _while_loop_tests():
 WHILE_LOOP_TESTS = _while_loop_tests()
 
 
-def collect_meta_for_filtered_nodes(
-    gm: torch.fx.GraphModule, node_names, meta_field_name
-):
+def collect_meta_for_filtered_nodes(gm: torch.fx.GraphModule, node_names, meta_field_name):
     ret = []
     for mod in gm.modules():
         for node in mod.graph.nodes:
@@ -459,9 +451,7 @@ class TestControlFlow(TestCase):
         result_flatten = pytree.tree_leaves(result)
         result_exp_flatten = pytree.tree_leaves(result_exp)
         grad_exp_init = [torch.ones_like(el) for el in result_exp_flatten]
-        expected_grads = torch.autograd.grad(
-            result_exp_flatten, params_flatten, grad_exp_init
-        )
+        expected_grads = torch.autograd.grad(result_exp_flatten, params_flatten, grad_exp_init)
         grad_init = [torch.ones_like(el) for el in result_flatten]
         grads = torch.autograd.grad(result_flatten, params_flatten, grad_init)
         self.assertEqual(grads, expected_grads, atol=6e-05, rtol=6e-06)
@@ -497,9 +487,7 @@ class TestControlFlow(TestCase):
         def false_fn(x):
             return x.cos()
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             x = torch.randn(4, requires_grad=True)
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
@@ -539,9 +527,7 @@ def forward(self, pred_1, x_1):
         def false_fn(x):
             return (x + 42).cos()
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             x = torch.randn(4, requires_grad=True)
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
@@ -588,9 +574,7 @@ def forward(self, pred_1, x_1):
                         def true_false_false_fn(x2, y2, z2):
                             return (x2 + y2 + z2) * 1.23
 
-                        return torch.cond(
-                            p2, true_false_true_fn, true_false_false_fn, [x1, y1, z1]
-                        )
+                        return torch.cond(p2, true_false_true_fn, true_false_false_fn, [x1, y1, z1])
 
                     return torch.cond(p1, true_true_fn, true_false_fn, [x0, y0, z0])
 
@@ -602,9 +586,7 @@ def forward(self, pred_1, x_1):
                         def false_true_false_fn(x2, y2, z2):
                             return (x2 / y2 / z2) - 3.14
 
-                        return torch.cond(
-                            p2, false_true_true_fn, false_true_false_fn, [x1, y1, z1]
-                        )
+                        return torch.cond(p2, false_true_true_fn, false_true_false_fn, [x1, y1, z1])
 
                     def false_false_fn(x1, y1, z1):
                         return (x1 - y1 * z1) / 2.71
@@ -616,20 +598,14 @@ def forward(self, pred_1, x_1):
         nn_module = Nested()
 
         def true_fn(x):
-            return nn_module(
-                torch.tensor(False), torch.tensor(True), torch.tensor(False), x, x, x
-            )
+            return nn_module(torch.tensor(False), torch.tensor(True), torch.tensor(False), x, x, x)
 
         def false_fn(x):
-            return nn_module(
-                torch.tensor(True), torch.tensor(False), torch.tensor(True), x, x, x
-            )
+            return nn_module(torch.tensor(True), torch.tensor(False), torch.tensor(True), x, x, x)
 
         x = torch.randn(4, requires_grad=True)
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
 
@@ -649,9 +625,7 @@ def forward(self, pred_1, x_1):
         x = torch.randn(4, requires_grad=True)
         y = torch.randn(4, requires_grad=False)
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             result = cond(pred, true_fn, false_fn, (x, y, x))
             self.assertEqual(result, fn(x, y, x))
 
@@ -695,9 +669,7 @@ def forward(self, pred_1, x_1, y_1, z_1):
 
         x = torch.randn(4, requires_grad=True)
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
 
@@ -818,9 +790,7 @@ def forward(self, x_1):
         b = torch.randn(4, requires_grad=True)
         c = torch.randn(4, requires_grad=True)
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             result = cond(pred, true_fn, false_fn, ({"t": [a, {"b": b}, (c,)]},))
             self.assertEqual(result, fn({"t": [a, {"b": b}, (c,)]}))
 
@@ -828,9 +798,7 @@ def forward(self, x_1):
             if pred:
                 with self.assertRaisesRegex(Exception, r"."):
                     grads = torch.autograd.grad(result, (a, b, c), grad_out)
-                    expected_grads = torch.autograd.grad(
-                        fn({"t": [a, {"b": b}, (c,)]}), (a, b, c), grad_out
-                    )
+                    expected_grads = torch.autograd.grad(fn({"t": [a, {"b": b}, (c,)]}), (a, b, c), grad_out)
                     self.assertEqual(expected_grads, grads)
 
         def f(pred, a, b, c):
@@ -838,9 +806,7 @@ def forward(self, x_1):
             grad_out = torch.ones_like(result)
             return torch.autograd.grad(result, (a, b), grad_out)
 
-        gm = make_fx(f, tracing_mode="symbolic", _allow_non_fake_inputs=True)(
-            pred, a, b, c
-        )
+        gm = make_fx(f, tracing_mode="symbolic", _allow_non_fake_inputs=True)(pred, a, b, c)
         self.assertExpectedInline(
             gm.code.strip(),
             """\
@@ -892,17 +858,13 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1, arg6_1):
         b = torch.randn(4, requires_grad=True)
         c = torch.randn(4, requires_grad=True)
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             result = cond(pred, true_fn, false_fn, ({"t": [a, {"b": b}, (c,)]},))
             self.assertEqual(result, fn({"t": [a, {"b": b}, (c,)]}))
 
             grad_out = torch.ones_like(result)
             grads = torch.autograd.grad(result, (a, b), grad_out)
-            expected_grads = torch.autograd.grad(
-                fn({"t": [a, {"b": b}, (c,)]}), (a, b), grad_out
-            )
+            expected_grads = torch.autograd.grad(fn({"t": [a, {"b": b}, (c,)]}), (a, b), grad_out)
             self.assertEqual(expected_grads, grads)
 
         def f(pred):
@@ -967,9 +929,7 @@ def forward(self, pred_1):
         b = torch.randn(4, requires_grad=True)
         c = torch.randn(4, requires_grad=True)
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             result = cond(pred, true_fn, false_fn, ({"t": [a, {"b": b}, (c,)]},))
             result_exp = fn({"t": [a, {"b": b}, (c,)]})
             self.assertEqual(result, result_exp)
@@ -1014,9 +974,7 @@ def forward(self, pred_1):
         def false_fn(x):
             return nn_module_false((x + 42).cos())
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             x = torch.randn(4, requires_grad=True)
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
@@ -1084,9 +1042,7 @@ def forward(self, pred_1, x_1):
         def false_fn(x):
             return nn_module_false((x + 42).cos())
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             x = torch.randn(4, requires_grad=True)
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
@@ -1181,9 +1137,7 @@ def forward(self, pred_1, x_1):
             y = torch.ones(4, requires_grad=False) * 42
             return (x * y).cos()
 
-        for pred, fn in zip(
-            [torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]
-        ):
+        for pred, fn in zip([torch.tensor(False), torch.tensor(True)], [false_fn, true_fn]):
             x = torch.randn(4, requires_grad=True)
             result = cond(pred, true_fn, false_fn, (x,))
             self.assertEqual(result, fn(x))
@@ -1264,9 +1218,7 @@ def forward(self, pred_1, x_1):
         for o in operands_forced_grad:
             o.requires_grad = True
         cond_outputs_exp = (
-            true_fn(*operands_forced_grad)
-            if pred_fn(*operands_forced_grad)
-            else false_fn(*operands_forced_grad)
+            true_fn(*operands_forced_grad) if pred_fn(*operands_forced_grad) else false_fn(*operands_forced_grad)
         )
         self.assertEqual(cond_outputs, cond_outputs_exp)
 
@@ -1276,9 +1228,7 @@ def forward(self, pred_1, x_1):
 
         # Check if at least some operators require grads
         if len(cond_inputs) > 0:
-            grad_inputs = torch.autograd.grad(
-                cond_outputs, cond_inputs, allow_unused=True, retain_graph=True
-            )
+            grad_inputs = torch.autograd.grad(cond_outputs, cond_inputs, allow_unused=True, retain_graph=True)
             grad_inputs_exp = torch.autograd.grad(
                 cond_outputs_exp,
                 cond_inputs_exp,
@@ -1286,21 +1236,13 @@ def forward(self, pred_1, x_1):
                 materialize_grads=True,
             )
 
-            grad_exp_masked = [
-                g for g, o in zip(grad_inputs_exp, operands) if o.requires_grad
-            ]
+            grad_exp_masked = [g for g, o in zip(grad_inputs_exp, operands) if o.requires_grad]
             self.assertEqual(grad_exp_masked, grad_inputs)
 
             # Extraction and comparison of Metadata of operands and gradients
-            operands_metadata = [
-                _extract_tensor_metadata_except_requires_grad(o) for o in cond_inputs
-            ]
-            grad_metadata = [
-                _extract_tensor_metadata_except_requires_grad(o) for o in grad_inputs
-            ]
-            self.assertTrue(
-                all(op == g for op, g in zip(operands_metadata, grad_metadata))
-            )
+            operands_metadata = [_extract_tensor_metadata_except_requires_grad(o) for o in cond_inputs]
+            grad_metadata = [_extract_tensor_metadata_except_requires_grad(o) for o in grad_inputs]
+            self.assertTrue(all(op == g for op, g in zip(operands_metadata, grad_metadata)))
 
         return cond_outputs, cond_inputs
 
@@ -1309,9 +1251,7 @@ def forward(self, pred_1, x_1):
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     @parametrize("compile_mode", ["compile_dynamic_shape"])
     @parametrize("scalar", [False])
-    def test_cond_autograd_zeros_unused_branch_complex_compile_fail(
-        self, compile_mode, scalar
-    ):
+    def test_cond_autograd_zeros_unused_branch_complex_compile_fail(self, compile_mode, scalar):
         device = torch.device(DEVICE_TYPE)
         cond_fct = compile_mode_helper(torch.cond, compile_mode)
 
@@ -1353,9 +1293,7 @@ def forward(self, pred_1, x_1):
         def pred_fn(x, w1, b1, w2, b2):
             return x.mean() > 0
 
-        cond_outputs, cond_inputs = self._test_cond_autograd(
-            cond_fct, pred_fn, true_fn, false_fn, operands
-        )
+        cond_outputs, cond_inputs = self._test_cond_autograd(cond_fct, pred_fn, true_fn, false_fn, operands)
 
     @unittest.skipIf(not torch.accelerator.is_available(), "Accelerator is needed")
     def test_map_gpu(self):
@@ -1391,21 +1329,15 @@ def forward(self, pred_1, x_1):
         ):
             _ = control_flow.map(f, (3, torch.ones(2)), torch.ones(2))
 
-        with self.assertRaisesRegex(
-            RuntimeError, r"Leading dimensions of mapped xs cannot be 0\."
-        ):
-            _ = control_flow.map(
-                f, (torch.ones(0, 1, 2), torch.ones(0, 1, 2)), torch.ones(2)
-            )
+        with self.assertRaisesRegex(RuntimeError, r"Leading dimensions of mapped xs cannot be 0\."):
+            _ = control_flow.map(f, (torch.ones(0, 1, 2), torch.ones(0, 1, 2)), torch.ones(2))
 
         with self.assertRaisesRegex(
             RuntimeError,
             r"Leading dimensions of mapped xs must be consistent\. "
             r"Got shapes \[torch\.Size\(\[3, 4, 5\]\), torch\.Size\(\[4, 4, 5\]\)\]\.",
         ):
-            _ = control_flow.map(
-                f, (torch.ones(3, 4, 5), torch.ones(4, 4, 5)), torch.ones(5)
-            )
+            _ = control_flow.map(f, (torch.ones(3, 4, 5), torch.ones(4, 4, 5)), torch.ones(5))
 
     def test_map_illegal_outputs(self):
         def f(x, y):
@@ -1419,9 +1351,7 @@ def forward(self, pred_1, x_1):
 
         x = torch.ones([3])
         y = torch.ones([1, 2, 3])
-        with self.assertRaisesRegex(
-            RuntimeError, "map doesn't work unless it is captured completely"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "map doesn't work unless it is captured completely"):
             control_flow.map(f, x, y)
 
         with self.assertRaisesRegex(
@@ -1516,9 +1446,7 @@ def forward(self, pred_1, x_1):
             z = map_op(f, x, y)
             flat_x = pytree.tree_leaves(x)
             flat_z = pytree.tree_leaves(z)
-            grads = torch.autograd.grad(
-                flat_z, flat_x, [torch.ones_like(z) for z in flat_z]
-            )
+            grads = torch.autograd.grad(flat_z, flat_x, [torch.ones_like(z) for z in flat_z])
             return z, grads
 
         x = [
@@ -1666,9 +1594,7 @@ def forward(self, pred_1, x_1):
         self.assertEqual(result, result_exp)
 
         # Non associative operation
-        x = torch.arange(
-            0, 5, device=device, dtype=torch.float32, requires_grad=autograd
-        )
+        x = torch.arange(0, 5, device=device, dtype=torch.float32, requires_grad=autograd)
         init = torch.ones(1, device=device, dtype=torch.float32, requires_grad=autograd)
         result = scan_fct(
             get_scan_combine_fn("div", False),
@@ -1793,9 +1719,7 @@ def forward(self, pred_1, x_1):
                 ),
             ]:
                 result = scan_fct(op, init, x, dim=rnd_scan_dim, reverse=reverse)
-                result_exp = _fake_scan(
-                    op, init=init, xs=x, dim=rnd_scan_dim, reverse=reverse
-                )
+                result_exp = _fake_scan(op, init=init, xs=x, dim=rnd_scan_dim, reverse=reverse)
                 self.assertEqual(result, result_exp)
                 if not reverse:
                     result_exp_PT = op_pt(x, rnd_scan_dim)
@@ -1817,9 +1741,7 @@ def forward(self, pred_1, x_1):
         timesteps = 10
         scan_fct = compile_mode_helper(scan, compile_mode)
 
-        projected_inputs = torch.randn(
-            timesteps, state_dim, requires_grad=autograd, device=device
-        )
+        projected_inputs = torch.randn(timesteps, state_dim, requires_grad=autograd, device=device)
         A = torch.randn(state_dim, requires_grad=autograd, device=device)
         elements = (A.repeat((timesteps, 1)), projected_inputs)
         init = tuple(
@@ -1860,12 +1782,8 @@ def forward(self, pred_1, x_1):
             result_exp_flatten, _ = pytree.tree_flatten(expected_result)
 
             grad_out = [torch.ones_like(el) for el in result_exp_flatten]
-            expected_grads = torch.autograd.grad(
-                result_exp_flatten, (*init_clone2, *elements_clone2), grad_out
-            )
-            grads = torch.autograd.grad(
-                result_flatten, (*init_clone, *elements_clone), grad_out
-            )
+            expected_grads = torch.autograd.grad(result_exp_flatten, (*init_clone2, *elements_clone2), grad_out)
+            grads = torch.autograd.grad(result_flatten, (*init_clone, *elements_clone), grad_out)
             self.assertEqual(grads, expected_grads)
 
     @unittest.skipIf(not SM70OrLater, "triton")
@@ -1907,12 +1825,8 @@ def forward(self, pred_1, x_1):
         inp = (x, y)
         init = tuple(torch._ops.ops.aten.slice(e, 0, 0, 1, 1) for e in inp)
 
-        result_diff = scan(
-            fct_different_output_tuple, init, inp, dim=0, reverse=reverse
-        )
-        expected_result = _fake_scan(
-            fct_different_output_tuple, init=init, xs=inp, dim=0, reverse=reverse
-        )
+        result_diff = scan(fct_different_output_tuple, init, inp, dim=0, reverse=reverse)
+        expected_result = _fake_scan(fct_different_output_tuple, init=init, xs=inp, dim=0, reverse=reverse)
         self.assertEqual(result_diff, expected_result)
         self.assertEqual(result_diff[1], result_same[1][1])
 
@@ -2023,9 +1937,7 @@ def forward(self, pred_1, x_1):
         device = torch.device(DEVICE_TYPE)
 
         scan_fct = compile_mode_helper(scan, compile_mode_scan)
-        associative_scan_fct = compile_mode_helper(
-            associative_scan, compile_mode_associative_scan
-        )
+        associative_scan_fct = compile_mode_helper(associative_scan, compile_mode_associative_scan)
         init = torch.randn(10, 5, device=device)
         inp = torch.randn(3, 10, 5, device=device)
 
@@ -2096,9 +2008,7 @@ def forward(self, pred_1, x_1):
     @parametrize("reverse", [False, True])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_scan_downstream_scan_scan_dim(
-        self, compile_mode, reverse, device, autograd
-    ):
+    def test_scan_downstream_scan_scan_dim(self, compile_mode, reverse, device, autograd):
         inp = torch.randn(3, 10, 2, device=device, requires_grad=autograd)
         init = torch.randn(3, 2, device=device, requires_grad=autograd)
 
@@ -2491,9 +2401,7 @@ def forward(self, pred_1, x_1):
             return x + 1.0, x + y
 
         result_init = scan_fct(add_scalar_carry, init, inp, dim=dim, reverse=reverse)
-        result_exp = _fake_scan(
-            add_scalar_carry, init=init, xs=inp, dim=dim, reverse=reverse
-        )
+        result_exp = _fake_scan(add_scalar_carry, init=init, xs=inp, dim=dim, reverse=reverse)
         self.assertEqual(result_init, result_exp)
         self.assertEqual(result_init[0], torch.tensor([3.0], device=device))
 
@@ -2507,9 +2415,7 @@ def forward(self, pred_1, x_1):
             return x + 1.0, x[: y.shape[0], : y.shape[1]] + y
 
         result_init = scan_fct(add_scalar_carry2, init, inp, dim=dim, reverse=reverse)
-        result_exp = _fake_scan(
-            add_scalar_carry2, init=init, xs=inp, dim=dim, reverse=reverse
-        )
+        result_exp = _fake_scan(add_scalar_carry2, init=init, xs=inp, dim=dim, reverse=reverse)
         self.assertEqual(result_init, result_exp)
 
         # Init with two timestep on dim axis. Should work as y has always 1 on dim axis and
@@ -2531,12 +2437,8 @@ def forward(self, pred_1, x_1):
         def add_scalar_carry_sliced_out(x: torch.Tensor, y: torch.Tensor):
             return x + 1.0, x[:, :1, :] + y
 
-        result_init = scan_fct(
-            add_scalar_carry_sliced_out, init, inp, dim=dim, reverse=reverse
-        )
-        result_exp = _fake_scan(
-            add_scalar_carry_sliced_out, init=init, xs=inp, dim=dim, reverse=reverse
-        )
+        result_init = scan_fct(add_scalar_carry_sliced_out, init, inp, dim=dim, reverse=reverse)
+        result_exp = _fake_scan(add_scalar_carry_sliced_out, init=init, xs=inp, dim=dim, reverse=reverse)
         self.assertEqual(result_init, result_exp)
         self.assertEqual(result_init[0].shape, torch.Size([2, 10, 2]))
         self.assertEqual(result_init[1].shape, torch.Size([2, 2, 5, 2]))
@@ -2699,12 +2601,8 @@ def forward(self, pred_1, x_1):
             self.check_autograd(result, expected_result, (*init_flat, *inp_flat))
 
         # Pytree of output is different
-        result = scan_fct(
-            fct_pointwise_different_output, init, inp, dim=0, reverse=reverse
-        )
-        expected_result = _fake_scan(
-            fct_pointwise_different_output, init=init, xs=inp, dim=0, reverse=reverse
-        )
+        result = scan_fct(fct_pointwise_different_output, init, inp, dim=0, reverse=reverse)
+        expected_result = _fake_scan(fct_pointwise_different_output, init=init, xs=inp, dim=0, reverse=reverse)
         self.assertEqual(result, expected_result)
 
         # Pytree of carry is different
@@ -2723,12 +2621,8 @@ def forward(self, pred_1, x_1):
                 [{"o": torch._ops.ops.aten.slice(z, 0, inp_start, inp_end, 1)}],
             ),
         }
-        result = scan_fct(
-            fct_pointwise_different_carry, init, inp, dim=0, reverse=reverse
-        )
-        expected_result = _fake_scan(
-            fct_pointwise_different_carry, init=init, xs=inp, dim=0, reverse=reverse
-        )
+        result = scan_fct(fct_pointwise_different_carry, init, inp, dim=0, reverse=reverse)
+        expected_result = _fake_scan(fct_pointwise_different_carry, init=init, xs=inp, dim=0, reverse=reverse)
         self.assertEqual(result, expected_result)
 
         if autograd:
@@ -2851,9 +2745,7 @@ class GraphModule(torch.nn.Module):
             expected_grads = expected_grads[:2]
 
             grad_out = [torch.ones_like(r) for r in result]
-            grads = torch.autograd.grad(
-                result_flat, (h, x, W_ih, b_ih, W_hh, b_hh), grad_out
-            )
+            grads = torch.autograd.grad(result_flat, (h, x, W_ih, b_ih, W_hh, b_hh), grad_out)
             add_input_grads = list(grads[2:])
             add_input_grads[0] = add_input_grads[0].T
             add_input_grads[2] = add_input_grads[2].T
@@ -2865,13 +2757,9 @@ class GraphModule(torch.nn.Module):
     @requires_accelerator
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
-    @parametrize(
-        "partial_grad", ["xs", "init", "additional_inputs", "complex", "random"]
-    )
+    @parametrize("partial_grad", ["xs", "init", "additional_inputs", "complex", "random"])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
-    def test_scan_closure_RNN_partial_autograd(
-        self, reverse, compile_mode, partial_grad, device
-    ):
+    def test_scan_closure_RNN_partial_autograd(self, reverse, compile_mode, partial_grad, device):
         dim = 1
         scan_fct = compile_mode_helper(scan, compile_mode)
 
@@ -2913,22 +2801,12 @@ class GraphModule(torch.nn.Module):
             W_hh = torch.randn(7, 7, device=device, requires_grad=autograd[6])
             b_hh = torch.randn(7, device=device, requires_grad=autograd[7])
 
-            params = [
-                p
-                for p, a in zip([x, x1, h, h_1, W_ih, b_ih, W_hh, b_hh], autograd)
-                if a
-            ]
+            params = [p for p, a in zip([x, x1, h, h_1, W_ih, b_ih, W_hh, b_hh], autograd) if a]
 
             def RNN(x: torch.Tensor, y: torch.Tensor):
                 c_new_0 = x[0] + 1
                 c_new_1 = x[1] + 1
-                h_new = (
-                    torch.tanh(c_new_1 + x[0] @ W_hh + b_hh)
-                    + y[0] @ W_ih
-                    + y[1] @ W_ih
-                    + b_ih
-                    + x[1]
-                )
+                h_new = torch.tanh(c_new_1 + x[0] @ W_hh + b_hh) + y[0] @ W_ih + y[1] @ W_ih + b_ih + x[1]
                 return (c_new_0, c_new_1), h_new
 
             inits = (h, h_1)
@@ -2966,9 +2844,7 @@ class GraphModule(torch.nn.Module):
         class RNNLoop(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.layers = nn.ModuleList(
-                    [nn.Linear(FEATURE_DIM * 2, FEATURE_DIM) for _ in range(LAYERS)]
-                )
+                self.layers = nn.ModuleList([nn.Linear(FEATURE_DIM * 2, FEATURE_DIM) for _ in range(LAYERS)])
                 self.num_layers = LAYERS
 
             def forward(self, initial, inputs_sequence):
@@ -2990,9 +2866,7 @@ class GraphModule(torch.nn.Module):
         class RNNScanList(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.layers = nn.ModuleList(
-                    [nn.Linear(FEATURE_DIM * 2, FEATURE_DIM) for _ in range(LAYERS)]
-                )
+                self.layers = nn.ModuleList([nn.Linear(FEATURE_DIM * 2, FEATURE_DIM) for _ in range(LAYERS)])
                 self.num_layers = LAYERS
 
             def forward(self, initial, input_sequence):
@@ -3013,9 +2887,7 @@ class GraphModule(torch.nn.Module):
         class RNNScanTensor(nn.Module):
             def __init__(self):
                 super().__init__()
-                self.layers = nn.ModuleList(
-                    [nn.Linear(FEATURE_DIM * 2, FEATURE_DIM) for _ in range(LAYERS)]
-                )
+                self.layers = nn.ModuleList([nn.Linear(FEATURE_DIM * 2, FEATURE_DIM) for _ in range(LAYERS)])
                 self.num_layers = LAYERS
 
             def forward(self, initial, input_sequence):
@@ -3024,9 +2896,7 @@ class GraphModule(torch.nn.Module):
                     hs_tensor = carry_tensor
                     for li, layer in enumerate(self.layers):
                         current_h_prev_li_slice = hs_tensor[:, li, :]
-                        input_concat = torch.cat(
-                            (current_h_prev_li_slice, input), dim=-1
-                        )
+                        input_concat = torch.cat((current_h_prev_li_slice, input), dim=-1)
                         update = layer(input_concat)
                         h_curr_li = current_h_prev_li_slice + update
                         hs_tensor = hs_tensor.clone()
@@ -3043,12 +2913,8 @@ class GraphModule(torch.nn.Module):
                 if param.grad is not None:
                     param.grad.zero_()
 
-            current_initial_hs = [
-                h.detach().clone().requires_grad_(h.requires_grad) for h in initial_hs
-            ]
-            current_inputs = (
-                inputs.detach().clone().requires_grad_(inputs.requires_grad)
-            )
+            current_initial_hs = [h.detach().clone().requires_grad_(h.requires_grad) for h in initial_hs]
+            current_inputs = inputs.detach().clone().requires_grad_(inputs.requires_grad)
 
             out = model(current_initial_hs, current_inputs)
             loss = out.sum()
@@ -3063,14 +2929,12 @@ class GraphModule(torch.nn.Module):
         torch.manual_seed(0)
 
         initial_hs_template = [
-            torch.zeros(
-                BATCH_SIZE, FEATURE_DIM, requires_grad=True, dtype=torch.float32
-            ).to(DEVICE)
+            torch.zeros(BATCH_SIZE, FEATURE_DIM, requires_grad=True, dtype=torch.float32).to(DEVICE)
             for _ in range(LAYERS)
         ]
-        inputs_template = torch.randn(
-            BATCH_SIZE, SEQ_LEN, FEATURE_DIM, requires_grad=True, dtype=torch.float32
-        ).to(DEVICE)
+        inputs_template = torch.randn(BATCH_SIZE, SEQ_LEN, FEATURE_DIM, requires_grad=True, dtype=torch.float32).to(
+            DEVICE
+        )
 
         # Test 3 models: RNNScanList, RNNScanTensor, RNNLoop
         models = [RNNScanList, RNNScanTensor, RNNLoop]
@@ -3189,9 +3053,7 @@ class GraphModule(torch.nn.Module):
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_scan_closure_combine_fn_with_no_grad_for_out(
-        self, reverse, compile_mode, device, autograd
-    ):
+    def test_scan_closure_combine_fn_with_no_grad_for_out(self, reverse, compile_mode, device, autograd):
         dim = 1
         scan_fct = compile_mode_helper(scan, compile_mode)
         x = torch.randn(3, 10, 7, device=device, requires_grad=autograd)
@@ -3253,9 +3115,7 @@ class GraphModule(torch.nn.Module):
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_scan_closure_combine_fn_with_no_grad_additional_inputs_all(
-        self, reverse, compile_mode, device, autograd
-    ):
+    def test_scan_closure_combine_fn_with_no_grad_additional_inputs_all(self, reverse, compile_mode, device, autograd):
         dim = 1
         scan_fct = compile_mode_helper(scan, compile_mode)
         x = torch.randn(3, 10, 7, device=device, requires_grad=autograd)
@@ -3276,9 +3136,7 @@ class GraphModule(torch.nn.Module):
             return c_new2, h_new2
 
         result = scan_fct(fct_no_grad_bih_Wih_bhh_Whh, h, x, dim=dim, reverse=reverse)
-        result_exp = _fake_scan(
-            fct_no_grad_bih_Wih_bhh_Whh, h, x, dim=dim, reverse=reverse
-        )
+        result_exp = _fake_scan(fct_no_grad_bih_Wih_bhh_Whh, h, x, dim=dim, reverse=reverse)
         self.assertEqual(result, result_exp)
 
         if autograd:
@@ -3290,9 +3148,7 @@ class GraphModule(torch.nn.Module):
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_scan_closure_combine_fn_carries_ys_same_grad(
-        self, reverse, compile_mode, device, autograd
-    ):
+    def test_scan_closure_combine_fn_carries_ys_same_grad(self, reverse, compile_mode, device, autograd):
         dim = 1
         scan_fct = compile_mode_helper(scan, compile_mode)
         x = torch.randn(3, 10, 7, device=device, requires_grad=autograd)
@@ -3313,9 +3169,7 @@ class GraphModule(torch.nn.Module):
             return c_new2, h_new2
 
         result = scan_fct(fct_no_grad_bih_Wih_bhh_Whh, h, x, dim=dim, reverse=reverse)
-        result_exp = _fake_scan(
-            fct_no_grad_bih_Wih_bhh_Whh, h, x, dim=dim, reverse=reverse
-        )
+        result_exp = _fake_scan(fct_no_grad_bih_Wih_bhh_Whh, h, x, dim=dim, reverse=reverse)
         self.assertEqual(result, result_exp)
 
         if autograd:
@@ -3415,9 +3269,7 @@ class GraphModule(torch.nn.Module):
         self.assertEqual(result1, expected_result)
 
         if autograd:
-            self.check_autograd(
-                result1, expected_result, (h1, h2, x1, W_1, b_1, W_2, b_2)
-            )
+            self.check_autograd(result1, expected_result, (h1, h2, x1, W_1, b_1, W_2, b_2))
 
     @skipIfNoDynamoSupport
     def test_scan_simple_graph_wrong_dtype(self):
@@ -3447,9 +3299,7 @@ class GraphModule(torch.nn.Module):
             return scan(fct, init, xs, dim=0, reverse=True)
 
         # Correct case
-        gm = make_fx(f, tracing_mode="symbolic")(
-            get_scan_combine_fn("add", False), init, x
-        )
+        gm = make_fx(f, tracing_mode="symbolic")(get_scan_combine_fn("add", False), init, x)
         self.assertExpectedInline(
             gm.code.strip(),
             """\
@@ -3614,9 +3464,7 @@ class AssociativeScanModels:
         def __init__(self, combine_fn, dim, reverse, combine_mode, compile_mode):
             super().__init__()
 
-            self.scan_fct = AssociativeScanModels.get_scan_fct(
-                compile_mode, combine_mode
-            )
+            self.scan_fct = AssociativeScanModels.get_scan_fct(compile_mode, combine_mode)
             self.combine_fn = combine_fn
             self.dim = dim
             self.reverse = reverse
@@ -3636,12 +3484,8 @@ class AssociativeScanModels:
                 "compile_mode": compile_mode,
             }
             self.combine_fns = [
-                AssociativeScanModels.CombineFn(
-                    get_scan_combine_fn("add", True), **kwargs
-                ),
-                AssociativeScanModels.CombineFn(
-                    get_scan_combine_fn("mul", True), **kwargs
-                ),
+                AssociativeScanModels.CombineFn(get_scan_combine_fn("add", True), **kwargs),
+                AssociativeScanModels.CombineFn(get_scan_combine_fn("mul", True), **kwargs),
             ]
 
         def forward(self, inputs):
@@ -3675,9 +3519,7 @@ class AssociativeScanModels:
                     else:
                         kwargs_el[key] = val
 
-                scan_fct = AssociativeScanModels.get_scan_fct(
-                    compile_mode, kwargs_el["combine_mode"]
-                )
+                scan_fct = AssociativeScanModels.get_scan_fct(compile_mode, kwargs_el["combine_mode"])
                 combine_fn = kwargs_el["combine_fn"]
                 del kwargs_el["combine_fn"]
                 del kwargs_el["combine_mode"]
@@ -3717,14 +3559,12 @@ class AssociativeScanTests(TestCase):
         result_exp_flatten = [r for r in result_exp_flatten if r.requires_grad]
 
         # Check the result and parameter lists
-        assert len(result_flatten) == len(
-            result_exp_flatten
-        ), "The number of elements requiring gradients is different for the results and the expected results"
+        assert len(result_flatten) == len(result_exp_flatten), (
+            "The number of elements requiring gradients is different for the results and the expected results"
+        )
 
         grad_exp_init = [torch.ones_like(el) for el in result_exp_flatten]
-        expected_grads = torch.autograd.grad(
-            result_exp_flatten, grad_param, grad_exp_init
-        )
+        expected_grads = torch.autograd.grad(result_exp_flatten, grad_param, grad_exp_init)
         grad_init = [torch.ones_like(el) for el in result_flatten]
         grads = torch.autograd.grad(result_flatten, grad_param, grad_init)
 
@@ -3735,9 +3575,7 @@ class AssociativeScanTests(TestCase):
         result_exp = model_fake(inputs)
         self.assertEqual(result, result_exp)
 
-        if autograd_param is not None and any(
-            par.requires_grad for par in autograd_param
-        ):
+        if autograd_param is not None and any(par.requires_grad for par in autograd_param):
             result_flat = pytree.tree_leaves(result)
             result_exp_flat = pytree.tree_leaves(result_exp)
             exp_grad_mask = [bool(r.requires_grad) for r in result_exp_flat]
@@ -3771,10 +3609,7 @@ class AssociativeScanTests(TestCase):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
     # # Skipping this combination as there is a CPP compilation failure that
@@ -3789,9 +3624,7 @@ class AssociativeScanTests(TestCase):
     #         and params["autograd"]
     #     ),
     # )
-    def test_associative_scan_compile(
-        self, combine_mode, reverse, compile_mode, device, autograd
-    ):
+    def test_associative_scan_compile(self, combine_mode, reverse, compile_mode, device, autograd):
         x = torch.randn(3, 10, 2, device=device, requires_grad=autograd)
         kwargs = {
             "dim": 0,
@@ -3814,9 +3647,7 @@ class AssociativeScanTests(TestCase):
             self.assertEqual(results, results_torch)
 
         # Jax Examples
-        x = torch.arange(
-            0, 4, device=device, dtype=torch.float32, requires_grad=autograd
-        )
+        x = torch.arange(0, 4, device=device, dtype=torch.float32, requires_grad=autograd)
         kwargs = {
             "dim": 0,
             "reverse": reverse,
@@ -3854,15 +3685,10 @@ class AssociativeScanTests(TestCase):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
-    def test_associative_scan_dim(
-        self, combine_mode, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_dim(self, combine_mode, compile_mode, reverse, device, autograd):
         import random
 
         random.seed(1234)
@@ -3933,15 +3759,10 @@ class AssociativeScanTests(TestCase):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
-    def test_associative_scan_tuple(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_tuple(self, compile_mode, combine_mode, reverse, device, autograd):
         x = torch.randn(3, 2, 2, device=device, requires_grad=autograd)
         y = torch.randn(3, 2, 2, device=device, requires_grad=autograd)
         inp = (x, y)
@@ -3967,9 +3788,7 @@ class AssociativeScanTests(TestCase):
     @parametrize("reverse", [False, True])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_associative_scan_expand_in_combine_fn(
-        self, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_expand_in_combine_fn(self, compile_mode, reverse, device, autograd):
         x = torch.randn(3, 2, 2, device=device, requires_grad=autograd)
 
         def combine_fn(x, y):
@@ -3996,14 +3815,8 @@ class AssociativeScanTests(TestCase):
     @parametrize("reverse", [False, True])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_associative_scan_non_contiguous_tensor(
-        self, compile_mode, reverse, device, autograd
-    ):
-        x = (
-            torch.arange(30, device=device, dtype=torch.float32, requires_grad=autograd)
-            .view(10, 3)
-            .t()
-        )
+    def test_associative_scan_non_contiguous_tensor(self, compile_mode, reverse, device, autograd):
+        x = torch.arange(30, device=device, dtype=torch.float32, requires_grad=autograd).view(10, 3).t()
         assert not x.is_contiguous()
 
         kwargs = {
@@ -4036,15 +3849,10 @@ class AssociativeScanTests(TestCase):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
-    def test_associative_scan_complex_pytree(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_complex_pytree(self, compile_mode, combine_mode, reverse, device, autograd):
         x = torch.randn(3, 2, 2, device=device, requires_grad=autograd)
         y = torch.randn(3, 2, 2, device=device, requires_grad=autograd)
         z = torch.randn(3, 2, 2, device=device, requires_grad=autograd)
@@ -4078,9 +3886,7 @@ class AssociativeScanTests(TestCase):
         )
 
         def f(fct, xs):
-            return associative_scan(
-                fct, xs, dim=0, reverse=True, combine_mode="generic"
-            )
+            return associative_scan(fct, xs, dim=0, reverse=True, combine_mode="generic")
 
         def combine_fn(x: torch.Tensor, y: torch.Tensor):
             a, b = (x[0][0] + y[1], x[0][1][0] - y[1])
@@ -4221,15 +4027,10 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
-    def test_associative_scan_downstream_scan_matmul(
-        self, combine_mode, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_downstream_scan_matmul(self, combine_mode, compile_mode, reverse, device, autograd):
         def first_chain_fct(scan_fct, inp, **kwargs):
             o = scan_fct(get_scan_combine_fn("add", True), inp, **kwargs)
             return o
@@ -4269,15 +4070,10 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
-    def test_associative_scan_downstream_scan_scan(
-        self, combine_mode, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_downstream_scan_scan(self, combine_mode, compile_mode, reverse, device, autograd):
         def first_chain_fct(scan_fct, inp, **kwargs):
             o1 = scan_fct(get_scan_combine_fn("add", True), inp, **kwargs)
             return o1
@@ -4319,10 +4115,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
     # Skipping the autograd=True because
@@ -4392,9 +4185,7 @@ class GraphModule(torch.nn.Module):
             return x + y_new
 
         def first_nested_fct_fake(x, y):
-            y_new = _fake_associative_scan(
-                second_nested_fct, y, 0, reverse=reverse_second
-            )
+            y_new = _fake_associative_scan(second_nested_fct, y, 0, reverse=reverse_second)
             return x + y_new
 
         def second_nested_fct(x, y):
@@ -4424,9 +4215,7 @@ class GraphModule(torch.nn.Module):
     @parametrize("reverse", [False, True])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_associative_scan_loop_in_combine_fn(
-        self, compile_mode, loop_type, reverse, device, autograd
-    ):
+    def test_associative_scan_loop_in_combine_fn(self, compile_mode, loop_type, reverse, device, autograd):
         def combine_fn(x, y):
             cnt = torch.zeros_like(y[0, :])
             if loop_type == "while":
@@ -4514,14 +4303,9 @@ class GraphModule(torch.nn.Module):
     # as the current implementation does not support lifted arguments
     @decorateIf(
         unittest.skip,
-        lambda params: (
-            params["device"] == torch.device("cpu")
-            or params["compile_mode"] == "compile_dynamic_shape"
-        ),
+        lambda params: (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape"),
     )
-    def test_associative_scan_cond_in_combine_fn(
-        self, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_cond_in_combine_fn(self, compile_mode, reverse, device, autograd):
         def combine_fn(x, y):
             val = cond(torch.sum(y) > 0.0, lambda y: y.clone(), lambda y: 1.0 - y, (y,))
             return x * val
@@ -4583,9 +4367,7 @@ class GraphModule(torch.nn.Module):
     @parametrize("reverse", [False, True])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_associative_scan_vmap_in_combine_fn(
-        self, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_vmap_in_combine_fn(self, compile_mode, reverse, device, autograd):
         def combine_fn(x, y):
             def body(x):
                 return x**2
@@ -4623,9 +4405,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (params["device"] == torch.device("cpu")),
     )
-    def test_associative_scan_non_pointwise_generic(
-        self, reverse, compile_mode, device, autograd
-    ):
+    def test_associative_scan_non_pointwise_generic(self, reverse, compile_mode, device, autograd):
         x = torch.randn(3, 10, 2, device=device, requires_grad=autograd)
 
         kwargs = {
@@ -4658,20 +4438,13 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (
             params["combine_mode"] == "pointwise"
-            and (
-                params["device"] == torch.device("cpu")
-                or params["compile_mode"] == "compile_dynamic_shape"
-            )
+            and (params["device"] == torch.device("cpu") or params["compile_mode"] == "compile_dynamic_shape")
         ),
     )
-    def test_associative_scan_binary_operator(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_binary_operator(self, compile_mode, combine_mode, reverse, device, autograd):
         state_dim = 20
         timesteps = 10
-        projected_inputs = torch.randn(
-            timesteps, state_dim, device=device, requires_grad=autograd
-        )
+        projected_inputs = torch.randn(timesteps, state_dim, device=device, requires_grad=autograd)
         A = torch.randn(state_dim, device=device, requires_grad=autograd)
         elements = (A.repeat((timesteps, 1)), projected_inputs)
 
@@ -4701,16 +4474,10 @@ class GraphModule(torch.nn.Module):
         length = 10
         dstate = 7
 
-        deltaA = torch.randn(
-            (batch, hidden_dim, length, dstate), requires_grad=True, device=device
-        )
-        deltaB_u = torch.randn(
-            (batch, hidden_dim, length, dstate), requires_grad=True, device=device
-        )
+        deltaA = torch.randn((batch, hidden_dim, length, dstate), requires_grad=True, device=device)
+        deltaB_u = torch.randn((batch, hidden_dim, length, dstate), requires_grad=True, device=device)
         C = torch.randn((batch, dstate, length), requires_grad=True, device=device)
-        x = torch.randn(
-            (batch, hidden_dim, length, dstate), requires_grad=True, device=device
-        )
+        x = torch.randn((batch, hidden_dim, length, dstate), requires_grad=True, device=device)
         y = torch.randn((batch, hidden_dim, length), requires_grad=True, device=device)
         elements = (x, deltaA, deltaB_u, C, y)
 
@@ -4736,19 +4503,11 @@ class GraphModule(torch.nn.Module):
         length = 10
         dstate = 7
 
-        deltaA = torch.randn(
-            (batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE)
-        )
-        deltaB_u = torch.randn(
-            (batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE)
-        )
+        deltaA = torch.randn((batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE))
+        deltaB_u = torch.randn((batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE))
         C = torch.randn((batch, dstate, length), device=torch.device(DEVICE_TYPE))
-        x = torch.randn(
-            (batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE)
-        )
-        y = torch.randn(
-            (batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE)
-        )
+        x = torch.randn((batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE))
+        y = torch.randn((batch, hidden_dim, length, dstate), device=torch.device(DEVICE_TYPE))
         elements = (x, deltaA, deltaB_u, C, y)
 
         with self.assertRaisesRegex(
@@ -4776,9 +4535,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (params["combine_mode"] == "pointwise"),
     )
-    def test_associative_scan_freevars_simple(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_freevars_simple(self, compile_mode, combine_mode, reverse, device, autograd):
         H = torch.rand(2, device=device, requires_grad=autograd)
 
         def fct_freevars1(x: torch.Tensor, y: torch.Tensor):
@@ -4829,9 +4586,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (params["combine_mode"] == "pointwise"),
     )
-    def test_associative_scan_freevars_nested(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_freevars_nested(self, compile_mode, combine_mode, reverse, device, autograd):
         H1 = torch.rand(4, 5, device=device, requires_grad=autograd)
         H2 = torch.rand(4, 1, device=device, requires_grad=autograd)
 
@@ -4906,9 +4661,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (params["combine_mode"] == "pointwise"),
     )
-    def test_associative_scan_freevars_fct(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_freevars_fct(self, compile_mode, combine_mode, reverse, device, autograd):
         def additional_fct_no_add_inp(x, y):
             return x * y
 
@@ -4939,16 +4692,12 @@ class GraphModule(torch.nn.Module):
     @parametrize("reverse", [False, True])
     @parametrize("device", [torch.device("cpu"), torch.device(DEVICE_TYPE)])
     @parametrize("autograd", [False, True])
-    def test_associative_scan_freevars_fct_generic(
-        self, compile_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_freevars_fct_generic(self, compile_mode, reverse, device, autograd):
         def additional_fct_no_add_inp(x, y):
             return x * y
 
         def fct_nested_outside(x: torch.Tensor, y: torch.Tensor):
-            ret = associative_scan(
-                additional_fct_no_add_inp, y, 1, combine_mode="generic"
-            )
+            ret = associative_scan(additional_fct_no_add_inp, y, 1, combine_mode="generic")
             return x + ret
 
         def fct_nested_outside_fake(x: torch.Tensor, y: torch.Tensor):
@@ -4987,9 +4736,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (params["combine_mode"] == "pointwise"),
     )
-    def test_associative_scan_freevars_shape_check(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_freevars_shape_check(self, compile_mode, combine_mode, reverse, device, autograd):
         H = torch.eye(2, device=device, requires_grad=True)
 
         def fct_freevars(x: torch.Tensor, y: torch.Tensor):
@@ -5026,9 +4773,7 @@ class GraphModule(torch.nn.Module):
         unittest.skip,
         lambda params: (params["combine_mode"] == "pointwise"),
     )
-    def test_associative_scan_freevars_pytree(
-        self, compile_mode, combine_mode, reverse, device, autograd
-    ):
+    def test_associative_scan_freevars_pytree(self, compile_mode, combine_mode, reverse, device, autograd):
         xf = torch.randn(2, 2, device=device, requires_grad=autograd)
         yf = torch.randn(2, 2, device=device, requires_grad=autograd)
         zf = torch.randn(2, 2, device=device, requires_grad=autograd)
@@ -5039,12 +4784,7 @@ class GraphModule(torch.nn.Module):
                 "i": (x["i"] * y["i"]) + inpf["i"],
                 "j": (
                     [(x["j"][0][0] * y["j"][0][0]) + inpf["j"][0][0]],
-                    [
-                        {
-                            "o": (x["j"][1][0]["o"] + y["j"][1][0]["o"])
-                            + inpf["j"][1][0]["o"]
-                        }
-                    ],
+                    [{"o": (x["j"][1][0]["o"] + y["j"][1][0]["o"]) + inpf["j"][1][0]["o"]}],
                 ),
             }
 
@@ -5089,9 +4829,7 @@ class GraphModule(torch.nn.Module):
             )
         ),
     )
-    def test_associative_scan_partial_grad(
-        self, combine_mode, compile_mode, reverse, device
-    ):
+    def test_associative_scan_partial_grad(self, combine_mode, compile_mode, reverse, device):
         import random
 
         n_params = 6
@@ -5106,12 +4844,7 @@ class GraphModule(torch.nn.Module):
             return (*[xv * yv for xv, yv in zip(x, y)],)
 
         for a_grads in autograds:
-            inp = tuple(
-                [
-                    torch.randn(10, 3, 2, device=device, requires_grad=a_grads[n])
-                    for n in range(n_params)
-                ]
-            )
+            inp = tuple([torch.randn(10, 3, 2, device=device, requires_grad=a_grads[n]) for n in range(n_params)])
 
             kwargs = {
                 "dim": 0,
@@ -5149,18 +4882,14 @@ class GraphModule(torch.nn.Module):
             )
         ),
     )
-    def test_associative_scan_partial_grad_no_grad(
-        self, combine_mode, compile_mode, reverse, device
-    ):
+    def test_associative_scan_partial_grad_no_grad(self, combine_mode, compile_mode, reverse, device):
         def mul_single_nograd(x, y):
             xy1 = x[0] * y[0]
             with torch.no_grad():
                 xy2 = x[1] * y[1]
             return xy1, xy2
 
-        inp = tuple(
-            [torch.randn(10, 3, 2, device=device, requires_grad=True) for n in range(2)]
-        )
+        inp = tuple([torch.randn(10, 3, 2, device=device, requires_grad=True) for n in range(2)])
 
         kwargs = {
             "dim": 0,
@@ -5179,17 +4908,13 @@ class GraphModule(torch.nn.Module):
 
     @unittest.skipIf(not SM70OrLater, "triton")
     def test_associative_scan_sparse_tensor(self):
-        x = torch.tensor(
-            [[[0.0, 0], [1.0, 2.0]], [[0.0, 0], [3.0, 4.0]], [[0.0, 0], [5.0, 6.0]]]
-        ).to_sparse()
+        x = torch.tensor([[[0.0, 0], [1.0, 2.0]], [[0.0, 0], [3.0, 4.0]], [[0.0, 0], [5.0, 6.0]]]).to_sparse()
 
         with self.assertRaisesRegex(
             ValueError,
             "xs leaves must dense Tensors.*",
         ):
-            associative_scan(
-                get_scan_combine_fn("add", True), x, 0, combine_mode="generic"
-            )
+            associative_scan(get_scan_combine_fn("add", True), x, 0, combine_mode="generic")
 
     @unittest.skipIf(not SM70OrLater, "triton")
     @requires_accelerator
@@ -5202,11 +4927,7 @@ class GraphModule(torch.nn.Module):
             return (x + y).to(torch.int64)
 
         def fct_wrong_device(x, y):
-            return (x + y).to(
-                torch.device("cpu")
-                if device.type == DEVICE_TYPE
-                else torch.device(DEVICE_TYPE)
-            )
+            return (x + y).to(torch.device("cpu") if device.type == DEVICE_TYPE else torch.device(DEVICE_TYPE))
 
         def fct_wrong_stride(x, y):
             return (x + y).to(memory_format=torch.channels_last)
@@ -5345,9 +5066,7 @@ class TestControlFlowTraced(TestCase):
     def _check_export(self, fn, args, *, strict=False, dynamic_shapes=None):
         eg_out = fn(*args)
         with torch._export.config.patch(use_new_tracer_experimental=True):
-            ep = torch.export.export(
-                fn, args, strict=strict, dynamic_shapes=dynamic_shapes
-            )
+            ep = torch.export.export(fn, args, strict=strict, dynamic_shapes=dynamic_shapes)
         ep_out = ep.module()(*args)
         self.assertEqual(eg_out, ep_out)
         return ep
@@ -5704,8 +5423,7 @@ def forward(self, arg0_1):
     #   Since this is not the common use path, we skip them for now.
     @parametrize(
         "while_loop_test",
-        set(WHILE_LOOP_TESTS.keys())
-        - {"int_carry", "pytree_int_carry", "const_and_symint_output"},
+        set(WHILE_LOOP_TESTS.keys()) - {"int_carry", "pytree_int_carry", "const_and_symint_output"},
     )
     def test_while_loop_tracing(self, while_loop_test):
         fn, inp = WHILE_LOOP_TESTS[while_loop_test]
@@ -5863,18 +5581,10 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1, arg6_1, arg7_1
         x = torch.randn(4)
         graph = make_fx(f)(x, torch.tensor(False), torch.tensor(False))
 
-        result_true_true = graph.forward(
-            x, torch.tensor(True), torch.tensor(True)
-        )  # True + True -> x * x
-        result_true_false = graph.forward(
-            x, torch.tensor(True), torch.tensor(False)
-        )  # True + True -> x + x
-        result_false_true = graph.forward(
-            x, torch.tensor(False), torch.tensor(True)
-        )  # False + either -> cos
-        result_false_false = graph.forward(
-            x, torch.tensor(False), torch.tensor(False)
-        )  # False + either -> cos
+        result_true_true = graph.forward(x, torch.tensor(True), torch.tensor(True))  # True + True -> x * x
+        result_true_false = graph.forward(x, torch.tensor(True), torch.tensor(False))  # True + True -> x + x
+        result_false_true = graph.forward(x, torch.tensor(False), torch.tensor(True))  # False + either -> cos
+        result_false_false = graph.forward(x, torch.tensor(False), torch.tensor(False))  # False + either -> cos
 
         self.assertNotEqual(result_true_true, result_true_false)
         self.assertFalse(torch.allclose(result_false_true, result_true_true))
@@ -5886,9 +5596,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1, arg6_1, arg7_1
 
         self.assertEqual(result_false_true, torch.cos(x))
 
-        graph = make_fx(f, tracing_mode="symbolic")(
-            x, torch.tensor(False), torch.tensor(False)
-        )
+        graph = make_fx(f, tracing_mode="symbolic")(x, torch.tensor(False), torch.tensor(False))
         self.assertEqual(
             graph(x, torch.tensor(True), torch.tensor(True)),
             f(x, torch.tensor(True), torch.tensor(True)),
@@ -5911,9 +5619,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1, arg6_1, arg7_1
         functional_f = torch.func.functionalize(f)
         self.assertEqual(functional_f(*example_inputs), f(*example_inputs))
 
-        graph_module = make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-            *example_inputs
-        )
+        graph_module = make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
         self.assertEqual(graph_module(*example_inputs), f(*example_inputs))
 
         all_ops_in_true_branch = []
@@ -5976,9 +5682,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1):
 
         inp = torch.ones(1, 2)
         gm_non_functional = make_fx(f, tracing_mode="real")(inp)
-        gm_functional = make_fx(
-            torch.func.functionalize(gm_non_functional), tracing_mode="real"
-        )(inp)
+        gm_functional = make_fx(torch.func.functionalize(gm_non_functional), tracing_mode="real")(inp)
         self.assertEqual(gm_functional(torch.zeros(1, 2)), f(torch.zeros(1, 2)))
 
     def test_cond_subgraph_same_shape_env_as_parent(self):
@@ -5993,9 +5697,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1):
             z = torch.add(y, y)
             return z
 
-        symbolic_traced_graph = self._check_tracing(
-            f, (torch.ones(4), torch.Tensor([True]))
-        )["symbolic"]
+        symbolic_traced_graph = self._check_tracing(f, (torch.ones(4), torch.Tensor([True])))["symbolic"]
         graph_shape_env = symbolic_traced_graph.shape_env
 
         def _node_shape_env_iter(gm):
@@ -6043,9 +5745,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1, arg5_1):
         functional_f = torch.func.functionalize(f)
         self.assertEqual(functional_f(*example_inputs), f(*example_inputs))
 
-        graph_module = make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-            *example_inputs
-        )
+        graph_module = make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
         self.assertEqual(graph_module(*example_inputs), f(*example_inputs))
 
         gm_true_true_branch = graph_module.true_graph_0.true_graph_0
@@ -6114,9 +5814,7 @@ def forward(self, x_1):
             torch._dynamo.exc.TorchRuntimeError,
             "cond_true might be modifying the input!",
         ):
-            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-                *example_inputs
-            )
+            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
 
     def test_cond_functionalized_input_mutation_on_false_branch(self):
         def true_fn(x):
@@ -6155,9 +5853,7 @@ def forward(self, x_1):
             torch._dynamo.exc.TorchRuntimeError,
             "cond_false might be modifying the input!",
         ):
-            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-                *example_inputs
-            )
+            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
 
     def test_cond_functionalized_output_alias_input(self):
         def true_fn(x):
@@ -6192,9 +5888,7 @@ def forward(self, x_1):
             torch._dynamo.exc.UncapturedHigherOrderOpError,
             "Cond doesn't work unless it is captured completely with torch.compile.*",
         ):
-            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-                *example_inputs
-            )
+            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
 
     def test_cond_functionalized_nested_input_mutation(self):
         def true_true_fn(x):
@@ -6220,9 +5914,7 @@ def forward(self, x_1):
             torch._dynamo.exc.TorchRuntimeError,
             "cond_true might be modifying the input!",
         ):
-            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-                *example_inputs
-            )
+            make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
 
     def test_cond_functionalized_nested_input_mutation_with_aot_func(self):
         def true_true_fn(x):
@@ -6313,15 +6005,11 @@ def forward(self, x_1):
                 torch._enable_functionalization(reapply_views=False)
                 try:
                     func_args = pytree.tree_map(
-                        lambda x: torch._to_functional_tensor(x)
-                        if isinstance(x, torch.Tensor)
-                        else x,
+                        lambda x: torch._to_functional_tensor(x) if isinstance(x, torch.Tensor) else x,
                         args,
                     )
                     func_kwargs = pytree.tree_map(
-                        lambda x: torch._to_functional_tensor(x)
-                        if isinstance(x, torch.Tensor)
-                        else x,
+                        lambda x: torch._to_functional_tensor(x) if isinstance(x, torch.Tensor) else x,
                         kwargs,
                     )
                     return func(*func_args, **func_kwargs)
@@ -6367,9 +6055,7 @@ def forward(self, x_1):
                         lambda x: to_fun_old(x) if isinstance(x, torch.Tensor) else x,
                         kwargs,
                     )
-                    return pytree.tree_map(
-                        from_fun_old, func(*func_args, **func_kwargs)
-                    )
+                    return pytree.tree_map(from_fun_old, func(*func_args, **func_kwargs))
                 finally:
                     torch._disable_functionalization()
 
@@ -6531,22 +6217,12 @@ def forward(self, arg0_1):
             return cond(pred, true_fn, false_fn, [x, pred2])
 
         x = torch.randn(4)
-        graph = make_fx(f, tracing_mode="fake")(
-            x, torch.tensor(False), torch.tensor(False)
-        )
+        graph = make_fx(f, tracing_mode="fake")(x, torch.tensor(False), torch.tensor(False))
 
-        result_true_true = graph.forward(
-            x, torch.tensor(True), torch.tensor(True)
-        )  # True + True -> x * x
-        result_true_false = graph.forward(
-            x, torch.tensor(True), torch.tensor(False)
-        )  # True + True -> x + x
-        result_false_true = graph.forward(
-            x, torch.tensor(False), torch.tensor(True)
-        )  # False + either -> cos
-        result_false_false = graph.forward(
-            x, torch.tensor(False), torch.tensor(False)
-        )  # False + either -> cos
+        result_true_true = graph.forward(x, torch.tensor(True), torch.tensor(True))  # True + True -> x * x
+        result_true_false = graph.forward(x, torch.tensor(True), torch.tensor(False))  # True + True -> x + x
+        result_false_true = graph.forward(x, torch.tensor(False), torch.tensor(True))  # False + either -> cos
+        result_false_false = graph.forward(x, torch.tensor(False), torch.tensor(False))  # False + either -> cos
 
         self.assertNotEqual(result_true_true, result_true_false)
         self.assertFalse(torch.allclose(result_false_true, result_true_true))
@@ -6576,9 +6252,7 @@ def forward(self, arg0_1):
             return cond(pred, true_fn, false_fn, [k, pred2])
 
         x = torch.tensor([0.5, 0.5])
-        graph = make_fx(f, tracing_mode="fake")(
-            x, torch.tensor(False), torch.tensor(False)
-        )
+        graph = make_fx(f, tracing_mode="fake")(x, torch.tensor(False), torch.tensor(False))
 
         a = torch.tensor([1.0, 1.0])
         result_true_true = graph.forward(a, torch.tensor(True), torch.tensor(True))
@@ -6607,9 +6281,7 @@ def forward(self, arg0_1):
             return a_out + b_out
 
         x = torch.randn(4)
-        graph = make_fx(f, tracing_mode="fake")(
-            x, torch.tensor(False), torch.tensor(False)
-        )
+        graph = make_fx(f, tracing_mode="fake")(x, torch.tensor(False), torch.tensor(False))
 
         self.assertExpectedInline(
             graph.code.strip(),
@@ -6675,10 +6347,7 @@ def forward(self, arg0_1):
         i = 0
         for m in gm.modules():
             for node in m.graph.nodes:
-                if (
-                    node.op == "call_function"
-                    and node.target == torch.ops.higher_order.map_impl
-                ):
+                if node.op == "call_function" and node.target == torch.ops.higher_order.map_impl:
                     i += 1
         self.assertEqual(i, op_count)
 
@@ -6719,9 +6388,7 @@ def forward(self, arg0_1):
             return out[0] + z, out[1] * z
 
         example_x = [[torch.ones(3, 4, 5)], torch.ones(3, 4, 5)]
-        gm = make_fx(g, tracing_mode="symbolic")(
-            example_x, torch.ones(5), torch.ones(5)
-        )
+        gm = make_fx(g, tracing_mode="symbolic")(example_x, torch.ones(5), torch.ones(5))
         x = [[torch.randn(4, 5, 6)], torch.ones(4, 5, 6)]
         y = torch.randn(6)
         z = torch.ones(6)
@@ -6738,9 +6405,7 @@ def forward(self, arg0_1):
             return {"f": out["d"] + z, "g": out["e"] * z}
 
         example_x = {"b": {"a": torch.ones(3, 4, 5)}, "c": torch.ones(3, 4, 5)}
-        gm = make_fx(g, tracing_mode="symbolic")(
-            example_x, torch.ones(5), torch.ones(5)
-        )
+        gm = make_fx(g, tracing_mode="symbolic")(example_x, torch.ones(5), torch.ones(5))
         x = {"b": {"a": torch.randn(4, 5, 6)}, "c": torch.ones(4, 5, 6)}
         y = torch.randn(6)
         z = torch.ones(6)
@@ -6776,9 +6441,7 @@ def forward(self, arg0_1):
             flat_out = pytree.tree_leaves(out)
             flat_inp = pytree.tree_leaves((xs, y))
             requires_grad_inp = [inp for inp in flat_inp if inp.requires_grad]
-            return torch.autograd.grad(
-                flat_out, requires_grad_inp, [torch.ones_like(out) for out in flat_out]
-            )
+            return torch.autograd.grad(flat_out, requires_grad_inp, [torch.ones_like(out) for out in flat_out])
 
         gm = make_fx(g, tracing_mode="symbolic")(
             [torch.ones(3, 4, 5), torch.ones(3, 4, 5, requires_grad=True)],
@@ -6799,17 +6462,13 @@ def forward(self, arg0_1):
             flat_out = pytree.tree_leaves(out)
             flat_inp = pytree.tree_leaves((xs, y))
             requires_grad_inp = [inp for inp in flat_inp if inp.requires_grad]
-            return torch.autograd.grad(
-                flat_out, requires_grad_inp, [torch.ones_like(out) for out in flat_out]
-            )
+            return torch.autograd.grad(flat_out, requires_grad_inp, [torch.ones_like(out) for out in flat_out])
 
         traced_x = {
             "a": torch.ones(3, 4, 5, requires_grad=True),
             "b": torch.ones(3, 4, 5, requires_grad=True),
         }
-        gm = make_fx(g, tracing_mode="symbolic")(
-            traced_x, torch.ones(5, requires_grad=True)
-        )
+        gm = make_fx(g, tracing_mode="symbolic")(traced_x, torch.ones(5, requires_grad=True))
         x = {
             "a": torch.randn(4, 5, 6, requires_grad=True),
             "b": torch.ones(4, 5, 6, requires_grad=True),
@@ -6882,9 +6541,7 @@ def forward(self, arg0_1):
         gm = make_fx(torch.func.functionalize(f))(*example_inputs)
         self.assertEqual(gm(*example_inputs), f(*example_inputs))
 
-        gm = make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(
-            *example_inputs
-        )
+        gm = make_fx(torch.func.functionalize(f), tracing_mode="symbolic")(*example_inputs)
         self.assertEqual(gm(*example_inputs), f(*example_inputs))
 
         for node in gm.body_graph_0.graph.nodes:
@@ -6948,9 +6605,7 @@ def forward(self, arg0_1):
 
         example_inputs = (torch.ones(3, 2, 4), torch.ones(4))
         functional_f = torch.func.functionalize(f)
-        with self.assertRaisesRegex(
-            torch._dynamo.exc.TorchRuntimeError, "map might be modifying the input!"
-        ):
+        with self.assertRaisesRegex(torch._dynamo.exc.TorchRuntimeError, "map might be modifying the input!"):
             functional_f(*example_inputs)
 
     def test_cond_autograd_backward(self):
@@ -7108,9 +6763,7 @@ class GraphModule(torch.nn.Module):
         def g(pred, xs, y):
             return control_flow.map(f, xs, pred, y)
 
-        gm = make_fx(g, tracing_mode="real")(
-            torch.tensor(True), torch.ones(3, 2, 4), torch.ones(4)
-        )
+        gm = make_fx(g, tracing_mode="real")(torch.tensor(True), torch.ones(3, 2, 4), torch.ones(4))
         pred = torch.tensor(False)
         x = torch.randn(3, 2, 4)
         y = torch.randn(4)
@@ -7131,9 +6784,7 @@ class GraphModule(torch.nn.Module):
         def g(pred, xs, y):
             return control_flow.map(f, xs, pred, y)
 
-        gm = make_fx(g, tracing_mode="symbolic")(
-            torch.tensor(True), torch.ones(3, 2, 4), torch.ones(4)
-        )
+        gm = make_fx(g, tracing_mode="symbolic")(torch.tensor(True), torch.ones(3, 2, 4), torch.ones(4))
         pred = torch.tensor(False)
         x = torch.randn(3, 2, 2)
         y = torch.randn(2)
@@ -7246,21 +6897,15 @@ def forward(self, x_1):
         placeholder_cnts = [cnt_placeholder(mod) for mod in gm.children()]
         self.assertTrue(all(cnt == exp_arg_num for cnt in placeholder_cnts))
 
-    def _check_closure_correctly_lifted_with_mutation(
-        self, f, closures_to_be_mutated, *, args, exp_arg_num
-    ):
+    def _check_closure_correctly_lifted_with_mutation(self, f, closures_to_be_mutated, *, args, exp_arg_num):
         exp_res = f(*args)
-        self._check_closure_correctly_lifted(
-            f, args=args, exp_res=exp_res, exp_arg_num=exp_arg_num
-        )
+        self._check_closure_correctly_lifted(f, args=args, exp_res=exp_res, exp_arg_num=exp_arg_num)
 
         for closure in closures_to_be_mutated:
             closure.add(-1)
         new_exp_res = f(*args)
 
-        self._check_closure_correctly_lifted(
-            f, args=args, exp_res=new_exp_res, exp_arg_num=exp_arg_num
-        )
+        self._check_closure_correctly_lifted(f, args=args, exp_res=new_exp_res, exp_arg_num=exp_arg_num)
 
     def test_cond_with_tensor_closure(self):
         a = torch.ones(2, 3)
@@ -7277,9 +6922,7 @@ def forward(self, x_1):
 
         # expected branches takes [x, a, b] as input
         inp = torch.randn(2, 3)
-        self._check_closure_correctly_lifted_with_mutation(
-            foo, (a, b), args=(inp,), exp_arg_num=3
-        )
+        self._check_closure_correctly_lifted_with_mutation(foo, (a, b), args=(inp,), exp_arg_num=3)
 
     def test_cond_with_tensor_closure_graph_module(self):
         a = torch.ones(2, 3)
@@ -7326,9 +6969,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
         class Mod(torch.nn.Module):
             def __init__(self) -> None:
                 super().__init__()
-                self.register_parameter(
-                    "param", torch.nn.Parameter(torch.ones(2, 3), requires_grad=False)
-                )
+                self.register_parameter("param", torch.nn.Parameter(torch.ones(2, 3), requires_grad=False))
                 self.buffer = torch.nn.Buffer(torch.ones(2, 3) + 1)
 
         my_mode = Mod()
@@ -7364,9 +7005,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
         inp = torch.ones(2, 3)
         res = inp + 1
         # python scalar b is not lifted as input, so both branches take (x, a)
-        self._check_closure_correctly_lifted(
-            foo, args=(inp,), exp_res=res, exp_arg_num=2
-        )
+        self._check_closure_correctly_lifted(foo, args=(inp,), exp_res=res, exp_arg_num=2)
 
     def test_cond_nested_with_closure(self):
         a = torch.ones(1, 1)
@@ -7392,9 +7031,7 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
         # realize that the nonlocal variables are same for the true and false
         # branches, so it should de-dupe them.
         # For second-level conds, it takes (x, a, b)
-        self._check_closure_correctly_lifted_with_mutation(
-            foo, (a, b), args=(inp,), exp_arg_num=3
-        )
+        self._check_closure_correctly_lifted_with_mutation(foo, (a, b), args=(inp,), exp_arg_num=3)
 
     def test_cond_nested_with_closure_graph_module(self):
         a = torch.ones(1, 1)
@@ -7435,17 +7072,13 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
                         lambda x: to_fun_old(x) if isinstance(x, torch.Tensor) else x,
                         kwargs,
                     )
-                    return pytree.tree_map(
-                        from_fun_old, func(*func_args, **func_kwargs)
-                    )
+                    return pytree.tree_map(from_fun_old, func(*func_args, **func_kwargs))
                 finally:
                     torch._disable_functionalization()
 
             return wrapper
 
-        gm = make_fx(f_wrapper(map_fn))(
-            torch.tensor(True), torch.ones([2, 3], requires_grad=False)
-        )
+        gm = make_fx(f_wrapper(map_fn))(torch.tensor(True), torch.ones([2, 3], requires_grad=False))
         self.assertExpectedInline(
             gm.code.strip(),
             """\
@@ -7490,9 +7123,7 @@ def forward(self, arg0_1, arg1_1):
         checked_ops = {"add", "mul", "sin", "cos"}
         checked_meta = ["source_fn_stack", "stack_trace"]
         all_source_fns = collect_meta_for_filtered_nodes(gm, checked_ops, checked_meta)
-        new_source_fns = collect_meta_for_filtered_nodes(
-            new_gm, checked_ops, checked_meta
-        )
+        new_source_fns = collect_meta_for_filtered_nodes(new_gm, checked_ops, checked_meta)
         self.assertEqual(all_source_fns, new_source_fns)
 
     @unittest.skipIf(
@@ -7574,9 +7205,7 @@ def forward(self, arg0_1, arg1_1, arg2_1):
     return (add,)""",
             )
 
-    def _create_test_fns_for_cond(
-        self, pred, inner_most_fn, operands, closure_list, nested_level
-    ):
+    def _create_test_fns_for_cond(self, pred, inner_most_fn, operands, closure_list, nested_level):
         if nested_level == 0:
             if len(closure_list) > 0:
 
@@ -7645,23 +7274,17 @@ def forward(self, arg0_1, arg1_1, arg2_1):
     @parametrize("nOperands", [0, 1])
     @parametrize("nClosure", [0, 1])
     @parametrize("nesting", [0, 2])
-    def test_cond_tracing_with_valid_inputs(
-        self, predType, innerFnType, nOperands, nClosure, nesting
-    ):
+    def test_cond_tracing_with_valid_inputs(self, predType, innerFnType, nOperands, nClosure, nesting):
         pred = self._init_predicate(predType)
         inner_fn = self._init_fn(innerFnType)
         operands = [torch.ones(2, 3) + i for i in range(nOperands)]
         closure = [torch.ones(2, 3) - i for i in range(nClosure)]
-        args, fn = self._create_test_fns_for_cond(
-            pred, inner_fn, operands, closure, nesting
-        )
+        args, fn = self._create_test_fns_for_cond(pred, inner_fn, operands, closure, nesting)
         eager_res = fn(*args)
         for tracing_mode in ["symbolic", "fake", "real"]:
             # set _allow_non_fake_inputs = True to allow fake prop through closures
             with self.subTest(tracing_mode=tracing_mode):
-                gm = make_fx(
-                    fn, tracing_mode=tracing_mode, _allow_non_fake_inputs=True
-                )(*args)
+                gm = make_fx(fn, tracing_mode=tracing_mode, _allow_non_fake_inputs=True)(*args)
                 self.assertEqual(gm(*args), eager_res)
 
     @parametrize("predType", ["boolTensor"])
@@ -7674,9 +7297,7 @@ def forward(self, arg0_1, arg1_1, arg2_1):
         inner_fn = self._init_fn(innerFnType)
         operands = [torch.ones(2, 3) + i for i in range(nOperands)]
         closure = [torch.ones(2, 3) - i for i in range(nClosure)]
-        args, fn = self._create_test_fns_for_cond(
-            pred, inner_fn, operands, closure, nesting
-        )
+        args, fn = self._create_test_fns_for_cond(pred, inner_fn, operands, closure, nesting)
         eager_res = fn(*args)
         out = torch.vmap(fn)(*args)
         if nClosure == 0:
@@ -7711,9 +7332,7 @@ def forward(self, arg0_1, arg1_1, arg2_1):
         a = torch.arange(15).reshape(3, 5)
         b = torch.ones_like(a) + 3
         res = torch.vmap(fn, in_dims=(0, 0))(a, b)
-        expected = torch.tensor(
-            [[100, 101, 102, 103, 104], [4, 4, 4, 4, 4], [4, 4, 4, 4, 4]]
-        )
+        expected = torch.tensor([[100, 101, 102, 103, 104], [4, 4, 4, 4, 4], [4, 4, 4, 4, 4]])
         self.assertEqual(res.shape, (3, 5))
         self.assertEqual(expected, res)
 
@@ -7840,14 +7459,10 @@ def forward(self, arg0_1, arg1_1, arg2_1):
             def forward(self, inp: torch.Tensor, tmp: torch.Tensor) -> torch.Tensor:
                 return torch.cond(inp.sum() > 0, f, f, (inp, tmp))
 
-        with self.assertRaisesRegex(
-            RuntimeError, "cannot mutate tensors with frozen storage"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "cannot mutate tensors with frozen storage"):
             out = torch.compile(Mod(), backend="aot_eager")(inp, tmp)
 
-        with self.assertRaisesRegex(
-            RuntimeError, "cannot mutate tensors with frozen storage"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "cannot mutate tensors with frozen storage"):
             out = torch.compile(Mod(), backend="inductor")(inp, tmp)
 
         backend = EagerAndRecordGraphs()
@@ -7961,9 +7576,7 @@ def forward(self, s97 : torch.SymInt, L_a_ : torch.Tensor, L_b_ : torch.Tensor):
         example_inputs = torch.ones(5, 7, 4)
         example_init = torch.ones(5, 4)
         functional_f = torch.func.functionalize(f)
-        self.assertEqual(
-            functional_f(example_init, example_inputs), f(example_init, example_inputs)
-        )
+        self.assertEqual(functional_f(example_init, example_inputs), f(example_init, example_inputs))
 
     def test_scan_functionalized_elem_mutation(self):
         def add1(x, y):
@@ -8278,9 +7891,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor, L_add_closure_0_
                     # final_carry: (2, 8)
                     # outputs: (6, 8)
                     final_carry, outputs = scan_op(inner_combine, init, xs)
-                    return (final_carry.sum(0, keepdim=True) + outputs).sum(
-                        dim=0
-                    )  # (8,)
+                    return (final_carry.sum(0, keepdim=True) + outputs).sum(dim=0)  # (8,)
 
                 inner_results = torch.vmap(inner_fn)(init, xs)  # (4, 8)
                 new_carry = init + inner_results.mean(dim=0)  # (8,)
@@ -8322,9 +7933,7 @@ def forward(self, L_init_ : torch.Tensor, L_xs_ : torch.Tensor, L_add_closure_0_
                     # xs: 4, 2
                     # final_carry: 8
                     # outputs.sum(0): 8
-                    final_carry, outputs = _fake_scan(
-                        inner_combine_fake, carry_elem, xs_elem
-                    )
+                    final_carry, outputs = _fake_scan(inner_combine_fake, carry_elem, xs_elem)
                     return outputs.sum(0), final_carry
 
                 # result: (8,)
@@ -8408,11 +8017,7 @@ class GraphModule(torch.nn.Module):
         if backend == "eager":
             backend = EagerAndRecordGraphs()
         self._check_compile(m, args, dynamic=dynamic, backend=backend)
-        if (
-            isinstance(backend, EagerAndRecordGraphs)
-            and dynamic
-            and not TEST_WITH_CROSSREF
-        ):
+        if isinstance(backend, EagerAndRecordGraphs) and dynamic and not TEST_WITH_CROSSREF:
             self.assertEqual(len(backend.graphs), 1)
             self.assertExpectedInline(
                 normalize_gm(backend.graphs[0].print_readable(print_output=False)),
@@ -8699,11 +8304,7 @@ class GraphModule(torch.nn.Module):
         if backend == "eager":
             backend = EagerAndRecordGraphs()
         self._check_compile(m, args, dynamic=dynamic, backend=backend)
-        if (
-            isinstance(backend, EagerAndRecordGraphs)
-            and dynamic
-            and not TEST_WITH_CROSSREF
-        ):
+        if isinstance(backend, EagerAndRecordGraphs) and dynamic and not TEST_WITH_CROSSREF:
             self.assertEqual(len(backend.graphs), 1)
             self.assertExpectedInline(
                 normalize_gm(backend.graphs[0].print_readable(print_output=False)),
@@ -8778,9 +8379,7 @@ class GraphModule(torch.nn.Module):
                 def body_fn(c, x):
                     return c + 1, self.linear(x)
 
-                stacked_c, stacked_x = torch.ops.higher_order.while_loop_stack_output(
-                    cond_fn, body_fn, (c, x), tuple()
-                )
+                stacked_c, stacked_x = torch.ops.higher_order.while_loop_stack_output(cond_fn, body_fn, (c, x), tuple())
                 return stacked_c, stacked_x
 
         x = torch.randn(3, 3)
@@ -8846,11 +8445,7 @@ class GraphModule(torch.nn.Module):
             1,
         )
         self.assertEqual(
-            len(
-                backend.bw_graphs[0].graph.find_nodes(
-                    op="call_function", target=torch.ops.higher_order.while_loop
-                )
-            ),
+            len(backend.bw_graphs[0].graph.find_nodes(op="call_function", target=torch.ops.higher_order.while_loop)),
             1,
         )
         if not TEST_WITH_CROSSREF:
@@ -9017,12 +8612,8 @@ class GraphModule(torch.nn.Module):
 
     # Return the .module() graph str result of non-strict export
     def _check_export_ret_graph_str(self, fn, args, dynamic_shapes=None) -> str:
-        strict_ep = torch.export.export(
-            fn, args, dynamic_shapes=dynamic_shapes, strict=True
-        )
-        non_strict_ep = torch.export.export(
-            fn, args, dynamic_shapes=dynamic_shapes, strict=False
-        )
+        strict_ep = torch.export.export(fn, args, dynamic_shapes=dynamic_shapes, strict=True)
+        non_strict_ep = torch.export.export(fn, args, dynamic_shapes=dynamic_shapes, strict=False)
         eager_res = fn(*args)
         self.assertEqual(strict_ep.module()(*args), eager_res)
         self.assertEqual(non_strict_ep.module()(*args), eager_res)
@@ -9100,9 +8691,7 @@ class GraphModule(torch.nn.Module):
                 return torch.cond(x.sum() > 5, true_fn, false_fn, (x,))
 
         backend = EagerAndRecordGraphs()
-        _ = torch.compile(M(), backend=backend)(
-            torch.randn(3, 4), torch.randn(3, 4), torch.randn(3, 4)
-        )
+        _ = torch.compile(M(), backend=backend)(torch.randn(3, 4), torch.randn(3, 4), torch.randn(3, 4))
         self.assertEqual(len(backend.graphs), 1)
         gm = backend.graphs[0]
         subgraph_attr = gm.graph.find_nodes(op="get_attr")[0]
@@ -9132,9 +8721,7 @@ class GraphModule(torch.nn.Module):
         args = (torch.ones(3, 3), torch.ones(5), torch.ones(3, 3))
         model = M()
         dynamic_shapes = {"x": {0: Dim("d")}, "y": {0: Dim("d1")}, "z": {0: Dim("d")}}
-        non_strict_graph_str = self._check_export_ret_graph_str(
-            model, args, dynamic_shapes
-        )
+        non_strict_graph_str = self._check_export_ret_graph_str(model, args, dynamic_shapes)
         self.assertExpectedInline(
             non_strict_graph_str,
             """\
@@ -9197,9 +8784,7 @@ class GraphModule(torch.nn.Module):
         dynamic_shapes = {"x": {0: Dim("d")}, "y": {0: Dim("d1")}, "z": {0: Dim("d")}}
         _ = self._check_export_ret_graph_str(model, args, dynamic_shapes)
 
-    @skipIfTorchDynamo(
-        "Skip because _merge_output is not intended for dynamo to compile"
-    )
+    @skipIfTorchDynamo("Skip because _merge_output is not intended for dynamo to compile")
     def test_merge_output(self):
         from torch._higher_order_ops.cond import _merge_output
         from torch._subclasses.fake_tensor import FakeTensorMode
@@ -9311,15 +8896,11 @@ class GraphModule(torch.nn.Module):
         x, y, z = torch.randn(5, 4), torch.randn(5, 4), torch.randn(5, 4)
         out = m(x, y, z)
         if not (backend == "eager" and dynamic and not TEST_WITH_CROSSREF):
-            compiled_out = torch.compile(
-                m, backend=backend, dynamic=dynamic, fullgraph=True
-            )(x, y, z)
+            compiled_out = torch.compile(m, backend=backend, dynamic=dynamic, fullgraph=True)(x, y, z)
             self.assertEqual(compiled_out, out)
         else:
             bk = EagerAndRecordGraphs()
-            compiled_out = torch.compile(
-                m, backend=bk, dynamic=dynamic, fullgraph=True
-            )(x, y, z)
+            compiled_out = torch.compile(m, backend=bk, dynamic=dynamic, fullgraph=True)(x, y, z)
             self.assertEqual(compiled_out, out)
             self.assertExpectedInline(
                 normalize_gm(bk.graphs[0].print_readable(print_output=False)),
@@ -9376,17 +8957,13 @@ class GraphModule(torch.nn.Module):
             def forward(self, x, y):
                 def true_fn(x, y):
                     return (
-                        (x.swapaxes(-1, 0) + 1)
-                        .unsqueeze(1)
-                        .expand(-1, 5, -1, -1, -1, -1, -1),
+                        (x.swapaxes(-1, 0) + 1).unsqueeze(1).expand(-1, 5, -1, -1, -1, -1, -1),
                         torch.empty_strided((3, 3), (0, 1)),
                     )
 
                 def false_fn(x, y):
                     return (
-                        (y.swapaxes(-1, 0) + 1)
-                        .unsqueeze(1)
-                        .expand(-1, 4, -1, -1, -1, -1, -1),
+                        (y.swapaxes(-1, 0) + 1).unsqueeze(1).expand(-1, 4, -1, -1, -1, -1, -1),
                         torch.empty_strided((4, 5), (0, 1)),
                     )
 
@@ -9396,9 +8973,7 @@ class GraphModule(torch.nn.Module):
         m = M()
         x, y = torch.randn(1, 6, 1, 5, 4, 3), torch.randn(1, 4, 5, 1, 3, 8)
         out = m(x, y)
-        compiled_out = torch.compile(
-            m, backend=backend, dynamic=dynamic, fullgraph=True
-        )(x, y)
+        compiled_out = torch.compile(m, backend=backend, dynamic=dynamic, fullgraph=True)(x, y)
         self.assertEqual(compiled_out, out)
 
 
@@ -9427,9 +9002,7 @@ class TestHopSchema(TestCase):
 
             symbol = shape_env.create_symbol(
                 val,
-                source=ConstantSource(
-                    f"__testing_hop_schema{len(shape_env.var_to_val)}"
-                ),
+                source=ConstantSource(f"__testing_hop_schema{len(shape_env.var_to_val)}"),
             )
             return cls(SymNode(symbol, shape_env, pytype, hint=val))
 
@@ -9490,8 +9063,7 @@ class TestHopSchema(TestCase):
         from torchgen.gen_schema_utils import FunctionSchemaGen
 
         inps = [
-            (schema_type + "_v", self._get_example_val(schema_type))
-            for schema_type in _hop_schema_test_schema_types
+            (schema_type + "_v", self._get_example_val(schema_type)) for schema_type in _hop_schema_test_schema_types
         ]
         schema1 = FunctionSchemaGen.from_example("test_op1", inps, torch.ones(1))
         schema2 = FunctionSchemaGen.from_example(
@@ -9501,9 +9073,7 @@ class TestHopSchema(TestCase):
                 torch.ones(1),
             ],
         )
-        schema3 = FunctionSchemaGen.from_example(
-            "test_op3", inps, [torch.ones(1), torch.ones(1)]
-        )
+        schema3 = FunctionSchemaGen.from_example("test_op3", inps, [torch.ones(1), torch.ones(1)])
         self.assertExpectedInline(
             str(schema1),
             """test_op1(bool bool_v, int int_v, float float_v, str str_v, Tensor Tensor_v, SymInt SymInt_v, SymBool SymBool_v, GraphModule GraphModule_v, __torch__.torch.classes._Foo ScriptObj_v) -> Tensor""",  # noqa: B950
@@ -9523,18 +9093,14 @@ class TestHopSchema(TestCase):
     def test_schema_tree_spec(self):
         schema_gen = HopSchemaGenerator(torch.ops.higher_order.cond)
         args = (torch.randn(3, 4), torch.randn(2, 3))
-        with self.assertRaisesRegex(
-            RuntimeError, "Please only add flattened inputs to the hop schema"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Please only add flattened inputs to the hop schema"):
             schema_gen.add_arg("tuple_args", args)
 
         for i, arg in enumerate(args):
             schema_gen.add_arg(f"tuple_args{i}", arg)
         schema_gen.add_schema_tree_spec(pytree.tree_flatten(args)[1])
         flat_schema = schema_gen.gen_schema()
-        self.assertExpectedInline(
-            str(flat_schema), """cond(Tensor tuple_args0, Tensor tuple_args1) -> ()"""
-        )
+        self.assertExpectedInline(str(flat_schema), """cond(Tensor tuple_args0, Tensor tuple_args1) -> ()""")
 
     def test_cond_gen_schema_tensor_inputs(self):
         schema = torch.ops.higher_order.cond.gen_schema(

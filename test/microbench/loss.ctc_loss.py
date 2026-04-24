@@ -26,9 +26,7 @@ def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
     target_lengths_dpcpp = target_lengths.to("xpu")
 
     # warm up
-    loss_dpcpp = torch.nn.functional.ctc_loss(
-        log_probs_dpcpp, targets_dpcpp, input_lengths_dpcpp, target_lengths_dpcpp
-    )
+    loss_dpcpp = torch.nn.functional.ctc_loss(log_probs_dpcpp, targets_dpcpp, input_lengths_dpcpp, target_lengths_dpcpp)
     loss_dpcpp.backward()
 
     # go
@@ -40,9 +38,7 @@ def _test_loss_ctc(log_probs, targets, input_lengths, target_lengths, dtype):
         "; backward:",
         backward,
     )
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-    ) as prof:
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
         for i in range(num_iter):
             loss_dpcpp = torch.nn.functional.ctc_loss(
                 log_probs_dpcpp,
@@ -76,9 +72,7 @@ for shape in shape_list:
         g_cpu = torch.Generator()
         g_cpu.manual_seed(15)
         torch.manual_seed(15)
-        log_probs = (
-            torch.randn(T, N, C, dtype=dtype).log_softmax(2).detach().requires_grad_()
-        )
+        log_probs = torch.randn(T, N, C, dtype=dtype).log_softmax(2).detach().requires_grad_()
         targets = torch.randint(1, N, (N, S), dtype=torch.long, generator=g_cpu)
         input_lengths = torch.full((N,), T, dtype=torch.long)
         target_lengths = torch.randint(1, S, (N,), dtype=torch.long, generator=g_cpu)

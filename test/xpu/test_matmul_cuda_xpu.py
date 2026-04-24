@@ -75,9 +75,7 @@ def xfailIfSM100OrLaterNonRTXAndCondition(condition_fn):
     Conditionally xfail tests on SM100+ datacenter SKUs based on a condition function.
     The condition function receives the test parameters dict and returns True to xfail.
     """
-    computeCapabilityCheck = (
-        SM100OrLater and torch.cuda.get_device_capability()[0] != 12
-    )
+    computeCapabilityCheck = SM100OrLater and torch.cuda.get_device_capability()[0] != 12
     return decorateIf(
         unittest.expectedFailure,
         lambda params: computeCapabilityCheck and condition_fn(params),
@@ -123,22 +121,14 @@ class TestMatmulCuda(InductorTestCase):
         orig_bf16 = torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction
         orig_fp16 = torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction
         orig_fp16_accumulate = torch.backends.cuda.matmul.allow_fp16_accumulation
-        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = (
-            reduced_precision
-        )
-        torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = (
-            reduced_precision
-        )
+        torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction = reduced_precision
+        torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = reduced_precision
         torch.backends.cuda.matmul.allow_fp16_accumulation = fp16_accumulate
         # Make random tensors on CPU (seed set on common_utils.py import)
         # (Not using numpy because it does not support bfloat16)
         make_arg = partial(make_tensor, dtype=dtype, device="cpu")
 
-        bias_shape_modifier = (
-            (lambda shape: shape)
-            if bias_shape_modifier is None
-            else bias_shape_modifier
-        )
+        bias_shape_modifier = (lambda shape: shape) if bias_shape_modifier is None else bias_shape_modifier
         m_input = make_arg(bias_shape_modifier((m, n)))
         m_1 = make_arg((m, k))
         m_2 = make_arg((k, n))
@@ -204,15 +194,12 @@ class TestMatmulCuda(InductorTestCase):
                 and dtype == torch.float16
                 and size >= 10000
             ):
-                self.skipTest(
-                    f"failed on Navi for ROCm6.3 due to hipblas backend, dtype={dtype} and size={size}"
-                )
+                self.skipTest(f"failed on Navi for ROCm6.3 due to hipblas backend, dtype={dtype} and size={size}")
             self.cublas_addmm(size, dtype, False)
 
     @onlyCUDA
     @xfailIfSM100OrLaterNonRTXAndCondition(
-        lambda params: params.get("dtype") == torch.bfloat16
-        and params.get("size") == 10000
+        lambda params: params.get("dtype") == torch.bfloat16 and params.get("size") == 10000
     )
     # imported 'tol' as 'xtol' to avoid aliasing in code above
     @toleranceOverride(
@@ -224,9 +211,7 @@ class TestMatmulCuda(InductorTestCase):
     @dtypes(torch.float16, torch.bfloat16)
     @parametrize("size", [100, 1000, 10000])
     @parametrize("backend", ["cublas", "cublaslt"])
-    def test_cublas_addmm_reduced_precision(
-        self, size: int, dtype: torch.dtype, backend
-    ):
+    def test_cublas_addmm_reduced_precision(self, size: int, dtype: torch.dtype, backend):
         with blas_library_context(backend):
             self.cublas_addmm(size, dtype, True)
 
@@ -247,13 +232,9 @@ class TestMatmulCuda(InductorTestCase):
             # 2D bias
             self.cublas_addmm(size, dtype, bias_shape_modifier=lambda shape: shape)
             # 1D bias which is row-broadcast to 2D
-            self.cublas_addmm(
-                size, dtype, bias_shape_modifier=lambda shape: (1, shape[-1])
-            )
+            self.cublas_addmm(size, dtype, bias_shape_modifier=lambda shape: (1, shape[-1]))
             # 1D bias which row-broadcasts
-            self.cublas_addmm(
-                size, dtype, bias_shape_modifier=lambda shape: (shape[-1],)
-            )
+            self.cublas_addmm(size, dtype, bias_shape_modifier=lambda shape: (shape[-1],))
 
     @onlyCUDA
     @dtypes(torch.float16)
@@ -262,14 +243,10 @@ class TestMatmulCuda(InductorTestCase):
     @parametrize("small_size", [4, 8])
     @parametrize("size", [32768])
     @parametrize("backend", ["cublaslt", "cublas"])
-    def test_cublas_addmm_no_reduced_precision(
-        self, small_size: int, size: int, dtype: torch.dtype, backend
-    ):
+    def test_cublas_addmm_no_reduced_precision(self, small_size: int, size: int, dtype: torch.dtype, backend):
         with blas_library_context(backend):
             torch.backends.cuda.preferred_blas_library(backend)
-            orig_precision = (
-                torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction
-            )
+            orig_precision = torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction
             torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
             m1 = torch.full((small_size, size), 65504.0, dtype=dtype, device="cuda")
             m2 = torch.ones((size, small_size), dtype=dtype, device="cuda")
@@ -277,9 +254,7 @@ class TestMatmulCuda(InductorTestCase):
             b = torch.zeros((small_size,), dtype=dtype, device="cuda")
             out = torch.addmm(b, m1, m2, beta=1.0)
             self.assertEqual(out.sum().item(), 0.0)
-            torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = (
-                orig_precision
-            )
+            torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = orig_precision
 
     @onlyCUDA
     # imported 'tol' as 'xtol' to avoid aliasing in code above
@@ -292,9 +267,7 @@ class TestMatmulCuda(InductorTestCase):
     @dtypes(torch.float16, torch.bfloat16)
     @parametrize("size", [100, 1000, 10000])
     @parametrize("backend", ["cublas", "cublaslt"])
-    def test_cublas_addmm_reduced_precision_fp16_accumulate(
-        self, size: int, dtype: torch.dtype, backend
-    ):
+    def test_cublas_addmm_reduced_precision_fp16_accumulate(self, size: int, dtype: torch.dtype, backend):
         with blas_library_context(backend):
             self.cublas_addmm(size, dtype, False, True)
 
@@ -343,9 +316,7 @@ class TestMatmulCuda(InductorTestCase):
                     device=device,
                 )
                 X = X[x_offset:].reshape(26, 1, 2560)
-                B = torch.rand(
-                    (5120 + b_offset), requires_grad=True, dtype=dtype, device=device
-                )
+                B = torch.rand((5120 + b_offset), requires_grad=True, dtype=dtype, device=device)
                 B = B[b_offset:].reshape(5120)
                 out = torch.nn.functional.linear(X, A, B)
                 self.assertEqual(out, torch.matmul(X, A.transpose(1, 0)) + B)
@@ -353,13 +324,7 @@ class TestMatmulCuda(InductorTestCase):
     @onlyOn(["cuda", "xpu"])
     @unittest.skipIf(IS_JETSON, "Too large for Jetson")
     @toleranceOverride({torch.float32: xtol(atol=1e-5, rtol=1.1e-5)})
-    @dtypes(
-        *(
-            [torch.float32, torch.float16] + [torch.bfloat16]
-            if TEST_WITH_ROCM or SM53OrLater or TEST_XPU
-            else []
-        )
-    )
+    @dtypes(*([torch.float32, torch.float16] + [torch.bfloat16] if TEST_WITH_ROCM or SM53OrLater or TEST_XPU else []))
     @parametrize(
         "batch_size, N, M, P",
         [
@@ -391,13 +356,9 @@ class TestMatmulCuda(InductorTestCase):
         # test multiply the identity matrix
         if N == M and M == P:
             M2_eye = torch.eye(N, device=device, dtype=dtype)
-            out1_eye_gpu = torch.nn.functional.linear(
-                M1, M2_eye.t(), torch.zeros_like(A)
-            )
+            out1_eye_gpu = torch.nn.functional.linear(M1, M2_eye.t(), torch.zeros_like(A))
             if runOnRocmArch(MI200_ARCH) and dtype == torch.float16:
-                self.assertEqual(
-                    M1_cpu.to(dtype=dtype), out1_eye_gpu.cpu(), atol=1e-4, rtol=0.001
-                )
+                self.assertEqual(M1_cpu.to(dtype=dtype), out1_eye_gpu.cpu(), atol=1e-4, rtol=0.001)
             else:
                 self.assertEqual(M1_cpu.to(dtype=dtype), out1_eye_gpu.cpu())
 
@@ -406,25 +367,17 @@ class TestMatmulCuda(InductorTestCase):
             return t.expand((batch_size,) + t.size())
 
         alpha, beta = 1.0, 1.0
-        M1, M2, A, M1_cpu, M2_cpu, A_cpu = map(
-            _expand_to_batch, [M1, M2, A, M1_cpu, M2_cpu, A_cpu]
-        )
+        M1, M2, A, M1_cpu, M2_cpu, A_cpu = map(_expand_to_batch, [M1, M2, A, M1_cpu, M2_cpu, A_cpu])
 
-        out2_cpu = torch.baddbmm(A_cpu, M1_cpu, M2_cpu, beta=beta, alpha=alpha).to(
-            dtype=dtype
-        )
+        out2_cpu = torch.baddbmm(A_cpu, M1_cpu, M2_cpu, beta=beta, alpha=alpha).to(dtype=dtype)
         out2_gpu = torch.baddbmm(A, M1, M2, beta=beta, alpha=alpha).cpu()
         self.assertEqual(out2_cpu, out2_gpu)
         # test multiply the identity matrix
         if N == M and M == P:
             M2_eye = torch.eye(N, device=device, dtype=dtype).expand(batch_size, N, N)
-            out2_eye_gpu = torch.baddbmm(
-                torch.zeros_like(A), M1, M2_eye, beta=beta, alpha=alpha
-            )
+            out2_eye_gpu = torch.baddbmm(torch.zeros_like(A), M1, M2_eye, beta=beta, alpha=alpha)
             if runOnRocmArch(MI200_ARCH) and dtype == torch.float16:
-                self.assertEqual(
-                    M1_cpu.to(dtype=dtype), out2_eye_gpu.cpu(), atol=1e-4, rtol=0.001
-                )
+                self.assertEqual(M1_cpu.to(dtype=dtype), out2_eye_gpu.cpu(), atol=1e-4, rtol=0.001)
             else:
                 self.assertEqual(M1_cpu.to(dtype=dtype), out2_eye_gpu.cpu())
 
@@ -442,9 +395,7 @@ class TestMatmulCuda(InductorTestCase):
             self.assertEqual(first, torch.matmul(inp, inp), atol=0.0, rtol=0.0)
 
     def grouped_mm_helper(self, alist, blist, gOlist, agradlist, bgradlist, outlist):
-        for a, b, gO, agrad, bgrad, out in zip(
-            alist, blist, gOlist, agradlist, bgradlist, outlist
-        ):
+        for a, b, gO, agrad, bgrad, out in zip(alist, blist, gOlist, agradlist, bgradlist, outlist):
             a = a.clone().detach().requires_grad_()
             b = b.clone().detach().requires_grad_()
             out_ref = torch.mm(a, b.t())
@@ -457,9 +408,7 @@ class TestMatmulCuda(InductorTestCase):
     @onlyCUDA
     @skipIfRocm
     @dtypes(torch.half, torch.bfloat16)
-    @unittest.skipIf(
-        not SM100OrLater, "cuBLAS integration for batch invariance is only on Blackwell"
-    )
+    @unittest.skipIf(not SM100OrLater, "cuBLAS integration for batch invariance is only on Blackwell")
     @serialTest()
     def test_cublas_batch_invariance_blackwell(self, device, dtype):
         orig_bf16 = torch.backends.cuda.matmul.allow_bf16_reduced_precision_reduction
@@ -494,22 +443,14 @@ class TestMatmulCuda(InductorTestCase):
         device = "cuda"
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
-            a = torch.randn(
-                m, k * n_groups + k * int(strided), device=device, dtype=dtype
-            )[:, : k * n_groups]
+            a = torch.randn(m, k * n_groups + k * int(strided), device=device, dtype=dtype)[:, : k * n_groups]
         else:
-            a = torch.randn(
-                k * n_groups + k * int(strided), m, device=device, dtype=dtype
-            ).t()[:, : k * n_groups]
+            a = torch.randn(k * n_groups + k * int(strided), m, device=device, dtype=dtype).t()[:, : k * n_groups]
 
         if b_row_major:
-            b = torch.randn(
-                n, k * n_groups + k * int(strided), device=device, dtype=dtype
-            )[:, : k * n_groups]
+            b = torch.randn(n, k * n_groups + k * int(strided), device=device, dtype=dtype)[:, : k * n_groups]
         else:
-            b = torch.randn(
-                k * n_groups + k * int(strided), n, device=device, dtype=dtype
-            ).t()[:, : k * n_groups]
+            b = torch.randn(k * n_groups + k * int(strided), n, device=device, dtype=dtype).t()[:, : k * n_groups]
 
         a.requires_grad_(True)
         b.requires_grad_(True)
@@ -540,22 +481,18 @@ class TestMatmulCuda(InductorTestCase):
         s_int = int(strided)
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
-            a = torch.randn(m * n_groups, k * (1 + s_int), device=device, dtype=dtype)[
-                :, :k
-            ]
+            a = torch.randn(m * n_groups, k * (1 + s_int), device=device, dtype=dtype)[:, :k]
         else:
-            a = torch.randn(
-                k, (m + 2 * s_int) * n_groups, device=device, dtype=dtype
-            ).t()[: m * n_groups, :]
+            a = torch.randn(k, (m + 2 * s_int) * n_groups, device=device, dtype=dtype).t()[: m * n_groups, :]
 
         if b_row_major:
-            b = torch.randn(
-                n_groups * (1 + s_int), n, k * (1 + s_int), device=device, dtype=dtype
-            )[:: (1 + s_int), :, :k]
+            b = torch.randn(n_groups * (1 + s_int), n, k * (1 + s_int), device=device, dtype=dtype)[
+                :: (1 + s_int), :, :k
+            ]
         else:
-            b = torch.randn(
-                n_groups * (1 + s_int), k * (1 + s_int), n, device=device, dtype=dtype
-            ).transpose(-2, -1)[:: (1 + s_int), :, :k]
+            b = torch.randn(n_groups * (1 + s_int), k * (1 + s_int), n, device=device, dtype=dtype).transpose(-2, -1)[
+                :: (1 + s_int), :, :k
+            ]
 
         a.requires_grad_(True)
         b.requires_grad_(True)
@@ -570,9 +507,7 @@ class TestMatmulCuda(InductorTestCase):
 
             a.grad = None
             b.grad = None
-            offs = torch.arange(
-                m, n_groups * m + 1, m, device=device, dtype=torch.int32
-            )
+            offs = torch.arange(m, n_groups * m + 1, m, device=device, dtype=torch.int32)
             if check_zero_size:
                 offs[0] = offs[1]
 
@@ -587,9 +522,7 @@ class TestMatmulCuda(InductorTestCase):
             start = 0
             for i in range(n_groups):
                 alist.append(a[start : offs_cpu[i]])
-                agradlist.append(
-                    None if check_zero_size else a.grad[start : offs_cpu[i]]
-                )
+                agradlist.append(None if check_zero_size else a.grad[start : offs_cpu[i]])
                 outlist.append(out[start : offs_cpu[i]])
                 gOlist.append(gO[start : offs_cpu[i]])
                 start = offs_cpu[i]
@@ -605,21 +538,21 @@ class TestMatmulCuda(InductorTestCase):
         s_int = int(strided)
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
-            a = torch.randn(
-                n_groups * (1 + s_int), m, k * (1 + s_int), device=device, dtype=dtype
-            )[:: (1 + s_int), :, :k]
+            a = torch.randn(n_groups * (1 + s_int), m, k * (1 + s_int), device=device, dtype=dtype)[
+                :: (1 + s_int), :, :k
+            ]
         else:
-            a = torch.randn(
-                n_groups * (1 + s_int), k * (1 + s_int), m, device=device, dtype=dtype
-            ).transpose(-2, -1)[:: (1 + s_int), :, :k]
+            a = torch.randn(n_groups * (1 + s_int), k * (1 + s_int), m, device=device, dtype=dtype).transpose(-2, -1)[
+                :: (1 + s_int), :, :k
+            ]
         if b_row_major:
-            b = torch.randn(
-                n_groups * (1 + s_int), n, k * (1 + s_int), device=device, dtype=dtype
-            )[:: (1 + s_int), :, :k]
+            b = torch.randn(n_groups * (1 + s_int), n, k * (1 + s_int), device=device, dtype=dtype)[
+                :: (1 + s_int), :, :k
+            ]
         else:
-            b = torch.randn(
-                n_groups * (1 + s_int), k * (1 + s_int), n, device=device, dtype=dtype
-            ).transpose(-2, -1)[:: (1 + s_int), :, :k]
+            b = torch.randn(n_groups * (1 + s_int), k * (1 + s_int), n, device=device, dtype=dtype).transpose(-2, -1)[
+                :: (1 + s_int), :, :k
+            ]
         a.requires_grad_(True)
         b.requires_grad_(True)
 
@@ -644,21 +577,17 @@ class TestMatmulCuda(InductorTestCase):
         s_int = int(strided)
         m, n, k, n_groups = 16, 32, 64, 4
         if a_row_major:
-            a = torch.randn(
-                n_groups * (1 + s_int), m, k * (1 + s_int), device=device, dtype=dtype
-            )[:: (1 + s_int), :, :k]
-        else:
-            a = torch.randn(
-                n_groups * (1 + s_int), k * (1 + s_int), m, device=device, dtype=dtype
-            ).transpose(-2, -1)[:: (1 + s_int), :, :k]
-        if b_row_major:
-            b = torch.randn(n * n_groups, k * (1 + s_int), device=device, dtype=dtype)[
-                :, :k
+            a = torch.randn(n_groups * (1 + s_int), m, k * (1 + s_int), device=device, dtype=dtype)[
+                :: (1 + s_int), :, :k
             ]
         else:
-            b = torch.randn(
-                k, n * (n_groups + s_int), device=device, dtype=dtype
-            ).transpose(-2, -1)[: n * n_groups, :]
+            a = torch.randn(n_groups * (1 + s_int), k * (1 + s_int), m, device=device, dtype=dtype).transpose(-2, -1)[
+                :: (1 + s_int), :, :k
+            ]
+        if b_row_major:
+            b = torch.randn(n * n_groups, k * (1 + s_int), device=device, dtype=dtype)[:, :k]
+        else:
+            b = torch.randn(k, n * (n_groups + s_int), device=device, dtype=dtype).transpose(-2, -1)[: n * n_groups, :]
 
         a.requires_grad_(True)
         b.requires_grad_(True)
@@ -671,9 +600,7 @@ class TestMatmulCuda(InductorTestCase):
             if check_zero_size and n_groups <= 1:
                 continue
 
-            offs = torch.arange(
-                n, n_groups * n + 1, n, device=device, dtype=torch.int32
-            )
+            offs = torch.arange(n, n_groups * n + 1, n, device=device, dtype=torch.int32)
             if check_zero_size:
                 offs[0] = offs[1]
 
@@ -730,9 +657,7 @@ class TestMatmulCuda(InductorTestCase):
             if not a_row_major and not b_row_major:
                 offs = torch.tensor([0, 1, 6, 6, 7], device=device, dtype=dtype_offset)
             else:
-                offs = torch.tensor(
-                    [0, 8, 16, 16, 27], device=device, dtype=dtype_offset
-                )
+                offs = torch.tensor([0, 8, 16, 16, 27], device=device, dtype=dtype_offset)
             ngroups = offs.shape[0]
             k = offs[-1]
             k_align = (k + align - 1) // align * align
@@ -755,9 +680,7 @@ class TestMatmulCuda(InductorTestCase):
             if a_row_major:
                 offs = torch.tensor([0, 1, 3, 3, 5], device=device, dtype=dtype_offset)
             else:
-                offs = torch.tensor(
-                    [0, 8, 16, 16, 19], device=device, dtype=dtype_offset
-                )
+                offs = torch.tensor([0, 8, 16, 16, 19], device=device, dtype=dtype_offset)
             ngroups = offs.shape[0]
             m = offs[-1]
             m_align = (m + align - 1) // align * align
@@ -767,13 +690,9 @@ class TestMatmulCuda(InductorTestCase):
             else:
                 A = torch.randn(k, m_align, device=device, dtype=dtype_AB).t()[:m, :]
             if b_row_major:
-                B = torch.randn(ngroups, n, k_align, device=device, dtype=dtype_AB)[
-                    :, :, :k
-                ]
+                B = torch.randn(ngroups, n, k_align, device=device, dtype=dtype_AB)[:, :, :k]
             else:
-                B = torch.randn(
-                    ngroups, k, n_align, device=device, dtype=dtype_AB
-                ).transpose(-2, -1)[:, :n, :]
+                B = torch.randn(ngroups, k, n_align, device=device, dtype=dtype_AB).transpose(-2, -1)[:, :n, :]
         elif op == "3d/2d":
             m, k = 3, 13
             m_align = (m + align - 1) // align * align
@@ -784,13 +703,9 @@ class TestMatmulCuda(InductorTestCase):
             n_align = (n + align - 1) // align * align
 
             if a_row_major:
-                A = torch.randn(ngroups, m, k_align, device=device, dtype=dtype_AB)[
-                    :, :, :k
-                ]
+                A = torch.randn(ngroups, m, k_align, device=device, dtype=dtype_AB)[:, :, :k]
             else:
-                A = torch.randn(
-                    ngroups, k, m_align, device=device, dtype=dtype_AB
-                ).transpose(-2, -1)[:, :m, :]
+                A = torch.randn(ngroups, k, m_align, device=device, dtype=dtype_AB).transpose(-2, -1)[:, :m, :]
             if b_row_major:
                 B = torch.randn(n, k_align, device=device, dtype=dtype_AB)[:, :k]
             else:
@@ -803,29 +718,19 @@ class TestMatmulCuda(InductorTestCase):
             n_align = (n + align - 1) // align * align
             k_align = (k + align - 1) // align * align
             if a_row_major:
-                A = torch.randn(ngroups, m, k_align, device=device, dtype=dtype_AB)[
-                    :, :, :k
-                ]
+                A = torch.randn(ngroups, m, k_align, device=device, dtype=dtype_AB)[:, :, :k]
             else:
-                A = torch.randn(
-                    ngroups, k, m_align, device=device, dtype=dtype_AB
-                ).transpose(-2, -1)[:, :m, :]
+                A = torch.randn(ngroups, k, m_align, device=device, dtype=dtype_AB).transpose(-2, -1)[:, :m, :]
             if b_row_major:
-                B = torch.randn(ngroups, n, k_align, device=device, dtype=dtype_AB)[
-                    :, :, :k
-                ]
+                B = torch.randn(ngroups, n, k_align, device=device, dtype=dtype_AB)[:, :, :k]
             else:
-                B = torch.randn(
-                    ngroups, k, n_align, device=device, dtype=dtype_AB
-                ).transpose(-2, -1)[:, :n, :]
+                B = torch.randn(ngroups, k, n_align, device=device, dtype=dtype_AB).transpose(-2, -1)[:, :n, :]
         else:
             raise AssertionError(f"Invalid op: {op}")
 
         C_ref = f_ref(A, B.transpose(-2, -1), offs=offs)
         if not IS_BIG_GPU and max_autotune:
-            with self.assertRaisesRegex(
-                torch._inductor.exc.InductorError, "NoValidChoicesError"
-            ):
+            with self.assertRaisesRegex(torch._inductor.exc.InductorError, "NoValidChoicesError"):
                 C = f(A, B.transpose(-2, -1), offs=offs)
         else:
             C = f(A, B.transpose(-2, -1), offs=offs)
@@ -845,21 +750,9 @@ class TestMatmulCuda(InductorTestCase):
                 raise unittest.SkipTest(msg)
             if input_dtype == torch.bfloat16 and N == 1 and K == 64 and batch_size:
                 raise unittest.SkipTest(msg)
-            if (
-                input_dtype == torch.float16
-                and M == 32
-                and N == 1
-                and K == 64
-                and batch_size == 1
-            ):
+            if input_dtype == torch.float16 and M == 32 and N == 1 and K == 64 and batch_size == 1:
                 raise unittest.SkipTest(msg)
-            if (
-                input_dtype == torch.float16
-                and M == 64
-                and N == 1
-                and K == 64
-                and batch_size == 1
-            ):
+            if input_dtype == torch.float16 and M == 64 and N == 1 and K == 64 and batch_size == 1:
                 raise unittest.SkipTest(msg)
 
         device = "cuda"
@@ -899,18 +792,10 @@ class TestMatmulCuda(InductorTestCase):
                 else:
                     if batch_size:
                         out = torch.bmm(a, b, out_dtype=output_dtype)
-                        baseline = (
-                            torch.bmm(a_fp32, b_fp32)
-                            if output_dtype == torch.float32
-                            else torch.bmm(a, b)
-                        )
+                        baseline = torch.bmm(a_fp32, b_fp32) if output_dtype == torch.float32 else torch.bmm(a, b)
                     else:
                         out = torch.mm(a, b, out_dtype=output_dtype)
-                        baseline = (
-                            torch.mm(a_fp32, b_fp32)
-                            if output_dtype == torch.float32
-                            else torch.mm(a, b)
-                        )
+                        baseline = torch.mm(a_fp32, b_fp32) if output_dtype == torch.float32 else torch.mm(a, b)
 
                     self.assertEqual(out.dtype, output_dtype)
 
@@ -942,21 +827,9 @@ class TestMatmulCuda(InductorTestCase):
                 raise unittest.SkipTest(msg)
             if input_dtype == torch.bfloat16 and N == 1 and K == 64 and batch_size:
                 raise unittest.SkipTest(msg)
-            if (
-                input_dtype == torch.float16
-                and M == 32
-                and N == 1
-                and K == 64
-                and batch_size == 1
-            ):
+            if input_dtype == torch.float16 and M == 32 and N == 1 and K == 64 and batch_size == 1:
                 raise unittest.SkipTest(msg)
-            if (
-                input_dtype == torch.float16
-                and M == 64
-                and N == 1
-                and K == 64
-                and batch_size == 1
-            ):
+            if input_dtype == torch.float16 and M == 64 and N == 1 and K == 64 and batch_size == 1:
                 raise unittest.SkipTest(msg)
 
         device = "cuda"
@@ -1096,21 +969,15 @@ class TestMatmulCuda(InductorTestCase):
 
         if is_batched():
             a = torch.randn(B, M, K, device=device_type, dtype=torch.bfloat16)
-            mismatch_k_b = torch.randn(
-                B, K + 1, N, device=device_type, dtype=torch.bfloat16
-            )
+            mismatch_k_b = torch.randn(B, K + 1, N, device=device_type, dtype=torch.bfloat16)
             c = torch.randn(B, M, N, device=device_type, dtype=torch.bfloat16)
             extra_dim_b = a.clone().unsqueeze(0)
 
-            mismatch_k_err = (
-                "Expected size for first two dimensions of batch2 tensor to be"
-            )
+            mismatch_k_err = "Expected size for first two dimensions of batch2 tensor to be"
             extra_dim_err = "batch2 must be a 3D tensor"
         else:
             a = torch.randn(M, K, device=device_type, dtype=torch.bfloat16)
-            mismatch_k_b = torch.randn(
-                K + 1, N, device=device_type, dtype=torch.bfloat16
-            )
+            mismatch_k_b = torch.randn(K + 1, N, device=device_type, dtype=torch.bfloat16)
             c = torch.randn(M, N, device=device_type, dtype=torch.bfloat16)
             extra_dim_b = a.clone().unsqueeze(0)
 
@@ -1137,17 +1004,13 @@ class TestMatmulCuda(InductorTestCase):
                 "Expected size for first two dimensions of batch2 tensor to be",
             ):
                 # Test mismatch B for bmm/baddbmm
-                mismatch_batch_dim_b = torch.randn(
-                    B + 1, K, N, device=device_type, dtype=torch.bfloat16
-                )
+                mismatch_batch_dim_b = torch.randn(B + 1, K, N, device=device_type, dtype=torch.bfloat16)
                 if is_addmm():
                     op(c, a, mismatch_batch_dim_b, out_dtype=torch.float32)
                 else:
                     op(a, mismatch_batch_dim_b, out_dtype=torch.float32)
 
-    @unittest.skipIf(
-        not PLATFORM_SUPPORTS_GREEN_CONTEXT, "Green contexts are not supported"
-    )
+    @unittest.skipIf(not PLATFORM_SUPPORTS_GREEN_CONTEXT, "Green contexts are not supported")
     @serialTest()
     def test_greencontext_carveout(self):
         a = torch.randn(4096, 4096, device="cuda", dtype=torch.bfloat16)
@@ -1198,36 +1061,20 @@ class TestMixedDtypesLinearCuda(TestCase):
 
             val_lo, val_hi = -1, 1
             valq_lo, valq_hi = -2, 2
-            input = make_tensor(
-                *batch_shape, m, k, low=val_lo, high=val_hi, dtype=dtype, device=device
-            )
-            weight = make_tensor(
-                n, k, low=valq_lo, high=valq_hi, dtype=torch.int8, device=device
-            )
-            scale = make_tensor(
-                (n,), low=val_lo, high=val_hi, dtype=input.dtype, device=device
-            )
-            bias = (
-                make_tensor(
-                    (n,), low=val_lo, high=val_hi, dtype=input.dtype, device=device
-                )
-                if add_bias
-                else None
-            )
+            input = make_tensor(*batch_shape, m, k, low=val_lo, high=val_hi, dtype=dtype, device=device)
+            weight = make_tensor(n, k, low=valq_lo, high=valq_hi, dtype=torch.int8, device=device)
+            scale = make_tensor((n,), low=val_lo, high=val_hi, dtype=input.dtype, device=device)
+            bias = make_tensor((n,), low=val_lo, high=val_hi, dtype=input.dtype, device=device) if add_bias else None
 
             input_ref = input.reshape(-1, input.shape[-1])
 
             # First, test plain multiplication.
             weight_ref = weight.T.to(input.dtype) * scale.view(1, n)
-            weightq = (
-                pack_int4_to_int8(weight.T) if dtypeq == torch.quint4x2 else weight.T
-            )
+            weightq = pack_int4_to_int8(weight.T) if dtypeq == torch.quint4x2 else weight.T
             output_ref = torch.mm(input_ref, weight_ref).reshape(*input.shape[:-1], n)
             output = torch.ops.aten._mixed_dtypes_linear(
                 input,
-                quantized_weight_reorder_for_mixed_dtypes_linear_cutlass(
-                    weightq, dtypeq, transpose=False
-                ),
+                quantized_weight_reorder_for_mixed_dtypes_linear_cutlass(weightq, dtypeq, transpose=False),
                 scale,
             )
             torch.testing.assert_close(output, output_ref, rtol=rtol, atol=atol)
@@ -1236,9 +1083,7 @@ class TestMixedDtypesLinearCuda(TestCase):
             weight_ref = weight.to(input.dtype) * scale.view(n, 1)
             weightq = pack_int4_to_int8(weight) if dtypeq == torch.quint4x2 else weight
             bias_ref = bias.view(1, n) if add_bias else None
-            output_ref = torch.nn.functional.linear(
-                input_ref, weight_ref, bias=bias_ref
-            ).reshape(*input.shape[:-1], n)
+            output_ref = torch.nn.functional.linear(input_ref, weight_ref, bias=bias_ref).reshape(*input.shape[:-1], n)
             if activation == "relu":
                 relu = torch.nn.ReLU()
                 output_ref = relu(output_ref)
@@ -1247,9 +1092,7 @@ class TestMixedDtypesLinearCuda(TestCase):
                 output_ref = silu(output_ref)
             output = torch.ops.aten._mixed_dtypes_linear(
                 input,
-                quantized_weight_reorder_for_mixed_dtypes_linear_cutlass(
-                    weightq, dtypeq, transpose=True
-                ),
+                quantized_weight_reorder_for_mixed_dtypes_linear_cutlass(weightq, dtypeq, transpose=True),
                 scale,
                 bias=bias,
                 activation=activation,
@@ -1292,9 +1135,7 @@ class TestMixedDtypesLinearCuda(TestCase):
 
 
 instantiate_device_type_tests(TestMatmulCuda, globals(), allow_xpu=True, only_for="xpu")
-instantiate_device_type_tests(
-    TestMixedDtypesLinearCuda, globals(), allow_xpu=True, only_for="xpu"
-)
+instantiate_device_type_tests(TestMixedDtypesLinearCuda, globals(), allow_xpu=True, only_for="xpu")
 
 if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True

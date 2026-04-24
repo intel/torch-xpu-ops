@@ -121,9 +121,7 @@ with XPUPatchForImport(False):
 
             dqr = torch.quantize_per_channel(r, scales, zero_points, axis, dtype)
             dqr = dqr.to(device)
-            dqr_cuda = torch.quantize_per_channel(
-                r.to(device), scales.to(device), zero_points.to(device), axis, dtype
-            )
+            dqr_cuda = torch.quantize_per_channel(r.to(device), scales.to(device), zero_points.to(device), axis, dtype)
             dqr_cuda = dqr_cuda.to("cpu")
 
             self.assertEqual("xpu", dqr.device.type)
@@ -173,19 +171,11 @@ with XPUPatchForImport(False):
         self._test_qtensor_masked_fill("xpu")
 
 
-TestQuantizedTensor.test_compare_per_channel_device_numerics = (
-    _test_compare_per_channel_device_numerics
-)
-TestQuantizedTensor.test_compare_per_tensor_device_numerics = (
-    _test_compare_per_tensor_device_numerics
-)
-TestQuantizedTensor.test_cuda_quantization_does_not_pin_memory = (
-    _test_cuda_quantization_does_not_pin_memory
-)
+TestQuantizedTensor.test_compare_per_channel_device_numerics = _test_compare_per_channel_device_numerics
+TestQuantizedTensor.test_compare_per_tensor_device_numerics = _test_compare_per_tensor_device_numerics
+TestQuantizedTensor.test_cuda_quantization_does_not_pin_memory = _test_cuda_quantization_does_not_pin_memory
 TestQuantizedTensor.test_dequantize_fp16_cuda = _test_dequantize_fp16_cuda
-TestQuantizedTensor.test_per_channel_qtensor_creation_cuda = (
-    _test_per_channel_qtensor_creation_cuda
-)
+TestQuantizedTensor.test_per_channel_qtensor_creation_cuda = _test_per_channel_qtensor_creation_cuda
 TestQuantizedTensor.test_per_channel_to_device = _test_per_channel_to_device
 TestQuantizedTensor.test_per_tensor_to_device = _test_per_tensor_to_device
 TestQuantizedTensor.test_qtensor_cuda = _test_qtensor_cuda
@@ -194,9 +184,7 @@ TestQuantizedTensor.test_qtensor_index_select_cuda = _test_qtensor_index_select_
 TestQuantizedTensor.test_qtensor_masked_fill_cuda = _test_qtensor_masked_fill_cuda
 
 
-instantiate_device_type_tests(
-    TestQuantizedTensor, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestQuantizedTensor, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

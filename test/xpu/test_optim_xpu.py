@@ -35,19 +35,12 @@ from torch.testing._internal.common_utils import TEST_WITH_TORCHDYNAMO
 for optim in optim_db:
     for c in [torch.optim.Adam, torch.optim.AdamW, torch.optim.SGD]:
         if optim.optim_cls is c:
-            if (
-                "cuda" in optim.supports_fused_on
-                and "xpu" not in optim.supports_fused_on
-            ):
+            if "cuda" in optim.supports_fused_on and "xpu" not in optim.supports_fused_on:
                 optim.supports_fused_on = ("xpu",) + optim.supports_fused_on
 
 
 @optims(
-    [
-        optim
-        for optim in optim_db
-        if "cpu" in optim.supports_fused_on and "xpu" in optim.supports_fused_on
-    ],
+    [optim for optim in optim_db if "cpu" in optim.supports_fused_on and "xpu" in optim.supports_fused_on],
     dtypes=floating_types_and(
         torch.bfloat16,
         torch.float16,
@@ -61,9 +54,7 @@ def _test_fused_cpu_matches_cuda(self, device, dtype, optim_info):
         for dev in ("cpu", "xpu"):
             kwargs = optim_input.kwargs
             kwargs["fused"] = True
-            inpt = torch.tensor(
-                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=dtype, device=dev
-            ).reshape(3, 2)
+            inpt = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=dtype, device=dev).reshape(3, 2)
 
             torch.manual_seed(1)
             model = torch.nn.Sequential(
@@ -210,9 +201,7 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
     for optim_input in cpu_optim_inputs:
         if "fused" in optim_input.kwargs and "xpu" not in optim_info.supports_fused_on:
             self.skipTest(f"xpu is not supported for fused on {optim_cls.__name__}")
-        params = [
-            Parameter(torch.randn(2, 3, device="cpu", dtype=dtype)) for _ in range(2)
-        ]
+        params = [Parameter(torch.randn(2, 3, device="cpu", dtype=dtype)) for _ in range(2)]
         for p in params:
             p.grad = torch.randn_like(p)
             if optim_info.only_supports_sparse_grads:
@@ -242,9 +231,7 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
         capturable = state_dict_cpu["param_groups"][0].get("capturable", False)
         fused = state_dict_cpu["param_groups"][0].get("fused", False)
         new_state_dict = optimizer_cuda.state_dict()
-        for state_cpu, state_cuda in zip(
-            state_dict_cpu["state"].values(), new_state_dict["state"].values()
-        ):
+        for state_cpu, state_cuda in zip(state_dict_cpu["state"].values(), new_state_dict["state"].values()):
             if "step" in state_cpu and torch.is_tensor(state_cpu["step"]):
                 self.assertEqual(
                     state_cuda["step"].device.type,
@@ -260,9 +247,7 @@ def _test_state_dict_with_cuda_params(self, device, dtype, optim_info):
 
 TestOptimRenewed.test_state_dict_with_cuda_params = _test_state_dict_with_cuda_params
 
-instantiate_device_type_tests(
-    TestOptimRenewed, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestOptimRenewed, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()

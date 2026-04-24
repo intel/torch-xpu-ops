@@ -38,13 +38,9 @@ def Interpolate3d(shape, dtype, channels_last, backward):
             .to(device=device, dtype=dtype)
         )
     else:
-        input = torch.randn(N, C, H, W, D, requires_grad=True).to(
-            device=device, dtype=dtype
-        )
+        input = torch.randn(N, C, H, W, D, requires_grad=True).to(device=device, dtype=dtype)
 
-    output = torch.nn.functional.interpolate(
-        input, scale_factor=shape[5], mode="nearest"
-    )
+    output = torch.nn.functional.interpolate(input, scale_factor=shape[5], mode="nearest")
 
     if backward:
         output.backward(torch.ones_like(output))

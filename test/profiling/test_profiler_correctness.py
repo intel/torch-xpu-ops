@@ -72,8 +72,7 @@ class TestProfilerCorrectness(TestCase):
                     self.assertIn(
                         cat,
                         count_cats,
-                        f"Expected category '{cat}' not found in trace. "
-                        f"Found categories: {list(count_cats.keys())}",
+                        f"Expected category '{cat}' not found in trace. Found categories: {list(count_cats.keys())}",
                     )
 
         return count_names, count_cats
@@ -91,8 +90,7 @@ class TestProfilerCorrectness(TestCase):
             self.assertIn(
                 dt,
                 device_types,
-                f"Expected device type {dt} not found in events. "
-                f"Found: {list(device_types.keys())}",
+                f"Expected device type {dt} not found in events. Found: {list(device_types.keys())}",
             )
 
     def _assert_key_averages_nonempty(self, prof):
@@ -172,14 +170,10 @@ class TestProfilerCorrectness(TestCase):
 
         # Verify H2D transfer (aten::to or aten::_to_copy) appears in events
         event_names = {e.name for e in prof.events()}
-        found_transfer = any(
-            name in event_names
-            for name in ("aten::to", "aten::_to_copy", "aten::copy_")
-        )
+        found_transfer = any(name in event_names for name in ("aten::to", "aten::_to_copy", "aten::copy_"))
         self.assertTrue(
             found_transfer,
-            "Expected H2D transfer op (aten::to / aten::_to_copy / aten::copy_) "
-            f"in events. Found: {event_names}",
+            f"Expected H2D transfer op (aten::to / aten::_to_copy / aten::copy_) in events. Found: {event_names}",
         )
 
         # Verify add op appears
@@ -256,9 +250,7 @@ class TestProfilerCorrectness(TestCase):
             with torch.profiler.profile(activities=self.ACTIVITIES) as prof:
                 self.compute(x)
 
-            self._assert_has_device_types(
-                prof, expected_types=[DeviceType.CPU, DeviceType.XPU]
-            )
+            self._assert_has_device_types(prof, expected_types=[DeviceType.CPU, DeviceType.XPU])
 
             # key_averages must be non-empty each iteration
             averages = prof.key_averages()
@@ -272,9 +264,7 @@ class TestProfilerCorrectness(TestCase):
             data = self._load_chrome_trace(prof)
 
             kernel_names = {
-                e["name"]
-                for e in data.get("traceEvents", [])
-                if e.get("cat") == "kernel" and e.get("ph") == "X"
+                e["name"] for e in data.get("traceEvents", []) if e.get("cat") == "kernel" and e.get("ph") == "X"
             }
 
             if i == 0:
@@ -341,20 +331,17 @@ class TestProfilerCorrectness(TestCase):
             self.assertGreaterEqual(
                 event.cpu_time_total,
                 0,
-                f"Event '{event.name}' has negative cpu_time_total: "
-                f"{event.cpu_time_total}",
+                f"Event '{event.name}' has negative cpu_time_total: {event.cpu_time_total}",
             )
             self.assertGreaterEqual(
                 event.self_cpu_time_total,
                 0,
-                f"Event '{event.name}' has negative self_cpu_time_total: "
-                f"{event.self_cpu_time_total}",
+                f"Event '{event.name}' has negative self_cpu_time_total: {event.self_cpu_time_total}",
             )
             self.assertGreaterEqual(
                 event.self_device_time_total,
                 0,
-                f"Event '{event.name}' has negative self_device_time_total "
-                f"(XPU time): {event.self_device_time_total}",
+                f"Event '{event.name}' has negative self_device_time_total (XPU time): {event.self_device_time_total}",
             )
 
     def test_chrome_trace_json_structure(self):
@@ -370,9 +357,7 @@ class TestProfilerCorrectness(TestCase):
         count_names, _ = self._gen_and_check_json(prof)
 
         # There should be at least some complete ("X") events
-        self.assertGreater(
-            sum(count_names.values()), 0, "No complete (ph=X) events in trace"
-        )
+        self.assertGreater(sum(count_names.values()), 0, "No complete (ph=X) events in trace")
 
         # XPU events must be present
         self._assert_has_device_types(prof)
@@ -393,8 +378,7 @@ class TestProfilerCorrectness(TestCase):
         self.assertIn(
             custom_label,
             event_names,
-            f"Custom label '{custom_label}' not found in events. "
-            f"Found: {event_names}",
+            f"Custom label '{custom_label}' not found in events. Found: {event_names}",
         )
 
     def test_profiler_schedule_callback(self):
@@ -444,18 +428,14 @@ class TestProfilerCorrectness(TestCase):
             del b
 
         # Look for memory events in key_averages
-        table_str = prof.key_averages().table(
-            sort_by="self_device_time_total", row_limit=-1
-        )
+        table_str = prof.key_averages().table(sort_by="self_device_time_total", row_limit=-1)
         # The table should be produced without error
         self.assertGreater(len(table_str), 0)
 
         # Check chrome trace for memory events
         data = self._load_chrome_trace(prof)
         # Memory events use "i" (instant) phase with "[memory]" name
-        memory_events = [
-            e for e in data.get("traceEvents", []) if e.get("name") == "[memory]"
-        ]
+        memory_events = [e for e in data.get("traceEvents", []) if e.get("name") == "[memory]"]
         self.assertGreater(
             len(memory_events),
             0,
@@ -487,11 +467,7 @@ class TestProfilerCorrectness(TestCase):
 
         # Chrome trace should have kernel events with correlation IDs
         data = self._load_chrome_trace(prof)
-        kernel_events = [
-            e
-            for e in data.get("traceEvents", [])
-            if e.get("cat") == "kernel" and e.get("ph") == "X"
-        ]
+        kernel_events = [e for e in data.get("traceEvents", []) if e.get("cat") == "kernel" and e.get("ph") == "X"]
         self.assertGreater(
             len(kernel_events),
             0,
@@ -540,10 +516,7 @@ class TestProfilerCorrectness(TestCase):
         event_names = {e.name for e in prof.events()}
 
         # Forward ops should appear
-        found_forward = any(
-            "mm" in n.lower() or "linear" in n.lower() or "addmm" in n.lower()
-            for n in event_names
-        )
+        found_forward = any("mm" in n.lower() or "linear" in n.lower() or "addmm" in n.lower() for n in event_names)
         self.assertTrue(
             found_forward,
             f"No forward pass ops (mm/linear/addmm) found: {event_names}",
@@ -551,10 +524,7 @@ class TestProfilerCorrectness(TestCase):
 
         # Backward ops should appear (autograd-related names)
         found_backward = any(
-            "backward" in n.lower()
-            or "autograd" in n.lower()
-            or "MmBackward" in n
-            or "AddmmBackward" in n
+            "backward" in n.lower() or "autograd" in n.lower() or "MmBackward" in n or "AddmmBackward" in n
             for n in event_names
         )
         self.assertTrue(
@@ -589,8 +559,7 @@ class TestProfilerCorrectness(TestCase):
         found_transfer = bool(transfer_ops & event_names)
         self.assertTrue(
             found_transfer,
-            "No transfer ops (aten::to / aten::_to_copy / aten::copy_) "
-            f"found in events: {event_names}",
+            f"No transfer ops (aten::to / aten::_to_copy / aten::copy_) found in events: {event_names}",
         )
 
         # Both CPU and XPU device types must be present

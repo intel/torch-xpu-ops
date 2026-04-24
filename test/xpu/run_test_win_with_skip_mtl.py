@@ -32,8 +32,6 @@ res = pytest.main(test_command)
 output = sys.stdout.getvalue()
 sys.stdout = original_stdout
 
-cleaned_output = re.sub(
-    r"\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)test(\/|\\)", "", output
-)
+cleaned_output = re.sub(r"\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)\.\.(\/|\\)test(\/|\\)", "", output)
 print(cleaned_output, end="")
 sys.exit(res)

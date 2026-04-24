@@ -23,9 +23,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_binary_ufuncs import TestBinaryUfuncs
 
-instantiate_device_type_tests(
-    TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestBinaryUfuncs, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

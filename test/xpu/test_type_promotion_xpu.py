@@ -80,10 +80,7 @@ with XPUPatchForImport(False):
             ),
         ]
         for op in comparison_ops:
-            is_cuda = (
-                torch.device(device).type == "cuda"
-                or torch.device(device).type == "xpu"
-            )
+            is_cuda = torch.device(device).type == "cuda" or torch.device(device).type == "xpu"
             dtypes = get_all_dtypes(
                 include_half=is_cuda,
                 include_bfloat16=False,
@@ -92,24 +89,18 @@ with XPUPatchForImport(False):
             )
 
             for dt1, dt2 in itertools.product(dtypes, dtypes):
-                if (dt1.is_complex or dt2.is_complex) and not (
-                    op["name"] == "eq" or op["name"] == "ne"
-                ):
+                if (dt1.is_complex or dt2.is_complex) and not (op["name"] == "eq" or op["name"] == "ne"):
                     u = torch.tensor([1], dtype=dt1, device=device)
                     v = torch.tensor([2], dtype=dt2, device=device)
                     self.assertRaises(
                         RuntimeError,
-                        lambda: torch.tensor(
-                            [op["compare_op"](u, v)], dtype=torch.bool
-                        ),
+                        lambda: torch.tensor([op["compare_op"](u, v)], dtype=torch.bool),
                     )
 
     TestTypePromotion.test_complex_assertraises = _test_complex_assertraises
     TestTypePromotion.test_mixed_type_backward = _test_mixed_type_backward
 
-instantiate_device_type_tests(
-    TestTypePromotion, globals(), only_for=("xpu"), allow_xpu=True
-)
+instantiate_device_type_tests(TestTypePromotion, globals(), only_for=("xpu"), allow_xpu=True)
 
 if __name__ == "__main__":
     run_tests()

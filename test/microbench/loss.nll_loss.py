@@ -35,9 +35,7 @@ for shape in shape_list:
 
         # go
         print("shape:", (shape), "; datatype:", dtype, "; backward:", backward)
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
             for i in range(num_iter):
                 cache_r = cache_w
                 output = F.nll_loss(input, target)

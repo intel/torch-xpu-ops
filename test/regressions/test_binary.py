@@ -94,14 +94,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(a_cpu, a_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), False
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), False)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -113,14 +109,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(a_cpu, a_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), False)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -132,14 +124,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(a_cpu, a_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), False)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -151,14 +139,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(a_cpu, a_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), False
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), False)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -169,14 +153,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(y_cpu, y_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), False
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), False)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -187,14 +167,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(y_cpu, y_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), False)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -205,14 +181,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(y_cpu, y_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), False)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
 
             a_cpu = torch.randn(N, C, H, W)
             b_cpu = torch.randn(N, C, H, W)
@@ -223,14 +195,10 @@ class TestSimpleBinary(TestCase):
             self.assertEqual(y_cpu, y_xpu.cpu())
             if 1 == C or (1 == H and 1 == W):
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(a_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    a_xpu.is_contiguous(memory_format=torch.channels_last), False
-                )
+                self.assertEqual(a_xpu.is_contiguous(memory_format=torch.channels_last), False)
 
     def test_pow(self, dtype=torch.float):
         x_cpu = torch.tensor(([2.5, 3.1, 1.3]), dtype=torch.float, device=cpu_device)
@@ -266,9 +234,7 @@ class TestSimpleBinary(TestCase):
 
         print("remainder scalar y_cpu", torch.remainder(y_cpu1, 1.5))
         print("remainder scalar y_xpu", torch.remainder(y_xpu1, 1.5).to(cpu_device))
-        self.assertEqual(
-            torch.remainder(y_cpu1, 1.5), torch.remainder(y_xpu1, 1.5).to(cpu_device)
-        )
+        self.assertEqual(torch.remainder(y_cpu1, 1.5), torch.remainder(y_xpu1, 1.5).to(cpu_device))
 
         print("remainder tensor y_cpu", torch.remainder(y_cpu1, y_cpu2))
         print(
@@ -282,15 +248,11 @@ class TestSimpleBinary(TestCase):
 
         print("fmod scalar y_cpu", torch.fmod(y_cpu1, 1.5))
         print("fmod scalar y_xpu", torch.fmod(y_xpu1, 1.5).to(cpu_device))
-        self.assertEqual(
-            torch.fmod(y_cpu1, 1.5), torch.fmod(y_xpu1, 1.5).to(cpu_device)
-        )
+        self.assertEqual(torch.fmod(y_cpu1, 1.5), torch.fmod(y_xpu1, 1.5).to(cpu_device))
 
         print("fmod tensor y_cpu", torch.fmod(y_cpu1, y_cpu2))
         print("fmod tensor y_xpu", torch.fmod(y_xpu1, y_xpu2).to(cpu_device))
-        self.assertEqual(
-            torch.fmod(y_cpu1, y_cpu2), torch.fmod(y_xpu1, y_xpu2).to(cpu_device)
-        )
+        self.assertEqual(torch.fmod(y_cpu1, y_cpu2), torch.fmod(y_xpu1, y_xpu2).to(cpu_device))
 
     def test_ldexp(self):
         x_cpu = torch.tensor([1.0, 2.0, 3.0, 0.5])
@@ -298,9 +260,7 @@ class TestSimpleBinary(TestCase):
         x_xpu = x_cpu.to(xpu_device)
         e_xpu = e_cpu.to(xpu_device)
         # torch.ldexp
-        self.assertEqual(
-            torch.ldexp(x_cpu, e_cpu), torch.ldexp(x_xpu, e_xpu).to(cpu_device)
-        )
+        self.assertEqual(torch.ldexp(x_cpu, e_cpu), torch.ldexp(x_xpu, e_xpu).to(cpu_device))
         # Tensor.ldexp
         self.assertEqual(x_cpu.ldexp(e_cpu), x_xpu.ldexp(e_xpu).to(cpu_device))
         # inplace

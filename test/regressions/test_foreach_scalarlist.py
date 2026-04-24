@@ -56,20 +56,13 @@ class TestForeachScalarListMethod(TestCase):
             torch.bool,
         ]
         if dtype in float_types:
-            x1 = [
-                torch.randint(1, 100, [5, 8]).to(torch.float).div(1000.0).to(dtype)
-                for _ in range(250)
-            ]
+            x1 = [torch.randint(1, 100, [5, 8]).to(torch.float).div(1000.0).to(dtype) for _ in range(250)]
             scalarlist = [random.uniform(0, 1) for _ in range(250)]
         elif dtype in int_types:
             x1 = [torch.randint(1, 100, [5, 8]).to(dtype) for _ in range(250)]
-            scalarlist = [
-                torch.randint(1, 10, [1]).to(dtype).item() for _ in range(250)
-            ]
+            scalarlist = [torch.randint(1, 10, [1]).to(dtype).item() for _ in range(250)]
         else:
-            AssertionError(
-                False, "TestForeachScalarListMethod::create_sample unsupported dtype"
-            )
+            AssertionError(False, "TestForeachScalarListMethod::create_sample unsupported dtype")
         return x1, scalarlist
 
     def test_foreach_add(self, dtype=torch.float):

@@ -126,9 +126,7 @@ class TestSchemaCheck(JitTestCase):
         with SchemaCheckMode() as schema_check:
             x = torch.rand((3, 3), requires_grad=True)
             x.relu().sin()
-        self.assertEqual(
-            ["aten::rand", "aten::relu", "aten::detach", "aten::sin"], schema_check.ops
-        )
+        self.assertEqual(["aten::rand", "aten::relu", "aten::detach", "aten::sin"], schema_check.ops)
 
     # Tests that SchemaCheckMode records operator order without grad
     def test_schema_check_mode_operator_order_without_grad(self):
@@ -161,9 +159,7 @@ class TestSchemaCheck(JitTestCase):
         with SchemaCheckMode() as schema_check:
             actual.resize_(9)
         self.assertEqual([("aten::resize_", "input")], schema_check.mutated)
-        self.assertEqual(
-            [("aten::resize_", "input", "output_0")], schema_check.aliasing
-        )
+        self.assertEqual([("aten::resize_", "input", "output_0")], schema_check.aliasing)
 
     # Tests that SchemaCheckMode records mutations and aliases with aliasing inputs
     def test_schema_check_mode_mutated_aliasing_aliasing_inputs(self):
@@ -171,9 +167,7 @@ class TestSchemaCheck(JitTestCase):
         y = actual
         with SchemaCheckMode() as schema_check:
             actual.add_(y)
-        self.assertEqual(
-            [("aten::add_", "input"), ("aten::add_", "other")], schema_check.mutated
-        )
+        self.assertEqual([("aten::add_", "input"), ("aten::add_", "other")], schema_check.mutated)
         self.assertEqual(
             [("aten::add_", "input", "output_0"), ("aten::add_", "other", "output_0")],
             schema_check.aliasing,
@@ -185,9 +179,7 @@ class TestSchemaCheck(JitTestCase):
         with SchemaCheckMode() as schema_check:
             x.as_strided_([3, 6, 4], [9, 1, 1])
         self.assertEqual([("aten::as_strided_", "input")], schema_check.mutated)
-        self.assertEqual(
-            [("aten::as_strided_", "input", "output_0")], schema_check.aliasing
-        )
+        self.assertEqual([("aten::as_strided_", "input", "output_0")], schema_check.aliasing)
 
     # Tests that SchemaCheckMode records mutations and aliases with multiple outputs
     def test_schema_check_mode_mutated_aliasing_multiple_outputs(self):
@@ -214,9 +206,7 @@ class TestSchemaCheck(JitTestCase):
         actual = torch.zeros(3)
         with SchemaCheckMode() as schema_check:
             torch.aminmax(x, dim=0, out=[actual, actual])
-        self.assertEqual(
-            [("aten::aminmax", "min"), ("aten::aminmax", "max")], schema_check.mutated
-        )
+        self.assertEqual([("aten::aminmax", "min"), ("aten::aminmax", "max")], schema_check.mutated)
         self.assertEqual(
             [
                 ("aten::aminmax", "min", "output_0"),
@@ -352,9 +342,7 @@ class TestSchemaCheck(JitTestCase):
 
     # Tests that an exception is raised for a mismatching mutation
     def test_mutation_check_fail(self):
-        with self.assertRaisesRegex(
-            RuntimeError, "Argument input is not defined as mutable but was mutated"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined as mutable but was mutated"):
             x = torch.rand((3, 3))
             y = torch.rand((3, 3))
             with SchemaCheckMode():
@@ -362,9 +350,7 @@ class TestSchemaCheck(JitTestCase):
 
     # # Tests that an exception is raised for a mismatching mutation over multiple ops
     def test_mutation_check_fail_multiple_operators(self):
-        with self.assertRaisesRegex(
-            RuntimeError, "Argument input is not defined as mutable but was mutated"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Argument input is not defined as mutable but was mutated"):
             x = torch.rand((3, 3))
             y = torch.rand((3, 3))
             with SchemaCheckMode():
@@ -390,9 +376,7 @@ class TestSchemaCheck(JitTestCase):
             x = torch.rand((3, 3), requires_grad=True)
             y = torch.zeros((3, 3), requires_grad=True)
             with SchemaCheckMode():
-                IncorrectAliasTensor(x).sin().relu().add(
-                    IncorrectAliasTensor(y), alpha=2
-                )
+                IncorrectAliasTensor(x).sin().relu().add(IncorrectAliasTensor(y), alpha=2)
 
     # Tests that an exception is raised for a centered mismatching alias over multiple ops
     def test_alias_check_fail_multiple_operators_centered(self):
@@ -403,9 +387,7 @@ class TestSchemaCheck(JitTestCase):
             x = torch.rand((3, 3), requires_grad=True)
             y = torch.zeros((3, 3), requires_grad=True)
             with SchemaCheckMode():
-                IncorrectAliasTensor(x).sin().add(
-                    IncorrectAliasTensor(y), alpha=2
-                ).relu()
+                IncorrectAliasTensor(x).sin().add(IncorrectAliasTensor(y), alpha=2).relu()
 
     # Tests that an exception is raised for a centered mismatching alias over multiple ops
     def test_alias_check_fail_outputs_unexpectedly_aliasing(self):
@@ -422,9 +404,7 @@ class TestSchemaCheck(JitTestCase):
             return torch.ops.bad_schemas.secretly_aliasing(x)
 
         x = torch.rand((3, 3))
-        with self.assertRaisesRegex(
-            RuntimeError, "not defined to alias output but was aliasing"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "not defined to alias output but was aliasing"):
             with SchemaCheckMode() as s:
                 out = f(x)
 
@@ -433,9 +413,7 @@ class TestSchemaCheck(JitTestCase):
             return torch.ops.bad_schemas.secretly_mutating(x)
 
         x = torch.rand((3, 3))
-        with self.assertRaisesRegex(
-            RuntimeError, "not defined as mutable but was mutated"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "not defined as mutable but was mutated"):
             with SchemaCheckMode() as s:
                 out = f(x)
 
@@ -444,9 +422,7 @@ class TestSchemaCheck(JitTestCase):
             return torch.ops.bad_schemas.output_is_input(x)
 
         x = torch.rand((3, 3))
-        with self.assertRaisesRegex(
-            RuntimeError, "are not allowed to directly return inputs"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "are not allowed to directly return inputs"):
             with SchemaCheckMode() as s:
                 out = f(x)
 
@@ -490,9 +466,7 @@ class TestSchemaCheck(JitTestCase):
                 self.test_self = test_self
 
             def __torch_dispatch__(self, func, types, args=(), kwargs=None):
-                named_arg_list = normalize_function(
-                    func, args, kwargs, normalize_to_only_use_kwargs=True
-                ).kwargs
+                named_arg_list = normalize_function(func, args, kwargs, normalize_to_only_use_kwargs=True).kwargs
                 schema_info_value_test = torch._C._SchemaInfo(func._schema)
                 schema_info_values_test = torch._C._SchemaInfo(func._schema)
                 self.test_self.assertFalse(

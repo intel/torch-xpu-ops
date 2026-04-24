@@ -174,9 +174,7 @@ TestForeach.test_0dim_tensor_overload_cpu_ok = _test_0dim_tensor_overload_cpu_ok
 
 def _test_div_reciprocal(self):
     expect_m, expect_e = torch.frexp(torch.div(torch.tensor(0.1, device="xpu"), 10.0))
-    actual_m, actual_e = torch.frexp(
-        torch._foreach_div([torch.tensor(0.1, device="xpu")], [10.0])[0]
-    )
+    actual_m, actual_e = torch.frexp(torch._foreach_div([torch.tensor(0.1, device="xpu")], [10.0])[0])
     self.assertEqual(expect_m, actual_m)
     self.assertEqual(expect_e, actual_e)
 
@@ -212,9 +210,7 @@ def _test_foreach_copy_with_multi_dtypes_large_input(self):
     self.assertEqual(self_tensor, ref_out)
 
 
-TestForeach.test_foreach_copy_with_multi_dtypes_large_input = (
-    _test_foreach_copy_with_multi_dtypes_large_input
-)
+TestForeach.test_foreach_copy_with_multi_dtypes_large_input = _test_foreach_copy_with_multi_dtypes_large_input
 
 
 @ops(filter(lambda op: op.name == "_foreach_copy", foreach_binary_op_db))
@@ -230,9 +226,7 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
 
     fn = torch.compile(fn)
     for non_blocking in (False,):
-        for sample in op.sample_inputs(
-            device, dtype, noncontiguous=False, allow_higher_dtype_scalars=True
-        ):
+        for sample in op.sample_inputs(device, dtype, noncontiguous=False, allow_higher_dtype_scalars=True):
             with torch.no_grad():
                 ref_input = [t.detach().clone() for t in sample.input]
                 ref_input_cpu = [t.detach().clone().to("cpu") for t in sample.input]
@@ -250,9 +244,7 @@ def _test_foreach_copy_with_different_device_inputs(self, device, dtype, op):
             self.assertEqual(output2, ref_input_cpu)
 
 
-TestForeach.test_foreach_copy_with_different_device_inputs = (
-    _test_foreach_copy_with_different_device_inputs
-)
+TestForeach.test_foreach_copy_with_different_device_inputs = _test_foreach_copy_with_different_device_inputs
 
 
 @ops(foreach_reduce_op_db, allowed_dtypes=floating_types())
@@ -262,11 +254,7 @@ def _test_big_num_tensors(self, device, dtype, op, use_xpu_graph, w_empty):
     intersperse_empty_tensors = w_empty and op.name != "_foreach_max"
 
     N = 600
-    indices_with_empty_tensors = (
-        set()
-        if not intersperse_empty_tensors
-        else {200, 300, 301, 400, 401, 402, 404, 598}
-    )
+    indices_with_empty_tensors = set() if not intersperse_empty_tensors else {200, 300, 301, 400, 401, 402, 404, 598}
     tensorlist = [
         make_tensor((2, 3), dtype=dtype, device=device, noncontiguous=False)
         if i not in indices_with_empty_tensors

@@ -96,17 +96,11 @@ def _test_beta_underflow_gpu(self):
 
 
 def _test_zero_excluded_binomial(self):
-    vals = Binomial(
-        total_count=torch.tensor(1.0).xpu(), probs=torch.tensor(0.9).xpu()
-    ).sample(torch.Size((100000000,)))
+    vals = Binomial(total_count=torch.tensor(1.0).xpu(), probs=torch.tensor(0.9).xpu()).sample(torch.Size((100000000,)))
     self.assertTrue((vals >= 0).all())
-    vals = Binomial(
-        total_count=torch.tensor(1.0).xpu(), probs=torch.tensor(0.1).xpu()
-    ).sample(torch.Size((100000000,)))
+    vals = Binomial(total_count=torch.tensor(1.0).xpu(), probs=torch.tensor(0.1).xpu()).sample(torch.Size((100000000,)))
     self.assertTrue((vals < 2).all())
-    vals = Binomial(
-        total_count=torch.tensor(1.0).xpu(), probs=torch.tensor(0.5).xpu()
-    ).sample(torch.Size((10000,)))
+    vals = Binomial(total_count=torch.tensor(1.0).xpu(), probs=torch.tensor(0.5).xpu()).sample(torch.Size((10000,)))
     # vals should be roughly half zeroes, half ones
     assert (vals == 0.0).sum() > 4000
     assert (vals == 1.0).sum() > 4000
@@ -188,9 +182,7 @@ TestDistributions.test_gamma_gpu_sample = _test_gamma_gpu_sample
 TestDistributions.test_gamma_gpu_shape = _test_gamma_gpu_shape
 TestDistributions.test_poisson_gpu_sample = _test_poisson_gpu_sample
 TestDistributions.test_torch_binomial_dtype_errors = _test_torch_binomial_dtype_errors
-instantiate_device_type_tests(
-    TestDistributions, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestDistributions, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestRsample, globals(), only_for="xpu", allow_xpu=True)
 
 
@@ -201,9 +193,7 @@ def setup_TestDistributionShapes(self):
 
 
 TestDistributionShapes.setUp = setup_TestDistributionShapes
-instantiate_device_type_tests(
-    TestDistributionShapes, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestDistributionShapes, globals(), only_for="xpu", allow_xpu=True)
 
 
 def setup_TestKL(self):
@@ -255,9 +245,7 @@ def setup_TestKL(self):
         ),
     )
     poisson = pairwise(Poisson, [0.3, 1.0, 5.0, 10.0])
-    uniform_within_unit = pairwise(
-        Uniform, [0.1, 0.9, 0.2, 0.75], [0.15, 0.95, 0.25, 0.8]
-    )
+    uniform_within_unit = pairwise(Uniform, [0.1, 0.9, 0.2, 0.75], [0.15, 0.95, 0.25, 0.8])
     uniform_positive = pairwise(Uniform, [1, 1.5, 2, 4], [1.2, 2.0, 3, 7])
     uniform_real = pairwise(Uniform, [-2.0, -1, 0, 2], [-1.0, 1, 1, 4])
     uniform_pareto = pairwise(Uniform, [6.5, 7.5, 6.5, 8.5], [7.5, 8.5, 9.5, 9.5])
@@ -407,26 +395,18 @@ def setup_TestKL(self):
 
 TestKL.setUp = setup_TestKL
 instantiate_device_type_tests(TestKL, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(
-    TestConstraints, globals(), only_for="xpu", allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestNumericalStability, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestConstraints, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestNumericalStability, globals(), only_for="xpu", allow_xpu=True)
 
 
 def setup_TestLazyLogitsInitialization(self):
     self.examples = [
-        e
-        for e in _get_examples()
-        if e.Dist in (Categorical, OneHotCategorical, Bernoulli, Binomial, Multinomial)
+        e for e in _get_examples() if e.Dist in (Categorical, OneHotCategorical, Bernoulli, Binomial, Multinomial)
     ]
 
 
 TestLazyLogitsInitialization.setUp = setup_TestLazyLogitsInitialization
-instantiate_device_type_tests(
-    TestLazyLogitsInitialization, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestLazyLogitsInitialization, globals(), only_for="xpu", allow_xpu=True)
 
 
 def setup_TestAgainstScipy(self):
@@ -444,9 +424,7 @@ def setup_TestAgainstScipy(self):
         ),
         (
             Binomial(10, simplex_tensor),
-            scipy.stats.binom(
-                10 * np.ones(simplex_tensor.shape), simplex_tensor.numpy()
-            ),
+            scipy.stats.binom(10 * np.ones(simplex_tensor.shape), simplex_tensor.numpy()),
         ),
         (
             Cauchy(random_var, positive_var),
@@ -458,9 +436,7 @@ def setup_TestAgainstScipy(self):
             scipy.stats.expon(scale=positive_var.reciprocal()),
         ),
         (
-            FisherSnedecor(
-                positive_var, 4 + positive_var2
-            ),  # var for df2<=4 is undefined
+            FisherSnedecor(positive_var, 4 + positive_var2),  # var for df2<=4 is undefined
             scipy.stats.f(positive_var, 4 + positive_var2),
         ),
         (
@@ -488,9 +464,7 @@ def setup_TestAgainstScipy(self):
             scipy.stats.lognorm(s=positive_var.clamp(max=3), scale=random_var.exp()),
         ),
         (
-            LowRankMultivariateNormal(
-                random_var, torch.zeros(20, 1, dtype=torch.double), positive_var2
-            ),
+            LowRankMultivariateNormal(random_var, torch.zeros(20, 1, dtype=torch.double), positive_var2),
             scipy.stats.multivariate_normal(random_var, torch.diag(positive_var2)),
         ),
         (
@@ -531,30 +505,18 @@ def setup_TestAgainstScipy(self):
             scipy.stats.vonmises(positive_var, loc=random_var),
         ),
         (
-            Weibull(
-                positive_var[0], positive_var2[0]
-            ),  # scipy var for Weibull only supports scalars
+            Weibull(positive_var[0], positive_var2[0]),  # scipy var for Weibull only supports scalars
             scipy.stats.weibull_min(c=positive_var2[0], scale=positive_var[0]),
         ),
         (
             # scipy var for Wishart only supports scalars
             # SciPy allowed ndim -1 < df < ndim for Wishar distribution after version 1.7.0
             Wishart(
-                (
-                    20
-                    if version.parse(scipy.__version__) < version.parse("1.7.0")
-                    else 19
-                )
-                + positive_var[0],
+                (20 if version.parse(scipy.__version__) < version.parse("1.7.0") else 19) + positive_var[0],
                 cov_tensor,
             ),
             scipy.stats.wishart(
-                (
-                    20
-                    if version.parse(scipy.__version__) < version.parse("1.7.0")
-                    else 19
-                )
-                + positive_var[0].item(),
+                (20 if version.parse(scipy.__version__) < version.parse("1.7.0") else 19) + positive_var[0].item(),
                 cov_tensor,
             ),
         ),
@@ -562,9 +524,7 @@ def setup_TestAgainstScipy(self):
 
 
 TestAgainstScipy.setUp = setup_TestAgainstScipy
-instantiate_device_type_tests(
-    TestAgainstScipy, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestAgainstScipy, globals(), only_for="xpu", allow_xpu=True)
 
 instantiate_device_type_tests(TestFunctors, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestValidation, globals(), only_for="xpu", allow_xpu=True)

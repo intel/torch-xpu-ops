@@ -33,11 +33,7 @@ def AVGPool3d(shape, dtype, channels_last, backward):
     )
 
     if channels_last:
-        input = (
-            torch.randn(N, C, D, H, W)
-            .to(memory_format=torch.channels_last_3d)
-            .to(device=device, dtype=dtype)
-        )
+        input = torch.randn(N, C, D, H, W).to(memory_format=torch.channels_last_3d).to(device=device, dtype=dtype)
     else:
         input = torch.randn(N, C, D, H, W).to(device=device, dtype=dtype)
 
@@ -51,9 +47,7 @@ def AVGPool3d(shape, dtype, channels_last, backward):
             Dout = (D - kernel_size[0]) / stride[0] + 1
             Hout = (H - kernel_size[1]) / stride[1] + 1
             Wout = (W - kernel_size[2]) / stride[2] + 1
-        grad = torch.randn([C, int(Dout), int(Hout), int(Wout)]).to(
-            device=device, dtype=dtype
-        )
+        grad = torch.randn([C, int(Dout), int(Hout), int(Wout)]).to(device=device, dtype=dtype)
 
     AVG3d = torch.nn.AvgPool3d(shape[5], stride=shape[6])
 

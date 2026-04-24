@@ -72,12 +72,8 @@ class TestTorchMethod(TestCase):
         batch = 15  # outer
         stride = 33  # inner
         numel = 17
-        a = torch.randint(
-            0, 5, (batch, numel, stride), dtype=dtype, device=torch.device("xpu")
-        )
-        b = torch.randint(
-            0, 5, (batch, numel, stride), dtype=dtype, device=torch.device("xpu")
-        )
+        a = torch.randint(0, 5, (batch, numel, stride), dtype=dtype, device=torch.device("xpu"))
+        b = torch.randint(0, 5, (batch, numel, stride), dtype=dtype, device=torch.device("xpu"))
         idx = a < b
         idx_ = torch.nonzero(idx, as_tuple=True)
         nonzero = torch.nonzero(idx)

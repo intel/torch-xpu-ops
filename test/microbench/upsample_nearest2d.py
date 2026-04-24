@@ -32,9 +32,7 @@ def Interpolate2d(shape, dtype, channels_last, backward, mode):
             .to(device=device, dtype=dtype)
         )
     else:
-        input = torch.randn(N, C, H, W, requires_grad=True).to(
-            device=device, dtype=dtype
-        )
+        input = torch.randn(N, C, H, W, requires_grad=True).to(device=device, dtype=dtype)
 
     output = torch.nn.functional.interpolate(input, scale_factor=shape[4], mode=mode)
 

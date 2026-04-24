@@ -64,14 +64,10 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
                 other_kwargs[name] = obj
 
         def fn_to_gradcheck(*flat_input_and_params):
-            input_and_params = torch.utils._pytree.tree_unflatten(
-                flat_input_and_params, flat_spec
-            )
+            input_and_params = torch.utils._pytree.tree_unflatten(flat_input_and_params, flat_spec)
             new_input_args = input_and_params[: len(input_args)]
             kwarg_args = input_and_params[-len(kwarg_tensors) :]
-            new_kwargs = {
-                name: obj for (name, _), obj in zip(kwarg_tensors, kwarg_args)
-            }
+            new_kwargs = {name: obj for (name, _), obj in zip(kwarg_tensors, kwarg_args)}
 
             with freeze_rng_state():
                 output = m(*new_input_args, **new_kwargs, **other_kwargs)
@@ -82,9 +78,7 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
         grad_input = input_args + params + tuple(obj for (_, obj) in kwarg_tensors)
         flat_input, flat_spec = torch.utils._pytree.tree_flatten(grad_input)
 
-        self.assertTrue(
-            check(fn_to_gradcheck, flat_input, nondet_tol=gradcheck_nondet_tol)
-        )
+        self.assertTrue(check(fn_to_gradcheck, flat_input, nondet_tol=gradcheck_nondet_tol))
 
         # check partial derivatives
         old_params_requires_grad = [p.requires_grad for p in params]
@@ -99,18 +93,14 @@ def _gradients_helper(self, device, dtype, module_info, training, check):
             p.requires_grad = old
             grad_input = input_args + params + tuple(obj for (_, obj) in kwarg_tensors)
             flat_input, flat_spec = torch.utils._pytree.tree_flatten(grad_input)
-            self.assertTrue(
-                check(fn_to_gradcheck, flat_input, nondet_tol=gradcheck_nondet_tol)
-            )
+            self.assertTrue(check(fn_to_gradcheck, flat_input, nondet_tol=gradcheck_nondet_tol))
             p.requires_grad = False
 
         for (_, obj), old in zip(kwarg_tensors, old_kwargs_requires_grad):
             obj.requires_grad = old
             grad_input = input_args + params + tuple(obj for (_, obj) in kwarg_tensors)
             flat_input, flat_spec = torch.utils._pytree.tree_flatten(grad_input)
-            self.assertTrue(
-                check(fn_to_gradcheck, flat_input, nondet_tol=gradcheck_nondet_tol)
-            )
+            self.assertTrue(check(fn_to_gradcheck, flat_input, nondet_tol=gradcheck_nondet_tol))
             obj.requires_grad = False
 
 
@@ -123,9 +113,7 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
     module_inputs_cpu = module_info.module_inputs_func(
         module_info, device="cpu", dtype=dtype, requires_grad=False, training=training
     )
-    for module_input_device, module_input_cpu in zip(
-        module_inputs_device, module_inputs_cpu
-    ):
+    for module_input_device, module_input_cpu in zip(module_inputs_device, module_inputs_cpu):
         if module_input_device.forward_input is None:
             continue
 
@@ -175,9 +163,7 @@ def _test_multiple_device_transfer(self, device, dtype, module_info, training):
                 m.cuda(1)
                 with torch.cuda.device(1):
                     m(*input_device_1_args, **input_device_1_kwargs)
-                self._assert_module_parameters_and_buffer_are(
-                    m, torch.device("cuda:1"), dtype
-                )
+                self._assert_module_parameters_and_buffer_are(m, torch.device("cuda:1"), dtype)
 
 
 try:

@@ -37,11 +37,7 @@ with XPUPatchForImport(False):
 
 def rewrap_hypothesis_test(test, extra_given_kwargs=None, additional_wrapper=None):
     innert_test = test.hypothesis.inner_test
-    given_kwargs = {
-        "device": st.sampled_from(
-            ["cpu", "xpu"] if torch.xpu.is_available() else ["cpu"]
-        )
-    }
+    given_kwargs = {"device": st.sampled_from(["cpu", "xpu"] if torch.xpu.is_available() else ["cpu"])}
     if extra_given_kwargs is not None:
         for k, v in extra_given_kwargs.items():
             given_kwargs[k] = v
@@ -64,36 +60,22 @@ TestFakeQuantize.test_fq_module_per_channel = rewrap_hypothesis_test(
         )
     },
 )
-TestFusedObsFakeQuantModule.test_compare_fused_obs_fq_oss_module = (
-    rewrap_hypothesis_test(
-        TestFusedObsFakeQuantModule.test_compare_fused_obs_fq_oss_module
-    )
+TestFusedObsFakeQuantModule.test_compare_fused_obs_fq_oss_module = rewrap_hypothesis_test(
+    TestFusedObsFakeQuantModule.test_compare_fused_obs_fq_oss_module
 )
 TestFusedObsFakeQuantModule.test_fused_obs_fq_module = rewrap_hypothesis_test(
     TestFusedObsFakeQuantModule.test_fused_obs_fq_module
 )
-TestFusedObsFakeQuantModule.test_fused_obs_fq_moving_avg_module = (
-    rewrap_hypothesis_test(
-        TestFusedObsFakeQuantModule.test_fused_obs_fq_moving_avg_module
-    )
+TestFusedObsFakeQuantModule.test_fused_obs_fq_moving_avg_module = rewrap_hypothesis_test(
+    TestFusedObsFakeQuantModule.test_fused_obs_fq_moving_avg_module
 )
 
-instantiate_device_type_tests(
-    TestDistributed, globals(), only_for="xpu", allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestFakeQuantize, globals(), only_for="xpu", allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestFusedObsFakeQuantModule, globals(), only_for="xpu", allow_xpu=True
-)
-instantiate_device_type_tests(
-    TestHistogramObserver, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestDistributed, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestFakeQuantize, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestFusedObsFakeQuantModule, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(TestHistogramObserver, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestObserver, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(
-    TestRecordHistogramObserver, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestRecordHistogramObserver, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True

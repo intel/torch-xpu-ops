@@ -76,14 +76,10 @@ with XPUPatchForImport(False):
                 # for each dimension.
                 n_fill_vals = 3  # cardinality of (inf, neg_inf, nan)
                 for dim in range(len(sizes)):
-                    idxs = (
-                        torch.randint(high=size, size=(size // 10,))
-                        for i in range(n_fill_vals)
-                    )
+                    idxs = (torch.randint(high=size, size=(size // 10,)) for i in range(n_fill_vals))
                     vals = (inf, neg_inf, nan)
                     subsets = chain.from_iterable(
-                        combinations(list(zip(idxs, vals)), r)
-                        for r in range(1, n_fill_vals + 1)
+                        combinations(list(zip(idxs, vals)), r) for r in range(1, n_fill_vals + 1)
                     )
                     for subset in subsets:
                         idxs_subset, vals_subset = zip(*subset)
@@ -103,9 +99,7 @@ with XPUPatchForImport(False):
 
     TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
 
-instantiate_device_type_tests(
-    TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

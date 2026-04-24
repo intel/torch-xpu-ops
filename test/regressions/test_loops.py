@@ -32,12 +32,8 @@ class TestLoopsKernel(TestCase):
                 a = torch.randn(shape[0], dtype=dtype)
                 b = torch.randn(shape[1], dtype=dtype)
             elif len(shape) == 4:
-                a = torch.as_strided(
-                    torch.randn(shape[0][0] * shape[1][0]), shape[0], shape[1]
-                )
-                b = torch.as_strided(
-                    torch.randn(shape[2][0] * shape[3][0]), shape[2], shape[3]
-                )
+                a = torch.as_strided(torch.randn(shape[0][0] * shape[1][0]), shape[0], shape[1])
+                b = torch.as_strided(torch.randn(shape[2][0] * shape[3][0]), shape[2], shape[3])
             a_xpu = a.xpu()
             b_xpu = b.xpu()
             c = a + b + 1

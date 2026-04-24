@@ -25,9 +25,7 @@ with XPUPatchForImport(False):
     from test_packed_sequence import PackedSequenceTest
 
     def myxpu(self, *args, **kwargs):
-        ex = torch.tensor((), dtype=self.data.dtype, device=self.data.device).to(
-            *args, **kwargs
-        )
+        ex = torch.tensor((), dtype=self.data.dtype, device=self.data.device).to(*args, **kwargs)
         if ex.device.type == "xpu":
             return self.to(*args, **kwargs)
         return self.to(*args, device="xpu", **kwargs)
@@ -37,9 +35,7 @@ with XPUPatchForImport(False):
     def my_test_to(self):
         for enforce_sorted in (True, False):
             padded, lengths = self._padded_sequence(torch.IntTensor)
-            a = rnn_utils.pack_padded_sequence(
-                padded, lengths, enforce_sorted=enforce_sorted
-            ).cpu()
+            a = rnn_utils.pack_padded_sequence(padded, lengths, enforce_sorted=enforce_sorted).cpu()
 
             self.assertIs(a, a.to("cpu"))
             self.assertIs(a, a.cpu())

@@ -56,18 +56,13 @@ class TestForeachScalarMethod(TestCase):
             torch.bool,
         ]
         if dtype in float_types:
-            x1 = [
-                torch.randint(1, 100, [5, 8]).to(torch.float).div(1000.0).to(dtype)
-                for _ in range(250)
-            ]
+            x1 = [torch.randint(1, 100, [5, 8]).to(torch.float).div(1000.0).to(dtype) for _ in range(250)]
             scalar = random.uniform(-5, 5)
         elif dtype in int_types:
             x1 = [torch.randint(1, 100, [5, 8]).to(dtype) for _ in range(250)]
             scalar = torch.randint(1, 10, [1]).to(dtype).item()
         else:
-            AssertionError(
-                False, "TestForeachScalarMethod::create_sample unsupported dtype"
-            )
+            AssertionError(False, "TestForeachScalarMethod::create_sample unsupported dtype")
         return x1, scalar
 
     def test_foreach_add(self, dtype=torch.float):

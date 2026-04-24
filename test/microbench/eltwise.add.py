@@ -46,9 +46,7 @@ for shape in shape_list:
             "; backward:",
             backward,
         )
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
             for i in range(num_iter):
                 output = a + b
         print(prof.key_averages().table(sort_by="xpu_time_total", row_limit=100))

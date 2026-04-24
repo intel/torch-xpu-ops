@@ -20,12 +20,7 @@ with XPUPatchForImport(False):
     from test_view_ops import TestOldViewOps, TestViewOps
 
     def is_view_of(self, base, other):
-        if (
-            not other._is_view()
-            or other is base
-            or other._base is not base
-            or base.device != other.device
-        ):
+        if not other._is_view() or other is base or other._base is not base or base.device != other.device:
             return False
 
         # Note: only validates storage on native device types
@@ -39,9 +34,7 @@ with XPUPatchForImport(False):
     TestViewOps.is_view_of = is_view_of
 
 
-instantiate_device_type_tests(
-    TestViewOps, globals(), include_lazy=True, only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestViewOps, globals(), include_lazy=True, only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestOldViewOps, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":

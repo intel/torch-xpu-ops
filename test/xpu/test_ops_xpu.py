@@ -27,16 +27,12 @@ with XPUPatchForImport(False):
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
 # in finegrand
-instantiate_device_type_tests(
-    TestCompositeCompliance, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestCompositeCompliance, globals(), only_for="xpu", allow_xpu=True)
 # only CPU
 # instantiate_device_type_tests(TestRefsOpsInfo, globals(), only_for="xpu", allow_xpu=True)
 # not important
 instantiate_device_type_tests(TestFakeTensor, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(
-    TestForwardADWithScalars, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestForwardADWithScalars, globals(), only_for="xpu", allow_xpu=True)
 # instantiate_device_type_tests(TestTags, globals(), only_for="xpu", allow_xpu=True)
 
 

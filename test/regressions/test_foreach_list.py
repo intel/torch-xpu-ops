@@ -18,9 +18,7 @@ class ForeachTest:
     def __init__(self, func):
         self.func = func
 
-    def __call__(
-        self, input1, input2, device, is_inplace=False, scalar=None, non_blocking=None
-    ):
+    def __call__(self, input1, input2, device, is_inplace=False, scalar=None, non_blocking=None):
         input1_for_func = []
         input2_for_func = []
         for i in input1:
@@ -39,9 +37,7 @@ class ForeachTest:
             if scalar is not None:
                 return self.func(input1_for_func, input2_for_func, alpha=scalar)
             elif non_blocking is not None:
-                return self.func(
-                    input1_for_func, input2_for_func, non_blocking=non_blocking
-                )
+                return self.func(input1_for_func, input2_for_func, non_blocking=non_blocking)
             else:
                 return self.func(input1_for_func, input2_for_func)
 
@@ -69,23 +65,15 @@ class TestForeachListMethod(TestCase):
             torch.bool,
         ]
         if dtype in float_types:
-            x1 = [
-                torch.randint(1, 100, [5, 8]).to(torch.float).div(100.0).to(dtype)
-                for _ in range(250)
-            ]
-            x2 = [
-                torch.randint(1, 100, [5, 8]).to(torch.float).div(100.0).to(dtype)
-                for _ in range(250)
-            ]
+            x1 = [torch.randint(1, 100, [5, 8]).to(torch.float).div(100.0).to(dtype) for _ in range(250)]
+            x2 = [torch.randint(1, 100, [5, 8]).to(torch.float).div(100.0).to(dtype) for _ in range(250)]
             scalar = random.uniform(0, 1)
         elif dtype in int_types:
             x1 = [torch.randint(1, 100, [5, 8]).to(dtype) for _ in range(250)]
             x2 = [torch.randint(1, 100, [5, 8]).to(dtype) for _ in range(250)]
             scalar = torch.randint(1, 10, [1]).to(dtype).item()
         else:
-            AssertionError(
-                False, "TestForeachListMethod::create_sample unsupported dtype"
-            )
+            AssertionError(False, "TestForeachListMethod::create_sample unsupported dtype")
         return x1, x2, scalar
 
     def test_foreach_add(self, dtype=torch.float):

@@ -31,22 +31,14 @@ class TestSimpleEmptyDeterministic(TestCase):
 
     def test_empty_strided_float(self, dtype=torch.float):
         torch.use_deterministic_algorithms(True)
-        a_cpu = torch.empty_strided(
-            (2, 3), (1, 2), dtype=dtype, device=torch.device("cpu")
-        )
-        a_xpu = torch.empty_strided(
-            (2, 3), (1, 2), dtype=dtype, device=torch.device("xpu")
-        )
+        a_cpu = torch.empty_strided((2, 3), (1, 2), dtype=dtype, device=torch.device("cpu"))
+        a_xpu = torch.empty_strided((2, 3), (1, 2), dtype=dtype, device=torch.device("xpu"))
         self.assertEqual(a_cpu, a_xpu.to(cpu_device))
         torch.use_deterministic_algorithms(False)
 
     def test_empty_strided_int64(self, dtype=torch.int64):
         torch.use_deterministic_algorithms(True)
-        a_cpu = torch.empty_strided(
-            (2, 3), (1, 2), dtype=dtype, device=torch.device("cpu")
-        )
-        a_xpu = torch.empty_strided(
-            (2, 3), (1, 2), dtype=dtype, device=torch.device("xpu")
-        )
+        a_cpu = torch.empty_strided((2, 3), (1, 2), dtype=dtype, device=torch.device("cpu"))
+        a_xpu = torch.empty_strided((2, 3), (1, 2), dtype=dtype, device=torch.device("xpu"))
         self.assertEqual(a_cpu, a_xpu.to(cpu_device))
         torch.use_deterministic_algorithms(False)

@@ -31,9 +31,7 @@ for shape in shape_list:
         output_size = shape[1]
 
         # warm up
-        output = torch.nn.functional.fold(
-            input, output_size, kernel_size, dilation, 1, 1
-        )
+        output = torch.nn.functional.fold(input, output_size, kernel_size, dilation, 1, 1)
         if backward:
             torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
 
@@ -48,26 +46,18 @@ for shape in shape_list:
             "; backward:",
             backward,
         )
-        with profile(
-            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-        ) as prof:
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
             for i in range(num_iter):
-                output = torch.nn.functional.fold(
-                    input, output_size, kernel_size, dilation, 1, 1
-                )
+                output = torch.nn.functional.fold(input, output_size, kernel_size, dilation, 1, 1)
                 if backward:
-                    torch.autograd.grad(
-                        output, input, grad_outputs=torch.ones_like(output)
-                    )
+                    torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
         print(prof.key_averages().table(sort_by="xpu_time_total"))
 
         # E2E time
         torch.xpu.synchronize()
         t1 = time.time()
         for i in range(num_iter):
-            output = torch.nn.functional.fold(
-                input, output_size, kernel_size, dilation, 1, 1
-            )
+            output = torch.nn.functional.fold(input, output_size, kernel_size, dilation, 1, 1)
             if backward:
                 torch.autograd.grad(output, input, grad_outputs=torch.ones_like(output))
         torch.xpu.synchronize()

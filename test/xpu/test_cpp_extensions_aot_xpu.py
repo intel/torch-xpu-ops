@@ -45,8 +45,7 @@ def _build_cpp_extensions():
     return_code = subprocess.call(install_cmd, cwd=_cpp_extensions_dir, env=shell_env)
     if return_code != 0:
         raise RuntimeError(
-            f"Failed to build cpp extensions (exit code {return_code}). "
-            f"Build dir: {_cpp_extensions_dir}"
+            f"Failed to build cpp extensions (exit code {return_code}). Build dir: {_cpp_extensions_dir}"
         )
 
     # Add the installed packages to sys.path so they can be imported

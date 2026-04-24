@@ -19,12 +19,8 @@ cache_w = torch.randn((1024 * 1024 * 1024), device="xpu")
 
 
 def simple_test(in_shape, scale_factor, backward, dtype):
-    in_tensor = torch.randn(
-        in_shape, dtype=dtype, device=device, requires_grad=backward
-    )
-    output = torch.nn.functional.interpolate(
-        in_tensor, mode="bicubic", scale_factor=scale_factor, align_corners=True
-    )
+    in_tensor = torch.randn(in_shape, dtype=dtype, device=device, requires_grad=backward)
+    output = torch.nn.functional.interpolate(in_tensor, mode="bicubic", scale_factor=scale_factor, align_corners=True)
 
     # warm_up
     for _ in range(10):
@@ -43,9 +39,7 @@ def simple_test(in_shape, scale_factor, backward, dtype):
         "; backward:",
         backward,
     )
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-    ) as prof:
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
         for i in range(num_iter):
             cache_r = cache_w + 1
             output = torch.nn.functional.interpolate(
@@ -55,9 +49,7 @@ def simple_test(in_shape, scale_factor, backward, dtype):
                 align_corners=True,
             )
             if backward:
-                output = torch.autograd.grad(
-                    output, in_tensor, grad_outputs=torch.ones_like(output)
-                )
+                output = torch.autograd.grad(output, in_tensor, grad_outputs=torch.ones_like(output))
     print(prof.key_averages().table(sort_by="xpu_time_total"))
 
     # E2E time
@@ -72,9 +64,7 @@ def simple_test(in_shape, scale_factor, backward, dtype):
             align_corners=True,
         )
         if backward:
-            output = torch.autograd.grad(
-                output, in_tensor, grad_outputs=torch.ones_like(output)
-            )
+            output = torch.autograd.grad(output, in_tensor, grad_outputs=torch.ones_like(output))
     torch.xpu.synchronize()
     t2 = time.time()
     e2e_time = (t2 - t1) / num_iter

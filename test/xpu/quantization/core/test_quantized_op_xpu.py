@@ -77,9 +77,7 @@ def _test_max_pool2d_pt2e(self):
 
 TestQuantizedOps.test_max_pool2d_pt2e = _test_max_pool2d_pt2e
 
-instantiate_device_type_tests(
-    TestQuantizedOps, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestQuantizedOps, globals(), only_for="xpu", allow_xpu=True)
 
 if __name__ == "__main__":
     TestCase._default_dtype_check_enabled = True

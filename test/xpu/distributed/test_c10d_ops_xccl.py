@@ -46,9 +46,7 @@ from torch.testing._internal.common_utils import (
 )
 
 if TEST_WITH_DEV_DBG_ASAN:
-    print(
-        "Skip ASAN as torch + multiprocessing spawn have known issues", file=sys.stderr
-    )
+    print("Skip ASAN as torch + multiprocessing spawn have known issues", file=sys.stderr)
     sys.exit(0)
 
 TEST_MULTIGPU = TEST_XPU and torch.xpu.device_count() >= 2
@@ -85,23 +83,13 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         pg.reduce(xs).wait()
         self.assertEqual(0, xs[0].numel())
 
-        ys = [
-            [
-                torch.FloatTensor([]).xpu(local_device_idx)
-                for _ in range(self.world_size)
-            ]
-        ]
+        ys = [[torch.FloatTensor([]).xpu(local_device_idx) for _ in range(self.world_size)]]
         pg.allgather(ys, xs).wait()
         for y in ys[0]:
             self.assertEqual(0, y.numel())
 
         ys = [torch.FloatTensor([]).xpu(local_device_idx)]
-        xs = [
-            [
-                torch.FloatTensor([]).xpu(local_device_idx)
-                for _ in range(self.world_size)
-            ]
-        ]
+        xs = [[torch.FloatTensor([]).xpu(local_device_idx) for _ in range(self.world_size)]]
         pg.reduce_scatter(ys, xs).wait()
         self.assertEqual(0, ys[0].numel())
 
@@ -122,9 +110,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         # Every rank is root once
         for i in range(self.world_size):
             # Run with 1 input tensor
-            x = torch.tensor([self.rank], dtype=dtype).xpu(
-                self.rank_to_GPU[self.rank][0]
-            )
+            x = torch.tensor([self.rank], dtype=dtype).xpu(self.rank_to_GPU[self.rank][0])
             output = broadcast([x], i, 0)
             self.assertEqual(torch.tensor([i]).to(dtype), output[0])
 
@@ -137,9 +123,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             # test with multiple input tensors (multiple gpu in one rank)
             for j in range(len(xs)):
                 if self.rank == i:
-                    xs[j] = expected_tensor.xpu(
-                        device=self.rank_to_GPU[self.rank][j]
-                    ).to(dtype)
+                    xs[j] = expected_tensor.xpu(device=self.rank_to_GPU[self.rank][j]).to(dtype)
 
                 broadcast(xs, i, j)
 
@@ -187,9 +171,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
                 3.0,
                 torch.tensor([5.0], device=local_device_id, dtype=dtype),
             ):
-                tensors = [
-                    torch.tensor([self.rank + 1]).xpu(local_device_id).to(dtype=dtype)
-                ]
+                tensors = [torch.tensor([self.rank + 1]).xpu(local_device_id).to(dtype=dtype)]
                 allreduce(tensors, c10d.ReduceOp.PREMUL_SUM(factor))
                 self.assertEqual(
                     factor
@@ -299,9 +281,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
                 (c10d.ReduceOp.BAND, c10d.ReduceOp.BOR, c10d.ReduceOp.BXOR),
                 ("ReduceOp.BAND", "ReduceOp.BOR", "ReduceOp.BXOR"),
             ):
-                with self.assertRaisesRegex(
-                    ValueError, "Cannot use " + err + " with XCCL"
-                ):
+                with self.assertRaisesRegex(ValueError, "Cannot use " + err + " with XCCL"):
                     reduce(tensors, self.rank, rt, op)
 
         # Premul Sum not supported for reduce op
@@ -341,12 +321,8 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         output_tensors = []
         expected_output = []
 
-        output_per_gpu = (
-            [torch.empty(2, 2).fill_(-1)] * len(local_device_ids) * self.world_size
-        )
-        expected_per_gpu = (
-            [torch.empty(2, 2).fill_(2)] * len(local_device_ids) * self.world_size
-        )
+        output_per_gpu = [torch.empty(2, 2).fill_(-1)] * len(local_device_ids) * self.world_size
+        expected_per_gpu = [torch.empty(2, 2).fill_(2)] * len(local_device_ids) * self.world_size
 
         for gpu in local_device_ids:
             output_tensors.append([t.xpu(device=gpu) for t in output_per_gpu])
@@ -370,9 +346,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         # allgather_base is GPU number agnostic.
         # Each rank contribute one tensor regardless of GPU counts
         tensor = torch.tensor([self.rank]).xpu(local_device_id)
-        output_t = torch.empty((self.world_size), dtype=tensor.dtype).xpu(
-            local_device_id
-        )
+        output_t = torch.empty((self.world_size), dtype=tensor.dtype).xpu(local_device_id)
 
         allgather_base(output_t, tensor)
 
@@ -395,20 +369,14 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             "output tensor size must be equal to world_size times input tensor size",
         ):
             tensor = torch.tensor([self.rank]).xpu(local_device_id)
-            output_t = torch.empty((self.world_size + 1), dtype=tensor.dtype).xpu(
-                local_device_id
-            )
+            output_t = torch.empty((self.world_size + 1), dtype=tensor.dtype).xpu(local_device_id)
             # fails the check because output_t is not correctly sized
             allgather_base(output_t, tensor)
 
         # anticipate an error
-        with self.assertRaisesRegex(
-            TypeError, "output tensor must have the same type as input tensor"
-        ):
+        with self.assertRaisesRegex(TypeError, "output tensor must have the same type as input tensor"):
             tensor = torch.tensor([self.rank], dtype=torch.float).xpu(local_device_id)
-            output_t = torch.empty((self.world_size + 1), dtype=torch.long).xpu(
-                local_device_id
-            )
+            output_t = torch.empty((self.world_size + 1), dtype=torch.long).xpu(local_device_id)
             # fails the check because the dtype is different
             allgather_base(output_t, tensor)
 
@@ -660,20 +628,14 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             "input tensor must be the same size as output size times world size",
         ):
             input_t = torch.tensor([self.rank]).xpu(local_device_id)
-            output_t = torch.empty((self.world_size + 1), dtype=input_t.dtype).xpu(
-                local_device_id
-            )
+            output_t = torch.empty((self.world_size + 1), dtype=input_t.dtype).xpu(local_device_id)
             # fails the check because output_t is not correctly sized
             reduce_scatter_base(output_t, input_t)
 
         # anticipate an error
-        with self.assertRaisesRegex(
-            TypeError, "input tensor must be the same type as the output tensor."
-        ):
+        with self.assertRaisesRegex(TypeError, "input tensor must be the same type as the output tensor."):
             tensor = torch.tensor([self.rank], dtype=torch.float).xpu(local_device_id)
-            output_t = torch.empty((self.world_size + 1), dtype=torch.long).xpu(
-                local_device_id
-            )
+            output_t = torch.empty((self.world_size + 1), dtype=torch.long).xpu(local_device_id)
             # fails the check because the dtype is different
             reduce_scatter_base(output_t, tensor)
 
@@ -711,12 +673,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         reduce_scatter(output, tensor_lists, c10d.ReduceOp.SUM)
 
         for i in range(num_gpus):
-            expected = torch.tensor(
-                [
-                    (1 + self.world_size) * self.world_size // 2
-                    + self.world_size * self.rank
-                ]
-            )
+            expected = torch.tensor([(1 + self.world_size) * self.world_size // 2 + self.world_size * self.rank])
 
             self.assertEqual(expected, output[i])
 
@@ -757,9 +714,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         output_tensor = torch.empty_like(input_per_gpu[0][0]).xpu(self.rank)
         input_list = [tensor[0].xpu(self.rank) for tensor in input_per_gpu]
         pg.reduce_scatter(output_tensor, input_list, c10d.ReduceOp.SUM).wait()
-        expected = torch.tensor(
-            (1 + self.world_size) * self.world_size // 2 + self.world_size * self.rank
-        )
+        expected = torch.tensor((1 + self.world_size) * self.world_size // 2 + self.world_size * self.rank)
         self.assertEqual(expected, output_tensor)
 
         # Min
@@ -788,9 +743,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
             output = [t.float() for t in output]
             tensor_lists = [[t.float() for t in tl] for tl in tensor_lists]
             output_ref = [t.float() for t in output]
-            tensor_lists_ref = [
-                [t.float() * factor_ref for t in tl] for tl in tensor_lists
-            ]
+            tensor_lists_ref = [[t.float() * factor_ref for t in tl] for tl in tensor_lists]
             reduce_scatter(output, tensor_lists, c10d.ReduceOp.PREMUL_SUM(factor))
             reduce_scatter(output_ref, tensor_lists_ref, c10d.ReduceOp.SUM)
             self.assertEqual(output_ref, output)
@@ -808,9 +761,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         # reduce_scatter_base is GPU number agnostic.
         # Each rank contribute one tensor regardless of GPU counts
         output_t = torch.empty([1]).xpu(local_device_id)
-        tensor = torch.arange(self.world_size, dtype=output_t.dtype).xpu(
-            local_device_id
-        )
+        tensor = torch.arange(self.world_size, dtype=output_t.dtype).xpu(local_device_id)
 
         reduce_scatter_base(output_t, tensor)
 
@@ -834,9 +785,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
 
         for i in range(1, len(local_device_ids) + 1):
             for j in range(i):
-                tensors_list[i - 1].append(
-                    torch.tensor([j + 1]).xpu(local_device_ids[j])
-                )
+                tensors_list[i - 1].append(torch.tensor([j + 1]).xpu(local_device_ids[j]))
 
         works = []
         for tensors in tensors_list:
@@ -848,9 +797,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
 
         for i in range(1, len(local_device_ids) + 1):
             for j in range(i):
-                self.assertEqual(
-                    torch.tensor([(j + 1) * self.world_size]), tensors_list[i - 1][j]
-                )
+                self.assertEqual(torch.tensor([(j + 1) * self.world_size]), tensors_list[i - 1][j])
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
@@ -904,20 +851,15 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         dist.barrier()
         device_id = self.rank_to_GPU[self.rank][0]
         torch.xpu.set_device(device_id)
-        send_tensor = (torch.arange(2, dtype=torch.float32) + 2.0 * self.rank).to(
-            device_id
-        )
+        send_tensor = (torch.arange(2, dtype=torch.float32) + 2.0 * self.rank).to(device_id)
         recv_tensor = torch.randn(2, dtype=torch.float32).to(device_id)
         send_op = dist.P2POp(dist.isend, send_tensor, (self.rank + 1) % self.world_size)
-        recv_op = dist.P2POp(
-            dist.irecv, recv_tensor, (self.rank - 1 + self.world_size) % self.world_size
-        )
+        recv_op = dist.P2POp(dist.irecv, recv_tensor, (self.rank - 1 + self.world_size) % self.world_size)
         reqs = dist.batch_isend_irecv([send_op, recv_op])
         for req in reqs:
             req.wait()
         expected_tensor = (
-            torch.arange(2, dtype=torch.float32)
-            + 2.0 * ((self.rank - 1 + self.world_size) % self.world_size)
+            torch.arange(2, dtype=torch.float32) + 2.0 * ((self.rank - 1 + self.world_size) % self.world_size)
         ).to(device_id)
 
         self.assertEqual(recv_tensor, expected_tensor)
@@ -931,9 +873,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         x.requires_grad = True
         y = torch.empty_like(x)
         split_sizes = [(i + 1) * (self.rank + 1) for i in range(self.world_size)]
-        y = torch.distributed.nn.all_to_all_single(
-            y, x, output_split_sizes=split_sizes, input_split_sizes=split_sizes
-        )
+        y = torch.distributed.nn.all_to_all_single(y, x, output_split_sizes=split_sizes, input_split_sizes=split_sizes)
         expected = []
         for idx, tensor in enumerate(torch.split(x, split_sizes)):
             expected.append(torch.full_like(tensor, (idx + 1)))
@@ -952,12 +892,7 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         out_splits = [self.rank + 1 for _ in range(self.world_size)]
         in_tensor = torch.ones([sum(in_splits), self.world_size]) * self.rank
         out_tensor = torch.ones([(self.rank + 1) * self.world_size, self.world_size])
-        expected_tensor = torch.cat(
-            [
-                torch.ones([self.rank + 1, self.world_size]) * i
-                for i in range(self.world_size)
-            ]
-        )
+        expected_tensor = torch.cat([torch.ones([self.rank + 1, self.world_size]) * i for i in range(self.world_size)])
 
         in_tensor = in_tensor.to(device)
         expected_tensor = expected_tensor.to(device)
@@ -971,16 +906,11 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         device = self.rank_to_GPU[self.rank][0]
         in_splits = [i + 1 for i in range(self.world_size)]
         in_tensors = [
-            torch.ones([in_splits[i], self.world_size], dtype=dtype) * self.rank
-            for i in range(self.world_size)
+            torch.ones([in_splits[i], self.world_size], dtype=dtype) * self.rank for i in range(self.world_size)
         ]
-        out_tensors = [
-            torch.ones([(self.rank + 1), self.world_size], dtype=dtype)
-            for _ in range(self.world_size)
-        ]
+        out_tensors = [torch.ones([(self.rank + 1), self.world_size], dtype=dtype) for _ in range(self.world_size)]
         expected_tensors = [
-            torch.ones([self.rank + 1, self.world_size], dtype=dtype) * i
-            for i in range(self.world_size)
+            torch.ones([self.rank + 1, self.world_size], dtype=dtype) * i for i in range(self.world_size)
         ]
 
         in_tensors = [t.to(device) for t in in_tensors]

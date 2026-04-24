@@ -31,11 +31,7 @@ def fmp3d(shape, dtype, channels_last, backward):
     )
 
     if channels_last:
-        input = (
-            torch.randn(N, C, H, W, D)
-            .to(memory_format=torch.channels_last_3d)
-            .to(device="xpu", dtype=dtype)
-        )
+        input = torch.randn(N, C, H, W, D).to(memory_format=torch.channels_last_3d).to(device="xpu", dtype=dtype)
     else:
         input = torch.randn(N, C, H, W, D).to(device="xpu", dtype=dtype)
 

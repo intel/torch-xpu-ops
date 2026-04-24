@@ -43,9 +43,7 @@ def _do_test(loss, input, target, dtype, device):
         backward,
         "; reduce: 0" if (reduce == "none") else "; reduce: 1",
     )
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
-    ) as prof:
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
         for i in range(num_iter):
             cache_r = cache_w
             output = loss(input, target)

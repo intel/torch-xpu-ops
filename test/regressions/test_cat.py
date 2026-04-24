@@ -164,21 +164,13 @@ class TestTorchMethod(TestCase):
             if (
                 1 == res_xpu.shape[1]
                 or (1 == res_xpu.shape[2] and 1 == res_xpu.shape[3])
-                or (
-                    1 == res_xpu.shape[1]
-                    and 1 == res_xpu.shape[2]
-                    and 1 == res_xpu.shape[3]
-                )
+                or (1 == res_xpu.shape[1] and 1 == res_xpu.shape[2] and 1 == res_xpu.shape[3])
             ):
                 self.assertEqual(res_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    res_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(res_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(res_xpu.is_contiguous(), False)
-                self.assertEqual(
-                    res_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(res_xpu.is_contiguous(memory_format=torch.channels_last), True)
 
             user_cpu1 = torch.randn([N, C, H, W], dtype=dtype)
             user_cpu2 = torch.randn([N, C, H, W], dtype=dtype)
@@ -214,21 +206,13 @@ class TestTorchMethod(TestCase):
             if (
                 1 == res_xpu.shape[1]
                 or (1 == res_xpu.shape[2] and 1 == res_xpu.shape[3])
-                or (
-                    1 == res_xpu.shape[1]
-                    and 1 == res_xpu.shape[2]
-                    and 1 == res_xpu.shape[3]
-                )
+                or (1 == res_xpu.shape[1] and 1 == res_xpu.shape[2] and 1 == res_xpu.shape[3])
             ):
                 self.assertEqual(res_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    res_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(res_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(res_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    res_xpu.is_contiguous(memory_format=torch.channels_last), False
-                )
+                self.assertEqual(res_xpu.is_contiguous(memory_format=torch.channels_last), False)
 
             user_cpu1 = torch.randn([N, C, H, W], dtype=dtype)
             user_cpu2 = torch.randn([N, C, H, W], dtype=dtype)
@@ -264,26 +248,16 @@ class TestTorchMethod(TestCase):
             if (
                 1 == res_xpu.shape[1]
                 or (1 == res_xpu.shape[2] and 1 == res_xpu.shape[3])
-                or (
-                    1 == res_xpu.shape[1]
-                    and 1 == res_xpu.shape[2]
-                    and 1 == res_xpu.shape[3]
-                )
+                or (1 == res_xpu.shape[1] and 1 == res_xpu.shape[2] and 1 == res_xpu.shape[3])
             ):
                 self.assertEqual(res_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    res_xpu.is_contiguous(memory_format=torch.channels_last), True
-                )
+                self.assertEqual(res_xpu.is_contiguous(memory_format=torch.channels_last), True)
             else:
                 self.assertEqual(res_xpu.is_contiguous(), True)
-                self.assertEqual(
-                    res_xpu.is_contiguous(memory_format=torch.channels_last), False
-                )
+                self.assertEqual(res_xpu.is_contiguous(memory_format=torch.channels_last), False)
 
 
-instantiate_device_type_tests(
-    TestTorchMethod, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestTorchMethod, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

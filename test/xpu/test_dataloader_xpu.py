@@ -79,23 +79,15 @@ with XPUPatchForImport(False):
         ]
         datapipe: IterDataPipe = IterableWrapper([[1, 2, 3, 4], [1, 2, 3, 4, 5, 6]])
         datapipe = datapipe.map(row_processor)
-        datapipe = (
-            datapipe.filter(lambda row: len(row) == 4)
-            if with_dill
-            else datapipe.filter(filter_len)
-        )
+        datapipe = datapipe.filter(lambda row: len(row) == 4) if with_dill else datapipe.filter(filter_len)
 
-        dl_common_args = dict(
-            num_workers=2, batch_size=2, shuffle=True, pin_memory=False
-        )
+        dl_common_args = dict(num_workers=2, batch_size=2, shuffle=True, pin_memory=False)
         for ctx in supported_multiprocessing_contexts:
             self.assertEqual(
                 reference,
                 [
                     t.type(torch.int64)
-                    for t in self._get_data_loader(
-                        datapipe, multiprocessing_context=ctx, **dl_common_args
-                    )
+                    for t in self._get_data_loader(datapipe, multiprocessing_context=ctx, **dl_common_args)
                 ],
             )
             if ctx is not None:
@@ -105,9 +97,7 @@ with XPUPatchForImport(False):
                     reference,
                     [
                         t.type(torch.int64)
-                        for t in self._get_data_loader(
-                            datapipe, multiprocessing_context=ctx, **dl_common_args
-                        )
+                        for t in self._get_data_loader(datapipe, multiprocessing_context=ctx, **dl_common_args)
                     ],
                 )
 
@@ -118,17 +108,13 @@ with XPUPatchForImport(False):
             self.assertTrue(target.is_pinned())
 
     def shuffle_pin_memory(self):
-        loader = self._get_data_loader(
-            self.dataset, batch_size=2, shuffle=True, num_workers=4, pin_memory=True
-        )
+        loader = self._get_data_loader(self.dataset, batch_size=2, shuffle=True, num_workers=4, pin_memory=True)
         for input, target in loader:
             self.assertTrue(input.is_pinned())
             self.assertTrue(target.is_pinned())
 
     def string_shuffle_pin_memory(self):
-        loader = DataLoader(
-            self.dataset, batch_size=2, shuffle=True, num_workers=4, pin_memory=True
-        )
+        loader = DataLoader(self.dataset, batch_size=2, shuffle=True, num_workers=4, pin_memory=True)
         for s, n in loader:
             self.assertIsInstance(s[0], str)
             self.assertTrue(n.is_pinned())
@@ -140,9 +126,7 @@ with XPUPatchForImport(False):
             self.assertTrue(sample["another_dict"]["a_number"].is_pinned())
 
     def pin_memory_device(self):
-        loader = DataLoader(
-            self.dataset, batch_size=2, pin_memory=True, pin_memory_device="xpu"
-        )
+        loader = DataLoader(self.dataset, batch_size=2, pin_memory=True, pin_memory_device="xpu")
         for sample in loader:
             self.assertTrue(sample["a_tensor"].is_pinned(device="xpu"))
             self.assertTrue(sample["another_dict"]["a_number"].is_pinned(device="xpu"))
@@ -163,9 +147,7 @@ with XPUPatchForImport(False):
             ),
         ]
         for collate_fn, elem_cls in test_cases:
-            loader = DataLoader(
-                self.dataset, batch_size=2, collate_fn=collate_fn, pin_memory=True
-            )
+            loader = DataLoader(self.dataset, batch_size=2, collate_fn=collate_fn, pin_memory=True)
             for sample in loader:
                 self.assertIsInstance(sample, elem_cls)
                 self.assertTrue(sample.is_pinned())
@@ -201,10 +183,7 @@ with XPUPatchForImport(False):
             # TODO: Skip this better in a better way when the test framework allows
             return
 
-        dataset = [
-            torch.nested.nested_tensor([torch.randn(5)], device=device)
-            for _ in range(10)
-        ]
+        dataset = [torch.nested.nested_tensor([torch.randn(5)], device=device) for _ in range(10)]
 
         pin_memory_settings = [False]
         if device == "cpu" and torch.xpu.is_available():
@@ -225,9 +204,7 @@ with XPUPatchForImport(False):
 
         # Error case: default collate_fn doesn't currently support batches of nested tensors.
         # Following the current semantics, we'd need to stack them, which isn't possible atm.
-        with self.assertRaisesRegex(
-            RuntimeError, "not currently supported by the default collate_fn"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "not currently supported by the default collate_fn"):
             loader = torch.utils.data.DataLoader(
                 dataset,
                 batch_size=1,
@@ -307,22 +284,14 @@ with XPUPatchForImport(False):
     TestCustomPinFn.test_custom_batch_pin = custom_batch_pin
     TestCustomPinFn.test_custom_batch_pin_worker = custom_batch_pin_worker
     TestDataLoaderPersistentWorkers.test_multiple_dataloaders = multiple_dataloaders
-    TestDataLoaderPersistentWorkers.test_multiprocessing_contexts = (
-        multiprocessing_contexts
-    )
-    TestDataLoaderPersistentWorkers.test_multiprocessing_iterdatapipe = (
-        multiprocessing_iterdatapipe
-    )
+    TestDataLoaderPersistentWorkers.test_multiprocessing_contexts = multiprocessing_contexts
+    TestDataLoaderPersistentWorkers.test_multiprocessing_iterdatapipe = multiprocessing_iterdatapipe
     TestDataLoaderPersistentWorkers.test_sequential_pin_memory = sequential_pin_memory
     TestDataLoaderPersistentWorkers.test_shuffle_pin_memory = shuffle_pin_memory
-    TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = (
-        nested_tensor_multiprocessing
-    )
+    TestDataLoaderDeviceType.test_nested_tensor_multiprocessing = nested_tensor_multiprocessing
 
 
-instantiate_device_type_tests(
-    TestDataLoaderDeviceType, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestDataLoaderDeviceType, globals(), only_for="xpu", allow_xpu=True)
 original_path = sys.path.copy()
 sys.path.extend(test_package)
 

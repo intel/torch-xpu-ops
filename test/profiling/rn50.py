@@ -38,9 +38,7 @@ torch._C._jit_set_profiling_mode(False)
 torch._C._jit_set_profiling_executor(False)
 
 model_names = sorted(
-    name
-    for name in models.__dict__
-    if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
+    name for name in models.__dict__ if name.islower() and not name.startswith("__") and callable(models.__dict__[name])
 )
 
 # for convergence
@@ -77,9 +75,7 @@ parser.add_argument(
     metavar="N",
     help="number of data loading workers (default: 4)",
 )
-parser.add_argument(
-    "--epochs", default=90, type=int, metavar="N", help="number of total epochs to run"
-)
+parser.add_argument("--epochs", default=90, type=int, metavar="N", help="number of total epochs to run")
 parser.add_argument(
     "--eval-start-epoch",
     default=0,
@@ -145,18 +141,14 @@ parser.add_argument(
     action="store_true",
     help="evaluate model on validation set",
 )
-parser.add_argument(
-    "--pretrained", dest="pretrained", action="store_true", help="use pre-trained model"
-)
+parser.add_argument("--pretrained", dest="pretrained", action="store_true", help="use pre-trained model")
 parser.add_argument(
     "--world-size",
     default=-1,
     type=int,
     help="number of nodes for distributed training",
 )
-parser.add_argument(
-    "--rank", default=-1, type=int, help="node rank for distributed training"
-)
+parser.add_argument("--rank", default=-1, type=int, help="node rank for distributed training")
 parser.add_argument(
     "--dist-url",
     default="127.0.0.1",
@@ -175,18 +167,14 @@ parser.add_argument(
     type=str,
     help="distributed backend, default is torch-ccl",
 )
-parser.add_argument(
-    "--seed", default=None, type=int, help="seed for initializing training. "
-)
+parser.add_argument("--seed", default=None, type=int, help="seed for initializing training. ")
 parser.add_argument("--gpu", default=None, type=int, help="GPU id to use.")
 parser.add_argument("--xpu", default=None, type=int, help="XPU id to use.")
 parser.add_argument("--tf32", default=0, type=int, help="Datatype used: TF32")
 parser.add_argument("--bf32", default=0, type=int, help="Datatype used: BF32")
 parser.add_argument("--fp16", default=0, type=int, help="Datatype used: FP16")
 parser.add_argument("--bf16", default=0, type=int, help="Datatype used: BF16")
-parser.add_argument(
-    "--int8", default=0, type=int, help="Use int8 quantization to do inference"
-)
+parser.add_argument("--int8", default=0, type=int, help="Use int8 quantization to do inference")
 parser.add_argument(
     "--optimize",
     action="store_true",
@@ -197,12 +185,8 @@ parser.add_argument(
     action="store_true",
     help="Whether to running kineto profiler",
 )
-parser.add_argument(
-    "--disable-broadcast-buffers", action="store_true", help="disable syncing buffers"
-)
-parser.add_argument(
-    "--bucket-cap", default=25, type=int, help="controls the bucket size in MegaBytes"
-)
+parser.add_argument("--disable-broadcast-buffers", action="store_true", help="disable syncing buffers")
+parser.add_argument("--bucket-cap", default=25, type=int, help="controls the bucket size in MegaBytes")
 parser.add_argument(
     "--large-first-bucket",
     action="store_true",
@@ -213,20 +197,14 @@ parser.add_argument(
     action="store_true",
     help="Turn ON gradient_as_bucket_view optimization in DDP",
 )
-parser.add_argument(
-    "--jit-cache", type=str, default=str(hub), help="path to save/load jit model"
-)
-parser.add_argument(
-    "--jit-trace", action="store_true", help="enable PyTorch jit trace graph mode"
-)
+parser.add_argument("--jit-cache", type=str, default=str(hub), help="path to save/load jit model")
+parser.add_argument("--jit-trace", action="store_true", help="enable PyTorch jit trace graph mode")
 parser.add_argument(
     "--dynamo",
     action="store_true",
     help="Use torch.compile to optimize model, inductor backend default",
 )
-parser.add_argument(
-    "--calib-iters", default=8, type=int, help="iteration number for calibration"
-)
+parser.add_argument("--calib-iters", default=8, type=int, help="iteration number for calibration")
 parser.add_argument(
     "--calib-bs",
     default=32,
@@ -255,12 +233,8 @@ parser.add_argument(
 )
 parser.add_argument("--step-size", default=30, type=int, help="LR decay step size")
 parser.add_argument("--step-gamma", default=0.1, type=float, help="set the step gamma")
-parser.add_argument(
-    "--last-step-boundary", default=80, type=int, help="last epoch to decay the LR"
-)
-parser.add_argument(
-    "--warm-up-epoch", default=0, type=int, help="warm up epochs number for convergence"
-)
+parser.add_argument("--last-step-boundary", default=80, type=int, help="last epoch to decay the LR")
+parser.add_argument("--warm-up-epoch", default=0, type=int, help="warm up epochs number for convergence")
 parser.add_argument(
     "--decay-epochs",
     default=33,
@@ -268,9 +242,7 @@ parser.add_argument(
     metavar="N",
     help="number of decay epochs to run for lars",
 )
-parser.add_argument(
-    "--lars", default=False, action="store_true", help="use lars for training"
-)
+parser.add_argument("--lars", default=False, action="store_true", help="use lars for training")
 parser.add_argument("--lars-eta", default=0.0, type=float, help="set the lars epsilon")
 parser.add_argument(
     "--skip-checkpoint",
@@ -278,14 +250,12 @@ parser.add_argument(
     action="store_true",
     help="skip checkpoint saving",
 )
-parser.add_argument(
-    "--skip-tensorboard", default=False, action="store_true", help="skip tensorboard"
-)
+parser.add_argument("--skip-tensorboard", default=False, action="store_true", help="skip tensorboard")
 parser.add_argument("--label-smoothing", default=0.0, type=float)
 parser.add_argument(
     "--dummy",
     action="store_true",
-    help="use dummy data for " "benchmark training or val",
+    help="use dummy data for benchmark training or val",
 )
 parser.add_argument(
     "--lr-scheduler",
@@ -293,18 +263,10 @@ parser.add_argument(
     type=str,
     help="choose lr scheduler, default step, can choose pow",
 )
-parser.add_argument(
-    "--power-factor", default=1.0, type=float, help="power factor for lr decay policy"
-)
-parser.add_argument(
-    "--eval-period", default=1, type=int, help="period for doing online evaluation"
-)
-parser.add_argument(
-    "--eval-offset", default=0, type=int, help="offset for doing online evaluation"
-)
-parser.add_argument(
-    "--sota-target", default=75.9, type=float, help="set the lars epsilon"
-)
+parser.add_argument("--power-factor", default=1.0, type=float, help="power factor for lr decay policy")
+parser.add_argument("--eval-period", default=1, type=int, help="period for doing online evaluation")
+parser.add_argument("--eval-offset", default=0, type=int, help="offset for doing online evaluation")
+parser.add_argument("--sota-target", default=75.9, type=float, help="set the lars epsilon")
 parser.add_argument(
     "--multiprocessing-distributed",
     action="store_true",
@@ -317,7 +279,7 @@ parser.add_argument(
     "--benchmark",
     default=0,
     type=int,
-    help="for int8 benchmark " "performance, move H2D out of E2E time",
+    help="for int8 benchmark performance, move H2D out of E2E time",
 )
 parser.add_argument(
     "--save",
@@ -500,9 +462,7 @@ def main_worker(ngpus_per_node, args):
             else:
                 local_rank = os.environ["PALS_LOCAL_RANKID"]
             args.xpu = local_rank
-            print(
-                f"world_size:{args.world_size}, rank:{args.rank}, local_rank:{local_rank}."
-            )
+            print(f"world_size:{args.world_size}, rank:{args.rank}, local_rank:{local_rank}.")
 
     if args.gpu is not None:
         args.gpu = f"cuda:{args.gpu}"
@@ -557,9 +517,7 @@ def main_worker(ngpus_per_node, args):
                 # ourselves based on the total number of GPUs of the current node.
                 args.batch_size = int(args.batch_size / ngpus_per_node)
                 args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-                model = torch.nn.parallel.DistributedDataParallel(
-                    model, device_ids=[args.gpu]
-                )
+                model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
             elif args.xpu is not None:
                 torch.xpu.set_device(args.xpu)
                 model.xpu(args.xpu)
@@ -633,9 +591,7 @@ def main_worker(ngpus_per_node, args):
                 )
 
         # LR scheduler
-        scheduler = StepLR(
-            optimizer=optimizer, step_size=args.step_size, gamma=args.step_gamma
-        )
+        scheduler = StepLR(optimizer=optimizer, step_size=args.step_size, gamma=args.step_gamma)
 
         # optionally resume from a checkpoint
         if args.resume:
@@ -663,36 +619,20 @@ def main_worker(ngpus_per_node, args):
     # create dataset
     traindir = os.path.join(args.data, "train")
     valdir = os.path.join(args.data, "val")
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     if args.dummy:
         print("[info] dummy dataset is used")
         if args.num_iterations > 0:
-            train_dataset_size = (
-                args.num_iterations
-                * args.batch_size
-                * (args.world_size if args.distributed else 1)
-            )
+            train_dataset_size = args.num_iterations * args.batch_size * (args.world_size if args.distributed else 1)
         else:
             train_dataset_size = 1281167
-        train_dataset = datasets.FakeData(
-            train_dataset_size, (3, 224, 224), 1000, transforms.ToTensor()
-        )
-        val_dataset_size = (
-            args.num_iterations * args.batch_size
-            if (args.dummy and args.num_iterations)
-            else 50000
-        )
-        val_dataset = datasets.FakeData(
-            val_dataset_size, (3, 224, 224), 1000, transforms.ToTensor()
-        )
+        train_dataset = datasets.FakeData(train_dataset_size, (3, 224, 224), 1000, transforms.ToTensor())
+        val_dataset_size = args.num_iterations * args.batch_size if (args.dummy and args.num_iterations) else 50000
+        val_dataset = datasets.FakeData(val_dataset_size, (3, 224, 224), 1000, transforms.ToTensor())
     else:
         traindir = os.path.join(args.data, "train")
         valdir = os.path.join(args.data, "val")
-        normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-        )
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         train_dataset = datasets.ImageFolder(
             traindir,
             transforms.Compose(
@@ -719,9 +659,7 @@ def main_worker(ngpus_per_node, args):
     # create dataloader sampler
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-        val_sampler = torch.utils.data.distributed.DistributedSampler(
-            val_dataset, shuffle=False, drop_last=True
-        )
+        val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=True)
     else:
         train_sampler = None
         val_sampler = None
@@ -861,9 +799,7 @@ def main_worker(ngpus_per_node, args):
         global global_lr
         global_lr = optimizer.param_groups[0]["lr"]
 
-        if args.converge and (
-            not args.distributed or (args.distributed and args.rank == 0)
-        ):
+        if args.converge and (not args.distributed or (args.distributed and args.rank == 0)):
             print(
                 "[info] Epoch[",
                 epoch,
@@ -877,9 +813,7 @@ def main_worker(ngpus_per_node, args):
         if epoch == args.last_step_boundary and args.lr_scheduler == "step":
             optimizer.param_groups[0]["lr"] *= args.step_gamma
 
-        if args.converge and (
-            not args.distributed or (args.distributed and args.rank == 0)
-        ):
+        if args.converge and (not args.distributed or (args.distributed and args.rank == 0)):
             print("[info] Epoch[", epoch, "] lr = ", optimizer.param_groups[0]["lr"])
 
         train(
@@ -897,9 +831,7 @@ def main_worker(ngpus_per_node, args):
 
         # evaluate on validation set
         acc1 = last_acc
-        if (epoch >= args.eval_start_epoch) and (
-            epoch % args.eval_period == args.eval_offset
-        ):
+        if (epoch >= args.eval_start_epoch) and (epoch % args.eval_period == args.eval_offset):
             print("[info] Epoch: ", epoch, " is doing evaluation")
             acc1 = validate(
                 val_loader,
@@ -964,9 +896,7 @@ def main_worker(ngpus_per_node, args):
             "[info] Global start time = ",
             time.asctime(time.localtime(global_start_time)),
         )
-        print(
-            "[info] Global end time = ", time.asctime(time.localtime(global_end_time))
-        )
+        print("[info] Global end time = ", time.asctime(time.localtime(global_end_time)))
         print(
             "[info] Global consume time = ",
             ((global_end_time - global_start_time) / (3600.0)),
@@ -1014,9 +944,7 @@ def train(
     # for xpu + dynamo
     def one_iter(model, images, target):
         if autocast_dtype == torch.bfloat16 or autocast_dtype == torch.float16:
-            with torch.autocast(
-                device_type="xpu", enabled=use_autocast, dtype=autocast_dtype
-            ):
+            with torch.autocast(device_type="xpu", enabled=use_autocast, dtype=autocast_dtype):
                 # compute output
                 output = model(images)
                 loss = criterion(output, target)
@@ -1064,9 +992,7 @@ def train(
     # more iters will be skipped, and repeat will be fixed to 1
     num_iters = args.num_iterations if args.num_iterations else len(train_loader)
     skip_iters = max(num_iters - 5, 0)
-    schedule = torch.profiler.schedule(
-        skip_first=skip_iters, wait=1, warmup=3, active=1
-    )
+    schedule = torch.profiler.schedule(skip_first=skip_iters, wait=1, warmup=3, active=1)
 
     def trace_handle(prof):
         profile_name = "fp32"
@@ -1099,9 +1025,7 @@ def train(
             )
 
     # start profiler, or none while profiling is false
-    with profiler_setup(
-        profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle
-    ) as prof:
+    with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as prof:
         data_start = time.time()
         for i, (images, target) in enumerate(train_loader):
             global_num_iter += 1
@@ -1133,9 +1057,7 @@ def train(
                 images = images.to(args.gpu, non_blocking=non_blocking)
                 target = target.to(args.gpu, non_blocking=non_blocking)
 
-                with torch.cuda.amp.autocast(
-                    enabled=use_autocast, dtype=autocast_dtype
-                ):
+                with torch.cuda.amp.autocast(enabled=use_autocast, dtype=autocast_dtype):
                     output = model(images)
                     loss = criterion(output, target)
 
@@ -1173,11 +1095,7 @@ def train(
                 progress.display(i + 1)
 
             # exclude first iteration for calculating througput
-            if (
-                i >= warmup_iter
-                or args.num_iterations == 0
-                and len(train_loader) <= warmup_iter
-            ):
+            if i >= warmup_iter or args.num_iterations == 0 and len(train_loader) <= warmup_iter:
                 duration_total += duration_train
             data_start = time.time()
 
@@ -1186,19 +1104,12 @@ def train(
                     "Training performance: batch size:%d, throughput:%.2f image/sec"
                     % (
                         args.batch_size,
-                        (
-                            args.batch_size
-                            / (duration_total / (args.num_iterations - warmup_iter))
-                        ),
+                        (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))),
                     )
                 )
                 sys.exit(0)
             elif args.num_iterations == 0 and i == len(train_loader) - 1:
-                iters = (
-                    len(train_loader) - warmup_iter
-                    if len(train_loader) > warmup_iter
-                    else len(train_loader)
-                )
+                iters = len(train_loader) - warmup_iter if len(train_loader) > warmup_iter else len(train_loader)
                 print(
                     "Training performance: batch size:%d, throughput:%.2f image/sec"
                     % (args.batch_size, (args.batch_size / (duration_total / iters)))
@@ -1214,16 +1125,12 @@ def train(
         tensorboard_data["train"]["top5"] = top5.avg
 
 
-def validate(
-    val_loader, model, criterion, epoch, profiling, use_autocast, autocast_dtype, args
-):
+def validate(val_loader, model, criterion, epoch, profiling, use_autocast, autocast_dtype, args):
     # from torch._inductor import config
 
     def compile_model(model, val_loader):
         print("====Before compile model====")
-        compiled_model = torch.compile(
-            model, backend="inductor", options={"freezing": True}
-        )
+        compiled_model = torch.compile(model, backend="inductor", options={"freezing": True})
         return compiled_model
 
     def run_validate(loader, model, non_blocking, base_progress=0):
@@ -1231,9 +1138,7 @@ def validate(
         duration_total = 0.0
         warmup_iter = 5
         if (not args.num_iterations == 0) and (args.num_iterations <= warmup_iter):
-            raise RuntimeError(
-                f"At least {warmup_iter} iterations required for performance measure"
-            )
+            raise RuntimeError(f"At least {warmup_iter} iterations required for performance measure")
 
         # config profiler
         import contextlib
@@ -1253,9 +1158,7 @@ def validate(
         # more iters will be skipped, and repeat will be fixed to 1
         num_iters = args.num_iterations if args.num_iterations else len(loader)
         skip_iters = max(num_iters - 5, 0)
-        schedule = torch.profiler.schedule(
-            skip_first=skip_iters, wait=1, warmup=3, active=1
-        )
+        schedule = torch.profiler.schedule(skip_first=skip_iters, wait=1, warmup=3, active=1)
 
         def trace_handle(prof):
             profile_name = "fp32"
@@ -1311,10 +1214,7 @@ def validate(
                     if args.jit_trace:
                         output = model(images)
                     elif args.dynamo:
-                        if (
-                            autocast_dtype == torch.bfloat16
-                            or autocast_dtype == torch.float16
-                        ):
+                        if autocast_dtype == torch.bfloat16 or autocast_dtype == torch.float16:
                             with torch.autocast(
                                 device_type="xpu",
                                 enabled=use_autocast,
@@ -1324,10 +1224,7 @@ def validate(
                         else:
                             output = model(images)
                     else:
-                        if (
-                            autocast_dtype == torch.bfloat16
-                            or autocast_dtype == torch.float16
-                        ):
+                        if autocast_dtype == torch.bfloat16 or autocast_dtype == torch.float16:
                             with torch.autocast(
                                 device_type="xpu",
                                 enabled=use_autocast,
@@ -1341,17 +1238,13 @@ def validate(
                 elif args.gpu is not None:
                     start_time = time.time()
                     images = images.to(args.gpu, non_blocking=non_blocking)
-                    with torch.cuda.amp.autocast(
-                        enabled=use_autocast, dtype=autocast_dtype
-                    ):
+                    with torch.cuda.amp.autocast(enabled=use_autocast, dtype=autocast_dtype):
                         output = model(images)
 
                     torch.cuda.synchronize(args.gpu)
                 else:
                     start_time = time.time()
-                    with torch.cpu.amp.autocast(
-                        enabled=use_autocast, dtype=autocast_dtype
-                    ):
+                    with torch.cpu.amp.autocast(enabled=use_autocast, dtype=autocast_dtype):
                         output = model(images)
 
                 if profiling:
@@ -1376,23 +1269,15 @@ def validate(
                     progress.display(i + 1)
 
                 # exclude first iteration for calculating througput
-                if i >= warmup_iter and not (
-                    args.num_iterations == 0 and i == len(val_loader) - 1
-                ):
+                if i >= warmup_iter and not (args.num_iterations == 0 and i == len(val_loader) - 1):
                     duration_total += duration_eval
 
-                if (
-                    i == (args.num_iterations - 1)
-                    and args.num_iterations >= warmup_iter
-                ):
+                if i == (args.num_iterations - 1) and args.num_iterations >= warmup_iter:
                     print(
                         "Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f"
                         % (
                             args.batch_size,
-                            (
-                                args.batch_size
-                                / (duration_total / (args.num_iterations - warmup_iter))
-                            ),
+                            (args.batch_size / (duration_total / (args.num_iterations - warmup_iter))),
                             top1.avg,
                             top5.avg,
                         )
@@ -1406,10 +1291,7 @@ def validate(
                         "Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f"
                         % (
                             args.batch_size,
-                            (
-                                args.batch_size
-                                / (duration_total / (len(val_loader) - warmup_iter))
-                            ),
+                            (args.batch_size / (duration_total / (len(val_loader) - warmup_iter))),
                             top1.avg,
                             top5.avg,
                         )
@@ -1430,11 +1312,7 @@ def validate(
     top1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
-        len(val_loader)
-        + (
-            args.distributed
-            and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))
-        ),
+        len(val_loader) + (args.distributed and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))),
         [batch_time, losses, top1, top5],
         prefix="Test: ",
     )
@@ -1496,11 +1374,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
     top1 = AverageMeter("Acc@1", ":6.2f", Summary.AVERAGE)
     top5 = AverageMeter("Acc@5", ":6.2f", Summary.AVERAGE)
     progress = ProgressMeter(
-        len(val_loader)
-        + (
-            args.distributed
-            and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))
-        ),
+        len(val_loader) + (args.distributed and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))),
         [batch_time, losses, top1, top5],
         prefix="Test: ",
     )
@@ -1531,9 +1405,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
     # more iters will be skipped, and repeat will be fixed to 1
     num_iters = args.num_iterations if args.num_iterations else len(val_loader)
     skip_iters = max(num_iters - 5, 0)
-    schedule = torch.profiler.schedule(
-        skip_first=skip_iters, wait=1, warmup=3, active=1
-    )
+    schedule = torch.profiler.schedule(skip_first=skip_iters, wait=1, warmup=3, active=1)
 
     # trace handle
     def trace_handle(prof):
@@ -1544,9 +1416,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
             )
 
     # start profiler, or none while profiling is false
-    with profiler_setup(
-        profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle
-    ) as p:
+    with profiler_setup(profiling, activities=activities, schedule=schedule, on_trace_ready=trace_handle) as p:
         for i, (images, target) in enumerate(val_loader):
             if args.xpu is not None and args.benchmark == 1:
                 images = images.to(args.xpu, non_blocking=non_blocking)
@@ -1607,10 +1477,7 @@ def validate_quantization(val_loader, model, criterion, profiling, args):
                     "Quantization Evalution performance: batch size:%d, throughput:%.2f image/sec, Acc@1:%.2f, Acc@5:%.2f"
                     % (
                         args.batch_size,
-                        (
-                            args.batch_size
-                            / (duration_total / (args.num_iterations - perf_start_iter))
-                        ),
+                        (args.batch_size / (duration_total / (args.num_iterations - perf_start_iter))),
                         top1.avg,
                         top5.avg,
                     )
@@ -1778,9 +1645,7 @@ def MLPerfLRScheduler(optimizer, step, iteration, args):
         lr_rate = args.lr * (step / warmup_iter)
     else:
         lr_step = min((step - warmup_iter), decay_steps)
-        lr_rate = (
-            (args.lr - args.end_lr) * (1 - (lr_step / decay_steps)) ** power
-        ) + args.end_lr
+        lr_rate = ((args.lr - args.end_lr) * (1 - (lr_step / decay_steps)) ** power) + args.end_lr
     global_lr = lr_rate
     optimizer.param_groups[0]["lr"] = global_lr
 
@@ -1800,16 +1665,10 @@ def draw_tensorboard(args):
         train_top5 = tensorboard_data["train"]["top5"]
         eval_top5 = tensorboard_data["eval"]["top5"]
 
-        writer.add_scalars(
-            "top1 acc", {"train acc": train_top1, "eval acc": eval_top1}, epoch
-        )
-        writer.add_scalars(
-            "top5 acc", {"train acc": train_top5, "eval acc": eval_top5}, epoch
-        )
+        writer.add_scalars("top1 acc", {"train acc": train_top1, "eval acc": eval_top1}, epoch)
+        writer.add_scalars("top5 acc", {"train acc": train_top5, "eval acc": eval_top5}, epoch)
         writer.add_scalar("learning rate", global_lr, epoch)
-        writer.add_scalars(
-            "loss value", {"train loss": train_loss, "eval loss": eval_loss}, epoch
-        )
+        writer.add_scalars("loss value", {"train loss": train_loss, "eval loss": eval_loss}, epoch)
 
 
 if __name__ == "__main__":

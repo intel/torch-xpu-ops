@@ -9,9 +9,7 @@
 skip_dict = {
     "../../../../test/distributed/fsdp/test_fsdp_checkpoint.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_apply.py": None,
-    "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": (
-        "test_ddp_parity_xpu",
-    ),
+    "../../../../test/distributed/fsdp/test_fsdp_clip_grad_norm.py": ("test_ddp_parity_xpu",),
     "../../../../test/distributed/fsdp/test_fsdp_comm.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_comm_hooks.py": None,
     "../../../../test/distributed/fsdp/test_fsdp_core.py": None,

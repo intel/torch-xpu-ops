@@ -43,9 +43,7 @@ except ModuleNotFoundError:
 REFERENCE_NORM_MODES = (
     (None, "forward", "backward", "ortho")
     if version.parse(np.__version__) >= version.parse("1.20.0")
-    and (
-        not has_scipy_fft or version.parse(scipy.__version__) >= version.parse("1.6.0")
-    )
+    and (not has_scipy_fft or version.parse(scipy.__version__) >= version.parse("1.6.0"))
     else (None, "ortho")
 )
 
@@ -96,9 +94,7 @@ def _test_reference_1d(self, device, dtype, op):
         expected = op.ref(input.cpu().numpy(), *args)
         exact_dtype = dtype in (torch.double, torch.complex128)
         actual = op(input, *args)
-        self.assertEqual(
-            actual, expected, exact_dtype=exact_dtype, atol=1e-4, rtol=1e-5
-        )
+        self.assertEqual(actual, expected, exact_dtype=exact_dtype, atol=1e-4, rtol=1e-5)
 
 
 TestFFT.test_reference_1d = _test_reference_1d

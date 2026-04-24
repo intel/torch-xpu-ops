@@ -30,11 +30,7 @@ def mp2d(shape, dtype, channels_last, backward):
     )
 
     if channels_last:
-        input = (
-            torch.randn(N, C, H, W)
-            .to(memory_format=torch.channels_last)
-            .to(device="xpu", dtype=dtype)
-        )
+        input = torch.randn(N, C, H, W).to(memory_format=torch.channels_last).to(device="xpu", dtype=dtype)
     else:
         input = torch.randn(N, C, H, W).to(device="xpu", dtype=dtype)
 

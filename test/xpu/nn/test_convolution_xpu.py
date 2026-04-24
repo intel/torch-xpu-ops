@@ -84,35 +84,22 @@ with XPUPatchForImport(False):
     # the number of groups == number of input channels
     def conv2d_depthwise_naive_groups(self, device, dtype):
         for depth_multiplier in [1, 2]:
-            m = torch.nn.Conv2d(2, 2 * depth_multiplier, kernel_size=3, groups=2).to(
-                device, dtype
-            )
-            i = (
-                torch.randn(2, 2, 6, 6, device=device, dtype=dtype)
-                .div_(2)
-                .requires_grad_()
-            )
+            m = torch.nn.Conv2d(2, 2 * depth_multiplier, kernel_size=3, groups=2).to(device, dtype)
+            i = torch.randn(2, 2, 6, 6, device=device, dtype=dtype).div_(2).requires_grad_()
             output = m(i)
-            grad_output = (
-                torch.randn(2, 2 * depth_multiplier, 4, 4, device=device, dtype=dtype)
-                / 2
-            )
+            grad_output = torch.randn(2, 2 * depth_multiplier, 4, 4, device=device, dtype=dtype) / 2
             output.backward(grad_output)
 
             offset = 1 * depth_multiplier
 
-            m1 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(
-                device, dtype
-            )
+            m1 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(device, dtype)
             m1.weight.data = m.weight.data[:offset].clone()
             m1.bias.data = m.bias.data[:offset].clone()
             i1 = i.detach()[:, :1].clone().requires_grad_()
             output1 = m1(i1)
             output1.backward(grad_output[:, :offset].contiguous())
 
-            m2 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(
-                device, dtype
-            )
+            m2 = torch.nn.Conv2d(1, 1 * depth_multiplier, kernel_size=3).to(device, dtype)
             m2.weight.data.copy_(m.weight.data[offset:])
             m2.bias.data.copy_(m.bias.data[offset:])
             i2 = i.detach()[:, 1:].clone().requires_grad_()
@@ -147,21 +134,10 @@ with XPUPatchForImport(False):
     @dtypes(torch.float, torch.double, torch.half)
     def conv3d_depthwise_naive_groups(self, device, dtype):
         for depth_multiplier in [1, 2]:
-            m = nn.Conv3d(2, 2 * depth_multiplier, kernel_size=3, groups=2).to(
-                device, dtype
-            )
-            i = (
-                torch.randn(2, 2, 6, 6, 6, device=device, dtype=dtype)
-                .div_(2)
-                .requires_grad_()
-            )
+            m = nn.Conv3d(2, 2 * depth_multiplier, kernel_size=3, groups=2).to(device, dtype)
+            i = torch.randn(2, 2, 6, 6, 6, device=device, dtype=dtype).div_(2).requires_grad_()
             output = m(i)
-            grad_output = (
-                torch.randn(
-                    2, 2 * depth_multiplier, 4, 4, 4, device=device, dtype=dtype
-                )
-                / 2
-            )
+            grad_output = torch.randn(2, 2 * depth_multiplier, 4, 4, 4, device=device, dtype=dtype) / 2
             output.backward(grad_output)
 
             offset = 1 * depth_multiplier
@@ -179,18 +155,10 @@ with XPUPatchForImport(False):
             i2 = i.detach()[:, 1:].clone().requires_grad_()
             output2 = m2(i2)
             output2.backward(grad_output[:, offset:].contiguous())
-            is_cuda_sm86 = device.startswith(
-                "cuda"
-            ) and torch.cuda.get_device_capability(0) == (8, 6)
-            atol, rtol = (
-                (3e-4, 3e-2)
-                if dtype == torch.float32 and is_cuda_sm86
-                else (dtype2prec_DONTUSE[dtype], 0)
-            )
+            is_cuda_sm86 = device.startswith("cuda") and torch.cuda.get_device_capability(0) == (8, 6)
+            atol, rtol = (3e-4, 3e-2) if dtype == torch.float32 and is_cuda_sm86 else (dtype2prec_DONTUSE[dtype], 0)
 
-            self.assertEqual(
-                output, torch.cat([output1, output2], 1), atol=atol, rtol=rtol
-            )
+            self.assertEqual(output, torch.cat([output1, output2], 1), atol=atol, rtol=rtol)
             self.assertEqual(
                 i.grad.data,
                 torch.cat([i1.grad.data, i2.grad.data], 1),
@@ -212,15 +180,15 @@ with XPUPatchForImport(False):
 
     @dtypes(torch.half, torch.float)
     def convTranspose2d_large_output_padding(self, device, dtype):
-        net1 = torch.nn.ConvTranspose2d(
-            128, 64, kernel_size=3, stride=2, padding=1, output_padding=1
-        ).to(device=device, dtype=dtype)
-        net2 = torch.nn.ConvTranspose2d(
-            64, 32, kernel_size=3, stride=2, padding=1, output_padding=1
-        ).to(device=device, dtype=dtype)
-        net3 = torch.nn.ConvTranspose2d(
-            32, 3, kernel_size=3, stride=2, padding=1, output_padding=1
-        ).to(device=device, dtype=dtype)
+        net1 = torch.nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1).to(
+            device=device, dtype=dtype
+        )
+        net2 = torch.nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1).to(
+            device=device, dtype=dtype
+        )
+        net3 = torch.nn.ConvTranspose2d(32, 3, kernel_size=3, stride=2, padding=1, output_padding=1).to(
+            device=device, dtype=dtype
+        )
         x = torch.rand(1, 128, 6, 6, device=device, dtype=dtype, requires_grad=True)
         x = net1(x)
         x = net2(x)
@@ -600,11 +568,7 @@ with XPUPatchForImport(False):
             dtype=dtype,
             requires_grad=True,
         )
-        bias = (
-            torch.randn(C_out, device=device, dtype=dtype, requires_grad=True)
-            if has_bias
-            else None
-        )
+        bias = torch.randn(C_out, device=device, dtype=dtype, requires_grad=True) if has_bias else None
 
         def _make_noncontiguous(inp):
             if inp is None:
@@ -662,19 +626,12 @@ with XPUPatchForImport(False):
             # TODO: remove this if we introduce per-op gradient tests for float32
             with fwAD.dual_level():
                 dual_inputs = [
-                    (
-                        fwAD.make_dual(i, torch.rand_like(i))
-                        if isinstance(i, torch.Tensor)
-                        else i
-                    )
-                    for i in inputs
+                    (fwAD.make_dual(i, torch.rand_like(i)) if isinstance(i, torch.Tensor) else i) for i in inputs
                 ]
                 # Forward AD
                 output = convolution(*dual_inputs)
                 # Forward over reverse AD
-                grad_output_d = fwAD.make_dual(
-                    torch.rand_like(output), torch.rand_like(output)
-                )
+                grad_output_d = fwAD.make_dual(torch.rand_like(output), torch.rand_like(output))
                 if has_bias:
                     torch.autograd.grad(output, [x, weight, bias], grad_output_d)
                 else:
@@ -708,9 +665,7 @@ with XPUPatchForImport(False):
         # double backward doesn't support bias gradients
         if bias is not None:
             bias.requires_grad_(False)
-        self.assertTrue(
-            gradgradcheck(convolution, inputs, nondet_tol=gradcheck_nondet_tol)
-        )
+        self.assertTrue(gradgradcheck(convolution, inputs, nondet_tol=gradcheck_nondet_tol))
 
     def _test_conv_xpu_nhwc_nchw(self, layer, n, c, h, w, k, filter_size, device):
         data = torch.randint(1, 10, (n, c, h, w), dtype=torch.float32, device=device)
@@ -750,9 +705,9 @@ with XPUPatchForImport(False):
     @dtypes(torch.half, torch.float)
     def conv_xpu_ndhwc(self, device, dtype):
         def helper(n, c, d, h, w, out_channels, kernel_size, groups):
-            input = torch.randint(
-                -2, 2, (n, c, d, h, w), dtype=dtype, device=device
-            ).to(memory_format=torch.channels_last_3d)
+            input = torch.randint(-2, 2, (n, c, d, h, w), dtype=dtype, device=device).to(
+                memory_format=torch.channels_last_3d
+            )
             input.requires_grad_()
             conv = nn.Conv3d(c, out_channels, kernel_size, groups=groups).to(
                 device="xpu", dtype=dtype, memory_format=torch.channels_last_3d
@@ -765,9 +720,7 @@ with XPUPatchForImport(False):
             ref_conv = nn.Conv3d(c, out_channels, kernel_size, groups=groups)
             # load_state_dict will restore the stride & memory_layout on ref_conv.weight.
             ref_conv.load_state_dict(conv.state_dict())
-            ref_conv = ref_conv.to(
-                device="xpu", dtype=torch.double, memory_format=torch.contiguous_format
-            )
+            ref_conv = ref_conv.to(device="xpu", dtype=torch.double, memory_format=torch.contiguous_format)
 
             out = conv(input)
             ref_out = ref_conv(ref_input)
@@ -779,12 +732,8 @@ with XPUPatchForImport(False):
             ref_out.backward(ref_grad)
 
             self.assertTrue(out.is_contiguous(memory_format=torch.channels_last_3d))
-            self.assertTrue(
-                input.grad.is_contiguous(memory_format=torch.channels_last_3d)
-            )
-            self.assertTrue(
-                conv.weight.grad.is_contiguous(memory_format=torch.channels_last_3d)
-            )
+            self.assertTrue(input.grad.is_contiguous(memory_format=torch.channels_last_3d))
+            self.assertTrue(conv.weight.grad.is_contiguous(memory_format=torch.channels_last_3d))
 
             self.assertTrue(ref_out.is_contiguous())
             self.assertTrue(ref_input.grad.is_contiguous())
@@ -802,12 +751,8 @@ with XPUPatchForImport(False):
 
     @dtypes(torch.float, torch.double, torch.float16, torch.bfloat16)
     def conv_xpu_nhwc_support(self, device, dtype):
-        input = torch.randn(
-            (1, 16, 1, 1), dtype=dtype, device="xpu", requires_grad=True
-        )
-        weight = torch.randn(
-            (8, 16, 3, 3), dtype=dtype, device="xpu", requires_grad=True
-        )
+        input = torch.randn((1, 16, 1, 1), dtype=dtype, device="xpu", requires_grad=True)
+        weight = torch.randn((8, 16, 3, 3), dtype=dtype, device="xpu", requires_grad=True)
         weight = weight.to(memory_format=torch.channels_last)
         o = torch.conv2d(input, weight, None, (2, 1), (1, 1), (1, 1), 1)
         self.assertTrue(o.is_contiguous(memory_format=torch.channels_last))
@@ -819,9 +764,9 @@ with XPUPatchForImport(False):
             # randint with dtype=torch.cfloat fails with
             # RuntimeError: check_random_bounds handles only integral, floating-point and boolean types
             # must create randint and randint_like using default int64, then cast to desired
-            input = torch.randint(
-                -3, 3, (n, c, h, w), dtype=torch.int64, device=device
-            ).to(dtype, memory_format=torch.channels_last)
+            input = torch.randint(-3, 3, (n, c, h, w), dtype=torch.int64, device=device).to(
+                dtype, memory_format=torch.channels_last
+            )
             input.requires_grad_()
             conv = nn.Conv2d(c, out_channels, kernel_size, groups=groups).to(
                 device=device, dtype=dtype, memory_format=torch.channels_last
@@ -834,9 +779,7 @@ with XPUPatchForImport(False):
             ref_conv = nn.Conv2d(c, out_channels, kernel_size, groups=groups)
             # load_state_dict will restore the stride & memory_layout on ref_conv.weight.
             ref_conv.load_state_dict(conv.state_dict())
-            ref_conv = ref_conv.to(
-                device=device, dtype=torch.double, memory_format=torch.contiguous_format
-            )
+            ref_conv = ref_conv.to(device=device, dtype=torch.double, memory_format=torch.contiguous_format)
 
             out = conv(input)
             ref_out = ref_conv(ref_input)
@@ -849,9 +792,7 @@ with XPUPatchForImport(False):
 
             self.assertTrue(out.is_contiguous(memory_format=torch.channels_last))
             self.assertTrue(input.grad.is_contiguous(memory_format=torch.channels_last))
-            self.assertTrue(
-                conv.weight.grad.is_contiguous(memory_format=torch.channels_last)
-            )
+            self.assertTrue(conv.weight.grad.is_contiguous(memory_format=torch.channels_last))
 
             self.assertTrue(ref_out.is_contiguous())
             self.assertTrue(ref_input.grad.is_contiguous())
@@ -927,9 +868,7 @@ with XPUPatchForImport(False):
             inputs = x, weight
 
         dummy_out = func(*inputs)
-        grad_y = torch.randn_like(
-            dummy_out, device=device, dtype=dtype, requires_grad=True
-        )
+        grad_y = torch.randn_like(dummy_out, device=device, dtype=dtype, requires_grad=True)
 
         # Issue #15353: test mkldnn double backward, don't run gradgradcheck due
         # to imprecision issues
@@ -945,9 +884,7 @@ with XPUPatchForImport(False):
             # Double backward only runs with DoubleTensor due to precision reason
             batch_size = 1
             for kern, inp_size, dilations in [(3, 5, [1, 2]), (4, 9, [1])]:
-                for stride, padding, chan_in, chan_out, dilation in product(
-                    [1], [2], [2], [3], dilations
-                ):
+                for stride, padding, chan_in, chan_out, dilation in product([1], [2], [2], [3], dilations):
                     no_weight = stride == 2
                     result = run_conv_double_back_test(
                         kern,
@@ -990,9 +927,7 @@ with XPUPatchForImport(False):
 
         with torch.backends.mkldnn.flags(enabled=True):
             # inconsistent types should raise an exception
-            self.assertRaises(
-                RuntimeError, lambda: nn.functional.conv2d(inputs, weights)
-            )
+            self.assertRaises(RuntimeError, lambda: nn.functional.conv2d(inputs, weights))
             self.assertRaises(
                 RuntimeError,
                 lambda: nn.functional.conv2d(inputs, weights.float(), bias),
@@ -1008,9 +943,7 @@ with XPUPatchForImport(False):
 
         with torch.backends.mkldnn.flags(enabled=False):
             # inconsistent types should raise an exception
-            self.assertRaises(
-                RuntimeError, lambda: nn.functional.conv2d(inputs, weights)
-            )
+            self.assertRaises(RuntimeError, lambda: nn.functional.conv2d(inputs, weights))
             self.assertRaises(
                 RuntimeError,
                 lambda: nn.functional.conv2d(inputs, weights.float(), bias),
@@ -1022,11 +955,7 @@ with XPUPatchForImport(False):
     def convTranspose2d_half_gemm(self):
         with torch.backends.mkldnn.flags(enabled=False):
             inputs = torch.randn(1, 1, 16, 16, device="xpu", dtype=torch.half)
-            deconv = (
-                nn.ConvTranspose2d(1, 1, 3, stride=2, padding=1, output_padding=1)
-                .to("xpu")
-                .half()
-            )
+            deconv = nn.ConvTranspose2d(1, 1, 3, stride=2, padding=1, output_padding=1).to("xpu").half()
             output = deconv(inputs)
             output.mean().backward()
 
@@ -1036,9 +965,7 @@ with XPUPatchForImport(False):
         # dominante the layout of output.
         # which is not the same as current behavior, we'll fix this in
         # following up PRs and remove the `expectedFailure` tag
-        input = torch.randint(
-            1, 10, (2, 8, 4, 4), dtype=torch.float32, device="xpu", requires_grad=True
-        )
+        input = torch.randint(1, 10, (2, 8, 4, 4), dtype=torch.float32, device="xpu", requires_grad=True)
         conv = nn.Conv2d(8, 4, 3, device="xpu").float()
 
         out = conv(input)
@@ -1059,9 +986,7 @@ with XPUPatchForImport(False):
     def mkldnn_non_contiguous(self):
         x = torch.randn(192, 16, 50, device="xpu")
         x = x.permute(0, 2, 1).contiguous().permute(0, 2, 1)
-        m = torch.nn.Conv1d(
-            in_channels=16, out_channels=32, kernel_size=2, bias=True, device="xpu"
-        )
+        m = torch.nn.Conv1d(in_channels=16, out_channels=32, kernel_size=2, bias=True, device="xpu")
         result = m(x)
 
     def mkldnn_noncontiguous_weight(self):
@@ -1069,11 +994,7 @@ with XPUPatchForImport(False):
         # passed to MKLDNN
         input = torch.tensor([1, 1, 1], dtype=torch.double, device="xpu").view(1, 1, 3)
         weights1 = torch.tensor([1], dtype=torch.double, device="xpu").expand(1, 1, 2)
-        weights2 = (
-            torch.tensor([1], dtype=torch.double, device="xpu")
-            .expand(1, 1, 2)
-            .contiguous()
-        )
+        weights2 = torch.tensor([1], dtype=torch.double, device="xpu").expand(1, 1, 2).contiguous()
         self.assertEqual(
             F.conv1d(input, weights1, bias=None, stride=2, dilation=2),
             F.conv1d(input, weights2, bias=None, stride=2, dilation=2),
@@ -1081,21 +1002,11 @@ with XPUPatchForImport(False):
 
     def grouped_conv_mkldnn_nhwc_support(self):
         # in order to catch the hols in grouped convolution in nhwc support for earlier cudnn version
-        input = torch.randn((16, 16, 8, 8), dtype=torch.float16, device="xpu").to(
-            memory_format=torch.channels_last
-        )
-        weight = torch.randn((8, 4, 3, 3), dtype=torch.float16, device="xpu").to(
-            memory_format=torch.channels_last
-        )
-        out = torch.convolution(
-            input, weight, None, (1, 1), (1, 1), (1, 1), False, (0, 0), 4
-        )
-        input = torch.randn((16, 8, 8, 8), dtype=torch.float16, device="xpu").to(
-            memory_format=torch.channels_last
-        )
-        out_transpose = torch.convolution(
-            input, weight, None, (1, 1), (1, 1), (1, 1), True, (0, 0), 4
-        )
+        input = torch.randn((16, 16, 8, 8), dtype=torch.float16, device="xpu").to(memory_format=torch.channels_last)
+        weight = torch.randn((8, 4, 3, 3), dtype=torch.float16, device="xpu").to(memory_format=torch.channels_last)
+        out = torch.convolution(input, weight, None, (1, 1), (1, 1), (1, 1), False, (0, 0), 4)
+        input = torch.randn((16, 8, 8, 8), dtype=torch.float16, device="xpu").to(memory_format=torch.channels_last)
+        out_transpose = torch.convolution(input, weight, None, (1, 1), (1, 1), (1, 1), True, (0, 0), 4)
 
     def thnn_conv_strided_padded_dilated(self):
         for convfn, dims, transposed in (
@@ -1113,15 +1024,9 @@ with XPUPatchForImport(False):
                 kwargs = {"stride": stride, "padding": padding, "dilation": dilation}
                 inp_shape = (1, 2) + dims * (4,)
                 weight_shape = (2, 2) + dims * (1,)
-                inputs = torch.randn(
-                    inp_shape, dtype=torch.double, device="xpu", requires_grad=True
-                )
-                weight = torch.randn(
-                    weight_shape, dtype=torch.double, device="xpu", requires_grad=True
-                )
-                bias = torch.randn(
-                    2, dtype=torch.double, device="xpu", requires_grad=True
-                )
+                inputs = torch.randn(inp_shape, dtype=torch.double, device="xpu", requires_grad=True)
+                weight = torch.randn(weight_shape, dtype=torch.double, device="xpu", requires_grad=True)
+                bias = torch.randn(2, dtype=torch.double, device="xpu", requires_grad=True)
                 with torch.backends.mkldnn.flags(enabled=False):
                     res = convfn(inputs, weight, bias, **kwargs)
                 res_cpu = convfn(inputs.cpu(), weight.cpu(), bias.cpu(), **kwargs)
@@ -1162,9 +1067,7 @@ with XPUPatchForImport(False):
         padding = 1
 
         input_tensor = torch.ones(1, in_channels, dim, dim, device="xpu").half()
-        model = nn.Conv2d(
-            in_channels, out_channels, kernel_size, stride, padding, device="xpu"
-        ).half()
+        model = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, device="xpu").half()
         output = model(input_tensor)
         model_cpu = model.cpu().float()
         output_cpu = model(input_tensor.float().cpu())
@@ -1190,30 +1093,10 @@ with XPUPatchForImport(False):
         input_large = torch.randn(4096, 1, 512, 1024, dtype=dtype, device=device)
         # forward
         ret = conv(input_large)
-        maxdiff0 = (
-            (ret.narrow(0, 0, 1024) - conv(input_large.narrow(0, 0, 1024)))
-            .abs_()
-            .max()
-            .item()
-        )
-        maxdiff1 = (
-            (ret.narrow(0, 1024, 1024) - conv(input_large.narrow(0, 1024, 1024)))
-            .abs_()
-            .max()
-            .item()
-        )
-        maxdiff2 = (
-            (ret.narrow(0, 2048, 1024) - conv(input_large.narrow(0, 2048, 1024)))
-            .abs_()
-            .max()
-            .item()
-        )
-        maxdiff3 = (
-            (ret.narrow(0, 3072, 1024) - conv(input_large.narrow(0, 3072, 1024)))
-            .abs_()
-            .max()
-            .item()
-        )
+        maxdiff0 = (ret.narrow(0, 0, 1024) - conv(input_large.narrow(0, 0, 1024))).abs_().max().item()
+        maxdiff1 = (ret.narrow(0, 1024, 1024) - conv(input_large.narrow(0, 1024, 1024))).abs_().max().item()
+        maxdiff2 = (ret.narrow(0, 2048, 1024) - conv(input_large.narrow(0, 2048, 1024))).abs_().max().item()
+        maxdiff3 = (ret.narrow(0, 3072, 1024) - conv(input_large.narrow(0, 3072, 1024))).abs_().max().item()
         if self.device_type == "xpu":
             # cuDNN may use algorithms such as FFT that don't guarantee a diff of 0
             self.assertEqual(maxdiff0, 0, atol=2e-3, rtol=1e-5)
@@ -1355,12 +1238,8 @@ with XPUPatchForImport(False):
             y = torch.randn(out1.size(), device=device, dtype=dtype)
             out1.backward(y)
             out2.backward(y)
-            self.assertEqual(
-                conv1.bias.grad.data, conv2.bias.grad.data, atol=0.0, rtol=0
-            )
-            self.assertEqual(
-                conv1.weight.grad.data, conv2.weight.grad.data, atol=0.0, rtol=0
-            )
+            self.assertEqual(conv1.bias.grad.data, conv2.bias.grad.data, atol=0.0, rtol=0)
+            self.assertEqual(conv1.weight.grad.data, conv2.weight.grad.data, atol=0.0, rtol=0)
 
     @dtypes(*floating_types_and(torch.half, torch.bfloat16))
     def conv2d_large_workspace(self, device, dtype):
@@ -1374,9 +1253,7 @@ with XPUPatchForImport(False):
 
         def run_test(benchmark):
             with torch.backends.mkldnn.flags(enabled=False):
-                conv = torch.nn.Conv2d(256, 256, kernel_size=3, padding=1).to(
-                    device, dtype
-                )
+                conv = torch.nn.Conv2d(256, 256, kernel_size=3, padding=1).to(device, dtype)
                 for size in sizes:
                     x = torch.randn(size, device=device, dtype=dtype)
                     out = conv(x.detach().clone().requires_grad_())
@@ -1389,9 +1266,7 @@ with XPUPatchForImport(False):
     def noncontig_conv_grad(self, device, dtype):
         # FIXME: remove after adding non-contiguous grad tests for all modules
         module = nn.Conv2d(3, 5, kernel_size=3, padding=1).to(device, dtype)
-        input = torch.randn(
-            2, 3, 10, 10, dtype=dtype, device=device, requires_grad=True
-        )
+        input = torch.randn(2, 3, 10, 10, dtype=dtype, device=device, requires_grad=True)
         output = module(input)
 
         grad = torch.randn(2, 2, 5, 10, 10, dtype=dtype, device=device)[:, 1]
@@ -1403,22 +1278,14 @@ with XPUPatchForImport(False):
         input.grad.data.zero_()
 
         output.backward(grad.contiguous())
-        self.assertEqual(
-            result, input.grad.data, atol=dtype2prec_DONTUSE[dtype], rtol=0
-        )
+        self.assertEqual(result, input.grad.data, atol=dtype2prec_DONTUSE[dtype], rtol=0)
 
     def skip_cudnn_test(self, *args, **kwargs):
         self.skipTest("This is a cuDNN-specific test not applicable to XPU.")
 
-    TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = (
-        conv2d_depthwise_naive_groups
-    )
-    TestConvolutionNNDeviceType.test_Conv3d_depthwise_naive_groups = (
-        conv3d_depthwise_naive_groups
-    )
-    TestConvolutionNNDeviceType.test_ConvTranspose2d_large_output_padding = (
-        convTranspose2d_large_output_padding
-    )
+    TestConvolutionNNDeviceType.test_Conv2d_depthwise_naive_groups = conv2d_depthwise_naive_groups
+    TestConvolutionNNDeviceType.test_Conv3d_depthwise_naive_groups = conv3d_depthwise_naive_groups
+    TestConvolutionNNDeviceType.test_ConvTranspose2d_large_output_padding = convTranspose2d_large_output_padding
     TestConvolutionNNDeviceType.test_conv_backend = conv_backend
     TestConvolutionNNDeviceType._test_conv_cudnn_nhwc_nchw = _test_conv_xpu_nhwc_nchw
     TestConvolutionNNDeviceType.test_conv_cudnn_ndhwc = conv_xpu_ndhwc
@@ -1430,37 +1297,25 @@ with XPUPatchForImport(False):
     TestConvolutionNNDeviceType.test_conv_large_batch_1 = conv_large_batch_1
     TestConvolutionNNDeviceType.test_conv_large_nosplit = conv_large_nosplit
     TestConvolutionNNDeviceType.test_conv_transposed_large = conv_transposed_large
-    TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = (
-        conv2d_deterministic_cudnn
-    )
+    TestConvolutionNNDeviceType.test_Conv2d_deterministic_cudnn = conv2d_deterministic_cudnn
     TestConvolutionNNDeviceType.test_cudnn_convolution_relu = skip_cudnn_test
     TestConvolutionNNDeviceType.test_cudnn_convolution_add_relu = skip_cudnn_test
     TestConvolutionNNDeviceType.test_Conv2d_large_workspace = conv2d_large_workspace
     TestConvolutionNNDeviceType.test_Conv2d_naive_groups = conv2d_naive_groups
     TestConvolutionNNDeviceType.test_noncontig_conv_grad = noncontig_conv_grad
-    TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = (
-        conv2d_inconsistent_types_on_GPU_with_mkldnn
-    )
+    TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_with_cudnn = conv2d_inconsistent_types_on_GPU_with_mkldnn
     TestConvolutionNN.test_Conv2d_inconsistent_types_on_GPU_without_cudnn = (
         conv2d_inconsistent_types_on_GPU_without_mkldnn
     )
     TestConvolutionNN.test_ConvTranspose2d_half_cublas_gemm = convTranspose2d_half_gemm
-    TestConvolutionNN.test_conv_cudnn_memory_layout_dominance = (
-        conv_mkldnn_memory_layout_dominance
-    )
+    TestConvolutionNN.test_conv_cudnn_memory_layout_dominance = conv_mkldnn_memory_layout_dominance
     TestConvolutionNN.test_cudnn_non_contiguous = mkldnn_non_contiguous
     TestConvolutionNN.test_cudnn_noncontiguous_weight = mkldnn_noncontiguous_weight
-    TestConvolutionNN.test_grouped_conv_cudnn_nhwc_support = (
-        grouped_conv_mkldnn_nhwc_support
-    )
-    TestConvolutionNN.test_thnn_conv_strided_padded_dilated = (
-        thnn_conv_strided_padded_dilated
-    )
+    TestConvolutionNN.test_grouped_conv_cudnn_nhwc_support = grouped_conv_mkldnn_nhwc_support
+    TestConvolutionNN.test_thnn_conv_strided_padded_dilated = thnn_conv_strided_padded_dilated
     TestConvolutionNN.test_Conv2d_groups_nobias = Conv2d_groups_nobias
     TestConvolutionNN.test_Conv2d_groups_nobias_v2 = Conv2d_groups_nobias_v2
-instantiate_device_type_tests(
-    TestConvolutionNNDeviceType, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestConvolutionNNDeviceType, globals(), only_for="xpu", allow_xpu=True)
 instantiate_parametrized_tests(TestConvolutionNN)
 
 

@@ -23,11 +23,7 @@ def fmp2d(shape, dtype, channels_last, backward):
     N, C, H, W, oH, oW = shape[0], shape[1], shape[2], shape[3], shape[4], shape[5]
 
     if channels_last:
-        input = (
-            torch.randn(N, C, H, W)
-            .to(memory_format=torch.channels_last)
-            .to(device="xpu", dtype=dtype)
-        )
+        input = torch.randn(N, C, H, W).to(memory_format=torch.channels_last).to(device="xpu", dtype=dtype)
     else:
         input = torch.randn(N, C, H, W).to(device="xpu", dtype=dtype)
 

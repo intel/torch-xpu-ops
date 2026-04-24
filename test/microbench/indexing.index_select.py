@@ -23,9 +23,7 @@ for shape in shape_list:
         main_size = shape[0]
         step = int(main_size / 2)
         input = torch.randn(shape, dtype=dtype, device=device)
-        indices = torch.linspace(0, shape[0] - 2, steps=step, device=device).to(
-            torch.long
-        )
+        indices = torch.linspace(0, shape[0] - 2, steps=step, device=device).to(torch.long)
 
         # warm up
         for i in range(10):

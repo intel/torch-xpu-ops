@@ -36,17 +36,13 @@ def Adaptive_AVGPool2d(shape, dtype, channels_last, backward):
             .to(device=device, dtype=dtype)
         )
     else:
-        input = torch.randn(N, C, H, W, requires_grad=True).to(
-            device=device, dtype=dtype
-        )
+        input = torch.randn(N, C, H, W, requires_grad=True).to(device=device, dtype=dtype)
 
     if backward:
         input.requires_grad_(True)
         Wout = output_size[0]
         Hout = output_size[1]
-        grad = torch.rand([C, Hout, Wout], requires_grad=True).to(
-            device=device, dtype=dtype
-        )
+        grad = torch.rand([C, Hout, Wout], requires_grad=True).to(device=device, dtype=dtype)
 
     AdaptAVG2d = torch.nn.AdaptiveAvgPool2d(shape[4])
 

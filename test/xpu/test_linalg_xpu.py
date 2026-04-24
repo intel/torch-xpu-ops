@@ -129,56 +129,27 @@ def addbmm(self, device, dtype):
     def generate_tensor():
         numpy_dtype = dtype if dtype != torch.bfloat16 else torch.float32
         # transposed tensors
-        for perm1, perm2 in itertools.product(
-            itertools.permutations((0, 1, 2)), repeat=2
-        ):
+        for perm1, perm2 in itertools.product(itertools.permutations((0, 1, 2)), repeat=2):
             for perm3 in itertools.permutations((0, 1)):
-                b1 = (
-                    make_tensor(
-                        (num_batches, M, N), dtype=dtype, device=device, low=-1, high=1
-                    )
-                    * 0.1
-                )
-                b2 = (
-                    make_tensor(
-                        (num_batches, N, O), dtype=dtype, device=device, low=-1, high=1
-                    )
-                    * 0.1
-                )
+                b1 = make_tensor((num_batches, M, N), dtype=dtype, device=device, low=-1, high=1) * 0.1
+                b2 = make_tensor((num_batches, N, O), dtype=dtype, device=device, low=-1, high=1) * 0.1
                 b1 = b1.permute(perm1).contiguous().permute(invert_perm(perm1))
                 b2 = b2.permute(perm2).contiguous().permute(invert_perm(perm2))
                 ref = (
-                    torch.from_numpy(
-                        b1.to(numpy_dtype).cpu().numpy()
-                        @ b2.to(numpy_dtype).cpu().numpy()
-                    )
+                    torch.from_numpy(b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy())
                     .to(device=device, dtype=dtype)
                     .sum(0)
                 )
-                out_tensor = (
-                    torch.zeros_like(ref).permute(perm3).contiguous().permute(perm3)
-                )
+                out_tensor = torch.zeros_like(ref).permute(perm3).contiguous().permute(perm3)
                 yield b1, b2, ref, out_tensor
         # broadcasting tensors
         for s1, s2, s3, s4, s5, s6 in itertools.product((True, False), repeat=6):
             shape1 = (num_batches if s1 else 1, M if s2 else 1, N if s3 else 1)
             shape2 = (num_batches if s4 else 1, N if s5 else 1, O if s6 else 1)
-            b1 = (
-                make_tensor(shape1, dtype=dtype, device=device, low=-1, high=1).expand(
-                    num_batches, M, N
-                )
-                * 0.1
-            )
-            b2 = (
-                make_tensor(shape2, dtype=dtype, device=device, low=-1, high=1).expand(
-                    num_batches, N, O
-                )
-                * 0.1
-            )
+            b1 = make_tensor(shape1, dtype=dtype, device=device, low=-1, high=1).expand(num_batches, M, N) * 0.1
+            b2 = make_tensor(shape2, dtype=dtype, device=device, low=-1, high=1).expand(num_batches, N, O) * 0.1
             ref = (
-                torch.from_numpy(
-                    b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy()
-                )
+                torch.from_numpy(b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy())
                 .to(device=device, dtype=dtype)
                 .sum(0)
             )
@@ -191,9 +162,7 @@ def addbmm(self, device, dtype):
             b1 = make_tensor(shape1, dtype=dtype, device=device, low=-1, high=1) * 0.1
             b2 = make_tensor(shape2, dtype=dtype, device=device, low=-1, high=1) * 0.1
             ref = (
-                torch.from_numpy(
-                    b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy()
-                )
+                torch.from_numpy(b1.to(numpy_dtype).cpu().numpy() @ b2.to(numpy_dtype).cpu().numpy())
                 .to(device=device, dtype=dtype)
                 .sum(0)
             )
@@ -297,9 +266,7 @@ def _int4_mm(self, device, m, k, n):
         return out, scales_and_zeros
 
     def convert_weight_to_int4pack(b):
-        b_tmp, b_scales_and_zeros = _group_quantize_tensor(
-            b, n_bit=4, q_group_size=q_group
-        )
+        b_tmp, b_scales_and_zeros = _group_quantize_tensor(b, n_bit=4, q_group_size=q_group)
 
         if self.device_type == "cpu":
             b_int4pack = torch._convert_weight_to_int4pack_for_cpu(b_tmp, inner_k_tiles)
@@ -314,13 +281,9 @@ def _int4_mm(self, device, m, k, n):
         if self.device_type == "cpu":
             self.assertTrue(b_int4pack.dtype is torch.uint8)
             self.assertTrue(b_int4pack.dim() == 2)
-            return torch._weight_int4pack_mm_for_cpu(
-                a, b_int4pack, q_group, b_scales_and_zeros
-            )
+            return torch._weight_int4pack_mm_for_cpu(a, b_int4pack, q_group, b_scales_and_zeros)
         elif self.device_type == "xpu":
-            self.assertTrue(
-                b_int4pack.dtype is torch.int32
-            )  # or b_int4pack.dtype is torch.uint8)
+            self.assertTrue(b_int4pack.dtype is torch.int32)  # or b_int4pack.dtype is torch.uint8)
             self.assertTrue(b_int4pack.dim() == 2)
             return torch._weight_int4pack_mm(a, b_int4pack, q_group, b_scales_and_zeros)
         else:
@@ -339,11 +302,7 @@ def _int4_mm(self, device, m, k, n):
 
     b_int4pack, b_scales_and_zeros_bf16 = convert_weight_to_int4pack(b_bf16)
     for dtype in [torch.bfloat16] + (
-        [torch.float16, torch.float32]
-        if device == "cpu"
-        else [torch.float16]
-        if "xpu" in device
-        else []
+        [torch.float16, torch.float32] if device == "cpu" else [torch.float16] if "xpu" in device else []
     ):
         a = a_bf16.to(dtype=dtype)
         b = b_bf16.to(dtype=dtype)
@@ -363,9 +322,7 @@ def matmul_small_brute_force_1d_Nd(self, device, dtype):
 
     make_arg = partial(make_tensor, device=device, dtype=dtype)
 
-    for (size_x, size_y), nctg_x, nctg_y in itertools.product(
-        self.gen_sizes_matmul(1), (True, False), (True, False)
-    ):
+    for (size_x, size_y), nctg_x, nctg_y in itertools.product(self.gen_sizes_matmul(1), (True, False), (True, False)):
         x = make_arg(size_x, noncontiguous=nctg_x)
         y = make_arg(size_y, noncontiguous=nctg_y)
         self.check_single_matmul(x, y)
@@ -502,9 +459,7 @@ with XPUPatchForImport(False):
 def pinv_errors_and_warnings(self, device, dtype):
     # pinv requires at least 2D tensor
     a = torch.randn(1, device=device, dtype=dtype)
-    with self.assertRaisesRegex(
-        RuntimeError, "expected a tensor with 2 or more dimensions"
-    ):
+    with self.assertRaisesRegex(RuntimeError, "expected a tensor with 2 or more dimensions"):
         torch.linalg.pinv(a)
 
     # if non-empty out tensor with wrong shape is passed a warning is given
@@ -518,9 +473,7 @@ def pinv_errors_and_warnings(self, device, dtype):
         )
         torch.linalg.pinv(a, out=out)
         self.assertEqual(len(w), 1)
-        self.assertTrue(
-            "An output with one or more elements was resized" in str(w[-1].message)
-        )
+        self.assertTrue("An output with one or more elements was resized" in str(w[-1].message))
 
     # dtypes of out and input should be safely castable
     out = torch.empty_like(a).to(torch.int)
@@ -531,38 +484,28 @@ def pinv_errors_and_warnings(self, device, dtype):
         # device of out and input should match
         wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         out = torch.empty_like(a).to(wrong_device)
-        with self.assertRaisesRegex(
-            RuntimeError, "Expected result and input tensors to be on the same device"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Expected result and input tensors to be on the same device"):
             torch.linalg.pinv(a, out=out)
 
         # device of rcond and input should match
         wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         rcond = torch.full((), 1e-2, device=wrong_device)
-        with self.assertRaisesRegex(
-            RuntimeError, "Expected all tensors to be on the same device"
-        ):
+        with self.assertRaisesRegex(RuntimeError, "Expected all tensors to be on the same device"):
             torch.linalg.pinv(a, rcond=rcond)
 
     # rcond can't be complex
     rcond = torch.full((), 1j, device=device)
-    with self.assertRaisesRegex(
-        RuntimeError, "rcond tensor of complex type is not supported"
-    ):
+    with self.assertRaisesRegex(RuntimeError, "rcond tensor of complex type is not supported"):
         torch.linalg.pinv(a, rcond=rcond)
 
     # atol can't be complex
     atol = torch.full((), 1j, device=device)
-    with self.assertRaisesRegex(
-        RuntimeError, "atol tensor of complex type is not supported"
-    ):
+    with self.assertRaisesRegex(RuntimeError, "atol tensor of complex type is not supported"):
         torch.linalg.pinv(a, atol=atol)
 
     # rtol can't be complex
     rtol = torch.full((), 1j, device=device)
-    with self.assertRaisesRegex(
-        RuntimeError, "rtol tensor of complex type is not supported"
-    ):
+    with self.assertRaisesRegex(RuntimeError, "rtol tensor of complex type is not supported"):
         torch.linalg.pinv(a, rtol=rtol)
 
 
@@ -581,9 +524,7 @@ def cond_errors_and_warnings(self, device, dtype):
     a = torch.ones(3, 2, dtype=dtype, device=device)
     norm_types = [1, -1, inf, -inf, "fro", "nuc"]
     for p in norm_types:
-        with self.assertRaisesRegex(
-            RuntimeError, r"must be batches of square matrices"
-        ):
+        with self.assertRaisesRegex(RuntimeError, r"must be batches of square matrices"):
             torch.linalg.cond(a, p)
 
     # if non-empty out tensor with wrong shape is passed a warning is given
@@ -601,9 +542,7 @@ def cond_errors_and_warnings(self, device, dtype):
             torch.linalg.cond(a, p, out=out)
             # Check warning occurs
             self.assertEqual(len(w), 1)
-            self.assertTrue(
-                "An output with one or more elements was resized" in str(w[-1].message)
-            )
+            self.assertTrue("An output with one or more elements was resized" in str(w[-1].message))
 
     # dtypes should be safely castable
     out = torch.empty(0, dtype=torch.int, device=device)
@@ -616,9 +555,7 @@ def cond_errors_and_warnings(self, device, dtype):
         wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
         out = torch.empty(0, dtype=dtype, device=wrong_device)
         for p in ["fro", 2]:
-            with self.assertRaisesRegex(
-                RuntimeError, "tensors to be on the same device"
-            ):
+            with self.assertRaisesRegex(RuntimeError, "tensors to be on the same device"):
                 torch.linalg.cond(a, p, out=out)
 
     # for batched input if at least one matrix in the batch is not invertible,
@@ -638,9 +575,7 @@ def cond_errors_and_warnings(self, device, dtype):
     # check invalid norm type
     a = torch.ones(3, 3, dtype=dtype, device=device)
     for p in ["wrong_norm", 5]:
-        with self.assertRaisesRegex(
-            RuntimeError, f"linalg.cond got an invalid norm type: {p}"
-        ):
+        with self.assertRaisesRegex(RuntimeError, f"linalg.cond got an invalid norm type: {p}"):
             torch.linalg.cond(a, p)
 
 

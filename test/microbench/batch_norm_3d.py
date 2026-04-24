@@ -27,11 +27,7 @@ def BTN3d(shape, dtype, channels_last, backward):
     )
 
     if channels_last:
-        input = (
-            torch.randn(N, C, D, H, W)
-            .to(memory_format=torch.channels_last_3d)
-            .to(device="xpu", dtype=dtype)
-        )
+        input = torch.randn(N, C, D, H, W).to(memory_format=torch.channels_last_3d).to(device="xpu", dtype=dtype)
     else:
         input = torch.randn(N, C, D, H, W).to(device="xpu", dtype=dtype)
 
