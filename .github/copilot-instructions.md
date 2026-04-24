@@ -25,5 +25,17 @@ This repository implements Torch XPU Operators for Intel GPU support.
 - YAML or schema changes should be reflected in implementation and tests.
 - CI changes should clearly explain impact on validation coverage.
 
+## Skills index
+
+| Task | Skill file |
+|------|-----------|
+| Create a PR | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
+| Review a PR | `.github/skills/xpu-ops-pr-review/SKILL.md` |
+
+Domain-specific coding rules:
+- XPU kernels: `.github/instructions/xpu-kernels.instructions.md`
+- XPU tests: `.github/instructions/xpu-tests.instructions.md`
+- YAML ops: `.github/instructions/xpu-yaml.instructions.md`
+
 This file provides repository-wide context and applies to all Copilot interactions
 within this repository.
