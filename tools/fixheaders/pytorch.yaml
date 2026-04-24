@@ -102,7 +102,6 @@ custom_headers:
       - "test/xpu/test_unary_ufuncs_xpu.py"
       - "test/xpu/xpu_test_utils.py"
       - "tools/linter/adapters/actionlint_linter.py"
-      - "tools/linter/adapters/black_linter.py"
       - "tools/linter/adapters/clangformat_linter.py"
       - "tools/linter/adapters/clangtidy_linter.py"
       - "tools/linter/adapters/cmake_linter.py"
