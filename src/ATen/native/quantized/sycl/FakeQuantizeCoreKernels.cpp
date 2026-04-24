@@ -102,9 +102,9 @@ struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
   FakeQuantizeTensorCachemaskTensorQparamsFunctor(
       int64_t quant_min,
       int64_t quant_max,
-      float* scale_ptr,
-      int32_t* zp_ptr,
-      int64_t* fake_quant_on)
+      const float* scale_ptr,
+      const int32_t* zp_ptr,
+      const int64_t* fake_quant_on)
       : quant_min_(quant_min),
         quant_max_(quant_max),
         scale_ptr_(scale_ptr),
@@ -114,9 +114,9 @@ struct FakeQuantizeTensorCachemaskTensorQparamsFunctor {
  private:
   int64_t quant_min_;
   int64_t quant_max_;
-  float* scale_ptr_;
-  int32_t* zp_ptr_;
-  int64_t* fake_quant_on_;
+  const float* scale_ptr_;
+  const int32_t* zp_ptr_;
+  const int64_t* fake_quant_on_;
 };
 
 void fake_quantize_tensor_cachemask_tensor_qparams_kernel(
@@ -128,9 +128,9 @@ void fake_quantize_tensor_cachemask_tensor_qparams_kernel(
     const Tensor& fake_quant_enabled,
     int64_t quant_min,
     int64_t quant_max) {
-  float* scale_ptr = scale.data_ptr<float>();
-  int32_t* zp_ptr = zero_point.data_ptr<int32_t>();
-  int64_t* fake_quant_on = fake_quant_enabled.data_ptr<int64_t>();
+  const float* scale_ptr = scale.const_data_ptr<float>();
+  const int32_t* zp_ptr = zero_point.const_data_ptr<int32_t>();
+  const int64_t* fake_quant_on = fake_quant_enabled.const_data_ptr<int64_t>();
   auto iter = TensorIteratorConfig()
                   .check_all_same_dtype(false)
                   .add_output(output)

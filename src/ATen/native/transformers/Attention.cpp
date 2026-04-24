@@ -8,6 +8,16 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
+// Suppress deprecated-declarations from SYCL runtime headers pulled in
+// transitively via c10/xpu/XPUDeviceProp.h (external Intel oneAPI headers).
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// Suppress sycl.hpp warning about missing -fsycl flag (this is a host-only
+// compilation unit that only needs SYCL type definitions, not device codegen).
+#ifndef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+#endif
+
 #include <ATen/NestedTensorImpl.h>
 #include <ATen/ceil_div.h>
 #include <ATen/core/Tensor.h>
@@ -39,7 +49,7 @@
 #include <ATen/native/transformers/SDPUtils.h>
 #include <ATen/native/transformers/sycl/AttentionKernels.h>
 
-#include <comm/SYCLContext.h>
+#pragma GCC diagnostic pop
 
 namespace at {
 namespace native {
@@ -519,6 +529,10 @@ _scaled_dot_product_efficient_attention_backward_xpu(
     k.requires_grad_(true);
   if (grad_input_mask[2])
     v.requires_grad_(true);
+
+  TORCH_CHECK(
+      !grad_input_mask[3] || attn_bias.defined(),
+      "bias_requires_grad is true but no bias was provided");
 
   std::optional<Tensor> attn_bias_opt;
   Tensor ab;
