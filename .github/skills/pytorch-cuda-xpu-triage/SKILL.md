@@ -21,11 +21,6 @@ This skill is written for GitHub Copilot. Keep it text-first: store durable guid
 - Produce concise repro plans and minimal Python reproducers for every qualified candidate, not just the top one.
 - Stop before filing anything unless local XPU execution confirms a bug.
 
-## When to use me
-Use this skill when GitHub Copilot needs to mine upstream backend fixes for likely XPU parity gaps and hand back repro guidance for local validation.
-
-Interpret user focus words as a soft hint about the desired bug family, edge condition, or semantic shape unless the user explicitly says the match must be exact.
-
 ## Required tools and context
 - Use the GitHub search, issue, PR, commit, and file-reading tools available in the current Copilot environment.
 - If those GitHub tools are unavailable, stop and report the blocker.
