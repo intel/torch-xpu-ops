@@ -98,30 +98,29 @@ def parse_filename(filename: str) -> tuple[str, str, str, str]:
         raise ValueError(f"Filename does not start with 'inductor': {filename}")
     rest = base[len("inductor_"):]
 
-    # Identify suite (longest match first to handle e.g. timm_models)
-    suite = None
-    for s in sorted(KNOWN_SUITES, key=len, reverse=True):
-        if rest.startswith(s + "_"):
-            suite = s
-            rest = rest[len(s) + 1:]
-            break
+    def _match_prefix(rest: str, candidates: set[str]) -> tuple[str | None, str]:
+        """Match longest known prefix followed by '_', return (match, remainder)."""
+        for c in sorted(candidates, key=len, reverse=True):
+            if rest.startswith(c + "_"):
+                return c, rest[len(c) + 1:]
+        return None, rest
+
+    suite, rest = _match_prefix(rest, KNOWN_SUITES)
     if suite is None:
         raise ValueError(f"Unknown suite in {filename}")
 
-    parts = rest.split("_")
-    mode_idx = next((i for i, p in enumerate(parts) if p in KNOWN_MODES), None)
-    if mode_idx is None:
+    data_type, rest = _match_prefix(rest, KNOWN_DATA_TYPES)
+    data_type = data_type or ""
+
+    mode, rest = _match_prefix(rest, KNOWN_MODES)
+    if mode is None:
         raise ValueError(f"Could not find mode (inference/training) in {filename}")
 
-    data_type = "_".join(parts[:mode_idx])
-    mode = parts[mode_idx]
-    if data_type and data_type not in KNOWN_DATA_TYPES:
-        log.warning("Unknown data_type '%s' in %s", data_type, filename)
-
-    remaining = parts[mode_idx + 1:]
-    if len(remaining) < 2 or remaining[0] != "xpu":
+    # rest should be xpu_[optional_extra_]<result_type>
+    parts = rest.split("_")
+    if len(parts) < 2 or parts[0] != "xpu":
         raise ValueError(f"Expected '_xpu_<result_type>' after mode in {filename}")
-    result_type = remaining[1]
+    result_type = parts[-1]
     if result_type not in ("accuracy", "performance"):
         raise ValueError(f"Unknown result type '{result_type}' in {filename}")
 
@@ -820,9 +819,9 @@ def print_report(
 
         for label, emoji in [
             ("new_failed", "❌ New failures"),
-            ("new_dropped", "📉 Regressions"),
+            ("new_dropped", "📉 Dropped Cases"),
             ("new_passed", "✅ New passes"),
-            ("new_improved", "📈 Improvements"),
+            ("new_improved", "📈 Improved Cases"),
         ]:
             count = int((comp == label).sum())
             if count:
