@@ -28,7 +28,7 @@ This repository implements Torch XPU Operators for Intel GPU support.
 ## Required reading (mandatory)
 
 Before performing any of the following tasks, you MUST read the linked file in
-full using the file-read tool. Do not skip this step. Do not paraphrase from
+full before proceeding. Do not skip this step. Do not paraphrase from
 memory. The contents of these files are authoritative.
 
 | When you are about to... | Read this file first |
