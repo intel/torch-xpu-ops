@@ -269,6 +269,7 @@ skip_dict = {
     "profiler/test_memory_profiler.py": None,
     "profiler/test_cpp_thread_xpu.py": None,
     "profiler/test_execution_trace_xpu.py": None,
+    "profiler/test_profiler_xpu.py": None,
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
     "export/test_converter_xpu.py": None,
