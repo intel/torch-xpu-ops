@@ -9,7 +9,10 @@
 # Owner(s): ["module: intel"]
 
 import os
+import sys
 from unittest import skipIf
+
+sys.path.append("../../../../test/profiler")
 
 import torch
 import torch.utils.cpp_extension
