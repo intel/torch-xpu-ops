@@ -22,7 +22,6 @@ except Exception as e:
 with XPUPatchForImport(False):
     import unittest
     import unittest.mock as mock
-    from typing import Optional
 
     import torch
     from test_multihead_attention import (
@@ -31,7 +30,7 @@ with XPUPatchForImport(False):
     )
     from torch.testing._internal.common_utils import TEST_WITH_CROSSREF
 
-    def _check_arg_device2(x: Optional[torch.Tensor]) -> bool:
+    def _check_arg_device2(x: torch.Tensor | None) -> bool:
         if x is not None:
             return x.device.type in [
                 "cpu",
