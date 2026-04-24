@@ -72,20 +72,24 @@ if(USE_SYCLTLA)
   set_build_flags()
   replace_cmake_build_flags()
 
-  set(sycl_lib torch-xpu-ops-sycltla)
-  sycl_add_library(
-    ${sycl_lib}
-    SHARED
-    SYCL_SOURCES ${ATen_XPU_SYCLTLA_SRCS})
-  target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
-  list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
+  foreach(sycl_src ${ATen_XPU_SYCLTLA_SRCS})
+    get_filename_component(name ${sycl_src} NAME_WLE REALPATH)
+    set(sycl_lib torch-xpu-ops-sycltla-${name})
+    sycl_add_library(
+      ${sycl_lib}
+      SHARED
+      SYCL_SOURCES ${sycl_src})
+    target_link_libraries(torch_xpu_ops PUBLIC ${sycl_lib})
+    list(APPEND TORCH_XPU_OPS_LIBRARIES ${sycl_lib})
 
-  install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
+    # Decouple with PyTorch cmake definition.
+    install(TARGETS ${sycl_lib} DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 
-  # Set Compile options for sycltla kernels
-  target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
-  target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
-  target_include_directories(${sycl_lib} PRIVATE ${ATen_XPU_FLASH_ATTN_DIRS})
+    # Set Compile options for sycltla kernels
+    target_compile_definitions(${sycl_lib} PRIVATE ${SYCLTLA_COMPILE_DEFINITIONS})
+    target_include_directories(${sycl_lib} PRIVATE ${SYCLTLA_INCLUDE_DIRS})
+    target_include_directories(${sycl_lib} PRIVATE ${ATen_XPU_FLASH_ATTN_DIRS})
+  endforeach()
 
   set(REPLACE_FLAGS_FOR_SYCLTLA FALSE)
   set_build_flags()
