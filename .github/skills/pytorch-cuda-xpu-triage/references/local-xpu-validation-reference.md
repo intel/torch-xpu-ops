@@ -7,10 +7,10 @@ decide whether the behavior is a real XPU backend bug.
 ## Environment assumptions
 - Do not auto-detect Python inside this skill.
 - If the correct interpreter is unclear, ask the user which Python environment contains `torch.xpu`.
-- If the nightly build needs to be refreshed, give the user this command:
+- If the nightly build needs to be refreshed, ask the user to run the install command with the same interpreter they will use for the repro:
 
 ```bash
-pip3 install --pre torch torchvision torchaudio --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu
+python -m pip install --pre torch torchvision torchaudio --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu
 ```
 
 ## Minimal repro script checklist
@@ -38,10 +38,10 @@ print({
 
 ## Suggested run command
 ```bash
-python <repro_script.py>
+python repro.py
 ```
 
-If the user relies on a non-default interpreter, replace `python` with the exact interpreter path or environment-specific launcher.
+If the user relies on a non-default interpreter, replace `python` in both commands with the exact interpreter path or environment-specific launcher, and replace `repro.py` with the actual script path.
 
 ## Suggested environment collection command
 ```bash
