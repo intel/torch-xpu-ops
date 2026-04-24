@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "ruamel.yaml==0.18.10",
+# ]
+# ///
+
 #!/usr/bin/env python3
 
 # Copyright 2020-2026 Intel Corporation
