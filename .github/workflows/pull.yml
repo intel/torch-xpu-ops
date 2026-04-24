@@ -216,7 +216,7 @@ jobs:
       && !contains(github.event.pull_request.labels.*.name, 'disable_win')
       && !contains(github.event.pull_request.labels.*.name, 'disable_ut')
       && (needs.conditions-filter-win.outputs.src_changed == 'true'
-      || contains(github.event.pull_request.labels.*.name, 'windows_ut')) }}
+      || contains(github.event.pull_request.labels.*.name, 'windows_ci')) }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
