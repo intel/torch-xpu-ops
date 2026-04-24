@@ -1359,8 +1359,7 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             if device == GPU_TYPE:
                 device_backend = getattr(torch, device)
                 if not (
-                    device_backend.is_available()
-                    and device_backend.is_bf16_supported()
+                    device_backend.is_available() and device_backend.is_bf16_supported()
                 ):
                     continue
             self._graph_break_inlining_autocast_test_helper(device)

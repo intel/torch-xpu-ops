@@ -11674,9 +11674,9 @@ ShapeEnv not equal: field values don't match:
     @onlyIfTranslationValidation
     def test_shape_env_equal_unbacked(self):  # noqa: META_NO_CREATE_UNBACKED
         main, other = ShapeEnv(), ShapeEnv()
-        main.create_unbacked_symint()
-        main.create_unbacked_symfloat()
-        main.create_unbacked_symbool()
+        main.create_unbacked_symint()  # noqa: META_NO_CREATE_UNBACKED
+        main.create_unbacked_symfloat()  # noqa: META_NO_CREATE_UNBACKED
+        main.create_unbacked_symbool()  # noqa: META_NO_CREATE_UNBACKED
         self.assertExpectedRaisesInline(
             NotEqualError,
             lambda: main.check_equal(other),
@@ -11828,8 +11828,8 @@ ShapeEnv not equal: field values don't match:
         main, other = ShapeEnv(), ShapeEnv()
 
         # Call create_unbacked_symint on both of them.
-        r = main.create_unbacked_symint()
-        other.create_unbacked_symint()
+        r = main.create_unbacked_symint()  # noqa: META_NO_CREATE_UNBACKED
+        other.create_unbacked_symint()  # noqa: META_NO_CREATE_UNBACKED
 
         # Create a runtime assert: r % 3 == 0 (only in the main ShapeEnv)
         #   - +1 deferred_runtime_asserts entry

@@ -18,7 +18,11 @@ from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
 requires_multigpu = functools.partial(
     unittest.skipIf,
-    not (torch.cuda.device_count() > 1 if torch.cuda.is_available() else torch.xpu.device_count() > 1),
+    not (
+        torch.cuda.device_count() > 1
+        if torch.cuda.is_available()
+        else torch.xpu.device_count() > 1
+    ),
     "requires multiple GPU devices",
 )
 
