@@ -95,7 +95,9 @@ cpu_xpu_all = (
 )
 _ops_and_refs_with_no_numpy_ref = [op for op in ops_and_refs if op.ref is None]
 
-_xpu_computation_ops = [op for op in ops_and_refs if op.name in _xpu_computation_op_list]
+_xpu_computation_ops = [
+    op for op in ops_and_refs if op.name in _xpu_computation_op_list
+]
 
 _xpu_computation_ops_no_numpy_ref = [
     op for op in _ops_and_refs_with_no_numpy_ref if op.name in _xpu_computation_op_list
@@ -130,7 +132,9 @@ class Namespace:
             for sample in samples:
                 cpu_sample = sample.transform(to_cpu)
                 xpu_results = op(sample.input, *sample.args, **sample.kwargs)
-                cpu_results = op(cpu_sample.input, *cpu_sample.args, **cpu_sample.kwargs)
+                cpu_results = op(
+                    cpu_sample.input, *cpu_sample.args, **cpu_sample.kwargs
+                )
 
                 xpu_results = sample.output_process_fn_grad(xpu_results)
                 cpu_results = cpu_sample.output_process_fn_grad(cpu_results)
@@ -157,13 +161,17 @@ class TestCommon(TestCase):
         # check if supported both by CPU and XPU
         if dtype in op.dtypes and dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCommonProxy(self)
-            test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+            test_common_test_fn = get_wrapped_fn(
+                Namespace.TestCommonProxy.test_compare_cpu
+            )
             test_common_test_fn(self.proxy, device, dtype, op)
         # for CUDA doesn't support operators
         elif op.name in _ops_without_cuda_support:
             if dtype in op.dtypes:
                 self.proxy = Namespace.TestCommonProxy(self)
-                test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_compare_cpu)
+                test_common_test_fn = get_wrapped_fn(
+                    Namespace.TestCommonProxy.test_compare_cpu
+                )
                 test_common_test_fn(self.proxy, device, dtype, op)
         else:
             pytest.skip(f"{op.name} has not supported {dtype} yet both for cpu and xpu")
@@ -174,7 +182,9 @@ class TestCommon(TestCase):
     def test_non_standard_bool_values(self, device, dtype, op):
         self.proxy = Namespace.TestCommonProxy()
 
-        test_common_test_fn = get_wrapped_fn(Namespace.TestCommonProxy.test_non_standard_bool_values)
+        test_common_test_fn = get_wrapped_fn(
+            Namespace.TestCommonProxy.test_non_standard_bool_values
+        )
         test_common_test_fn(self.proxy, device, dtype, op)
 
 
@@ -183,16 +193,22 @@ class TestCompositeCompliance(TestCase):
     # Checks if the operator (if it is composite) is written to support most
     # backends and Tensor subclasses. See "CompositeImplicitAutograd Compliance"
     # in aten/src/ATen/native/README.md for more details
-    @unittest.skipIf(IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode")
+    @unittest.skipIf(
+        IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
     def test_operator(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()
 
-            test_composite_compliance_test_fn = get_wrapped_fn(Namespace.TestCompositeComplianceProxy.test_operator)
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_operator
+            )
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
-    @unittest.skipIf(IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode")
+    @unittest.skipIf(
+        IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
     @ops(
         [op for op in _xpu_computation_ops if op.supports_autograd],
         allowed_dtypes=(torch.float,),
@@ -201,16 +217,22 @@ class TestCompositeCompliance(TestCase):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()
 
-            test_composite_compliance_test_fn = get_wrapped_fn(Namespace.TestCompositeComplianceProxy.test_backward)
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_backward
+            )
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
-    @unittest.skipIf(IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode")
+    @unittest.skipIf(
+        IS_FBCODE or IS_SANDCASTLE, "__torch_dispatch__ does not work in fbcode"
+    )
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
     def test_forward_ad(self, device, dtype, op):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()
 
-            test_composite_compliance_test_fn = get_wrapped_fn(Namespace.TestCompositeComplianceProxy.test_forward_ad)
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_forward_ad
+            )
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
@@ -218,7 +240,9 @@ class TestCompositeCompliance(TestCase):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()
 
-            test_composite_compliance_test_fn = get_wrapped_fn(Namespace.TestCompositeComplianceProxy.test_cow_input)
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_cow_input
+            )
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
     @ops(_xpu_computation_ops, allowed_dtypes=(torch.float,))
@@ -226,12 +250,16 @@ class TestCompositeCompliance(TestCase):
         if dtype in op.supported_dtypes(device):
             self.proxy = Namespace.TestCompositeComplianceProxy()
 
-            test_composite_compliance_test_fn = get_wrapped_fn(Namespace.TestCompositeComplianceProxy.test_view_replay)
+            test_composite_compliance_test_fn = get_wrapped_fn(
+                Namespace.TestCompositeComplianceProxy.test_view_replay
+            )
             test_composite_compliance_test_fn(self.proxy, device, dtype, op)
 
 
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(TestCompositeCompliance, globals(), only_for="xpu", allow_xpu=True)
+instantiate_device_type_tests(
+    TestCompositeCompliance, globals(), only_for="xpu", allow_xpu=True
+)
 
 
 if __name__ == "__main__":

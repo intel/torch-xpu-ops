@@ -54,7 +54,9 @@ class TestTorchMethod(TestCase):
             self.assertEqual(grad_cpu, grad_xpu.cpu())
 
             # #### upsample nearest exact 2D #####
-            input_cpu = torch.randn((2, 3, 5, 5), dtype=torch.float32, device=cpu_device)
+            input_cpu = torch.randn(
+                (2, 3, 5, 5), dtype=torch.float32, device=cpu_device
+            )
             input_dpcpp = input_cpu.to("xpu")
             scales = [6, 8]
             input_cpu.requires_grad = True
@@ -75,7 +77,9 @@ class TestTorchMethod(TestCase):
             )
             self.assertEqual(output_cpu, output_dpcpp.cpu())
 
-            grad_out_cpu = torch.randn((2, 3, 30, 40), dtype=torch.float32, device=cpu_device)
+            grad_out_cpu = torch.randn(
+                (2, 3, 30, 40), dtype=torch.float32, device=cpu_device
+            )
             grad_out_dpcpp = grad_out_cpu.to("xpu")
             grad_out_cpu = Variable(grad_out_cpu, requires_grad=True)
             grad_out_dpcpp = Variable(grad_out_dpcpp, requires_grad=True)
@@ -109,7 +113,9 @@ class TestTorchMethod(TestCase):
             )
             self.assertEqual(output_cpu, output_xpu.cpu())
 
-            grad_out_cpu = torch.randn((2, 3, 30), dtype=torch.float32, device=cpu_device)
+            grad_out_cpu = torch.randn(
+                (2, 3, 30), dtype=torch.float32, device=cpu_device
+            )
             grad_out_xpu = grad_out_cpu.to("xpu")
             grad_out_cpu = Variable(grad_out_cpu, requires_grad=True)
             grad_out_xpu = Variable(grad_out_xpu, requires_grad=True)
@@ -121,7 +127,9 @@ class TestTorchMethod(TestCase):
             self.assertEqual(grad_cpu, grad_xpu.cpu())
 
             # #### upsample nearest 2D #####
-            input_cpu = torch.randn((2, 3, 5, 5), dtype=torch.float32, device=cpu_device)
+            input_cpu = torch.randn(
+                (2, 3, 5, 5), dtype=torch.float32, device=cpu_device
+            )
             input_dpcpp = input_cpu.to("xpu")
             scales = [6, 8]
             input_cpu.requires_grad = True
@@ -142,7 +150,9 @@ class TestTorchMethod(TestCase):
             )
             self.assertEqual(output_cpu, output_dpcpp.cpu())
 
-            grad_out_cpu = torch.randn((2, 3, 30, 40), dtype=torch.float32, device=cpu_device)
+            grad_out_cpu = torch.randn(
+                (2, 3, 30, 40), dtype=torch.float32, device=cpu_device
+            )
             grad_out_dpcpp = grad_out_cpu.to("xpu")
             grad_out_cpu = Variable(grad_out_cpu, requires_grad=True)
             grad_out_dpcpp = Variable(grad_out_dpcpp, requires_grad=True)

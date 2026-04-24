@@ -49,7 +49,9 @@ for shape in shape_list:
             "; backward:",
             backward,
         )
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(num_iter):
                 output = torch.roll(input, shifts=shape[1], dims=shape[2])
                 if backward:

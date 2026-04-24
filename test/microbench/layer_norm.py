@@ -48,7 +48,9 @@ for shape in shape_list:
             "; backward:",
             backward,
         )
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True) as prof:
+        with profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.XPU], record_shapes=True
+        ) as prof:
             for i in range(num_iter):
                 m = torch.nn.LayerNorm(shape[1], device=device, dtype=dtype)
                 output = m(input)

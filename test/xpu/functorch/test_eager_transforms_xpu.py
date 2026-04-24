@@ -648,9 +648,13 @@ class TestGradTransform(TestCase):
         self.assertEqual(out, x.cos())
 
         for aux in [1, 1.0, "abc"]:
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = grad(lambda x: (x.sum(), aux), has_aux=True)(x)
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = grad(lambda x: (x.sum(), [x, aux]), has_aux=True)(x)
 
     def test_zero_grad(self, device):
@@ -803,10 +807,14 @@ class TestGradTransform(TestCase):
     def test_vjp_aux_tensor(self, device):
         x = torch.randn(3, device=device)
 
-        with self.assertRaisesRegex(RuntimeError, r"vjp\(f, \*primals\): output of function f should be a tuple"):
+        with self.assertRaisesRegex(
+            RuntimeError, r"vjp\(f, \*primals\): output of function f should be a tuple"
+        ):
             vjp(lambda t: [t, t], x, has_aux=True)
 
-        with self.assertRaisesRegex(RuntimeError, r"vjp\(f, \*primals\): output of function f should be a tuple"):
+        with self.assertRaisesRegex(
+            RuntimeError, r"vjp\(f, \*primals\): output of function f should be a tuple"
+        ):
             vjp(lambda t: (t, t + 2, t + 3), x, has_aux=True)
 
         def f(t):
@@ -838,9 +846,13 @@ class TestGradTransform(TestCase):
         self.assertEqual(grad_x, v * x.cos())
 
         for aux in [1, 1.0, "abc"]:
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = vjp(lambda x: (x, aux), x, has_aux=True)
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = vjp(lambda x: (x, [x, aux]), x, has_aux=True)
 
     def test_functional_init(self, device):
@@ -885,7 +897,9 @@ class TestGradTransform(TestCase):
                 return x
 
         B = 10
-        weights, buffers, fn, _, _ = functional_init_with_buffers(MLPClassifier, [B], device=device)(32, 2)
+        weights, buffers, fn, _, _ = functional_init_with_buffers(
+            MLPClassifier, [B], device=device
+        )(32, 2)
         inputs = torch.randn(B, 7, 2, device=device)
         vmap(fn)(weights, buffers, (inputs,))
 
@@ -975,7 +989,9 @@ class TestGradTransform(TestCase):
                 expected = f"{repr(x)}"
                 for level, op in enumerate(op_list):
                     if op is grad:
-                        expected = f"GradTrackingTensor(lvl={level + 1}, value={expected})"
+                        expected = (
+                            f"GradTrackingTensor(lvl={level + 1}, value={expected})"
+                        )
                     elif op is vmap:
                         bdim -= 1
                         expected = f"BatchedTensor(lvl={level + 1}, bdim={bdim}, value={expected})"
@@ -1160,7 +1176,9 @@ class TestAutogradFunction(TestCase):
     @parametrize("save_for", ["jvp", "vjp"])
     @parametrize("save_tensors", ["input", "output", "neither"])
     @parametrize("mark_dirty", [True, False])
-    def test_function_returns_input(self, device, inner_requires_grad, save_for, save_tensors, mark_dirty):
+    def test_function_returns_input(
+        self, device, inner_requires_grad, save_for, save_tensors, mark_dirty
+    ):
         class A(torch.autograd.Function):
             @staticmethod
             def forward(x):
@@ -1214,7 +1232,9 @@ class TestAutogradFunction(TestCase):
             jvp(fn, (a,), (a_t,))
 
         a = torch.tensor(2.0, device=device, requires_grad=inner_requires_grad).clone()
-        a_t = torch.tensor(2.0, device=device, requires_grad=inner_requires_grad).clone()
+        a_t = torch.tensor(
+            2.0, device=device, requires_grad=inner_requires_grad
+        ).clone()
 
         if save_tensors in ("input", "output") and not mark_dirty:
             with self.assertRaisesRegex(RuntimeError, err_msg):
@@ -1226,7 +1246,9 @@ class TestAutogradFunction(TestCase):
             b = A.apply(a)
             if mark_dirty:
                 self.assertTrue(a is b)
-            if not (mark_dirty and save_for == "vjp" and save_tensors in ("input", "output")):
+            if not (
+                mark_dirty and save_for == "vjp" and save_tensors in ("input", "output")
+            ):
                 # TODO(soulitzer): https://github.com/pytorch/pytorch/issues/97827
                 with fwAD.dual_level():
                     a_dual = fwAD.make_dual(a, a_t)
@@ -1700,7 +1722,9 @@ class TestVmapOfGrad(TestCase):
                 self.assertEqual(r, e, atol=0, rtol=1.5e-3)
         else:
             assert mechanism == "functional_call"
-            expected = {k: tuple(d[k] for d in expected) for k, v in expected[0].items()}
+            expected = {
+                k: tuple(d[k] for d in expected) for k, v in expected[0].items()
+            }
             expected = {k: torch.stack(shards) for k, shards in expected.items()}
             for key in result:
                 self.assertEqual(result[key], expected[key], atol=0, rtol=1.5e-3)
@@ -1731,7 +1755,9 @@ class TestVmapOfGrad(TestCase):
         vocab_size = 1000
         batch_shape = [64]
         words_per_sentence = 5
-        data = torch.randint(0, vocab_size, (*batch_shape, words_per_sentence), device=device)
+        data = torch.randint(
+            0, vocab_size, (*batch_shape, words_per_sentence), device=device
+        )
         targets = torch.randint(0, 1, (*batch_shape,), device=device)
 
         # Construct our module
@@ -1766,7 +1792,9 @@ class TestVmapOfGrad(TestCase):
         self.assertEqual(result, x.grad)
 
 
-jacrev_and_jacfwd = parametrize("jacapi", [subtest(jacrev, name="jacrev"), subtest(jacfwd, name="jacfwd")])
+jacrev_and_jacfwd = parametrize(
+    "jacapi", [subtest(jacrev, name="jacrev"), subtest(jacfwd, name="jacfwd")]
+)
 
 FIXME_jacrev_only = parametrize("jacapi", [subtest(jacrev, name="jacrev")])
 
@@ -1923,7 +1951,9 @@ class TestJac(VmapTearDownMixin, TestCase):
         self.assertEqual(result, expected)
 
         result = jacapi(f, argnums=(0,))(*args)
-        expected = ((torch.tensor(1.0, device=device), torch.tensor(2.0, device=device)),)
+        expected = (
+            (torch.tensor(1.0, device=device), torch.tensor(2.0, device=device)),
+        )
         self.assertEqual(result, expected)
 
         result = jacapi(f)(*args)
@@ -1971,9 +2001,13 @@ class TestJac(VmapTearDownMixin, TestCase):
         self.assertEqual(aux, expected_aux)
 
         for aux in [1, 1.0, "abc"]:
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = jacapi(lambda x: (x, aux), has_aux=True)(x)
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = jacapi(lambda x: (x, [x, aux]), has_aux=True)(x)
 
     @jacrev_and_jacfwd
@@ -2379,7 +2413,9 @@ class TestJac(VmapTearDownMixin, TestCase):
         self.assertEqual(actual, expected)
 
         # Should fail with `chunk_size=2`.
-        msg = r"vmap: We do not support batching operators that can output dynamic shape."
+        msg = (
+            r"vmap: We do not support batching operators that can output dynamic shape."
+        )
         with self.assertRaisesRegex(RuntimeError, msg):
             jacrev(f, chunk_size=2, _preallocate_and_copy=_preallocate_and_copy)(x)
 
@@ -2527,7 +2563,9 @@ class TestJvp(TestCase):
             return a + 2 * b + 3 * y + 4 * z
 
         one = torch.tensor(1.0, device=device)
-        primal_outs, tangent_outs = jvp(f, ((one, one), one, one), ((one, one), one, one))
+        primal_outs, tangent_outs = jvp(
+            f, ((one, one), one, one), ((one, one), one, one)
+        )
         self.assertEqual(primal_outs, one * 10)
         self.assertEqual(tangent_outs, one * 10)
 
@@ -2733,9 +2771,13 @@ class TestJvp(TestCase):
         self.assertEqual(jvp_out, t * x.cos())
 
         for aux in [1, 1.0, "abc"]:
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = jvp(lambda x: (x, aux), (x,), (t,), has_aux=True)
-            with self.assertRaisesRegex(RuntimeError, r"Expected tensors, got unsupported type"):
+            with self.assertRaisesRegex(
+                RuntimeError, r"Expected tensors, got unsupported type"
+            ):
                 _ = jvp(lambda x: (x, [x, aux]), (x,), (t,), has_aux=True)
 
     def test_autograd_function_disables_fwd_grad(self, device):
@@ -2945,16 +2987,24 @@ class TestLinearize(TestCase):
 
         _, jvp_fn = linearize(fn, x_p)
 
-        with self.assertRaisesRegex(RuntimeError, "to have the same argspec as the primals"):
+        with self.assertRaisesRegex(
+            RuntimeError, "to have the same argspec as the primals"
+        ):
             jvp_fn((x_t, x_t))
 
-        with self.assertRaisesRegex(RuntimeError, "in flattened pytree doesn't match the shape"):
+        with self.assertRaisesRegex(
+            RuntimeError, "in flattened pytree doesn't match the shape"
+        ):
             jvp_fn(x_t.unsqueeze(0))
 
-        with self.assertRaisesRegex(RuntimeError, "in flattened pytree doesn't match the dtype"):
+        with self.assertRaisesRegex(
+            RuntimeError, "in flattened pytree doesn't match the dtype"
+        ):
             jvp_fn(x_t.to(torch.double))
 
-        with self.assertRaisesRegex(RuntimeError, "in flattened pytree doesn't match the device"):
+        with self.assertRaisesRegex(
+            RuntimeError, "in flattened pytree doesn't match the device"
+        ):
             jvp_fn(x_t.to(self.device_type))
 
 
@@ -3208,7 +3258,9 @@ class TestHelpers(TestCase):
             def backward(ctx, gy):
                 # The override can be literally anything
                 override = (1, 2, 3)
-                wrapped = torch._functorch.autograd_function.CtxWithSavedTensors(ctx, override)
+                wrapped = torch._functorch.autograd_function.CtxWithSavedTensors(
+                    ctx, override
+                )
                 assert wrapped.saved_tensors == override
                 return gy
 
@@ -3229,7 +3281,9 @@ class TestHelpers(TestCase):
             def backward(ctx, gz):
                 # The override can be literally anything
                 override = (1, 2, 3)
-                wrapped = torch._functorch.autograd_function.CtxWithSavedTensors(ctx, override)
+                wrapped = torch._functorch.autograd_function.CtxWithSavedTensors(
+                    ctx, override
+                )
 
                 assert wrapped.needs_input_grad[0] == ctx.needs_input_grad[0]
                 assert wrapped.needs_input_grad[1] == ctx.needs_input_grad[1]
@@ -3315,7 +3369,9 @@ class TestComposability(TestCase):
         new_api = getattr(torch.func, transform)
 
         # functorch version of the API is deprecated
-        with self.assertWarnsRegex(FutureWarning, f"Please use `torch.func.{transform}`"):
+        with self.assertWarnsRegex(
+            FutureWarning, f"Please use `torch.func.{transform}`"
+        ):
             api(torch.sin)
 
         # the non-functorch version is not deprecated
@@ -3521,12 +3577,16 @@ class TestComposability(TestCase):
 
     def test_autograd_functional_jacfwd_inside_transform(self, device):
         def f(x):
-            y = torch.autograd.functional.jacobian(lambda x: x.sin().sum(), x, strategy="forward-mode", vectorize=True)
+            y = torch.autograd.functional.jacobian(
+                lambda x: x.sin().sum(), x, strategy="forward-mode", vectorize=True
+            )
             return y
 
         B = 5
         x = torch.randn(B, 3)
-        with self.assertRaisesRegex(RuntimeError, "Batching rule not implemented for aten::_make_dual"):
+        with self.assertRaisesRegex(
+            RuntimeError, "Batching rule not implemented for aten::_make_dual"
+        ):
             vmap(f)(x)
 
     @parametrize(
@@ -3681,7 +3741,9 @@ class TestMakeFunctional(TestCase):
                 return x
 
         mod = Foo()
-        _, params = make_functional(mod, disable_autograd_tracking=disable_autograd_tracking)
+        _, params = make_functional(
+            mod, disable_autograd_tracking=disable_autograd_tracking
+        )
         self.assertEqual(len(params), 2)
         for param in params:
             self.assertEqual(param.requires_grad, not disable_autograd_tracking)
@@ -3760,7 +3822,9 @@ class TestMakeFunctional(TestCase):
                 return x
 
         mod = Foo()
-        _, params, buffers = make_functional_with_buffers(mod, disable_autograd_tracking=disable_autograd_tracking)
+        _, params, buffers = make_functional_with_buffers(
+            mod, disable_autograd_tracking=disable_autograd_tracking
+        )
         self.assertEqual(len(params), 2)
         self.assertEqual(len(buffers), 1)
         for param in params:
@@ -3781,7 +3845,11 @@ class TestMakeFunctional(TestCase):
 
         def params_dict(mod):
             named_params = mod.named_parameters()
-            return {k: v.detach() for k, v in named_params} if detach_params else dict(named_params)
+            return (
+                {k: v.detach() for k, v in named_params}
+                if detach_params
+                else dict(named_params)
+            )
 
         mod = Foo()
         x = torch.randn(3, 3)
@@ -3945,18 +4013,24 @@ class TestMakeFunctional(TestCase):
         out_features = 2
 
         models = []
-        with self.assertRaisesRegex(RuntimeError, "stack_module_state:.* Expected at least one model"):
+        with self.assertRaisesRegex(
+            RuntimeError, "stack_module_state:.* Expected at least one model"
+        ):
             _ = stack_module_state(models)
 
         num_models = 3
         models = [torch.nn.Linear(in_features, out_features) for i in range(num_models)]
         models[1].eval()
-        with self.assertRaisesRegex(RuntimeError, "stack_module_state:.* same training/eval mode."):
+        with self.assertRaisesRegex(
+            RuntimeError, "stack_module_state:.* same training/eval mode."
+        ):
             _ = stack_module_state(models)
 
         models = [torch.nn.Linear(in_features, out_features) for i in range(num_models)]
         models[1] = torch.nn.Conv2d(3, 3, (3, 3))
-        with self.assertRaisesRegex(RuntimeError, "stack_module_state:.* models to be of the same class"):
+        with self.assertRaisesRegex(
+            RuntimeError, "stack_module_state:.* models to be of the same class"
+        ):
             _ = stack_module_state(models)
 
     @parametrize("mechanism", ["make_functional", "functional_call"])
@@ -4038,7 +4112,9 @@ class TestExamplesCorrectness(TestCase):
         def mse_loss(x, y):
             return torch.mean((x - y) ** 2)
 
-        net, params = _get_weights_and_functional_call(ThreeLayerNet().to(device), mechanism)
+        net, params = _get_weights_and_functional_call(
+            ThreeLayerNet().to(device), mechanism
+        )
         K = 20
         num_tasks = 4
         alpha = 0.1
@@ -4054,7 +4130,9 @@ class TestExamplesCorrectness(TestCase):
             def get_batch():
                 xs, ys = [], []
                 for A, phase in zip(As, phases):
-                    x = np.random.uniform(low=-5.0, high=5.0, size=(inner_batch_size, 1))
+                    x = np.random.uniform(
+                        low=-5.0, high=5.0, size=(inner_batch_size, 1)
+                    )
                     y = A * np.sin(x + phase)
                     xs.append(x)
                     ys.append(y)
@@ -4086,16 +4164,21 @@ class TestExamplesCorrectness(TestCase):
             return mse_loss(v_f, y2)
 
         task = sample_tasks(num_tasks, K)
-        list_params = params if mechanism == "make_functional" else list(params.values())
+        list_params = (
+            params if mechanism == "make_functional" else list(params.values())
+        )
 
         # Compute with vmap+grad
-        inner_losses = vmap(partial(get_loss_for_task, True))(task[0], task[1], task[2], task[3])
+        inner_losses = vmap(partial(get_loss_for_task, True))(
+            task[0], task[1], task[2], task[3]
+        )
         loss2 = sum(inner_losses) / len(inner_losses)
         result_grads = torch.autograd.grad(loss2, list_params)
 
         # Compute without vmap+grad
         inner_losses = [
-            get_loss_for_task(False, task[0][i], task[1][i], task[2][i], task[3][i]) for i in range(num_tasks)
+            get_loss_for_task(False, task[0][i], task[1][i], task[2][i], task[3][i])
+            for i in range(num_tasks)
         ]
         loss2 = sum(inner_losses) / len(inner_losses)
         expected_grads = torch.autograd.grad(loss2, list_params)
@@ -4136,7 +4219,9 @@ class TestExamplesCorrectness(TestCase):
             .to(dtype)
         )
 
-        fnet, params, buffers = _get_weights_and_functional_call_with_buffers(net, mechanism)
+        fnet, params, buffers = _get_weights_and_functional_call_with_buffers(
+            net, mechanism
+        )
         net = (params, buffers, fnet)
 
         def loss_for_task(net, n_inner_iter, use_transform, x_spt, y_spt, x_qry, y_qry):
@@ -4175,12 +4260,17 @@ class TestExamplesCorrectness(TestCase):
         # compute with vmap + grad
         compute_loss = partial(loss_for_task, net, n_inner_iter, True)
         qry_losses, _ = vmap(compute_loss)(x_spt, y_spt, x_qry, y_qry)
-        list_params = params if mechanism == "make_functional" else list(params.values())
+        list_params = (
+            params if mechanism == "make_functional" else list(params.values())
+        )
         result_grads = torch.autograd.grad(qry_losses.sum(), list_params)
 
         # compute without vmap + grad
         compute_loss = partial(loss_for_task, net, n_inner_iter, False)
-        losses = [compute_loss(x_spt[i], y_spt[i], x_qry[i], y_qry[i])[0] for i in range(num_tasks)]
+        losses = [
+            compute_loss(x_spt[i], y_spt[i], x_qry[i], y_qry[i])[0]
+            for i in range(num_tasks)
+        ]
         expected_grads = torch.autograd.grad(sum(losses), list_params)
 
         self.assertEqual(result_grads, expected_grads)
@@ -4195,7 +4285,9 @@ class TestExamplesCorrectness(TestCase):
         net = (
             nn.Sequential(
                 nn.Conv2d(64, 64, 3),
-                nn.BatchNorm2d(64, affine=True, track_running_stats=originally_track_running_stats),
+                nn.BatchNorm2d(
+                    64, affine=True, track_running_stats=originally_track_running_stats
+                ),
                 nn.ReLU(inplace=inplace_relu),
                 nn.Flatten(),
                 nn.Linear(43264, classes),
@@ -4206,7 +4298,9 @@ class TestExamplesCorrectness(TestCase):
 
         replace_all_batch_norm_modules_(net)
         transformed_net = net
-        fnet, params, buffers = _get_weights_and_functional_call_with_buffers(transformed_net, mechanism)
+        fnet, params, buffers = _get_weights_and_functional_call_with_buffers(
+            transformed_net, mechanism
+        )
         criterion = nn.CrossEntropyLoss()
 
         def compute_loss(x, y, params, buffers):
@@ -4217,13 +4311,18 @@ class TestExamplesCorrectness(TestCase):
         y = torch.randint(0, classes, (num_batches, 1), device=device)
 
         # compute some per sample grads with vmap + grad
-        result_grads = vmap(grad(compute_loss, argnums=2), in_dims=(0, 0, None, None))(x, y, params, buffers)
+        result_grads = vmap(grad(compute_loss, argnums=2), in_dims=(0, 0, None, None))(
+            x, y, params, buffers
+        )
 
         # compute some per sample grads without vmap + grad
-        fnet, params, buffers = _get_weights_and_functional_call_with_buffers(transformed_net, mechanism)
+        fnet, params, buffers = _get_weights_and_functional_call_with_buffers(
+            transformed_net, mechanism
+        )
         flat_params, spec = tree_flatten(params)
         expected_grads = [
-            torch.autograd.grad(compute_loss(x[i], y[i], params, buffers), flat_params) for i in range(num_batches)
+            torch.autograd.grad(compute_loss(x[i], y[i], params, buffers), flat_params)
+            for i in range(num_batches)
         ]
         expected_grads = [torch.stack(shards) for shards in zip(*expected_grads)]
         expected_grads = tree_unflatten(expected_grads, spec)
@@ -4242,13 +4341,17 @@ class TestExamplesCorrectness(TestCase):
 
         def lennard_jones_force(r):
             """Get magnitude of LJ force"""
-            return -epsilon * ((-12 * sigma**12 / r**13) + (6 * sigma**6 / r**7))
+            return -epsilon * (
+                (-12 * sigma**12 / r**13) + (6 * sigma**6 / r**7)
+            )
 
         r = torch.linspace(0.5, 2 * sigma, steps=100, requires_grad=True, device=device)
         drs = torch.outer(r, torch.tensor([1.0, 0, 0], device=device))
         norms = torch.norm(drs, dim=1).reshape(-1, 1)
         training_energies = torch.stack(list(map(lennard_jones, norms))).reshape(-1, 1)
-        training_forces = torch.stack([force * dr for force, dr in zip(map(lennard_jones_force, norms), drs)])
+        training_forces = torch.stack(
+            [force * dr for force, dr in zip(map(lennard_jones_force, norms), drs)]
+        )
 
         model = nn.Sequential(
             nn.Linear(1, 16),
@@ -4272,14 +4375,19 @@ class TestExamplesCorrectness(TestCase):
             else:
                 forces = []
                 for r, dr in zip(norms, drs):
-                    network_deriv = torch.autograd.functional.jacobian(model, r, create_graph=True)
+                    network_deriv = torch.autograd.functional.jacobian(
+                        model, r, create_graph=True
+                    )
                     force = -network_deriv * dr / r
                     forces.append(force)
                 forces = torch.cat(forces)
             return energies, forces
 
         def loss_fn(energies, forces, predicted_energies, predicted_forces):
-            return F.mse_loss(energies, predicted_energies) + 0.01 * F.mse_loss(forces, predicted_forces) / 3
+            return (
+                F.mse_loss(energies, predicted_energies)
+                + 0.01 * F.mse_loss(forces, predicted_forces) / 3
+            )
 
         energies, forces = make_prediction(model, drs, use_functorch=True)
         loss = loss_fn(training_energies, training_forces, energies, forces)
@@ -4325,7 +4433,9 @@ class TestExamplesCorrectness(TestCase):
 
         loss_fn = nn.NLLLoss()
 
-        func_model, weights = _get_weights_and_functional_call(MLPClassifier().to(device), mechanism)
+        func_model, weights = _get_weights_and_functional_call(
+            MLPClassifier().to(device), mechanism
+        )
 
         def train_step_fn(use_transform, weights, batch, targets, lr=0.2):
             def compute_loss(weights, batch, targets):
@@ -4334,7 +4444,9 @@ class TestExamplesCorrectness(TestCase):
                 return loss
 
             if use_transform:
-                grad_weights, loss = grad_and_value(compute_loss)(weights, batch, targets)
+                grad_weights, loss = grad_and_value(compute_loss)(
+                    weights, batch, targets
+                )
             else:
                 loss = compute_loss(weights, batch, targets)
                 flat_weights, spec = tree_flatten(weights)
@@ -4355,21 +4467,33 @@ class TestExamplesCorrectness(TestCase):
                 return stack_module_state(models)[0]
 
         def slice_weights(batched_weights, index):
-            return tree_map(lambda weight: weight[index].detach().requires_grad_(), batched_weights)
+            return tree_map(
+                lambda weight: weight[index].detach().requires_grad_(), batched_weights
+            )
 
         batched_weights = init_fn(num_models=2)
-        parallel_train_step_fn = vmap(partial(train_step_fn, True), in_dims=(0, None, None))
+        parallel_train_step_fn = vmap(
+            partial(train_step_fn, True), in_dims=(0, None, None)
+        )
 
-        result_loss, result_weights = unpack(parallel_train_step_fn(batched_weights, points, labels))
+        result_loss, result_weights = unpack(
+            parallel_train_step_fn(batched_weights, points, labels)
+        )
 
-        loss0, weights0 = unpack(train_step_fn(False, slice_weights(batched_weights, 0), points, labels))
-        loss1, weights1 = unpack(train_step_fn(False, slice_weights(batched_weights, 1), points, labels))
+        loss0, weights0 = unpack(
+            train_step_fn(False, slice_weights(batched_weights, 0), points, labels)
+        )
+        loss1, weights1 = unpack(
+            train_step_fn(False, slice_weights(batched_weights, 1), points, labels)
+        )
         expected_loss = torch.stack([loss0, loss1])
 
         weights0, spec0 = tree_flatten(weights0)
         weights1, spec1 = tree_flatten(weights1)
         assert spec0 == spec1
-        expected_weights = tuple(torch.stack([w0, w1]) for w0, w1 in zip(weights0, weights1))
+        expected_weights = tuple(
+            torch.stack([w0, w1]) for w0, w1 in zip(weights0, weights1)
+        )
         expected_weights = tree_unflatten(expected_weights, spec0)
 
         self.assertEqual(result_loss, expected_loss)
@@ -4414,7 +4538,9 @@ class TestExamplesCorrectness(TestCase):
 
         loss_fn = nn.NLLLoss()
 
-        func_model, weights = _get_weights_and_functional_call(MLPClassifier().to(device), mechanism)
+        func_model, weights = _get_weights_and_functional_call(
+            MLPClassifier().to(device), mechanism
+        )
 
         def train_step_fn(weights, batch, targets, lr):
             def compute_loss(weights, batch, targets):
@@ -4434,17 +4560,23 @@ class TestExamplesCorrectness(TestCase):
 
         def init_fn(num_models):
             og_model = MLPClassifier().to(device)
-            models = tuple(copy.deepcopy(og_model) for _ in range(num_models))  # have same initialization
+            models = tuple(
+                copy.deepcopy(og_model) for _ in range(num_models)
+            )  # have same initialization
             if mechanism == "make_functional":
                 return combine_state_for_ensemble(models)[1]
             else:
                 return stack_module_state(models)[0]
 
         batched_weights = init_fn(num_models=2)
-        parallel_train_step_fn = vmap(train_step_fn, in_dims=(0, None, None, 0), randomness="same")
+        parallel_train_step_fn = vmap(
+            train_step_fn, in_dims=(0, None, None, 0), randomness="same"
+        )
 
         lrs = torch.tensor([0.2, 0.4], device=device)
-        result_loss, result_weights = unpack(parallel_train_step_fn(batched_weights, points, labels, lrs))
+        result_loss, result_weights = unpack(
+            parallel_train_step_fn(batched_weights, points, labels, lrs)
+        )
 
         self.assertEqual(result_loss[0], result_loss[1])
         self.assertNotEqual(
@@ -4458,10 +4590,12 @@ class TestExamplesCorrectness(TestCase):
     def test_resnet18_per_sample_grads(self, device, mechanism):
         from torchvision import models
 
-        model = models.__dict__["resnet18"](pretrained=False, norm_layer=(lambda c: nn.GroupNorm(min(32, c), c))).to(
-            device
-        )
-        criterion = nn.CrossEntropyLoss(reduction="sum")  # avoid cross batch reductions for for loop comparison
+        model = models.__dict__["resnet18"](
+            pretrained=False, norm_layer=(lambda c: nn.GroupNorm(min(32, c), c))
+        ).to(device)
+        criterion = nn.CrossEntropyLoss(
+            reduction="sum"
+        )  # avoid cross batch reductions for for loop comparison
 
         func_model, weights = _get_weights_and_functional_call(model, mechanism)
 
@@ -4476,11 +4610,16 @@ class TestExamplesCorrectness(TestCase):
         images = torch.randn(batch_size, 3, 32, 32, device=device)
         targets = torch.randint(0, 10, (batch_size,), device=device)
 
-        result_grads = vmap(grad(compute_loss), in_dims=(None, 0, 0))(weights, images, targets)
+        result_grads = vmap(grad(compute_loss), in_dims=(None, 0, 0))(
+            weights, images, targets
+        )
 
         flat_weights, spec = tree_flatten(weights)
         expected_grads = [
-            torch.autograd.grad(compute_loss(weights, images[i], targets[i]), flat_weights) for i in range(batch_size)
+            torch.autograd.grad(
+                compute_loss(weights, images[i], targets[i]), flat_weights
+            )
+            for i in range(batch_size)
         ]
         expected_grads = [torch.stack(shards) for shards in zip(*expected_grads)]
         expected_grads = tree_unflatten(expected_grads, spec)
@@ -4558,7 +4697,9 @@ class TestFunctionalize(TestCase):
             z.add_(tmp)
             return y
 
-        self._check_functionalize_correctness(f, torch.zeros(4, 2, device=device), skip_vmap=True)
+        self._check_functionalize_correctness(
+            f, torch.zeros(4, 2, device=device), skip_vmap=True
+        )
 
     # See https://github.com/pytorch/functorch/issues/780
     def test_linear(self, device):
@@ -4586,7 +4727,9 @@ class TestFunctionalize(TestCase):
             return x
 
         # See Note [Fix vmap slice_scatter]
-        self._check_functionalize_correctness(f, torch.zeros(4, 2, device=device), skip_vmap=True)
+        self._check_functionalize_correctness(
+            f, torch.zeros(4, 2, device=device), skip_vmap=True
+        )
 
     # Ensure functionalize works with List[Optional[Tensor]] arguments.
     # See the fix / discussion at https://github.com/pytorch/pytorch/pull/76085
@@ -5199,7 +5342,9 @@ class TestGradTrackingTensorToList(TestCase):
 
 
 only_for = ("cpu", "xpu")
-instantiate_device_type_tests(TestGradTransform, globals(), only_for=only_for, allow_xpu=True)
+instantiate_device_type_tests(
+    TestGradTransform, globals(), only_for=only_for, allow_xpu=True
+)
 instantiate_device_type_tests(
     TestVmapOfGrad,
     globals(),
@@ -5287,7 +5432,9 @@ instantiate_device_type_tests(
     only_for=only_for,
     allow_xpu=True,
 )
-instantiate_device_type_tests(TestGradTrackingTensorToList, globals(), only_for=only_for, allow_xpu=True)
+instantiate_device_type_tests(
+    TestGradTrackingTensorToList, globals(), only_for=only_for, allow_xpu=True
+)
 
 if __name__ == "__main__":
     run_tests()
