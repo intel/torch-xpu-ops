@@ -117,7 +117,6 @@ custom_headers:
       - "tools/linter/adapters/pyfmt_linter.py"
       - "tools/linter/adapters/ruff_linter.py"
       - "tools/linter/adapters/s3_init.py"
-      - "tools/linter/adapters/ufmt_linter.py"
       - "tools/linter/adapters/update_s3.py"
       - "tools/linter/clang_tidy/generate_build_files.py"
 
