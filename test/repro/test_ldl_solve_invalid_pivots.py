@@ -8,7 +8,7 @@
 
 # Owner(s): ["module: intel"]
 import torch
-from torch.testing._internal.common_utils import TestCase
+from torch.testing._internal.common_utils import run_tests, TestCase
 
 
 class TestLDLSolveInvalidPivots(TestCase):
@@ -64,10 +64,20 @@ class TestLDLSolveInvalidPivots(TestCase):
 
         invalid_pivots = (
             (torch.tensor([0, 3, 5, 4, 5], device="xpu"), r"\|pivot\| >= 1"),
-            (torch.tensor([6, 3, 5, 4, 5], device="xpu"), r"\|pivot\| <= LD\.size\(-2\)"),
-            (torch.tensor([-6, 3, 5, 4, 5], device="xpu"), r"\|pivot\| <= LD\.size\(-2\)"),
+            (
+                torch.tensor([6, 3, 5, 4, 5], device="xpu"),
+                r"\|pivot\| <= LD\.size\(-2\)",
+            ),
+            (
+                torch.tensor([-6, 3, 5, 4, 5], device="xpu"),
+                r"\|pivot\| <= LD\.size\(-2\)",
+            ),
         )
 
         for pivots, error in invalid_pivots:
             with self.assertRaisesRegex(RuntimeError, error):
                 torch.linalg.ldl_solve(ld, pivots, b, hermitian=False)
+
+
+if __name__ == "__main__":
+    run_tests()
