@@ -63,6 +63,7 @@ ignore = [
     "SIM118",
     "UP006", # keep-runtime-typing
     "UP007", # keep-runtime-typing
+    "UP031",
     "UP038", # Was removed from newer versions, results in slower code
 ]
 select = [
