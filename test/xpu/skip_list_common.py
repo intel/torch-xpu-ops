@@ -258,6 +258,7 @@ skip_dict = {
     "test_matmul_cuda_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": None,
+    "dynamo/test_autograd_function_xpu.py": None,
     "functorch/test_control_flow_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
     "export/test_hop_xpu.py": None,
