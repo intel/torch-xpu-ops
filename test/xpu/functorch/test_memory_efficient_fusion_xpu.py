@@ -51,7 +51,7 @@ def hard_swish(x):
 
 
 def hard_mish(x):
-    0.5 * x * (x + 2.0).clamp(min=0.0, max=2.0)
+    return 0.5 * x * (x + 2.0).clamp(min=0.0, max=2.0)
 
 
 def run_and_compare_activation(self, fn, inps):
