@@ -67,6 +67,13 @@ def _xpu_test_tensor_subclass_map_location(self):
         with safe_globals([TwoTensor]):
             sd_loaded = torch.load(f, map_location=torch.device("xpu:0"))
             self.assertTrue(sd_loaded["t"].device == torch.device("xpu:0"))
+            self.assertTrue(sd_loaded["t"].a.device == torch.device("xpu:0"))
+            self.assertTrue(sd_loaded["t"].b.device == torch.device("xpu:0"))
+            # make sure map_location is not propagated over multiple torch.load calls
+            sd_loaded = torch.load(f)
+            self.assertTrue(sd_loaded["t"].device == torch.device("cpu"))
+            self.assertTrue(sd_loaded["t"].a.device == torch.device("cpu"))
+            self.assertTrue(sd_loaded["t"].b.device == torch.device("cpu"))
 
 
 TestSubclassSerialization.test_tensor_subclass_map_location = (
