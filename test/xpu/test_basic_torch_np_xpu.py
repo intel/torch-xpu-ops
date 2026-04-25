@@ -49,6 +49,9 @@ def _test_f16_on_cuda(self):
 
     assert_allclose(w.mean(t.xpu()), w.mean(t))
 
+    assert_allclose(w.cov(t.xpu(), t.xpu()), w.cov(t, t).tensor.xpu())
+    assert_allclose(w.corrcoef(t.xpu()), w.corrcoef(t).tensor.xpu())
+
 
 TestMisc.test_f16_on_cuda = _test_f16_on_cuda
 
