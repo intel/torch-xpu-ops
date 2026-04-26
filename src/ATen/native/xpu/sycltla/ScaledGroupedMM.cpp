@@ -372,8 +372,11 @@ void f8f8bf16_scaled_grouped_mm(
     group_count = b_bf16.size(0);
     TORCH_CHECK(
         static_cast<int>(offs_host.size()) == group_count,
-        "scaled_grouped_mm: offs length (", offs_host.size(),
-        ") must match group count (", group_count, ")");
+        "scaled_grouped_mm: offs length (",
+        offs_host.size(),
+        ") must match group count (",
+        group_count,
+        ")");
     int K = a_bf16.size(1);
     int N = b_bf16.size(2);
     int64_t out_stride_row = out.size(1);
@@ -405,8 +408,11 @@ void f8f8bf16_scaled_grouped_mm(
     group_count = a_bf16.size(0);
     TORCH_CHECK(
         static_cast<int>(offs_host.size()) == group_count,
-        "scaled_grouped_mm: offs length (", offs_host.size(),
-        ") must match group count (", group_count, ")");
+        "scaled_grouped_mm: offs length (",
+        offs_host.size(),
+        ") must match group count (",
+        group_count,
+        ")");
     int M = a_bf16.size(1);
     int K = a_bf16.size(2);
 

@@ -249,8 +249,7 @@ void bf16bf16_grouped_mm(
     std::optional<at::Tensor> bias,
     at::Tensor& out) {
   TORCH_CHECK(
-      out.is_contiguous(),
-      "grouped_mm: output tensor must be contiguous");
+      out.is_contiguous(), "grouped_mm: output tensor must be contiguous");
   TORCH_CHECK(
       !bias.has_value(),
       "grouped_mm: bias is not supported for sycl-tla grouped_mm");
@@ -304,13 +303,15 @@ void bf16bf16_grouped_mm(
   } else if (a_is_2d && !b_is_2d) {
     // 2D x 3D: ragged A (MoE pattern)
     TORCH_CHECK(
-        offs.has_value(),
-        "grouped_mm: 2D x 3D mode requires offs tensor");
+        offs.has_value(), "grouped_mm: 2D x 3D mode requires offs tensor");
     group_count = mat_b.size(0);
     TORCH_CHECK(
         static_cast<int>(offs_host.size()) == group_count,
-        "grouped_mm: offs length (", offs_host.size(),
-        ") must match group count (", group_count, ")");
+        "grouped_mm: offs length (",
+        offs_host.size(),
+        ") must match group count (",
+        group_count,
+        ")");
     int K = mat_a.size(1);
     int N = mat_b.size(2);
     int64_t out_stride_row = out.size(1);
@@ -336,13 +337,15 @@ void bf16bf16_grouped_mm(
   } else if (!a_is_2d && b_is_2d) {
     // 3D x 2D: ragged B
     TORCH_CHECK(
-        offs.has_value(),
-        "grouped_mm: 3D x 2D mode requires offs tensor");
+        offs.has_value(), "grouped_mm: 3D x 2D mode requires offs tensor");
     group_count = mat_a.size(0);
     TORCH_CHECK(
         static_cast<int>(offs_host.size()) == group_count,
-        "grouped_mm: offs length (", offs_host.size(),
-        ") must match group count (", group_count, ")");
+        "grouped_mm: offs length (",
+        offs_host.size(),
+        ") must match group count (",
+        group_count,
+        ")");
     int M = mat_a.size(1);
     int K = mat_a.size(2);
 
@@ -400,8 +403,7 @@ void bf16bf16_grouped_mm(
   } else {
     // 2D x 2D: ragged K
     TORCH_CHECK(
-        offs.has_value(),
-        "grouped_mm: 2D x 2D mode requires offs tensor");
+        offs.has_value(), "grouped_mm: 2D x 2D mode requires offs tensor");
     group_count = offs_host.size();
     int M = mat_a.size(0);
     int N = mat_b.size(1);

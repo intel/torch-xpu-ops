@@ -30,7 +30,6 @@ from torch.testing._internal.common_device_type import (
 )
 from torch.testing._internal.common_utils import run_tests, TestCase
 
-
 # ---------------------------------------------------------------------------
 # Reference implementations
 # ---------------------------------------------------------------------------
@@ -147,9 +146,7 @@ class TestScaledGroupedMMXPU(TestCase):
 
                 out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b)
                 for g in range(G):
-                    ref = reference_bf16_per_group(
-                        a[g], b_t[g], scale_a[g], scale_b[g]
-                    )
+                    ref = reference_bf16_per_group(a[g], b_t[g], scale_a[g], scale_b[g])
                     torch.testing.assert_close(
                         out[g],
                         ref,
@@ -174,9 +171,7 @@ class TestScaledGroupedMMXPU(TestCase):
         self.assertEqual(out.shape, (total_M, n))
 
         # BF16-path: global A dequant then slice (mirrors kernel)
-        a_bf16_full = (a.to(torch.bfloat16) * scale_a.unsqueeze(-1)).to(
-            torch.bfloat16
-        )
+        a_bf16_full = (a.to(torch.bfloat16) * scale_a.unsqueeze(-1)).to(torch.bfloat16)
         row_start = 0
         for g in range(G):
             row_end = offs[g].item()
@@ -217,9 +212,7 @@ class TestScaledGroupedMMXPU(TestCase):
         out = torch._scaled_grouped_mm(a, b_t, scale_a, scale_b, offs=offs)
         self.assertEqual(out.shape, (total_M, n))
 
-        a_bf16_full = (a.to(torch.bfloat16) * scale_a.unsqueeze(-1)).to(
-            torch.bfloat16
-        )
+        a_bf16_full = (a.to(torch.bfloat16) * scale_a.unsqueeze(-1)).to(torch.bfloat16)
         row_start = 0
         for g in range(G):
             row_end = offs[g].item()
@@ -256,9 +249,7 @@ class TestScaledGroupedMMXPU(TestCase):
         # BF16-path: global dequant then column-slice (mirrors kernel)
         a_bf16 = (a.to(torch.bfloat16) * scale_a.unsqueeze(-1)).to(torch.bfloat16)
         b_contig = b_t.contiguous()
-        b_bf16 = (b_contig.to(torch.bfloat16) * scale_b.unsqueeze(0)).to(
-            torch.bfloat16
-        )
+        b_bf16 = (b_contig.to(torch.bfloat16) * scale_b.unsqueeze(0)).to(torch.bfloat16)
 
         col_start = 0
         for g in range(G):
@@ -299,9 +290,7 @@ class TestScaledGroupedMMXPU(TestCase):
 
         a_bf16 = (a.to(torch.bfloat16) * scale_a.unsqueeze(-1)).to(torch.bfloat16)
         b_contig = b_t.contiguous()
-        b_bf16 = (b_contig.to(torch.bfloat16) * scale_b.unsqueeze(0)).to(
-            torch.bfloat16
-        )
+        b_bf16 = (b_contig.to(torch.bfloat16) * scale_b.unsqueeze(0)).to(torch.bfloat16)
 
         col_start = 0
         for g in range(G):
@@ -343,12 +332,16 @@ class TestScaledGroupedMMXPU(TestCase):
             k_end = offs[g].item()
             sa_g = scale_a[g * m : (g + 1) * m]
             sb_g = scale_b[g * n : (g + 1) * n]
-            a_g = (a_bf16[:, k_start:k_end] * sa_g.unsqueeze(-1)).to(
-                torch.bfloat16
-            ).contiguous()
-            b_g = (b_bf16[k_start:k_end] * sb_g.unsqueeze(0)).to(
-                torch.bfloat16
-            ).contiguous()
+            a_g = (
+                (a_bf16[:, k_start:k_end] * sa_g.unsqueeze(-1))
+                .to(torch.bfloat16)
+                .contiguous()
+            )
+            b_g = (
+                (b_bf16[k_start:k_end] * sb_g.unsqueeze(0))
+                .to(torch.bfloat16)
+                .contiguous()
+            )
             ref = (a_g.float() @ b_g.float()).to(torch.bfloat16)
             torch.testing.assert_close(
                 out[g],
@@ -390,12 +383,16 @@ class TestScaledGroupedMMXPU(TestCase):
             k_end = offs[g].item()
             sa_g = scale_a[g * m : (g + 1) * m]
             sb_g = scale_b[g * n : (g + 1) * n]
-            a_g = (a_bf16[:, k_start:k_end] * sa_g.unsqueeze(-1)).to(
-                torch.bfloat16
-            ).contiguous()
-            b_g = (b_bf16[k_start:k_end] * sb_g.unsqueeze(0)).to(
-                torch.bfloat16
-            ).contiguous()
+            a_g = (
+                (a_bf16[:, k_start:k_end] * sa_g.unsqueeze(-1))
+                .to(torch.bfloat16)
+                .contiguous()
+            )
+            b_g = (
+                (b_bf16[k_start:k_end] * sb_g.unsqueeze(0))
+                .to(torch.bfloat16)
+                .contiguous()
+            )
             ref = (a_g.float() @ b_g.float()).to(torch.bfloat16)
             torch.testing.assert_close(
                 out[g],
