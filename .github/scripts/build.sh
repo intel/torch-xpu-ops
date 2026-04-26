@@ -19,9 +19,9 @@ done
 
 # Set pytorch
 rm -rf ${WORKSPACE}/pytorch
-git clone https://github.com/zxd1997066/pytorch.git ${WORKSPACE}/pytorch
+git clone https://github.com/daisyden/pytorch.git ${WORKSPACE}/pytorch
 cd ${WORKSPACE}/pytorch
-git checkout xiangdong/dist_comm
+git checkout release/2.12
 git remote -v && git branch && git show -s
 git rev-parse HEAD > ${WORKSPACE}/pytorch.commit
 

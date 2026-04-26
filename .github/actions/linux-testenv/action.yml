@@ -3,7 +3,7 @@ name: Setup Test Environment
 inputs:
   pytorch:
     type: string
-    default: 'https://github.com/daisyden/pytorch.git@distributed_2.11'
+    default: 'https://github.com/daisyden/pytorch.git@release/2.12'
     description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
   torch_xpu_ops:
     type: string
@@ -77,7 +77,7 @@ runs:
         fi
         git clone ${PYTORCH_REPO} pytorch
         cd pytorch
-        git checkout distributed_2.11
+        git checkout release/2.12
         # apply extra PRs for stock pytorch
         pip install requests
         python ../torch-xpu-ops/.github/scripts/apply_torch_pr.py
