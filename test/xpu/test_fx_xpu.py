@@ -106,6 +106,12 @@ class TestCommonPass(TestCase):
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 @torch.fx.experimental._config.patch("enrich_profiler_metadata", True)
 def _test_profiler_stack_trace_augmentation(self):
+    """
+    Test that map_recorded_events_to_aten_ops_with_stack_trace correctly
+    augments profiler events with stack traces from FX metadata registry.
+    """
+
+    # Simple test model
     class TestModel(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -120,29 +126,81 @@ def _test_profiler_stack_trace_augmentation(self):
             return x
 
     model = TestModel().xpu()
+
+    # Compile the model
     compiled_model = torch.compile(model, backend="aot_eager", fullgraph=True)
 
+    # Warmup
     for _ in range(3):
         _ = compiled_model(torch.randn(10, 10, device="xpu"))
 
+    # Profile with the compiled model
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
     ) as prof:
-        _ = compiled_model(torch.randn(10, 10, device="xpu"))
+        result = compiled_model(torch.randn(10, 10, device="xpu"))
 
     actual_traces = _enrich_profiler_traces(prof)
 
-    # XPU gap tracking: exact kernel event name and trace shape differ from
-    # CUDA. We only validate that stack_trace augmentation ran and that the
-    # trace references the expected aten ops for the model.
-    self.assertIn("aten::addmm", actual_traces)
-    self.assertIn("aten::relu", actual_traces)
-    self.assertIn("stack_trace=", actual_traces)
+    # Handle platform-specific event names
+    if torch.version.hip:
+        actual_traces = '\n'.join(
+            line for line in actual_traces.split('\n')
+            if 'hipGetDeviceProperties' not in line
+        )
+        kernel_event = "hipExtModuleLaunchKernel"
+        kernel_event_relu = "hipLaunchKernel"
+    else:
+        kernel_event = "xpuLaunchKernel"
+        kernel_event_relu = "xpuLaunchKernel"
+    if IS_WINDOWS:
+        expected = f"""\
+event=aten::t node=t stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::transpose node=t stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::as_strided node=t stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::addmm node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::expand node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::as_strided node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event={kernel_event} node=addmm stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::relu node=relu stack_trace=return F.relu(input, inplace=self.inplace)
+event=aten::clamp_min node=relu stack_trace=return F.relu(input, inplace=self.inplace)
+event={kernel_event_relu} node=relu stack_trace=return F.relu(input, inplace=self.inplace)
+event=aten::t node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::transpose node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::as_strided node=t_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::addmm node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::expand node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event=aten::as_strided node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)
+event={kernel_event} node=addmm_1 stack_trace=return F.linear(input, self.weight, self.bias)"""
+    else:
+        expected = f"""\
+event=aten::t node=t stack_trace=x = self.linear1(x)
+event=aten::transpose node=t stack_trace=x = self.linear1(x)
+event=aten::as_strided node=t stack_trace=x = self.linear1(x)
+event=aten::addmm node=addmm stack_trace=x = self.linear1(x)
+event={kernel_event} node=addmm stack_trace=x = self.linear1(x)
+event=aten::relu node=relu stack_trace=x = self.relu(x)
+event=aten::clamp_min node=relu stack_trace=x = self.relu(x)
+event={kernel_event_relu} node=relu stack_trace=x = self.relu(x)
+event=aten::t node=t_1 stack_trace=x = self.linear2(x)
+event=aten::transpose node=t_1 stack_trace=x = self.linear2(x)
+event=aten::as_strided node=t_1 stack_trace=x = self.linear2(x)
+event=aten::addmm node=addmm_1 stack_trace=x = self.linear2(x)
+event={kernel_event} node=addmm_1 stack_trace=x = self.linear2(x)"""
+
+    self.assertExpectedInline(actual_traces, expected)
 
 
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 @torch.fx.experimental._config.patch("enrich_profiler_metadata", True)
 def _test_profiler_multiple_modules(self):
+    """
+    Test that multiple compiled modules under the same profiler session
+    have their events correctly augmented with stack traces.
+    """
+
     class ModelA(torch.nn.Module):
         def forward(self, x):
             return x + 1
@@ -154,29 +212,41 @@ def _test_profiler_multiple_modules(self):
     model_a = ModelA().xpu()
     model_b = ModelB().xpu()
 
+    # Compile both models
     compiled_a = torch.compile(model_a, backend="aot_eager", fullgraph=True)
     compiled_b = torch.compile(model_b, backend="aot_eager", fullgraph=True)
 
+    # Warmup
     for _ in range(3):
         _ = compiled_a(torch.randn(10, 10, device="xpu"))
         _ = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
+    # Profile both models in the same session
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
     ) as prof:
-        _ = compiled_a(torch.randn(10, 10, device="xpu"))
-        _ = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
+        result_a = compiled_a(torch.randn(10, 10, device="xpu"))
+        result_b = compiled_b(torch.randn(1, 3, 8, 8, device="xpu"))
 
     actual_traces = _enrich_profiler_traces(prof)
-    self.assertIn("aten::add", actual_traces)
-    self.assertIn("aten::sub", actual_traces)
-    self.assertIn("stack_trace=return x + 1", actual_traces)
-    self.assertIn("stack_trace=return x - 1", actual_traces)
+    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    self.assertExpectedInline(actual_traces, f"""\
+event=aten::add node=add stack_trace=return x + 1
+event={kernel_event} node=add stack_trace=return x + 1
+event=aten::sub node=sub stack_trace=return x - 1
+event={kernel_event} node=sub stack_trace=return x - 1"""
+        )
 
 
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
 @torch.fx.experimental._config.patch("enrich_profiler_metadata", True)
 def _test_profiler_nested_graph_modules(self):
+    """
+    Test that nested graph modules (e.g., graph modules calling subgraphs)
+    have their events correctly augmented with stack traces.
+    """
+
+    # Model with nested structure
     class Mod(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -190,27 +260,30 @@ def _test_profiler_nested_graph_modules(self):
             return a
 
     model = Mod().xpu()
+
+    # Compile the model (this may create nested graph modules)
     compiled_model = torch.compile(model, backend="aot_eager", fullgraph=True)
 
+    # Warmup
     for _ in range(3):
-        _ = compiled_model(
-            torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
-        )
+        _ = compiled_model(torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu"))
 
+    # Profile
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
     ) as prof:
-        _ = compiled_model(
-            torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
-        )
+        result = compiled_model(torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu"))
 
     actual_traces = _enrich_profiler_traces(prof)
-    self.assertIn("aten::mul", actual_traces)
-    self.assertIn("aten::sin", actual_traces)
-    self.assertIn("aten::add", actual_traces)
-    self.assertIn("stack_trace=m = torch.mul(x, y)", actual_traces)
-    self.assertIn("stack_trace=s = m.sin()", actual_traces)
-    self.assertIn("stack_trace=a = s + self.c", actual_traces)
+    kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
+    self.assertExpectedInline(actual_traces, f"""\
+event=aten::mul node=mul stack_trace=m = torch.mul(x, y)
+event={kernel_event} node=mul stack_trace=m = torch.mul(x, y)
+event=aten::sin node=sin stack_trace=s = m.sin()
+event={kernel_event} node=sin stack_trace=s = m.sin()
+event=aten::add node=add stack_trace=a = s + self.c
+event={kernel_event} node=add stack_trace=a = s + self.c"""
+        )
 
 
 TestFX.test_profiler_stack_trace_augmentation = _test_profiler_stack_trace_augmentation
