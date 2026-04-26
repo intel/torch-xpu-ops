@@ -39,7 +39,6 @@
 #include <cutlass/util/device_memory.h>
 #include <cutlass/util/packed_stride.hpp>
 
-#include <iostream>
 #include <vector>
 
 using namespace cute;
@@ -162,12 +161,10 @@ cutlass::Status run_grouped_gemm(
   ptr_B_device.reset(group_count);
   ptr_B_device.copy_from_host(ptr_b_host.data());
 
+  // C is unused (beta=0); pass nullptr to avoid type mismatch UB.
   cutlass::DeviceAllocation<const ElementAccumulator*> ptr_C_device;
   ptr_C_device.reset(group_count);
-  std::vector<const ElementAccumulator*> ptr_c_host(group_count);
-  for (int i = 0; i < group_count; ++i) {
-    ptr_c_host[i] = reinterpret_cast<const ElementAccumulator*>(ptr_d_host[i]);
-  }
+  std::vector<const ElementAccumulator*> ptr_c_host(group_count, nullptr);
   ptr_C_device.copy_from_host(ptr_c_host.data());
 
   cutlass::DeviceAllocation<ElementOutput*> ptr_D_device;
@@ -251,20 +248,11 @@ cutlass::Status run_grouped_gemm(
 }
 
 // ---------------------------------------------------------------------------
-// Dequantize: FP8 -> BF16 with rowwise scale application
+// Dequantize: FP8 -> BF16 with rowwise scale application.
+// Works for both 2D (M,K) and 3D (G,M,K) inputs — unsqueeze(-1)
+// broadcasts the scale along the last (K) dimension in either case.
 // ---------------------------------------------------------------------------
-
-// Dequantize a 2D FP8 tensor with a 1D rowwise scale.
-// Result is BF16 (bf16 * float32 promotes to float32, so cast back).
-at::Tensor dequantize_rowwise_2d(
-    const at::Tensor& fp8_tensor,
-    const at::Tensor& scale) {
-  auto bf16 = fp8_tensor.to(at::kBFloat16);
-  return (bf16 * scale.unsqueeze(-1)).to(at::kBFloat16);
-}
-
-// Dequantize a 3D FP8 tensor with a 2D rowwise scale.
-at::Tensor dequantize_rowwise_3d(
+at::Tensor dequantize_rowwise(
     const at::Tensor& fp8_tensor,
     const at::Tensor& scale) {
   auto bf16 = fp8_tensor.to(at::kBFloat16);
@@ -282,6 +270,10 @@ void f8f8bf16_scaled_grouped_mm(
     at::Tensor scale_b,
     std::optional<at::Tensor> offs,
     at::Tensor& out) {
+  TORCH_CHECK(
+      out.is_contiguous(),
+      "scaled_grouped_mm: output tensor must be contiguous");
+
   bool a_is_2d = mat_a.dim() == 2;
   bool b_is_2d = mat_b.dim() == 2;
 
@@ -310,17 +302,17 @@ void f8f8bf16_scaled_grouped_mm(
     b_bf16 = b_contig.to(at::kBFloat16);
   } else if (a_is_2d) {
     // 2D x 3D: mat_a (total_M, K), b_contig (G, K, N)
-    a_bf16 = dequantize_rowwise_2d(mat_a, scale_a);
+    a_bf16 = dequantize_rowwise(mat_a, scale_a);
     auto b_cast = b_contig.to(at::kBFloat16);
     b_bf16 = (b_cast * scale_b.unsqueeze(1)).to(at::kBFloat16);
   } else if (b_is_2d) {
     // 3D x 2D: mat_a (G, M, K), b_contig (K, total_N)
-    a_bf16 = dequantize_rowwise_3d(mat_a, scale_a);
+    a_bf16 = dequantize_rowwise(mat_a, scale_a);
     auto b_cast = b_contig.to(at::kBFloat16);
     b_bf16 = (b_cast * scale_b.unsqueeze(0)).to(at::kBFloat16);
   } else {
     // 3D x 3D: mat_a (G, M, K), b_contig (G, K, N)
-    a_bf16 = dequantize_rowwise_3d(mat_a, scale_a);
+    a_bf16 = dequantize_rowwise(mat_a, scale_a);
     auto b_cast = b_contig.to(at::kBFloat16);
     b_bf16 = (b_cast * scale_b.unsqueeze(1)).to(at::kBFloat16);
   }
@@ -374,7 +366,14 @@ void f8f8bf16_scaled_grouped_mm(
   } else if (a_is_2d && !b_is_2d) {
     // ===== 2D x 3D: ragged A (MoE pattern) =====
     // a_bf16: (total_M, K), b_bf16: (G, K, N), out: (total_M, N)
+    TORCH_CHECK(
+        offs.has_value(),
+        "scaled_grouped_mm: 2D x 3D mode requires offs tensor");
     group_count = b_bf16.size(0);
+    TORCH_CHECK(
+        static_cast<int>(offs_host.size()) == group_count,
+        "scaled_grouped_mm: offs length (", offs_host.size(),
+        ") must match group count (", group_count, ")");
     int K = a_bf16.size(1);
     int N = b_bf16.size(2);
     int64_t out_stride_row = out.size(1);
@@ -400,7 +399,14 @@ void f8f8bf16_scaled_grouped_mm(
   } else if (!a_is_2d && b_is_2d) {
     // ===== 3D x 2D: ragged B =====
     // a_bf16: (G, M, K), b_bf16: (K, total_N) row-major, out: (M, total_N)
+    TORCH_CHECK(
+        offs.has_value(),
+        "scaled_grouped_mm: 3D x 2D mode requires offs tensor");
     group_count = a_bf16.size(0);
+    TORCH_CHECK(
+        static_cast<int>(offs_host.size()) == group_count,
+        "scaled_grouped_mm: offs length (", offs_host.size(),
+        ") must match group count (", group_count, ")");
     int M = a_bf16.size(1);
     int K = a_bf16.size(2);
 
@@ -461,6 +467,9 @@ void f8f8bf16_scaled_grouped_mm(
     // a_bf16: (M, total_K) BF16 (cast only, no scale yet)
     // b_bf16: (total_K, N) BF16 (logical transposed view made contiguous)
     // out: (G, M, N)
+    TORCH_CHECK(
+        offs.has_value(),
+        "scaled_grouped_mm: 2D x 2D mode requires offs tensor");
     group_count = offs_host.size();
     int M = a_bf16.size(0);
     int N = b_bf16.size(1);
