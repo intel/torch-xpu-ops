@@ -800,8 +800,12 @@ bool single_wg_topk_try_launch(
         auto* topK = static_cast<scalar_t*>(values.data_ptr());
         auto* idx = static_cast<int64_t*>(indices.data_ptr());
 
-        if (nsegments * nelements <=
-            static_cast<int64_t>(std::numeric_limits<int>::max())) {
+        if (nsegments <=
+                static_cast<int64_t>(std::numeric_limits<int>::max()) &&
+            nelements <=
+                static_cast<int64_t>(std::numeric_limits<int>::max()) &&
+            nsegments <= static_cast<int64_t>(std::numeric_limits<int>::max()) /
+                    (nelements > 0 ? nelements : 1)) {
           sbtopk_launch_kernel<scalar_t, int>(
               input,
               topK,
