@@ -403,12 +403,15 @@ static void sbtopk_launch_kernel(
     SBTOPK_DISPATCH_K(K_VAL, false, INDEX_T, NUM_SLICES);   \
   }
 
-#define SBTOPK_DISPATCH_INDEX(K_VAL)                              \
-  if (numSlices * sliceSize <= std::numeric_limits<int>::max()) { \
-    int numSlices32 = static_cast<int>(numSlices);                \
-    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);             \
-  } else {                                                        \
-    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices);           \
+#define SBTOPK_DISPATCH_INDEX(K_VAL)                                           \
+  if (numSlices <= std::numeric_limits<int>::max() &&                          \
+      sliceSize <= std::numeric_limits<int>::max() &&                          \
+      numSlices <=                                                             \
+          std::numeric_limits<int>::max() / (sliceSize > 0 ? sliceSize : 1)) { \
+    int numSlices32 = static_cast<int>(numSlices);                             \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);                          \
+  } else {                                                                     \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices);                        \
   }
 
   switch (K_sel) {
@@ -471,7 +474,9 @@ static bool subgroup_topk_try_launch(
 //
 //   - dim < 32: original (need at least SG_SIZE elements)
 //   - dim >= 32, large batch, k <= 16: subgroup top-k
-//   - dim >= 4096: single-workgroup top-k
+//   - dim >= 4096, any bs: single-workgroup top-k
+//   - dim >= 4096, k > 16: single-workgroup top-k
+//     (subgroup only supports k<=16)
 // ================================================================
 SbtopkResult sbtopk_try_launch(
     const at::Tensor& self,
@@ -481,7 +486,7 @@ SbtopkResult sbtopk_try_launch(
     bool largest,
     const at::Tensor& values,
     const at::Tensor& indices) {
-  // Not beneficial for small dim
+  // Subgroup kernel needs at least SG_SIZE (32) elements per slice
   if (nelements < 32) {
     return SbtopkResult::FAILED;
   }
