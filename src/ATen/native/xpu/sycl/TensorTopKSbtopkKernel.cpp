@@ -399,12 +399,15 @@ static void sbtopk_launch_kernel(
     SBTOPK_DISPATCH_K(K_VAL, false, INDEX_T, NUM_SLICES);   \
   }
 
-#define SBTOPK_DISPATCH_INDEX(K_VAL)                              \
-  if (numSlices * sliceSize <= std::numeric_limits<int>::max()) { \
-    int numSlices32 = static_cast<int>(numSlices);                \
-    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);             \
-  } else {                                                        \
-    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices);           \
+#define SBTOPK_DISPATCH_INDEX(K_VAL)                                           \
+  if (numSlices <= std::numeric_limits<int>::max() &&                          \
+      sliceSize <= std::numeric_limits<int>::max() &&                          \
+      numSlices <=                                                             \
+          std::numeric_limits<int>::max() / (sliceSize > 0 ? sliceSize : 1)) { \
+    int numSlices32 = static_cast<int>(numSlices);                             \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);                          \
+  } else {                                                                     \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices);                        \
   }
 
   switch (K_sel) {
