@@ -523,10 +523,9 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         "Will not support external events for now: https://github.com/pytorch/pytorch/issues/167257"
     )
     def test_cuda_event_created_outside_of_graph(self):
-        user_stream = (
-            torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
-        )
-        event = torch.cuda.Event()
+        device_module = torch.get_device_module(GPU_TYPE)
+        user_stream = device_module.Stream()
+        event = device_module.Event()
         foo = torch.empty((2, 2), device=GPU_TYPE)
 
         def func(foo):
@@ -540,16 +539,13 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
             if compile:
                 fn = torch.compile(fn, backend=cnts)
             for _ in range(10):
-                with torch.cuda.stream(user_stream):
+                with device_module.stream(user_stream):
                     torch.mm(x, x, out=foo)
                     event.record()
                 out = fn(foo)
                 # let `fn` finish reading `foo` before writing to it in the next
                 # iteration or `run_iters` call.
-                if torch.cuda.is_available():
-                    torch.cuda.current_stream().synchronize()
-                else:
-                    torch.xpu.current_stream().synchronize()
+                device_module.current_stream().synchronize()
             return out
 
         ref = run_iters(func, compile=False)
