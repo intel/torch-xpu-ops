@@ -22,6 +22,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     import unittest
     import unittest.mock as mock
+    from typing import Optional
 
     import torch
     from test_multihead_attention import (
@@ -30,7 +31,7 @@ with XPUPatchForImport(False):
     )
     from torch.testing._internal.common_utils import TEST_WITH_CROSSREF
 
-    def _check_arg_device2(x: torch.Tensor | None) -> bool:
+    def _check_arg_device2(x: Optional[torch.Tensor]) -> bool:
         if x is not None:
             return x.device.type in [
                 "cpu",
@@ -91,7 +92,9 @@ with XPUPatchForImport(False):
                 # If mock was called, fastpath was taken
                 self.assertTrue(fastpath_mock.called)
 
-    TestMultiheadAttentionNNDeviceType.test_multihead_self_attn_two_masks_fast_path_mock = multihead_self_attn_two_masks_fast_path_mock
+    TestMultiheadAttentionNNDeviceType.test_multihead_self_attn_two_masks_fast_path_mock = (
+        multihead_self_attn_two_masks_fast_path_mock
+    )
     torch.nn.modules.activation._check_arg_device = _check_arg_device2
 
 instantiate_device_type_tests(

@@ -578,10 +578,9 @@ class TestSparseCompressed(TestCase):
                     device=device,
                 )
 
-                e_prop, t_prop = (
-                    get_sparse_compressed_tensor_properties(e),
-                    get_sparse_compressed_tensor_properties(t),
-                )
+                e_prop, t_prop = get_sparse_compressed_tensor_properties(
+                    e
+                ), get_sparse_compressed_tensor_properties(t)
                 for k, v in e_prop.items():
                     self.assertEqual(
                         v,
@@ -4102,10 +4101,9 @@ class TestSparseCSR(TestCase):
                 compressed_indices_mth,
                 plain_indices_mth,
             ) = sparse_compressed_indices_methods[transpose.layout]
-            compressed_indices, plain_indices = (
-                compressed_indices_mth(transpose),
-                plain_indices_mth(transpose),
-            )
+            compressed_indices, plain_indices = compressed_indices_mth(
+                transpose
+            ), plain_indices_mth(transpose)
             torch._validate_sparse_compressed_tensor_args(
                 compressed_indices,
                 plain_indices,

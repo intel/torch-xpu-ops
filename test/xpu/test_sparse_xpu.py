@@ -206,13 +206,19 @@ class TestSparseLegacyAndDeprecation(TestCase):
     @skipIfTorchDynamo("TorchDynamo fails with unknown reason")
     def test_legacy_warnings(self):
         def f1():
-            "torch.sparse.SparseTensor() is deprecated. Please use torch.sparse_coo_tensor((0,), dtype=)"
+            (
+                "torch.sparse.SparseTensor() is deprecated. "
+                "Please use torch.sparse_coo_tensor((0,), dtype=)"
+            )
             x_ref = torch.sparse_coo_tensor((0,), dtype=torch.float64)
             x = torch.sparse.DoubleTensor()
             self.assertEqual(x, x_ref)
 
         def f2():
-            "torch.sparse.SparseTensor(cdata=x._cdata) is deprecated. Please use torch.sparse_coo_tensor(x._indices(), x._values(), x.shape)"
+            (
+                "torch.sparse.SparseTensor(cdata=x._cdata) is deprecated. "
+                "Please use torch.sparse_coo_tensor(x._indices(), x._values(), x.shape)"
+            )
             x_ref = torch.tensor([[1, 2], [3, 4]], dtype=torch.float64).to_sparse()
             x = torch.sparse.DoubleTensor(cdata=x_ref._cdata)
             y = torch.sparse_coo_tensor(x._indices(), x._values(), x.shape)
@@ -220,7 +226,10 @@ class TestSparseLegacyAndDeprecation(TestCase):
             self.assertEqual(y, x_ref)
 
         def f3():
-            "torch.sparse.SparseTensor(indices, values, *, device=) is deprecated. Please use torch.sparse_coo_tensor(indices, values, dtype=, device=)"
+            (
+                "torch.sparse.SparseTensor(indices, values, *, device=) is deprecated. "
+                "Please use torch.sparse_coo_tensor(indices, values, dtype=, device=)"
+            )
             x_ref = torch.sparse_coo_tensor(
                 [[0, 0, 1, 1], [0, 1, 0, 1]], [1, 2, 3, 4], dtype=torch.float64
             )
@@ -231,7 +240,10 @@ class TestSparseLegacyAndDeprecation(TestCase):
             self.assertEqual(x, x_ref)
 
         def f4():
-            "torch.sparse.SparseTensor(indices, values, shape, *, device=) is deprecated. Please use torch.sparse_coo_tensor(indices, values, shape, dtype=, device=)"
+            (
+                "torch.sparse.SparseTensor(indices, values, shape, *, device=) is deprecated. "
+                "Please use torch.sparse_coo_tensor(indices, values, shape, dtype=, device=)"
+            )
             x_ref = torch.sparse_coo_tensor(
                 [[0, 0, 1, 1], [0, 1, 0, 1]], [1, 2, 3, 4], (2, 3), dtype=torch.float64
             )
@@ -243,7 +255,10 @@ class TestSparseLegacyAndDeprecation(TestCase):
             self.assertEqual(x, x_ref)
 
         def f5():
-            "torch.sparse.SparseTensor(shape, *, device=) is deprecated. Please use torch.sparse_coo_tensor(shape, dtype=, device=)"
+            (
+                "torch.sparse.SparseTensor(shape, *, device=) is deprecated. "
+                "Please use torch.sparse_coo_tensor(shape, dtype=, device=)"
+            )
             x_ref = torch.sparse_coo_tensor((2, 3), dtype=torch.float64)
             x = torch.sparse.DoubleTensor(2, 3)
             self.assertEqual(x, x_ref)
@@ -5216,70 +5231,46 @@ class TestSparse(TestSparseBase):
 
         def invalid_cases():
             yield (
-                (
-                    make_diags((1, 3)),
-                    make_offsets([0]),
-                    (3, 2, 3),
-                ),
-                "Output shape must be 2d",
-            )
+                make_diags((1, 3)),
+                make_offsets([0]),
+                (3, 2, 3),
+            ), "Output shape must be 2d"
             yield (
-                (
-                    make_diags((2, 3)),
-                    make_offsets([[1, 2], [0, 3]]),
-                    (3, 3),
-                ),
-                "Offsets must be scalar or vector",
-            )
+                make_diags((2, 3)),
+                make_offsets([[1, 2], [0, 3]]),
+                (3, 3),
+            ), "Offsets must be scalar or vector"
             yield (
-                (
-                    make_diags((3, 2, 3)),
-                    make_offsets([0, 1, 2]),
-                    (4, 4),
-                ),
-                "Diagonals must be vector or matrix",
-            )
+                make_diags((3, 2, 3)),
+                make_offsets([0, 1, 2]),
+                (4, 4),
+            ), "Diagonals must be vector or matrix"
             yield (
-                (
-                    make_diags((3, 3)),
-                    make_offsets([-1, 0]),
-                    (3, 3),
-                ),
-                r"Number of diagonals \(\d\) does not match the number of offsets \(\d\)",
-            )
+                make_diags((3, 3)),
+                make_offsets([-1, 0]),
+                (3, 3),
+            ), r"Number of diagonals \(\d\) does not match the number of offsets \(\d\)"
             yield (
-                (
-                    make_diags((5,)),
-                    make_offsets([0, 1, 2, 3, 4]),
-                    (3, 3),
-                ),
-                r"Number of diagonals \(\d\) does not match the number of offsets \(\d\)",
-            )
+                make_diags((5,)),
+                make_offsets([0, 1, 2, 3, 4]),
+                (3, 3),
+            ), r"Number of diagonals \(\d\) does not match the number of offsets \(\d\)"
             yield (
-                (
-                    make_diags((2, 2)),
-                    make_offsets([-1, 0]),
-                    (2, 3),
-                    torch.strided,
-                ),
-                r"Only output layouts \(\w+, \w+, \w+\) are supported, got \w+",
-            )
+                make_diags((2, 2)),
+                make_offsets([-1, 0]),
+                (2, 3),
+                torch.strided,
+            ), r"Only output layouts \(\w+, \w+, \w+\) are supported, got \w+"
             yield (
-                (
-                    make_diags((2, 5)),
-                    make_offsets([0, 0]),
-                    (5, 5),
-                ),
-                "Offset tensor contains duplicate values",
-            )
+                make_diags((2, 5)),
+                make_offsets([0, 0]),
+                (5, 5),
+            ), "Offset tensor contains duplicate values"
             yield (
-                (
-                    make_diags((1, 5)),
-                    make_offsets([0]).to(torch.int32),
-                    (5, 5),
-                ),
-                r"Offset Tensor must have dtype Long but got \w+",
-            )
+                make_diags((1, 5)),
+                make_offsets([0]).to(torch.int32),
+                (5, 5),
+            ), r"Offset Tensor must have dtype Long but got \w+"
 
         for case, error_regex in invalid_cases():
             check_invalid(case, error_regex)

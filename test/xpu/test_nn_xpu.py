@@ -535,7 +535,9 @@ class TestNN(NNTestCase):
         # sub-modules repr
         sequential = nn.Sequential(linear)
         expected_repr_sequential = (
-            "Sequential(\n  (0): Linear(in_features=1, out_features=1, bias=True)\n)"
+            "Sequential(\n"
+            "  (0): Linear(in_features=1, out_features=1, bias=True)\n"
+            ")"
         )
         self.assertEqual(repr(sequential), expected_repr_sequential)
 
@@ -2282,9 +2284,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             snm.load_state_dict(non_strict_state_dict, strict=False)
             del non_strict_state_dict["weight_v"]
             snm.load_state_dict(non_strict_state_dict, strict=False)
-            non_strict_state_dict["weight"] = (
-                snm.weight.detach().clone()
-            )  # set W as a buffer
+            non_strict_state_dict[
+                "weight"
+            ] = snm.weight.detach().clone()  # set W as a buffer
             snm.load_state_dict(non_strict_state_dict, strict=False)
             del non_strict_state_dict._metadata[""][
                 "spectral_norm"
@@ -2302,9 +2304,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 "spectral_norm"
             ]  # remove metadata info
             del version_none_state_dict["weight_v"]  # remove v vector
-            version_none_state_dict["weight"] = (
-                snm.weight.detach().clone()
-            )  # set W as a buffer
+            version_none_state_dict[
+                "weight"
+            ] = snm.weight.detach().clone()  # set W as a buffer
 
             # normal state_dict
             for version_latest_with_metadata in [True, False]:
@@ -6430,11 +6432,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             out = mod(inp)
             out.backward(grad)
 
-            with (
-                torch.backends.cudnn.flags(enabled=False)
-                if ref_backend == "native"
-                else contextlib.nullcontext()
-            ):
+            with torch.backends.cudnn.flags(
+                enabled=False
+            ) if ref_backend == "native" else contextlib.nullcontext():
                 ref_out = ref_mod(ref_inp)
                 ref_out.backward(ref_grad)
 
@@ -6507,11 +6507,9 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             ref_mod = _create_backend(ref_inp, mixed).eval()
 
             out = mod(inp)
-            with (
-                torch.backends.cudnn.flags(enabled=False)
-                if ref_backend == "native"
-                else contextlib.nullcontext()
-            ):
+            with torch.backends.cudnn.flags(
+                enabled=False
+            ) if ref_backend == "native" else contextlib.nullcontext():
                 ref_out = ref_mod(ref_inp)
             self.assertEqual(out, ref_out)
 
@@ -14320,7 +14318,9 @@ class TestNNDeviceType(NNTestCase):
         # Compute sum of the large tensor sizes:
         # (im.numel() + small_image.numel() + small_image.grad.numel() +
         #   large_view.grad.numel()) * sizeof(dtype)
-        32769 * (65536 + 3 * 65536 / 128) * torch.tensor([], dtype=dtype).element_size()
+        32769
+        * (65536 + 3 * 65536 / 128)
+        * torch.tensor([], dtype=dtype).element_size()
     )
     def test_grid_sample_large_index_2d(self, device, dtype):
         # Test 64-bit indexing with grid_sample (gh-41656)
@@ -14340,7 +14340,8 @@ class TestNNDeviceType(NNTestCase):
         large_view[...] = small_image
         large_view.requires_grad, small_image.requires_grad = True, True
         self.assertTrue(
-            sum(i * s for i, s in zip(large_view.size(), large_view.stride())) >= 2**31,
+            sum(i * s for i, s in zip(large_view.size(), large_view.stride()))
+            >= 2**31,
             msg="View must use 64-bit indexing",
         )
         for mode, padding_mode, align_corners in itertools.product(
@@ -14401,7 +14402,8 @@ class TestNNDeviceType(NNTestCase):
         large_view[...] = small_image
         small_image.requires_grad, large_view.requires_grad = True, True
         self.assertTrue(
-            sum(i * s for i, s in zip(large_view.size(), large_view.stride())) >= 2**31,
+            sum(i * s for i, s in zip(large_view.size(), large_view.stride()))
+            >= 2**31,
             msg="View must use 64-bit indexing",
         )
         for mode, padding_mode, align_corners in itertools.product(
@@ -17764,10 +17766,9 @@ if __name__ == '__main__':
         l = nn.Linear(10, 10).to(device)
         clip_value = 2.5
 
-        grad_w, grad_b = (
-            torch.arange(-50.0, 50, device=device).view(10, 10).div_(5),
-            torch.ones(10, device=device).mul_(2),
-        )
+        grad_w, grad_b = torch.arange(-50.0, 50, device=device).view(10, 10).div_(
+            5
+        ), torch.ones(10, device=device).mul_(2)
         for grad_list in [[grad_w, grad_b], [grad_w, None]]:
             for p, g in zip(l.parameters(), grad_list):
                 p._grad = g.clone().view_as(p.data) if g is not None else g
@@ -17816,10 +17817,9 @@ if __name__ == '__main__':
             self.assertEqual(scale.std(), 0)
             return scale[0]
 
-        grads = (
-            torch.arange(1.0, 101, device=device).view(10, 10),
-            torch.ones(10, device=device).div(1000),
-        )
+        grads = torch.arange(1.0, 101, device=device).view(10, 10), torch.ones(
+            10, device=device
+        ).div(1000)
         for p, g in zip(l.parameters(), grads):
             p._grad = g.clone().view_as(p.data)
         norm_before = compute_norm(norm_type)
@@ -17833,10 +17833,9 @@ if __name__ == '__main__':
         compare_scaling(grads)
 
         # decomposed APIs should behave as expected
-        grads = (
-            torch.arange(1.0, 101, device=device).view(10, 10),
-            torch.ones(10, device=device).div(1000),
-        )
+        grads = torch.arange(1.0, 101, device=device).view(10, 10), torch.ones(
+            10, device=device
+        ).div(1000)
         for p, g in zip(l.parameters(), grads):
             p._grad = g.clone().view_as(p)
         norm_before = compute_norm(norm_type)
@@ -17850,10 +17849,9 @@ if __name__ == '__main__':
         compare_scaling(grads)
 
         # Small gradients should be left unchanged
-        grads = (
-            torch.rand(10, 10, device=device).div(10000),
-            torch.ones(10, device=device).div(500),
-        )
+        grads = torch.rand(10, 10, device=device).div(10000), torch.ones(
+            10, device=device
+        ).div(500)
         for p, g in zip(l.parameters(), grads):
             p.grad.data.copy_(g)
         norm_before = compute_norm(norm_type)

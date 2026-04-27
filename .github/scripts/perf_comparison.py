@@ -14,7 +14,7 @@ import fnmatch
 import argparse
 import pandas as pd
 from statistics import geometric_mean
-from typing import Any
+from typing import Any, Optional
 
 
 def multiple_replace(text: str) -> str:
@@ -94,7 +94,7 @@ def write_report(cases: pd.DataFrame, filename: str,
             file.write(f"\n\n{message}\n\n{output}\n\n")
 
 
-def calculate_latencies(value: pd.Series | None) -> tuple[float, float, float]:
+def calculate_latencies(value: Optional[pd.Series]) -> tuple[float, float, float]:
     """
     Calculate eager and inductor latencies from value row.
 
@@ -114,7 +114,7 @@ def calculate_latencies(value: pd.Series | None) -> tuple[float, float, float]:
     return eager_latency, inductor_latency, inductor_vs_eager
 
 
-def find_matching_row(dataframe: pd.DataFrame, model_name: str) -> pd.Series | None:
+def find_matching_row(dataframe: pd.DataFrame, model_name: str) -> Optional[pd.Series]:
     """
     Find row for specific model in dataframe.
 
@@ -129,8 +129,8 @@ def find_matching_row(dataframe: pd.DataFrame, model_name: str) -> pd.Series | N
     return matches.iloc[0] if not matches.empty else None
 
 
-def calculate_comparison_ratios(xpu_value: pd.Series | None,
-                               refer_value: pd.Series | None) -> tuple[float, float]:
+def calculate_comparison_ratios(xpu_value: Optional[pd.Series],
+                               refer_value: Optional[pd.Series]) -> tuple[float, float]:
     """
     Calculate performance comparison ratios between target and baseline.
 
