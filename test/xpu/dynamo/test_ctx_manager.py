@@ -20,7 +20,6 @@ from torch.testing._internal.common_cuda import PLATFORM_SUPPORTS_FLASH_ATTENTIO
 from torch.testing._internal.common_utils import (
     instantiate_parametrized_tests,
     parametrize,
-    skipIfXpu,
 )
 from torch.testing._internal.inductor_utils import HAS_GPU
 
@@ -582,7 +581,6 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(cnts.frame_count, 1)
         self.assertExpectedInline(str(cnts.op_count), """17""")
 
-    @skipIfXpu(msg="https://github.com/intel/torch-xpu-ops/issues/3395")
     @unittest.skipIf(not HAS_GPU, "requires GPU")
     def test_gpu_device(self):
         def fn(x):
@@ -663,7 +661,6 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(exported.device.index, 0)
         self.assertEqual(exported.dtype, torch.bfloat16)
 
-    @skipIfXpu(msg="https://github.com/intel/torch-xpu-ops/issues/3359")
     @unittest.skipIf(not HAS_GPU, "requires GPU")
     def test_gpu_amp_autocast(self):
         class MyModule(torch.nn.Module):
@@ -938,7 +935,6 @@ class CtxManagerTests(torch._dynamo.test_case.TestCase):
         self.assertEqual(out_32.device.type, "cpu")
         self.assertEqual(out_32.dtype, torch.float32)
 
-    @skipIfXpu(msg="https://github.com/intel/torch-xpu-ops/issues/3359")
     @unittest.skipIf(not HAS_GPU, "requires GPU")
     def test_autocast_float64(self):
         class MyModule(torch.nn.Module):
