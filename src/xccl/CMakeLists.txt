@@ -13,14 +13,19 @@ file(GLOB xccl_cpp "*.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/NanCheck_XPU.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/Signal.cpp")
 list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/XPUSymmetricMemoryOps.cpp")
+# AllgatherGemmOps.cpp requires CUTLASS / sycl-tla headers and must be compiled
+# with ATen_XPU_SYCLTLA_SRCS, not the regular XCCL C++ build.
+list(REMOVE_ITEM xccl_cpp "${CMAKE_CURRENT_SOURCE_DIR}/AllgatherGemmOps.cpp")
 
 list(APPEND ATen_XPU_XCCL_SRCS ${xccl_cpp})
 list(APPEND ATen_XPU_SYCL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/NanCheck_XPU.cpp")
 list(APPEND ATen_XPU_SYCL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/Signal.cpp")
 list(APPEND ATen_XPU_SYCL_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/XPUSymmetricMemoryOps.cpp")
+list(APPEND ATen_XPU_SYCLTLA_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/AllgatherGemmOps.cpp")
 
 set(ATen_XPU_XCCL_SRCS ${ATen_XPU_XCCL_SRCS} PARENT_SCOPE)
 set(ATen_XPU_SYCL_SRCS ${ATen_XPU_SYCL_SRCS} PARENT_SCOPE)
+set(ATen_XPU_SYCLTLA_SRCS ${ATen_XPU_SYCLTLA_SRCS} PARENT_SCOPE)
 
 # Conditionally include ISHMEM SymmetricMemory backend
 if(USE_ISHMEM AND PYTORCH_FOUND_ISHMEM)

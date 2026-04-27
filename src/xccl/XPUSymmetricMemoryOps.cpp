@@ -28,6 +28,9 @@
 #include <torch/csrc/distributed/c10d/GroupRegistry.hpp>
 #include <torch/csrc/distributed/c10d/symm_mem/SymmetricMemory.hpp>
 
+#include <xccl/XPUSymmetricMemory.hpp>
+#include <xccl/AllgatherGemmOps.hpp>
+
 #include <xccl/Signal.hpp>
 
 namespace c10d {
@@ -349,6 +352,23 @@ struct TwoShotAllGatherKernel {
 };
 
 namespace {
+
+static int64_t normalize_dim(int64_t dim, int64_t ndim, const char* op_name) {
+  TORCH_CHECK(ndim >= 1, op_name, ": input must have rank >= 1.");
+  int64_t out = dim;
+  if (out < 0) {
+    out += ndim;
+  }
+  TORCH_CHECK(
+      out >= 0 && out < ndim,
+      op_name,
+      ": dim out of range (got ",
+      dim,
+      " for ndim=",
+      ndim,
+      ").");
+  return out;
+}
 
 // ============================================================================
 // Launch helpers
@@ -749,6 +769,310 @@ at::Tensor two_shot_all_reduce_out(
       input, std::move(reduce_op), std::move(group_name), output);
 }
 
+// ============================================================================
+// Workspace helpers for P2P fused ops
+// ============================================================================
+// Each group maintains a per-group symmetric workspace tensor.
+// The workspace is allocated once (or grown when the requested size exceeds the
+// current allocation) and reused across calls.
+//
+// Layout convention (matches allgather_gemm.cpp / gemm_reducescatter.cpp):
+//   Each rank owns a contiguous buffer of `ws_bytes` bytes.
+//   Rank r writes its local shard into offset [r * shard_bytes] within that
+//   buffer.  Other ranks P2P-read from the same offset via the peer pointer
+//   returned by symm_mem->get_buffer_ptrs()[r].
+// ============================================================================
+
+struct WorkspaceEntry {
+  void* raw_ptr{nullptr};       // raw device pointer (owned by symm allocator)
+  int64_t bytes{0};             // allocated size in bytes
+  c10::intrusive_ptr<c10d::symmetric_memory::SymmetricMemory> symm_mem;
+};
+
+// Returns a symm_mem handle for a per-group workspace of at least `min_bytes`.
+// Allocates (or re-allocates if too small) using the XPU symmetric allocator,
+// then rendezvous so every rank has P2P access to every other rank's buffer.
+static c10::intrusive_ptr<c10d::symmetric_memory::SymmetricMemory>
+acquire_workspace(
+    int64_t min_bytes,
+    int device_idx,
+    const std::string& group_name) {
+  // workspace cache: group_name -> WorkspaceEntry
+  static std::mutex ws_mu;
+  static std::unordered_map<std::string, WorkspaceEntry> ws_cache;
+
+  std::lock_guard<std::mutex> lk(ws_mu);
+  auto& entry = ws_cache[group_name];
+
+  if (entry.raw_ptr == nullptr || entry.bytes < min_bytes) {
+    // (Re-)allocate via the XPU symmetric memory allocator.
+    auto* allocator = dynamic_cast<
+        c10d::symmetric_memory::XPUSymmetricMemoryAllocator*>(
+        c10d::symmetric_memory::get_allocator(c10::DeviceType::XPU));
+    TORCH_CHECK(allocator != nullptr, "fused op: XPU symm_mem allocator not found.");
+
+    if (entry.raw_ptr != nullptr) {
+      allocator->free(entry.raw_ptr);
+    }
+    entry.raw_ptr = allocator->alloc(min_bytes, device_idx, group_name);
+    entry.bytes = min_bytes;
+    entry.symm_mem = nullptr; // will rendezvous below
+  }
+
+  if (entry.symm_mem == nullptr) {
+    entry.symm_mem =
+        c10d::symmetric_memory::rendezvous(entry.raw_ptr, group_name);
+    TORCH_CHECK(
+        entry.symm_mem != nullptr,
+        "fused op: workspace rendezvous failed for group '",
+        group_name,
+        "'.");
+  }
+  return entry.symm_mem;
+}
+
+// ============================================================================
+// fused_all_gather_matmul — mirrors struct allgather_gemm in allgather_gemm.cpp
+//
+// Algorithm (from allgather_gemm.cpp):
+//   1. Copy local A_shard into my slot in the symm workspace.
+//   2. barrier(0) — all ranks have published their shard.
+//   3. Run GEMM for local shard (no waiting for remote).
+//   4. For each remote rank (step 1..world_size-1, alternating queue channels):
+//        a. P2P memcpy: remote_buf[remote_rank * shard_bytes] → local_ws[remote_rank * shard_bytes]
+//        b. Run GEMM for that shard.
+//   5. Sync secondary queue into primary queue, then barrier(0).
+// ============================================================================
+// ============================================================================
+// fused_all_gather_matmul — calls CUTLASS allgather+GEMM pipeline.
+// Implements ExampleRunner<Gemm>::allgather_gemm (allgather_gemm.hpp) using
+// XPUSymmetricMemory for P2P buffers and barriers instead of MPI SymmMemory.
+//
+// Constraints: bfloat16, gather_dim=0, 2D A_shard [shard_m, k],
+//              each B in Bs is [k, n_i].
+// ============================================================================
+std::tuple<at::Tensor, std::vector<at::Tensor>> fused_all_gather_matmul_xpu(
+  const at::Tensor& A_shard,
+  const std::vector<at::Tensor>& Bs,
+  int64_t gather_dim,
+  std::string group_name) {
+  constexpr const char* kOpName = "fused_all_gather_matmul(xpu)";
+  TORCH_CHECK(
+    A_shard.is_xpu() && A_shard.is_contiguous(),
+    kOpName,
+    ": A_shard must be a contiguous XPU tensor.");
+  TORCH_CHECK(!Bs.empty(), kOpName, ": Bs must not be empty.");
+  for (size_t i = 0; i < Bs.size(); ++i) {
+  TORCH_CHECK(Bs[i].is_xpu(), kOpName, ": Bs[", i, "] must be on XPU.");
+  }
+
+  auto group = c10d::resolve_process_group(group_name);
+  TORCH_CHECK(
+    group != nullptr,
+    kOpName,
+    ": process group '",
+    group_name,
+    "' not found.");
+  const int world_size = group->getSize();
+  const int rank = group->getRank();
+  const int64_t dim = normalize_dim(gather_dim, A_shard.dim(), kOpName);
+
+  TORCH_CHECK(
+    A_shard.scalar_type() == at::kBFloat16,
+    kOpName,
+    ": CUTLASS path requires bfloat16 (got ",
+    A_shard.scalar_type(),
+    ").");
+  TORCH_CHECK(
+    A_shard.dim() == 2,
+    kOpName,
+    ": CUTLASS path requires 2D A_shard (got ",
+    A_shard.dim(),
+    "D).");
+  TORCH_CHECK(
+    dim == 0,
+    kOpName,
+    ": CUTLASS path requires gather_dim=0 (got ",
+    gather_dim,
+    ").");
+
+  const int shard_m  = static_cast<int>(A_shard.size(0));
+  const int k        = static_cast<int>(A_shard.size(1));
+  const int device_idx = static_cast<int>(A_shard.device().index());
+
+  // Symm workspace for gathered A: world_size * shard_m * k * 2 bytes per rank.
+  const int64_t ws_bytes =
+    static_cast<int64_t>(world_size) * shard_m * k * A_shard.element_size();
+  auto ws_symm = acquire_workspace(ws_bytes, device_idx, "ag:" + group_name);
+
+  sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
+  sycl::queue secondary_q(
+    q.get_context(), q.get_device(), sycl::property::queue::in_order{});
+
+  auto barrier_fn = [&]() { ws_symm->barrier(0, /*timeout_ms=*/0); };
+
+  // First B: CUTLASS pipelined allgather+GEMM (fills workspace + produces mm_out0).
+  const at::Tensor B0 = Bs[0].contiguous();
+  TORCH_CHECK(
+    B0.scalar_type() == at::kBFloat16 && B0.dim() == 2 && B0.size(0) == k,
+    kOpName,
+    ": Bs[0] must be bfloat16 [k, n] (got ",
+    B0.sizes(),
+    ").");
+  const int n0 = static_cast<int>(B0.size(1));
+
+  at::Tensor mm_out0 =
+    at::empty({static_cast<int64_t>(world_size) * shard_m, n0},
+        A_shard.options());
+
+  xpu_symm_gemm::run_allgather_gemm_bf16(
+    A_shard.data_ptr(),
+    B0.data_ptr(),
+    mm_out0.data_ptr(),
+    ws_symm->get_buffer_ptrs(),
+    rank,
+    world_size,
+    shard_m,
+    n0,
+    k,
+    /*alpha=*/1.0f,
+    /*beta=*/0.0f,
+    device_idx,
+    q,
+    secondary_q,
+    barrier_fn);
+
+  // Copy full gathered A from symm workspace to output tensor.
+  // After run_allgather_gemm_bf16, peer_ptrs[rank] contains [world_size * shard_m, k].
+  at::Tensor gathered_A =
+    at::empty({static_cast<int64_t>(world_size) * shard_m, k},
+        A_shard.options());
+  q.memcpy(
+    gathered_A.data_ptr(),
+    ws_symm->get_buffer_ptrs()[rank],
+    static_cast<size_t>(world_size) * shard_m * k * A_shard.element_size());
+
+  // Remaining Bs: run GEMM on the (now ready) gathered_A.
+  std::vector<at::Tensor> mm_outs;
+  mm_outs.reserve(Bs.size());
+  mm_outs.push_back(std::move(mm_out0));
+  for (size_t i = 1; i < Bs.size(); ++i) {
+  const at::Tensor Bi = Bs[i].contiguous();
+  TORCH_CHECK(
+    Bi.scalar_type() == at::kBFloat16 && Bi.dim() == 2 && Bi.size(0) == k,
+    kOpName,
+    ": Bs[",
+    i,
+    "] must be bfloat16 [k, n].");
+  mm_outs.push_back(at::mm(gathered_A, Bi));
+  }
+
+  return {gathered_A, mm_outs};
+}
+
+// ============================================================================
+// fused_matmul_reduce_scatter — calls CUTLASS GEMM+reduce-scatter pipeline.
+// Implements ExampleRunner<Gemm>::reduce_scatter (gemm_reducescatter.hpp) using
+// XPUSymmetricMemory for P2P buffers and barriers instead of MPI SymmMemory.
+//
+// Constraints: bfloat16, scatter_dim=0, 2D A [world_size * shard_m, k],
+//              2D B [k, n].
+// ============================================================================
+at::Tensor fused_matmul_reduce_scatter_xpu(
+  const at::Tensor& A,
+  const at::Tensor& B,
+  std::string reduce_op,
+  int64_t scatter_dim,
+  std::string group_name) {
+  constexpr const char* kOpName = "fused_matmul_reduce_scatter(xpu)";
+  TORCH_CHECK(
+    A.is_xpu() && A.is_contiguous() && B.is_xpu(),
+    kOpName,
+    ": A must be a contiguous XPU tensor; B must be on XPU.");
+  TORCH_CHECK(reduce_op == "sum", kOpName, ": only reduce_op='sum' is supported.");
+
+  auto group = c10d::resolve_process_group(group_name);
+  TORCH_CHECK(
+    group != nullptr,
+    kOpName,
+    ": process group '",
+    group_name,
+    "' not found.");
+  const int world_size = group->getSize();
+  const int rank = group->getRank();
+  const int64_t dim = normalize_dim(scatter_dim, A.dim(), kOpName);
+
+  TORCH_CHECK(
+    A.size(dim) % world_size == 0,
+    kOpName,
+    ": A.size(scatter_dim) must be divisible by world_size (got ",
+    A.size(dim),
+    " / ",
+    world_size,
+    ").");
+  TORCH_CHECK(
+    A.scalar_type() == at::kBFloat16,
+    kOpName,
+    ": CUTLASS path requires bfloat16 (got ",
+    A.scalar_type(),
+    ").");
+  TORCH_CHECK(
+    A.dim() == 2,
+    kOpName,
+    ": CUTLASS path requires 2D A (got ",
+    A.dim(),
+    "D).");
+  TORCH_CHECK(
+    dim == 0,
+    kOpName,
+    ": CUTLASS path requires scatter_dim=0 (got ",
+    scatter_dim,
+    ").");
+
+  const at::Tensor B_c = B.contiguous();
+  TORCH_CHECK(
+    B_c.scalar_type() == at::kBFloat16 && B_c.dim() == 2,
+    kOpName,
+    ": CUTLASS path requires bfloat16 2D B.");
+
+  const int shard_m   = static_cast<int>(A.size(0) / world_size);
+  const int k         = static_cast<int>(A.size(1));
+  const int n         = static_cast<int>(B_c.size(1));
+  const int device_idx = static_cast<int>(A.device().index());
+
+  // Symm workspace: world_size * shard_m * n * 2 bytes per rank.
+  const int64_t ws_bytes =
+    static_cast<int64_t>(world_size) * shard_m * n * A.element_size();
+  auto ws_symm = acquire_workspace(ws_bytes, device_idx, "rs:" + group_name);
+
+  sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
+  sycl::queue secondary_q(
+    q.get_context(), q.get_device(), sycl::property::queue::in_order{});
+
+  auto barrier_fn = [&]() { ws_symm->barrier(0, /*timeout_ms=*/0); };
+
+  at::Tensor out_C = at::empty({shard_m, n}, A.options());
+
+  xpu_symm_gemm::run_reduce_scatter_gemm_bf16(
+    A.data_ptr(),
+    B_c.data_ptr(),
+    out_C.data_ptr(),
+    ws_symm->get_buffer_ptrs(),
+    rank,
+    world_size,
+    shard_m,
+    n,
+    k,
+    /*alpha=*/1.0f,
+    /*beta=*/0.0f,
+    device_idx,
+    q,
+    secondary_q,
+    barrier_fn);
+
+  return out_C;
+}
+
 } // namespace
 
 TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
@@ -770,6 +1094,12 @@ TORCH_LIBRARY_IMPL(symm_mem, XPU, m) {
   m.impl(
       "two_shot_all_reduce_out",
       ::c10d::symmetric_memory::two_shot_all_reduce_out);
+  m.impl(
+      "fused_all_gather_matmul",
+      ::c10d::symmetric_memory::fused_all_gather_matmul_xpu);
+  m.impl(
+      "fused_matmul_reduce_scatter",
+      ::c10d::symmetric_memory::fused_matmul_reduce_scatter_xpu);
 }
 
 } // namespace symmetric_memory
