@@ -35,8 +35,14 @@ class TestNativeBatchNormEvalSaveTensors(TestCase):
         running_var = torch.abs(torch.randn(C)) + 0.1  # keep positive
 
         cpu_out = torch.native_batch_norm(
-            x, weight, bias, running_mean.clone(), running_var.clone(),
-            training=False, momentum=0.1, eps=1e-5,
+            x,
+            weight,
+            bias,
+            running_mean.clone(),
+            running_var.clone(),
+            training=False,
+            momentum=0.1,
+            eps=1e-5,
         )
         xpu_out = torch.native_batch_norm(
             x.to(dtype).to(xpu_device),
@@ -44,7 +50,9 @@ class TestNativeBatchNormEvalSaveTensors(TestCase):
             bias.to(dtype).to(xpu_device),
             running_mean.clone().to(xpu_device),
             running_var.clone().to(xpu_device),
-            training=False, momentum=0.1, eps=1e-5,
+            training=False,
+            momentum=0.1,
+            eps=1e-5,
         )
 
         # save_mean and save_invstd must be empty (size 0) in eval mode
@@ -58,11 +66,17 @@ class TestNativeBatchNormEvalSaveTensors(TestCase):
             xpu_out[2].cpu().shape,
             msg=f"save_invstd shape mismatch: CPU {cpu_out[2].shape} vs XPU {xpu_out[2].shape}",
         )
-        self.assertEqual(xpu_out[1].numel(), 0, msg="save_mean should be empty in eval mode")
-        self.assertEqual(xpu_out[2].numel(), 0, msg="save_invstd should be empty in eval mode")
+        self.assertEqual(
+            xpu_out[1].numel(), 0, msg="save_mean should be empty in eval mode"
+        )
+        self.assertEqual(
+            xpu_out[2].numel(), 0, msg="save_invstd should be empty in eval mode"
+        )
 
         # Output tensor values must match CPU reference
-        atol, rtol = (1e-2, 1e-2) if dtype in (torch.float16, torch.bfloat16) else (1e-4, 1e-4)
+        atol, rtol = (
+            (1e-2, 1e-2) if dtype in (torch.float16, torch.bfloat16) else (1e-4, 1e-4)
+        )
         self.assertEqual(
             cpu_out[0].float(), xpu_out[0].cpu().float(), atol=atol, rtol=rtol
         )
@@ -93,8 +107,14 @@ class TestNativeBatchNormEvalSaveTensors(TestCase):
         running_var = torch.ones(C).to(xpu_device)
 
         _, save_mean, save_invstd = torch.native_batch_norm(
-            x, weight, bias, running_mean, running_var,
-            training=True, momentum=0.1, eps=1e-5,
+            x,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            training=True,
+            momentum=0.1,
+            eps=1e-5,
         )
         self.assertEqual(save_mean.shape, torch.Size([C]))
         self.assertEqual(save_invstd.shape, torch.Size([C]))
