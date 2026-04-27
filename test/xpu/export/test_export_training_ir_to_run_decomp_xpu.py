@@ -21,8 +21,8 @@ if str(torch_xpu_ops_path) not in sys.path:
 
 from xpu_test_utils import XPUPatchForImport
 
-with XPUPatchForImport(patch_test_case=False):
-    __pytorch_test_dir = Path(__file__).resolve().parents[5] / "test"
+with XPUPatchForImport(patch_test_case=False) as patcher:
+    __pytorch_test_dir = Path(patcher.test_package[0]).resolve()
     if str(__pytorch_test_dir) not in sys.path:
         sys.path.insert(0, str(__pytorch_test_dir))
 
