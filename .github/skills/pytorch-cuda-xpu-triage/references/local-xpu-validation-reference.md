@@ -13,6 +13,8 @@ decide whether the behavior is a real XPU backend bug.
 python -m pip install --pre torch torchvision torchaudio --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu
 ```
 
+Prefer doing this in a dedicated virtualenv or conda environment because `--force-reinstall` will overwrite the existing torch installation in that environment. If the repro only depends on `torch`, omit `torchvision` and `torchaudio`.
+
 ## Minimal repro script checklist
 - imports only what is necessary
 - prints environment metadata
@@ -45,9 +47,7 @@ If the user relies on a non-default interpreter, replace `python` in both comman
 
 ## Suggested environment collection command
 ```bash
-wget https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
-# For security purposes, please check the contents of collect_env.py before running it.
-python collect_env.py
+python -W ignore::RuntimeWarning -m torch.utils.collect_env
 ```
 
 ## What counts as a confirmed bug
