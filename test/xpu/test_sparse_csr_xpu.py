@@ -5061,6 +5061,12 @@ class TestSparseCompressedTritonKernels(TestCase):
                     )
                     self.assertEqual(res, expected)
 
+    def test_stub(self):
+        assert False, "This test should be skipped and not run"
+
+    def test_stub_2(self):
+        assert False, "This test should be skipped and not run"
+
     @parametrize("block_size", [16, 32, 64])
     @onlyOn(["cuda", "xpu"])
     @dtypes(torch.half, torch.bfloat16, torch.float)
