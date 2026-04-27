@@ -1,6 +1,6 @@
 # GitHub tool reference for this skill
 
-This skill assumes the current agent can search issues, pull requests, commits, and changed files. Keep this workflow read-only. Issue creation belongs to the separate `xpu-ops-issue-creation` skill.
+This skill assumes the current agent can search issues, pull requests, commits, and changed files. Keep this workflow read-only. Issue creation is out of scope for this skill.
 
 ## Useful GitHub capabilities
 - `search_issues` — Find closed issues and PRs using GitHub search syntax.
@@ -14,7 +14,7 @@ If the current agent environment does not expose these GitHub tools, stop and te
 
 ## Query patterns that work well
 ### Issues
-- `repo:pytorch/pytorch is:issue is:closed CUDA crash label:module: cuda`
+- `repo:pytorch/pytorch is:issue is:closed CUDA crash label:"module: cuda"`
 - `repo:pytorch/pytorch is:issue is:closed CUDA "non-contiguous"`
 - `repo:pytorch/pytorch is:issue is:closed CUDA "empty tensor"`
 - `repo:pytorch/pytorch is:issue is:closed CUDA "incorrect result"`
