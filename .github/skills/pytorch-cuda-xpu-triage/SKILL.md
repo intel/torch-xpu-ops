@@ -4,7 +4,7 @@ description: Find recent upstream backend fixes that may expose XPU gaps and dra
 license: Apache-2.0
 compatibility: Designed for agent skills under .github/skills. Works best when GitHub issue, PR, commit, and code search tools are available; local validation can be done either by an agent with shell access or by a human using the returned commands.
 metadata:
-  workflow: github-copilot-to-local-xpu
+  workflow: agent-to-local-xpu
   audience: backend-triage
   author: laifenxiawucha
   version: "1.1"
@@ -12,7 +12,7 @@ metadata:
 
 # PyTorch CUDA/XPU Triage
 
-This skill is written for GitHub Copilot and compatible local agents. Keep it text-first: store durable guidance in `SKILL.md` and `references/`, and do not depend on repo-local helper scripts.
+This skill is intended for agent runtimes that load skills from `.github/skills`. Keep it text-first: store durable guidance in `SKILL.md` and `references/`, and do not depend on repo-local helper scripts.
 
 ## What I do
 - Search `pytorch/pytorch` issues, pull requests, and commits for backend-divergence bug-fix signals.
