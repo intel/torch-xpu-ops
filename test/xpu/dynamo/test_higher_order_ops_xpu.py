@@ -7332,7 +7332,9 @@ class TestHigherOrderOpsOpInfo(torch._dynamo.test_case.TestCaseWithNestedGraphBr
             self.assertEqual(eager_out, compiled_out)
 
 
-instantiate_device_type_tests(TestHigherOrderOpsOpInfo, globals(), only_for=(GPU_TYPE,))
+instantiate_device_type_tests(
+    TestHigherOrderOpsOpInfo, globals(), only_for=(GPU_TYPE,), allow_xpu=True
+)
 
 if __name__ == "__main__":
     from torch._dynamo.test_case import run_tests
