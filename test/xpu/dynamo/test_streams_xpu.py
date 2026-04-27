@@ -614,7 +614,7 @@ class GraphModule(torch.nn.Module):
             x.add_(1)
             return x
 
-        inp = (torch.ones(2, 2, device="cuda"),)
+        inp = (torch.ones(2, 2, device=GPU_TYPE),)
         (
             _,
             _,
@@ -881,13 +881,13 @@ tangents_2: "f32[2, 2]", tangents_3: "f32[2, 2]"):
     @requires_gpu_and_triton
     def test_epilogue_copy_streams_inference(self):
         def fn(x):
-            with torch.Stream(device="cuda:0"):
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
                 with torch.no_grad():
                     x.add_(2)
 
             return x
 
-        x = torch.ones(2, 2, requires_grad=True, device="cuda:0")
+        x = torch.ones(2, 2, requires_grad=True, device=f"{GPU_TYPE}:0")
 
         inp = (x,)
         (
@@ -914,11 +914,11 @@ class <lambda>(torch.nn.Module):
     def test_epilogue_copy_streams_external(self):
         @torch.compile(backend="eager")
         def fn(x):
-            with torch.Stream(device="cuda:0"):
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
                 x.mul_(3)
             return x.sin()
 
-        x = torch.ones(2, 2, requires_grad=True, device="cuda:0")
+        x = torch.ones(2, 2, requires_grad=True, device=f"{GPU_TYPE}:0")
         inp = (x.clone(),)
         with self.assertRaisesRegex(
             RuntimeError,
@@ -940,8 +940,8 @@ class <lambda>(torch.nn.Module):
             @staticmethod
             def forward(ctx, x, y):
                 ctx.save_for_backward(x)
-                ctx.s1 = torch.Stream(device="cuda:0")
-                ctx.s2 = torch.Stream(device="cuda:0")
+                ctx.s1 = torch.Stream(device=f"{GPU_TYPE}:0")
+                ctx.s2 = torch.Stream(device=f"{GPU_TYPE}:0")
                 # Do computation on stream s2
                 with ctx.s2:
                     result = x * 2 + y
@@ -963,8 +963,8 @@ class <lambda>(torch.nn.Module):
             result = BwMutationWithStream.apply(x, y)
             return result
 
-        x = torch.ones(2, 2, requires_grad=True, device="cuda:0")
-        y = torch.ones(2, 2, requires_grad=True, device="cuda:0")
+        x = torch.ones(2, 2, requires_grad=True, device=f"{GPU_TYPE}:0")
+        y = torch.ones(2, 2, requires_grad=True, device=f"{GPU_TYPE}:0")
         (
             actual,
             _,
@@ -1018,7 +1018,7 @@ class GraphModule(torch.nn.Module):
                 e.record()
                 return x
 
-            inp = (torch.ones(2, 2, device="cuda"),)
+            inp = (torch.ones(2, 2, device=GPU_TYPE),)
             fn(*inp)
 
     def test_is_marked_side_effectful(self):
