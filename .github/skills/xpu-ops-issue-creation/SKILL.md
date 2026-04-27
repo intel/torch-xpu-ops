@@ -51,9 +51,9 @@ Check open issues first, then recently closed issues.
 Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body template.
 
 **Title:** `[ai_generated] <plain bug statement>` — for example:
-- XPU validation mismatch for invalid `torch.native_channel_shuffle` inputs
-- XPU crash on empty-tensor reduction validation path
-- XPU wrong result for non-contiguous masked op input
+- [ai_generated] XPU validation mismatch for invalid `torch.native_channel_shuffle` inputs
+- [ai_generated] XPU crash on empty-tensor reduction validation path
+- [ai_generated] XPU wrong result for non-contiguous masked op input
 
 **Body sections required:**
 - `### 🐛 Describe the bug`: two short sentences — what fails on XPU and which build, plus the concrete mismatch.
