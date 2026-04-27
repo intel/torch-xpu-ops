@@ -2,10 +2,10 @@
 name: xpu-ops-issue-creation
 description: >
   How to create an intel/torch-xpu-ops issue from a validated XPU bug.
-  Use when GitHub Copilot already has a confirmed local repro and needs
+  Use when an agent already has a confirmed local repro and needs
   to check duplicates, draft the issue body, and optionally create the issue.
 license: Apache-2.0
-compatibility: Designed for GitHub Copilot skills under .github/skills. Works best when GitHub issue search and create tools are available; if shell access is unavailable, ask the user to run collect_env locally and paste the output.
+compatibility: Designed for agent skills under .github/skills. Works best when GitHub issue search and create tools are available; if shell access is unavailable, ask the user to run collect_env locally and paste the output.
 metadata:
   workflow: validated-bug-to-issue
   audience: backend-triage
@@ -15,19 +15,19 @@ metadata:
 
 # Issue Creation - torch-xpu-ops
 
-This skill is written for GitHub Copilot. Keep it text-first and avoid depending on repo-local helper scripts.
+This skill is intended for agent runtimes that load skills from `.github/skills`. Keep it text-first and avoid depending on repo-local helper scripts.
 
 ## What I do
 - Normalize local repro results into a concise issue report.
 - Cross-link the upstream PyTorch issue, PR, and commit that motivated the test.
 - Draft the title and body for the `intel/torch-xpu-ops` repository.
-- Optionally use the GitHub issue tools available in the current Copilot environment to create the issue after the content is confirmed.
+- Optionally use the GitHub issue tools available in the current agent environment to create the issue after the content is confirmed.
 
 ## When to use me
 Use this only after a local XPU nightly run has demonstrated a real bug, semantic mismatch, or missing supported behavior.
 
 ## Required tools and context
-- Use the GitHub issue search, read, and create tools available in the current Copilot environment.
+- Use the GitHub issue search, read, and create tools available in the current agent environment.
 - If issue creation tools are unavailable, stop after drafting the issue body and explain the blocker.
 - If shell access is unavailable, ask the user to run the environment collection command locally and paste the output.
 
