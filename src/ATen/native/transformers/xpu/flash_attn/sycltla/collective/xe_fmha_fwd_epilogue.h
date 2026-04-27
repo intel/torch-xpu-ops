@@ -59,9 +59,8 @@ class FMHAFwdEpilogue {
   static auto reduce_sg_v_helper() {
     constexpr auto v_total_sg = get<1>(SGTileShapeA{}) / intel::_SGSize{};
     constexpr auto v_avail_sg = ReduceK{} / ReduceSGQ{};
-    return Int<
-        (v_total_sg > v_avail_sg) ? cute::gcd(v_total_sg, v_avail_sg)
-                                  : v_total_sg>{};
+    return Int < (v_total_sg > v_avail_sg) ? cute::gcd(v_total_sg, v_avail_sg)
+                                           : v_total_sg > {};
   }
 
   using SGTileShapeA = decltype(atuple_coshape(FragA{}.tv_layout()));

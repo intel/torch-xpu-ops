@@ -655,8 +655,8 @@ void layer_norm_kernel_impl(
       beta.defined() ? can_vectorize(beta_data, alignment) : true;
 
   if ((std::is_same_v<T, float> || std::is_same_v<T, at::Half> ||
-       std::is_same_v<T, at::BFloat16>) &&
-      N <= static_cast<int64_t>(1ULL << std::numeric_limits<float>::digits) &&
+       std::is_same_v<T, at::BFloat16>)&&N <=
+          static_cast<int64_t>(1ULL << std::numeric_limits<float>::digits) &&
       N % num_vec_elems == 0 && can_vec_X && can_vec_Y && can_vec_gamma &&
       can_vec_beta) {
     launch_vectorized_layer_norm_kernel<T, T_ACC, rms_norm>(

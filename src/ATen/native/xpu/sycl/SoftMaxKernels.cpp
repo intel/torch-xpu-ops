@@ -310,7 +310,7 @@ struct DispatchSoftmaxForwardKernelFunctor
     else if (sum_value != 0)
       sum_value = accscalar_t(1) / sum_value;
 
-    // update result
+      // update result
 #pragma unroll(outer_loop)
     for (int i = 0; i < outer_loop; ++i) {
       auto index = i * local_stride + lid_offset;

@@ -65,7 +65,7 @@ enum class OpType { GE, GT, LE, LT };
 
 template <typename scalar_t>
 struct CompareFunctor {
-  constexpr CompareFunctor(OpType op) : op_(op) {};
+  constexpr CompareFunctor(OpType op) : op_(op){};
   OpType op_;
   bool operator()(scalar_t a, scalar_t b) const {
     if (op_ == OpType::GE) {

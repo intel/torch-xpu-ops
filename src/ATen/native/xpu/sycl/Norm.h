@@ -482,7 +482,8 @@ template <
     typename vec_t,
     typename weight_vec_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 struct FusedNormKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
@@ -533,7 +534,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void launch_vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -568,7 +570,8 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void vectorized_fused_norm_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -626,7 +629,8 @@ template <
     typename vec_t,
     typename weight_vec_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 struct RowwiseMomentsKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   SYCL_REQD_SUB_GROUP_SIZE(SIMD)
@@ -700,7 +704,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void launch_rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -735,7 +740,8 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void rowwise_moments_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -789,7 +795,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     typename vec_t,
     typename weight_vec_t,
     bool rms_norm>
@@ -813,7 +820,8 @@ template <
     typename weight_t,
     typename index_t,
     int vec_size,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void launch_norm_update_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,
@@ -847,7 +855,8 @@ template <
     typename scalar_t,
     typename mean_t,
     typename weight_t,
-    template <typename, typename, typename, bool> class Norm,
+    template <typename, typename, typename, bool>
+    class Norm,
     bool rms_norm>
 void norm_update_kernel(
     Norm<scalar_t, mean_t, weight_t, rms_norm>& norm,

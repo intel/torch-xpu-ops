@@ -80,7 +80,7 @@ TensorInfo<T, T2> tryGetTensorInfo(const at::Tensor& t) {
   return t.defined() ? getTensorInfo<T, T2>(t) : TensorInfo<T, T2>{};
 }
 
-void collapseDims() {};
+void collapseDims(){};
 template <typename T, typename T2, typename... Args>
 void collapseDims(TensorInfo<T, T2>& info, Args&... infos) {
   info.collapseDims();
