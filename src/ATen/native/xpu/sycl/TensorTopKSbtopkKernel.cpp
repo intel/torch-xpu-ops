@@ -5,7 +5,7 @@
  * in registers. Zero SLM, zero barriers.
  *
  * Algorithm:
- *   Phase 1: Each lane scans dim/32 elements, maintains a sorted top-k
+ *   Phase 1: Each lane scans nelements/32 elements, maintains a sorted top-k
  *            buffer via insertion sort (fully unrolled, no branches on
  *            direction thanks to compile-time Largest template param).
  *   Phase 2: 5 levels of pairwise bitonic merge via sub-group shuffles
@@ -20,11 +20,14 @@
 
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
+#include <ATen/ceil_div.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
+#include <c10/util/llvmMathExtras.h>
 #include <comm/DeviceProperties.h>
+#include <comm/SYCLHelpers.h>
 #include <sycl/ext/intel/experimental/grf_size_properties.hpp>
 #include <cstdint>
 #include <limits>
@@ -37,6 +40,11 @@ namespace syclex = sycl::ext::oneapi::experimental;
 namespace intelex = sycl::ext::intel::experimental;
 
 static constexpr int SG_SIZE = 32;
+// Number of pairwise merge levels in Phase 2 = log2(SG_SIZE).
+static constexpr int SG_MERGE_LEVELS = 5;
+static_assert(
+    (1 << SG_MERGE_LEVELS) == SG_SIZE,
+    "SG_MERGE_LEVELS must equal log2(SG_SIZE)");
 
 // ================================================================
 // SubgroupTopKFunctor
@@ -45,10 +53,9 @@ static constexpr int SG_SIZE = 32;
 // VEC_SIZE: vectorized load width
 // Largest: compile-time direction flag. Eliminates per-element branches
 //          on largest_ that otherwise pessimize the tight insert/merge loops.
-// IndexT: int32 when total elements (nsegments * nelements) <= INT_MAX
-//         (common case), int64_t otherwise.  Mirrors CUDA's
-//         canUse32BitIndexMath.  int32 avoids 64-bit arithmetic on slice
-//         indices and element indices, reducing register pressure.
+// IndexT: int32 when numSlices <= INT_MAX (common case), int64_t
+//         otherwise.  int32 avoids 64-bit arithmetic on slice indices,
+//         reducing register pressure.
 // ================================================================
 template <
     typename scalar_t,
@@ -246,9 +253,9 @@ struct SubgroupTopKFunctor {
         count++;
     }
 
-    // ---- Phase 2: sub-group bitonic merge (5 levels for sg_size=32) ----
+    // ---- Phase 2: sub-group bitonic merge ----
 #pragma unroll
-    for (int d = 0; d < 5; ++d) {
+    for (int d = 0; d < SG_MERGE_LEVELS; ++d) {
       int partner = sg_lid ^ (1 << d);
 
       scalar_t partner_vals[K];
@@ -306,20 +313,19 @@ static void sbtopk_launch_impl(
     int k) {
   constexpr int WG_SIZE = 256; // 8 sub-groups per work-group
   constexpr int SGS_PER_WG = WG_SIZE / SG_SIZE;
-  auto num_wgs =
-      (static_cast<int64_t>(numSlices) + SGS_PER_WG - 1) / SGS_PER_WG;
+  auto num_wgs = at::ceil_div(
+      static_cast<int64_t>(numSlices), static_cast<int64_t>(SGS_PER_WG));
 
   SubgroupTopKFunctor<scalar_t, K, VEC_SIZE, Largest, IndexT> functor(
       input, topK, indices, numSlices, sliceSize, k);
 
-  auto q = at::xpu::getCurrentSYCLQueue();
-  q.submit([&](sycl::handler& cgh) {
-    cgh.parallel_for(
-        sycl::nd_range<1>(num_wgs * WG_SIZE, WG_SIZE),
-        syclex::properties{
-            syclex::sub_group_size<SG_SIZE>, intelex::grf_size<128>},
-        functor);
-  });
+  sycl_kernel_submit(
+      num_wgs * WG_SIZE,
+      WG_SIZE,
+      at::xpu::getCurrentSYCLQueue(),
+      syclex::properties{
+          syclex::sub_group_size<SG_SIZE>, intelex::grf_size<128>},
+      functor);
 }
 
 // Vec-size dispatch: picks the largest VEC_SIZE compatible with
@@ -343,18 +349,18 @@ static void sbtopk_launch_vec_dispatch(
   //      (usually guaranteed by PyTorch allocators, but a non-zero
   //      storage offset can break alignment)
   auto input_align = reinterpret_cast<uintptr_t>(input);
-  if (MAX_VEC >= 8 && sliceSize % 8 == 0 && SG_SIZE * 8 <= sliceSize &&
-      input_align % (sizeof(scalar_t) * 8) == 0) {
+  auto can_use_vec = [&](int vec) {
+    return MAX_VEC >= vec && sliceSize % vec == 0 &&
+        SG_SIZE * vec <= sliceSize &&
+        input_align % (sizeof(scalar_t) * vec) == 0;
+  };
+  if (can_use_vec(8)) {
     sbtopk_launch_impl<scalar_t, K, 8, Largest, IndexT>(
         input, topK, indices, numSlices, sliceSize, k);
-  } else if (
-      MAX_VEC >= 4 && sliceSize % 4 == 0 && SG_SIZE * 4 <= sliceSize &&
-      input_align % (sizeof(scalar_t) * 4) == 0) {
+  } else if (can_use_vec(4)) {
     sbtopk_launch_impl<scalar_t, K, 4, Largest, IndexT>(
         input, topK, indices, numSlices, sliceSize, k);
-  } else if (
-      sliceSize % 2 == 0 && SG_SIZE * 2 <= sliceSize &&
-      input_align % (sizeof(scalar_t) * 2) == 0) {
+  } else if (can_use_vec(2)) {
     sbtopk_launch_impl<scalar_t, K, 2, Largest, IndexT>(
         input, topK, indices, numSlices, sliceSize, k);
   } else {
@@ -377,20 +383,11 @@ static void sbtopk_launch_kernel(
   //    iterations in insert/merge, less register pressure, zero spills.
   //    K=1 is a valid special case (top-1 = max/min element).
   // Largest: compile-time direction eliminates per-element branches.
-  // IndexT: int32 when total elements fit (common), int64 otherwise.
+  // IndexT: int32 when numSlices fits (common), int64 otherwise.
 
   // Select K: round up k to next power of two, clamped to [1, 16].
-  int K_sel;
-  if (k <= 1)
-    K_sel = 1;
-  else if (k <= 2)
-    K_sel = 2;
-  else if (k <= 4)
-    K_sel = 4;
-  else if (k <= 8)
-    K_sel = 8;
-  else
-    K_sel = 16;
+  int K_sel = std::min<int>(
+      static_cast<int>(c10::llvm::PowerOf2Ceil(static_cast<uint64_t>(k))), 16);
 
 #define SBTOPK_DISPATCH_K(K_VAL, LARGEST, INDEX_T, NUM_SLICES)   \
   sbtopk_launch_vec_dispatch<scalar_t, K_VAL, LARGEST, INDEX_T>( \
@@ -403,15 +400,12 @@ static void sbtopk_launch_kernel(
     SBTOPK_DISPATCH_K(K_VAL, false, INDEX_T, NUM_SLICES);   \
   }
 
-#define SBTOPK_DISPATCH_INDEX(K_VAL)                                           \
-  if (numSlices <= std::numeric_limits<int>::max() &&                          \
-      sliceSize <= std::numeric_limits<int>::max() &&                          \
-      numSlices <=                                                             \
-          std::numeric_limits<int>::max() / (sliceSize > 0 ? sliceSize : 1)) { \
-    int numSlices32 = static_cast<int>(numSlices);                             \
-    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);                          \
-  } else {                                                                     \
-    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices);                        \
+#define SBTOPK_DISPATCH_INDEX(K_VAL)                    \
+  if (numSlices <= std::numeric_limits<int>::max()) {   \
+    int numSlices32 = static_cast<int>(numSlices);      \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int, numSlices32);   \
+  } else {                                              \
+    SBTOPK_DISPATCH_LARGEST(K_VAL, int64_t, numSlices); \
   }
 
   switch (K_sel) {
