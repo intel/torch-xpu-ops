@@ -29,6 +29,7 @@ from torch.testing._internal.common_utils import (
     parametrize,
     skipIfTorchDynamo,
 )
+from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
 if TYPE_CHECKING:

@@ -8,7 +8,6 @@ import torch._dynamo.testing
 from torch._dynamo.device_interface import CudaInterface, DeviceGuard
 from torch.testing._internal.common_cuda import TEST_CUDA, TEST_MULTIGPU
 
-
 TEST_XPU = torch.xpu.is_available()
 TEST_MULTI_XPU = TEST_XPU and torch.xpu.device_count() > 1
 

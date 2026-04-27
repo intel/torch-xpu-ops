@@ -170,9 +170,7 @@ class <lambda>(torch.nn.Module):
         def fn(x, s0, s1):
             with s1:
                 with s0:
-                    s = torch.accelerator.current_stream(
-                        torch.device(f"{GPU_TYPE}:1")
-                    )
+                    s = torch.accelerator.current_stream(torch.device(f"{GPU_TYPE}:1"))
             return s
 
         s0 = torch.Stream(device=f"{GPU_TYPE}:0")

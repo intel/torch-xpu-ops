@@ -41,9 +41,7 @@ from torch.testing._internal.common_utils import (
 from torch.testing._internal.hop_db import hop_db
 from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
-from torch.testing._internal.triton_utils import (
-    requires_gpu_and_triton,
-)
+from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
 
 def count_ops(gm, args, freq, op):
