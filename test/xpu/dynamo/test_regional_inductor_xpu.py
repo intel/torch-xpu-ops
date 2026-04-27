@@ -427,6 +427,9 @@ class RegionalInductorTests(torch._inductor.test_case.TestCase):
     @requires_cuda_and_triton
     @parametrize("serialize", [False, True])
     def test_selective_ac_flex(self, serialize):
+        if not getattr(torch, GPU_TYPE).is_available():
+            self.skipTest(f"{GPU_TYPE} is not available")
+
         class FlexAttentionModule(torch.nn.Module):
             def __init__(self, hidden_size, num_heads):
                 super().__init__()

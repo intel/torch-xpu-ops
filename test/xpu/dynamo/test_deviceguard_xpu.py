@@ -9,6 +9,10 @@ from torch._dynamo.device_interface import CudaInterface, DeviceGuard
 from torch.testing._internal.common_cuda import TEST_CUDA, TEST_MULTIGPU
 
 
+TEST_XPU = torch.xpu.is_available()
+TEST_MULTI_XPU = TEST_XPU and torch.xpu.device_count() > 1
+
+
 class TestDeviceGuard(torch._dynamo.test_case.TestCase):
     """
     Unit tests for the DeviceGuard class using a mock DeviceInterface.
@@ -78,6 +82,47 @@ class TestCUDADeviceGuard(torch._dynamo.test_case.TestCase):
 
         with device_guard as _:
             self.assertEqual(torch.cuda.current_device(), current_device)
+            self.assertEqual(device_guard.prev_idx, -1)
+            self.assertEqual(device_guard.idx, None)
+
+        self.assertEqual(device_guard.prev_idx, -1)
+        self.assertEqual(device_guard.idx, None)
+
+
+@unittest.skipIf(not TEST_XPU, "No XPU available.")
+class TestXPUDeviceGuard(torch._dynamo.test_case.TestCase):
+    """
+    Unit tests for the DeviceGuard class using the XPU device interface.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from torch._dynamo.device_interface import get_interface_for_device
+
+        self.device_interface = get_interface_for_device("xpu")
+
+    @unittest.skipIf(not TEST_MULTI_XPU, "need multiple XPU")
+    def test_device_guard(self):
+        current_device = torch.xpu.current_device()
+
+        device_guard = DeviceGuard(self.device_interface, 1)
+
+        with device_guard as _:
+            self.assertEqual(torch.xpu.current_device(), 1)
+            self.assertEqual(device_guard.prev_idx, 0)
+            self.assertEqual(device_guard.idx, 1)
+
+        self.assertEqual(torch.xpu.current_device(), current_device)
+        self.assertEqual(device_guard.prev_idx, 0)
+        self.assertEqual(device_guard.idx, 1)
+
+    def test_device_guard_no_index(self):
+        current_device = torch.xpu.current_device()
+
+        device_guard = DeviceGuard(self.device_interface, None)
+
+        with device_guard as _:
+            self.assertEqual(torch.xpu.current_device(), current_device)
             self.assertEqual(device_guard.prev_idx, -1)
             self.assertEqual(device_guard.idx, None)
 

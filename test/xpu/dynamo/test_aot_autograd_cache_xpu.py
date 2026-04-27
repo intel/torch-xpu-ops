@@ -1777,7 +1777,10 @@ class AOTAutogradCacheTests(InductorTestCase):
     @inductor_config.patch("fx_graph_cache", True)
     @inductor_config.patch("fx_graph_remote_cache", False)
     @functorch_config.patch({"enable_autograd_cache": True})
-    @unittest.skipIf(not TEST_MULTIGPU, "only one GPU detected")
+    @unittest.skipIf(
+        torch.get_device_module(GPU_TYPE).device_count() < 2,
+        "only one GPU detected",
+    )
     def test_constant_tensor_device_guards(self):
         """
         Usually, when there are example inputs, the device index of the inputs
@@ -1786,23 +1789,24 @@ class AOTAutogradCacheTests(InductorTestCase):
         When the input has no arguments, we still need to have the cuda
         device index in the cache key.
         """
+        device_module = torch.get_device_module(GPU_TYPE)
 
         @torch.compile(backend="inductor")
         def f():
             y = torch.tensor([5], device=GPU_TYPE)
             return (y,)
 
-        with torch.cuda._DeviceGuard(0):
-            torch.cuda.set_device(0)
+        with device_module._DeviceGuard(0):
+            device_module.set_device(0)
             result = f()
-            self.assertEqual(result[0].device, torch.device("cuda:0"))
+            self.assertEqual(result[0].device, torch.device(f"{GPU_TYPE}:0"))
 
         self._clear_dynamo_and_codecache()
 
-        with torch.cuda._DeviceGuard(1):
-            torch.cuda.set_device(1)
+        with device_module._DeviceGuard(1):
+            device_module.set_device(1)
             result = f()
-            self.assertEqual(result[0].device, torch.device("cuda:1"))
+            self.assertEqual(result[0].device, torch.device(f"{GPU_TYPE}:1"))
 
     @requires_gpu_and_triton
     @inductor_config.patch("fx_graph_cache", True)

@@ -18,11 +18,7 @@ from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
 requires_multigpu = functools.partial(
     unittest.skipIf,
-    not (
-        torch.cuda.device_count() > 1
-        if torch.cuda.is_available()
-        else torch.xpu.device_count() > 1
-    ),
+    torch.get_device_module(GPU_TYPE).device_count() <= 1,
     "requires multiple GPU devices",
 )
 
@@ -174,11 +170,13 @@ class <lambda>(torch.nn.Module):
         def fn(x, s0, s1):
             with s1:
                 with s0:
-                    s = torch.accelerator.current_stream(torch.device("cuda:1"))
+                    s = torch.accelerator.current_stream(
+                        torch.device(f"{GPU_TYPE}:1")
+                    )
             return s
 
-        s0 = torch.Stream(device="cuda:0")
-        s1 = torch.Stream(device="cuda:1")
+        s0 = torch.Stream(device=f"{GPU_TYPE}:0")
+        s1 = torch.Stream(device=f"{GPU_TYPE}:1")
         inp = (torch.ones(2, 2) + 1, s0, s1)
         fn_opt = torch.compile(fn, fullgraph=True)
         s_act = fn_opt(*inp)
@@ -191,11 +189,11 @@ class <lambda>(torch.nn.Module):
         def fn(x, s0, s1):
             with s1:
                 with s0:
-                    s = torch.accelerator.current_stream(torch.device("cuda"))
+                    s = torch.accelerator.current_stream(torch.device(GPU_TYPE))
             return s
 
-        s0 = torch.Stream(device="cuda:0")
-        s1 = torch.Stream(device="cuda:1")
+        s0 = torch.Stream(device=f"{GPU_TYPE}:0")
+        s1 = torch.Stream(device=f"{GPU_TYPE}:1")
         inp = (torch.ones(2, 2) + 1, s0, s1)
         fn_opt = torch.compile(fn, fullgraph=True)
         s_act = fn_opt(*inp)
@@ -348,7 +346,7 @@ class <lambda>(torch.nn.Module):
 
         def event_generation_backend(gm, *args, **kwargs):  # type: ignore[no-untyped-def]
             e0_ind = new_event()
-            with torch.Stream(device="cuda:1"):
+            with torch.Stream(device=f"{GPU_TYPE}:1"):
                 get_external_object_by_index(e0_ind).record()
             e1_ind = new_event()
             self.assertNotEqual(e0_ind, e1_ind)
@@ -366,7 +364,7 @@ class <lambda>(torch.nn.Module):
         def fn(x):
             return x + 1
 
-        fn(torch.ones(2, 2, device="cuda:0"))
+        fn(torch.ones(2, 2, device=f"{GPU_TYPE}:0"))
 
     @requires_gpu_and_triton
     def test_new_stream_api(self) -> None:
@@ -391,7 +389,7 @@ class <lambda>(torch.nn.Module):
         def fn(x):
             return x + 1
 
-        fn(torch.ones(2, 2, device="cuda:0"))
+        fn(torch.ones(2, 2, device=f"{GPU_TYPE}:0"))
 
     @requires_gpu_and_triton
     def test_current_stream_api(self) -> None:
@@ -403,7 +401,7 @@ class <lambda>(torch.nn.Module):
 
         def stream_generation_backend(gm, *args, **kwargs):  # type: ignore[no-untyped-def]
             nonlocal s0
-            s0_ind = get_current_stream(torch.device("cuda:0"))
+            s0_ind = get_current_stream(torch.device(f"{GPU_TYPE}:0"))
             self.assertEqual(get_external_object_by_index(s0_ind), cur_stream)
             with gm.graph.inserting_after(next(iter(gm.graph.nodes))):
                 gm.graph.call_function(
@@ -422,7 +420,7 @@ class <lambda>(torch.nn.Module):
         def fn(x):
             return x + 1
 
-        fn(torch.ones(2, 2, device="cuda:0"))
+        fn(torch.ones(2, 2, device=f"{GPU_TYPE}:0"))
 
     @requires_gpu_and_triton
     def test_stream_with_mutation(self):
@@ -552,8 +550,8 @@ class GraphModule(torch.nn.Module):
             return y0, z
 
         inp = (
-            torch.ones(2, 2, device="cuda:0", requires_grad=True) + 1,
-            torch.ones(2, 2, device="cuda:0", requires_grad=True),
+            torch.ones(2, 2, device=f"{GPU_TYPE}:0", requires_grad=True) + 1,
+            torch.ones(2, 2, device=f"{GPU_TYPE}:0", requires_grad=True),
         )
         expected = fn(*inp)
         (
