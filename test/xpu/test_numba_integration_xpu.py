@@ -132,31 +132,9 @@ def _test_conversion_errors(self):
         numba.cuda.as_cuda_array(xpu_gradt)
 
 
-@unittest.skip(
-    "numba.cuda is a CUDA-only JIT compiler with no XPU equivalent; "
-    "this test cannot meaningfully run on XPU. Tracks gap that XPU "
-    "has no numba interop / cuda-array-interface path."
-)
-def _test_from_cuda_array_interface_inferred_strides(self):
-    """torch.as_tensor on a numba.cuda array produces a CUDA tensor, not an XPU tensor.
-
-    Tracks the gap: XPU has no numba interop / cuda-array-interface path, so
-    this test documents that a tensor constructed from a numba.cuda array is
-    not placed on XPU.
-    """
-    numpy_ary = numpy.ones((2, 3), dtype=numpy.float32)
-    numba_ary = numba.cuda.to_device(numpy_ary)
-    torch_ary = torch.as_tensor(numba_ary, device="cuda")
-    self.assertNotEqual(torch_ary.device.type, "xpu")
-    self.assertEqual(torch_ary.stride(), (3, 1))
-
-
 TestNumbaIntegration.test_cuda_array_interface = _test_cuda_array_interface
 TestNumbaIntegration.test_array_adaptor = _test_array_adaptor
 TestNumbaIntegration.test_conversion_errors = _test_conversion_errors
-TestNumbaIntegration.test_from_cuda_array_interface_inferred_strides = (
-    _test_from_cuda_array_interface_inferred_strides
-)
 
 
 if __name__ == "__main__":
