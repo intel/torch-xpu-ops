@@ -123,6 +123,8 @@ skip_dict = {
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
         "test_out_histc_xpu_float32",
         "test_out_mean_xpu_float32",
+        # AssertionError: Tensor-likes are not close!
+        "test_noncontiguous_samples_histogram_xpu_float32",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
@@ -256,11 +258,17 @@ skip_dict = {
         "test_cudnn_rnn",
     ),
     "test_matmul_cuda_xpu.py": None,
-    "functorch/test_vmap_xpu.py": None,
+    "functorch/test_vmap_xpu.py": (
+        # AssertionError: Tensor-likes are not close!
+        "test_vmap_exhaustive_addmv_xpu_float32",
+    ),
     "dynamo/test_ctx_manager_xpu.py": None,
     "functorch/test_control_flow_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
-    "functorch/test_aotdispatch_xpu.py": None,
+    "functorch/test_aotdispatch_xpu.py": (
+        # Intermittent OSError during AOTAutogradCache.clear() directory cleanup
+        "test_input_mutation_set__nop",
+    ),
 }
