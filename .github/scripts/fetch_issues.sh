@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+set -xe
 set -o pipefail
 
 UT_SKIP_ISSUE=1624
@@ -23,9 +24,4 @@ else
   exit 1
 fi
 
-if ! output=$("$fetch_function"); then
-  printf 'Error: gh call failed.\n' >&2
-  exit 1
-fi
-
-printf '%s\n' "$output"
+"$fetch_function"
