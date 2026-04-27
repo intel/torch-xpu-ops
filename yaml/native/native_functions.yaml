@@ -7947,6 +7947,12 @@
     XPU: _scaled_dot_product_efficient_attention_xpu
   tags: nondeterministic_seeded
 
+- func: _scaled_dot_product_efficient_attention_backward(Tensor grad_out_, Tensor query, Tensor key, Tensor value, Tensor attn_bias, Tensor out, Tensor logsumexp, Tensor philox_seed, Tensor philox_offset, float dropout_p, bool[4] grad_input_mask, bool is_causal=False, *, float? scale=None) -> (Tensor, Tensor, Tensor, Tensor)
+  device_check: NoCheck
+  dispatch:
+    XPU: _scaled_dot_product_efficient_attention_backward_xpu
+  tags: nondeterministic_seeded
+
 - func: special_airy_ai(Tensor x) -> Tensor
   python_module: special
   structured_delegate: special_airy_ai.out
@@ -9504,6 +9510,15 @@
   variants: function, method
 
 - func: inverse.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+
+- func: triangular_solve.X(Tensor self, Tensor A, bool upper=True, bool transpose=False, bool unitriangular=False, *, Tensor(a!) X, Tensor(b!) M) -> (Tensor(a!) solution, Tensor(b!) cloned_coefficient)
+  structured: True
+  dispatch:
+    SparseCsrXPU: triangular_solve_out_sparse_csr_xpu
+
+- func: triangular_solve(Tensor self, Tensor A, bool upper=True, bool transpose=False, bool unitriangular=False) -> (Tensor solution, Tensor cloned_coefficient)
+  structured_delegate: triangular_solve.X
+  variants: method, function
 
 - func: addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
   structured_delegate: addmm.out

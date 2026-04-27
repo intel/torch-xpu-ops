@@ -5,10 +5,10 @@ on:
     types: [created]
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
   checks: read
+  issues: write
+  pull-requests: read
+  statuses: read
 
 jobs:
   auto-merge:
