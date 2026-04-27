@@ -35,7 +35,6 @@ env:
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-  UT_SKIP_ISSUE: 1624
   NEW_PASSED_ISSUE: 2333
 
 jobs:
@@ -157,6 +156,7 @@ jobs:
         with:
           name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
           path: ${{ github.workspace }}/issues_snapshot
+        continue-on-error: true
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
@@ -176,8 +176,8 @@ jobs:
           snapshot_dir="${{ github.workspace }}/issues_snapshot"
           touch issues.log Known_issue.log.tmp
           echo "Restoring snapshotted skipped issues if available."
-          cp "${snapshot_dir}/known_issue_static.log" Known_issue.log.tmp
-          cp "${snapshot_dir}/issues_snapshot.log" issues.log
+          cp "${snapshot_dir}/known_issue_static.log" Known_issue.log.tmp || true
+          cp "${snapshot_dir}/issues_snapshot.log" issues.log || true
           echo "Fetching current skipped-issues data from GitHub."
           bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
           bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open >> issues.log
