@@ -37,7 +37,7 @@ Note: For now, if the test is in PyTorch, explicitly point it out in PR message 
 
 - File name: `test_<description>.py`
 - Contains `def test_...()` functions or `class Test...` classes
-- Runnable: `pytest test/regressions/test_<description>.py`
+- Runnable: `pytest test/repro/test_<description>.py`
 - Imports `torch`, targets `xpu` device (also `cuda` if relevant)
 
 **Exceptions** (CI-only changes, docs, build fixes): no new test file required, but you
@@ -59,12 +59,12 @@ Test: <one of the three forms below>
 
 1. New reproducer added:
    ```
-   Test: test/regressions/test_<description>.py
+   Test: test/repro/test_<description>.py
    ```
 
 2. Existing test(s) cover it:
    ```
-   Test: test/regressions/test_foo.py, test/xpu/test_bar_xpu.py
+   Test: test/repro/test_foo.py, test/xpu/test_bar_xpu.py
    ```
 
 3. No test applicable:
@@ -115,7 +115,7 @@ At the end of your response output EXACTLY this block:
 ### Agent Summary
 - **What I found:** <one sentence>
 - **What I changed:** <bullet list of files>
-- **Test file:** test/regressions/<filename>.py | none (<reason>)
+- **Test file:** test/repro/<filename>.py | none (<reason>)
 - **Branch:** agent/<slug>
 - **PR body draft:**
 
@@ -136,7 +136,7 @@ Test: <test line>
 
 - [ ] pre-commit / lintrunner passed (or not configured — noted in summary)
 - [ ] `yaml/`, `src/`, and `test/` are consistent (if any were touched)
-- [ ] Test file added to `test/regressions/` or `Test: none (reason)` written
+- [ ] Test file added to `test/repro/` or `Test: none (reason)` written
 - [ ] No unrelated files changed
 - [ ] Commit message is imperative, max 72 chars
 - [ ] Branch is `agent/<slug>`, not `main`
