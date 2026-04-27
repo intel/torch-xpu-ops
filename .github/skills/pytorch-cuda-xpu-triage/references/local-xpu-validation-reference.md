@@ -45,11 +45,6 @@ python repro.py
 
 If the user relies on a non-default interpreter, replace `python` in both commands with the exact interpreter path or environment-specific launcher, and replace `repro.py` with the actual script path.
 
-## Suggested environment collection command
-```bash
-python -W ignore::RuntimeWarning -m torch.utils.collect_env
-```
-
 ## What counts as a confirmed bug
 One of the following on XPU, when CPU and current PyTorch semantics indicate otherwise:
 - crash or internal error
@@ -66,6 +61,7 @@ One of the following on XPU, when CPU and current PyTorch semantics indicate oth
 ## Before filing the issue
 Capture:
 - exact command used and its output
+- collect_env output from the installed PyTorch package: `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
 - full exception text or mismatch summary
 - minimal repro script
 - upstream issue, PR, and commit links
