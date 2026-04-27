@@ -1,6 +1,6 @@
 # GitHub tool reference for this skill
 
-This skill assumes GitHub Copilot can search issues, pull requests, commits, and changed files. Keep this workflow read-only. Issue creation belongs to the separate `xpu-ops-issue-creation` skill.
+This skill assumes the current agent can search issues, pull requests, commits, and changed files. Keep this workflow read-only. Issue creation belongs to the separate `xpu-ops-issue-creation` skill.
 
 ## Useful GitHub capabilities
 - `search_issues` — Find closed issues and PRs using GitHub search syntax.
@@ -10,7 +10,7 @@ This skill assumes GitHub Copilot can search issues, pull requests, commits, and
 - `list_commits` and `get_commit` — Walk from PR to the landing commit and inspect the exact fix.
 - `get_file_contents` — Read only the regression test or source file touched by the PR.
 
-If the current Copilot environment does not expose these GitHub tools, stop and tell the user what upstream search still needs to be done manually.
+If the current agent environment does not expose these GitHub tools, stop and tell the user what upstream search still needs to be done manually.
 
 ## Query patterns that work well
 ### Issues

@@ -1,8 +1,8 @@
 ---
 name: pytorch-cuda-xpu-triage
-description: Find recent upstream backend fixes that may expose XPU gaps and draft local repro steps. Use when GitHub Copilot is asked to scan pytorch/pytorch for CUDA, XPU, or backend-divergence issues and prepare candidates for local validation.
+description: Find recent upstream backend fixes that may expose XPU gaps and draft local repro steps. Use when an agent is asked to scan pytorch/pytorch for CUDA, XPU, or backend-divergence issues and prepare candidates for local validation.
 license: Apache-2.0
-compatibility: Designed for GitHub Copilot skills under .github/skills. Works best when GitHub issue, PR, commit, and code search tools are available; local validation can be done either by Copilot with shell access or by a human using the returned commands.
+compatibility: Designed for agent skills under .github/skills. Works best when GitHub issue, PR, commit, and code search tools are available; local validation can be done either by an agent with shell access or by a human using the returned commands.
 metadata:
   workflow: github-copilot-to-local-xpu
   audience: backend-triage
@@ -12,7 +12,7 @@ metadata:
 
 # PyTorch CUDA/XPU Triage
 
-This skill is written for GitHub Copilot. Keep it text-first: store durable guidance in `SKILL.md` and `references/`, and do not depend on repo-local helper scripts.
+This skill is written for GitHub Copilot and compatible local agents. Keep it text-first: store durable guidance in `SKILL.md` and `references/`, and do not depend on repo-local helper scripts.
 
 ## What I do
 - Search `pytorch/pytorch` issues, pull requests, and commits for backend-divergence bug-fix signals.
@@ -22,7 +22,7 @@ This skill is written for GitHub Copilot. Keep it text-first: store durable guid
 - Stop before filing anything unless local XPU execution confirms a bug.
 
 ## Required tools and context
-- Use the GitHub search, issue, PR, commit, and file-reading tools available in the current Copilot environment.
+- Use the GitHub search, issue, PR, commit, and file-reading tools available in the current agent environment.
 - If those GitHub tools are unavailable, stop and report the blocker.
 - Do not assume a custom local integration, machine-specific setup, or helper scripts.
 - Only move to local validation after candidates are selected.
