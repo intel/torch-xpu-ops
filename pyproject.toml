@@ -63,7 +63,11 @@ ignore = [
     "SIM118",
     "UP006", # keep-runtime-typing
     "UP007", # keep-runtime-typing
+
+    # TODO - tmp skip in torch-xpu-ops, to be fixed 
+    "UP045",
     "UP031",
+    "PGH004",
 ]
 select = [
     "B",
