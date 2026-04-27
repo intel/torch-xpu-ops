@@ -43,6 +43,7 @@ from torch.testing._internal.inductor_utils import GPU_TYPE
 from torch.testing._internal.logging_utils import LoggingTestCase, make_logging_test
 from torch.testing._internal.triton_utils import requires_gpu_and_triton
 
+
 device_type = (
     acc.type if (acc := torch.accelerator.current_accelerator(True)) else "cpu"
 )
@@ -7229,6 +7230,7 @@ xfail_hops_compile = {
     # inductor
     "while_loop",  # LoweringException: AssertionError
     "flex_attention",  # LoweringException: AssertionError
+    "flex_attention_backward",  # AssertionError: Input shapes should have M >= 16, N >= 16 and K >= 16
 }
 
 
