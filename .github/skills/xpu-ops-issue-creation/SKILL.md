@@ -9,7 +9,6 @@ compatibility: Designed for agent skills under .github/skills. Works best when G
 metadata:
   workflow: validated-bug-to-issue
   audience: backend-triage
-  author: laifenxiawucha
   version: "1.1"
 ---
 
