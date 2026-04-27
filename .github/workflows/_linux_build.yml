@@ -53,36 +53,9 @@ jobs:
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  snapshot-skipped-issues:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      UT_SKIP_ISSUE: 1624
-    steps:
-      - name: Snapshot open skipped issues at build start
-        run: |
-          touch known_issue_static.log issues_snapshot.log
-          # Capture static distributed known issues baseline.
-          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body \
-            | sed -E '/^(#|$)/d' > known_issue_static.log || true
-          # Capture open skipped issues at build start time.
-          gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped&state=open" \
-            --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues_snapshot.log || true
-      - name: Upload skipped issues snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
-          path: |
-            known_issue_static.log
-            issues_snapshot.log
-
   build:
     name: ${{ inputs.pytorch }}
-    needs: [runner, snapshot-skipped-issues]
+    needs: runner
     if: ${{ ! endsWith(inputs.pytorch, '_wheel') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
     container:
@@ -120,6 +93,20 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: torch-xpu-ops
+      - name: Snapshot open skipped issues at build start
+        run: |
+          touch known_issue_static.log issues_snapshot.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log || true
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log || true
+      - name: Upload skipped issues snapshot
+        if: ${{ ! cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          path: |
+            known_issue_static.log
+            issues_snapshot.log
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
