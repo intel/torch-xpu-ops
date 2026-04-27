@@ -22,9 +22,6 @@ try:
 except Exception:
     from .xpu_test_utils import XPUPatchForImport
 
-if TEST_NUMPY:
-    import numpy
-
 # numba.cuda may fail to import due to numpy ABI. Detect at module scope.
 try:
     import numba.cuda  # noqa: F401
