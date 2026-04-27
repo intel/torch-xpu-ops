@@ -19,6 +19,10 @@ on:
         type: string
         default: '3.10'
         description: Python version
+      pr_body_cmd:
+        type: string
+        default: ''
+        description: Reproducer command extracted from PR description (reproducer-cmd block)
 
 permissions:
   contents: read
@@ -66,13 +70,48 @@ jobs:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run reproducer tests
-        id: reproducer
+      - name: Get changed reproducer files
+        id: changed-repro
+        run: |
+          cd torch-xpu-ops
+          CHANGED_FILES=$(git diff --name-only --diff-filter=AM origin/${{ github.event.pull_request.base.ref }}...HEAD -- test/repro/test_*.py || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED_FILES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "Found changed reproducer files:"
+            echo "$CHANGED_FILES"
+          else
+            echo "No added/modified reproducer files in this PR."
+          fi
+      - name: Run reproducer files
+        id: reproducer-files
+        if: ${{ steps.changed-repro.outputs.files != '' }}
         continue-on-error: true
         run: |
           set -o pipefail
           cd pytorch
-          pytest ../torch-xpu-ops/test/repro/ -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
+          echo "=== Running changed reproducer files ==="
+          # Convert file paths to pytest-compatible paths under third_party/torch-xpu-ops/
+          REPRO_FILES=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            REPRO_FILES="$REPRO_FILES third_party/torch-xpu-ops/$f"
+          done <<< "${{ steps.changed-repro.outputs.files }}"
+          echo "Files: $REPRO_FILES"
+          pytest $REPRO_FILES -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
+      - name: Run reproducer command from PR description
+        id: reproducer-cmd
+        if: ${{ inputs.pr_body_cmd != '' }}
+        continue-on-error: true
+        env:
+          PR_BODY_CMD: ${{ inputs.pr_body_cmd }}
+        run: |
+          set -o pipefail
+          cd pytorch/third_party/torch-xpu-ops
+          echo "=== Running reproducer command from PR description ==="
+          echo "Command: $PR_BODY_CMD"
+          eval "$PR_BODY_CMD" 2>&1 | tee -a ${{ github.workspace }}/reproducer_output.txt
       - name: Upload reproducer log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -81,10 +120,10 @@ jobs:
           path: ${{ github.workspace }}/reproducer_output.txt
           if-no-files-found: ignore
       - name: Write summary
-        if: ${{ steps.reproducer.outcome == 'success' }}
-        run: echo "✅ Reproducer test passed. All tests in \`test/repro/\` executed successfully." >> $GITHUB_STEP_SUMMARY
+        if: ${{ steps.reproducer-files.outcome != 'failure' && steps.reproducer-cmd.outcome != 'failure' }}
+        run: echo "✅ Reproducer test passed. All reproducer tests executed successfully." >> $GITHUB_STEP_SUMMARY
       - name: Fail if reproducer failed
-        if: ${{ steps.reproducer.outcome == 'failure' }}
+        if: ${{ steps.reproducer-files.outcome == 'failure' || steps.reproducer-cmd.outcome == 'failure' }}
         run: exit 1
 
   summary:
@@ -145,7 +184,7 @@ jobs:
               '1. Review the test failure output above (or the full log via the link)',
               '2. Identify the root cause of the failure',
               '3. Update the relevant source code to fix the issue',
-              '4. Ensure the reproducer in test/repro/ passes after your fix'
+              '4. Ensure the reproducer tests pass after your fix (files in test/repro/ and/or PR description command)'
             ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
