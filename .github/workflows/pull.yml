@@ -153,7 +153,7 @@ jobs:
     with:
       runner: distributed
       pytorch: release/2.12
-      torch_xpu_ops: daisyden/distributed_2.11
+      torch_xpu_ops: daisyden/distributed_2.12
       ut: ${{ matrix.ut_name }}
 
   linux-e2e:
