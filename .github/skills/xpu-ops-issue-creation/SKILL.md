@@ -63,8 +63,8 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
 - `Additional context`:
   - Date, Build, upstream issue URL, upstream PR URL, upstream commit SHA
   - `Assisted-by: opencode: <actual-model> [GitHub-API] [collect_env]`
-    (use the active model string; repository default is `github-copilot/gpt-5.4` unless overridden)
-- `### Versions`: collect_env output wrapped in `<details><summary>Collected with torch/utils/collect_env.py</summary>` plus a fenced `text` block.
+    (use the active model string)
+- `### Versions`: collect_env output wrapped in `<details><summary>Collected with python -m torch.utils.collect_env</summary>` plus a fenced `text` block.
 
 **Environment to capture:**
 - `torch.__version__`, `torch.version.git_version`, platform, Python version, XPU availability

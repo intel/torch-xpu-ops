@@ -27,7 +27,7 @@ Additional context:
 ### Versions
 
 <details>
-<summary>Collected with torch/utils/collect_env.py</summary>
+<summary>Collected with python -m torch.utils.collect_env</summary>
 
 ```text
 <collect_env output>
