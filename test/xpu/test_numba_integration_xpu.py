@@ -75,8 +75,6 @@ def _test_array_adaptor(self):
 
     XPU tensors are not CUDA tensors and therefore are not cuda arrays.
     """
-    import numba.cuda
-
     torch_dtypes = [
         torch.float16,
         torch.float32,
@@ -104,8 +102,6 @@ def _test_array_adaptor(self):
 @unittest.skipIf(not TEST_NUMBA_XPU, "No numba.cuda")
 def _test_conversion_errors(self):
     """numba.cuda detects that XPU / CPU / sparse tensors are not cuda arrays."""
-    import numba.cuda
-
     # CPU tensors are not cuda arrays.
     cput = torch.arange(100)
     self.assertFalse(numba.cuda.is_cuda_array(cput))
@@ -146,8 +142,6 @@ def _test_from_cuda_array_interface_inferred_strides(self):
     this test documents that a tensor constructed from a numba.cuda array is
     not placed on XPU.
     """
-    import numba.cuda
-
     numpy_ary = numpy.ones((2, 3), dtype=numpy.float32)
     numba_ary = numba.cuda.to_device(numpy_ary)
     torch_ary = torch.as_tensor(numba_ary, device="cuda")

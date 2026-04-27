@@ -18,7 +18,12 @@ except Exception:
     from .xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_scaled_matmul_cuda import TestFP8Matmul, e4m3_type, e5m2_type, scaled_mm_wrap
+    from test_scaled_matmul_cuda import (
+        e4m3_type,
+        e5m2_type,
+        scaled_mm_wrap,
+        TestFP8Matmul,
+    )
 
 
 # Override fast_accum tests: upstream raises SkipTest("XPU does not support fast accum
@@ -30,7 +35,9 @@ def _xpu_test_float8_scale_fast_accum(self, device) -> None:
     y = torch.full(size, 0.5, device=device, dtype=y_type).t()
     scale_a = torch.tensor(1.5, device=device)
     scale_b = torch.tensor(0.66, device=device)
-    out_fp8 = scaled_mm_wrap(x, y, scale_a, scale_b, out_dtype=e4m3_type, use_fast_accum=True)
+    out_fp8 = scaled_mm_wrap(
+        x, y, scale_a, scale_b, out_dtype=e4m3_type, use_fast_accum=True
+    )
     self.assertEqual(out_fp8.to(torch.float), torch.full(size, 4.0, device=device))
     out_fp8_s = scaled_mm_wrap(
         x, y, scale_a=scale_a, scale_b=scale_b, out_dtype=e4m3_type, use_fast_accum=True
@@ -79,9 +86,7 @@ TestFP8Matmul.test_float8_rowwise_scaling_sanity = parametrize(
 # so the upstream assertRaisesRegex cannot pass on XPU without changing what it asserts.
 
 
-instantiate_device_type_tests(
-    TestFP8Matmul, globals(), only_for="xpu", allow_xpu=True
-)
+instantiate_device_type_tests(TestFP8Matmul, globals(), only_for="xpu", allow_xpu=True)
 
 
 if __name__ == "__main__":

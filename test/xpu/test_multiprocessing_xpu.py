@@ -17,11 +17,7 @@ from sys import platform
 
 import torch
 import torch.multiprocessing as mp
-from torch.testing._internal.common_utils import (
-    IS_WINDOWS,
-    run_tests,
-    TestCase,
-)
+from torch.testing._internal.common_utils import IS_WINDOWS, run_tests, TestCase
 
 try:
     from xpu_test_utils import XPUPatchForImport

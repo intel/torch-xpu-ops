@@ -64,9 +64,7 @@ def forward(self, x_1, w_1):
 TestOutDtypeOp.test_out_dtype_inductor_decomp_trace = (
     _out_dtype_inductor_decomp_trace_xpu
 )
-TestOutDtypeOp.test_out_dtype_int_mm_default_trace = (
-    _out_dtype_int_mm_default_trace_xpu
-)
+TestOutDtypeOp.test_out_dtype_int_mm_default_trace = _out_dtype_int_mm_default_trace_xpu
 
 
 if __name__ == "__main__":

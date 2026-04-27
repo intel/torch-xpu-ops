@@ -35,7 +35,6 @@ import unittest
 
 from torch.testing._internal.triton_utils import requires_xpu_and_triton
 
-
 # Override CUDA-only tests on TestExport with XPU variants before the dynamic
 # TrainingIRToRunDecomp* classes are generated from it. Each override mirrors
 # the source semantics but targets device="xpu".

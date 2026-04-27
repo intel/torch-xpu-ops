@@ -27,7 +27,9 @@ except Exception:
 
 # test/fx is not in the XPUPatchForImport default search path; add it so
 # the TestCommonPass import works.
-_FX_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../test/fx"))
+_FX_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../../test/fx")
+)
 if _FX_DIR not in sys.path:
     sys.path.insert(0, _FX_DIR)
 
@@ -144,9 +146,10 @@ def _test_profiler_stack_trace_augmentation(self):
 
     # Handle platform-specific event names
     if torch.version.hip:
-        actual_traces = '\n'.join(
-            line for line in actual_traces.split('\n')
-            if 'hipGetDeviceProperties' not in line
+        actual_traces = "\n".join(
+            line
+            for line in actual_traces.split("\n")
+            if "hipGetDeviceProperties" not in line
         )
         kernel_event = "hipExtModuleLaunchKernel"
         kernel_event_relu = "hipLaunchKernel"
@@ -230,12 +233,14 @@ def _test_profiler_multiple_modules(self):
 
     actual_traces = _enrich_profiler_traces(prof)
     kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
-    self.assertExpectedInline(actual_traces, f"""\
+    self.assertExpectedInline(
+        actual_traces,
+        f"""\
 event=aten::add node=add stack_trace=return x + 1
 event={kernel_event} node=add stack_trace=return x + 1
 event=aten::sub node=sub stack_trace=return x - 1
-event={kernel_event} node=sub stack_trace=return x - 1"""
-        )
+event={kernel_event} node=sub stack_trace=return x - 1""",
+    )
 
 
 @unittest.skipIf(not torch.xpu.is_available(), "XPU not available")
@@ -266,24 +271,30 @@ def _test_profiler_nested_graph_modules(self):
 
     # Warmup
     for _ in range(3):
-        _ = compiled_model(torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu"))
+        _ = compiled_model(
+            torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
+        )
 
     # Profile
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.XPU],
     ) as prof:
-        result = compiled_model(torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu"))
+        result = compiled_model(
+            torch.randn(10, 10, device="xpu"), torch.randn(10, 10, device="xpu")
+        )
 
     actual_traces = _enrich_profiler_traces(prof)
     kernel_event = "hipLaunchKernel" if torch.version.hip else "xpuLaunchKernel"
-    self.assertExpectedInline(actual_traces, f"""\
+    self.assertExpectedInline(
+        actual_traces,
+        f"""\
 event=aten::mul node=mul stack_trace=m = torch.mul(x, y)
 event={kernel_event} node=mul stack_trace=m = torch.mul(x, y)
 event=aten::sin node=sin stack_trace=s = m.sin()
 event={kernel_event} node=sin stack_trace=s = m.sin()
 event=aten::add node=add stack_trace=a = s + self.c
-event={kernel_event} node=add stack_trace=a = s + self.c"""
-        )
+event={kernel_event} node=add stack_trace=a = s + self.c""",
+    )
 
 
 TestFX.test_profiler_stack_trace_augmentation = _test_profiler_stack_trace_augmentation

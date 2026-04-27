@@ -54,9 +54,11 @@ from torch.testing._internal.common_dtype import (
 )
 from torch.testing._internal.common_utils import (
     do_test_empty_full,
+    IS_FBCODE,
     IS_JETSON,
     IS_MACOS,
     IS_PPC,
+    IS_SANDCASTLE,
     IS_WINDOWS,
     numpy_to_torch_dtype_dict,
     parametrize,
@@ -70,8 +72,6 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_ROCM,
     TestCase,
     torch_to_numpy_dtype_dict,
-    IS_FBCODE,
-    IS_SANDCASTLE,
 )
 from torch.utils.dlpack import to_dlpack
 
@@ -4500,9 +4500,7 @@ class TestRandomTensorCreation(TestCase):
             self.assertRaisesRegex(
                 RuntimeError,
                 regex,
-                lambda: torch.randperm(
-                    n, device="xpu", generator=cpu_gen, out=xpu_t
-                ),
+                lambda: torch.randperm(n, device="xpu", generator=cpu_gen, out=xpu_t),
             )
             cpu_t = torch.tensor(n, device="cpu")
             self.assertRaisesRegex(
@@ -4513,9 +4511,7 @@ class TestRandomTensorCreation(TestCase):
             self.assertRaisesRegex(
                 RuntimeError,
                 regex,
-                lambda: torch.randperm(
-                    n, device="cpu", generator=xpu_gen, out=cpu_t
-                ),
+                lambda: torch.randperm(n, device="cpu", generator=xpu_gen, out=cpu_t),
             )
             self.assertRaisesRegex(
                 RuntimeError,

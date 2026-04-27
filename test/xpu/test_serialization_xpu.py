@@ -9,12 +9,9 @@
 # Owner(s): ["module: intel"]
 
 import torch
-from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import (
-    run_tests,
-    TemporaryFileName,
-)
 from torch.serialization import safe_globals
+from torch.testing._internal.common_device_type import instantiate_device_type_tests
+from torch.testing._internal.common_utils import run_tests, TemporaryFileName
 
 try:
     from xpu_test_utils import XPUPatchForImport

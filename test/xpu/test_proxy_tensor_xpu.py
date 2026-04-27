@@ -29,6 +29,7 @@ with XPUPatchForImport(False):
 
 # --- TestGenericProxyTensor CUDA-only overrides ---
 
+
 def _amp_cache_xpu(self):
     layer = torch.nn.Conv2d(3, 3, 3).xpu()
 
@@ -76,6 +77,7 @@ del _cls
 
 
 # --- TestSymbolicTracing CUDA-only overrides ---
+
 
 def _cpu_scalar_cuda_xpu(self):
     # Extracted from wave2vec2. Despite the test name, the asserted graph
