@@ -33,6 +33,7 @@ This repository implements Torch XPU Operators for Intel GPU support.
 | Task | Skill file |
 |------|-----------|
 | Create a PR | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
+| Create an issue from a validated XPU bug or CI failure | `.github/skills/xpu-ops-issue-creation/SKILL.md` |
 | Review a PR | `.github/skills/xpu-ops-pr-review/SKILL.md` |
 
 Domain-specific coding rules:
