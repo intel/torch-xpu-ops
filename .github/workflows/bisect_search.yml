@@ -6,7 +6,7 @@ on:
       runner:
         required: true
         type: string
-        default: 'pvc_rolling'
+        default: 'bmg-test'
         description: Test node
       search_commits:
         required: true
@@ -65,7 +65,7 @@ jobs:
     needs: get_runner
     runs-on: ${{ needs.get_runner.outputs.runner_id }}
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: intelgpu/ubuntu-24.04-rolling:26.05
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
       options: --device=/dev/mem --device=/dev/dri --group-add video --privileged --shm-size=8g
@@ -76,7 +76,7 @@ jobs:
         SEARCH_CHECK: ${{ inputs.search_check }}
         SEARCH_CASE: ${{ inputs.search_case }}
         SEARCH_CRITERIA: ${{ inputs.search_criteria }}
-        TORCH_XPU_ARCH_LIST: pvc
+        TORCH_XPU_ARCH_LIST: bmg
         USE_XCCL: 0
         USE_KINETO: 0
     steps:
