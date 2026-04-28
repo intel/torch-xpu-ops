@@ -37,10 +37,19 @@ jobs:
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
           cd ./torch-xpu-ops
           bash .github/scripts/lintrunner.sh
+      - name: Checkout PyTorch (for headers)
+        uses: actions/checkout@v4
+        with:
+          repository: pytorch/pytorch
+          path: pytorch-headers
+          fetch-depth: 1
+          submodules: false
       - name: Run lint check with Clang
+        env:
+          PYTORCH_ROOT: ${{ github.workspace }}/pytorch-headers
         run: |
           cd ./torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
+          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT,CLANGTIDY --all-files"
           bash .github/scripts/lintrunner.sh
       - name: Check reproducer exists for AI-generated PR
         if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}

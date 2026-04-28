@@ -23,7 +23,6 @@
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/LossNLLKernel.h>
 
-#include <comm/SYCLContext.h>
 #include <comm/TensorInfo.h>
 
 namespace at::native::xpu {
