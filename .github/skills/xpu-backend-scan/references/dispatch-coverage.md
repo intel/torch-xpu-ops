@@ -4,7 +4,7 @@ How to determine whether XPU already has usable coverage for an operator.
 
 ## Priority Sources (torch-xpu-ops)
 
-Inspect in this order:
+Inspect in this order (this is lookup order, not coverage priority — see SKILL.md Step 3 for priority):
 1. `src/ATen/native/xpu/XPUFallback.template` — fallback list
 2. `yaml/native/native_functions.yaml` — backend dispatch keys
 3. `src/ATen/native/xpu/` — host-side glue
@@ -35,7 +35,7 @@ Consult when peer semantics or schema confirmation is needed:
 
 ## Key Interpretations
 
-**Fallback**: blocks Goal 3 (missing impl) but may support a defect finding (CPU fallback on a GPU op is a device-correctness risk).
+**Fallback**: blocks a "missing implementation" conclusion but may support a defect finding (CPU fallback on a GPU op is a device-correctness risk).
 
 **Structured delegate**: `structured_delegate: foo.out` means support is judged by `foo.out`, not the wrapper. Missing a hand-written XPU file for the wrapper is not evidence of missing support.
 
