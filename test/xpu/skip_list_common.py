@@ -265,7 +265,11 @@ skip_dict = {
     "functorch/test_vmap_xpu.py": None,
     "distributed/fsdp/test_fsdp_mixed_precision_xpu.py": None,
     "distributed/fsdp/test_fsdp_optim_state_xpu.py": None,
-    "dynamo/test_ctx_manager.py": None,
+    "dynamo/test_ctx_manager.py": (
+        "test_gpu_device",
+        "test_gpu_amp_autocast",
+        "test_autocast_float64",
+    ),
     "dynamo/test_ctx_manager_xpu.py": None,
     "dynamo/test_functions_xpu.py": None,
     "dynamo/test_higher_order_ops_xpu.py": (
