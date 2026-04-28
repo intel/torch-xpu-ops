@@ -1,10 +1,10 @@
 # Local XPU Validation Reference
 
 ## Goal
-Run a reproducer against a local XPU nightly build and determine whether the behavior is a real XPU backend bug.
+Take a reproducer derived from an upstream issue/PR/commit (CUDA, ROCm, or any backend) and run it on the **latest XPU torch nightly** to determine whether XPU shares the same bug.
 
 ## Environment setup
-If the nightly needs refreshing:
+Always use the latest XPU nightly before running reproducers:
 ```bash
 python -m pip install --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu
 ```

@@ -1,11 +1,11 @@
 ---
 name: pytorch-cuda-xpu-triage
-description: Mine recent upstream backend fixes in pytorch/pytorch that may expose XPU parity gaps, qualify candidates, and draft minimal local reproducers. Use when scanning for CUDA/XPU/backend-divergence issues to prepare for local validation.
+description: Scan pytorch/pytorch issues, PRs, and commits (CUDA, ROCm, or any backend) for bugs that may also affect XPU, generate reproducers, and validate on local XPU nightly. Use when triaging upstream backend fixes for XPU parity.
 ---
 
 # PyTorch Backend-Fix to XPU Triage
 
-Mine recent `pytorch/pytorch` backend-fix signals, qualify XPU-relevant candidates, and produce minimal reproducers.
+Scan `pytorch/pytorch` for issues, PRs, and commits across any backend (CUDA, ROCm, CPU, etc.), generate minimal reproducers, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
 
 Detailed reference:
 - [references/github-mcp-reference.md](references/github-mcp-reference.md) — search patterns and narrowing workflow
@@ -13,8 +13,8 @@ Detailed reference:
 
 ## Workflow
 
-### Step 1: Search upstream fixes
-- Search closed issues and merged PRs in `pytorch/pytorch` for backend-divergence signals (incorrect results, device-specific crashes, dtype/stride/empty-tensor edge cases, etc.).
+### Step 1: Search upstream signals
+- Search closed issues, merged PRs, and recent commits in `pytorch/pytorch` for backend bug-fix signals. Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
 - Default time window: most recent 1 day; widen to 7 days only if no strong candidate found.
 - Pivot from issue → PR → commit to extract the minimal bug pattern.
 
@@ -38,10 +38,12 @@ For rejected candidates, state the reason briefly and move on. If all candidates
 For each qualified candidate, produce:
 1. **Summary** — operator, bug family, why XPU might share the defect
 2. **Evidence** — issue/PR links, commit SHA, impacted files
-3. **Reproducer** — standalone Python script targeting `torch.xpu`, comparing against CPU
+3. **Reproducer** — standalone Python script that runs on `torch.xpu` and compares against CPU reference
 4. **Validation plan** — exact run command, expected outcome, what to capture
 
-### Step 4: Local validation handoff
+### Step 4: Run on local XPU nightly
+- Ensure the latest XPU torch nightly is installed (`pip install --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu`).
+- Run each reproducer script locally on XPU hardware.
 - Keep scripts minimal and deterministic (one op family, seeded randomness, CPU vs XPU comparison).
 - Print `torch.__version__` and `torch.xpu.is_available()` at the top.
 - If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
