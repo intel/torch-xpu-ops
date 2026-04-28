@@ -84,9 +84,7 @@ jobs:
 
   conditions-filter-win:
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
-      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
-      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -198,15 +196,30 @@ jobs:
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
       torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
 
-  windows:
-    name: windows
-    needs: [conditions-filter-win, preci-lint-check]
+  windows-build:
+    name: windows-build
+    needs: [preci-lint-check]
+    if: >-
+      ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+    secrets: inherit
+    uses: ./.github/workflows/_windows_build.yml
+    with:
+      build_runner: Windows_CI_Build
+      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+
+  windows-ut:
+    name: windows-ut
+    needs: [windows-build, conditions-filter-win]
+    if: >-
+      ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all')
+      && !contains(github.event.pull_request.labels.*.name, 'disable_win')
+      && (contains(github.event.pull_request.labels.*.name, 'windows_ci')
+      || (!contains(github.event.pull_request.labels.*.name, 'disable_ut')
+      && needs.conditions-filter-win.outputs.src_changed == 'true')) }}
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
       ut: op_extended,test_xpu
       runner: Windows_CI
-      build_runner: Windows_CI_Build
-      src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
-      has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
