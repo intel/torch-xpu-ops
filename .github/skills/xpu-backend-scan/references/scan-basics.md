@@ -16,12 +16,10 @@ This reference condenses the default scan-time material for the
 
 Before issuing any verdict, keep the target at four layers:
 
-| Layer | Meaning |
-|---|---|
-| op | Base operator family such as `addmm` |
-| variant or overload | Specific schema such as `addmm.out`, `addmm_`, or `addmm.Scalar` |
-| dtype | fp32, bf16, half, complex, and so on |
-| dispatch | Runtime path such as CUDA, XPU, CompositeImplicitAutograd |
+- `op`: base operator family such as `addmm`
+- `variant or overload`: specific schema such as `addmm.out`, `addmm_`, or `addmm.Scalar`
+- `dtype`: fp32, bf16, half, complex, and so on
+- `dispatch`: runtime path such as CUDA, XPU, or `CompositeImplicitAutograd`
 
 Do not compare by filename alone.
 

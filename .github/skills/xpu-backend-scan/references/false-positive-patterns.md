@@ -10,20 +10,54 @@ a concrete missing runtime path, treat it as a downgrade candidate first.
 
 ## Common False-Positive Families
 
-| Pattern | Why It Is Weak | Verify Instead | Typical Outcome |
-|---|---|---|---|
-| No dedicated XPU kernel file | Support may come from structured, shared, or generic paths | backend YAML, delegate, composite, decomp, shared helper | `LIKELY_OK` or reroute |
-| XPU kernel is shorter than CUDA | Conciseness is not a semantic defect | helper definitions, wrapper behavior, validation sites | `LIKELY_OK` |
-| oneDNN or oneMKL vs cuDNN or cuBLAS | Vendor library choice is not itself a parity bug | user-visible behavior and validation | `LIKELY_OK` |
-| Helper call sites differ | call-site-only review often misses helper equivalence | actual helper definitions | downgrade or stop |
-| Structured wrapper lacks local registration | wrapper may inherit delegate coverage | `structured_delegate` target and generated path | `LIKELY_OK` |
-| Missing backend-local backward symbol | generic autograd or wrapper formula may already cover it | `derivatives.yaml`, shared helper, decomposition | `LIKELY_OK` |
-| Skip or xfail is the main evidence | test metadata is only supporting evidence | runtime coverage and source-backed behavior | `NEEDS_HUMAN_REVIEW` or `LIKELY_OK` |
-| Missing XPU-specific test | absence of a test is not absence of support | actual registration and implementation | `LIKELY_OK` |
-| CUDA entry exists in YAML | CUDA presence alone does not prove missing XPU support | fallback, composite, delegate, decomp, backend YAML | reroute or downgrade |
-| Fallback counted as missing implementation | fallback is runtime coverage, not Goal 3 absence | whether fallback itself is a Goal 1 problem | reroute to Goal 1 |
-| Historical detail says missing support | old text may contradict current facts | current source-backed dispatch and implementation | downgrade stale record |
-| Waived NVIDIA-specific op looks unsupported on XPU | justified exclusions are not bugs | waiver categories and examples | `WAIVED` |
+- No dedicated XPU kernel file:
+  Support may come from structured, shared, or generic paths.
+  Verify instead: backend YAML, delegate, composite, decomp, or shared helper coverage.
+  Typical outcome: `LIKELY_OK` or reroute.
+- XPU kernel is shorter than CUDA:
+  Conciseness is not a semantic defect.
+  Verify instead: helper definitions, wrapper behavior, and validation sites.
+  Typical outcome: `LIKELY_OK`.
+- oneDNN or oneMKL vs cuDNN or cuBLAS:
+  Vendor library choice is not itself a parity bug.
+  Verify instead: user-visible behavior and validation.
+  Typical outcome: `LIKELY_OK`.
+- Helper call sites differ:
+  Call-site-only review often misses helper equivalence.
+  Verify instead: actual helper definitions.
+  Typical outcome: downgrade or stop.
+- Structured wrapper lacks local registration:
+  The wrapper may inherit delegate coverage.
+  Verify instead: the `structured_delegate` target and generated path.
+  Typical outcome: `LIKELY_OK`.
+- Missing backend-local backward symbol:
+  Generic autograd or a wrapper formula may already cover it.
+  Verify instead: `derivatives.yaml`, shared helpers, and decomposition coverage.
+  Typical outcome: `LIKELY_OK`.
+- Skip or xfail is the main evidence:
+  Test metadata is only supporting evidence.
+  Verify instead: runtime coverage and source-backed behavior.
+  Typical outcome: `NEEDS_HUMAN_REVIEW` or `LIKELY_OK`.
+- Missing XPU-specific test:
+  Absence of a test is not absence of support.
+  Verify instead: actual registration and implementation.
+  Typical outcome: `LIKELY_OK`.
+- CUDA entry exists in YAML:
+  CUDA presence alone does not prove missing XPU support.
+  Verify instead: fallback, composite, delegate, decomp, and backend YAML.
+  Typical outcome: reroute or downgrade.
+- Fallback counted as missing implementation:
+  Fallback is runtime coverage, not Goal 3 absence.
+  Verify instead: whether fallback itself is a Goal 1 problem.
+  Typical outcome: reroute to Goal 1.
+- Historical detail says missing support:
+  Old text may contradict current facts.
+  Verify instead: current source-backed dispatch and implementation.
+  Typical outcome: downgrade stale record.
+- Waived NVIDIA-specific op looks unsupported on XPU:
+  Justified exclusions are not bugs.
+  Verify instead: waiver categories and examples.
+  Typical outcome: `WAIVED`.
 
 ## How To Restate Weak Claims Correctly
 

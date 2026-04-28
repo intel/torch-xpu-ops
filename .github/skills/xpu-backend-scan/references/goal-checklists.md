@@ -13,7 +13,7 @@ Goal 3 without expanding the main skill text.
 - Check fallback, composite, decomp, structured delegate, and shared-path
   coverage before claiming a gap.
 - Separate runtime coverage evidence from auxiliary metadata such as
-  `xpu_functions.yaml` or test annotations.
+   `yaml/xpu_functions.yaml` or test annotations.
 - If the op is a wrapper, identify the real implementation target before
   deciding anything.
 
