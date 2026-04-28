@@ -1,68 +1,36 @@
-# Local XPU validation reference
+# Local XPU Validation Reference
 
 ## Goal
-Run a generated reproducer against a local torch nightly with XPU enabled and
-decide whether the behavior is a real XPU backend bug.
+Run a reproducer against a local XPU nightly build and determine whether the behavior is a real XPU backend bug.
 
-## Environment assumptions
-- Do not auto-detect Python inside this skill.
-- If the correct interpreter is unclear, ask the user which Python environment contains `torch.xpu`.
-- If the nightly build needs to be refreshed, ask the user to run the install command with the same interpreter they will use for the repro:
-
+## Environment setup
+If the nightly needs refreshing:
 ```bash
-python -m pip install --pre torch torchvision torchaudio --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu
+python -m pip install --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu
 ```
+Use a dedicated virtualenv/conda env. Add `torchvision`/`torchaudio` only if the repro needs them.
 
-Prefer doing this in a dedicated virtualenv or conda environment because `--force-reinstall` will overwrite the existing torch installation in that environment. If the repro only depends on `torch`, omit `torchvision` and `torchaudio`.
+If the correct interpreter is unclear, ask the user.
 
-## Minimal repro script checklist
-- imports only what is necessary
-- prints environment metadata
-- checks whether torch.xpu exists and is available
-- creates the smallest tensors that still hit the edge case
-- compares CPU and XPU behavior when possible
-- prints mismatch details, exception type, and message
+## Repro script requirements
+- Print environment metadata (`torch.__version__`, `torch.xpu.is_available()`)
+- Use the smallest tensors that hit the edge case
+- Compare CPU vs XPU output
+- Print mismatch details or exception info
 
-## Suggested environment print block
-```python
-import platform
-import sys
-import torch
+## Confirmed bug criteria
+One of the following on XPU, when CPU semantics disagree:
+- Crash or internal error
+- Wrong numerical result
+- Wrong shape/stride/dtype behavior
+- Unsupported-path error for an operator that should work
+- Backward mismatch where forward is expected to work
 
-print({
-    "python": sys.version,
-    "platform": platform.platform(),
-    "torch": torch.__version__,
-    "git_version": getattr(torch.version, "git_version", None),
-    "xpu_available": hasattr(torch, "xpu") and torch.xpu.is_available(),
-})
-```
+**Not** a bug by itself: tiny float noise, documented unsupported paths, or failures from an invalid repro.
 
-## Suggested run command
-```bash
-python repro.py
-```
-
-If the user relies on a non-default interpreter, replace `python` in both commands with the exact interpreter path or environment-specific launcher, and replace `repro.py` with the actual script path.
-
-## What counts as a confirmed bug
-One of the following on XPU, when CPU and current PyTorch semantics indicate otherwise:
-- crash or internal error
-- wrong numerical result
-- wrong shape, stride-sensitive behavior, or dtype behavior
-- unexpected unsupported-path error for an operator/path that should be supported
-- backward mismatch where forward is expected to work
-
-## What does not count by itself
-- tiny floating-point noise without semantic consequence
-- unsupported behavior that is clearly documented or already tracked
-- failures caused by an invalid repro unrelated to the upstream CUDA fix
-
-## Before filing the issue
-Capture:
-- exact command used and its output
-- collect_env output from the installed PyTorch package: `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
-- full exception text or mismatch summary
-- minimal repro script
-- upstream issue, PR, and commit links
-- any quick reduction that narrows the issue to one op family
+## Evidence to capture before filing
+- Exact command and output
+- `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
+- Full exception text or mismatch summary
+- Minimal repro script
+- Upstream issue/PR/commit links

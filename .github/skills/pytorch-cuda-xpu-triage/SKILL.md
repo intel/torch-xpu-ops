@@ -1,147 +1,52 @@
 ---
 name: pytorch-cuda-xpu-triage
-description: Find recent upstream backend fixes that may expose XPU gaps and draft local repro steps. Use when an agent is asked to scan pytorch/pytorch for CUDA, XPU, or backend-divergence issues and prepare candidates for local validation.
-license: Apache-2.0
-compatibility: Designed for agent skills under .github/skills. Works best when GitHub issue, PR, commit, and code search tools are available; local validation can be done either by an agent with shell access or by a human using the returned commands.
-metadata:
-  workflow: agent-to-local-xpu
-  audience: backend-triage
-  version: "1.1"
+description: Mine recent upstream backend fixes in pytorch/pytorch that may expose XPU parity gaps, qualify candidates, and draft minimal local reproducers. Use when scanning for CUDA/XPU/backend-divergence issues to prepare for local validation.
 ---
 
-# PyTorch CUDA/XPU Triage
+# PyTorch Backend-Fix to XPU Triage
 
-This skill is intended for agent runtimes that load skills from `.github/skills`. Keep it text-first: store durable guidance in `SKILL.md` and `references/`, and do not depend on repo-local helper scripts.
+Mine recent `pytorch/pytorch` backend-fix signals, qualify XPU-relevant candidates, and produce minimal reproducers.
 
-## What I do
-- Search `pytorch/pytorch` issues, pull requests, and commits for backend-divergence bug-fix signals.
-- Pivot from issue to PR to commit and extract the minimal bug pattern.
-- Rank candidates by likelihood of backend divergence affecting XPU.
-- Produce concise repro plans and minimal Python reproducers for every qualified candidate, not just the top one.
-- Stop before filing anything unless local XPU execution confirms a bug.
+Detailed reference:
+- [references/github-mcp-reference.md](references/github-mcp-reference.md) — search patterns and narrowing workflow
+- [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) — environment, run commands, confirmation criteria
 
-## Required tools and context
-- Use the GitHub search, issue, PR, commit, and file-reading tools available in the current agent environment.
-- If those GitHub tools are unavailable, stop and report the blocker.
-- Do not assume a custom local integration, machine-specific setup, or helper scripts.
-- Only move to local validation after candidates are selected.
-- If shell access is unavailable, return exact commands for the user to run locally and say what evidence to paste back.
+## Workflow
 
-See [references/github-mcp-reference.md](references/github-mcp-reference.md) for query patterns.
-See [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) for local run commands and confirmation criteria.
+### Step 1: Search upstream fixes
+- Search closed issues and merged PRs in `pytorch/pytorch` for backend-divergence signals (incorrect results, device-specific crashes, dtype/stride/empty-tensor edge cases, etc.).
+- Default time window: most recent 1 day; widen to 7 days only if no strong candidate found.
+- Pivot from issue → PR → commit to extract the minimal bug pattern.
 
-## Search strategy
-Start with read-only GitHub scanning in `pytorch/pytorch`. Default to the most recent 1 day. If that yields no strong candidate, widen once to the most recent 7 days. Do not widen further unless the user explicitly asks.
+### Step 2: Qualify candidates
+For each candidate, classify as **qualified** or **rejected**.
 
-Look for closed issues and merged PRs that include terms such as:
-- incorrect result on cuda
-- incorrect result on xpu
-- incorrect result on accelerator
-- device divergence
-- non-contiguous
-- dtype promotion
-- empty tensor
-- scalar tensor
-- reduction mismatch
-- advanced indexing
-- masked scatter
-- NaN or inf mismatch
-- autograd incorrect
+Prefer candidates where:
+- The PR adds or modifies regression tests
+- The change touches `ATen/native` kernels, dispatch logic, or shared validation code
+- The bug involves edge-case semantics with a narrow trigger and clear signal
+- The fix lives in code paths likely inherited by XPU
 
-Also search for merged PRs containing phrases like:
-- fix cuda
-- add cuda test
-- add xpu test
-- add accelerator test
-- device-specific bug
-- non contiguous
-- zero size
-- empty tensor
-- incorrect on cuda
-- incorrect on xpu
-- crash on cuda
-- crash on xpu
+Reject when:
+- The change is infra-only, compiler-only, build/packaging/CI-only
+- Performance-only tuning with no regression signal or reproducer shape
+- The fix does not expose a plausible XPU parity gap
 
-## Candidate ranking rubric
-Prefer candidates that satisfy more of the following:
-- The PR added or modified regression tests or benchmark coverage.
-- The change touched `ATen/native` kernels, device checks, dispatch logic, or test expectations.
-- The bug involves edge-case semantics or a backend-specific performance regression with a narrow trigger and clear signal.
-- The issue or PR shows CPU correctness but CUDA divergence.
-- The operator is implemented on multiple accelerators where semantic drift is plausible.
-- The candidate preserves the user's edge condition or failure shape even if the exact operator name is different.
-- The fix lives in shared frontend validation, composite fallback, common `ATen/native` code, or other code paths likely inherited by XPU.
+For rejected candidates, state the reason briefly and move on. If all candidates are rejected, report that outcome.
 
-Lower priority when dominated by:
-- NVIDIA library integration specifics without semantic implications.
-- CUDA graph, Triton, or compiler-only infrastructure.
-- Build-system, packaging, or CI-only failures.
-- Broad performance-only tuning with no clear regression signal, reproducer shape, or backend divergence evidence.
+### Step 3: Draft reproducers
+For each qualified candidate, produce:
+1. **Summary** — operator, bug family, why XPU might share the defect
+2. **Evidence** — issue/PR links, commit SHA, impacted files
+3. **Reproducer** — standalone Python script targeting `torch.xpu`, comparing against CPU
+4. **Validation plan** — exact run command, expected outcome, what to capture
 
-The candidate does not need to be CUDA-only. A strong fix can be motivated by CUDA, XPU, or another backend, as long as it exposes a backend semantic mismatch, validation gap, or backend-specific regression that XPU might share.
-
-## Qualification gate
-Before writing any reproducer, explicitly classify each candidate as either:
-- qualified for repro generation
-- rejected without repro
-
-Do not require exact operator-name equality with the user's focus unless the user explicitly requested exact matching. A candidate can still qualify when it shares the same edge condition, semantic failure mode, or backend-divergence family.
-
-Reject without repro when the available issue, PR, test, or diff information already shows one of the following:
-- the change is obviously infra-only or compiler-only
-- the change is packaging, CI, build, or tooling only
-- the change is performance-only and the report provides no backend-specific regression signal, reproducer shape, or realistic validation path
-- the fix is so old and generalized that the current backend stack very likely already inherited it
-- the test or patch does not expose a plausible XPU parity gap
-
-If a candidate is rejected, say why and move to the next candidate inside the active time window. If every candidate in the active time window is rejected, stop and report that outcome instead of forcing a reproducer.
-
-## Output format
-For each qualified candidate, provide:
-1. Candidate summary
-- operator or API surface
-- bug family
-- why XPU might share the defect
-- why it matches the user's requested bug family or edge condition, even if the operator differs
-2. GitHub evidence
-- issue link and number
-- PR link and number
-- commit SHA
-- impacted test or source file paths
-3. Reproducer hypothesis
-- minimal tensor shapes
-- dtype and layout constraints
-- device placement
-- expected vs suspected actual behavior
-4. Reproducer plan
-- standalone Python script targeting `torch.xpu` when available
-- CPU fallback comparison when useful
-- any setup command the user must run first
-5. Validation plan
-- exact command to run locally
-- what outcome counts as reproduced
-- what logs or exception text to capture
-
-Preserve the full ordered candidate list for the active window. Do not collapse the run to a single winner when multiple candidates remain qualified.
-
-For a rejected candidate, provide instead:
-1. Candidate summary
-2. GitHub evidence
-3. Explicit rejection reason
-4. Why no reproducer should be attempted
-
-## Local validation handoff
-Keep reproducers minimal and deterministic.
-- Prefer a single operator family per script.
-- Set seeds when randomness exists.
-- Compare CPU and XPU outputs when possible.
-- Exercise the exact edge condition inferred from the upstream fix.
-- Print environment info at the top: `torch.__version__`, `torch.version.git_version` if present, and `torch.xpu.is_available()` if present.
-- If you cannot run locally, return copy-paste commands and say what evidence the user should paste back.
+### Step 4: Local validation handoff
+- Keep scripts minimal and deterministic (one op family, seeded randomness, CPU vs XPU comparison).
+- Print `torch.__version__` and `torch.xpu.is_available()` at the top.
+- If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
 
 ## Guardrails
-- Do not file an XPU issue from this skill.
-- Do not claim a bug is present on XPU until a local run shows a mismatch, crash, or unsupported behavior that should be supported.
-- If the upstream fix is ambiguous, say so and produce a weaker candidate note instead of overstating confidence.
-- Do not generate a reproducer for a candidate you can already reject from the available evidence.
-- Do not overfit to literal focus words when a nearby bug-family match is clearly stronger for XPU parity triage.
+- Do not file issues from this skill.
+- Do not claim a bug exists on XPU until a local run confirms it.
+- Do not force a reproducer when evidence already shows rejection is appropriate.
