@@ -86,4 +86,3 @@ body:
         - [ ] PR creation
     validations:
       required: false
-
