@@ -574,8 +574,7 @@ void cat_out_kernel(
   // Path 1: all contiguous → use V1 implementation (fast on all GPUs)
   if (materialized.size() > 1 && result.dim() <= CAT_ARRAY_MAX_INPUT_DIMS_V1 &&
       canUse32BitIndexMath(result) && all_contiguous && all32BitIndexable &&
-      all_same_dtype &&
-      memory_format == c10::MemoryFormat::Contiguous &&
+      all_same_dtype && memory_format == c10::MemoryFormat::Contiguous &&
       (materialized[valid].get().scalar_type() == result.scalar_type())) {
     if (isBitsType(result.scalar_type())) {
       AT_DISPATCH_BIT_TYPES(result.scalar_type(), "cat_xpu", [&]() {
@@ -601,7 +600,8 @@ void cat_out_kernel(
           kFloat4_e2m1fn_x2);
     }
   }
-  // Path 2a: ChannelsLast + all_contiguous → V2 with stride_size=1 (same as V2 original Path 1)
+  // Path 2a: ChannelsLast + all_contiguous → V2 with stride_size=1 (same as V2
+  // original Path 1)
   else if (
       materialized.size() > 1 && result.dim() <= CAT_ARRAY_MAX_INPUT_DIMS &&
       canUse32BitIndexMath(result) && all_contiguous && all32BitIndexable &&
