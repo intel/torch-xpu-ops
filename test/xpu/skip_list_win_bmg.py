@@ -44,4 +44,9 @@ skip_dict = {
         "test_MaxUnpool_index_errors_case7_xpu",
         "test_MaxUnpool_index_errors_case9_xpu",
     ),
+    # https://github.com/intel/torch-xpu-ops/issues/2660
+    # out of memory issue
+    "test_tensor_creation_ops_xpu.py": (
+        "test_zeros_large_xpu_complex128",
+    ),
 }
