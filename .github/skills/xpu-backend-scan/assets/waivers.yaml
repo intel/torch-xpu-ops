@@ -1,0 +1,40 @@
+# Waiver whitelist for ops that should not be flagged as XPU bugs.
+# Format: category -> list of op name patterns using fnmatch-style matching.
+
+cuda_infra:
+  - "_cudnn_*"
+  - "cudnn_*"
+  - "_use_cudnn_*"
+  - "*cudnn*"
+  - "_cufft_*"
+  - "_cusolver_*"
+  - "_cublas_*"
+  - "_cusparse_*"
+  - "nccl_*"
+  - "_nccl_*"
+  - "_cuda_*"
+  - "cuda_*"
+  - "_fused_dropout"
+  - "_fused_moving_avg_obs_fq_helper"
+
+hardware_specific:
+  - "_scaled_grouped_mm"
+  - "_scaled_grouped_mm_v2"
+  - "_scaled_mm"
+  - "*fp8*"
+  - "_float8_e*"
+
+documented_unsupported:
+  - "_flash_attention_*"
+  - "_efficient_attention_*"
+  - "_scaled_dot_product_flash_attention*"
+  - "_scaled_dot_product_efficient_attention*"
+
+backend_specific:
+  - "_cslt_*"
+  - "_sparse_semi_structured_*"
+  - "_to_sparse_semi_structured"
+  - "_mixed_dtypes_linear"
+  - "_triton_*"
+  - "miopen_*"
+  - "_use_miopen_*"
