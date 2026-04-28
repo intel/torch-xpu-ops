@@ -18,8 +18,6 @@
 # We need this to be able to properly copy from a CPU to an XLA tensor with different sizes.
 # See https://github.com/pytorch/xla/issues/2881
 - func: _copy_from_and_resize(Tensor self, Tensor dst) -> Tensor
-  dispatch:
-    MPS: _copy_from_and_resize_mps
   autogen: _copy_from_and_resize.out
 
 # Return: (Tensor output, Tensor indices)
@@ -894,8 +892,6 @@
   device_check: NoCheck   # TensorIterator
   variants: function
   structured_delegate: threshold.out
-  dispatch:
-    QuantizedCPU: threshold_quantized_cpu
 
 - func: threshold_(Tensor(a!) self, Scalar threshold, Scalar value) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -1953,8 +1949,6 @@
   device_check: NoCheck   # TensorIterator
   structured_delegate: min.dim_min
   variants: function, method
-  dispatch:
-    QuantizedCPU, QuantizedCUDA: qmin
   tags: core
 
 - func: min.dim_min(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) min, Tensor(b!) min_indices) -> (Tensor(a!) values, Tensor(b!) indices)
@@ -3715,7 +3709,6 @@
   python_module: nn
   dispatch:
     XPU: hardtanh_backward_out
-    MPS: hardtanh_backward_out_mps
 
 - func: hardtanh_backward(Tensor grad_output, Tensor self, Scalar min_val, Scalar max_val) -> Tensor
   python_module: nn
@@ -4186,14 +4179,10 @@
 - func: upsample_nearest3d(Tensor self, SymInt[3] output_size, float? scales_d=None, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: upsample_nearest3d.out
-  dispatch:
-    QuantizedCPU: upsample_nearest3d_quantized_cpu
 
 - func: _upsample_nearest_exact3d(Tensor self, SymInt[3] output_size, float? scales_d=None, float? scales_h=None, float? scales_w=None) -> Tensor
   python_module: nn
   structured_delegate: _upsample_nearest_exact3d.out
-  dispatch:
-    QuantizedCPU: _upsample_nearest_exact3d_quantized_cpu
 
 - func: upsample_nearest3d_backward.grad_input(Tensor grad_output, SymInt[3] output_size, SymInt[5] input_size, float? scales_d=None, float? scales_h=None, float? scales_w=None, *, Tensor(a!) grad_input) -> Tensor(a!)
   python_module: nn
@@ -4402,8 +4391,6 @@
   structured_delegate: hardsigmoid.out
   device_check: NoCheck   # TensorIterator
   python_module: nn
-  dispatch:
-    QuantizedCPU: hardsigmoid_quantized_cpu
 
 - func: hardsigmoid_(Tensor(a!) self) -> Tensor(a!)
   structured_delegate: hardsigmoid.out
@@ -4522,9 +4509,6 @@
 - func: avg_pool2d(Tensor self, int[2] kernel_size, int[2] stride=[], int[2] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None) -> Tensor
   python_module: nn
   structured_delegate: avg_pool2d.out
-  dispatch:
-    MkldnnCPU: mkldnn_avg_pool2d
-    QuantizedCPU: avg_pool2d_quantized_cpu
   tags: core
 
 - func: avg_pool2d_backward.grad_input(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] stride, int[2] padding, bool ceil_mode, bool count_include_pad, int? divisor_override, *, Tensor(a!) grad_input) -> Tensor(a!)
@@ -4543,14 +4527,10 @@
   structured: True
   dispatch:
     XPU: avg_pool3d_out_xpu
-    MkldnnCPU: mkldnn_avg_pool3d_out
 
 - func: avg_pool3d(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, bool ceil_mode=False, bool count_include_pad=True, int? divisor_override=None) -> Tensor
   python_module: nn
   structured_delegate: avg_pool3d.out
-  dispatch:
-    MkldnnCPU: mkldnn_avg_pool3d
-    QuantizedCPU: avg_pool3d_quantized_cpu
   tags: core
 
 - func: avg_pool3d_backward.grad_input(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, bool ceil_mode, bool count_include_pad, int? divisor_override, *, Tensor(a!) grad_input) -> Tensor(a!)
@@ -4558,13 +4538,10 @@
   structured: True
   dispatch:
     XPU: avg_pool3d_backward_out_xpu
-    MkldnnCPU: mkldnn_avg_pool3d_backward_out
 
 - func: avg_pool3d_backward(Tensor grad_output, Tensor self, int[3] kernel_size, int[3] stride, int[3] padding, bool ceil_mode, bool count_include_pad, int? divisor_override) -> Tensor
   python_module: nn
   structured_delegate: avg_pool3d_backward.grad_input
-  dispatch:
-    MkldnnCPU: mkldnn_avg_pool3d_backward
 
 - func: mse_loss.out(Tensor self, Tensor target, int reduction=Mean, *, Tensor(a!) out) -> Tensor(a!)
   device_check: NoCheck   # TensorIterator
@@ -4765,7 +4742,6 @@
   python_module: nn
   dispatch:
     XPU: adaptive_avg_pool3d_out_xpu
-    QuantizedCPU: adaptive_avg_pool3d_out_quantized_cpu
 
 - func: adaptive_avg_pool3d(Tensor self, SymInt[3] output_size) -> Tensor
   python_module: nn
@@ -4775,7 +4751,6 @@
 - func: _adaptive_avg_pool3d(Tensor self, SymInt[3] output_size) -> Tensor
   dispatch:
     XPU: adaptive_avg_pool3d_xpu
-    QuantizedCPU: adaptive_avg_pool3d_quantized_cpu
   autogen: _adaptive_avg_pool3d.out
   tags: core
 
@@ -7197,7 +7172,6 @@
   variants: method  # This is method-only to match the previous tensor API. In the future we could make this a function too.
   dispatch:
     CompositeExplicitAutograd: repeat
-    MPS: repeat_mps
   autogen: repeat.out
   tags: core
 
