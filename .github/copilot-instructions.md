@@ -35,6 +35,12 @@ memory. The contents of these files are authoritative.
 |--------------------------|---------------------|
 | Open a pull request, push a branch, or write a PR body | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
 | Review a pull request | `.github/skills/xpu-ops-pr-review/SKILL.md` |
+| Implement a new XPU kernel or operator | `.github/skills/xpu-kernel-implementation/SKILL.md` |
+| Port a CUDA kernel to SYCL/XPU | `.github/skills/xpu-cuda-to-sycl-porting/SKILL.md` |
+| Debug or investigate an XPU bug | `.github/skills/xpu-bug-investigation/SKILL.md` |
+| Register operators in YAML files | `.github/skills/xpu-yaml-registration/SKILL.md` |
+| Add or remove test skip list entries | `.github/skills/xpu-skip-list-management/SKILL.md` |
+| Implement a fallback op natively | `.github/skills/xpu-fallback-reduction/SKILL.md` |
 
 Path-specific coding rules are auto-loaded by the agent based on the files you
 edit (via `applyTo` globs), so you do not need to read them manually:
