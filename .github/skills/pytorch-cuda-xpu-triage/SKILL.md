@@ -16,7 +16,7 @@ Detailed reference:
 ### Step 1: Search upstream signals
 - Search issues, PRs, and commits in `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
 - Default time window: most recent 1 day; widen to 7 days only if no strong candidate found.
-- Pivot from issue → PR → commit to extract the minimal bug pattern.
+- Follow links between issues, PRs, and commits to narrow down the exact bug trigger (operator, shape, dtype, edge case).
 
 ### Step 2: Qualify candidates
 For each candidate, classify as **qualified** or **rejected**.
