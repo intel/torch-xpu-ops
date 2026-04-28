@@ -263,4 +263,5 @@ skip_dict = {
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "functorch/test_memory_efficient_fusion_xpu.py": None,
 }
