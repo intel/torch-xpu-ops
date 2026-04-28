@@ -18,12 +18,12 @@ except Exception as e:
     from .xpu_test_utils import XPUPatchForImport
 with XPUPatchForImport(False):
     from test_ops import (
+        fake_autocast_device_skips,
         TestCommon,
         TestCompositeCompliance,
         TestFakeTensor,
         TestForwardADWithScalars,
         TestMathBits,
-        fake_autocast_device_skips,
     )
 
 fake_autocast_device_skips["xpu"] = {"linalg.pinv", "pinverse"}
