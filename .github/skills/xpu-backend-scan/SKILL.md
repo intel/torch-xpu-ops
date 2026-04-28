@@ -25,20 +25,19 @@ If the op belongs to a known non-actionable category (NVIDIA-specific infra like
 
 ### Step 3: Determine existing XPU coverage
 
-Check these in priority order (higher overrides lower):
-1. `XPUFallback.template` — runtime coverage exists (blocks "missing impl" conclusion)
+Check in this order; if any source confirms coverage, do not conclude "missing implementation":
+1. `XPUFallback.template` — explicit `fallback_list` entries always route to CPU; global backend fallback is gated by `PYTORCH_ENABLE_XPU_FALLBACK` (default errors). Either form blocks a "missing impl" conclusion, but CPU fallback on a GPU op may still be a defect.
 2. Backend YAML with explicit XPU dispatch keys
 3. Structured delegate or codegen path resolving to XPU
 4. Source-backed registration (`TORCH_IMPL_FUNC`, landed implementation)
 5. Composite (`CompositeImplicitAutograd`/`CompositeExplicitAutograd`) or decomposition
-
-If any of these provides coverage, do not conclude "missing implementation."
 
 ### Step 4: Classify the finding
 
 - **XPU defect** — intrinsic problem in XPU code (broken dispatch, silent CPU fallback, missing validation, backward gap, race condition)
 - **Parity gap** — both CUDA and XPU have coverage, but user-visible contract differs (input space, parameter semantics, dtype support, backward behavior, error paths)
 - **Missing implementation** — CUDA has usable support, XPU has no callable path after all exclusions checked
+- **Waived** — op belongs to a known non-actionable category identified in Step 2
 - **OK** — coverage exists via any valid path; differences are stylistic or optimization-only
 - **Needs review** — mixed evidence, cannot conclude without runtime validation
 
