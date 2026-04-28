@@ -19,7 +19,7 @@ Pin the exact schema/overload from `yaml/native/native_functions.yaml`. Do not c
 
 ### Step 2: Check waivers
 
-Consult `assets/waivers.yaml`. If the op matches a waived category (NVIDIA-specific infra, hardware-only features, documented unsupported families), stop with `WAIVED`.
+If the op belongs to a known non-actionable category (NVIDIA-specific infra like cuDNN/cuBLAS/NCCL, hardware-only features like FP8/Tensor Core, documented unsupported families like flash/efficient attention, or vendor-specific backends like Triton/MIOpen), stop — it is not an XPU bug.
 
 ### Step 3: Determine existing XPU coverage
 
