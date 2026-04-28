@@ -80,10 +80,11 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
   - one-line summary of what the upstream change did
 - `### Failure details`:
   - `Failure type`: `new test added`, `existing test broken`, `test expectation changed`, `build break`, or another short classifier
+  - Fill only the CI or manual subsection that matches `Failure source`
   - For CI UT failures: CI job link, failing test, rerun command, and the relevant log excerpt
   - For manual validation: minimal runnable Python reproducer and observed output
 - `### Versions`:
-  - Manual validation: collect_env output wrapped in `<details><summary>Collected with python -m torch.utils.collect_env</summary>` plus a fenced `text` block
+  - Manual validation: collect_env output wrapped in `<details><summary>Collected with python -W ignore::RuntimeWarning -m torch.utils.collect_env</summary>` plus a fenced `text` block
   - CI UT failure: job link is sufficient by default; add collect_env only when you have local confirmation and it adds value
 - `Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]`
   - use the active model string

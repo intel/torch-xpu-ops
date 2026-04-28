@@ -18,6 +18,8 @@ Affected op/module: [e.g. `aten::native_batch_norm`]
 
 Failure type: [new test added / existing test broken / test expectation changed / build break / wrong result]
 
+Fill only the subsection that matches Failure source.
+
 For CI UT failure:
 - CI job link: [URL]
 - Failing test: [e.g. `test/test_ops.py::TestCommonXPU::test_foo_xpu_float32`]
@@ -46,7 +48,7 @@ Observed output:
 Additional context:
 
 - Date: [YYYY-MM-DD]
-- Build: [torch build/channel]
+- Build: [torch build/channel or CI build identifier]
 - Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]
 
 ### Versions
@@ -54,7 +56,7 @@ Additional context:
 For manual validation:
 
 <details>
-<summary>Collected with python -m torch.utils.collect_env</summary>
+<summary>Collected with python -W ignore::RuntimeWarning -m torch.utils.collect_env</summary>
 
 ```text
 [collect_env output]
