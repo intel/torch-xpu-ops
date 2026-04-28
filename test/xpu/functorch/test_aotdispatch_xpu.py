@@ -9,6 +9,7 @@
 import copy
 import itertools
 import operator
+import sys
 import unittest
 import warnings
 from collections.abc import Callable
@@ -16,6 +17,8 @@ from contextlib import ContextDecorator, ExitStack, nullcontext
 from functools import partial, wraps
 from typing import Any, Optional, Union
 from unittest.mock import patch
+
+sys.path.append("../../../../test/functorch")
 
 import torch
 import torch._dynamo as torchdynamo
