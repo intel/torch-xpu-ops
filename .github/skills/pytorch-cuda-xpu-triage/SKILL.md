@@ -52,3 +52,6 @@ For each qualified candidate, produce:
 - Do not file issues from this skill.
 - Do not claim a bug exists on XPU until a local run confirms it.
 - Do not force a reproducer when evidence already shows rejection is appropriate.
+
+## Next step
+Once a bug is confirmed on XPU, hand off the evidence to the issue-creation skill (`.github/skills/xpu-ops-issue-creation/SKILL.md`) for filing, or to a human maintainer if that skill is unavailable.
