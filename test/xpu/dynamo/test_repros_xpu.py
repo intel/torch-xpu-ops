@@ -79,7 +79,6 @@ from torch.testing._internal.common_utils import (
     serialTest,
     skipIfHpu,
     skipIfWindows,
-    skipIfXpu,
     TEST_WITH_ROCM,
     TEST_XPU,
     xfailIfS390X,
