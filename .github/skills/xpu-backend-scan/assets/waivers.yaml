@@ -1,5 +1,5 @@
 # Waiver whitelist for ops that should not be flagged as XPU bugs.
-# Format: category -> list of op name patterns using fnmatch-style matching.
+# Format: category -> list of op name patterns (fnmatch-style).
 
 cuda_infra:
   - "_cudnn_*"

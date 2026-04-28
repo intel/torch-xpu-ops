@@ -1,185 +1,68 @@
 ---
 name: xpu-backend-scan
-description: >
-  Use when triaging torch-xpu-ops backend scan tasks such as parity gaps,
-  missing XPU implementation, fallback misuse, dispatch coverage, waiver checks,
-  and true-vs-false bug separation for XPU operator behavior.
-compatibility: >
-  Designed for GitHub Copilot use in the torch-xpu-ops repository.
-metadata:
-  audience: backend-triage
-  target-repository: intel/torch-xpu-ops
-  version: "1.0"
+description: Triage XPU backend coverage — parity gaps, missing implementations, dispatch defects, fallback misuse. Use when analyzing whether an operator is correctly supported on XPU or when reviewing scan findings.
 ---
 
 # XPU Backend Scan
 
-Use this as the single entry skill for backend triage work that was previously
-split across separate Goal 1, Goal 2, Goal 3, and waiver skills.
+Determine whether a PyTorch operator has correct, complete XPU support by inspecting dispatch paths, runtime coverage, and user-visible behavior parity with CUDA.
 
-This package is intentionally text-first and minimal:
-- keep scan logic in this skill and its references
-- keep only essential machine-readable data in assets
-- do not depend on Python helper scripts to understand the workflow
+References:
+- [references/dispatch-coverage.md](references/dispatch-coverage.md) — how to determine XPU coverage and where to look
+- [references/triage-patterns.md](references/triage-patterns.md) — common false positives and decision heuristics
 
-## Load Order
+## Workflow
 
-Read these references first:
-- `references/scan-basics.md`
-- `references/goal-checklists.md` when you need a step-by-step decision pass for
-  Goal 1, Goal 2, or Goal 3
-- `references/dispatch-and-layout.md` when dispatch, structured, delegate,
-  fallback, or source layout questions matter
-- `references/report-template.md` when drafting a finding or review summary
+### Step 1: Identify the operator surface
 
-Read `references/false-positive-patterns.md` when the current evidence is driven
-by file-shape differences, helper call sites, test metadata, or stale wording
-rather than a clear user-visible contract gap.
+Pin the exact schema/overload from `yaml/native/native_functions.yaml`. Do not compare by base op name or filename alone.
 
-Read `references/triage-governance.md` only when reviewing historical findings,
-deciding whether a recurring family is a real bug family, or deciding whether a
-lesson belongs in automation versus documentation.
+### Step 2: Check waivers
 
-## What This Skill Covers
+Consult `assets/waivers.yaml`. If the op matches a waived category (NVIDIA-specific infra, hardware-only features, documented unsupported families), stop with `WAIVED`.
 
-- Goal 1: static defects inside the XPU implementation itself
-- Goal 2: CUDA versus XPU user-visible parity gaps
-- Goal 3: missing XPU implementation or unsupported coverage where support is
-  expected
-- Waiver gate: NVIDIA-specific or hardware-justified exclusions that should not
-  be filed as XPU bugs
+### Step 3: Determine existing XPU coverage
+
+Check these in priority order (higher overrides lower):
+1. `XPUFallback.template` — runtime coverage exists (blocks "missing impl" conclusion)
+2. Backend YAML with explicit XPU dispatch keys
+3. Structured delegate or codegen path resolving to XPU
+4. Source-backed registration (`TORCH_IMPL_FUNC`, landed implementation)
+5. Composite (`CompositeImplicitAutograd`/`CompositeExplicitAutograd`) or decomposition
+
+If any of these provides coverage, do not conclude "missing implementation."
+
+### Step 4: Classify the finding
+
+- **XPU defect** — intrinsic problem in XPU code (broken dispatch, silent CPU fallback, missing validation, backward gap, race condition)
+- **Parity gap** — both CUDA and XPU have coverage, but user-visible contract differs (input space, parameter semantics, dtype support, backward behavior, error paths)
+- **Missing implementation** — CUDA has usable support, XPU has no callable path after all exclusions checked
+- **OK** — coverage exists via any valid path; differences are stylistic or optimization-only
+- **Needs review** — mixed evidence, cannot conclude without runtime validation
+
+### Step 5: Validate before concluding
+
+- Require user-visible contract difference, not just implementation shape difference.
+- Read helper definitions before comparing call sites.
+- Distinguish family-level truth from row-level truth.
+- Do not call a finding runtime-confirmed from static review alone.
 
 ## Hard Rules
 
-- If CUDA has a feature, validation path, or native backend behavior that XPU
-  lacks, treat that as an XPU bug unless the limitation is explicit and
-  hardware-justified.
-- If CUDA runs on GPU and XPU silently falls back to CPU, treat that as an XPU
-  bug unless a waiver clearly applies.
-- SYCL and CUDA can differ in style; implementation shape alone is not evidence
-  of a bug.
-- Prefer code-grounded findings over architecture commentary.
-- For parity conclusions, require a user-visible contract gap rather than an
-  optimization-only difference.
-- Read helper definitions, structured delegates, and fallback paths before
-  claiming algorithm divergence.
-- Composite, decomposition, generic autograd, structured, or shared
-  TensorIterator paths can satisfy support even when an XPU-local kernel file is
-  absent.
-- Distinguish family-level truth from row-level truth. A real bug family can be
-  attached to the wrong overload or variant.
+- If CUDA has a feature that XPU lacks, treat as XPU bug unless hardware-justified.
+- If XPU silently falls back to CPU, treat as XPU defect unless explicitly waived.
+- SYCL vs CUDA style differences are not bugs.
+- Vendor library choice (oneDNN vs cuDNN) is not itself a bug.
+- Missing local XPU kernel file is not evidence of missing support — check delegates, composites, shared paths first.
+- Fallback existence blocks "missing implementation" but may indicate a defect (CPU fallback on GPU op).
+- Test skip/xfail metadata is supporting evidence only, never sufficient alone.
 
-## Waiver Gate
+## Output
 
-Before spending time on Goal 1, Goal 2, or Goal 3 analysis, check whether the
-operator falls into a waived category.
-
-Use `assets/waivers.yaml` as the authority for waived families such as:
-- NVIDIA software stack dependencies such as cuDNN, cuBLAS, cuSPARSE, NCCL, or
-  CUDA runtime control ops
-- hardware-specific NVIDIA-only features such as Tensor Core or FP8-only paths
-- documented unsupported attention families where XPU support is intentionally
-  absent
-- vendor-specific backend integrations with no XPU equivalent
-
-If a waiver clearly applies, return `WAIVED` and stop.
-If a waiver may apply but the justification is incomplete, return
-`NEEDS_HUMAN_REVIEW` instead of forcing a bug conclusion.
-
-## Goal Routing
-
-### Goal 1: Static XPU Defect
-
-Use Goal 1 when the problem is intrinsic to the XPU implementation and does not
-require CUDA as the reference.
-
-Typical Goal 1 signals:
-- broken or missing XPU dispatch connection despite source-backed code
-- dtype, shape, stride, layout, alias, or inplace semantics defects
-- missing guards, validation, or error-path checks on XPU
-- silent CPU fallback or unreachable XPU path
-- backward or autograd gaps for an otherwise supported XPU path
-- clear race, atomic, or synchronization hazards visible in XPU code
-
-Focus questions:
-- is there a real dispatch path from schema to callable XPU implementation
-- does the XPU path validate legal inputs and reject illegal ones correctly
-- do inplace and out variants preserve expected semantics
-- does the backward path exist when the forward path is meaningfully supported
-
-### Goal 2: Parity Gap
-
-Use Goal 2 when CUDA and XPU both have relevant support surfaces but the
-user-visible contract diverges.
-
-Only preserve Goal 2 conclusions when at least one of these is true:
-- valid inputs differ between CUDA and XPU
-- parameter semantics differ
-- dtype, device, or layout support differs in a user-visible way
-- backward semantics differ or are effectively unavailable
-- result behavior, warnings, or error paths differ
-
-By default, downgrade these to weak signals rather than parity gaps:
-- optimization-only differences
-- different vendor libraries
-- different kernel organization or launch shape
-- xfail or skip evidence without source-backed semantic difference
-- call-site differences without reading helper definitions
-
-### Goal 3: Missing XPU Implementation
-
-Use Goal 3 when CUDA has meaningful support but XPU may have no usable path.
-
-Strong Goal 3 evidence requires most of the following:
-- CUDA has a usable implementation or dispatch path
-- XPU has no native dispatch or usable implementation
-- no fallback exists that would make the behavior callable
-- no composite, decomposition, structured delegate, or shared path already
-  covers the semantics
-- no waiver or documented unsupported rationale applies
-
-Do not call something missing implementation solely because a CUDA entry exists
-in native_functions.yaml. First exclude stub, NYI, error-only, composite,
-delegate, and fallback cases.
-
-## Priority Sources
-
-Read these sources in the target repository first, then consult upstream
-`pytorch/pytorch` when exact peer semantics or upstream schema confirmation is
-needed:
-
-- `yaml/native/native_functions.yaml`
-- `yaml/xpu_functions.yaml`
-- `src/ATen/native/xpu/XPUFallback.template`
-- `src/ATen/native/xpu/`
-- `src/ATen/native/xpu/sycl/`
-- `aten/src/ATen/native/native_functions.yaml`
-- `tools/autograd/derivatives.yaml`
-- `torch/_refs/__init__.py`
-- `aten/src/ATen/native/cuda/`
-- `aten/src/ATen/native/transformers/cuda/`
-- `aten/src/ATen/native/transformers/xpu/`
-- `test/xpu/skip_list_common.py`
-
-## Decision Labels
-
-Use only these verdict labels:
-- `LIKELY_XPU_BUG`
-- `PARITY_GAP`
-- `MISSING_XPU_IMPL`
-- `LIKELY_OK`
-- `NEEDS_HUMAN_REVIEW`
-- `WAIVED`
-
-Do not invent local aliases. Put nuance in the explanation fields instead.
-
-## Output Discipline
-
-- Return only findings supported by inspected code.
-- If differences are stylistic, hardware-justified, or already explained by a
-  valid shared path, return no issue or downgrade confidence.
-- Do not call a finding runtime-confirmed from static code review alone.
-- Use `references/report-template.md` for consistent finding structure.
-- For issues that deserve local reproduction, hand off to the repository's
-  standard issue-filing workflow or issue template only after a local XPU repro
-  actually exists in the target repository workflow.
+Return findings grounded in inspected code:
+- Exact schema/overload under review
+- Verdict with confidence level
+- XPU-side evidence (files, code paths)
+- Peer evidence (CUDA, upstream, shared paths)
+- Exclusion checks performed (waiver, fallback, composite, delegate)
+- Next action (stop, downgrade, hand off for repro)
