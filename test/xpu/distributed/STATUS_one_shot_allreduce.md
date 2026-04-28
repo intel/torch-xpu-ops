@@ -1,6 +1,7 @@
 # XPU SymmetricMemory `one_shot_all_reduce` — status and perfermance
 
-
+- torch branch: https://github.com/Chao1Han/pytorch/tree/symm-211
+- build: replace torch/third_party/xpu.txt commit with currently torch-xpu-ops commit; python setup.py develop
 - Barrier 用 system-scope `sycl::atomic_fence` + `put_signal` / `wait_signal` 握手（`Signal.cpp::barrierKernel`），不依赖 `atomic_ref<system>`（BMG 上未 work）。
 
 ---
