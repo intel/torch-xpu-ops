@@ -5,7 +5,10 @@ Goal 3 without expanding the main skill text.
 
 ## Common Gate Before Any Goal
 
-- Confirm the exact schema or overload in upstream `native_functions.yaml`.
+- Confirm the exact schema or overload in local
+   `yaml/native/native_functions.yaml` first, and use upstream
+   `aten/src/ATen/native/native_functions.yaml` when exact peer schema
+   confirmation is still needed.
 - Check waiver applicability first.
 - Check fallback, composite, decomp, structured delegate, and shared-path
   coverage before claiming a gap.

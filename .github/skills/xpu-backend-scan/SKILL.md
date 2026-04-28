@@ -144,15 +144,18 @@ delegate, and fallback cases.
 
 ## Priority Sources
 
-Read these sources in the target repository or in a paired upstream pytorch
-checkout:
+Read these sources in the target repository first, then consult upstream
+`pytorch/pytorch` when exact peer semantics or upstream schema confirmation is
+needed:
 
-- `aten/src/ATen/native/native_functions.yaml`
-- `tools/autograd/derivatives.yaml`
-- `torch/_refs/__init__.py`
+- `yaml/native/native_functions.yaml`
+- `yaml/xpu_functions.yaml`
 - `src/ATen/native/xpu/XPUFallback.template`
 - `src/ATen/native/xpu/`
 - `src/ATen/native/xpu/sycl/`
+- `aten/src/ATen/native/native_functions.yaml`
+- `tools/autograd/derivatives.yaml`
+- `torch/_refs/__init__.py`
 - `aten/src/ATen/native/cuda/`
 - `aten/src/ATen/native/transformers/cuda/`
 - `aten/src/ATen/native/transformers/xpu/`
@@ -177,6 +180,6 @@ Do not invent local aliases. Put nuance in the explanation fields instead.
   valid shared path, return no issue or downgrade confidence.
 - Do not call a finding runtime-confirmed from static code review alone.
 - Use `references/report-template.md` for consistent finding structure.
-- For issues that deserve local reproduction, hand off to
-  `.github/skills/xpu-ops-issue-creation/SKILL.md` only after a local XPU repro
+- For issues that deserve local reproduction, hand off to the repository's
+  standard issue-filing workflow or issue template only after a local XPU repro
   actually exists in the target repository workflow.

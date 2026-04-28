@@ -29,7 +29,10 @@ Do not compare by filename alone.
 
 Before Goal 1, Goal 2, or Goal 3 analysis:
 
-1. Confirm the exact schema in `aten/src/ATen/native/native_functions.yaml`.
+1. Confirm the exact schema in local `yaml/native/native_functions.yaml`
+  first, and consult upstream
+  `aten/src/ATen/native/native_functions.yaml` only when exact upstream
+  schema confirmation is needed.
 2. Check whether XPU, CUDA, composite, or structured delegate coverage already
    exists.
 3. Apply the waiver gate before spending time on deeper analysis.
@@ -111,5 +114,5 @@ Each finding should be grounded in inspected source and answer these questions:
 - Do not call a static review runtime-confirmed.
 - Downgrade confidence when only weak signals exist.
 - If a local XPU repro is later obtained in the target repository workflow,
-  hand off to the issue-creation skill rather than duplicating issue-filing
-  instructions here.
+  hand off to the repository's standard issue-filing workflow rather than
+  duplicating issue-filing instructions here.
