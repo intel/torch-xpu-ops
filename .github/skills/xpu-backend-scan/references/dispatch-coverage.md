@@ -4,10 +4,10 @@ How to determine whether XPU already has usable coverage for an operator.
 
 ## Priority Sources (torch-xpu-ops)
 
-Inspect in this order (this is lookup order, not coverage priority — see SKILL.md Step 3 for priority):
-1. `src/ATen/native/xpu/XPUFallback.template` — fallback list
-2. `yaml/native/native_functions.yaml` — backend dispatch keys
-3. `src/ATen/native/xpu/` — host-side glue
+Inspect in this order (this is lookup order, not coverage priority — see SKILL.md Step 3 for override rules):
+1. `yaml/native/native_functions.yaml` — schema and dispatch key configuration
+2. `src/ATen/native/xpu/XPUFallback.template` — fallback list
+3. `src/ATen/native/xpu/` — host-side glue and registration
 4. `src/ATen/native/xpu/sycl/` — SYCL kernel implementations
 5. `yaml/xpu_functions.yaml` — auxiliary metadata (lowest priority)
 
