@@ -161,6 +161,7 @@ jobs:
           find "${{ github.workspace }}/ut_log" -type f \
               \( -name "failures_*.log" -o \
                 -name "passed_*.log" -o \
+                -name "skipped_*.log" -o \
                 -name "category_*.log" -o \
                 -name "reproduce_*.log" \) \
               -exec mv {} ./ \; || true
