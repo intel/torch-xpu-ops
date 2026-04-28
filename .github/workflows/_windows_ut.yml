@@ -265,9 +265,9 @@ jobs:
     if: ${{ inputs.src_changed == 'true' || inputs.has_label == 'true' }}
     timeout-minutes: 1000
     env:
-      PYTHONPATH: ${{ github.workspace }}/.github
+      PYTHONPATH: ${{ github.workspace }}/.github/scripts/pytest_configs
       PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
-                      --max-worker-restart 1000000 -p scripts.xpu_worker_restart
+                      --max-worker-restart 1000000 -p xpu_worker_restart
                       -n 1 --only-rerun 'crashed while running' --reruns 2
     steps:
       - name: Checkout torch-xpu-ops
