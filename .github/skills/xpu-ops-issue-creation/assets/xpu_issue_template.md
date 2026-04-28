@@ -9,10 +9,21 @@ Affected op/module: [e.g. `aten::native_batch_norm`]
 
 ### Upstream reference
 
+Required for CI UT failure. For manual validation, include these fields when the bug was discovered from an upstream change.
+
 - Upstream commit: [commit SHA or URL that triggered the failure]
 - Upstream PR: [PR URL]
 - Upstream issue: [issue URL, if applicable]
 - What the upstream change did: [one-line summary]
+
+### Environment and build context
+
+- Date: [YYYY-MM-DD]
+- Build: [torch build/channel or CI build identifier]
+- PyTorch version / commit: [nightly tag, wheel version, or git SHA]
+- torch-xpu-ops version / branch: [commit SHA, branch, or N/A]
+- Platform: [OS / Python / device family if known]
+- Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]
 
 ### Failure details
 
@@ -45,12 +56,6 @@ Observed output:
 [actual traceback, assertion failure, or wrong-value output]
 ```
 
-Additional context:
-
-- Date: [YYYY-MM-DD]
-- Build: [torch build/channel or CI build identifier]
-- Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]
-
 ### Versions
 
 For manual validation:
@@ -65,5 +70,6 @@ For manual validation:
 
 For CI UT failure:
 
-- CI job link is the default environment reference.
+- CI job link supplements the environment reference.
+- Include the build and version fields above in plain text even if the CI job link already contains them.
 - Add collect_env only if a local rerun was also done and it adds useful context.
