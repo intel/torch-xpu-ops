@@ -1,20 +1,32 @@
-# conftest.py - Ultra-minimal worker restart
+# xpu_worker_restart.py - Pytest plugin: restart xdist workers on XPU OOM
+#
+# Loaded via `-p scripts.xpu_worker_restart`. Spawns one `xpu-smi dump`
+# process per host (the xdist controller), tails its CSV log, and restarts
+# any worker whose target device crosses _GPU_MEM_THRESHOLD or whose test
+# fails with a known fatal pattern. Workers are restarted via os._exit(101);
+# pytest-xdist respawns them when --max-worker-restart allows.
 
+import atexit
 import os
-import sys
+import platform
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
-import atexit
-import platform
 import urllib.request
 import zipfile
+
 import pytest
 
+# --- tunables -----------------------------------------------------------------
+
 _WORKER_RESTART_CODE = 101
-_GPU_MEM_THRESHOLD = 80.0  # percent
-_XPU_SMI_INTERVAL = 3      # seconds, passed to xpu-smi -i
+_GPU_MEM_THRESHOLD = 80.0   # percent
+_XPU_SMI_INTERVAL = 3       # seconds (xpu-smi -i)
+_LOG_TAIL_BYTES = 8192      # bytes read from end of log per check
+_LOG_PATH_ENV = 'XPU_SMI_LOG_PATH'
+_LOG_OWNER_ENV = 'XPU_SMI_LOG_OWNER_PID'
 
 # Fallback download URL (Windows only). On Linux we use the system package manager.
 _XPU_SMI_WIN_URL = (
@@ -23,12 +35,12 @@ _XPU_SMI_WIN_URL = (
 )
 _XPU_SMI_CACHE_DIR = os.path.join(tempfile.gettempdir(), 'xpu_smi_cache')
 
-# Single global variables
-_worker_id = None
-_xpu_smi_proc = None
-_xpu_smi_log_path = None
+# Matches a CSV row like:  "23:59:21.296,    0, 0.85"
+_ROW_RE = re.compile(
+    r'^\s*\d{1,2}:\d{2}:\d{2}\.\d+\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*$'
+)
 
-patterns = [
+_FATAL_PATTERNS = [
     'ur_result_error',
     'segmentation fault',
     'bus error',
@@ -38,9 +50,30 @@ patterns = [
     re.compile(r'out.*of.*memory'),
 ]
 
+# --- module state -------------------------------------------------------------
 
-def _get_device_id():
-    """Pick device id from ZE_AFFINITY_MASK (first entry); default to 0."""
+_worker_id = None          # xdist worker id, or None on controller
+_target_device = '0'       # this worker's GPU index (string)
+_log_path = None           # shared xpu-smi CSV log
+_xpu_smi_proc = None       # only set in the process that owns xpu-smi
+
+
+# --- helpers ------------------------------------------------------------------
+
+def _log(msg):
+    sys.stderr.write(f"[xpu-watchdog] {msg}\n")
+
+
+def _is_windows():
+    return platform.system() == 'Windows'
+
+
+def _which_xpu_smi():
+    return shutil.which('xpu-smi') or shutil.which('xpu-smi.exe')
+
+
+def _get_target_device():
+    """Pick device id from ZE_AFFINITY_MASK (first entry); default to '0'."""
     mask = os.environ.get('ZE_AFFINITY_MASK', '').strip()
     if mask:
         first = mask.split(',', 1)[0].strip()
@@ -49,14 +82,15 @@ def _get_device_id():
     return '0'
 
 
+# --- xpu-smi installation -----------------------------------------------------
+
 def _download(url, dest):
-    req = urllib.request.Request(url, headers={'User-Agent': 'conftest-xpu-smi'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'xpu-watchdog'})
     with urllib.request.urlopen(req, timeout=60) as r, open(dest, 'wb') as f:
         shutil.copyfileobj(r, f)
 
 
 def _find_in_dir(root, target):
-    """Return absolute path to a file named `target` (case-insensitive) under root, or None."""
     target_l = target.lower()
     for dirpath, _, files in os.walk(root):
         for name in files:
@@ -65,178 +99,245 @@ def _find_in_dir(root, target):
     return None
 
 
-def _install_xpu_smi_linux():
-    """Install xpu-smi via system package manager (apt-get or dnf, with sudo if needed)."""
-    sudo = [] if os.geteuid() == 0 else (['sudo', '-n'] if shutil.which('sudo') else [])
-    candidates = []
+def _install_linux():
+    """Install xpu-smi via apt-get or dnf, with sudo when not root."""
+    is_root = (hasattr(os, 'geteuid') and os.geteuid() == 0)
+    sudo = [] if is_root else (['sudo', '-n'] if shutil.which('sudo') else [])
+    plans = []
     if shutil.which('apt-get'):
-        candidates.append([
+        plans.append([
             sudo + ['apt-get', 'update'],
             sudo + ['apt-get', 'install', '-y', 'xpu-smi'],
         ])
     if shutil.which('dnf'):
-        candidates.append([
-            sudo + ['dnf', 'install', '-y', 'xpu-smi'],
-        ])
-    for cmds in candidates:
+        plans.append([sudo + ['dnf', 'install', '-y', 'xpu-smi']])
+    for plan in plans:
         try:
-            for cmd in cmds:
+            for cmd in plan:
                 subprocess.check_call(
                     cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
-            if shutil.which('xpu-smi'):
+            if _which_xpu_smi():
                 return True
-        except Exception:
-            continue
+        except (subprocess.CalledProcessError, OSError) as e:
+            _log(f"package install failed ({plan[-1][-1]}): {e}")
     return False
 
 
-def _install_xpu_smi_windows():
-    """Download + extract xpu-smi zip into a cache dir and prepend its dir to PATH."""
-    exe_name = 'xpu-smi.exe'
-    os.makedirs(_XPU_SMI_CACHE_DIR, exist_ok=True)
+def _install_windows():
+    """Download + extract xpu-smi zip, prepend its dir to PATH."""
+    exe = 'xpu-smi.exe'
+    try:
+        os.makedirs(_XPU_SMI_CACHE_DIR, exist_ok=True)
+    except OSError as e:
+        _log(f"cache dir creation failed: {e}")
+        return False
 
-    cached = _find_in_dir(_XPU_SMI_CACHE_DIR, exe_name)
+    cached = _find_in_dir(_XPU_SMI_CACHE_DIR, exe)
     if not cached:
+        archive = os.path.join(
+            _XPU_SMI_CACHE_DIR, os.path.basename(_XPU_SMI_WIN_URL)
+        )
         try:
-            archive = os.path.join(_XPU_SMI_CACHE_DIR, os.path.basename(_XPU_SMI_WIN_URL))
             _download(_XPU_SMI_WIN_URL, archive)
             with zipfile.ZipFile(archive) as zf:
                 zf.extractall(_XPU_SMI_CACHE_DIR)
-        except Exception as e:
-            sys.stderr.write(f"[conftest] xpu-smi download failed: {e}\n")
+        except (urllib.error.URLError, zipfile.BadZipFile, OSError) as e:
+            _log(f"xpu-smi download/extract failed: {e}")
             return False
-        cached = _find_in_dir(_XPU_SMI_CACHE_DIR, exe_name)
+        cached = _find_in_dir(_XPU_SMI_CACHE_DIR, exe)
     if not cached:
+        _log("xpu-smi.exe not found after extraction")
         return False
-    bin_dir = os.path.dirname(cached)
-    os.environ['PATH'] = bin_dir + os.pathsep + os.environ.get('PATH', '')
+    os.environ['PATH'] = os.path.dirname(cached) + os.pathsep + os.environ.get('PATH', '')
     return True
 
 
 def _ensure_xpu_smi():
-    """Make sure `xpu-smi` is callable; install/download if missing."""
-    if shutil.which('xpu-smi') or shutil.which('xpu-smi.exe'):
+    if _which_xpu_smi():
         return True
-    if platform.system() == 'Windows':
-        return _install_xpu_smi_windows()
-    return _install_xpu_smi_linux()
+    return _install_windows() if _is_windows() else _install_linux()
 
+
+# --- xpu-smi process lifecycle (controller only) ------------------------------
 
 def _start_xpu_smi():
-    """Spawn `xpu-smi dump` in the background, streaming to a temp log file."""
-    global _xpu_smi_proc, _xpu_smi_log_path
+    """Spawn xpu-smi in the background and publish its log path via env."""
+    global _xpu_smi_proc, _log_path
+
     if _xpu_smi_proc is not None:
-        return
+        return  # already running in this process
+
     if not _ensure_xpu_smi():
-        sys.stderr.write("[conftest] xpu-smi not available; memory monitoring disabled\n")
+        _log("xpu-smi unavailable; memory monitoring disabled")
         return
+
+    fd = None
+    path = None
     try:
-        fd, _xpu_smi_log_path = tempfile.mkstemp(prefix='xpu_smi_', suffix='.log')
-        _xpu_smi_proc = subprocess.Popen(
-            ['xpu-smi', 'dump', '-d', _get_device_id(), '-m', '5', '-i', str(_XPU_SMI_INTERVAL)],
+        fd, path = tempfile.mkstemp(prefix='xpu_smi_', suffix='.log')
+        proc = subprocess.Popen(
+            ['ZE_AFFINITY_MASK=', 'xpu-smi', 'dump', '-m', '5', '-i', str(_XPU_SMI_INTERVAL)],
             stdout=fd,
             stderr=subprocess.DEVNULL,
         )
-        os.close(fd)
-    except Exception:
-        _xpu_smi_proc = None
-        if _xpu_smi_log_path:
+    except (OSError, ValueError) as e:
+        _log(f"failed to spawn xpu-smi: {e}")
+        if fd is not None:
             try:
-                os.unlink(_xpu_smi_log_path)
-            except Exception:
+                os.close(fd)
+            except OSError:
                 pass
-            _xpu_smi_log_path = None
+        if path and os.path.exists(path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        return
+    finally:
+        # Popen dup'd the fd; we can close our copy now.
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+    _xpu_smi_proc = proc
+    _log_path = path
+    os.environ[_LOG_PATH_ENV] = path
+    os.environ[_LOG_OWNER_ENV] = str(os.getpid())
+    _log(f"started xpu-smi pid={proc.pid} log={path}")
 
 
 def _stop_xpu_smi():
-    """Terminate xpu-smi and clean up the log file."""
-    global _xpu_smi_proc, _xpu_smi_log_path
-    if _xpu_smi_proc is not None:
+    """Owner-only: terminate xpu-smi and remove the log."""
+    global _xpu_smi_proc, _log_path
+
+    proc, _xpu_smi_proc = _xpu_smi_proc, None
+    if proc is not None and proc.poll() is None:
         try:
-            _xpu_smi_proc.terminate()
+            proc.terminate()
             try:
-                _xpu_smi_proc.wait(timeout=2)
-            except Exception:
-                _xpu_smi_proc.kill()
-        except Exception:
-            pass
-        _xpu_smi_proc = None
-    if _xpu_smi_log_path:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+        except OSError as e:
+            _log(f"failed to stop xpu-smi: {e}")
+
+    path, _log_path = _log_path, None
+    if path and os.path.exists(path):
         try:
-            os.unlink(_xpu_smi_log_path)
-        except Exception:
+            os.unlink(path)
+        except OSError:
             pass
-        _xpu_smi_log_path = None
 
 
-def _get_xpu_mem_util():
-    """Read the latest GPU memory utilization (%) from the xpu-smi log, or None."""
-    if not _xpu_smi_log_path:
-        return None
+# --- log reader (all processes) -----------------------------------------------
+
+def _read_log_tail(path):
     try:
-        with open(_xpu_smi_log_path, 'rb') as f:
+        with open(path, 'rb') as f:
             try:
-                f.seek(-4096, os.SEEK_END)
+                f.seek(-_LOG_TAIL_BYTES, os.SEEK_END)
             except OSError:
                 f.seek(0)
-            tail = f.read().decode('utf-8', errors='ignore')
-    except Exception:
+            return f.read().decode('utf-8', errors='ignore')
+    except OSError:
+        return ''
+
+
+def _get_device_mem_util(device_id):
+    """Return latest GPU memory utilization (%) for `device_id`, or None."""
+    if not _log_path or not os.path.exists(_log_path):
         return None
-    for line in reversed(tail.strip().splitlines()):
-        parts = [p.strip() for p in line.split(',')]
-        if len(parts) >= 3:
+    tail = _read_log_tail(_log_path)
+    if not tail:
+        return None
+    for line in reversed(tail.splitlines()):
+        m = _ROW_RE.match(line)
+        if m and m.group(1) == device_id:
             try:
-                return float(parts[-1])
+                return float(m.group(2))
             except ValueError:
                 continue
     return None
 
 
-def _restart_worker(reason):
+# --- restart ------------------------------------------------------------------
+
+def _cleanup_torch_xpu():
     try:
         import gc
         import torch
         gc.collect()
-        torch.xpu.synchronize()
-        torch.xpu.empty_cache()
-    except Exception:
+        if hasattr(torch, 'xpu'):
+            try:
+                torch.xpu.synchronize()
+            except Exception:
+                pass
+            try:
+                torch.xpu.empty_cache()
+            except Exception:
+                pass
+    except ImportError:
         pass
+
+
+def _restart_worker(reason):
+    _cleanup_torch_xpu()
     sys.stderr.write(f"\n!RESTART {_worker_id} ({reason})\n")
-    _stop_xpu_smi()
+    sys.stderr.flush()
     os._exit(_WORKER_RESTART_CODE)
 
 
+# --- pytest hooks -------------------------------------------------------------
+
 @pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
-    global _worker_id
+    global _worker_id, _target_device, _log_path
+
     try:
         _worker_id = config.workerinput.get('workerid')
-    except Exception:
-        pass
-    # Start xpu-smi once per pytest process (master + each xdist worker)
-    _start_xpu_smi()
-    atexit.register(_stop_xpu_smi)
+    except AttributeError:
+        _worker_id = None
+
+    _target_device = _get_target_device()
+
+    if _worker_id is None:
+        # xdist controller (or non-xdist run): own the xpu-smi process.
+        _start_xpu_smi()
+        atexit.register(_stop_xpu_smi)
+    else:
+        # xdist worker: inherit log path from controller via env.
+        _log_path = os.environ.get(_LOG_PATH_ENV) or None
 
 
 @pytest.hookimpl(trylast=True)
 def pytest_unconfigure(config):
-    _stop_xpu_smi()
+    # Only the owner cleans up the shared log/process.
+    owner_pid = os.environ.get(_LOG_OWNER_ENV)
+    if owner_pid and owner_pid == str(os.getpid()):
+        _stop_xpu_smi()
 
 
 @pytest.hookimpl
 def pytest_runtest_logreport(report):
-    if not _worker_id:
-        return
+    if _worker_id is None:
+        return  # only restart workers, never the controller
 
-    if report.failed:
-        err_msg = str(report.longrepr).lower() if report.longrepr else ''
-        # Direct inline pattern checks (fastest)
-        if any(p in err_msg if isinstance(p, str) else p.search(err_msg) for p in patterns):
-            _restart_worker("error pattern matched")
+    if report.failed and report.longrepr is not None:
+        err = str(report.longrepr).lower()
+        for p in _FATAL_PATTERNS:
+            if (p.search(err) if hasattr(p, 'search') else p in err):
+                _restart_worker("error pattern matched")
 
-    # Check GPU memory utilization at the end of each test phase
     if report.when == 'teardown':
-        mem = _get_xpu_mem_util()
+        mem = _get_device_mem_util(_target_device)
         if mem is not None and mem >= _GPU_MEM_THRESHOLD:
-            _restart_worker(f"GPU mem {mem:.2f}% >= {_GPU_MEM_THRESHOLD}%")
+            _restart_worker(
+                f"device {_target_device} mem {mem:.2f}% >= {_GPU_MEM_THRESHOLD}%"
+            )
