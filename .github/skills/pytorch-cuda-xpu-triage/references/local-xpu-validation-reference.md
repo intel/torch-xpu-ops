@@ -28,7 +28,7 @@ One of the following on XPU, when CPU semantics disagree:
 
 **Not** a bug by itself: tiny float noise, documented unsupported paths, or failures from an invalid repro.
 
-## Evidence to capture before filing
+## Evidence to capture before escalation
 - Exact command and output
 - `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
 - Full exception text or mismatch summary

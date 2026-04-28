@@ -34,6 +34,7 @@ This repository implements Torch XPU Operators for Intel GPU support.
 |------|-----------|
 | Create a PR | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
 | Review a PR | `.github/skills/xpu-ops-pr-review/SKILL.md` |
+| Triage upstream backend fixes for XPU | `.github/skills/pytorch-cuda-xpu-triage/SKILL.md` |
 
 Domain-specific coding rules:
 - XPU kernels: `.github/instructions/xpu-kernels.instructions.md`
