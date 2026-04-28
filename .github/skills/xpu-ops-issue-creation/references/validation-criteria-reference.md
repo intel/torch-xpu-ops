@@ -30,7 +30,7 @@ One of the following on XPU, when CPU, CI expectations, or current PyTorch seman
 ## What does not count by itself
 - tiny floating-point noise without semantic consequence
 - unsupported behavior that is clearly documented or already tracked
-- failures caused by an invalid repro unrelated to the upstream CUDA fix
+- failures caused by an invalid repro unrelated to the upstream change
 
 ## Capture before filing
 Capture these common fields:

@@ -81,7 +81,7 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
   - date, build or CI build identifier, and platform
   - PyTorch version, channel, or git SHA
   - `torch-xpu-ops` version, branch, or commit when visible
-  - `Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]`
+  - `Assisted-by: [agent/tool name] [model] [evidence source: collect_env / CI-link / manual]`
 - `### Failure details`:
   - `Failure type`: `new test added`, `existing test broken`, `test expectation changed`, `build break`, or another short classifier
   - Fill only the CI or manual subsection that matches `Failure source`
@@ -90,7 +90,7 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
 - `### Versions`:
   - Manual validation: collect_env output wrapped in `<details><summary>Collected with python -W ignore::RuntimeWarning -m torch.utils.collect_env</summary>` plus a fenced `text` block
   - CI UT failure: CI job link supplements the environment reference, but the issue body must still capture build and version identifiers in text; add collect_env only when you have local confirmation and it adds value
-  - use the active model string in `Assisted-by`
+  - use the actual agent/tool name and active model string in `Assisted-by`
 
 **Environment to capture:**
 - Common: date, build identifier, platform, PyTorch version or git SHA, and `torch-xpu-ops` version or branch when visible

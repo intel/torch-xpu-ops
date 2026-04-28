@@ -23,7 +23,7 @@ Required for both failure sources. For manual validation, these fields identify 
 - PyTorch version / commit: [nightly tag, wheel version, or git SHA]
 - torch-xpu-ops version / branch: [commit SHA, branch, or N/A]
 - Platform: [OS / Python / device family if known]
-- Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]
+- Assisted-by: [agent/tool name] [model] [evidence source: collect_env / CI-link / manual]
 
 ### Failure details
 
