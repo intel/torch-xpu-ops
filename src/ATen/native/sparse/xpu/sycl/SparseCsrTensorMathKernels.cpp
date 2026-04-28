@@ -629,6 +629,14 @@ inline int64_t prev_power_of_two(int64_t x) {
   return v;
 }
 
+inline int64_t next_power_of_two(int64_t x) {
+  int64_t v = 1;
+  while (v < x) {
+    v <<= 1;
+  }
+  return v;
+}
+
 // One workgroup computes one nnz output.
 // Each lane accumulates a strided chunk of K and then performs tree reduction.
 template <typename scalar_t, typename index_t, typename acc_t>
@@ -797,8 +805,13 @@ void sparse_sampled_addmm_kernel_impl(
           acc_t>;
 
         int64_t max_work_group_size = syclMaxWorkGroupSize<KernelFn>();
-        int64_t work_group_size =
+        const int64_t max_pow2_wg =
           prev_power_of_two(std::min<int64_t>(max_work_group_size, 256));
+        const int64_t target_elems_per_thread = 20;
+        const int64_t desired_wg =
+          (k + target_elems_per_thread - 1) / target_elems_per_thread;
+        int64_t work_group_size =
+          std::min<int64_t>(next_power_of_two(std::max<int64_t>(1, desired_wg)), max_pow2_wg);
         work_group_size = std::max<int64_t>(work_group_size, 1);
 
         auto kfn = KernelFn(
