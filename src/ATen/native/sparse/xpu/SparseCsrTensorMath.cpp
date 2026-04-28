@@ -80,25 +80,15 @@ Tensor addmm_calculation(
     const Tensor& mat2,
     const Scalar& beta,
     const Scalar& alpha) {
-  auto compute_dtype =
-      (mat1.scalar_type() == at::kHalf || mat1.scalar_type() == at::kBFloat16)
-      ? at::kFloat
-      : mat1.scalar_type();
-  auto out_dtype = mat1.scalar_type();
-  Tensor mat1_dense =
-      (mat1.layout() != kStrided ? mat1.to_dense() : mat1).to(compute_dtype);
-  Tensor mat2_dense =
-      (mat2.layout() != kStrided ? mat2.to_dense() : mat2).to(compute_dtype);
+  Tensor mat1_dense = mat1.layout() != kStrided ? mat1.to_dense() : mat1;
+  Tensor mat2_dense = mat2.layout() != kStrided ? mat2.to_dense() : mat2;
 
-  // Convert mm result back to output dtype before applying alpha/beta,
-  // to match the reference: alpha * (mm.to(out_dtype)) + beta * c
-  Tensor result = mat1_dense.mm(mat2_dense).to(out_dtype) * alpha;
+  Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
   if (beta.toComplexDouble() != 0.) {
     Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
-    // Two-step (not fused) to match reference precision: beta*c first, then add
-    result = result + input_dense * beta;
+    result_dense.add_(input_dense * beta);
   }
-  return result;
+  return result_dense;
 }
 
 void addmm_out_sparse_csr(
