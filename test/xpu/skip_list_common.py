@@ -28,6 +28,7 @@ skip_dict = {
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
         # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_max_pool2d_cudnn_xpu",
         "test_qgelu_xpu",
         "test_qrelu_xpu",
     ),
