@@ -537,12 +537,13 @@ def _generate_synthetic_data(
     aux_int = [0, info_B_num_bits, info_B_mask]
     aux_float = [0.0, 1.0]
     aux_bool = [
-        False,                       # IDX_GRADIENT_CLIPPING
-        False,                       # IDX_STOCHASTIC_ROUNDING
-        is_experimental,             # IDX_IS_EXPERIMENTAL_TBE
-        False,                       # IDX_USE_UNIQ_CACHE_LOCATIONS_BWD
-        False,                       # IDX_APPLY_GLOBAL_WEIGHT_DECAY
-        use_homogeneous_placements,  # IDX_USE_HOMOGENEOUS_PLACEMENTS
+        is_experimental,             # IDX_IS_EXPERIMENTAL_TBE = 0
+        False,                       # IDX_USE_UNIQ_CACHE_LOCATIONS_BWD = 1
+        use_homogeneous_placements,  # IDX_USE_HOMOGENEOUS_PLACEMENTS = 2
+        False,                       # IDX_APPLY_GLOBAL_WEIGHT_DECAY = 3
+        False,                       # IDX_GRADIENT_CLIPPING = 4
+        False,                       # IDX_STOCHASTIC_ROUNDING = 5
+        False,                       # IDX_MIXED_D = 6
         False,                       # reserved
     ]
 
