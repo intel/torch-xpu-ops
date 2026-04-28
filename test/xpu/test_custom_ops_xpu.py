@@ -460,11 +460,6 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
             torch.library.opcheck(op.op, args, kwargs)
 
     def test_opcheck_fails_basic(self, device):
-        if device == "xpu":
-            self.skipTest(
-                "XPU schema error path for this opcheck case is not supported"
-            )
-
         @custom_op(f"{self.test_ns}::foo")
         def foo(x: torch.Tensor) -> torch.Tensor:
             ...
@@ -472,6 +467,10 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
         @foo.impl(["cpu", "cuda"])
         def foo_impl(x):
             return x.sum()
+
+        # Register XPU kernel: deprecated @custom_op API only supports cpu/cuda
+        xpu_lib = torch.library.Library(self.test_ns, "IMPL")
+        xpu_lib.impl("foo", foo_impl, "XPU")
 
         x = torch.randn(3, device=device, requires_grad=True)
         # Triggers the CustomOp autograd NYI error
