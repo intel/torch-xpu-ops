@@ -7362,6 +7362,21 @@ torch.cuda.synchronize()
 
         self.assertEqual(get_flops(nt), get_flops(nt_meta))
 
+    @skipIfTorchDynamo()
+    def test_nested_tensor_activation_checkpoint(self, device):
+        values = torch.randn(
+            9, 3, 256, requires_grad=True, device=device, dtype=torch.float32
+        )
+        lengths = torch.tensor([1, 2, 3, 3], device=device, dtype=torch.int64)
+        offsets = F.pad(lengths, pad=(1, 0)).cumsum(dim=0)
+
+        def fn(values, offsets):
+            nt = convert_jagged_to_nested_tensor(values, offsets, max_length=4)
+            return convert_nt_to_jagged(nt).sum()
+
+        checkpoint(fn, values, offsets, use_reentrant=False).backward()
+        self.assertIsNotNone(values.grad)
+
     # Internally-defined NT use cases are lifted to here for maximum test realism.
     # TODO: Remove these when ViewNestedFromBuffer, etc. are deprecated.
     @skipCUDAIfRocm  # not needed
