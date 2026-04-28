@@ -26,6 +26,8 @@ Also inspect — XPU backend code lives upstream too:
 6. `aten/src/ATen/native/transformers/cuda/` and `…/xpu/`
 7. `test/xpu/` — upstream XPU tests
 
+These files are not in the local workspace. Access them via GitHub tools, a local pytorch checkout, or web fetch. If upstream files are unreachable, note the gap and proceed with local evidence only.
+
 ## Coverage Signals
 
 | Signal | Means | Blocks "missing impl"? |
