@@ -138,27 +138,8 @@ skip_dict = {
         # due to #2164, CUDA specific test
         "test_no_cuda_monkeypatch",
         # skipped due to #2536, torch._C._scatter or torch._C._gather
-        "test_storage_setitem_xpu_float32",
-        "test_storage_error_no_attribute",
-        "test_storage_setitem_xpu_uint8",
-        "test_tensor_storage_type_xpu_bfloat16",
-        "test_tensor_storage_type_xpu_int16",
-        "test_tensor_storage_type_xpu_float16",
-        "test_storage_setitem_xpu_int16",
-        "test_storage_setitem_xpu_float64",
-        "test_tensor_storage_type_xpu_bool",
         "test_pickle_gradscaler_xpu",
-        "test_tensor_storage_type_xpu_float64",
-        "test_tensor_storage_type_xpu_float32",
-        "test_tensor_storage_type_xpu_int8",
-        "test_storage_setitem_xpu_int32",
-        "test_tensor_storage_type_xpu_uint8",
-        "test_tensor_storage_type_xpu_int32",
-        "test_storage_setitem_xpu_int64",
         "test_grad_scaler_pass_itself_xpu",
-        "test_storage_setitem_xpu_bool",
-        "test_tensor_storage_type_xpu_int64",
-        "test_storage_setitem_xpu_int8",
         "test_grad_scaling_state_dict_xpu",
         "test_typed_storage_deprecation_warning",
         "test_typed_storage_internal_no_warning",
@@ -167,6 +148,17 @@ skip_dict = {
         "test_broadcast_fn_map_xpu",
         # RuntimeError: _share_fd_: only available on CPU
         "test_module_share_memory_xpu",
+        # TypedStorage tests are not applicable to XPU. TypedStorage is deprecated in favor of
+        # UntypedStorage paired with torch.dtype. XPU does not provide typed storage classes
+        # (e.g., torch.xpu.FloatStorage, torch.xpu.BFloat16Storage). See NOTE in
+        # torch.storage._dtype_to_storage_type_map() upstream:
+        # https://github.com/pytorch/pytorch/blob/main/torch/storage.py
+        "test_storage_setitem_xpu",
+        "test_storage_error",
+        # NOTE: `test_storage_error` also matches `test_storage_error_no_attribute`
+        # under pytest -k substring semantics used by the XPU skip runner.
+        "test_print",
+        "test_tensor_storage_type_xpu",
     ),
     "test_transformers_xpu.py": (
         # https://github.com/intel/torch-xpu-ops/issues/3127
@@ -263,12 +255,35 @@ skip_dict = {
         # aten::_cudnn_rnn/aten::miopen_rnn not supported
         "test_cudnn_rnn",
     ),
+    "test_compile_benchmark_util_xpu.py": None,
+    "test_hub_xpu.py": None,
     "test_matmul_cuda_xpu.py": None,
+    "test_custom_ops_xpu.py": None,
+    "test_flop_counter_xpu.py": None,
+    "test_legacy_vmap_xpu.py": None,
+    "test_utils_xpu.py": None,
     "functorch/test_vmap_xpu.py": None,
     "dynamo/test_ctx_manager_xpu.py": None,
     "functorch/test_control_flow_xpu.py": None,
+    "functorch/test_aot_joint_with_descriptors_xpu.py": None,
     "profiler/test_memory_profiler.py": None,
+    "profiler/test_cpp_thread_xpu.py": None,
+    "profiler/test_execution_trace_xpu.py": None,
+    "profiler/test_profiler_xpu.py": None,
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
+    "export/test_converter_xpu.py": None,
+    "export/test_cpp_serdes_xpu.py": None,
+    "export/test_draft_export_xpu.py": None,
+    "export/test_experimental_xpu.py": None,
+    "export/test_export_xpu.py": None,
+    "export/test_passes_xpu.py": None,
+    "export/test_retraceability_xpu.py": None,
+    "export/test_serdes_xpu.py": None,
+    "export/test_serialize_xpu.py": None,
+    "export/test_strict_export_v2_xpu.py": None,
+    "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "higher_order_ops/test_invoke_subgraph_xpu.py": None,
+    "higher_order_ops/test_with_effects_xpu.py": None,
 }

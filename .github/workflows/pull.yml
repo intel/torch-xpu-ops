@@ -17,6 +17,9 @@ jobs:
   preci-lint-check:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -30,6 +33,45 @@ jobs:
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
           bash .github/scripts/lintrunner.sh
+      - name: Check reproducer exists for AI-generated PR
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
+        run: |
+          cd ./torch-xpu-ops
+          FAIL_MSG=""
+          # Check if reproducer files exist
+          if ! ls test/repro/test_*.py 1>/dev/null 2>&1; then
+            FAIL_MSG="No reproducer test found. AI-generated PRs must include at least one reproducer in \`test/repro/test_*.py\`."
+          else
+            # Validate pytest format: must contain test functions or test classes
+            VALID=false
+            for f in test/repro/test_*.py; do
+              if grep -qE '^[[:space:]]*(def test_|class Test)' "$f"; then
+                VALID=true
+              else
+                FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
+                break
+              fi
+            done
+            if [ "$VALID" = true ] && [ -z "$FAIL_MSG" ]; then
+              echo "All reproducer tests are valid pytest format:"
+              ls test/repro/test_*.py
+            fi
+          fi
+          if [ -n "$FAIL_MSG" ]; then
+            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
+            printf -v COMMENT_BODY '%s\n' \
+              "@${PR_AUTHOR} ${FAIL_MSG}" \
+              "" \
+              "Please ensure your reproducer follows pytest conventions:" \
+              "- File name: \`test/repro/test_<description>.py\`" \
+              "- Contains \`def test_...()\` functions or \`class Test...\` classes" \
+              "- Runnable via \`pytest test/repro/\`"
+            gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
+            echo "::error::${FAIL_MSG}"
+            exit 1
+          fi
 
   # Resolve test matrix from labels / path changes
   preci-matrix:

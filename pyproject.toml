@@ -13,15 +13,9 @@ requires = [
 build-backend = "setuptools.build_meta:__legacy__"
 
 
-[tool.black]
-# Uncomment if pyproject.toml worked fine to ensure consistency with flake8
-# line-length = 120
-target-version = ["py310", "py311", "py312"]
-
-
 [tool.ruff]
 target-version = "py310"
-line-length = 120
+line-length = 88
 
 [tool.ruff.lint]
 # NOTE: Synchoronize the ignores with .flake8
@@ -70,7 +64,11 @@ ignore = [
     "SIM118",
     "UP006", # keep-runtime-typing
     "UP007", # keep-runtime-typing
-    "UP038", # Was removed from newer versions, results in slower code
+
+    # TODO - tmp skip in torch-xpu-ops
+    "UP045",
+    "UP031",
+    "PGH004",
 ]
 select = [
     "B",
@@ -121,4 +119,8 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = [
     "F401",
+]
+
+"tools/linter/**" = [
+    "LOG015"
 ]
