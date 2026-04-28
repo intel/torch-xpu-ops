@@ -435,9 +435,7 @@ TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward = (
 # uses hard-coded device="cuda"; mirror with device="xpu".
 @largeTensorTest("12GB", device="xpu")
 def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
-    input = torch.randint(
-        1, 10, (1, 32, 16, 16), dtype=torch.float32, device="xpu"
-    )
+    input = torch.randint(1, 10, (1, 32, 16, 16), dtype=torch.float32, device="xpu")
     input = input.contiguous(memory_format=torch.channels_last).requires_grad_()
     pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).xpu()
 
