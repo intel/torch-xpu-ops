@@ -1,6 +1,6 @@
 ---
 name: xpu-backend-scan
-description: Triage XPU backend coverage across pytorch/pytorch and intel/torch-xpu-ops — parity gaps, missing implementations, dispatch defects, fallback misuse. Use when analyzing whether an operator is correctly supported on XPU or when reviewing scan findings.
+description: Determine whether a PyTorch operator has correct XPU support — analyze dispatch coverage, CUDA-XPU parity, fallback implications, waiver applicability, and missing implementation evidence.
 ---
 
 # XPU Backend Scan
