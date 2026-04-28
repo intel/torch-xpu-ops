@@ -1,11 +1,13 @@
 ---
 name: xpu-backend-scan
-description: Triage XPU backend coverage — parity gaps, missing implementations, dispatch defects, fallback misuse. Use when analyzing whether an operator is correctly supported on XPU or when reviewing scan findings.
+description: Triage XPU backend coverage across pytorch/pytorch and intel/torch-xpu-ops — parity gaps, missing implementations, dispatch defects, fallback misuse. Use when analyzing whether an operator is correctly supported on XPU or when reviewing scan findings.
 ---
 
 # XPU Backend Scan
 
 Determine whether a PyTorch operator has correct, complete XPU support by inspecting dispatch paths, runtime coverage, and user-visible behavior parity with CUDA.
+
+Scope: all XPU-related code in both `pytorch/pytorch` (upstream XPU backend, dispatch, codegen, tests) and `intel/torch-xpu-ops` (XPU kernels, SYCL implementations, fallback, backend YAML).
 
 References:
 - [references/dispatch-coverage.md](references/dispatch-coverage.md) — how to determine XPU coverage and where to look
@@ -15,7 +17,7 @@ References:
 
 ### Step 1: Identify the operator surface
 
-Pin the exact schema/overload from `yaml/native/native_functions.yaml`. Do not compare by base op name or filename alone.
+Pin the exact schema/overload from `native_functions.yaml` (torch-xpu-ops `yaml/native/` or upstream `aten/src/ATen/native/`). Do not compare by base op name or filename alone.
 
 ### Step 2: Check waivers
 

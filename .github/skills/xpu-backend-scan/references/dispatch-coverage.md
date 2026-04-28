@@ -2,7 +2,11 @@
 
 How to determine whether XPU already has usable coverage for an operator.
 
-## Priority Sources (torch-xpu-ops)
+XPU code lives in **two repositories** — both are in scope:
+- `intel/torch-xpu-ops` — XPU kernels, SYCL implementations, fallback, backend YAML overrides
+- `pytorch/pytorch` — upstream XPU backend integration, dispatch, codegen, shared native code, tests
+
+## Priority Sources (intel/torch-xpu-ops)
 
 Inspect in this order (this is lookup order, not coverage priority — see SKILL.md Step 3 for override rules):
 1. `yaml/native/native_functions.yaml` — schema and dispatch key configuration
@@ -11,14 +15,16 @@ Inspect in this order (this is lookup order, not coverage priority — see SKILL
 4. `src/ATen/native/xpu/sycl/` — SYCL kernel implementations
 5. `yaml/xpu_functions.yaml` — auxiliary metadata (lowest priority)
 
-## Priority Sources (upstream pytorch/pytorch)
+## Priority Sources (pytorch/pytorch)
 
-Consult when peer semantics or schema confirmation is needed:
-1. `aten/src/ATen/native/native_functions.yaml` — authoritative schema
-2. `tools/autograd/derivatives.yaml` — backward formulas
-3. `torch/_decomp/` and `torch/_refs/` — decomposition registration
-4. `aten/src/ATen/native/cuda/` — CUDA implementations
-5. `aten/src/ATen/native/transformers/cuda/` and `…/xpu/`
+Also inspect — XPU backend code lives upstream too:
+1. `aten/src/ATen/native/native_functions.yaml` — authoritative schema and dispatch keys
+2. `aten/src/ATen/native/xpu/` — upstream XPU native code
+3. `tools/autograd/derivatives.yaml` — backward formulas
+4. `torch/_decomp/` and `torch/_refs/` — decomposition registration
+5. `aten/src/ATen/native/cuda/` — CUDA peer implementations
+6. `aten/src/ATen/native/transformers/cuda/` and `…/xpu/`
+7. `test/xpu/` — upstream XPU tests
 
 ## Coverage Signals
 
