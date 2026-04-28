@@ -5,7 +5,7 @@ Decide whether the available evidence is strong enough to file an XPU issue.
 
 ## Evidence modes
 Use one of these evidence modes before filing:
-- Manual validation: a local reproducer run on XPU with environment details.
+- Manual validation: a local XPU reproducer run derived from an upstream CUDA or PyTorch issue, PR, or commit, with environment details.
 - CI UT failure: a failing CI job tied to an upstream PyTorch change, plus the test name, rerun command, and relevant log output.
 
 ## Manual validation assumptions
@@ -44,8 +44,8 @@ For manual validation also capture:
 - exact reproducer command used and its output
 - minimal repro script
 - collect_env command and its output: `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
-- upstream issue, PR, and commit links when the bug was discovered from an upstream change
-- one-line summary of what the upstream change did when there is an upstream trigger
+- upstream issue, PR, and commit links that supplied the repro scenario
+- one-line summary of what the upstream change did
 
 For CI UT failures also capture:
 - upstream issue, PR, and commit links
