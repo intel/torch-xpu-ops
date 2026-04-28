@@ -40,4 +40,12 @@ TORCH_XPU_API Tensor _sparse_csr_prod_xpu_kernel(
     bool keepdim,
     std::optional<ScalarType> dtype);
 
+TORCH_XPU_API void sparse_sampled_addmm_kernel(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result);
+
 } // namespace at::native::xpu

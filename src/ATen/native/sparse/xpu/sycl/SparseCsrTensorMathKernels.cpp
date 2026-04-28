@@ -612,4 +612,155 @@ void convert_indices_from_csr_to_coo_structured_kernel(
   }
 }
 
+// Specialized SYCL kernel for sparse_sampled_addmm
+// Computes dot products only for nnz positions instead of full dense matmul
+template <typename scalar_t, typename index_t, typename acc_t>
+struct SparseSampledAddmmKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    int64_t nnz_idx = item.get_global_linear_id();
+    if (nnz_idx >= nnz) {
+      return;
+    }
+
+    // Get the row and column indices for this non-zero element
+    int64_t crow_idx = 0;
+    for (int64_t i = 0; i < nrows; i++) {
+      if (crow_indices[i] <= nnz_idx && nnz_idx < crow_indices[i + 1]) {
+        crow_idx = i;
+        break;
+      }
+    }
+    int64_t col_idx = col_indices[nnz_idx];
+
+    // Compute dot product: mat1[crow_idx, :] · mat2[:, col_idx]
+    acc_t dot_prod = 0;
+    for (int64_t k = 0; k < k_dim; k++) {
+      dot_prod += acc_t(mat1[crow_idx * k_dim + k]) *
+                  acc_t(mat2[k * n_dim + col_idx]);
+    }
+
+    // Apply alpha scaling and add beta * current_value
+    acc_t current_val = acc_t(result_values[nnz_idx]);
+    acc_t new_val = alpha_val * dot_prod + beta_val * current_val;
+    result_values[nnz_idx] = static_cast<scalar_t>(new_val);
+  }
+
+  SparseSampledAddmmKernelFunctor(
+      scalar_t* result_values,
+      const index_t* crow_indices,
+      const index_t* col_indices,
+      const scalar_t* mat1,
+      const scalar_t* mat2,
+      int64_t nnz,
+      int64_t nrows,
+      int64_t k_dim,
+      int64_t n_dim,
+      acc_t alpha_val,
+      acc_t beta_val)
+      : result_values(result_values),
+        crow_indices(crow_indices),
+        col_indices(col_indices),
+        mat1(mat1),
+        mat2(mat2),
+        nnz(nnz),
+        nrows(nrows),
+        k_dim(k_dim),
+        n_dim(n_dim),
+        alpha_val(alpha_val),
+        beta_val(beta_val) {}
+
+ private:
+  scalar_t* result_values;
+  const index_t* crow_indices;
+  const index_t* col_indices;
+  const scalar_t* mat1;
+  const scalar_t* mat2;
+  int64_t nnz;
+  int64_t nrows;
+  int64_t k_dim;
+  int64_t n_dim;
+  acc_t alpha_val;
+  acc_t beta_val;
+};
+
+template <typename scalar_t>
+void sparse_sampled_addmm_kernel_impl(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  if (result._nnz() == 0 || mat1.numel() == 0 || mat2.numel() == 0) {
+    result.mul_(beta);
+    return;
+  }
+
+  int64_t m = mat1.size(-2);
+  int64_t k = mat1.size(-1);
+  int64_t n = mat2.size(-1);
+  int64_t nnz = result._nnz();
+
+  Tensor crow_indices = result.crow_indices();
+  Tensor col_indices = result.col_indices();
+  Tensor result_values = result.values();
+
+  auto queue = getCurrentSYCLQueue();
+  using acc_t = at::acc_type<scalar_t, true>;
+
+  AT_DISPATCH_INDEX_TYPES(
+      crow_indices.scalar_type(),
+      "sparse_sampled_addmm_xpu_indices",
+      [&] {
+        scalar_t* result_values_ptr = result_values.data_ptr<scalar_t>();
+        const index_t* crow_indices_ptr =
+            crow_indices.const_data_ptr<index_t>();
+        const index_t* col_indices_ptr = col_indices.const_data_ptr<index_t>();
+        const scalar_t* mat1_ptr = mat1.const_data_ptr<scalar_t>();
+        const scalar_t* mat2_ptr = mat2.const_data_ptr<scalar_t>();
+
+        acc_t alpha_val = static_cast<acc_t>(alpha.toDouble());
+        acc_t beta_val = static_cast<acc_t>(beta.toDouble());
+
+        using KernelFn =
+            SparseSampledAddmmKernelFunctor<scalar_t, index_t, acc_t>;
+        int64_t work_group_size = syclMaxWorkGroupSize<KernelFn>();
+        int64_t work_group_num =
+            (nnz + work_group_size - 1) / work_group_size;
+
+        auto kfn = KernelFn(
+            result_values_ptr,
+            crow_indices_ptr,
+            col_indices_ptr,
+            mat1_ptr,
+            mat2_ptr,
+            nnz,
+            m,
+            k,
+            n,
+            alpha_val,
+            beta_val);
+
+        sycl_kernel_submit(
+            sycl::range<1>(work_group_num * work_group_size),
+            sycl::range<1>(work_group_size),
+            queue,
+            kfn);
+      });
+}
+
+void sparse_sampled_addmm_kernel(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  AT_DISPATCH_ALL_TYPES_AND_COMPLEX_AND2(
+      kBFloat16, kHalf, result.scalar_type(), "sparse_sampled_addmm_xpu", [&] {
+        sparse_sampled_addmm_kernel_impl<scalar_t>(
+            self, mat1, mat2, beta, alpha, result);
+      });
+}
+
 } // namespace at::native::xpu

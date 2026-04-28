@@ -419,24 +419,8 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     return result;
   }
 
-  Tensor dense_result = mat1.matmul(mat2);
-  if (alpha.toComplexDouble() != 1.0) {
-    dense_result.mul_(alpha);
-  }
-  if (beta.toComplexDouble() != 0.0) {
-    dense_result.add_(result.to_dense(), beta);
-  }
-
-  Tensor coo = result.to_sparse();
-  Tensor indices = coo.indices();
-  std::vector<at::indexing::TensorIndex> select_idx;
-  select_idx.reserve(indices.size(0));
-  for (const auto d : c10::irange(indices.size(0))) {
-    select_idx.emplace_back(indices.select(0, d));
-  }
-
-  Tensor gathered = dense_result.index(select_idx);
-  result.values().reshape({-1}).copy_(gathered);
+  // Call specialized SYCL kernel for sparse_sampled_addmm
+  xpu::sparse_sampled_addmm_kernel(self, mat1, mat2, beta, alpha, result);
   return result;
 }
 
