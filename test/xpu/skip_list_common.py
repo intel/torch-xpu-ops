@@ -263,4 +263,13 @@ skip_dict = {
     "export/test_hop_xpu.py": None,
     "export/test_export_opinfo_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "dynamo/test_aot_autograd_cache_xpu.py": None,
+    "dynamo/test_compiler_bisector_xpu.py": None,
+    "dynamo/test_deviceguard_xpu.py": None,
+    "dynamo/test_functions_xpu.py": None,
+    "dynamo/test_higher_order_ops_xpu.py": None,
+    "dynamo/test_misc_xpu.py": None,
+    "dynamo/test_regional_inductor_xpu.py": None,
+    "dynamo/test_streams_xpu.py": None,
+    "dynamo/test_wrap_inductor_compiled_regions_xpu.py": None,
 }
