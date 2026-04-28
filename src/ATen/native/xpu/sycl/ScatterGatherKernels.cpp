@@ -24,6 +24,7 @@ DISABLE_RETURN_TYPE_WARNING_BEGIN
 #include <ATen/native/xpu/sycl/IndexKernelUtils.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
 #include <ATen/native/xpu/sycl/OffsetCalculator.h>
+#include <ATen/native/xpu/sycl/IntegerDivider.h>
 #include <comm/SYCLContext.h>
 
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
@@ -155,66 +156,113 @@ struct alignas(N) OpaqueType {
   char data[N];
 };
 
+// Compile-time thread work size enables loop unrolling (matching CUDA pattern).
+constexpr int kScatterGatherThreadWorkSize = 4;
+
+// Scatter uses smaller WGs for better scheduling of random writes.
+// Gather uses larger WGs for better L2 cache reuse across row accesses.
+constexpr int kScatterWGSize = 256;
+constexpr int kGatherWGSize = 1024;
+
+// Scatter kernel functor: no grid-stride, fully unrolled inner loop.
+// Scatter launches enough WGs to cover all elements (no capping).
 template <typename func_t>
-struct ScatterGatherElementwiseKernelFunctor {
+struct ScatterElementwiseKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int nv = work_group_size_ * thread_work_size_;
-    auto wg_id = item.get_group_linear_id();
-    auto local_id = item.get_local_linear_id();
-    int idx = nv * wg_id + local_id;
-    for (int i = 0; i < thread_work_size_; ++i) {
+    constexpr int WG = kScatterWGSize;
+    constexpr int TWS = kScatterGatherThreadWorkSize;
+    constexpr int nv = WG * TWS;
+    int idx = nv * item.get_group_linear_id() + item.get_local_linear_id();
+#pragma unroll
+    for (int i = 0; i < TWS; ++i) {
       if (idx < N_) {
         f_(idx);
-        idx += work_group_size_;
+        idx += WG;
       }
     }
   }
-  ScatterGatherElementwiseKernelFunctor(
-      int N,
-      func_t f,
-      int work_group_size,
-      int thread_work_size)
-      : N_(N),
-        f_(f),
-        work_group_size_(work_group_size),
-        thread_work_size_(thread_work_size) {}
+  ScatterElementwiseKernelFunctor(int N, func_t f) : N_(N), f_(f) {}
 
  private:
   int N_;
   func_t f_;
-  int work_group_size_;
-  int thread_work_size_;
+};
+
+// Gather kernel functor: grid-stride loop with capped WGs.
+// Capping preserves the original dispatch behavior for cache-sensitive reads.
+template <typename func_t>
+struct GatherElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    constexpr int WG = kGatherWGSize;
+    constexpr int TWS = kScatterGatherThreadWorkSize;
+    constexpr int nv = WG * TWS;
+    int tid = nv * item.get_group_linear_id() + item.get_local_linear_id();
+    int grid_stride = nv * (int)item.get_group_range(0);
+    while (tid < N_) {
+      int idx = tid;
+#pragma unroll
+      for (int i = 0; i < TWS; ++i) {
+        if (idx < N_) {
+          f_(idx);
+        }
+        idx += WG;
+      }
+      tid += grid_stride;
+    }
+  }
+  GatherElementwiseKernelFunctor(int N, func_t f) : N_(N), f_(f) {}
+
+ private:
+  int N_;
+  func_t f_;
 };
 
 template <typename func_t>
-static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
+static void launch_scatter_kernel(int64_t N, const func_t& f) {
   TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
   if (N == 0) {
     return;
   }
 
-  using KernelFn = ScatterGatherElementwiseKernelFunctor<func_t>;
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelFn>();
-  int outputSize = N;
-  int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
-  const auto target_global_size = syclMaxWorkItemsPerTile();
-  // Each work group size is work_group_size, one full device launch is
-  // target_global_size, so we can calculate max work group num as below
-  const int max_work_group_num = target_global_size / work_group_size;
-  int work_group_num = outputSize / work_group_size < max_work_group_num
-      ? outputSize / work_group_size
-      : max_work_group_num;
-  int draft_work_group_num =
-      (outputSize + work_group_size - 1) / work_group_size;
+  constexpr int nv = kScatterWGSize * kScatterGatherThreadWorkSize;
+  int num_groups = ((int)N + nv - 1) / nv;
 
-  int thread_work_size = draft_work_group_num / work_group_num + 1;
+  sycl::range<1> local_range(kScatterWGSize);
+  sycl::range<1> global_range(num_groups * kScatterWGSize);
 
-  sycl::range<1> local_range(work_group_size);
-  sycl::range<1> global_range(work_group_num * work_group_size);
-
-  auto caller = KernelFn((int)N, f, work_group_size, thread_work_size);
+  using KernelFn = ScatterElementwiseKernelFunctor<func_t>;
+  auto caller = KernelFn((int)N, f);
   sycl_kernel_submit(
       global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+}
+
+template <typename func_t>
+static void launch_gather_kernel(int64_t N, const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+
+  constexpr int WG = kGatherWGSize;
+  constexpr int nv = WG * kScatterGatherThreadWorkSize;
+
+  int needed_groups = ((int)N + nv - 1) / nv;
+  int max_groups = (int)(syclMaxWorkItemsPerTile() / WG);
+  int num_groups = std::min(needed_groups, max_groups);
+
+  sycl::range<1> local_range(WG);
+  sycl::range<1> global_range(num_groups * WG);
+
+  using KernelFn = GatherElementwiseKernelFunctor<func_t>;
+  auto caller = KernelFn((int)N, f);
+  sycl_kernel_submit(
+      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+}
+
+// Backward-compatible wrapper used by scatter_fill path
+template <typename func_t>
+static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
+  launch_scatter_kernel(N, f);
 }
 
 template <
@@ -268,6 +316,67 @@ struct ScatterGatherInternalKernelLoopFunctor {
   func_t f_;
 };
 
+// Fast 2D gather functor: bypasses OffsetCalculator for 2D contiguous tensors.
+// Uses IntDivider for efficient divmod and uint32_t strides to match
+// OffsetCalculator's use of 32-bit arithmetic (avoiding expensive 64-bit
+// multiply on GPU).
+// gathered_is_outer=true: gathered dim is outer iter dimension (dim=0 gather)
+// gathered_is_outer=false: gathered dim is inner iter dimension (dim=1 gather)
+template <bool gathered_is_outer, typename scalar_t, typename index_t>
+struct GatherContiguousFunctor {
+  void operator()(int i) const {
+    auto dm = inner_size_divider_.divmod(static_cast<unsigned int>(i));
+    unsigned int outer_idx = dm.div;
+    unsigned int inner_idx = dm.mod;
+    index_t idx_val = *(index_t*)(index_ptr_ +
+        outer_idx * idx_outer_stride_ + inner_idx * idx_inner_stride_);
+    SYCL_KERNEL_ASSERT(
+        idx_val >= 0 && idx_val < index_size_ &&
+        "gather kernel index out of bounds");
+    scalar_t val;
+    if constexpr (gathered_is_outer) {
+      val = *(scalar_t*)(src_ptr_ +
+          static_cast<unsigned int>(idx_val) * src_gathered_stride_ +
+          inner_idx * src_other_stride_);
+    } else {
+      val = *(scalar_t*)(src_ptr_ +
+          outer_idx * src_other_stride_ +
+          static_cast<unsigned int>(idx_val) * src_gathered_stride_);
+    }
+    *(scalar_t*)(self_ptr_ + i * (uint32_t)sizeof(scalar_t)) = val;
+  }
+  GatherContiguousFunctor(
+      char* self_ptr,
+      char* src_ptr,
+      char* index_ptr,
+      unsigned int inner_size,
+      int64_t index_size,
+      uint32_t src_gathered_stride,
+      uint32_t src_other_stride,
+      uint32_t idx_outer_stride,
+      uint32_t idx_inner_stride)
+      : self_ptr_(self_ptr),
+        src_ptr_(src_ptr),
+        index_ptr_(index_ptr),
+        inner_size_divider_(inner_size),
+        index_size_(index_size),
+        src_gathered_stride_(src_gathered_stride),
+        src_other_stride_(src_other_stride),
+        idx_outer_stride_(idx_outer_stride),
+        idx_inner_stride_(idx_inner_stride) {}
+
+ private:
+  char* self_ptr_;
+  char* src_ptr_;
+  char* index_ptr_;
+  at::detail::IntDivider<unsigned int> inner_size_divider_;
+  int64_t index_size_;
+  uint32_t src_gathered_stride_;
+  uint32_t src_other_stride_;
+  uint32_t idx_outer_stride_;
+  uint32_t idx_inner_stride_;
+};
+
 template <bool is_scatter_like, typename scalar_t, typename index_t>
 struct ScatterGatherInternalKernel {
   template <typename func_t>
@@ -316,6 +425,47 @@ struct ScatterGatherInternalKernel {
             out_stride_bytes);
         return;
       }
+
+      // 2D contiguous gather fast path: when result (self) is contiguous and
+      // the iterator is 2D, bypass OffsetCalculator with direct address
+      // computation using a single IntDivider divmod.
+      // Handles both orientations:
+      //   gathered_is_outer (dim=0): strides(1)[1]==0 (src outer stride restrided)
+      //   gathered_is_inner (dim=1): strides(1)[0]==0 (src inner stride restrided)
+      if (iter.ndim() == 2 &&
+          static_cast<size_t>(iter.strides(0)[0]) == element_size &&
+          static_cast<size_t>(iter.strides(0)[1]) ==
+              element_size * iter.shape()[0]) {
+        bool gathered_is_outer = (iter.strides(1)[1] == 0);
+        bool gathered_is_inner = (iter.strides(1)[0] == 0);
+        if (gathered_is_outer || gathered_is_inner) {
+          unsigned int inner_size = iter.shape()[0];
+          uint32_t src_gathered_stride =
+              static_cast<uint32_t>(index_stride * element_size);
+          uint32_t src_other_stride = static_cast<uint32_t>(
+              gathered_is_outer ? iter.strides(1)[0] : iter.strides(1)[1]);
+          uint32_t idx_outer_stride =
+              static_cast<uint32_t>(iter.strides(2)[1]);
+          uint32_t idx_inner_stride =
+              static_cast<uint32_t>(iter.strides(2)[0]);
+          if (iter.numel() == 0)
+            return;
+          if (gathered_is_outer) {
+            auto loop = GatherContiguousFunctor<true, scalar_t, index_t>(
+                self_ptr, src_ptr, index_ptr, inner_size, index_size,
+                src_gathered_stride, src_other_stride,
+                idx_outer_stride, idx_inner_stride);
+            launch_gather_kernel(iter.numel(), loop);
+          } else {
+            auto loop = GatherContiguousFunctor<false, scalar_t, index_t>(
+                self_ptr, src_ptr, index_ptr, inner_size, index_size,
+                src_gathered_stride, src_other_stride,
+                idx_outer_stride, idx_inner_stride);
+            launch_gather_kernel(iter.numel(), loop);
+          }
+          return;
+        }
+      }
     }
 
     auto offset_calc = make_offset_calculator<3>(iter);
@@ -335,7 +485,11 @@ struct ScatterGatherInternalKernel {
         numel,
         f);
 
-    launch_scatter_gather_kernel(iter.numel(), loop);
+    if constexpr (is_scatter_like) {
+      launch_scatter_kernel(iter.numel(), loop);
+    } else {
+      launch_gather_kernel(iter.numel(), loop);
+    }
   }
 };
 
@@ -763,6 +917,9 @@ void scatter_add_kernel(
     int64_t dim,
     const Tensor& index,
     const Tensor& src) {
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd usage
+  globalContext().alertNotDeterministic("scatter_add_kernel");
   ScatterGatherBaseKernel</*is_scatter_like=*/true, /*cast_to_opaque=*/false>()(
       self, dim, index, src, "scatter_add_kernel", reduce_add);
 }
@@ -803,6 +960,7 @@ void scatter_reduce_two_kernel(
     const ReductionType& reduce) {
   switch (reduce) {
     case ReductionType::SUM:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_sum");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_sum", reduce_add);
       break;
@@ -820,6 +978,7 @@ void scatter_reduce_two_kernel(
           self, dim, index, src, "scatter_reduce_kernel_amin", reduce_minimum);
       break;
     case ReductionType::MEAN:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_mean");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_mean", reduce_mean);
       break;
