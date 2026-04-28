@@ -9740,11 +9740,13 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                         atol=atol,
                     )
 
-    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
-    @largeTensorTest("40GB", device="cuda")
+    # XPU port: drop @unittest.skipIf(not TEST_CUDA) (the device is now XPU);
+    # rewrite hard-coded "cuda" device strings to "xpu". Tracks
+    # intel/torch-xpu-ops#2024.
+    @largeTensorTest("40GB", device="xpu")
     def test_layer_norm_large_tensor(self):
         # test for https://github.com/pytorch/pytorch/issues/136291
-        device = torch.device("cuda")
+        device = torch.device("xpu")
         b, n, dp = 16, 3000, 16
         pairwise_repr = torch.randn(b, n, n, dp)
 
