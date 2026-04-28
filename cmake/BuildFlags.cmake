@@ -48,7 +48,11 @@ macro(set_build_flags)
     # # -- Host flags (SYCL_CXX_FLAGS)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
       list(APPEND SYCL_HOST_FLAGS /std:${CPP_STD})
-      list(APPEND SYCL_HOST_FLAGS /MD)
+      if(CMAKE_BUILD_TYPE MATCHES Debug)
+        list(APPEND SYCL_HOST_FLAGS /MDd)
+      else()
+        list(APPEND SYCL_HOST_FLAGS /MD)
+      endif()
       list(APPEND SYCL_HOST_FLAGS /EHsc) # exception handling
       # SYCL headers warnings
       list(APPEND SYCL_HOST_FLAGS /wd4996) # allow usage of deprecated functions
@@ -118,7 +122,18 @@ macro(set_build_flags)
     endif()
 
     if(CMAKE_BUILD_TYPE MATCHES Debug)
-      set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
+      if(WIN32)
+        # Large SYCL translation units in Windows Debug builds will exhaust Clang
+        # source locations resulting in errors during kernels' compilation; reduce debug metadata when
+        # the compiler supports it
+        CHECK_SYCL_FLAG("-fno-system-debug" SUPPORTS_FNO_SYSTEM_DEBUG)
+        if(SUPPORTS_FNO_SYSTEM_DEBUG)
+          set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -fno-system-debug)
+        endif()
+        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O0 -Rno-debug-disables-optimization)
+      else()
+        set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -g -O0 -Rno-debug-disables-optimization)
+      endif()
     elseif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
       set(SYCL_KERNEL_OPTIONS ${SYCL_KERNEL_OPTIONS} -gline-tables-only -O2)
     endif()
