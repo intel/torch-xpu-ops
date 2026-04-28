@@ -10,6 +10,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--pr-list', '-n', nargs='+',
     default=[
         # Additional PRs link if need for CICD tests
+        "https://github.com/pytorch/pytorch/pull/180898",
     ]
 )
 parser.add_argument('--extra-pr-list', '-e', nargs='+',default=[])
