@@ -1,10 +1,12 @@
 # xpu_worker_restart.py - Pytest plugin: restart xdist workers on XPU OOM
 #
-# Loaded via `-p scripts.xpu_worker_restart`. Spawns one `xpu-smi dump`
-# process per host (the xdist controller), tails its CSV log, and restarts
-# any worker whose target device crosses _GPU_MEM_THRESHOLD or whose test
-# fails with a known fatal pattern. Workers are restarted via os._exit(101);
-# pytest-xdist respawns them when --max-worker-restart allows.
+# Loaded via `-p scripts.xpu_worker_restart`. On the xdist controller a
+# background thread polls `xpu-smi dump -m 5 -n 1` every _XPU_SMI_INTERVAL
+# seconds and atomically overwrites a small snapshot file with the latest
+# sample. Workers read that file and restart themselves (os._exit(101))
+# whenever their target device crosses _GPU_MEM_THRESHOLD or a test fails
+# with a known fatal pattern. pytest-xdist respawns workers under
+# --max-worker-restart.
 
 import atexit
 import hashlib
@@ -15,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.request
 import zipfile
 
@@ -23,9 +26,9 @@ import pytest
 # --- tunables -----------------------------------------------------------------
 
 _WORKER_RESTART_CODE = 101
-_GPU_MEM_THRESHOLD = 80.0   # percent
-_XPU_SMI_INTERVAL = 3       # seconds (xpu-smi -i)
-_LOG_TAIL_BYTES = 8192      # bytes read from end of log per check
+_GPU_MEM_THRESHOLD = 85.0   # percent
+_XPU_SMI_INTERVAL = 3       # seconds between snapshots
+_XPU_SMI_TIMEOUT = 10       # seconds, per `xpu-smi dump -n 1` invocation
 _LOG_PATH_ENV = 'XPU_SMI_LOG_PATH'
 _LOG_OWNER_ENV = 'XPU_SMI_LOG_OWNER_PID'
 
@@ -61,8 +64,9 @@ _FATAL_PATTERNS = [
 
 _worker_id = None          # xdist worker id, or None on controller
 _target_device = '0'       # this worker's GPU index (string)
-_log_path = None           # shared xpu-smi CSV log
-_xpu_smi_proc = None       # only set in the process that owns xpu-smi
+_log_path = None           # shared xpu-smi snapshot file
+_poller_thread = None      # only set in the process that owns the poller
+_poller_stop = None        # threading.Event used to ask the poller to exit
 
 
 # --- helpers ------------------------------------------------------------------
@@ -219,77 +223,98 @@ def _ensure_xpu_smi():
     return _install_windows() if _is_windows() else _install_linux()
 
 
-# --- xpu-smi process lifecycle (controller only) ------------------------------
+# --- xpu-smi snapshot poller (controller only) --------------------------------
+
+def _take_snapshot():
+    """Run `xpu-smi dump -m 5 -n 1` once and return its stdout, or None."""
+    try:
+        out = subprocess.check_output(
+            ['xpu-smi', 'dump', '-m', '5', '-n', '1'],
+            stderr=subprocess.DEVNULL,
+            timeout=_XPU_SMI_TIMEOUT,
+        )
+    except (subprocess.SubprocessError, OSError) as e:
+        _log(f"xpu-smi snapshot failed: {e}")
+        return None
+    return out.decode('utf-8', errors='ignore')
+
+
+def _atomic_write(path, text):
+    """Write `text` to `path` atomically (rename within the same dir)."""
+    dirname = os.path.dirname(path) or '.'
+    fd, tmp = tempfile.mkstemp(prefix='.xpu_smi_', suffix='.tmp', dir=dirname)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except OSError as e:
+        _log(f"snapshot write failed: {e}")
+        if os.path.exists(tmp):
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+
+def _poller_loop(stop_event, path):
+    """Take an xpu-smi snapshot every _XPU_SMI_INTERVAL seconds and
+    overwrite `path` with just the latest snapshot (so the file stays small)."""
+    while not stop_event.is_set():
+        snap = _take_snapshot()
+        if snap:
+            _atomic_write(path, snap)
+        # stop_event.wait returns True if set during the wait -> exit promptly.
+        if stop_event.wait(_XPU_SMI_INTERVAL):
+            return
+
 
 def _start_xpu_smi():
-    """Spawn xpu-smi in the background and publish its log path via env."""
-    global _xpu_smi_proc, _log_path
+    """Start the snapshot poller and publish its log path via env."""
+    global _poller_thread, _poller_stop, _log_path
 
-    if _xpu_smi_proc is not None:
+    if _poller_thread is not None:
         return  # already running in this process
 
     if not _ensure_xpu_smi():
         _log("xpu-smi unavailable; memory monitoring disabled")
         return
 
-    fd = None
     path = None
     try:
         fd, path = tempfile.mkstemp(prefix='xpu_smi_', suffix='.log')
-        env = os.environ.copy()
-        env['ZE_AFFINITY_MASK'] = ''
-        proc = subprocess.Popen(
-            ['xpu-smi', 'dump', '-m', '5', '-i', str(_XPU_SMI_INTERVAL)],
-            stdout=fd,
-            stderr=subprocess.DEVNULL,
-            env=env,
-        )
-    except (OSError, ValueError) as e:
-        _log(f"failed to spawn xpu-smi: {e}")
-        if fd is not None:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
+        os.close(fd)
+    except OSError as e:
+        _log(f"failed to create snapshot file: {e}")
         if path and os.path.exists(path):
             try:
                 os.unlink(path)
             except OSError:
                 pass
         return
-    finally:
-        # Popen dup'd the fd; we can close our copy now.
-        if fd is not None:
-            try:
-                os.close(fd)
-            except OSError:
-                pass
 
-    _xpu_smi_proc = proc
+    _poller_stop = threading.Event()
+    _poller_thread = threading.Thread(
+        target=_poller_loop, args=(_poller_stop, path),
+        name='xpu-smi-poller', daemon=True,
+    )
+    _poller_thread.start()
     _log_path = path
     os.environ[_LOG_PATH_ENV] = path
     os.environ[_LOG_OWNER_ENV] = str(os.getpid())
-    _log(f"started xpu-smi pid={proc.pid} log={path}")
+    _log(f"started xpu-smi poller every {_XPU_SMI_INTERVAL}s, log={path}")
 
 
 def _stop_xpu_smi():
-    """Owner-only: terminate xpu-smi and remove the log."""
-    global _xpu_smi_proc, _log_path
+    """Owner-only: stop the poller and remove the log."""
+    global _poller_thread, _poller_stop, _log_path
 
-    proc, _xpu_smi_proc = _xpu_smi_proc, None
-    if proc is not None and proc.poll() is None:
-        try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                try:
-                    proc.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    pass
-        except OSError as e:
-            _log(f"failed to stop xpu-smi: {e}")
+    stop_event, _poller_stop = _poller_stop, None
+    if stop_event is not None:
+        stop_event.set()
+
+    thread, _poller_thread = _poller_thread, None
+    if thread is not None:
+        thread.join(timeout=_XPU_SMI_TIMEOUT + 1)
 
     path, _log_path = _log_path, None
     if path and os.path.exists(path):
@@ -301,13 +326,10 @@ def _stop_xpu_smi():
 
 # --- log reader (all processes) -----------------------------------------------
 
-def _read_log_tail(path):
+def _read_snapshot(path):
+    """Read the full snapshot file (one xpu-smi sample, ~few hundred bytes)."""
     try:
         with open(path, 'rb') as f:
-            try:
-                f.seek(-_LOG_TAIL_BYTES, os.SEEK_END)
-            except OSError:
-                f.seek(0)
             return f.read().decode('utf-8', errors='ignore')
     except OSError:
         return ''
@@ -317,7 +339,7 @@ def _get_device_mem_util(device_id):
     """Return latest GPU memory utilization (%) for `device_id`, or None."""
     if not _log_path or not os.path.exists(_log_path):
         return None
-    tail = _read_log_tail(_log_path)
+    tail = _read_snapshot(_log_path)
     if not tail:
         return None
     for line in reversed(tail.splitlines()):

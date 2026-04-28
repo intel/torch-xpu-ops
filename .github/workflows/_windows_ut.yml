@@ -298,7 +298,7 @@ jobs:
           call conda remove --all -y -n windows_ut
           call conda create -n windows_ut python=${{ inputs.python }} -y
           call conda activate windows_ut
-          pip install pyyaml requests pytest-timeout pytest pytest-xdist
+          pip install pyyaml requests pytest pytest-timeout pytest-xdist pytest-rerunfailures
           call conda install -y libuv
           call conda install -y rust
           cd ..
