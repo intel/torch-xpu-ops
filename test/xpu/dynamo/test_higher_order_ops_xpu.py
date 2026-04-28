@@ -34,7 +34,6 @@ from torch.testing._internal.common_device_type import (
 from torch.testing._internal.common_utils import (
     munge_exc,
     parametrize,
-    skipIfXpu,
     TEST_WITH_TORCHDYNAMO,
     xfailIfTorchDynamo,
 )
