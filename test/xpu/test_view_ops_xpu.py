@@ -56,7 +56,6 @@ with XPUPatchForImport(False):
                     self.assertIsNot(nc_flat._base, src)
                     self.assertTrue(nc_flat.is_contiguous())
 
-        # Test that flatten returns 1-dim tensor when given a 0-dim tensor
         zero_dim_tensor = torch.tensor(123, device=device)
         flat0 = zero_dim_tensor.ravel()
         one_dim_tensor = torch.tensor([123], device=device)
@@ -77,7 +76,6 @@ with XPUPatchForImport(False):
         self.assertTrue(flat1.is_contiguous())
         self.assertTrue(flat2.is_contiguous())
 
-        # Test both float tensor and quantized tensor
         tensors = [
             torch.randn(5, 5, 5, 5, device=device),
         ]
@@ -109,7 +107,6 @@ with XPUPatchForImport(False):
         self.assertEqual(flat0, flat1)
         self.assertEqual(flat0.shape, flat1.shape)
 
-        # Test both float tensor and quantized tensor
         tensors = [torch.randn(5, 5, 5, 5, device=device)]
         for src in tensors:
             flat = src.flatten(0, -1)
