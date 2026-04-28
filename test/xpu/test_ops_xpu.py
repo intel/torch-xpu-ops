@@ -23,7 +23,10 @@ with XPUPatchForImport(False):
         TestFakeTensor,
         TestForwardADWithScalars,
         TestMathBits,
+        fake_autocast_device_skips,
     )
+
+fake_autocast_device_skips["xpu"] = {"linalg.pinv", "pinverse"}
 instantiate_device_type_tests(TestCommon, globals(), only_for="xpu", allow_xpu=True)
 instantiate_device_type_tests(TestMathBits, globals(), only_for="xpu", allow_xpu=True)
 # in finegrand

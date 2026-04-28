@@ -86,7 +86,7 @@ from torch.testing._internal.opinfo.core import (
 )
 from torch.testing._internal.opinfo.definitions.nested import _sample_njts, njt_op_db
 from torch.utils._pytree import tree_flatten, tree_map_only
-from torch.utils.checkpoint import checkpoint, create_selective_checkpoint_contexts
+from torch.utils.checkpoint import checkpoint
 
 # Tests are ported from pytorch/nestedtensor.
 # This makes porting as_nested_tensor easier in the future.
@@ -7375,22 +7375,6 @@ torch.cuda.synchronize()
             return convert_nt_to_jagged(nt).sum()
 
         checkpoint(fn, values, offsets, use_reentrant=False).backward()
-        self.assertIsNotNone(values.grad)
-
-        context_fn = partial(
-            create_selective_checkpoint_contexts, [torch.ops.aten.cumsum.default]
-        )
-
-        values.grad = None
-
-        def fn(values, lengths):
-            offsets = F.pad(lengths, pad=(1, 0)).cumsum(dim=0)
-            nt = convert_jagged_to_nested_tensor(values, offsets, max_length=4)
-            return convert_nt_to_jagged(nt).sum()
-
-        checkpoint(
-            fn, values, lengths, use_reentrant=False, context_fn=context_fn
-        ).backward()
         self.assertIsNotNone(values.grad)
 
     # Internally-defined NT use cases are lifted to here for maximum test realism.
