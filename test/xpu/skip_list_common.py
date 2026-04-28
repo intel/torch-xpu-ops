@@ -287,7 +287,6 @@ skip_dict = {
     "export/test_export_training_ir_to_run_decomp_xpu.py": None,
     "test_basic_torch_np_xpu.py": None,
     "test_fx_xpu.py": None,
-    "test_legacy_vmap_xpu.py": None,
     "test_multiprocessing_xpu.py": None,
     "test_numba_integration_xpu.py": None,
     "test_numpy_interop_xpu.py": None,
@@ -297,7 +296,6 @@ skip_dict = {
     "test_python_dispatch_xpu.py": None,
     "test_scaled_matmul_cuda_xpu.py": None,
     "test_serialization_xpu.py": None,
-    "test_utils_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
 }
