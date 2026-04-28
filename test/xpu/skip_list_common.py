@@ -246,6 +246,10 @@ skip_dict = {
         "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_256_xpu",
         "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
         "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_256_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3136
+        "test_disable_fastpath_xpu",
+        "test_fused_sdp_priority_order_use_compile_False_xpu",
+        "test_fused_sdp_priority_order_use_compile_True_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
