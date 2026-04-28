@@ -7,12 +7,6 @@ description: >
   derived from an upstream CUDA or PyTorch issue, PR, or commit, or
   concrete PyTorch CI failure evidence, and needs to check duplicates,
   draft the issue body, and optionally create the issue.
-license: Apache-2.0
-compatibility: Designed for agent skills under .github/skills. Works best when GitHub issue search and create tools are available; if shell access is unavailable for a manual-validation case, ask the user to run collect_env locally and paste the output.
-metadata:
-  workflow: validated-bug-to-issue
-  audience: backend-triage
-  version: "1.4"
 ---
 
 # Issue Creation - torch-xpu-ops
