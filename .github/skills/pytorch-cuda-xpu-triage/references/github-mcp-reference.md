@@ -1,7 +1,5 @@
 # GitHub Search Reference
 
-Read-only upstream search workflow. Issue creation is out of scope.
-
 ## Capabilities assumed
 The agent environment provides GitHub search, issue/PR read, commit inspection, and file content retrieval. If unavailable, stop and report what needs manual lookup.
 
