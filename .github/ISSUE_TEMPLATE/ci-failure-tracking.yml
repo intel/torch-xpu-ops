@@ -14,6 +14,35 @@ body:
     validations:
       required: true
 
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: "GPU platform where the failure occurred (see https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html)"
+      options:
+        - Ponte Vecchio (PVC)
+        - Flex Series (ATS-M)
+        - Alchemist Arc A-Series (DG2)
+        - Battlemage Arc B-Series (BMG)
+        - Meteor Lake (MTL)
+        - Arrow Lake (ARL)
+        - Lunar Lake (LNL)
+        - Panther Lake (PTL)
+        - Other
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: OS of the CI runner where the failure occurred
+      options:
+        - Linux
+        - Windows
+    validations:
+      required: false
+
   - type: textarea
     id: commit-scope
     attributes:
