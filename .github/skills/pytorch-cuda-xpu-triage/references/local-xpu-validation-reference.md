@@ -34,3 +34,6 @@ One of the following on XPU, when CPU semantics disagree:
 - Full exception text or mismatch summary
 - Minimal repro script
 - Upstream issue/PR/commit links
+
+## Next step
+Hand off the confirmed bug evidence to the issue-filing skill or a human maintainer. This skill does not file issues itself.

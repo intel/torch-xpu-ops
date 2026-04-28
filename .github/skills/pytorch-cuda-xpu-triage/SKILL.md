@@ -22,7 +22,7 @@ Detailed reference:
 For each candidate, classify as **qualified** or **rejected**.
 
 Prefer candidates where:
-- The PR adds or modifies regression tests
+- The change adds or modifies regression tests
 - The change touches `ATen/native` kernels, dispatch logic, or shared validation code
 - The bug involves edge-case semantics with a narrow trigger and clear signal
 - The fix lives in code paths likely inherited by XPU
