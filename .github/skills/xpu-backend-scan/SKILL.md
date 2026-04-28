@@ -21,12 +21,12 @@ Pin the exact schema/overload from `native_functions.yaml` (torch-xpu-ops `yaml/
 
 ### Step 2: Check waivers
 
-If the op belongs to a known non-actionable category (NVIDIA-specific infra like cuDNN/cuBLAS/NCCL, hardware-only features like FP8/Tensor Core, documented unsupported families like flash/efficient attention, or vendor-specific backends like Triton/MIOpen), stop — it is not an XPU bug.
+Use the inline waiver categories in this step as the waiver authority. If the op belongs to a known non-actionable category (NVIDIA-specific infra like cuDNN/cuBLAS/NCCL, hardware-only features like FP8/Tensor Core, documented unsupported families like flash/efficient attention, or vendor-specific backends like Triton/MIOpen), stop — it is not an XPU bug.
 
 ### Step 3: Determine existing XPU coverage
 
 Check in this order; if any source confirms coverage, do not conclude "missing implementation":
-1. `XPUFallback.template` — explicit `fallback_list` entries always route to CPU; global backend fallback is gated by `PYTORCH_ENABLE_XPU_FALLBACK` (default errors). Either form blocks a "missing impl" conclusion, but CPU fallback on a GPU op may still be a defect.
+1. `XPUFallback.template` — explicit per-op fallback registration is callable coverage. The global backend fallback only becomes callable when `PYTORCH_ENABLE_XPU_FALLBACK=1`; otherwise the default path errors with not-implemented. CPU fallback on a GPU op may still be a defect.
 2. Backend YAML with explicit XPU dispatch keys
 3. Structured delegate or codegen path resolving to XPU
 4. Source-backed registration (`TORCH_IMPL_FUNC`, landed implementation)
@@ -55,7 +55,7 @@ Check in this order; if any source confirms coverage, do not conclude "missing i
 - SYCL vs CUDA style differences are not bugs.
 - Vendor library choice (oneDNN vs cuDNN) is not itself a bug.
 - Missing local XPU kernel file is not evidence of missing support — check delegates, composites, shared paths first.
-- Fallback existence blocks "missing implementation" but may indicate a defect (CPU fallback on GPU op).
+- Explicit per-op fallback, or global fallback with `PYTORCH_ENABLE_XPU_FALLBACK=1`, blocks "missing implementation" but may indicate a defect (CPU fallback on GPU op).
 - Test skip/xfail metadata is supporting evidence only, never sufficient alone.
 
 ## Output

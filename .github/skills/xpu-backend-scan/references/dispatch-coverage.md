@@ -8,7 +8,7 @@ XPU code lives in **two repositories** — both are in scope:
 
 ## Priority Sources (intel/torch-xpu-ops)
 
-Inspect in this order (this is lookup order, not coverage priority — see SKILL.md Step 3 for override rules):
+Inspect in this order (this is lookup order, not coverage priority — see SKILL.md Step 3 for the decision rule):
 1. `yaml/native/native_functions.yaml` — schema and dispatch key configuration
 2. `src/ATen/native/xpu/XPUFallback.template` — fallback list
 3. `src/ATen/native/xpu/` — host-side glue and registration
@@ -33,7 +33,7 @@ These files are not in the local workspace. Access them via GitHub tools, a loca
 | Signal | Means | Blocks "missing impl"? |
 |--------|-------|----------------------|
 | In `XPUFallback.template` explicit `fallback_list` | Always routes to CPU fallback | Yes |
-| In `XPUFallback.template` global backend fallback | Gated by `PYTORCH_ENABLE_XPU_FALLBACK` (default errors) | Yes, when enabled |
+| In `XPUFallback.template` global backend fallback | Default path errors; CPU fallback becomes callable only with `PYTORCH_ENABLE_XPU_FALLBACK=1` | Only when enabled |
 | XPU dispatch key in backend YAML | Native XPU path | Yes |
 | `structured_delegate: foo.out` | Judge by delegate target | Yes |
 | `CompositeImplicitAutograd` / `CompositeExplicitAutograd` | Generic runtime path | Yes |
@@ -44,7 +44,7 @@ These files are not in the local workspace. Access them via GitHub tools, a loca
 
 ## Key Interpretations
 
-**Fallback**: `XPUFallback.template` contains two mechanisms — (1) an explicit per-op `fallback_list` that always routes to `xpu_fallback_impl` (CPU), and (2) a global backend fallback gated by `PYTORCH_ENABLE_XPU_FALLBACK` (default path errors). Either form blocks a "missing implementation" conclusion, but CPU fallback on a GPU op may support a defect finding (device-correctness risk).
+**Fallback**: `XPUFallback.template` contains two mechanisms — (1) explicit per-op fallback registration that always routes to `xpu_fallback_impl` (CPU), and (2) a global backend fallback whose default path is `TORCH_CHECK_NOT_IMPLEMENTED` and only becomes CPU fallback when `PYTORCH_ENABLE_XPU_FALLBACK=1`. Treat the first as callable coverage. Treat the second as callable coverage only when the env-gated fallback is actually enabled. CPU fallback on a GPU op may support a defect finding (device-correctness risk).
 
 **Structured delegate**: `structured_delegate: foo.out` means support is judged by `foo.out`, not the wrapper. Missing a hand-written XPU file for the wrapper is not evidence of missing support.
 
