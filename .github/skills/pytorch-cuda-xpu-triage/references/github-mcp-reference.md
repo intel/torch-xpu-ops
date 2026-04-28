@@ -7,11 +7,14 @@ The agent environment provides GitHub search, issue/PR read, commit inspection, 
 
 ## Example queries
 ```
-repo:pytorch/pytorch is:issue is:closed "incorrect result" CUDA
-repo:pytorch/pytorch is:pr is:merged "fix cuda"
-repo:pytorch/pytorch is:pr is:merged "non-contiguous" cuda
+repo:pytorch/pytorch is:issue "incorrect result" CUDA
+repo:pytorch/pytorch is:issue is:open "crash" cuda
+repo:pytorch/pytorch is:pr "fix cuda"
+repo:pytorch/pytorch is:pr is:open "non-contiguous" cuda
 repo:pytorch/pytorch is:pr is:merged "empty tensor"
 ```
+
+Include both open and closed/merged items — an open issue or unmerged PR with a clear reproducer is equally valid for XPU validation.
 
 Adapt keywords to the specific bug family being investigated.
 

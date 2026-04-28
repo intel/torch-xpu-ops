@@ -14,7 +14,7 @@ Detailed reference:
 ## Workflow
 
 ### Step 1: Search upstream signals
-- Search closed issues, merged PRs, and recent commits in `pytorch/pytorch` for backend bug-fix signals. Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
+- Search issues, PRs, and commits in `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
 - Default time window: most recent 1 day; widen to 7 days only if no strong candidate found.
 - Pivot from issue → PR → commit to extract the minimal bug pattern.
 
