@@ -380,14 +380,33 @@ at::Tensor fused_gate_up_silu_sycltla(
   TORCH_CHECK(input.is_xpu(), "input must be XPU");
   TORCH_CHECK(gate_weight.is_xpu(), "gate_weight must be XPU");
   TORCH_CHECK(up_weight.is_xpu(), "up_weight must be XPU");
+  TORCH_CHECK(
+      input.device() == gate_weight.device() &&
+          input.device() == up_weight.device(),
+      "All tensors must be on the same XPU device, got input on ",
+      input.device(),
+      ", gate_weight on ",
+      gate_weight.device(),
+      ", up_weight on ",
+      up_weight.device());
   TORCH_CHECK(input.dim() == 2, "input must be 2D [M, K]");
   TORCH_CHECK(gate_weight.dim() == 2, "gate_weight must be 2D [N, K]");
   TORCH_CHECK(up_weight.dim() == 2, "up_weight must be 2D [N, K]");
   TORCH_CHECK(input.is_contiguous(), "input must be contiguous");
   TORCH_CHECK(gate_weight.is_contiguous(), "gate_weight must be contiguous");
   TORCH_CHECK(up_weight.is_contiguous(), "up_weight must be contiguous");
-  TORCH_CHECK(input.scalar_type() == gate_weight.scalar_type());
-  TORCH_CHECK(input.scalar_type() == up_weight.scalar_type());
+  TORCH_CHECK(
+      input.scalar_type() == gate_weight.scalar_type(),
+      "input and gate_weight must have the same dtype, got ",
+      input.scalar_type(),
+      " and ",
+      gate_weight.scalar_type());
+  TORCH_CHECK(
+      input.scalar_type() == up_weight.scalar_type(),
+      "input and up_weight must have the same dtype, got ",
+      input.scalar_type(),
+      " and ",
+      up_weight.scalar_type());
   TORCH_CHECK(input.size(1) == gate_weight.size(1), "K mismatch");
   TORCH_CHECK(gate_weight.size(0) == up_weight.size(0), "N mismatch");
 
@@ -400,6 +419,11 @@ at::Tensor fused_gate_up_silu_sycltla(
   const int M = input.size(0);
   const int K = input.size(1);
   const int N = gate_weight.size(0);
+
+  // Early return for empty shapes to avoid invalid SYCL nd_range submissions
+  if (M == 0 || N == 0 || K == 0) {
+    return at::empty({M, N}, input.options());
+  }
 
   // silu_buf holds gate GEMM + SiLU result; the up GEMM epilogue reads it
   // via XeAuxLoad and multiplies with up accumulator to produce final output.
