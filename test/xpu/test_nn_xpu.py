@@ -9679,7 +9679,11 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         ln = torch.nn.LayerNorm(2, eps=1e-6, elementwise_affine=False)
         self.assertEqual(ln.forward(x), torch.zeros_like(x))
 
-    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
+    # XPU port: drop @unittest.skipIf(not TEST_CUDA) (the device is now XPU);
+    # rewrite hard-coded "cuda" device strings to "xpu". Variable names
+    # `x_cuda`/`ln_cuda`/`grad_output_cuda` left as-is since they're local
+    # and the substitution is purely string-level. Tracks
+    # intel/torch-xpu-ops#2531.
     def test_layer_norm_backwards_eps(self):
         dtype = torch.float
         m_x_n_list = [
@@ -9702,14 +9706,14 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             for m, n in m_x_n_list:
                 x = torch.randn((m, n), dtype=dtype, requires_grad=True)
                 grad_output = torch.rand_like(x)
-                x_cuda = x.clone().detach().to("cuda").requires_grad_()
-                grad_output_cuda = grad_output.clone().detach().to("cuda")
+                x_cuda = x.clone().detach().to("xpu").requires_grad_()
+                grad_output_cuda = grad_output.clone().detach().to("xpu")
                 ln = nn.LayerNorm(
                     n, dtype=dtype, elementwise_affine=elementwise_affine, bias=bias
                 )
                 ln_cuda = nn.LayerNorm(
                     n,
-                    device="cuda",
+                    device="xpu",
                     dtype=dtype,
                     elementwise_affine=elementwise_affine,
                     bias=bias,
