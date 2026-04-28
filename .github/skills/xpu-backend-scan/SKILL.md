@@ -1,6 +1,6 @@
 ---
 name: xpu-backend-scan
-description: Determine whether a PyTorch operator has correct XPU support — analyze dispatch coverage, CUDA-XPU parity, fallback implications, waiver applicability, and missing implementation evidence.
+description: Use when analyzing whether a PyTorch operator has correct XPU support, including XPU defects, dispatch coverage, CUDA-XPU parity, fallback implications, waiver applicability, and missing implementation evidence.
 ---
 
 # XPU Backend Scan
