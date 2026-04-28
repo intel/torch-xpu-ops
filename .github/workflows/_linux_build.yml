@@ -96,8 +96,8 @@ jobs:
       - name: Snapshot open skipped issues at build start
         run: |
           touch known_issue_static.log issues_snapshot.log
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log || true
-          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log || true
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh static > known_issue_static.log
+          bash torch-xpu-ops/.github/scripts/fetch_issues.sh open > issues_snapshot.log
       - name: Upload skipped issues snapshot
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
@@ -106,7 +106,6 @@ jobs:
           path: |
             known_issue_static.log
             issues_snapshot.log
-        continue-on-error: true
       - name: Build Pytorch on ${{ needs.runner.outputs.hostname }}
         run: |
           export USE_XCCL=1
