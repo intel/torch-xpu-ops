@@ -11,7 +11,7 @@ compatibility: Designed for agent skills under .github/skills. Works best when G
 metadata:
   workflow: validated-bug-to-issue
   audience: backend-triage
-  version: "1.2"
+  version: "1.3"
 ---
 
 # Issue Creation - torch-xpu-ops
@@ -20,7 +20,7 @@ This skill is intended for agent runtimes that load skills from `.github/skills`
 
 ## What I do
 - Normalize local repro results or CI UT failures into a concise issue report.
-- Cross-link the upstream PyTorch issue, PR, and commit that motivated the test.
+- Cross-link the upstream PyTorch issue, PR, and commit when those anchors exist.
 - Draft the title and body for the `intel/torch-xpu-ops` repository.
 - Optionally use the GitHub issue tools available in the current agent environment to create the issue after the content is confirmed.
 
@@ -39,8 +39,8 @@ Default filing target: `intel/torch-xpu-ops`. Search for duplicates there before
 
 Do not proceed to issue creation without all of the following common inputs:
 - a short bug statement and the affected op, module, or test area
-- at least one upstream PyTorch reference from issue, PR, or commit
 - failure output or a mismatch summary that is specific enough to debug
+- enough build and version context in text to identify the failing environment
 
 Then require one of these evidence sets:
 
@@ -48,9 +48,12 @@ Then require one of these evidence sets:
 - a minimal reproducer script
 - a local XPU run result
 - version and environment details
+- upstream issue, PR, or commit when the bug was discovered from an upstream change
 
 **CI UT failure path**
+- at least one upstream PyTorch reference from issue, PR, or commit
 - a CI job link
+- build identifier and torch build, channel, or commit details when visible
 - the failing test identifier
 - the exact or reconstructed rerun command
 - the relevant traceback or log excerpt
@@ -76,8 +79,14 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
 - `Failure source`: choose `CI UT failure` or `Manual validation`.
 - `Affected op/module`: name the likely op family, module, or failing test area.
 - `### Upstream reference`:
-  - upstream commit, upstream PR, upstream issue when available
-  - one-line summary of what the upstream change did
+  - CI UT failures: upstream commit, upstream PR, and upstream issue when available
+  - Manual validation: include known upstream anchors when the bug was discovered from one
+  - one-line summary of what the upstream change did when there is an upstream trigger
+- `### Environment and build context`:
+  - date, build or CI build identifier, and platform
+  - PyTorch version, channel, or git SHA
+  - `torch-xpu-ops` version, branch, or commit when visible
+  - `Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]`
 - `### Failure details`:
   - `Failure type`: `new test added`, `existing test broken`, `test expectation changed`, `build break`, or another short classifier
   - Fill only the CI or manual subsection that matches `Failure source`
@@ -85,15 +94,16 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
   - For manual validation: minimal runnable Python reproducer and observed output
 - `### Versions`:
   - Manual validation: collect_env output wrapped in `<details><summary>Collected with python -W ignore::RuntimeWarning -m torch.utils.collect_env</summary>` plus a fenced `text` block
-  - CI UT failure: job link is sufficient by default; add collect_env only when you have local confirmation and it adds value
-- `Assisted-by: opencode: [actual-model] [GitHub-API] [collect_env or CI-link]`
-  - use the active model string
+  - CI UT failure: CI job link supplements the environment reference, but the issue body must still capture build and version identifiers in text; add collect_env only when you have local confirmation and it adds value
+  - use the active model string in `Assisted-by`
 
 **Environment to capture:**
+- Common: date, build identifier, platform, PyTorch version or git SHA, and `torch-xpu-ops` version or branch when visible
 - Manual validation: `torch.__version__`, `torch.version.git_version`, platform, Python version, XPU availability
 - Manual validation: oneAPI or driver/runtime details if already present in the local environment output
 - Manual validation: collect_env output via `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
-- CI UT failure: CI job link, build identifier if visible, failing test path, rerun command, and the traceback or assertion excerpt
+- Manual validation: known upstream issue, PR, or commit when the bug was discovered from one
+- CI UT failure: upstream issue, PR, and commit anchors, CI job link, build identifier if visible, failing test path, rerun command, and the traceback or assertion excerpt
 
 See [references/validation-criteria-reference.md](references/validation-criteria-reference.md) for confirmation criteria and capture requirements.
 

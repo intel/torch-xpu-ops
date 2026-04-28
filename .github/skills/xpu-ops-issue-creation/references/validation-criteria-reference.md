@@ -36,16 +36,22 @@ One of the following on XPU, when CPU, CI expectations, or current PyTorch seman
 Capture these common fields:
 - short bug statement and affected op, module, or test area
 - full exception text, assertion failure, or mismatch summary
-- upstream issue, PR, and commit links
-- one-line summary of what the upstream change did
+- build or CI identifier in plain text
+- PyTorch version, channel, or commit and `torch-xpu-ops` version or branch when visible
+- platform details that identify the failing environment
 
 For manual validation also capture:
 - exact reproducer command used and its output
 - minimal repro script
 - collect_env command and its output: `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
+- upstream issue, PR, and commit links when the bug was discovered from an upstream change
+- one-line summary of what the upstream change did when there is an upstream trigger
 
 For CI UT failures also capture:
+- upstream issue, PR, and commit links
+- one-line summary of what the upstream change did
 - CI job link
+- build identifier if visible in the failing job
 - failing test identifier
 - exact or reconstructed rerun command
 - the relevant traceback or log excerpt
