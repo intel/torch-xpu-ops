@@ -241,6 +241,11 @@ skip_dict = {
         "test_flash_fail_fp32_xpu",
         "test_fused_kernels_nested_broadcasting_requires_grad_failure_xpu",
         "test_flash_attention_fail_with_non_square_causal_attention_xpu",
+        # https://github.com/intel/torch-xpu-ops/issues/3137
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_256_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_False_use_autocast_True_d_model_12_xpu",
+        "test_transformerencoder_fastpath_use_torchscript_False_enable_nested_tensor_True_use_autocast_True_d_model_256_xpu",
     ),
     "test_type_promotion_xpu.py": None,
     "test_unary_ufuncs_xpu.py": None,
