@@ -12,6 +12,8 @@
 #include <ATen/xpu/XPUContext.h>
 #include <sycl/sycl.hpp>
 
+#include <limits>
+
 // sycl-tla (CUTLASS for Intel Xe GPU) headers
 #include <cute/tensor.hpp>
 #include <cutlass/epilogue/collective/default_epilogue.hpp>
@@ -39,7 +41,7 @@ using namespace cute;
         __LINE__);                         \
   } while (0)
 
-// ── Tile configurations (TileN=64, M-based dispatch) ────────────────────────
+// -- Tile configurations (TileN=64, M-based dispatch)--
 //
 // Per-SG tile: 16x32 = 512 accumulators. K=32, PipelineStages=3.
 // TileN=64: 344 WGs for N=22016, 95.6% wave efficiency on Arc B580.
@@ -59,7 +61,7 @@ using LayoutC = cutlass::layout::RowMajor;
 using LayoutD = cutlass::layout::RowMajor;
 using ElementAccumulator = float;
 
-// ── Gate GEMM with SiLU activation epilogue ─────────────────────────────────
+// -- Gate GEMM with SiLU activation epilogue--
 //
 // Uses LinCombEltAct<SiLu>: D = SiLU(alpha * acc + beta * C)
 // With alpha=1, beta=0 this computes D = SiLU(acc).
@@ -181,7 +183,7 @@ static void run_gate_gemm_silu_impl(
   SYCL_TLA_CHECK(gemm_op.run(&queue));
 }
 
-// ── Up GEMM with multiply epilogue ──────────────────────────────────────────
+// -- Up GEMM with multiply epilogue--
 //
 // EVT epilogue: D = acc * aux_load(silu_buf)
 // Uses Sm90EVT<Sm90Compute<multiplies>, Sm90AccFetch, XeAuxLoad>.
@@ -314,7 +316,7 @@ static void run_up_gemm_mul_impl(
   SYCL_TLA_CHECK(gemm_op.run(&queue));
 }
 
-// ── M-based tile dispatch — gate GEMM + SiLU ───────────────────────────────
+// -- M-based tile dispatch -- gate GEMM + SiLU--
 
 template <typename Element>
 static void dispatch_gate_gemm_silu(
@@ -337,7 +339,7 @@ static void dispatch_gate_gemm_silu(
   }
 }
 
-// ── M-based tile dispatch — up GEMM * aux_load ─────────────────────────────
+// -- M-based tile dispatch -- up GEMM * aux_load--
 
 template <typename Element>
 static void dispatch_up_gemm_mul(
@@ -361,11 +363,11 @@ static void dispatch_up_gemm_mul(
   }
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
+// -- Public API--
 //
 // Two-kernel EVT pipeline:
-//   1. Gate GEMM + SiLU(acc)           → silu_buf[M, N]  (LinCombEltAct)
-//   2. Up GEMM + acc * aux(silu_buf)   → output[M, N]    (EVT multiplies)
+//   1. Gate GEMM + SiLU(acc)           -> silu_buf[M, N]  (LinCombEltAct)
+//   2. Up GEMM + acc * aux(silu_buf)   -> output[M, N]    (EVT multiplies)
 //
 // Eliminates the separate SiLU*mul kernel by fusing activation and multiply
 // into GEMM epilogues via sycl-tla v0.7 Epilogue Visitor Tree (EVT).
@@ -416,9 +418,23 @@ at::Tensor fused_gate_up_silu_sycltla(
       "Only fp16/bf16 supported, got ",
       dtype);
 
-  const int M = input.size(0);
-  const int K = input.size(1);
-  const int N = gate_weight.size(0);
+  const auto M_64 = input.size(0);
+  const auto K_64 = input.size(1);
+  const auto N_64 = gate_weight.size(0);
+  TORCH_CHECK(
+      M_64 <= std::numeric_limits<int>::max() &&
+          K_64 <= std::numeric_limits<int>::max() &&
+          N_64 <= std::numeric_limits<int>::max(),
+      "Dimensions M=",
+      M_64,
+      " K=",
+      K_64,
+      " N=",
+      N_64,
+      " exceed int range");
+  const int M = static_cast<int>(M_64);
+  const int K = static_cast<int>(K_64);
+  const int N = static_cast<int>(N_64);
 
   // Early return for empty shapes to avoid invalid SYCL nd_range submissions
   if (M == 0 || N == 0 || K == 0) {
@@ -433,7 +449,7 @@ at::Tensor fused_gate_up_silu_sycltla(
   auto& queue = at::xpu::getCurrentXPUStream(input.device().index()).queue();
 
   if (dtype == at::kHalf) {
-    // Step 1: gate GEMM + SiLU → silu_buf
+    // Step 1: gate GEMM + SiLU -> silu_buf
     dispatch_gate_gemm_silu<cutlass::half_t>(
         input.data_ptr(),
         gate_weight.data_ptr(),
@@ -442,7 +458,7 @@ at::Tensor fused_gate_up_silu_sycltla(
         N,
         K,
         queue);
-    // Step 2: up GEMM * silu_buf → output
+    // Step 2: up GEMM * silu_buf -> output
     dispatch_up_gemm_mul<cutlass::half_t>(
         input.data_ptr(),
         up_weight.data_ptr(),
@@ -453,7 +469,7 @@ at::Tensor fused_gate_up_silu_sycltla(
         K,
         queue);
   } else {
-    // Step 1: gate GEMM + SiLU → silu_buf
+    // Step 1: gate GEMM + SiLU -> silu_buf
     dispatch_gate_gemm_silu<cutlass::bfloat16_t>(
         input.data_ptr(),
         gate_weight.data_ptr(),
@@ -462,7 +478,7 @@ at::Tensor fused_gate_up_silu_sycltla(
         N,
         K,
         queue);
-    // Step 2: up GEMM * silu_buf → output
+    // Step 2: up GEMM * silu_buf -> output
     dispatch_up_gemm_mul<cutlass::bfloat16_t>(
         input.data_ptr(),
         up_weight.data_ptr(),
