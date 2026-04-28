@@ -43,6 +43,7 @@
 #include <ATen/native/xpu/sycl/pstl/PSTLFunctions.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
+#include <cstdlib>
 
 namespace at::native::xpu {
 
@@ -637,14 +638,29 @@ inline int64_t next_power_of_two(int64_t x) {
   return v;
 }
 
+inline std::optional<int64_t> sparse_sampled_addmm_work_group_override() {
+  const char* value = std::getenv("TORCH_XPU_SAMPLED_ADDMM_WG_SIZE");
+  if (value == nullptr || *value == '\0') {
+    return std::nullopt;
+  }
+  char* end_ptr = nullptr;
+  const long parsed = std::strtol(value, &end_ptr, 10);
+  if (end_ptr == value || *end_ptr != '\0' || parsed <= 0) {
+    return std::nullopt;
+  }
+  return static_cast<int64_t>(parsed);
+}
+
 // One workgroup computes one nnz output.
-// Each lane accumulates a strided chunk of K and then performs tree reduction.
+// One workgroup computes one nnz output across all batches in a single launch.
+// PyTorch batched sparse CSR enforces uniform nnz per batch, so batch and
+// local nnz index are derived via integer division/modulo — no binary search needed.
 template <typename scalar_t, typename index_t, typename acc_t>
 struct SparseSampledAddmmTreeReduceKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
   void operator()(sycl::nd_item<1> item) const {
     const int64_t nnz_idx = item.get_group_linear_id();
-    if (nnz_idx >= nnz) {
+    if (nnz_idx >= total_nnz) {
       return;
     }
 
@@ -652,30 +668,36 @@ struct SparseSampledAddmmTreeReduceKernelFunctor
     const int64_t lsize = item.get_local_range(0);
 
     if (lid == 0) {
-      index_t lo = 0;
-      index_t hi = static_cast<index_t>(nrows);
+      const int64_t b = nnz_idx / nnz_per_batch;
+      const int64_t local_nnz = nnz_idx % nnz_per_batch;
+
+      // Binary search row within batch b
+      const index_t* crow_b = crow_indices + b * crow_batch_stride;
+      index_t lo = 0, hi = static_cast<index_t>(nrows);
       while (lo < hi) {
         const index_t mid = lo + (hi - lo) / 2;
-        if (crow_indices[mid + 1] <= nnz_idx) {
+        if (crow_b[mid + 1] <= local_nnz) {
           lo = mid + 1;
         } else {
           hi = mid;
         }
       }
-      row_col_[0] = lo;
-      row_col_[1] = col_indices[nnz_idx];
+      row_col_[0] = static_cast<index_t>(b);
+      row_col_[1] = lo;
+      row_col_[2] = col_indices[b * col_batch_stride + local_nnz];
     }
     sycl::group_barrier(item.get_group());
 
-    const index_t row = row_col_[0];
-    const index_t col = row_col_[1];
+    const int64_t batch = static_cast<int64_t>(row_col_[0]);
+    const index_t row = row_col_[1];
+    const index_t col = row_col_[2];
     acc_t partial = acc_t(0);
 
     for (int64_t kk = lid; kk < k_dim; kk += lsize) {
-      const int64_t a_offset =
+      const int64_t a_offset = batch * mat1_batch_stride +
           static_cast<int64_t>(row) * mat1_row_stride + kk * mat1_col_stride;
-      const int64_t b_offset = kk * mat2_row_stride +
-          static_cast<int64_t>(col) * mat2_col_stride;
+      const int64_t b_offset = batch * mat2_batch_stride +
+          kk * mat2_row_stride + static_cast<int64_t>(col) * mat2_col_stride;
       partial += acc_t(mat1[a_offset]) * acc_t(mat2[b_offset]);
     }
 
@@ -690,10 +712,13 @@ struct SparseSampledAddmmTreeReduceKernelFunctor
     }
 
     if (lid == 0) {
-      const acc_t current_val = acc_t(result_values[nnz_idx]);
+      const int64_t local_nnz = nnz_idx % nnz_per_batch;
+      const int64_t val_idx =
+          static_cast<int64_t>(row_col_[0]) * val_batch_stride + local_nnz;
+      const acc_t current_val = acc_t(result_values[val_idx]);
       const acc_t updated =
           alpha_val * partial_sum_[0] + beta_val * current_val;
-      result_values[nnz_idx] = static_cast<scalar_t>(updated);
+      result_values[val_idx] = static_cast<scalar_t>(updated);
     }
   }
 
@@ -703,9 +728,16 @@ struct SparseSampledAddmmTreeReduceKernelFunctor
       const index_t* col_indices,
       const scalar_t* mat1,
       const scalar_t* mat2,
-      int64_t nnz,
+      int64_t total_nnz,
+      int64_t nnz_per_batch,
+      int64_t n_batch,
       int64_t nrows,
       int64_t k_dim,
+      int64_t crow_batch_stride,
+      int64_t col_batch_stride,
+      int64_t val_batch_stride,
+      int64_t mat1_batch_stride,
+      int64_t mat2_batch_stride,
       int64_t mat1_row_stride,
       int64_t mat1_col_stride,
       int64_t mat2_row_stride,
@@ -717,9 +749,16 @@ struct SparseSampledAddmmTreeReduceKernelFunctor
         col_indices(col_indices),
         mat1(mat1),
         mat2(mat2),
-        nnz(nnz),
+        total_nnz(total_nnz),
+        nnz_per_batch(nnz_per_batch),
+        n_batch(n_batch),
         nrows(nrows),
         k_dim(k_dim),
+        crow_batch_stride(crow_batch_stride),
+        col_batch_stride(col_batch_stride),
+        val_batch_stride(val_batch_stride),
+        mat1_batch_stride(mat1_batch_stride),
+        mat2_batch_stride(mat2_batch_stride),
         mat1_row_stride(mat1_row_stride),
         mat1_col_stride(mat1_col_stride),
         mat2_row_stride(mat2_row_stride),
@@ -729,7 +768,7 @@ struct SparseSampledAddmmTreeReduceKernelFunctor
 
   void sycl_ker_config_convention(sycl::handler& cgh) {
     partial_sum_ = sycl_local_acc_t<acc_t>(local_size_, cgh);
-    row_col_ = sycl_local_acc_t<index_t>(2, cgh);
+    row_col_ = sycl_local_acc_t<index_t>(3, cgh);
   }
 
   void set_local_size(int64_t local_size) {
@@ -742,9 +781,16 @@ struct SparseSampledAddmmTreeReduceKernelFunctor
   const index_t* col_indices;
   const scalar_t* mat1;
   const scalar_t* mat2;
-  const int64_t nnz;
+  const int64_t total_nnz;
+  const int64_t nnz_per_batch;
+  const int64_t n_batch;
   const int64_t nrows;
   const int64_t k_dim;
+  const int64_t crow_batch_stride;
+  const int64_t col_batch_stride;
+  const int64_t val_batch_stride;
+  const int64_t mat1_batch_stride;
+  const int64_t mat2_batch_stride;
   const int64_t mat1_row_stride;
   const int64_t mat1_col_stride;
   const int64_t mat2_row_stride;
@@ -771,7 +817,14 @@ void sparse_sampled_addmm_kernel_impl(
 
   int64_t k = mat1.size(-1);
   int64_t m = mat1.size(-2);
-  int64_t nnz = result._nnz();
+
+  const int64_t n_batch = result.dim() > 2 ? result.size(0) : 1;
+  // For batched CSR, values is (B, nnz_per_batch); for non-batched, values is (nnz,).
+  // _nnz() returns nnz_per_batch in both cases, so derive total from n_batch.
+  const int64_t nnz_per_batch = result._nnz();
+  const int64_t total_nnz = n_batch * nnz_per_batch;
+  const int64_t mat1_batch_stride = mat1.dim() > 2 ? mat1.stride(-3) : 0;
+  const int64_t mat2_batch_stride = mat2.dim() > 2 ? mat2.stride(-3) : 0;
 
   Tensor crow_indices = result.crow_indices();
   Tensor col_indices = result.col_indices();
@@ -781,6 +834,13 @@ void sparse_sampled_addmm_kernel_impl(
   const int64_t mat1_col_stride = mat1.stride(-1);
   const int64_t mat2_row_stride = mat2.stride(-2);
   const int64_t mat2_col_stride = mat2.stride(-1);
+  // For batched CSR, crow_indices is (B, M+1), col_indices/values are (B, nnz)
+  const int64_t crow_batch_stride =
+      crow_indices.dim() > 1 ? crow_indices.stride(0) : 0;
+  const int64_t col_batch_stride =
+      col_indices.dim() > 1 ? col_indices.stride(0) : 0;
+  const int64_t val_batch_stride =
+      result_values.dim() > 1 ? result_values.stride(0) : 0;
 
   auto queue = getCurrentSYCLQueue();
   using acc_t = at::acc_type<scalar_t, true>;
@@ -807,11 +867,17 @@ void sparse_sampled_addmm_kernel_impl(
         int64_t max_work_group_size = syclMaxWorkGroupSize<KernelFn>();
         const int64_t max_pow2_wg =
           prev_power_of_two(std::min<int64_t>(max_work_group_size, 256));
-        const int64_t target_elems_per_thread = 20;
+        const int64_t target_elems_per_thread = 128;
+        const int64_t min_work_group_size = 16;
         const int64_t desired_wg =
           (k + target_elems_per_thread - 1) / target_elems_per_thread;
         int64_t work_group_size =
-          std::min<int64_t>(next_power_of_two(std::max<int64_t>(1, desired_wg)), max_pow2_wg);
+          std::min<int64_t>(next_power_of_two(std::max<int64_t>(min_work_group_size, desired_wg)), max_pow2_wg);
+        if (auto override_wg = sparse_sampled_addmm_work_group_override()) {
+          work_group_size = std::min<int64_t>(
+              next_power_of_two(std::max<int64_t>(1, *override_wg)),
+              max_pow2_wg);
+        }
         work_group_size = std::max<int64_t>(work_group_size, 1);
 
         auto kfn = KernelFn(
@@ -820,19 +886,26 @@ void sparse_sampled_addmm_kernel_impl(
             col_indices_ptr,
             mat1_ptr,
             mat2_ptr,
-            nnz,
+            total_nnz,
+            nnz_per_batch,
+            n_batch,
             m,
             k,
+            crow_batch_stride,
+            col_batch_stride,
+            val_batch_stride,
+            mat1_batch_stride,
+            mat2_batch_stride,
             mat1_row_stride,
             mat1_col_stride,
             mat2_row_stride,
             mat2_col_stride,
             alpha_val,
             beta_val);
-          kfn.set_local_size(work_group_size);
+        kfn.set_local_size(work_group_size);
 
         sycl_kernel_submit(
-            sycl::range<1>(nnz * work_group_size),
+            sycl::range<1>(total_nnz * work_group_size),
             sycl::range<1>(work_group_size),
             queue,
             kfn);
