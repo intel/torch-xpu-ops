@@ -232,7 +232,7 @@ Tensor& addmm_out_sparse_compressed_xpu(
       mat2.sizes()[1],
       ")");
 
-  std::vector<int64_t> result_shape = {mat1.size(0), mat2.size(1)};
+  std::array<int64_t, 2> result_shape = {mat1.size(0), mat2.size(1)};
 
   TORCH_CHECK(
       result_shape.size() >= (size_t)self.dim(),
