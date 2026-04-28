@@ -34,3 +34,5 @@ One of the following on XPU, when CPU semantics disagree:
 - Full exception text or mismatch summary
 - Minimal repro script
 - Upstream issue/PR/commit links
+- Minimal repro script
+- Upstream issue/PR/commit links

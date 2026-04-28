@@ -29,3 +29,5 @@ Adapt keywords to the specific bug family being investigated.
 - Not every CUDA fix is an XPU candidate.
 - Skip large compiler/infra PRs.
 - A test name alone often reveals the bug shape — avoid reading entire file diffs.
+- Skip large compiler/infra PRs.
+- A test name alone often reveals the bug shape — avoid reading entire file diffs.
