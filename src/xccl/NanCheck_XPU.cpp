@@ -13,8 +13,10 @@
 #include <ATen/Tensor.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/xpu/XPUContext.h>
+#include <c10/xpu/XPUStream.h>
 #include <comm/SYCLContext.h>
 #include <stdint.h>
+#include <torch/library.h>
 #include <xccl/NanCheck_XPU.hpp>
 #include <algorithm>
 
@@ -183,12 +185,9 @@ template <typename T>
 void checkfornan_impl_xpu(
     const at::Tensor& tensor,
     at::xpu::XPUStream& stream) {
-  // skip check for non float types
-  if (!tensor.is_floating_point()) {
-    return;
-  }
-
   int64_t maxNumThreadsPerBlock = syclMaxWorkGroupSize<checkForNaN<T>>();
+
+  constexpr int64_t maxNumBlocks = 24;
 
   const size_t numThreadsPerBlock =
       std::min<size_t>(maxNumThreadsPerBlock, tensor.numel());
@@ -197,8 +196,9 @@ void checkfornan_impl_xpu(
     return;
   }
 
-  int64_t numBlocks =
-      (tensor.numel() + numThreadsPerBlock - 1) / numThreadsPerBlock;
+  int64_t numBlocks = std::min<int64_t>(
+      maxNumBlocks,
+      (tensor.numel() + numThreadsPerBlock - 1) / numThreadsPerBlock);
   auto global_range{numBlocks * numThreadsPerBlock};
   auto local_range{numThreadsPerBlock};
 
@@ -210,6 +210,13 @@ void checkfornan_impl_xpu(
 
 // CHECK if a Tensor contains NAN in any of its element
 void checkForNan(const at::Tensor& tensor, at::xpu::XPUStream& stream) {
+  if (!tensor.is_floating_point()) {
+    return;
+  }
+  if (tensor.numel() == 0) {
+    return;
+  }
+
   AT_DISPATCH_FLOATING_TYPES_AND4(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -219,5 +226,22 @@ void checkForNan(const at::Tensor& tensor, at::xpu::XPUStream& stream) {
       "checkForNaN_XPU",
       [&]() { checkfornan_impl_xpu<scalar_t>(tensor, stream); });
 }
+
+namespace {
+void check_for_nan_xpu(const at::Tensor& tensor) {
+  if (!tensor.is_floating_point()) {
+    return;
+  }
+  if (tensor.numel() == 0) {
+    return;
+  }
+  auto stream = at::xpu::getCurrentXPUStream(tensor.device().index());
+  checkForNan(tensor, stream);
+}
+
+TORCH_LIBRARY_IMPL(c10d, XPU, m) {
+  m.impl("check_for_nan", check_for_nan_xpu);
+}
+} // namespace
 
 } // namespace c10d
