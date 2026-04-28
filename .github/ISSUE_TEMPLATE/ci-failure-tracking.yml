@@ -1,0 +1,89 @@
+name: "🔴 PyTorch CI Failure Tracking"
+description: Track a PyTorch CI test failure detected on XPU CI workflow
+title: "[PyTorch CI] "
+labels: ["pytorch-ci-failure"]
+body:
+  - type: dropdown
+    id: failure-type
+    attributes:
+      label: Failure Type
+      description: Is this a new failure or a previously known one?
+      options:
+        - NEW_FAILURE
+        - EXISTING_FAILURE
+    validations:
+      required: true
+
+  - type: textarea
+    id: commit-scope
+    attributes:
+      label: Commit Scope
+      description: |
+        The range of commits between the last passing CI run and the first failing run.
+        Format: Last PASS sha → First FAIL sha, with a GitHub compare link.
+      placeholder: |
+        | Status | Commit | Run |
+        |--------|--------|-----|
+        | ✅ Last PASS | `abc1234` | [link](...) |
+        | ❌ First FAIL | `def5678` | [link](...) |
+        Compare: https://github.com/pytorch/pytorch/compare/abc1234...def5678
+    validations:
+      required: false
+
+  - type: textarea
+    id: failed-tests
+    attributes:
+      label: Failed Tests
+      description: List the failing test cases (one per line, backtick-wrapped)
+      placeholder: |
+        - `test_flex_attention.py::TestFlexAttention::test_backward`
+        - `test_mkldnn.py::TestMkldnn::test_conv2d`
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-log
+    attributes:
+      label: Error Log
+      description: Paste the relevant error output (last ~50 lines)
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: ci-job-url
+    attributes:
+      label: CI Job URL
+      description: Link to the failed GitHub Actions job
+      placeholder: https://github.com/pytorch/pytorch/actions/runs/.../job/...
+    validations:
+      required: false
+
+  - type: textarea
+    id: repro-commands
+    attributes:
+      label: Repro Commands
+      description: Commands to reproduce the failure locally
+      render: bash
+      placeholder: |
+        git fetch origin && git checkout <commit>
+        source .env && python test/test_foo.py -k test_bar 2>&1 | tail -80
+    validations:
+      required: false
+
+  - type: textarea
+    id: action-items
+    attributes:
+      label: Action Items
+      description: Checklist for resolving this failure
+      value: |
+        - [ ] Reproduce on dev machine
+        - [ ] Identify root cause
+        - [ ] Implement fix
+        - [ ] Verify fix locally
+        - [ ] PR proposal
+        - [ ] Human review
+        - [ ] PR creation
+    validations:
+      required: false
+
