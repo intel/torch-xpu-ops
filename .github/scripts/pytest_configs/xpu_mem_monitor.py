@@ -26,7 +26,7 @@ import threading
 
 from xpu_smi_install import ensure_xpu_smi
 
-# Matches an xpu-smi CSV row like:  "23:59:21.296,    0, 0.85"
+# Matches an xpu-smi CSV row like:  "23:59:21.296,    0, 0.80"
 _ROW_RE = re.compile(
     r'^\s*\d{1,2}:\d{2}:\d{2}\.\d+\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*$'
 )

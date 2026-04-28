@@ -45,6 +45,7 @@ _target_device = '0'
 
 def _log(msg):
     sys.stderr.write(f"[xpu-watchdog] {msg}\n")
+    sys.stderr.flush()
 
 
 def _get_target_device():
@@ -77,8 +78,7 @@ def _cleanup_torch_xpu():
 
 def _restart_worker(reason):
     _cleanup_torch_xpu()
-    sys.stderr.write(f"\n!RESTART {_worker_id} ({reason})\n")
-    sys.stderr.flush()
+    _log(f"!RESTART {_worker_id} ({reason})")
     os._exit(_WORKER_RESTART_CODE)
 
 
