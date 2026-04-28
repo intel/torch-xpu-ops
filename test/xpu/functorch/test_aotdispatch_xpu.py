@@ -61,6 +61,11 @@ from torch._functorch.aot_autograd import (
     aot_export_module,
     SerializableAOTDispatchCompiler,
 )
+from torch._functorch.partitioners import (
+    _extract_fwd_bwd_modules,
+    _extract_fwd_bwd_outputs,
+    _extract_graph_with_inputs_outputs,
+)
 from torch._higher_order_ops.out_dtype import out_dtype
 from torch._inductor.codecache import compiled_fx_graph_hash
 from torch._inductor.custom_graph_pass import CustomPartitionerFn
@@ -112,9 +117,7 @@ try:
     USE_TORCHVISION = True
 except ImportError:
     warnings.warn(
-        "Couldn't import torchvision. Some of our tests use it, try "
-        "to install it with commands from pytorch.org, post-fixed with "
-        "`--no-deps` to avoid overwriting the pytorch installation",
+        "Couldn't import torchvision. Some of our tests use it.",
         UserWarning,
     )
 
@@ -3443,7 +3446,6 @@ def forward(self, primals_1, primals_2, primals_3):
     return (as_strided_scatter, add_2, view_2, unsqueeze)""",
         )  # noqa: B950
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
     def test_synthetic_base_base_attribute_is_none(self):
         def f(a, b):
             a.add_(1)
@@ -4466,9 +4468,9 @@ def forward(self, tangents_1):
         x = torch.randn(10, 10, requires_grad=use_autograd)
         y = torch.randn(10, 10, requires_grad=use_autograd)
         out = fn(x, y)
-        self.assertFalse(hasattr(out, "_dynamo_weak_dynamic_indices"))
+        self.assertFalse(hasattr(out, "_dynamo_propagated_dynamic_indices"))
         out2 = fn2(out)
-        self.assertFalse(hasattr(out2, "_dynamo_weak_dynamic_indices"))
+        self.assertFalse(hasattr(out2, "_dynamo_propagated_dynamic_indices"))
         self.assertEqual(counters["aot_autograd"]["total"], 2)
         counters.clear()
 
@@ -4476,9 +4478,9 @@ def forward(self, tangents_1):
         x = torch.randn(20, 20)
         y = torch.randn(20, 20)
         out = fn(x, y)
-        self.assertTrue(hasattr(out, "_dynamo_weak_dynamic_indices"))
+        self.assertTrue(hasattr(out, "_dynamo_propagated_dynamic_indices"))
         out2 = fn2(out)
-        self.assertTrue(hasattr(out2, "_dynamo_weak_dynamic_indices"))
+        self.assertTrue(hasattr(out2, "_dynamo_propagated_dynamic_indices"))
         self.assertEqual(counters["aot_autograd"]["total"], 2)
         counters.clear()
         torch._dynamo.reset()
@@ -4496,14 +4498,20 @@ def forward(self, tangents_1):
 
         def make_assert_pack(dynamic):
             def pack(activation):
-                assert hasattr(activation, "_dynamo_weak_dynamic_indices") == dynamic
+                if hasattr(activation, "_dynamo_propagated_dynamic_indices") != dynamic:
+                    raise AssertionError(
+                        f"Expected hasattr(..., '_dynamo_propagated_dynamic_indices') to be {dynamic}"
+                    )
                 return activation
 
             return pack
 
         def make_assert_unpack(dynamic):
             def unpack(activation):
-                assert hasattr(activation, "_dynamo_weak_dynamic_indices") == dynamic
+                if hasattr(activation, "_dynamo_propagated_dynamic_indices") != dynamic:
+                    raise AssertionError(
+                        f"Expected hasattr(..., '_dynamo_propagated_dynamic_indices') to be {dynamic}"
+                    )
                 return activation
 
             return unpack
@@ -4582,14 +4590,20 @@ def forward(self, tangents_1):
 
         def make_assert_pack(dynamic):
             def pack(activation):
-                assert hasattr(activation, "_dynamo_weak_dynamic_indices") == dynamic
+                if hasattr(activation, "_dynamo_propagated_dynamic_indices") != dynamic:
+                    raise AssertionError(
+                        f"Expected hasattr(..., '_dynamo_propagated_dynamic_indices') to be {dynamic}"
+                    )
                 return activation
 
             return pack
 
         def make_assert_unpack(dynamic):
             def unpack(activation):
-                assert hasattr(activation, "_dynamo_weak_dynamic_indices") == dynamic
+                if hasattr(activation, "_dynamo_propagated_dynamic_indices") != dynamic:
+                    raise AssertionError(
+                        f"Expected hasattr(..., '_dynamo_propagated_dynamic_indices') to be {dynamic}"
+                    )
                 return activation
 
             return unpack
@@ -5805,9 +5819,12 @@ class TestPartitioning(AOTTestCase):
         )
         res = compiled_fn(res_a, res_b)
         res.sum().backward()
-        assert torch.allclose(ref, res, atol=1e-3, rtol=1e-3)
-        assert torch.allclose(ref_a.grad, res_a.grad, atol=1e-3, rtol=1e-3)
-        assert torch.allclose(ref_b.grad, res_b.grad, atol=1e-3, rtol=1e-3)
+        if not torch.allclose(ref, res, atol=1e-3, rtol=1e-3):
+            raise AssertionError("ref and res not allclose")
+        if not torch.allclose(ref_a.grad, res_a.grad, atol=1e-3, rtol=1e-3):
+            raise AssertionError("ref_a.grad and res_a.grad not allclose")
+        if not torch.allclose(ref_b.grad, res_b.grad, atol=1e-3, rtol=1e-3):
+            raise AssertionError("ref_b.grad and res_b.grad not allclose")
 
     def test_meta_tensor_inplace_op(self):
         # Following module results in inplace ops while tracing. The test checks
@@ -5830,7 +5847,10 @@ class TestPartitioning(AOTTestCase):
         def check_meta_tensor(fx_g, _):
             for node in fx_g.graph.nodes:
                 if node.op != "output":
-                    assert "tensor_meta" in node.meta
+                    if "tensor_meta" not in node.meta:
+                        raise AssertionError(
+                            f"Expected 'tensor_meta' in node.meta for {node}"
+                        )
             return fx_g
 
         inp0 = torch.randn(16, 128, 768, requires_grad=True)
@@ -5856,6 +5876,92 @@ class TestPartitioning(AOTTestCase):
         )
         self.assertEqual(get_num_ins_outs(fw_graph), (3, 6))
         self.assertEqual(get_num_ins_outs(bw_graph), (6, 3))
+
+    def test_extract_fwd_bwd_modules_omit_aot_autograd_runtime(self):
+        """Test splitting a backward graph into dI/dW subgraphs using
+        omit_aot_autograd_runtime and ignore_must_be_in_fw_bw."""
+        from torch._functorch.partitioners import is_sym_node
+
+        def f(x, w):
+            return ((x @ w).sum(),)
+
+        x = torch.randn(4, 4, requires_grad=True)
+        w = torch.randn(4, 4, requires_grad=True)
+        joint = aot_export_joint_simple(f, [x, w], trace_joint=True)
+        fw_g, bw_g = default_partition(joint, [x, w], num_fwd_outputs=1)
+
+        # Run reference full backward
+        fw_outs = fw_g(x.detach(), w.detach())
+        activations = fw_outs[1:]
+        grad_out = torch.ones_like(fw_outs[0])
+        full_bw = bw_g(*activations, grad_out)
+
+        # Re-partition bw_g into dI (grad_x) and dW (grad_w),
+        # mimicking the split_dI_dW pattern.
+        # NOTE: placeholder names are load-bearing for the partitioner —
+        # _is_primal / _is_tangent classify nodes by checking substrings of
+        # node.target (e.g. "tangents" in target → is_tangent). We must create
+        # new placeholder nodes (not just rename) so the target is also updated.
+        bw_gm = copy.deepcopy(bw_g)
+        for p in list(bw_gm.graph.find_nodes(op="placeholder")):
+            if p.name.startswith("tangent"):
+                with bw_gm.graph.inserting_before(p):
+                    new_p = bw_gm.graph.placeholder(f"not_tngnt{p.name[8:]}")
+                    new_p.meta.update(p.meta)
+                    p.replace_all_uses_with(new_p)
+                    bw_gm.graph.erase_node(p)
+        bw_gm.recompile()
+
+        num_di = 1  # first output = grad_x
+        di_outs, dw_outs, di_descs, _ = _extract_fwd_bwd_outputs(
+            bw_gm, num_fwd_outputs=num_di
+        )
+        args = list(bw_gm.graph.find_nodes(op="placeholder"))
+        di_graph = _extract_graph_with_inputs_outputs(
+            bw_gm.graph,
+            args,
+            di_outs,
+            di_descs,
+            "forward",
+            ignore_must_be_in_fw_bw=True,
+        )
+        di_names = {n.name for n in di_graph.nodes if n.op != "output"}
+
+        saved_values = [
+            n
+            for n in bw_gm.graph.nodes
+            if n.name in di_names
+            and not is_sym_node(n)
+            and "tensor_meta" in n.meta
+            and any(n2.name not in di_names for n2 in n.users)
+        ]
+
+        di_mod, dw_mod = _extract_fwd_bwd_modules(
+            bw_gm,
+            saved_values,
+            saved_sym_nodes=[],
+            num_fwd_outputs=num_di,
+            ignore_must_be_in_fw_bw=True,
+            omit_aot_autograd_runtime=True,
+        )
+
+        # Verify graph structure
+        def ph_names(gm):
+            return [n.name for n in gm.graph.find_nodes(op="placeholder")]
+
+        self.assertFalse(any(n.startswith("tangent") for n in ph_names(di_mod)))
+        self.assertFalse(any(n.startswith("tangent") for n in ph_names(dw_mod)))
+
+        # Verify numerics: dI + dW matches full backward
+        bw_inputs = [*activations, grad_out]
+        di_outs = di_mod(*bw_inputs)
+        grad_x = di_outs[:num_di]
+        dw_inputs = di_outs[num_di:]
+        grad_w = dw_mod(*dw_inputs)
+        if not isinstance(grad_w, (list, tuple)):
+            grad_w = [grad_w]
+        self.assertEqual(grad_x[0], full_bw[0])
+        self.assertEqual(grad_w[0], full_bw[1])
 
     @unittest.skipIf(not USE_NETWORKX, "networkx not available")
     def test_min_cut_partitioner_raise_getitems(self):
@@ -6128,7 +6234,8 @@ def forward(self, primals_1, tangents_1):
         aot_fn = aot_function(fn, nop)
         res = aot_fn(x)
 
-        assert torch.allclose(ref, res)
+        if not torch.allclose(ref, res):
+            raise AssertionError("ref and res not allclose")
 
     # https://github.com/pytorch/pytorch/issues/110666
     def test_generate_gives_inference_graph(self):
@@ -6680,6 +6787,206 @@ def forward(self, primals_1, tangents_1):
         finally:
             handle.destroy()
 
+    def test_static_input_indices_with_effect_tokens(self):
+        """Test that static_input_indices are correctly offset when effect tokens are prepended."""
+        from torch._functorch._aot_autograd.descriptors import PlainAOTInput
+        from torch._functorch._aot_autograd.graph_capture_wrappers import (
+            handle_effect_tokens_fn,
+        )
+        from torch._functorch._aot_autograd.schemas import ViewAndMutationMeta
+        from torch._higher_order_ops.effects import _register_effectful_op
+        from torch._library.effects import EffectType
+
+        @torch.library.custom_op("test::effectful_static_idx_op", mutates_args=())
+        def effectful_static_idx_op(x: torch.Tensor) -> torch.Tensor:
+            return x.clone()
+
+        @effectful_static_idx_op.register_fake
+        def _(x: torch.Tensor) -> torch.Tensor:
+            return torch.empty_like(x)
+
+        handle = _register_effectful_op(effectful_static_idx_op, EffectType.ORDERED)
+
+        try:
+            meta = ViewAndMutationMeta(
+                input_info=[],
+                output_info=[],
+                num_intermediate_bases=0,
+                keep_input_mutations=False,
+                traced_tangents=[],
+                subclass_inp_meta=[],
+                subclass_fw_graph_out_meta=[],
+                subclass_tangent_meta=[],
+                traced_tangents_descs=[],
+            )
+            meta.tokens = {EffectType.ORDERED: torch.tensor([])}
+            # Simulate: params at indices 1, 2 before token insertion
+            meta.static_input_indices = [1, 2]
+
+            args = [torch.randn(4, 3), torch.randn(2, 3), torch.randn(2)]
+            args_descs = [PlainAOTInput(i) for i in range(3)]
+
+            _, new_args, _ = handle_effect_tokens_fn(
+                lambda *a: (torch.randn(1), []),
+                args,
+                args_descs,
+                meta=meta,
+                trace_joint=False,
+            )
+
+            num_tokens = len(meta.tokens)
+            self.assertGreater(num_tokens, 0)
+            # After prepending tokens, args grow and indices must be offset
+            self.assertEqual(len(new_args), len(args) + num_tokens)
+            self.assertEqual(
+                meta.static_input_indices,
+                [1 + num_tokens, 2 + num_tokens],
+            )
+        finally:
+            handle.destroy()
+
+    def test_collect_metadata_subclass_fw_outs_follow_input_mutation_type(self):
+        from torch._functorch._aot_autograd.collect_metadata_analysis import (
+            run_functionalized_fw_and_collect_metadata,
+        )
+        from torch._functorch._aot_autograd.descriptors import PlainAOTInput
+        from torch._functorch._aot_autograd.schemas import SubclassCreationMeta
+
+        def f(x):
+            x.add_(1)
+            return [torch.sin(x)]
+
+        fake_mode = FakeTensorMode()
+        subclass_arg = TwoTensor(
+            fake_mode.from_tensor(torch.ones(2)),
+            fake_mode.from_tensor(torch.ones(2)),
+        )
+
+        keep_input_mutations_meta = run_functionalized_fw_and_collect_metadata(
+            f,
+            flat_args_descs=[PlainAOTInput(0)],
+            keep_input_mutations=True,
+            static_input_indices=[],
+        )(subclass_arg)
+        self.assertEqual(keep_input_mutations_meta.mutated_inp_runtime_indices, [])
+        self.assertEqual(len(keep_input_mutations_meta.subclass_fw_graph_out_meta), 1)
+        self.assertIsInstance(
+            keep_input_mutations_meta.subclass_fw_graph_out_meta[0],
+            SubclassCreationMeta,
+        )
+        self.assertEqual(
+            keep_input_mutations_meta.subclass_fw_graph_out_meta[
+                0
+            ].flat_tensor_start_idx,
+            0,
+        )
+
+        out_of_graph_mutation_meta = run_functionalized_fw_and_collect_metadata(
+            f,
+            flat_args_descs=[PlainAOTInput(0)],
+            keep_input_mutations=False,
+            static_input_indices=[],
+        )(subclass_arg)
+        self.assertEqual(out_of_graph_mutation_meta.mutated_inp_runtime_indices, [0])
+        self.assertEqual(len(out_of_graph_mutation_meta.subclass_fw_graph_out_meta), 2)
+        self.assertIsInstance(
+            out_of_graph_mutation_meta.subclass_fw_graph_out_meta[0],
+            SubclassCreationMeta,
+        )
+        self.assertIsInstance(
+            out_of_graph_mutation_meta.subclass_fw_graph_out_meta[1],
+            SubclassCreationMeta,
+        )
+        self.assertEqual(
+            out_of_graph_mutation_meta.subclass_fw_graph_out_meta[
+                0
+            ].flat_tensor_start_idx,
+            0,
+        )
+        self.assertEqual(
+            out_of_graph_mutation_meta.subclass_fw_graph_out_meta[
+                1
+            ].flat_tensor_start_idx,
+            2,
+        )
+
+    def test_collect_metadata_subclass_fw_outs_include_metadata_only_mutation(self):
+        from torch._functorch._aot_autograd.collect_metadata_analysis import (
+            run_functionalized_fw_and_collect_metadata,
+        )
+        from torch._functorch._aot_autograd.descriptors import PlainAOTInput
+        from torch._functorch._aot_autograd.schemas import (
+            PlainTensorMeta,
+            SubclassCreationMeta,
+        )
+
+        def f(x):
+            x.transpose_(0, 1)
+            return [TwoTensor(torch.sin(x), torch.cos(x))]
+
+        fake_mode = FakeTensorMode()
+        arg = fake_mode.from_tensor(torch.ones(2, 3))
+
+        metadata = run_functionalized_fw_and_collect_metadata(
+            f,
+            flat_args_descs=[PlainAOTInput(0)],
+            keep_input_mutations=True,
+            static_input_indices=[],
+        )(arg)
+
+        self.assertEqual(metadata.mutated_inp_runtime_indices, [0])
+        self.assertEqual(len(metadata.subclass_fw_graph_out_meta), 2)
+        self.assertIsInstance(metadata.subclass_fw_graph_out_meta[0], PlainTensorMeta)
+        self.assertEqual(metadata.subclass_fw_graph_out_meta[0].unwrapped_idx, 0)
+        self.assertIsInstance(
+            metadata.subclass_fw_graph_out_meta[1],
+            SubclassCreationMeta,
+        )
+        self.assertEqual(
+            metadata.subclass_fw_graph_out_meta[1].flat_tensor_start_idx,
+            1,
+        )
+
+    def test_collect_metadata_subclass_fw_outs_include_intermediate_bases(self):
+        from torch._functorch._aot_autograd.collect_metadata_analysis import (
+            run_functionalized_fw_and_collect_metadata,
+        )
+        from torch._functorch._aot_autograd.descriptors import PlainAOTInput
+        from torch._functorch._aot_autograd.schemas import PlainTensorMeta
+
+        def f(x):
+            y = x.a + x.b
+            return [y.view(-1), y.view(-1)]
+
+        fake_mode = FakeTensorMode()
+        subclass_arg = TwoTensor(
+            fake_mode.from_tensor(torch.ones(2, 3, requires_grad=True)),
+            fake_mode.from_tensor(torch.ones(2, 3, requires_grad=True)),
+        )
+
+        metadata = run_functionalized_fw_and_collect_metadata(
+            f,
+            flat_args_descs=[PlainAOTInput(0)],
+            keep_input_mutations=True,
+            static_input_indices=[],
+        )(subclass_arg)
+
+        self.assertEqual(metadata.num_intermediate_bases, 1)
+        self.assertEqual(len(metadata.subclass_fw_graph_out_meta), 3)
+        self.assertTrue(
+            all(
+                isinstance(out_meta, PlainTensorMeta)
+                for out_meta in metadata.subclass_fw_graph_out_meta
+            )
+        )
+        self.assertEqual(
+            [
+                out_meta.unwrapped_idx
+                for out_meta in metadata.subclass_fw_graph_out_meta
+            ],
+            [0, 1, 2],
+        )
+
 
 class TestAOTDispatch(AOTTestCase):
     # Tests to add cases for (non-exhaustive list, mostly for my notes):
@@ -6983,16 +7290,8 @@ metadata incorrectly.
         self.assertEqual(b_ref_base.grad.a, b_test_base.grad.a)
         self.assertEqual(b_ref_base.grad.b, b_test_base.grad.b)
 
-    # NB: Metadata mutation for subclasses is currently broken and disabled
-    # See https://github.com/pytorch/pytorch/issues/114975
-    @unittest.expectedFailure
-    def test_aot_dispatch_input_data_and_metadata_mutation(self):
-        def f(a, b):
-            a.t_()
-            b.unsqueeze_(0)
-            a.mul_(2)
-            b.mul_(3)
-            return a + b
+    def test_force_save_effectful_ops(self):
+        """Test that effectful op outputs are saved, not recomputed.
 
         b1_ref = torch.arange(9, requires_grad=True, dtype=torch.float32).reshape(3, 3)
         b2_ref = torch.arange(9, requires_grad=True, dtype=torch.float32).reshape(3, 3)
@@ -7118,7 +7417,8 @@ metadata incorrectly.
                     (ref_out[0] + ref_out[1]).sum().backward()
                     (out[0] + out[1]).sum().backward()
                     self.assertEqual(ref_x.grad, x.grad)
-                    assert torch.allclose(ref_x.grad, x.grad, atol=1e-3, rtol=1e-3)
+                    if not torch.allclose(ref_x.grad, x.grad, atol=1e-3, rtol=1e-3):
+                        raise AssertionError("ref_x.grad and x.grad not allclose")
 
     def test_aot_dispatch_output_requires_grad_in_no_grad_views(self):
         # view-type ops preserve requires_grad even in no_grad.
@@ -7173,7 +7473,7 @@ class GradsNoForceContiguousContextManager(ContextDecorator):
         def log_tangents_memory_format_log_meta(a):
             return a.clone()
 
-        for backend in ["CPU", "CUDA"]:
+        for backend in ["CPU", "XPU"]:
             self.lib.impl(
                 "log_tangents_memory_format", log_tangents_memory_format_impl, backend
             )
@@ -7252,9 +7552,16 @@ class TestAOTModuleSimplified(AOTTestCase):
         res = compiled_f(*cloned_inputs)
         res[0].sum().backward()
 
-        assert torch.allclose(ref[0], res[0])
-        assert torch.allclose(inputs[0].grad, cloned_inputs[0].grad)
-        assert torch.allclose(inputs[1].grad, cloned_inputs[1].grad)
+        if not torch.allclose(ref[0], res[0]):
+            raise AssertionError("ref[0] and res[0] not allclose")
+        if not torch.allclose(inputs[0].grad, cloned_inputs[0].grad):
+            raise AssertionError(
+                "inputs[0].grad and cloned_inputs[0].grad not allclose"
+            )
+        if not torch.allclose(inputs[1].grad, cloned_inputs[1].grad):
+            raise AssertionError(
+                "inputs[1].grad and cloned_inputs[1].grad not allclose"
+            )
 
     def test_aot_module_simplified_dynamic(self):
         class MockModule(torch.nn.Module):
@@ -7291,9 +7598,16 @@ class TestAOTModuleSimplified(AOTTestCase):
  - Eq(s70, 30)""",
         )
 
-        assert torch.allclose(ref[0], res[0])
-        assert torch.allclose(inputs[0].grad, cloned_inputs[0].grad)
-        assert torch.allclose(inputs[1].grad, cloned_inputs[1].grad)
+        if not torch.allclose(ref[0], res[0]):
+            raise AssertionError("ref[0] and res[0] not allclose")
+        if not torch.allclose(inputs[0].grad, cloned_inputs[0].grad):
+            raise AssertionError(
+                "inputs[0].grad and cloned_inputs[0].grad not allclose"
+            )
+        if not torch.allclose(inputs[1].grad, cloned_inputs[1].grad):
+            raise AssertionError(
+                "inputs[1].grad and cloned_inputs[1].grad not allclose"
+            )
 
     # https://github.com/pytorch/pytorch/issues/105327
     def test_lift_fresh_copy_in_graph(self):
@@ -7359,14 +7673,20 @@ class TestAOTModuleSimplified(AOTTestCase):
             if node.op != "call_function":
                 continue
             self.assertTrue(node.stack_trace is not None)
-            assert "test_aotdispatch.py" in node.stack_trace
+            if "test_aotdispatch_xpu.py" not in node.stack_trace:
+                raise AssertionError(
+                    f"Expected 'test_aotdispatch_xpu.py' in stack trace, got: {node.stack_trace}"
+                )
 
         def assert_compiler(gm: torch.fx.GraphModule, _):
             for node in gm.graph.nodes:
                 if node.op == "output" or node.op == "placeholder":
                     continue
                 self.assertTrue(node.stack_trace is not None)
-                assert "test_aotdispatch.py" in node.stack_trace
+                if "test_aotdispatch_xpu.py" not in node.stack_trace:
+                    raise AssertionError(
+                        f"Expected 'test_aotdispatch_xpu.py' in stack trace, got: {node.stack_trace}"
+                    )
             return gm.forward  # return a python callable
 
         x = torch.randn(128, 20, requires_grad=True)
@@ -7398,14 +7718,20 @@ class TestAOTModuleSimplified(AOTTestCase):
             if node.op != "call_function":
                 continue
             self.assertTrue(node.stack_trace is not None)
-            assert "test_aotdispatch.py" in node.stack_trace
+            if "test_aotdispatch_xpu.py" not in node.stack_trace:
+                raise AssertionError(
+                    "Expected 'test_aotdispatch_xpu.py' in stack trace"
+                )
 
         def assert_compiler(gm: torch.fx.GraphModule, _):
-            assert torch.ops.aten.copy_.default in [x.target for x in gm.graph.nodes]
+            if torch.ops.aten.copy_.default not in [x.target for x in gm.graph.nodes]:
+                raise AssertionError("Expected aten.copy_.default in graph nodes")
             for node in gm.graph.nodes:
                 if node.target == torch.ops.aten.copy_.default:
-                    assert "stack_trace" in node.meta
-                    assert "x_view.mul_(2)" in node.meta["stack_trace"]
+                    if "stack_trace" not in node.meta:
+                        raise AssertionError("Expected 'stack_trace' in node.meta")
+                    if "x_view.mul_(2)" not in node.meta["stack_trace"]:
+                        raise AssertionError("Expected 'x_view.mul_(2)' in stack trace")
             return gm.forward  # return a python callable
 
         x = torch.randn(128, 20)
@@ -7708,13 +8034,12 @@ Expected a .* tangent but got a plain Tensor.""",
         aot_eager = torch.compile(backend="aot_eager")(fn)(x)
         self.assertEqual(eager, aot_eager, atol=0, rtol=0)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
     def test_rms_norm(self):
         # Only CUDA rms norm fails to be decomposed
         def fn(x):
             return F.rms_norm(x, normalized_shape=(8,))
 
-        x = torch.randn(2, 4, 8, device="cuda")
+        x = torch.randn(2, 4, 8, device="xpu")
         eager = fn(x)
         aot_eager = torch.compile(backend="aot_eager")(fn)(x)
         self.assertEqual(eager, aot_eager, atol=0, rtol=0)
@@ -7857,10 +8182,9 @@ Expected a .* tangent but got a plain Tensor.""",
         _test_fn(fn_mutation)
         _test_fn(fn_inplace, check_backward=False)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
     @parametrize("dynamic_shapes", [True, False])
     @parametrize("test_subclasses", [True, False])
-    @parametrize("device", ["cuda", "cpu"])
+    @parametrize("device", ["xpu", "cpu"])
     @patch("torch._functorch.config.guess_tangent_strides_as_outputs", True)
     def test_noncontig_nonmemformat_tangents(
         self, dynamic_shapes, test_subclasses, device
@@ -7928,7 +8252,6 @@ Expected a .* tangent but got a plain Tensor.""",
             self.assertEqual(ref_x.grad, x.grad)
 
     @patch("torch._functorch.config.guess_tangent_strides_as_outputs", True)
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
     def test_flex_attn_noncontiguous_tangents(self):
         with GradsNoForceContiguousContextManager() as ctx:
             E = 16  # embedding dim
@@ -7956,12 +8279,12 @@ Expected a .* tangent but got a plain Tensor.""",
 
                     return y.transpose(1, 2).contiguous().view(B, T, E)
 
-            m = M().cuda()
+            m = M().to("xpu")
             B = 1
             T = 8
 
             def _inp():
-                return torch.randn(B, T, E, requires_grad=True, device="cuda")
+                return torch.randn(B, T, E, requires_grad=True, device="xpu")
 
             x = _inp()
             y = m(x)
@@ -8033,8 +8356,6 @@ Expected a .* tangent but got a plain Tensor.""",
             x_grad = pytree.tree_map_only(torch.Tensor, lambda t: t.grad, x)
             self.assertEqual(ref_x_grad, x_grad, atol=1e-2, rtol=1e-2)
 
-    @unittest.skipIf(not torch.cuda.is_available(), "CUDA is unavailable")
-    @unittest.skipIf(not SM80OrLater, "bfloat16, float8")
     @parametrize("saved_tensors_hooks_filtering_mode", ["donated", "no_static", "all"])
     def test_saved_tensors_hooks_base(self, saved_tensors_hooks_filtering_mode):
         with patch(
@@ -8083,7 +8404,7 @@ Expected a .* tangent but got a plain Tensor.""",
                 x = SAF.apply(x, y)
                 return x
 
-            device = torch.device("cuda:0")
+            device = torch.device("xpu:0")
 
             def inp_fn():
                 x = torch.ones(2, 2, device=device, requires_grad=True)
@@ -8785,14 +9106,6 @@ class TestEagerFusionModuleInfo(AOTTestCase):
 
 instantiate_parametrized_tests(TestAOTAutograd)
 instantiate_parametrized_tests(TestAOTModuleSimplified)
-only_for = "cpu"
-instantiate_device_type_tests(
-    TestPythonKey,
-    globals(),
-    only_for=only_for,
-)
-instantiate_device_type_tests(TestEagerFusionOpInfo, globals(), only_for=only_for)
-instantiate_device_type_tests(TestEagerFusionModuleInfo, globals(), only_for=only_for)
 
 
 @xfail_inherited_tests(
