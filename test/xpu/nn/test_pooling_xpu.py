@@ -459,6 +459,8 @@ TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward = (
 
 # Upstream test_pooling.py:test_pool3d_large_size_int64 uses torch.cuda.synchronize();
 # mirror with torch.xpu.synchronize(). Body otherwise unchanged.
+# Currently fails on XPU due to a max_pool3d fp16 numerical mismatch vs the
+# CPU fp32 reference; tracked in intel/torch-xpu-ops#3511.
 @largeTensorTest("18GB", device="xpu")
 @largeTensorTest("180GB", "cpu")
 def _test_pool3d_large_size_int64(self, device):
