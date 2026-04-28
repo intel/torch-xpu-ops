@@ -3,15 +3,16 @@ name: xpu-ops-issue-creation
 description: >
   How to create an intel/torch-xpu-ops issue from a validated XPU bug
   or a CI UT failure triggered by an upstream PyTorch change.
-  Use when an agent already has either a confirmed local repro or
-  concrete CI failure evidence and needs to check duplicates, draft
-  the issue body, and optionally create the issue.
+  Use when an agent already has either a confirmed local XPU repro
+  derived from an upstream CUDA or PyTorch issue, PR, or commit, or
+  concrete PyTorch CI failure evidence, and needs to check duplicates,
+  draft the issue body, and optionally create the issue.
 license: Apache-2.0
 compatibility: Designed for agent skills under .github/skills. Works best when GitHub issue search and create tools are available; if shell access is unavailable for a manual-validation case, ask the user to run collect_env locally and paste the output.
 metadata:
   workflow: validated-bug-to-issue
   audience: backend-triage
-  version: "1.3"
+  version: "1.4"
 ---
 
 # Issue Creation - torch-xpu-ops
@@ -20,14 +21,14 @@ This skill is intended for agent runtimes that load skills from `.github/skills`
 
 ## What I do
 - Normalize local repro results or CI UT failures into a concise issue report.
-- Cross-link the upstream PyTorch issue, PR, and commit when those anchors exist.
+- Cross-link the upstream issue, PR, and commit that motivated the repro or CI failure.
 - Draft the title and body for the `intel/torch-xpu-ops` repository.
 - Optionally use the GitHub issue tools available in the current agent environment to create the issue after the content is confirmed.
 
 ## When to use me
 Use this only after either:
-- a local XPU nightly run has demonstrated a real bug, semantic mismatch, or missing supported behavior, or
-- a CI UT failure has been tied to an upstream PyTorch change and includes enough test and log context to act as the reproducer.
+- a local XPU repro derived from an upstream CUDA or PyTorch issue, PR, or commit has demonstrated a real bug, semantic mismatch, or missing supported behavior, or
+- a PyTorch CI failure has been tied to an upstream PyTorch change and includes enough test and log context to act as the reproducer.
 
 ## Required tools and context
 - Use the GitHub issue search, read, and create tools available in the current agent environment.
@@ -39,19 +40,19 @@ Default filing target: `intel/torch-xpu-ops`. Search for duplicates there before
 
 Do not proceed to issue creation without all of the following common inputs:
 - a short bug statement and the affected op, module, or test area
+- at least one upstream issue, PR, or commit reference
 - failure output or a mismatch summary that is specific enough to debug
 - enough build and version context in text to identify the failing environment
 
 Then require one of these evidence sets:
 
 **Manual validation path**
+- a local XPU repro derived from an upstream CUDA or PyTorch issue, PR, or commit
 - a minimal reproducer script
 - a local XPU run result
 - version and environment details
-- upstream issue, PR, or commit when the bug was discovered from an upstream change
 
 **CI UT failure path**
-- at least one upstream PyTorch reference from issue, PR, or commit
 - a CI job link
 - build identifier and torch build, channel, or commit details when visible
 - the failing test identifier
@@ -79,9 +80,9 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
 - `Failure source`: choose `CI UT failure` or `Manual validation`.
 - `Affected op/module`: name the likely op family, module, or failing test area.
 - `### Upstream reference`:
-  - CI UT failures: upstream commit, upstream PR, and upstream issue when available
-  - Manual validation: include known upstream anchors when the bug was discovered from one
-  - one-line summary of what the upstream change did when there is an upstream trigger
+  - include upstream commit, upstream PR, and upstream issue when available
+  - for manual validation, these anchors are the source of the XPU repro being validated
+  - one-line summary of what the upstream change did
 - `### Environment and build context`:
   - date, build or CI build identifier, and platform
   - PyTorch version, channel, or git SHA
@@ -102,7 +103,7 @@ Use [assets/xpu_issue_template.md](assets/xpu_issue_template.md) as the body tem
 - Manual validation: `torch.__version__`, `torch.version.git_version`, platform, Python version, XPU availability
 - Manual validation: oneAPI or driver/runtime details if already present in the local environment output
 - Manual validation: collect_env output via `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
-- Manual validation: known upstream issue, PR, or commit when the bug was discovered from one
+- Manual validation: upstream issue, PR, or commit that supplied the repro scenario
 - CI UT failure: upstream issue, PR, and commit anchors, CI job link, build identifier if visible, failing test path, rerun command, and the traceback or assertion excerpt
 
 See [references/validation-criteria-reference.md](references/validation-criteria-reference.md) for confirmation criteria and capture requirements.

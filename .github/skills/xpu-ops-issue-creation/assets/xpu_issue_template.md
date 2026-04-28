@@ -9,7 +9,7 @@ Affected op/module: [e.g. `aten::native_batch_norm`]
 
 ### Upstream reference
 
-Required for CI UT failure. For manual validation, include these fields when the bug was discovered from an upstream change.
+Required for both failure sources. For manual validation, these fields identify the upstream CUDA or PyTorch issue, PR, or commit that supplied the XPU repro scenario.
 
 - Upstream commit: [commit SHA or URL that triggered the failure]
 - Upstream PR: [PR URL]
