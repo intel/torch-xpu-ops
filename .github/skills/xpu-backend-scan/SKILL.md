@@ -26,8 +26,15 @@ This package is intentionally text-first and minimal:
 
 Read these references first:
 - `references/scan-basics.md`
+- `references/goal-checklists.md` when you need a step-by-step decision pass for
+  Goal 1, Goal 2, or Goal 3
 - `references/dispatch-and-layout.md` when dispatch, structured, delegate,
   fallback, or source layout questions matter
+- `references/report-template.md` when drafting a finding or review summary
+
+Read `references/false-positive-patterns.md` when the current evidence is driven
+by file-shape differences, helper call sites, test metadata, or stale wording
+rather than a clear user-visible contract gap.
 
 Read `references/triage-governance.md` only when reviewing historical findings,
 deciding whether a recurring family is a real bug family, or deciding whether a
@@ -169,6 +176,7 @@ Do not invent local aliases. Put nuance in the explanation fields instead.
 - If differences are stylistic, hardware-justified, or already explained by a
   valid shared path, return no issue or downgrade confidence.
 - Do not call a finding runtime-confirmed from static code review alone.
+- Use `references/report-template.md` for consistent finding structure.
 - For issues that deserve local reproduction, hand off to
   `.github/skills/xpu-ops-issue-creation/SKILL.md` only after a local XPU repro
   actually exists in the target repository workflow.
