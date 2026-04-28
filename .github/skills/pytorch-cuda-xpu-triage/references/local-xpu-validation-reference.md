@@ -36,4 +36,4 @@ One of the following on XPU, when CPU semantics disagree:
 - Upstream issue/PR/commit links
 
 ## Next step
-Hand off the confirmed bug evidence to the issue-filing skill or a human maintainer. This skill does not file issues itself.
+Hand off the confirmed bug evidence to a human maintainer for issue filing. This skill does not file issues itself.
