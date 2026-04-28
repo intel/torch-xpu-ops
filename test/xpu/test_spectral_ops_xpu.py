@@ -140,9 +140,6 @@ def _compare_xpu_cpu(self, xpu_result, cpu_result, t):
 
 TestFFT.test_reference_1d = _test_reference_1d
 TestFFT._compare_xpu_cpu = _compare_xpu_cpu
-TestFFT.test_fft_half_and_chalf_not_power_of_two = (
-    _test_fft_half_and_chalf_not_power_of_two
-)
 TestFFT.test_fft_half_and_chalf_not_power_of_two_error = (
     _test_fft_half_and_chalf_not_power_of_two
 )
