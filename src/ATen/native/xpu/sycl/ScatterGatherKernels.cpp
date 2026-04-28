@@ -155,66 +155,113 @@ struct alignas(N) OpaqueType {
   char data[N];
 };
 
+// Compile-time thread work size enables loop unrolling (matching CUDA pattern).
+constexpr int kScatterGatherThreadWorkSize = 4;
+
+// Scatter uses smaller WGs for better scheduling of random writes.
+// Gather uses larger WGs for better L2 cache reuse across row accesses.
+constexpr int kScatterWGSize = 256;
+constexpr int kGatherWGSize = 1024;
+
+// Scatter kernel functor: no grid-stride, fully unrolled inner loop.
+// Scatter launches enough WGs to cover all elements (no capping).
 template <typename func_t>
-struct ScatterGatherElementwiseKernelFunctor {
+struct ScatterElementwiseKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
-    int nv = work_group_size_ * thread_work_size_;
-    auto wg_id = item.get_group_linear_id();
-    auto local_id = item.get_local_linear_id();
-    int idx = nv * wg_id + local_id;
-    for (int i = 0; i < thread_work_size_; ++i) {
+    constexpr int WG = kScatterWGSize;
+    constexpr int TWS = kScatterGatherThreadWorkSize;
+    constexpr int nv = WG * TWS;
+    int idx = nv * item.get_group_linear_id() + item.get_local_linear_id();
+#pragma unroll
+    for (int i = 0; i < TWS; ++i) {
       if (idx < N_) {
         f_(idx);
-        idx += work_group_size_;
+        idx += WG;
       }
     }
   }
-  ScatterGatherElementwiseKernelFunctor(
-      int N,
-      func_t f,
-      int work_group_size,
-      int thread_work_size)
-      : N_(N),
-        f_(f),
-        work_group_size_(work_group_size),
-        thread_work_size_(thread_work_size) {}
+  ScatterElementwiseKernelFunctor(int N, func_t f) : N_(N), f_(f) {}
 
  private:
   int N_;
   func_t f_;
-  int work_group_size_;
-  int thread_work_size_;
+};
+
+// Gather kernel functor: grid-stride loop with capped WGs.
+// Capping preserves the original dispatch behavior for cache-sensitive reads.
+template <typename func_t>
+struct GatherElementwiseKernelFunctor {
+  void operator()(sycl::nd_item<1> item) const {
+    constexpr int WG = kGatherWGSize;
+    constexpr int TWS = kScatterGatherThreadWorkSize;
+    constexpr int nv = WG * TWS;
+    int tid = nv * item.get_group_linear_id() + item.get_local_linear_id();
+    int grid_stride = nv * (int)item.get_group_range(0);
+    while (tid < N_) {
+      int idx = tid;
+#pragma unroll
+      for (int i = 0; i < TWS; ++i) {
+        if (idx < N_) {
+          f_(idx);
+        }
+        idx += WG;
+      }
+      tid += grid_stride;
+    }
+  }
+  GatherElementwiseKernelFunctor(int N, func_t f) : N_(N), f_(f) {}
+
+ private:
+  int N_;
+  func_t f_;
 };
 
 template <typename func_t>
-static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
+static void launch_scatter_kernel(int64_t N, const func_t& f) {
   TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
   if (N == 0) {
     return;
   }
 
-  using KernelFn = ScatterGatherElementwiseKernelFunctor<func_t>;
-  int64_t max_wg_size = syclMaxWorkGroupSize<KernelFn>();
-  int outputSize = N;
-  int work_group_size = outputSize > max_wg_size ? max_wg_size : outputSize;
-  const auto target_global_size = syclMaxWorkItemsPerTile();
-  // Each work group size is work_group_size, one full device launch is
-  // target_global_size, so we can calculate max work group num as below
-  const int max_work_group_num = target_global_size / work_group_size;
-  int work_group_num = outputSize / work_group_size < max_work_group_num
-      ? outputSize / work_group_size
-      : max_work_group_num;
-  int draft_work_group_num =
-      (outputSize + work_group_size - 1) / work_group_size;
+  constexpr int nv = kScatterWGSize * kScatterGatherThreadWorkSize;
+  int num_groups = ((int)N + nv - 1) / nv;
 
-  int thread_work_size = draft_work_group_num / work_group_num + 1;
+  sycl::range<1> local_range(kScatterWGSize);
+  sycl::range<1> global_range(num_groups * kScatterWGSize);
 
-  sycl::range<1> local_range(work_group_size);
-  sycl::range<1> global_range(work_group_num * work_group_size);
-
-  auto caller = KernelFn((int)N, f, work_group_size, thread_work_size);
+  using KernelFn = ScatterElementwiseKernelFunctor<func_t>;
+  auto caller = KernelFn((int)N, f);
   sycl_kernel_submit(
       global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+}
+
+template <typename func_t>
+static void launch_gather_kernel(int64_t N, const func_t& f) {
+  TORCH_INTERNAL_ASSERT(N >= 0 && N <= std::numeric_limits<int32_t>::max());
+  if (N == 0) {
+    return;
+  }
+
+  constexpr int WG = kGatherWGSize;
+  constexpr int nv = WG * kScatterGatherThreadWorkSize;
+
+  int needed_groups = ((int)N + nv - 1) / nv;
+  int max_groups = (int)(syclMaxWorkItemsPerTile() / WG);
+  int num_groups = std::min(needed_groups, max_groups);
+
+  sycl::range<1> local_range(WG);
+  sycl::range<1> global_range(num_groups * WG);
+
+  using KernelFn = GatherElementwiseKernelFunctor<func_t>;
+  auto caller = KernelFn((int)N, f);
+  sycl_kernel_submit(
+      global_range, local_range, at::xpu::getCurrentSYCLQueue(), caller);
+}
+
+// Backward-compatible wrapper used by scatter_fill path
+template <typename func_t>
+static void launch_scatter_gather_kernel(int64_t N, const func_t& f) {
+  launch_scatter_kernel(N, f);
 }
 
 template <
@@ -335,7 +382,11 @@ struct ScatterGatherInternalKernel {
         numel,
         f);
 
-    launch_scatter_gather_kernel(iter.numel(), loop);
+    if constexpr (is_scatter_like) {
+      launch_scatter_kernel(iter.numel(), loop);
+    } else {
+      launch_gather_kernel(iter.numel(), loop);
+    }
   }
 };
 
@@ -763,6 +814,9 @@ void scatter_add_kernel(
     int64_t dim,
     const Tensor& index,
     const Tensor& src) {
+  // See Note [Writing Nondeterministic Operations]
+  // Nondeterministic because of atomicAdd usage
+  globalContext().alertNotDeterministic("scatter_add_kernel");
   ScatterGatherBaseKernel</*is_scatter_like=*/true, /*cast_to_opaque=*/false>()(
       self, dim, index, src, "scatter_add_kernel", reduce_add);
 }
@@ -803,6 +857,7 @@ void scatter_reduce_two_kernel(
     const ReductionType& reduce) {
   switch (reduce) {
     case ReductionType::SUM:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_sum");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_sum", reduce_add);
       break;
@@ -820,6 +875,7 @@ void scatter_reduce_two_kernel(
           self, dim, index, src, "scatter_reduce_kernel_amin", reduce_minimum);
       break;
     case ReductionType::MEAN:
+      globalContext().alertNotDeterministic("scatter_reduce_kernel_mean");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_mean", reduce_mean);
       break;
