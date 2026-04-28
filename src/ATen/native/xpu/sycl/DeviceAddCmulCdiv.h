@@ -16,6 +16,18 @@
 
 namespace at::native::xpu {
 
+// Trait to detect multiply-like functors (std::multiplies<T> for any T).
+// This enables the FMA fast-path for any instantiation of std::multiplies,
+// not just std::multiplies<opmath_t>.
+template <typename Op>
+struct is_multiply_op : std::false_type {};
+
+template <typename T>
+struct is_multiply_op<std::multiplies<T>> : std::true_type {};
+
+template <typename Op>
+inline constexpr bool is_multiply_op_v = is_multiply_op<Op>::value;
+
 // Computes input + alpha * op(tensor1, tensor2).
 // Uses std::fma for real floating-point types to ensure consistent
 // FMA behavior matching CUDA's pointwise_op_impl.
@@ -27,9 +39,7 @@ inline opmath_t pointwise_op_impl(
     opmath_t alpha,
     Op op) {
   if (alpha == opmath_t(1)) {
-    if constexpr (
-        std::is_same_v<Op, std::multiplies<opmath_t>> &&
-        std::is_floating_point_v<opmath_t>) {
+    if constexpr (is_multiply_op_v<Op> && std::is_floating_point_v<opmath_t>) {
       return std::fma(tensor1, tensor2, input);
     } else {
       return input + op(tensor1, tensor2);

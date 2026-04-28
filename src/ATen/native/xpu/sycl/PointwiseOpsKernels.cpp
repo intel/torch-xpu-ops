@@ -13,7 +13,6 @@
 #include <ATen/native/TensorIterator.h>
 #include <comm/xpu_aten.h>
 
-#include <functional>
 #include <ATen/native/xpu/sycl/DeviceAddCmulCdiv.h>
 #include <ATen/native/xpu/sycl/Loops.h>
 #include <ATen/native/xpu/sycl/PointwiseOpsKernels.h>
