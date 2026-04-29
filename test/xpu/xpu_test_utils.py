@@ -353,6 +353,10 @@ _cuda_xfail_xpu_pass = [
     ("_refs.mul", "test_python_ref"),
     ("_refs.mul", "test_python_ref_torch_fallback"),
     ("nn.AvgPool2d", "test_memory_format"),
+    ("nn.LazyConv2d", "test_memory_format"),
+    ("nn.Conv2d", "test_memory_format"),
+    ("nn.ConvTranspose2d", "test_memory_format"),
+    ("nn.LazyConvTranspose2d", "test_memory_format"),
     ("narrow_copy", "test_meta_outplace"),
     ("narrow_copy", "test_dispatch_meta_outplace"),
     ("narrow_copy", "test_dispatch_symbolic_meta_outplace"),
@@ -360,7 +364,6 @@ _cuda_xfail_xpu_pass = [
     ("_refs.div", "test_python_ref"),
     ("_refs.pow", "test_python_ref"),
     ("_refs.pow", "test_python_ref_torch_fallback"),
-    ("_refs.mul", "test_python_ref_executor"),
     (
         "_refs.div",
         "test_python_ref_torch_fallback",
@@ -375,6 +378,16 @@ _cuda_xfail_xpu_pass = [
     ("sort", "test_non_standard_bool_values"),
 ]
 
+# Additional unscoped (device_type=None) expectedFailure entries that should
+# also be stripped for XPU.  This list is maintained separately from
+# _cuda_xfail_xpu_pass because it is related to, but not necessarily a literal
+# subset of, the CUDA-scoped overrides above.  Keeping it separate preserves
+# unscoped xfails that genuinely fail on XPU (e.g. complex-dtype memory-format
+# tests for ConvTranspose2d).
+_none_device_xfail_xpu_pass = [
+    ("_refs.mul", "test_python_ref_executor"),
+    ("_refs.pow", "test_python_ref_executor"),
+]
 # some case should adjust tolerance to pass.
 # The new threshold is at the same order of magnitude as cuda's or cpu's.
 # format hint:{op_name:{(cls_name,test_name):{dtype:tol(atol, rtol)}}
@@ -1022,6 +1035,23 @@ class XPUPatchForImport:
                         else:
                             wrapper.device_type = "xpu"
                             replaced = True
+                    elif (
+                        wrapper.device_type is None
+                        and unittest.expectedFailure in wrapper.decorators
+                        and (op_name, wrapper.test_name) in _none_device_xfail_xpu_pass
+                    ):
+                        # For tests that are expected to fail on some devices but pass on XPU,
+                        # create an XPU-specific variant of the wrapper without expectedFailure.
+                        replaced = True
+                        new_wrapper = copy.copy(wrapper)
+                        new_wrapper.decorators = tuple(
+                            d
+                            for d in new_wrapper.decorators
+                            if d is not unittest.expectedFailure
+                        )
+                        new_wrapper.device_type = "xpu"
+                        wrapper_xpu.append(new_wrapper)
+                        continue
                     wrapper_xpu.append(wrapper)
                 elif self.only_cuda_fn == wrapper:
                     wrapper_xpu.append(common_device_type.onlyCUDA)
