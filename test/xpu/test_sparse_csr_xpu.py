@@ -5772,7 +5772,7 @@ class TestSparseCompressedTritonKernels(TestCase):
             key = (M, K, N, Ms, Ks, beta == 0, beta == 1, alpha == 1)
             update_bsr_dense_addmm_meta(
                 "bsr_dense_addmm",
-                device_type,
+                getattr(torch, device_type).get_device_name(),
                 ("test_triton_bsr_dense_addmm_meta", dtype, sparsity),
                 key,
                 value,
