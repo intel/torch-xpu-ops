@@ -26,7 +26,7 @@ XPU code lives in **two repositories** — both are in scope:
 6. `aten/src/ATen/native/transformers/cuda/` and `…/xpu/`
 7. `test/xpu/` — upstream XPU tests
 
-These files are not in the local workspace. Access them via GitHub tools, a local pytorch checkout, or web fetch. If upstream files are unreachable, note the gap and proceed with local evidence only.
+These files are not in the local workspace for single-op analysis — access them via GitHub tools, a local pytorch checkout, or web fetch. In batch scan mode (full/daily), these files are available in the cloned pytorch repo. If upstream files are unreachable, note the gap and proceed with local evidence only.
 
 ## Coverage Signals
 

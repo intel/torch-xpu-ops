@@ -83,6 +83,7 @@ See [references/dispatch-coverage.md](references/dispatch-coverage.md) for where
 - Vendor library choice (oneDNN vs cuDNN) is not itself a bug.
 - Missing local XPU kernel file is not evidence of missing support — check delegates, composites, shared paths first.
 - Test skip/xfail metadata is a signal worth reporting, not dismissing.
+- In batch scan: if analysis of a single op fails (file unreadable, parse error), record `"status": "error"` with the error message and continue to the next operator.
 
 ## Output
 
@@ -102,22 +103,28 @@ Before running a batch scan, prepare the environment:
 
 1. **Clone intel/torch-xpu-ops** (if not already present):
    ```bash
-   git clone --depth=1 https://github.com/intel/torch-xpu-ops.git torch-xpu-ops
+   # Check if already cloned:
+   [[ -f torch-xpu-ops/yaml/xpu_functions.yaml ]] || \
+     git clone https://github.com/intel/torch-xpu-ops.git torch-xpu-ops
    ```
+   For full scan, `--depth=1` is sufficient. For daily scan, the repo needs commit history covering the time window — omit `--depth` or use `--shallow-since=<date>`.
 
 2. **Clone pytorch/pytorch** (if not already present):
    ```bash
-   git clone --depth=1 https://github.com/pytorch/pytorch.git pytorch
+   # Check if already cloned:
+   [[ -f pytorch/aten/src/ATen/native/native_functions.yaml ]] || \
+     git clone https://github.com/pytorch/pytorch.git pytorch
    ```
+   Same depth guidance as above. If clone fails (network, disk space), note the gap and continue with torch-xpu-ops evidence only.
 
-3. **Enumerate all XPU operators** from these sources (union, no dedup at enumeration):
+3. **Enumerate all XPU operators** from these sources:
    - `torch-xpu-ops/yaml/xpu_functions.yaml` — supported op list (~741 ops)
    - `torch-xpu-ops/src/ATen/native/xpu/` — all kernel source files (extract op names)
    - `torch-xpu-ops/src/ATen/native/xpu/XPUFallback.template` — fallback op list
    - `pytorch/aten/src/ATen/native/xpu/` — upstream XPU native code
    - `pytorch/aten/src/ATen/native/native_functions.yaml` — ops with XPU dispatch keys
 
-4. Merge into a single ordered op list. This is the scan target.
+4. Merge and **deduplicate by schema name** into a single ordered op list. Each unique schema is analyzed exactly once. (Dedup applies within a single scan's enumeration — across separate scan runs, all history is preserved independently.)
 
 ---
 
@@ -129,7 +136,7 @@ Triggered by: `scan all`
 Run Environment Setup above. Record repo paths in the output JSON.
 
 ### F2: Create output files
-Create `xpu_scan_full_<date>.json` and `xpu_scan_full_<date>.md` in the working directory.
+Create `xpu_scan_full_<date>_<time>.json` and `xpu_scan_full_<date>_<time>.md` in the working directory.
 
 Initialize JSON:
 ```json
@@ -174,9 +181,10 @@ Per-operator JSON entry:
 If context window is nearly exhausted:
 1. Set `"scan_status": "interrupted"` and `"next_op_index": N` in JSON
 2. Write all pending data to disk
-3. In the **next conversation**, read the JSON file, find `next_op_index`, skip all ops with `"status": "completed"`, and continue from where it left off
+3. Instruct the user: "Scan interrupted at op N. Say `resume scan` or `continue scan` in a new conversation to continue."
+4. In the new conversation, read the JSON file, find `next_op_index`, skip all entries in `operators` with `"status": "completed"`, and continue from where it left off
 
-No human intervention required. The JSON file is the checkpoint.
+The JSON file is the checkpoint. The `operators` array (entries with `"status": "completed"`) is the source of truth for what has been processed. `next_op_index` is a convenience hint for fast seek — if it disagrees with the array, trust the array.
 
 ### F5: Summary
 After all operators are processed, append summary to both JSON and Markdown:
@@ -192,11 +200,11 @@ After all operators are processed, append summary to both JSON and Markdown:
       "needs_review": 15
     },
     "by_priority": {"high": 65, "medium": 15, "low": 230},
-    "by_source": {
-      "xpu_functions_yaml": 741,
-      "kernel_source_files": 52,
-      "fallback_template": 180,
-      "upstream_xpu": 30
+    "coverage_distribution": {
+      "native_kernel": 400,
+      "composite_or_decomp": 120,
+      "delegate": 50,
+      "fallback_only": 230
     }
   }
 }
@@ -220,13 +228,14 @@ git log --since='<window>' --name-only --pretty=format: -- aten/src/ATen/native/
 ```
 
 ### D2: Map files to operators
-From changed files, extract affected operator names:
-- YAML changes → parse added/removed/modified op entries
-- Source file changes → extract op names from filenames and `TORCH_IMPL_FUNC` registrations
-- Fallback template changes → parse diff for added/removed ops
+From changed files, extract affected operator names using concrete methods:
+- **YAML changes**: `git diff <since>..HEAD -- native_functions.yaml | grep '^[+-].*func:' | sed 's/.*func: //'` to extract added/removed/modified schemas
+- **Source file changes**: `grep -h 'TORCH_IMPL_FUNC\|REGISTER_XPU_DISPATCH' <changed_files> | sed ...` to extract registered op names
+- **Fallback template changes**: `git diff <since>..HEAD -- XPUFallback.template | grep '^[+-].*"aten::'` to extract added/removed fallback ops
+- **xpu_functions.yaml changes**: `git diff <since>..HEAD -- xpu_functions.yaml | grep '^[+-]  - '` to extract added/removed supported ops
 
 ### D3: Create output files
-Create `xpu_scan_daily_<date>.json` and `xpu_scan_daily_<date>.md`.
+Create `xpu_scan_daily_<date>_<time>.json` and `xpu_scan_daily_<date>_<time>.md`.
 Same JSON schema as full scan, with `"scan_mode": "daily"`.
 
 ### D4: Process operators one by one
@@ -240,10 +249,12 @@ Same as Full Scan F5.
 ## Output Files
 
 ### File naming
-- Full scan: `xpu_scan_full_<YYYY-MM-DD>.json` / `.md`
-- Daily scan: `xpu_scan_daily_<YYYY-MM-DD>.json` / `.md`
+- Full scan: `xpu_scan_full_<YYYY-MM-DD>_<HHMMSS>.json` / `.md`
+- Daily scan: `xpu_scan_daily_<YYYY-MM-DD>_<HHMMSS>.json` / `.md`
 
-**Never overwrite previous scan files.** Each scan produces its own dated files. All history is preserved.
+Timestamp includes time to avoid collision when running multiple scans on the same day.
+
+**Never overwrite previous scan files.** Each scan produces its own timestamped files. All history is preserved.
 
 ### Markdown report format
 ```markdown
@@ -276,11 +287,10 @@ Same as Full Scan F5.
 
 The JSON file is the checkpoint. To resume an interrupted scan:
 
-1. Read the JSON file for the scan in progress
-2. Check `scan_status` — if `"interrupted"`, resume is needed
-3. Read `next_op_index` to know where to continue
-4. Skip all entries in `operators` array that have `"status": "completed"`
-5. Continue processing from `next_op_index` onward
-6. When complete, set `"scan_status": "completed"` and write summary
-
-This mechanism is fully automatic — no human input required between interruption and resumption.
+1. User says `resume scan` or `continue scan` in a new conversation
+2. Read the JSON file for the scan in progress
+3. Check `scan_status` — if `"interrupted"`, resume is needed
+4. The `operators` array (entries with `"status": "completed"`) is the source of truth
+5. Use `next_op_index` as a fast-seek hint, but trust the array if they disagree
+6. Continue processing from the first non-completed operator onward
+7. When complete, set `"scan_status": "completed"` and write summary
