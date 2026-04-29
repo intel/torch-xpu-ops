@@ -3832,12 +3832,16 @@ void batch_norm_mean_var(
   const double dummy_epsilon = 1e-5;
   switch (batch_norm_choose_impl(self)) {
     case Impl::Contiguous: {
-      AT_DISPATCH_FLOATING_TYPES_AND2(
-          kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
-            batch_norm_stats_template<scalar_t, int32_t, Var>(
-                save_mean, save_var, self, dummy_epsilon);
-          });
-      return;
+      if ((!save_mean.defined() || save_mean.is_contiguous()) &&
+          (!save_var.defined() || save_var.is_contiguous())) {
+        AT_DISPATCH_FLOATING_TYPES_AND2(
+            kHalf, kBFloat16, self.scalar_type(), "batch_norm_stats_xpu", [&] {
+              batch_norm_stats_template<scalar_t, int32_t, Var>(
+                  save_mean, save_var, self, dummy_epsilon);
+            });
+        return;
+      }
+      [[fallthrough]];
     }
     case Impl::ChannelsLast: {
       if ((!save_mean.defined() || save_mean.is_contiguous()) &&
