@@ -105,7 +105,11 @@ def get_failed_test_cases(job_id):
     """
     url = f"{API_BASE}/actions/jobs/{job_id}/logs"
     try:
-        resp = requests.get(url, headers=HEADERS, allow_redirects=True, timeout=60)
+        # Use allow_redirects=False to avoid leaking the auth header to the
+        # Azure Blob Storage host that GitHub redirects to (302).
+        resp = requests.get(url, headers=HEADERS, allow_redirects=False, timeout=60)
+        if resp.status_code in (301, 302, 303, 307, 308):
+            resp = requests.get(resp.headers["Location"], timeout=60)  # no auth header
     except (requests.exceptions.SSLError, requests.exceptions.ConnectionError,
             requests.exceptions.Timeout) as e:
         print(f"    WARNING: Failed to download log for job {job_id}: {e.__class__.__name__}")
