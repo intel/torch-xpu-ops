@@ -7,6 +7,8 @@ on:
     paths:
       - '.github/workflows/ci_break_monitor.yml'
       - '.github/scripts/check_nightly_status.py'
+      - '.github/scripts/create_tracking_issue.py'
+      - '.github/scripts/classify_failures.py'
 
   workflow_dispatch:
     inputs:
@@ -16,6 +18,8 @@ on:
         options:
           - all
           - step1_scan
+          - step2_create_issue
+          - step3_classify
         default: 'all'
       days:
         description: 'Look back N days'
@@ -35,6 +39,7 @@ on:
 permissions:
   contents: read
   actions: read
+  issues: write
 
 jobs:
   ci-monitor:
@@ -72,3 +77,36 @@ jobs:
           path: |
             ci_results.json
             all_runs.json
+
+      # ===== Step 2: Create Tracking Issue =====
+      - name: "Step 2: Create Tracking Issue"
+        id: create_issue
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step2_create_issue' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/create_tracking_issue.py \
+            --input ci_results.json \
+            --all-runs all_runs.json \
+            ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
+
+      # ===== Step 3: Create Sub-Issues =====
+      # NOTE: Step 3 depends on Step 2 output (issue_number). Running step3_classify
+      # alone via workflow_dispatch will skip this step because issue_number is empty.
+      # Use 'all' or run step2+step3 together.
+      - name: "Step 3: Create Sub-Issues"
+        if: ${{ (github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step3_classify') && steps.create_issue.outputs.issue_number != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/classify_failures.py \
+            --input ci_results.json \
+            --summary-issue ${{ steps.create_issue.outputs.issue_number }}
+
+      - name: "Step 3: Create Sub-Issues (dry-run for PR)"
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          python .github/scripts/classify_failures.py \
+            --input ci_results.json \
+            --summary-issue 0 \
+            --dry-run
