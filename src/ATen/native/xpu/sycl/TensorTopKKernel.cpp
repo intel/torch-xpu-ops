@@ -11,9 +11,7 @@
 #include <ATen/ATen.h>
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
-#include <ATen/native/TensorIterator.h>
-#include <ATen/native/xpu/sycl/Sorting.h>
-#include <ATen/native/xpu/sycl/SortingKernels.h>
+#include <ATen/native/xpu/sycl/TensorTopKRadixSelect.h>
 
 #include <ATen/native/xpu/sycl/TensorTopKKernel.h>
 
@@ -21,20 +19,10 @@ namespace at {
 namespace native {
 namespace xpu {
 
-void topk_out_with_sort(
-    const Tensor& self,
-    int64_t k,
-    int64_t dim,
-    bool largest,
-    const Tensor& values,
-    const Tensor& indices) {
-  Tensor sorted_values, sorted_indices;
-  std::tie(sorted_values, sorted_indices) =
-      at::sort(self, /* stable= */ false, dim, largest);
-  values.copy_(sorted_values.narrow(dim, 0, k));
-  indices.copy_(sorted_indices.narrow(dim, 0, k));
-}
-
+// TopK kernel for XPU: uses radix-select instead of full sort.
+// The radix_topk_kernel produces unsorted top-K results; if the caller
+// requests sorted output, we sort the K results post-hoc (cheap since K
+// is typically small).
 void topk_kernel(
     const at::Tensor& input,
     int64_t k,
@@ -74,11 +62,8 @@ void topk_kernel(
   values.resize_(out_sizes);
   indices.resize_(out_sizes);
 
-  if (k > 256) { // The segmented_group_select_pairs supports k<=256
-    topk_out_with_sort(self.contiguous(), k, dim, largest, values, indices);
-    return;
-  }
-
+  // For non-last-dim topk, transpose so the target dim is last (contiguous),
+  // run radix select on the last dim, then transpose back.
   Tensor self_;
   bool need_infer_dim = dim != ndim - 1;
   if (!need_infer_dim) {
@@ -104,6 +89,8 @@ void topk_kernel(
     newindices = true;
   }
 
+  auto& q = c10::xpu::getCurrentXPUStream().queue();
+
   AT_DISPATCH_ALL_TYPES_AND2(
       at::ScalarType::Half,
       at::ScalarType::BFloat16,
@@ -113,28 +100,28 @@ void topk_kernel(
         const scalar_t* self_ptr = self_.const_data_ptr<scalar_t>();
         scalar_t* values_ptr = values_.data_ptr<scalar_t>();
         int64_t* indices_ptr = indices_.data_ptr<int64_t>();
-        segmented_group_select_pairs<scalar_t, int64_t>(
+
+        radix_topk_kernel<scalar_t>(
             self_ptr,
             values_ptr,
-            nullptr,
-            (int64_t*)indices_ptr,
+            indices_ptr,
             nsegments,
             nelements,
             k,
-            largest);
-
-        if (sorted) {
-          segmented_sort_pairs<scalar_t, int64_t>(
-              values_ptr,
-              values_ptr,
-              indices_ptr,
-              indices_ptr,
-              nsegments,
-              k,
-              largest);
-        }
+            largest,
+            q);
       });
 
+  // Sort the K results if requested. Radix select produces unsorted output,
+  // so we sort the (small) K-element slices and rearrange indices to match.
+  if (sorted && k > 1) {
+    auto sorted_result = values_.sort(-1, largest);
+    at::Tensor sort_perm = std::get<1>(sorted_result);
+    values_.copy_(std::get<0>(sorted_result));
+    indices_.copy_(indices_.gather(-1, sort_perm));
+  }
+
+  // Copy results back if we created temporary tensors (non-last-dim case)
   if (newvalues) {
     if (need_infer_dim)
       values_.transpose_(ndim - 1, dim);
