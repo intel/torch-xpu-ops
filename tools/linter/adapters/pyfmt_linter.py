@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "usort==1.1.3",
+#   "isort==6.0.1",
+#   "ruff==0.14.4",
+#   "black==23.12.1",
+# ]
+# ///
+
 # Copyright 2020-2026 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,41 +51,9 @@ USE_BLACK_FILELIST = re.compile(
             *map(
                 fnmatch.translate,
                 [
-                    # **
-                    # .ci/**
-                    # .github/**
-                    # benchmarks/**
-                    # functorch/**
-                    # tools/**
-                    # torchgen/**
-                    # test/**
-                    # test/[a-h]*/**
-                    "test/[a-h]*/**",
-                    # test/[i-j]*/**
-                    "test/[i-j]*/**",
-                    # test/[k-n]*/**
-                    "test/[k-n]*/**",
-                    # test/optim/**
-                    "test/optim/**",
-                    # "test/[p-z]*/**",
-                    "test/[p-z]*/**",
-                    # torch/**
-                    # torch/_[a-h]*/**
-                    "torch/_[a-h]*/**",
-                    # torch/_i*/**
-                    "torch/_i*/**",
-                    # torch/_[j-z]*/**
-                    "torch/_[j-z]*/**",
-                    # torch/[a-c]*/**
-                    "torch/[a-c]*/**",
-                    # torch/d*/**
-                    "torch/d*/**",
-                    # torch/[e-n]*/**
-                    "torch/[e-n]*/**",
-                    # torch/optim/**
-                    "torch/optim/**",
-                    # torch/[p-z]*/**
-                    "torch/[p-z]*/**",
+                    "test/profiling/**",
+                    "test/regressions/**",
+                    "test/xpu/**",
                 ],
             ),
         )
