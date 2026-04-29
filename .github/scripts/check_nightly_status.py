@@ -33,9 +33,33 @@ HEADERS = {
 PYTORCH_REPO = "pytorch/pytorch"
 API_BASE = f"https://api.github.com/repos/{PYTORCH_REPO}"
 
-# XPU CI workflow ID (fixed, found via GET /repos/pytorch/pytorch/actions/workflows
-# where name="xpu", path=".github/workflows/xpu.yml")
-XPU_WORKFLOW_ID = 79954307
+# XPU CI workflow identifier.
+# Prefer the workflow file path (stable across workflow re-creation).
+# Falls back to name-based lookup if the file path returns 404.
+XPU_WORKFLOW_FILE = "xpu.yml"
+XPU_WORKFLOW_NAME = "xpu"
+
+
+def _resolve_workflow_id():
+    """Resolve XPU workflow identifier, with fallback to name-based lookup."""
+    # GitHub API accepts workflow file names in place of numeric IDs
+    url = f"{API_BASE}/actions/workflows/{XPU_WORKFLOW_FILE}"
+    resp = requests.get(url, headers=HEADERS, timeout=60)
+    if resp.status_code == 200:
+        return XPU_WORKFLOW_FILE
+    # Fallback: search all workflows by name
+    print(f"  WARNING: workflow file '{XPU_WORKFLOW_FILE}' not found "
+          f"(HTTP {resp.status_code}), falling back to name lookup")
+    url = f"{API_BASE}/actions/workflows"
+    resp = requests.get(url, headers=HEADERS, params={"per_page": 100}, timeout=60)
+    resp.raise_for_status()
+    for w in resp.json().get("workflows", []):
+        if w["name"] == XPU_WORKFLOW_NAME:
+            return w["id"]
+    raise ValueError(f"Workflow '{XPU_WORKFLOW_NAME}' not found in {PYTORCH_REPO}")
+
+
+XPU_WORKFLOW_ID = _resolve_workflow_id()
 
 
 # ============================================================================
