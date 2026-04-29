@@ -13,16 +13,13 @@ Use a dedicated virtualenv/conda env. Add `torchvision`/`torchaudio` only if the
 If the correct interpreter is unclear, ask the user.
 
 ## CUDA → XPU device mapping
-When adapting upstream CUDA reproducers, apply these substitutions:
-- `.cuda()` → `.xpu()`, `.to('cuda')` → `.to('xpu')`
-- `torch.cuda.synchronize()` → `torch.xpu.synchronize()`
-- `torch.cuda.is_available()` → `torch.xpu.is_available()`
-- `torch.cuda.memory_allocated()` → `torch.xpu.memory_allocated()`
-- `torch.cuda.current_device()` → `torch.xpu.current_device()`
-- `torch.cuda.device_count()` → `torch.xpu.device_count()`
+General rule: replace `torch.cuda.*` with `torch.xpu.*` and device strings `'cuda'` / `'cuda:0'` with `'xpu'` / `'xpu:0'`. Most APIs have a 1:1 counterpart.
+
+Non-obvious exceptions:
 - `CUDA_VISIBLE_DEVICES` → `ZE_AFFINITY_MASK`
-- Remove or replace `@skipIfNoCUDA` decorators
-- Replace `torch.cuda.amp` with `torch.xpu` equivalents if needed
+- `torch.cuda.amp.*` → `torch.amp.*(device_type='xpu')`
+- `torch.backends.cudnn.*` — no XPU equivalent; remove or skip the related block
+- `@skipIfNoCUDA` / `@onlyCUDA` — remove or replace with XPU availability check
 
 ## Repro script requirements
 - Print environment metadata (`torch.__version__`, `torch.xpu.is_available()`)

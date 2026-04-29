@@ -14,8 +14,9 @@ Detailed reference:
 ## Workflow
 
 ### Step 1: Search upstream signals
-- Search issues, PRs, and commits in `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
+- Use **GitHub MCP** tools (search, issue/PR read, commit inspect) to search `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. See [references/github-mcp-reference.md](references/github-mcp-reference.md) for query patterns. If MCP is unavailable, fall back to `gh` CLI or manual lookup and report the gap.
 - Use the time window specified by the caller (e.g., last 1 day, last 7 days, or all time). Paginate through **all** search results in the window — do not stop after the first page.
+- Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
 - Follow links between issues, PRs, and commits to narrow down the exact bug trigger (operator, shape, dtype, edge case).
 
 ### Step 2: Filter candidates
