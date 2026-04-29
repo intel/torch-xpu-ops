@@ -4,7 +4,6 @@
 #   "usort==1.1.3",
 #   "isort==6.0.1",
 #   "ruff==0.14.4",
-#   "black==23.12.1",
 # ]
 # ///
 
@@ -35,30 +34,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple
 
-import black
 import isort
 import usort
 
 
 IS_WINDOWS: bool = os.name == "nt"
 REPO_ROOT = Path(__file__).absolute().parents[3]
-
-# TODO: remove this when it gets empty and remove `black` in PYFMT
-USE_BLACK_FILELIST = re.compile(
-    "|".join(
-        (
-            r"\A\Z",  # empty string
-            *map(
-                fnmatch.translate,
-                [
-                    "test/profiling/**",
-                    "test/regressions/**",
-                    "test/xpu/**",
-                ],
-            ),
-        )
-    )
-)
 
 
 def eprint(*args: Any, **kwargs: Any) -> None:
@@ -123,23 +104,6 @@ def run_usort(content: str, path: Path) -> str:
     return usort.usort_string(content, path=path, config=usort_config)
 
 
-def run_black(content: str, path: Path) -> str:
-    black_config = black.parse_pyproject_toml(black.find_pyproject_toml((str(path),)))  # type: ignore[attr-defined,arg-type]
-    # manually patch options that do not have a 1-to-1 match in Mode arguments
-    black_config["target_versions"] = {
-        black.TargetVersion[ver.upper()]  # type: ignore[attr-defined]
-        for ver in black_config.pop("target_version", [])
-    }
-    black_config["string_normalization"] = not black_config.pop(
-        "skip_string_normalization", False
-    )
-    black_mode = black.Mode(**black_config)
-    black_mode.is_pyi = path.suffix.lower() == ".pyi"
-    black_mode.is_ipynb = path.suffix.lower() == ".ipynb"
-
-    return black.format_str(content, mode=black_mode)
-
-
 def run_ruff_format(content: str, path: Path) -> str:
     try:
         return subprocess.check_output(
@@ -171,10 +135,7 @@ def check_file(filename: str) -> list[LintMessage]:
         # NB: run isort first to enforce style for blank lines
         replacement = run_isort(replacement, path=path)
         replacement = run_usort(replacement, path=path)
-        if USE_BLACK_FILELIST.match(path.absolute().relative_to(REPO_ROOT).as_posix()):
-            replacement = run_black(replacement, path=path)
-        else:
-            replacement = run_ruff_format(replacement, path=path)
+        replacement = run_ruff_format(replacement, path=path)
 
         if original == replacement:
             return []
