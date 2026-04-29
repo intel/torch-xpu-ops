@@ -44,9 +44,7 @@ with XPUPatchForImport(False):
 # Resolve the currently-active accelerator so newly-added tests do not
 # hard-code "xpu" in their bodies; falls back to "xpu" when no accelerator
 # is reported (the file is XPU-port and only ever instantiated for XPU).
-device_type = (
-    acc.type if (acc := torch.accelerator.current_accelerator()) else "xpu"
-)
+device_type = acc.type if (acc := torch.accelerator.current_accelerator()) else "xpu"
 
 
 def _test_avg_pool1d_ceil_mode(self):
