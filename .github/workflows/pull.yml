@@ -23,64 +23,28 @@ jobs:
   preci-lint-check:
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
+      pull-requests: write
       issues: write
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: torch-xpu-ops
-      - name: Run lint check
-        run: |
-          export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
-          cd ./torch-xpu-ops
-          bash .github/scripts/lintrunner.sh
-      - name: Run lint check with Clang
-        run: |
-          cd ./torch-xpu-ops
-          export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
-          bash .github/scripts/lintrunner.sh
+      - name: Run code check
+        uses: ./torch-xpu-ops/.github/actions/code-check
+        with:
+          scopes: 'lint,clang-format'
+          python-version: '3.10'
+          working-directory: torch-xpu-ops
       - name: Check reproducer exists for AI-generated PR
         if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
-        env:
-          GH_TOKEN: ${{ secrets.MERGE_TOKEN }}
-        run: |
-          cd ./torch-xpu-ops
-          FAIL_MSG=""
-          # Check if reproducer files exist
-          if ! ls test/repro/test_*.py 1>/dev/null 2>&1; then
-            FAIL_MSG="No reproducer test found. AI-generated PRs must include at least one reproducer in \`test/repro/test_*.py\`."
-          else
-            # Validate pytest format: must contain test functions or test classes
-            VALID=false
-            for f in test/repro/test_*.py; do
-              if grep -qE '^[[:space:]]*(def test_|class Test)' "$f"; then
-                VALID=true
-              else
-                FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
-                break
-              fi
-            done
-            if [ "$VALID" = true ] && [ -z "$FAIL_MSG" ]; then
-              echo "All reproducer tests are valid pytest format:"
-              ls test/repro/test_*.py
-            fi
-          fi
-          if [ -n "$FAIL_MSG" ]; then
-            PR_AUTHOR="${{ github.event.pull_request.user.login }}"
-            printf -v COMMENT_BODY '%s\n' \
-              "@${PR_AUTHOR} ${FAIL_MSG}" \
-              "" \
-              "Please ensure your reproducer follows pytest conventions:" \
-              "- File name: \`test/repro/test_<description>.py\`" \
-              "- Contains \`def test_...()\` functions or \`class Test...\` classes" \
-              "- Runnable via \`pytest test/repro/\`"
-            gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
-            echo "::error::${FAIL_MSG}"
-            exit 1
-          fi
+        uses: ./torch-xpu-ops/.github/actions/check-reproducer
+        with:
+          working-directory: torch-xpu-ops
+          github-token: ${{ secrets.MERGE_TOKEN }}
 
   conditions-filter-win:
     if: >-

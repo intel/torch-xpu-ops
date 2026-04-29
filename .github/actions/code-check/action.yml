@@ -1,0 +1,105 @@
+name: code-check
+description: |
+  End-to-end code-check: prints a torch-xpu-ops info block, then runs
+  lintrunner once per scope with a unified GitHub step summary.
+
+inputs:
+  scopes:
+    description: |
+      Comma-separated list of lintrunner scopes to run sequentially. Each
+      scope is one of: lint | clang-format | clang-tidy | custom.
+    required: false
+    default: 'lint,clang-format'
+  lintrunner-args:
+    description: Extra args forwarded to `lintrunner` (used for `custom` scope, applied to all scopes).
+    required: false
+    default: ''
+  python-version:
+    description: Python interpreter for the lint venv.
+    required: false
+    default: '3.10'
+  working-directory:
+    description: Path to the torch-xpu-ops checkout.
+    required: false
+    default: '.'
+
+runs:
+  using: composite
+  steps:
+    - name: torch-xpu-ops info
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        repo_url=$(git config --get remote.origin.url || echo 'unknown')
+        head_sha=$(git rev-parse HEAD)
+        head_short=$(git rev-parse --short HEAD)
+        head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}}"
+        base_ref="${GITHUB_BASE_REF:-}"
+        author=$(git log -1 --pretty=format:'%an <%ae>')
+        subject=$(git log -1 --pretty=format:'%s')
+        commit_date=$(git log -1 --pretty=format:'%ci')
+        {
+          echo "## torch-xpu-ops"
+          echo
+          echo "| Field | Value |"
+          echo "|-------|-------|"
+          echo "| Repository | \`${repo_url}\` |"
+          echo "| Branch | \`${head_branch}\` |"
+          echo "| Base ref | \`${base_ref:-N/A}\` |"
+          echo "| Commit | [\`${head_short}\`](${repo_url%.git}/commit/${head_sha}) |"
+          echo "| Author | ${author} |"
+          echo "| Date | ${commit_date} |"
+          echo "| Subject | ${subject} |"
+          echo
+          echo "## Code-check results"
+          echo
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+    - name: Run code checks
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SCOPES: ${{ inputs.scopes }}
+        EXTRA: ${{ inputs.lintrunner-args }}
+        LINT_PYTHON_VERSION: ${{ inputs.python-version }}
+      run: |
+        set -uo pipefail
+        IFS=',' read -ra scope_list <<< "${SCOPES}"
+        overall_rc=0
+        for raw in "${scope_list[@]}"; do
+          scope="$(echo "${raw}" | xargs)"
+          [[ -z "${scope}" ]] && continue
+          case "${scope}" in
+            lint)         args="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files" ;;
+            clang-format) args="--take CLANGFORMAT --all-files" ;;
+            clang-tidy)   args="--take CLANGTIDY --all-files" ;;
+            custom)
+              if [[ -z "${EXTRA}" ]]; then
+                echo "::error::scope=custom requires non-empty 'lintrunner-args'"
+                overall_rc=1
+                continue
+              fi
+              args=""
+              ;;
+            *)
+              echo "::error::Unknown scope '${scope}'. Expected: lint | clang-format | clang-tidy | custom"
+              overall_rc=1
+              continue
+              ;;
+          esac
+          if [[ -n "${EXTRA}" ]]; then
+            args="${args} ${EXTRA}"
+          fi
+          echo "::group::code-check: ${scope}"
+          ADDITIONAL_LINTRUNNER_ARGS="${args}" \
+          CLANG="$([[ "${scope}" == "clang-tidy" ]] && echo 1 || echo 0)" \
+          LINT_SUMMARY_HEADING="### ${scope}" \
+            bash .github/scripts/lintrunner.sh
+          rc=$?
+          echo "::endgroup::"
+          if [[ ${rc} -ne 0 ]]; then
+            overall_rc=${rc}
+          fi
+        done
+        exit ${overall_rc}
