@@ -1,11 +1,11 @@
 ---
 name: pytorch-cuda-xpu-triage
-description: Scan pytorch/pytorch issues, PRs, and commits (CUDA, ROCm, or any backend) for bugs that may also affect XPU, generate reproducers, and validate on local XPU nightly. Use when triaging upstream backend fixes for XPU parity.
+description: Scan pytorch/pytorch issues, PRs, and commits (CUDA, ROCm, or any backend) for bugs that may also affect XPU, adapt upstream reproducers for XPU, and validate on local XPU nightly. Use when triaging upstream backend fixes for XPU parity.
 ---
 
 # PyTorch Backend-Fix to XPU Triage
 
-Scan `pytorch/pytorch` for issues, PRs, and commits across any backend (CUDA, ROCm, CPU, etc.), generate minimal reproducers, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
+Scan `pytorch/pytorch` for issues, PRs, and commits across any backend (CUDA, ROCm, CPU, etc.), adapt upstream reproducers for XPU, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
 
 Detailed reference:
 - [references/github-mcp-reference.md](references/github-mcp-reference.md) — search patterns and narrowing workflow

@@ -18,6 +18,8 @@ When adapting upstream CUDA reproducers, apply these substitutions:
 - `torch.cuda.synchronize()` → `torch.xpu.synchronize()`
 - `torch.cuda.is_available()` → `torch.xpu.is_available()`
 - `torch.cuda.memory_allocated()` → `torch.xpu.memory_allocated()`
+- `torch.cuda.current_device()` → `torch.xpu.current_device()`
+- `torch.cuda.device_count()` → `torch.xpu.device_count()`
 - `CUDA_VISIBLE_DEVICES` → `ZE_AFFINITY_MASK`
 - Remove or replace `@skipIfNoCUDA` decorators
 - Replace `torch.cuda.amp` with `torch.xpu` equivalents if needed
