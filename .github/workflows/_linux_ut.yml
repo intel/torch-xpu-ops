@@ -72,7 +72,7 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}/.github/scripts/pytest_configs
         PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread
                         --max-worker-restart 1000000 -p xpu_worker_restart
-                        --only-rerun 'crashed while running' --reruns 2
+                        --only-rerun=crashed.*while.*running --reruns 2
                         --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
       - name: Checkout torch-xpu-ops
