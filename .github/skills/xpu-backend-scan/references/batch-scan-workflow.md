@@ -24,8 +24,6 @@ else
 fi
 ```
 
-`--filter=blob:none` keeps the full commit history (required for `git log --since`) but downloads file content on demand, making the initial clone much faster than a full clone.
-
 If clone or pull fails, log the error and proceed with whichever repo is available. Note the gap in the output.
 
 ### Enumerate all XPU operators
@@ -201,30 +199,4 @@ Same as Full Scan F5.
 
 **Never overwrite previous scan files.** Each scan run produces its own timestamped files. All history is preserved — no dedup across runs.
 
-### Markdown report format
-
-```markdown
-# XPU Backend Scan — Full — 2026-04-29
-
-## Summary
-| Metric | Count |
-|--------|-------|
-| Total operators | 800 |
-| XPU defect (high) | 12 |
-| Parity gap (high) | 8 |
-| Missing native impl (high) | 45 |
-| Fallback only (low) | 230 |
-| Needs review (medium) | 15 |
-| Error | 2 |
-
-## Findings
-
-### aten::addmm (Fallback only — low)
-- **Signals**: xpu_fallback_template
-- **Sources**: xpu_functions_yaml, fallback_template
-- **Evidence**: ...
-- **Next action**: informational only
-
-### aten::_scaled_dot_product_flash_attention (Missing native impl — high)
-...
-```
+The Markdown report mirrors the JSON structure: summary table at the top, then one section per operator with verdict, signals, evidence, and next action.
