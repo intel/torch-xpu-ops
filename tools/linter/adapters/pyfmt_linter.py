@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import fnmatch
 import json
 import logging
 import os
