@@ -91,6 +91,9 @@ jobs:
             ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
 
       # ===== Step 3: Create Sub-Issues =====
+      # NOTE: Step 3 depends on Step 2 output (issue_number). Running step3_classify
+      # alone via workflow_dispatch will skip this step because issue_number is empty.
+      # Use 'all' or run step2+step3 together.
       - name: "Step 3: Create Sub-Issues"
         if: ${{ (github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step3_classify') && steps.create_issue.outputs.issue_number != '' }}
         env:

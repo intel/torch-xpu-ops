@@ -35,6 +35,25 @@ TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
 # Sub-Issue Creation
 # ============================================================================
 
+def _check_existing_sub_issue(title_prefix):
+    """Check if a sub-issue already exists with a matching title prefix.
+
+    Prevents duplicate sub-issues when the workflow is re-triggered
+    for the same commit.
+
+    Returns:
+        int or None: Existing issue number, or None if not found
+    """
+    url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
+    params = {"state": "open", "labels": "pytorch-ci-failure", "per_page": 100}
+    resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
+    if resp.status_code == 200:
+        for issue in resp.json():
+            if title_prefix in issue.get("title", ""):
+                return issue["number"]
+    return None
+
+
 def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
                      is_new, commit_sha="unknown"):
     """Create a sub-issue for a failure group.
@@ -52,6 +71,13 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     tag = "NEW" if is_new else "EXISTING"
 
     title = f"[PyTorch CI] [{tag}] {short_file} ({count} failures) - Ref #{summary_issue_num}"
+
+    # Dedup: check if sub-issue already exists for this file + summary issue
+    dedup_prefix = f"[{tag}] {short_file}"
+    existing = _check_existing_sub_issue(dedup_prefix)
+    if existing:
+        print(f"  Sub-issue already exists: #{existing}, skipping")
+        return {"number": existing}
 
     # Extract test method names
     test_method_names = []

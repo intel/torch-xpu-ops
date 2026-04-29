@@ -201,7 +201,7 @@ def format_issue_body(data, all_runs_data=None):
         "## XPU CI Nightly Status Report",
         "",
         f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        f"**Status:** {'ALL PASS' if data['status'] == 'ALL_PASS' else 'HAS FAILURES'}",
+        f"**Status:** {'ALL PASS' if data.get('status') == 'ALL_PASS' else 'HAS FAILURES'}",
         "",
     ]
 
@@ -494,7 +494,7 @@ def main():
     n_new = len(data.get("new_failed_tests", []))
     n_existing = len(data.get("existing_failed_tests", []))
 
-    if data["status"] == "ALL_PASS":
+    if data.get("status") == "ALL_PASS":
         title = f"[PyTorch CI] {date_str} - ALL PASS ({commit_short})"
     else:
         if n_new > 0 or n_existing > 0:
