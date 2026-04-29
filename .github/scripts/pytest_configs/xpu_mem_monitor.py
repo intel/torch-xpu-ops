@@ -12,9 +12,11 @@ Two roles share this module:
 
 Public API
 ----------
-start(interval=3, timeout=60, cards=None) -> str | None
+start(interval=3, timeout=60) -> str | None
     Start the writer. Returns the snapshot path, or ``None`` if
-    ``xpu-smi`` is unavailable. Idempotent.
+    ``xpu-smi`` is unavailable. Idempotent. The writer always samples
+    every visible device/tile; per-card filtering is reader-side via
+    :func:`get_max_mem_util`.
 stop() -> None
     Stop the writer (no-op for readers).
 attach(path) -> None
@@ -149,8 +151,7 @@ def _poller_loop(stop_event: threading.Event, path: Path) -> None:
 
 # --- public API ---------------------------------------------------------------
 
-def start(interval: float = 3, timeout: int = 60,
-          cards: Iterable[int] | None = None) -> str | None:
+def start(interval: float = 3, timeout: int = 60) -> str | None:
     """Start the writer thread. Returns the snapshot path, or ``None``."""
     global _poller_thread, _poller_stop, _log_path, _interval, _timeout
 
@@ -190,9 +191,7 @@ def start(interval: float = 3, timeout: int = 60,
     _poller_stop = stop_event
     _poller_thread = thread
     _log_path = path
-    cards_repr = list(cards) if cards is not None else "all"
-    _log(f"started poller every {_interval}s, tiles={tiles}, "
-         f"cards={cards_repr}, log={path}")
+    _log(f"started poller every {_interval}s, tiles={tiles}, log={path}")
     return str(path)
 
 
