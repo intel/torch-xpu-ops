@@ -50,7 +50,7 @@ jobs:
       # ===== Step 1: Scan PyTorch XPU CI =====
       - name: "Step 1: Scan PyTorch XPU CI"
         id: check
-        if: ${{ github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -58,14 +58,14 @@ jobs:
             --days ${{ inputs.days || '7' }} \
             --event schedule \
             --num-runs 2 \
-            ${{ (inputs.parse_logs == true || github.event_name == 'schedule') && '--parse-logs' || '' }} \
-            ${{ (inputs.deep_scan == true || github.event_name == 'schedule') && '--deep-scan' || '' }} \
+            ${{ (inputs.parse_logs == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--parse-logs' || '' }} \
+            ${{ (inputs.deep_scan == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--deep-scan' || '' }} \
             --max-lookback ${{ inputs.max_lookback || '14' }} \
             --output ci_results.json \
             --save-all-runs all_runs.json
 
       - name: Upload scan results
-        if: ${{ github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
         uses: actions/upload-artifact@v4
         with:
           name: ci-scan-results
