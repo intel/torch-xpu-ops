@@ -38,6 +38,8 @@ For each passing candidate, produce:
 3. **Reproducer** — prefer extracting the regression test or reproducer from the upstream issue/PR/commit and adapting it to run on `torch.xpu`; only write a new script if no existing repro is available
 4. **Validation plan** — exact run command, expected outcome, what to capture
 
+Save each reproducer script to a local file (e.g., `repro_<issue_number>.py`) so it can be re-run independently.
+
 ### Step 4: Run on local XPU nightly
 - Ensure the latest XPU torch nightly is installed (`pip install --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu`).
 - Run each reproducer script locally on XPU hardware.
