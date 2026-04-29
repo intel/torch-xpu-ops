@@ -25,11 +25,10 @@ Merge into a single list deduplicated by exact schema name. Record which sources
 
 Triggered by: `scan all`
 
-1. Run Environment Setup. Enumerate all ops.
-2. Create `xpu_scan_full_<YYYY-MM-DD>_<HHMMSS>.json` and matching `.md` in the workspace root. The timestamp prevents same-day collisions.
+1. Check the workspace root for any existing `xpu_scan_full_*.json` with `"scan_status": "interrupted"`. If found, resume from where it left off — read the file, skip already-completed ops, and continue. Do not re-create the file.
+2. If no interrupted scan exists, run Environment Setup, enumerate all ops, and create `xpu_scan_full_<YYYY-MM-DD>_<HHMMSS>.json` and matching `.md` in the workspace root.
 3. For each operator, execute the Per-Operator Analysis (SKILL.md Step 1→3) at full depth. After each op, **immediately** append results to both JSON and Markdown. Update progress in JSON.
-4. If context window is nearly exhausted, write `"scan_status": "interrupted"` to JSON and stop. To resume, the user says "resume scan" and provides the path to the interrupted JSON file. The agent reads it, skips completed ops, and continues.
-5. After all ops are processed, append summary statistics (by verdict, by priority, by coverage type) and set `"scan_status": "completed"`.
+4. After all ops are processed, append summary statistics (by verdict, by priority, by coverage type) and set `"scan_status": "completed"`.
 
 ## Daily Scan Workflow
 
