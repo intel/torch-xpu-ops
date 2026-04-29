@@ -23,6 +23,7 @@ For each candidate, decide: **reject** or **pass through**.
 
 Reject when:
 - The change is infra-only, compiler-only, build/packaging/CI-only
+- The change is documentation-only or typo-only with no code or test impact
 
 Everything not rejected passes to the next step. State the reject reason briefly and move on. If all candidates are rejected, report that outcome.
 
@@ -37,6 +38,7 @@ For each passing candidate, produce:
 - Ensure the latest XPU torch nightly is installed (`pip install --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu`).
 - Run each reproducer script locally on XPU hardware.
 - Print `torch.__version__` and `torch.xpu.is_available()` at the top.
+- Verify the operator actually ran on XPU (not CPU fallback) — e.g., check output tensor `.device` is `xpu`, or run with `TORCH_SHOW_DISPATCH_TRACE=1` and confirm XPU dispatch. If the op fell back to CPU, note it and do not count the result as XPU-validated.
 - If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
 
 ## Guardrails
