@@ -33,7 +33,7 @@ memory. The contents of these files are authoritative.
 
 | When you are about to... | Read this file first |
 |--------------------------|---------------------|
-| Triage backend scan findings, parity gaps, fallback misuse, dispatch coverage, or missing XPU support | `.github/skills/xpu-backend-scan/SKILL.md` |
+| Analyze XPU operator coverage, parity, or defects | `.github/skills/xpu-backend-scan/SKILL.md` |
 | Open a pull request, push a branch, or write a PR body | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
 | Review a pull request | `.github/skills/xpu-ops-pr-review/SKILL.md` |
 
