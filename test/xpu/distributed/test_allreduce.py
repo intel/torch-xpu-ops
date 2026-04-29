@@ -75,13 +75,21 @@ def init_distributed():
         os.environ['WORLD_SIZE'] = str(os.environ.get('PMI_SIZE', 1))
     os.environ.setdefault('MASTER_ADDR', 'localhost')
     os.environ.setdefault('MASTER_PORT', '29513')
+
+    rank = int(os.environ['RANK'])
+    world_size = int(os.environ['WORLD_SIZE'])
+    # Intel MPI does not set LOCAL_RANK; fall back to MPI_LOCALRANKID then RANK.
+    local_rank = int(
+        os.environ.get(
+            "LOCAL_RANK",
+            os.environ.get("MPI_LOCALRANKID", rank),
+        )
+    )
+    # Bind to GPU before XCCL init so each rank uses a distinct device.
+    torch.xpu.set_device(local_rank)
+
     if not dist.is_initialized():
         dist.init_process_group(backend="xccl")
-
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
-    local_rank = int(os.environ.get("LOCAL_RANK", rank))
-    torch.xpu.set_device(local_rank)
 
     return rank, world_size
 
@@ -217,27 +225,34 @@ def run_profiler(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
     dist.barrier()
 
 
-def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dtype=torch.bfloat16):
-    """Benchmark the specified implementation against dist.all_reduce."""
+def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dtype=torch.bfloat16, skip_ref=False):
+    """Benchmark the specified implementation against dist.all_reduce.
+
+    skip_ref=True: skip the dist.all_reduce reference run (useful in docker
+    ws=4 where XCCL all_reduce hits UR_RESULT_ERROR_DEVICE_LOST).
+    """
     rank, world_size = init_distributed()
     device = f"xpu:{rank}"
 
     tensor_size = (tensor_size // world_size) * world_size
     results = {}
 
-    print(f"Benchmark torch.distributed.all_reduce (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
-    tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
-    for _ in range(num_warmup):
-        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
-    torch.xpu.synchronize()
+    if not skip_ref:
+        print(f"Benchmark torch.distributed.all_reduce (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
+        tensor_dist = torch.randn(tensor_size, device=device, dtype=dtype)
+        for _ in range(num_warmup):
+            dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
+        torch.xpu.synchronize()
 
-    dist.barrier()
-    start = time.perf_counter()
-    for _ in range(num_iters):
-        dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
-    torch.xpu.synchronize()
-    end = time.perf_counter()
-    results["dist.all_reduce"] = (end - start) / num_iters * 1000
+        dist.barrier()
+        start = time.perf_counter()
+        for _ in range(num_iters):
+            dist.all_reduce(tensor_dist, op=dist.ReduceOp.SUM)
+        torch.xpu.synchronize()
+        end = time.perf_counter()
+        results["dist.all_reduce"] = (end - start) / num_iters * 1000
+    else:
+        results["dist.all_reduce"] = float('nan')
 
     print(f"Benchmark specified implementation (tensor_size={tensor_size}, dtype={dtype}, world_size={world_size})", flush=True)
     tensor_impl = torch.randn(tensor_size, device=device, dtype=dtype)
@@ -245,13 +260,17 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
         impl_func(tensor_impl, op="sum")
     torch.xpu.synchronize()
 
-    dist.barrier()
+    if not skip_ref:
+        dist.barrier()                                 
     start = time.perf_counter()
     for _ in range(num_iters):
         impl_func(tensor_impl, op="sum")
     torch.xpu.synchronize()
     end = time.perf_counter()
     results["impl"] = (end - start) / num_iters * 1000
+
+    if skip_ref:
+        return results, True
 
     # Verify correctness - use same seed across ranks for same initial data
     torch.manual_seed(42 + rank)
@@ -268,20 +287,22 @@ def benchmark_allreduce(tensor_size, impl_func, num_warmup=10, num_iters=100, dt
     return results, is_correct
 
 
-def run_benchmark(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
+def run_benchmark(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16,
+                  sizes=None, skip_ref=False, num_warmup=10, num_iters=100):
     """Run performance benchmark."""
     rank, world_size = init_distributed()
     impl_func = get_impl_func(impl_name, num_pipelines=num_pipelines)
 
-    # Test tensor sizes: 8MB, 16MB, 32MB (BF16 = 2 bytes per element)
-    sizes = [
-        4194304,   # 8MB = 4M elements * 2 bytes
-        8388608,   # 16MB = 8M elements * 2 bytes
-        16777216,  # 32MB = 16M elements * 2 bytes
-        33554432,  # 64MB = 32M elements * 2 bytes
-        67108864,  # 128MB = 64M elements * 2 bytes
-        134217728, # 256MB = 128M elements * 2 bytes
-    ]
+    if sizes is None:
+        # Test tensor sizes: 8MB, 16MB, 32MB (BF16 = 2 bytes per element)
+        sizes = [
+            4194304,   # 8MB = 4M elements * 2 bytes
+            8388608,   # 16MB = 8M elements * 2 bytes
+            16777216,  # 32MB = 16M elements * 2 bytes
+            33554432,  # 64MB = 32M elements * 2 bytes
+            67108864,  # 128MB = 64M elements * 2 bytes
+            134217728, # 256MB = 128M elements * 2 bytes
+        ]
 
     # Get element size in bytes for the dtype
     element_size = torch.tensor([], dtype=dtype).element_size()
@@ -295,15 +316,19 @@ def run_benchmark(impl_name: str, num_pipelines: int = 2, dtype=torch.bfloat16):
         print("-" * 80, flush=True)
 
     for size in sizes:
-        results, is_correct = benchmark_allreduce(size, impl_func, dtype=dtype)
+        results, is_correct = benchmark_allreduce(
+            size, impl_func, dtype=dtype, skip_ref=skip_ref,
+            num_warmup=num_warmup, num_iters=num_iters)
 
         if rank == 0:
             dist_time = results["dist.all_reduce"]
             impl_time = results["impl"]
-            speedup = dist_time / impl_time if impl_time > 0 else 0
+            speedup = dist_time / impl_time if (impl_time > 0 and dist_time == dist_time) else float('nan')
             size_mb = size * element_size / (1024 * 1024)
-            print(f"{size_mb:>12.1f} | {dist_time:>12.3f} ms | {impl_time:>12.3f} ms | "
-                  f"{speedup:>9.2f}x | {'✓' if is_correct else '✗':>8}")
+            dist_str = f"{dist_time:>12.3f} ms" if dist_time == dist_time else f"{'skip':>15}"
+            spd_str = f"{speedup:>9.2f}x" if speedup == speedup else f"{'-':>10}"
+            print(f"{size_mb:>12.1f} | {dist_str} | {impl_time:>12.3f} ms | "
+                  f"{spd_str} | {'✓' if is_correct else '✗':>8}", flush=True)
 
     if rank == 0:
         print("=" * 80, flush=True)
@@ -318,14 +343,26 @@ def main():
                         help=f"Implementation to test: {list(IMPL_MAP.keys())}")
     parser.add_argument("--num_pipelines", type=int, default=2,
                         help="Number of pipeline stages for cross_switch_pipeline (default: 2)")
+    parser.add_argument("--no_ref", action="store_true",
+                        help="Skip dist.all_reduce reference run (docker ws=4 workaround)")
+    parser.add_argument("--sizes", type=str, default=None,
+                        help="Comma-separated list of element counts to benchmark")
+    parser.add_argument("--warmup", type=int, default=10)
+    parser.add_argument("--iters", type=int, default=100)
     args = parser.parse_args()
+
+    sizes = None
+    if args.sizes:
+        sizes = [int(s) for s in args.sizes.split(",")]
 
     if args.profile:
         run_profiler(args.impl, num_pipelines=args.num_pipelines)
     elif args.accuracy:
         run_accuracy_check(args.impl, num_pipelines=args.num_pipelines)
     else:
-        run_benchmark(args.impl, num_pipelines=args.num_pipelines)
+        run_benchmark(args.impl, num_pipelines=args.num_pipelines,
+                      sizes=sizes, skip_ref=args.no_ref,
+                      num_warmup=args.warmup, num_iters=args.iters)
 
     dist.destroy_process_group()
 
