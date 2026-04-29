@@ -319,8 +319,12 @@ def deep_scan_existing_failures(existing_tests, already_checked_runs, event, day
         file_groups[_test_file_from_id(test_id)].append(test_id)
 
     result = {}
-    # Build run_order: sha -> index (0=newest, higher=older) for deterministic comparison
+    # Build run_order: sha -> index (0=newest, higher=older) for deterministic comparison.
+    # Include already_checked_runs so that init_ff_sha (from the oldest selected run)
+    # participates in ordering and won't be silently dropped.
     run_order = {}
+    for idx, run in enumerate(already_checked_runs):
+        run_order[run["head_sha"]] = idx - len(already_checked_runs)  # negative indices = newer
     for idx, run in enumerate(older_runs):
         run_order[run["head_sha"]] = idx
 
@@ -512,7 +516,10 @@ def main():
             for t in sorted(latest_tests):
                 print(f"  [FAIL] {t}")
 
-        prev_commit = prev_failures[0]["commit_sha"] if prev_failures else None
+        # Use run metadata for prev_commit_sha so it's available even when
+        # the previous run was all-PASS (prev_failures would be empty).
+        prev_commit = (selected_runs[1]["head_sha"]
+                       if len(selected_runs) > 1 else None)
         result = {
             "status": "HAS_FAILURES",
             "event": args.event,
