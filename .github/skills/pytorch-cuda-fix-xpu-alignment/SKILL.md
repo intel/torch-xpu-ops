@@ -1,20 +1,19 @@
 ---
-name: pytorch-cuda-xpu-triage
-description: Scan pytorch/pytorch issues, PRs, and commits (CUDA, ROCm, or any backend) for bugs that may also affect XPU, adapt upstream reproducers for XPU, and validate on local XPU nightly. Use when triaging upstream backend fixes for XPU parity.
+name: pytorch-cuda-fix-xpu-alignment
+description: Discover CUDA/backend bug fixes in pytorch/pytorch that may also affect XPU, adapt upstream reproducers, and validate on local XPU nightly. Use when aligning upstream fixes for XPU parity.
 ---
 
-# PyTorch Backend-Fix to XPU Triage
+# PyTorch CUDA-Fix XPU Alignment
 
-Scan `pytorch/pytorch` for issues, PRs, and commits across any backend (CUDA, ROCm, CPU, etc.), adapt upstream reproducers for XPU, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
+Discover bug fixes in `pytorch/pytorch` across any backend (CUDA, ROCm, CPU, etc.), adapt upstream reproducers for XPU, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
 
 Detailed reference:
-- [references/github-mcp-reference.md](references/github-mcp-reference.md) — search patterns and narrowing workflow
-- [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) — environment, run commands, confirmation criteria
+- [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) — environment, device mapping, run commands, confirmation criteria
 
 ## Workflow
 
 ### Step 1: Collect candidate list
-- Use **GitHub MCP** tools (search, issue/PR read, commit inspect) to search `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. See [references/github-mcp-reference.md](references/github-mcp-reference.md) for query patterns. If MCP is unavailable, fall back to `gh` CLI or manual lookup and report the gap.
+- Use **GitHub MCP** tools (search, issue/PR read, commit inspect) to search `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. Example query: `repo:pytorch/pytorch is:issue "incorrect result" CUDA`. Adapt keywords, filters (`is:pr`, `is:merged`, `is:open`), and backend terms to the specific bug family. If MCP is unavailable, fall back to `gh` CLI or manual lookup and report the gap.
 - Use the time window specified by the caller (e.g., last 1 day, last 7 days, or all time). Paginate through **all** search results in the window — do not stop after the first page.
 - Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
 - Save the raw scan results to a local file (e.g., `triage_scan_<date>.md`) listing every candidate with its URL, title, and date. Only collect lightweight metadata at this stage — do not read full issue/PR bodies yet.

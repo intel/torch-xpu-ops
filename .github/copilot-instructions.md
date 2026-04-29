@@ -35,7 +35,7 @@ memory. The contents of these files are authoritative.
 |--------------------------|---------------------|
 | Open a pull request, push a branch, or write a PR body | `.github/skills/xpu-ops-pr-creation/SKILL.md` |
 | Review a pull request | `.github/skills/xpu-ops-pr-review/SKILL.md` |
-| Triage upstream backend fixes for XPU | `.github/skills/pytorch-cuda-xpu-triage/SKILL.md` |
+| Align upstream CUDA/backend fixes for XPU | `.github/skills/pytorch-cuda-fix-xpu-alignment/SKILL.md` |
 
 Path-specific coding rules are auto-loaded by the agent based on the files you
 edit (via `applyTo` globs), so you do not need to read them manually:
