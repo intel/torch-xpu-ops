@@ -1,11 +1,11 @@
 ---
 name: pytorch-cuda-fix-xpu-alignment
-description: Discover CUDA/backend bug fixes in pytorch/pytorch that may also affect XPU, adapt upstream reproducers, and validate on local XPU nightly. Use when aligning upstream fixes for XPU parity.
+description: Scan pytorch/pytorch issues, PRs, and commits (CUDA, ROCm, or any backend) for bugs that may also affect XPU, adapt upstream reproducers for XPU, and validate on local XPU nightly. Use when aligning upstream backend fixes for XPU parity.
 ---
 
 # PyTorch CUDA-Fix XPU Alignment
 
-Discover bug fixes in `pytorch/pytorch` across any backend (CUDA, ROCm, CPU, etc.), adapt upstream reproducers for XPU, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
+Scan `pytorch/pytorch` for issues, PRs, and commits across any backend (CUDA, ROCm, CPU, etc.), adapt upstream reproducers for XPU, and run them on the latest local XPU torch nightly to determine whether XPU shares the same bug.
 
 Detailed reference:
 - [references/local-xpu-validation-reference.md](references/local-xpu-validation-reference.md) — environment, device mapping, run commands, confirmation criteria
