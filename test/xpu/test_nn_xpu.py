@@ -4294,7 +4294,6 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                 x_wrong,
             )
 
-    @unittest.skipIf(not TEST_CUDNN, "CUDNN not available")
     def test_cudnn_weight_format(self):
         rnns = [
             nn.LSTM(10, 20, batch_first=True),
@@ -4302,19 +4301,19 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             nn.GRU(10, 20, batch_first=True),
             nn.RNN(10, 20, batch_first=True),
         ]
-        # ROCm RNN does not issue warning about single contig chunk of memory, so don't assert it
-        first_warn = not torch.version.hip
+        # XPU RNN does not issue warning about single contig chunk of memory, so don't assert it
+        first_warn = not torch.version.xpu
         for rnn in rnns:
             rnn.to(device_type)
-            input = torch.randn(5, 4, 10, requires_grad=True, device="cuda")
-            hx = torch.randn(1, 5, 20, requires_grad=True, device="cuda")
+            input = torch.randn(5, 4, 10, requires_grad=True, device=device_type)
+            hx = torch.randn(1, 5, 20, requires_grad=True, device=device_type)
             all_vars = [input, hx] + list(rnn.parameters())
             if isinstance(rnn, nn.LSTM):
                 # LSTM with projections has different hx size
                 if rnn.proj_size > 0:
-                    hx = torch.randn(1, 5, 10, requires_grad=True, device="cuda")
+                    hx = torch.randn(1, 5, 10, requires_grad=True, device=device_type)
                     all_vars[1] = hx
-                cx = torch.randn(1, 5, 20, requires_grad=True, device="cuda")
+                cx = torch.randn(1, 5, 20, requires_grad=True, device=device_type)
                 all_vars[2:2] = [cx]
                 hx = (hx, cx)
 
