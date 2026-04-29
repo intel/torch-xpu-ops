@@ -234,7 +234,6 @@ TORCH_LIBRARY_IMPL(aten, XPU, m) {
     "geqrf",
     "geqrf.a",
     "hash_tensor.out",
-    "linalg_cholesky_ex.L",
     "linalg_eig",
     "linalg_eig.out",
     "_linalg_eigvals",

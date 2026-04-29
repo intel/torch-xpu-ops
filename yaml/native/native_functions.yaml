@@ -9462,6 +9462,16 @@
 - func: slogdet.out(Tensor self, *, Tensor(a!) sign, Tensor(b!) logabsdet) -> (Tensor(a!) sign, Tensor(b!) logabsdet)
   variants: function
 
+- func: linalg_cholesky_ex(Tensor self, *, bool upper=False, bool check_errors=False) -> (Tensor L, Tensor info)
+  python_module: linalg
+  structured_delegate: linalg_cholesky_ex.L
+
+- func: linalg_cholesky_ex.L(Tensor self, *, bool upper=False, bool check_errors=False, Tensor(a!) L, Tensor(b!) info) -> (Tensor(a!) L, Tensor(b!) info)
+  python_module: linalg
+  structured: True
+  dispatch:
+    XPU: linalg_cholesky_ex_xpu_out
+
 - func: _linalg_solve_ex(Tensor A, Tensor B, *, bool left=True, bool check_errors=False) -> (Tensor result, Tensor LU, Tensor pivots, Tensor info)
   structured_delegate: _linalg_solve_ex.result
 
