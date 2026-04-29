@@ -177,6 +177,7 @@ runs:
           sed -i '/mkl/d' .ci/docker/requirements-ci.txt
           pip install -r .ci/docker/requirements-ci.txt
           pip install pytest pytest-timeout pytest-xdist pytest-rerunfailures
+          pip install threadpoolctl
         fi
         # install the corresponding torchao
         pip uninstall -y torchao
