@@ -7,7 +7,6 @@ Things the agent cannot reliably derive from reading code alone.
 - **Structured delegate**: `structured_delegate: foo.out` means support is judged by the `foo.out` target, not the wrapper. A missing XPU file for the wrapper is NOT evidence of missing support.
 - **Wrapper inheritance**: Thin frontend shims that redispatch to `*.out` or normalize arguments do not need separate XPU registration.
 - **No dedicated kernel file ≠ missing**: The op may use structured delegate, composite dispatch, or a shared path. Always check backend YAML and `structured_delegate` target.
-- **XPU kernel shorter than CUDA ≠ defect**: May use shared helpers. Read the helper definitions, not just call sites.
 - **No backend-local backward symbol ≠ missing backward**: Generic autograd or `derivatives.yaml` shared formulas may cover it.
 - **CUDA entry in YAML without XPU ≠ XPU absence**: Check all coverage paths (native, composite, decomp, fallback) before concluding.
 

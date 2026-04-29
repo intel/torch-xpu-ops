@@ -1,6 +1,6 @@
 ---
 name: xpu-backend-scan
-description: Analyze XPU operator coverage, parity, and defects. Supports single-op analysis, full scan of all XPU operators, and daily incremental scan. Use when asked to scan all XPU ops, run a daily XPU scan, or analyze specific operator support.
+description: Analyze XPU operator coverage, parity, and defects. Supports single-op analysis, full scan of all XPU operators, and daily incremental scan. Use when asked to scan XPU ops, check if XPU supports an operator, find missing XPU operators, find XPU bugs, or run a daily/full XPU scan.
 ---
 
 # XPU Backend Scan
@@ -43,12 +43,13 @@ Where to look (pytorch/pytorch):
 3. `aten/src/ATen/native/cuda/` — CUDA peer implementations
 4. `tools/autograd/derivatives.yaml` — backward formulas
 5. `torch/_decomp/` and `torch/_refs/` — decomposition registration
+6. `test/xpu/` — upstream XPU tests (skip/xfail annotations signal known gaps)
 
 ### Step 3: Classify and validate
 Classify based on user-visible impact, not implementation shape:
 - **XPU defect** (high) — broken dispatch, silent CPU fallback, missing validation, backward gap
 - **Parity gap** (high) — user-visible contract differs between CUDA and XPU
-- **Missing native implementation** (high) — CUDA has support, XPU has no native path
+- **Missing native implementation** (high) — CUDA has support, XPU has no path at all (not even fallback)
 - **Fallback only** (low) — callable only via CPU fallback
 - **Needs review** (medium) — mixed evidence, needs runtime validation
 

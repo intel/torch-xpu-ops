@@ -4,11 +4,11 @@ Procedures for full scan and daily scan modes.
 
 ## Environment Setup
 
-Before any batch scan, clone or update both repositories:
-- `intel/torch-xpu-ops` — use `git clone --filter=blob:none` for initial clone, `git pull --ff-only` if already present
-- `pytorch/pytorch` — same approach
+Before any batch scan, ensure both repositories are accessible:
+- `intel/torch-xpu-ops`
+- `pytorch/pytorch`
 
-If a clone fails, proceed with whichever repo is available and note the gap.
+Use existing local checkouts, GitHub MCP tools, or clone as needed. If a repo is unreachable, proceed with whichever is available and note the gap.
 
 ### Enumerate all XPU operators
 
@@ -26,9 +26,9 @@ Merge into a single list deduplicated by exact schema name. Record which sources
 Triggered by: `scan all`
 
 1. Run Environment Setup. Enumerate all ops.
-2. Create `xpu_scan_full_<YYYY-MM-DD>_<HHMMSS>.json` and matching `.md`. The timestamp prevents same-day collisions.
+2. Create `xpu_scan_full_<YYYY-MM-DD>_<HHMMSS>.json` and matching `.md` in the workspace root. The timestamp prevents same-day collisions.
 3. For each operator, execute the Per-Operator Analysis (SKILL.md Step 1→3) at full depth. After each op, **immediately** append results to both JSON and Markdown. Update progress in JSON.
-4. If context window is nearly exhausted, write `"scan_status": "interrupted"` to JSON and stop. To resume, the user says "resume scan" in a new conversation pointing to the JSON file. The agent reads the file, skips completed ops, and continues.
+4. If context window is nearly exhausted, write `"scan_status": "interrupted"` to JSON and stop. To resume, the user says "resume scan" and provides the path to the interrupted JSON file. The agent reads it, skips completed ops, and continues.
 5. After all ops are processed, append summary statistics (by verdict, by priority, by coverage type) and set `"scan_status": "completed"`.
 
 ## Daily Scan Workflow
