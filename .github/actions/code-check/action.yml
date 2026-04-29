@@ -1,0 +1,106 @@
+name: code-check
+description: |
+  Run lintrunner-based code checks (lint / clang-format / clang-tidy) with a
+  consistent setup, structured GitHub annotations, and a step summary.
+
+inputs:
+  scope:
+    description: |
+      Which check to run. One of:
+        - `lint`         : everything except clang-format/clang-tidy/CSV merge
+        - `clang-format` : CLANGFORMAT only
+        - `clang-tidy`   : CLANGTIDY only (requires a built source tree)
+        - `custom`       : pass `lintrunner-args` verbatim
+    required: true
+    default: lint
+  lintrunner-args:
+    description: Additional arguments forwarded to `lintrunner` (used when scope=custom or to override).
+    required: false
+    default: ''
+  python-version:
+    description: Python interpreter to use for the lint venv.
+    required: false
+    default: '3.10'
+  working-directory:
+    description: Directory to run the lint check from.
+    required: false
+    default: '.'
+  upload-artifact:
+    description: Whether to upload `lint.json` as a workflow artifact.
+    required: false
+    default: 'true'
+  artifact-name:
+    description: Name of the uploaded artifact (defaults to `lint-<scope>`).
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve lintrunner args
+      id: args
+      shell: bash
+      env:
+        SCOPE: ${{ inputs.scope }}
+        EXTRA: ${{ inputs.lintrunner-args }}
+      run: |
+        set -euo pipefail
+        case "${SCOPE}" in
+          lint)
+            args="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
+            ;;
+          clang-format)
+            args="--take CLANGFORMAT --all-files"
+            ;;
+          clang-tidy)
+            args="--take CLANGTIDY --all-files"
+            ;;
+          custom)
+            if [[ -z "${EXTRA}" ]]; then
+              echo "::error::scope=custom requires non-empty 'lintrunner-args'"
+              exit 1
+            fi
+            args=""
+            ;;
+          *)
+            echo "::error::Unknown scope '${SCOPE}'. Expected: lint | clang-format | clang-tidy | custom"
+            exit 1
+            ;;
+        esac
+        # Append any additional user args.
+        if [[ -n "${EXTRA}" ]]; then
+          args="${args} ${EXTRA}"
+        fi
+        echo "args=${args}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run code-check (${{ inputs.scope }})
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ADDITIONAL_LINTRUNNER_ARGS: ${{ steps.args.outputs.args }}
+        LINT_PYTHON_VERSION: ${{ inputs.python-version }}
+        CLANG: ${{ inputs.scope == 'clang-tidy' && '1' || '0' }}
+      run: bash .github/scripts/lintrunner.sh
+
+    - name: Resolve artifact name
+      id: artifact
+      if: ${{ always() && inputs.upload-artifact == 'true' }}
+      shell: bash
+      env:
+        SCOPE: ${{ inputs.scope }}
+        NAME: ${{ inputs.artifact-name }}
+      run: |
+        if [[ -n "${NAME}" ]]; then
+          echo "name=${NAME}" >> "${GITHUB_OUTPUT}"
+        else
+          echo "name=lint-${SCOPE}" >> "${GITHUB_OUTPUT}"
+        fi
+
+    - name: Upload lint.json
+      if: ${{ always() && inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.artifact.outputs.name }}
+        path: ${{ inputs.working-directory }}/lint.json
+        if-no-files-found: ignore
+        retention-days: 7

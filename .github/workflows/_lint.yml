@@ -1,0 +1,116 @@
+name: lint
+
+# Reusable code-check workflow.
+#
+# Runs lint (always), clang-format (always), clang-tidy (opt-in), and the
+# AI-generated reproducer check (when requested). Each is a separate job for
+# parallelism and clear pass/fail signal in the GitHub UI.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label.
+        required: false
+        type: string
+        default: ubuntu-24.04
+      python-version:
+        description: Python interpreter for the lint venv.
+        required: false
+        type: string
+        default: '3.10'
+      run-clang-tidy:
+        description: Whether to run clang-tidy (requires built sources).
+        required: false
+        type: boolean
+        default: false
+      check-reproducer:
+        description: Whether to run the AI-generated PR reproducer check.
+        required: false
+        type: boolean
+        default: false
+      checkout-path:
+        description: Path under $GITHUB_WORKSPACE to checkout into.
+        required: false
+        type: string
+        default: '.'
+    secrets:
+      github-token:
+        description: Token for posting reproducer-check comments on PRs.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: ${{ inputs.checkout-path }}
+      - name: Run lint
+        uses: ./.github/actions/code-check
+        with:
+          scope: lint
+          python-version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.checkout-path }}
+          artifact-name: lint-findings
+
+  clang-format:
+    name: clang-format
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: ${{ inputs.checkout-path }}
+      - name: Run clang-format
+        uses: ./.github/actions/code-check
+        with:
+          scope: clang-format
+          python-version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.checkout-path }}
+          artifact-name: clang-format-findings
+
+  clang-tidy:
+    name: clang-tidy
+    if: ${{ inputs.run-clang-tidy }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: ${{ inputs.checkout-path }}
+      - name: Run clang-tidy
+        uses: ./.github/actions/code-check
+        with:
+          scope: clang-tidy
+          python-version: ${{ inputs.python-version }}
+          working-directory: ${{ inputs.checkout-path }}
+          artifact-name: clang-tidy-findings
+
+  reproducer:
+    name: reproducer
+    if: ${{ inputs.check-reproducer }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          path: ${{ inputs.checkout-path }}
+      - name: Validate reproducer
+        uses: ./.github/actions/check-reproducer
+        with:
+          working-directory: ${{ inputs.checkout-path }}
+          github-token: ${{ secrets.github-token }}
