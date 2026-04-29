@@ -108,7 +108,7 @@ fi
 
 # ── Step summary ────────────────────────────────────────────────────────────
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-    summary "## Lint results"
+    summary "${LINT_SUMMARY_HEADING:-## Lint results}"
     summary ""
     if [[ -s lint.json ]] && command -v jq > /dev/null 2>&1; then
         total=$(wc -l < lint.json | tr -d ' ')

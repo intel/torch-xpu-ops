@@ -1,7 +1,7 @@
 name: code-check
 description: |
   Run lintrunner-based code checks (lint / clang-format / clang-tidy) with a
-  consistent setup, structured GitHub annotations, and a step summary.
+  consistent setup, structured GitHub annotations, and a step summary section.
 
 inputs:
   scope:
@@ -25,12 +25,8 @@ inputs:
     description: Directory to run the lint check from.
     required: false
     default: '.'
-  upload-artifact:
-    description: Whether to upload `lint.json` as a workflow artifact.
-    required: false
-    default: 'true'
-  artifact-name:
-    description: Name of the uploaded artifact (defaults to `lint-<scope>`).
+  summary-heading:
+    description: Markdown heading used for this check's section in the step summary.
     required: false
     default: ''
 
@@ -67,7 +63,6 @@ runs:
             exit 1
             ;;
         esac
-        # Append any additional user args.
         if [[ -n "${EXTRA}" ]]; then
           args="${args} ${EXTRA}"
         fi
@@ -80,27 +75,5 @@ runs:
         ADDITIONAL_LINTRUNNER_ARGS: ${{ steps.args.outputs.args }}
         LINT_PYTHON_VERSION: ${{ inputs.python-version }}
         CLANG: ${{ inputs.scope == 'clang-tidy' && '1' || '0' }}
+        LINT_SUMMARY_HEADING: ${{ inputs.summary-heading != '' && inputs.summary-heading || format('### {0}', inputs.scope) }}
       run: bash .github/scripts/lintrunner.sh
-
-    - name: Resolve artifact name
-      id: artifact
-      if: ${{ always() && inputs.upload-artifact == 'true' }}
-      shell: bash
-      env:
-        SCOPE: ${{ inputs.scope }}
-        NAME: ${{ inputs.artifact-name }}
-      run: |
-        if [[ -n "${NAME}" ]]; then
-          echo "name=${NAME}" >> "${GITHUB_OUTPUT}"
-        else
-          echo "name=lint-${SCOPE}" >> "${GITHUB_OUTPUT}"
-        fi
-
-    - name: Upload lint.json
-      if: ${{ always() && inputs.upload-artifact == 'true' }}
-      uses: actions/upload-artifact@v7
-      with:
-        name: ${{ steps.artifact.outputs.name }}
-        path: ${{ inputs.working-directory }}/lint.json
-        if-no-files-found: ignore
-        retention-days: 7
