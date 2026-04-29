@@ -15,40 +15,30 @@ Detailed reference:
 
 ### Step 1: Search upstream signals
 - Search issues, PRs, and commits in `pytorch/pytorch` for backend bug-fix signals — both open and closed/merged. Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
-- Use the time window specified by the caller (e.g., last 1 day, last 7 days, or all time). Collect **all** matching candidates in the window, not just the first few.
+- Use the time window specified by the caller (e.g., last 1 day, last 7 days, or all time). Paginate through **all** search results in the window — do not stop after the first page.
 - Follow links between issues, PRs, and commits to narrow down the exact bug trigger (operator, shape, dtype, edge case).
 
-### Step 2: Qualify candidates
-For each candidate, classify as **qualified** or **rejected**.
-
-Qualify when:
-- The change adds or modifies regression tests
-- The change touches `ATen/native` kernels, dispatch logic, or shared validation code
-- The bug involves edge-case semantics with a narrow trigger and clear signal
-- The fix lives in code paths likely inherited by XPU
+### Step 2: Filter candidates
+For each candidate, decide: **reject** or **pass through**.
 
 Reject when:
 - The change is infra-only, compiler-only, build/packaging/CI-only
-- Performance-only tuning with no regression signal or reproducer shape
-- The fix does not expose a plausible XPU parity gap
 
-For rejected candidates, state the reason briefly and move on. If all candidates are rejected, report that outcome.
+Everything not rejected passes to the next step. State the reject reason briefly and move on. If all candidates are rejected, report that outcome.
 
 ### Step 3: Draft reproducers
-For each qualified candidate, produce:
+For each passing candidate, produce:
 1. **Summary** — operator, bug family, why XPU might share the defect
 2. **Evidence** — issue/PR links, commit SHA, impacted files
-3. **Reproducer** — standalone Python script that runs on `torch.xpu` and compares against CPU reference
+3. **Reproducer** — prefer extracting the regression test or reproducer from the upstream issue/PR/commit and adapting it to run on `torch.xpu`; only write a new script if no existing repro is available
 4. **Validation plan** — exact run command, expected outcome, what to capture
 
 ### Step 4: Run on local XPU nightly
 - Ensure the latest XPU torch nightly is installed (`pip install --pre torch --force-reinstall --index-url https://download.pytorch.org/whl/nightly/xpu`).
 - Run each reproducer script locally on XPU hardware.
-- Keep scripts minimal and deterministic (one op family, seeded randomness, CPU vs XPU comparison).
 - Print `torch.__version__` and `torch.xpu.is_available()` at the top.
 - If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
 
 ## Guardrails
 - Do not file issues from this skill.
-- Do not claim a bug exists on XPU until a local run confirms it.
-- Do not force a reproducer when evidence already shows rejection is appropriate.
+- Mark a candidate as **confirmed** only after a local run reproduces the issue. If local run is not possible, mark as **unverified**.

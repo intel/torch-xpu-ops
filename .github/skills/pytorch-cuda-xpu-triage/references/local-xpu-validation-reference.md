@@ -14,17 +14,14 @@ If the correct interpreter is unclear, ask the user.
 
 ## Repro script requirements
 - Print environment metadata (`torch.__version__`, `torch.xpu.is_available()`)
-- Use the smallest tensors that hit the edge case
-- Compare CPU vs XPU output
+- Prefer extracting the upstream regression test or reproducer and adapting it to `torch.xpu`
 - Print mismatch details or exception info
 
 ## Confirmed bug criteria
-One of the following on XPU, when CPU semantics disagree:
-- Crash or internal error
-- Wrong numerical result
-- Wrong shape/stride/dtype behavior
-- Unsupported-path error for an operator that should work
-- Backward mismatch where forward is expected to work
+Two categories:
+
+1. **Functionality** — crash, segfault, hang, wrong numerical result, wrong shape/stride/dtype, unsupported-path error for an operator that should work
+2. **Performance** — measurable regression compared to CPU or prior nightly
 
 **Not** a bug by itself: tiny float noise, documented unsupported paths, or failures from an invalid repro.
 
@@ -32,7 +29,5 @@ One of the following on XPU, when CPU semantics disagree:
 - Exact command and output
 - `python -W ignore::RuntimeWarning -m torch.utils.collect_env`
 - Full exception text or mismatch summary
-- Minimal repro script
-- Upstream issue/PR/commit links
 - Minimal repro script
 - Upstream issue/PR/commit links

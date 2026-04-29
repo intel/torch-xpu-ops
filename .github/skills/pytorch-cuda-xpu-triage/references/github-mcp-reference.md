@@ -6,12 +6,7 @@ The agent environment provides GitHub search, issue/PR read, commit inspection, 
 ## Example queries
 ```
 repo:pytorch/pytorch is:issue "incorrect result" CUDA
-repo:pytorch/pytorch is:issue is:open "crash" cuda
-repo:pytorch/pytorch is:issue "wrong result" rocm
-repo:pytorch/pytorch is:pr "fix cuda"
-repo:pytorch/pytorch is:pr is:open "non-contiguous" cuda
 repo:pytorch/pytorch is:pr is:merged "empty tensor"
-repo:pytorch/pytorch is:pr "device-specific" xpu OR cuda OR rocm
 ```
 
 Include both open and closed/merged items — an open issue or unmerged PR with a clear reproducer is equally valid for XPU validation.
@@ -23,11 +18,7 @@ Adapt keywords to the specific bug family being investigated.
 2. Read the summary/description and any test names involved.
 3. Read linked issues or PRs if the bug scenario is unclear.
 4. Inspect only the touched operator/test files in the relevant diff.
-5. Synthesize a minimal XPU repro from the pattern.
 
 ## Pitfalls
 - Not every CUDA fix is an XPU candidate.
-- Skip large compiler/infra PRs.
-- A test name alone often reveals the bug shape — avoid reading entire file diffs.
-- Skip large compiler/infra PRs.
 - A test name alone often reveals the bug shape — avoid reading entire file diffs.
