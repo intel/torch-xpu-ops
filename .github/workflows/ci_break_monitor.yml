@@ -1,0 +1,69 @@
+name: XPU CI Break Monitor
+on:
+  schedule:
+    - cron: '0 2 * * *'
+
+  workflow_dispatch:
+    inputs:
+      steps:
+        description: 'Which steps to run'
+        type: choice
+        options:
+          - all
+          - step1_scan
+        default: 'all'
+      days:
+        description: 'Look back N days'
+        default: '7'
+      parse_logs:
+        description: 'Parse job logs for test names'
+        type: boolean
+        default: true
+      deep_scan:
+        description: 'Deep-scan EXISTING failures to find first-fail commit'
+        type: boolean
+        default: true
+      max_lookback:
+        description: 'Max older runs to check during deep-scan'
+        default: '14'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  ci-monitor:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.CI_MONITOR_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+
+      # ===== Step 1: Scan PyTorch XPU CI =====
+      - name: "Step 1: Scan PyTorch XPU CI"
+        id: check
+        if: ${{ github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python .github/scripts/check_nightly_status.py \
+            --days ${{ inputs.days || '7' }} \
+            --event schedule \
+            --num-runs 2 \
+            ${{ (inputs.parse_logs == true || github.event_name == 'schedule') && '--parse-logs' || '' }} \
+            ${{ (inputs.deep_scan == true || github.event_name == 'schedule') && '--deep-scan' || '' }} \
+            --max-lookback ${{ inputs.max_lookback || '14' }} \
+            --output ci_results.json \
+            --save-all-runs all_runs.json
+
+      - name: Upload scan results
+        if: ${{ github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step1_scan' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-scan-results
+          path: |
+            ci_results.json
+            all_runs.json
