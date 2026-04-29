@@ -11,6 +11,7 @@ Scope: all XPU-related code in both `pytorch/pytorch` and `intel/torch-xpu-ops`.
 
 Detailed reference:
 - [references/batch-scan-workflow.md](references/batch-scan-workflow.md) — full scan, daily scan, output format, auto-resume
+- [references/pitfalls.md](references/pitfalls.md) — non-obvious judgment traps and fallback mechanisms
 
 ## Input / Output
 
