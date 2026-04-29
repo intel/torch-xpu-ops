@@ -10,8 +10,10 @@
 
 #include <ATen/ExpandUtils.h>
 #include <ATen/SparseCsrTensorUtils.h>
+#include <ATen/TensorIndexing.h>
 #include <ATen/TensorOperators.h>
 #include <ATen/native/Resize.h>
+#include <ATen/native/sparse/SparseBlas.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
@@ -395,6 +397,46 @@ Tensor& bmm_out_sparse_csr_xpu(
   Scalar alpha(1.0);
   return at::native::baddbmm_out_sparse_csr_xpu(
       result, mat1, mat2, beta, alpha, result);
+}
+
+Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  at::native::sparse::sparse_sampled_addmm_check_inputs(
+      self, mat1, mat2, beta, alpha, result);
+
+  if (&result != &self) {
+    auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
+    result_sizes.push_back(self.size(-2));
+    result_sizes.push_back(self.size(-1));
+    at::sparse_csr::get_sparse_csr_impl(result)->resize_(
+        self._nnz(), result_sizes);
+    result.copy_(self);
+  }
+
+  if (mat1.numel() == 0 || mat2.numel() == 0 || result._nnz() == 0) {
+    result.mul_(beta);
+    return result;
+  }
+
+  xpu::sparse_sampled_addmm_kernel(self, mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+Tensor sparse_sampled_addmm_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha) {
+  auto result = at::empty({0, 0}, self.options());
+  at::native::sparse_sampled_addmm_out_sparse_csr_xpu(
+      self, mat1, mat2, beta, alpha, result);
+  return result;
 }
 
 Tensor& add_out_sparse_compressed_xpu(

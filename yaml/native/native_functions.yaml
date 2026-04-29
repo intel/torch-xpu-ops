@@ -9541,6 +9541,16 @@
     # broadcasting
     SparseXPU: s_addmm_sparse_dense_xpu_
 
+- func: sparse_sampled_addmm.out(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  python_module: sparse
+  dispatch:
+    SparseCsrXPU: sparse_sampled_addmm_out_sparse_csr_xpu
+
+- func: sparse_sampled_addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor
+  python_module: sparse
+  dispatch:
+    SparseCsrXPU: sparse_sampled_addmm_sparse_csr_xpu
+
 - func: mm(Tensor self, Tensor mat2) -> Tensor
   structured_delegate: mm.out
   variants: function, method
