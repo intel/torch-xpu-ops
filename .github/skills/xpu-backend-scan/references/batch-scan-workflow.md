@@ -28,7 +28,19 @@ Triggered by: `scan all`
 1. Check the workspace root for any existing `xpu_scan_full_*.json` with `"scan_status": "interrupted"`. If found, resume from where it left off — read the file, skip already-completed ops, and continue. Do not re-create the file.
 2. If no interrupted scan exists, run Environment Setup, enumerate all ops, and create `xpu_scan_full_<YYYY-MM-DD>_<HHMMSS>.json` and matching `.md` in the workspace root.
 3. For each operator, execute the Per-Operator Analysis (SKILL.md Step 1→3) at full depth. After each op, **immediately** append results to both JSON and Markdown. Update progress in JSON.
-4. After all ops are processed, append summary statistics (by verdict, by priority, by coverage type) and set `"scan_status": "completed"`.
+4. After all ops are processed, append summary statistics and set `"scan_status": "completed"`.
+
+## Summary Statistics
+
+Every scan report (full or daily) must end with concrete counts:
+
+- **Total**: N ops scanned
+- **By verdict**: XPU defect (X), Parity gap (Y), Missing native implementation (Z), Fallback only (W), Needs review (V), No issue (U)
+- **By priority**: high (X), medium (Y), low (Z)
+- **By coverage type**: native kernel (X), composite/decomp (Y), fallback only (Z), no coverage (W)
+- **Top reasons** (descending by count): list the most frequent finding reasons with their counts, e.g. "missing backward: 15, silent CPU fallback: 8, dtype gap: 5"
+
+These numbers are the basis for any future triage decisions. Do not summarize with prose alone — always provide the raw counts.
 
 ## Daily Scan Workflow
 
