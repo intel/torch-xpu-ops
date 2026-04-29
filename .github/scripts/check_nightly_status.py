@@ -74,7 +74,7 @@ def get_failed_jobs(run_id):
     """Get all failed jobs from a workflow run.
 
     A workflow run contains multiple jobs (e.g., different test shards).
-    Only returns jobs with conclusion == "failure".
+    Returns jobs with conclusion == "failure" or "timed_out".
 
     Args:
         run_id: Workflow run ID
@@ -86,7 +86,8 @@ def get_failed_jobs(run_id):
     params = {"per_page": 100, "filter": "latest"}
     resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
     resp.raise_for_status()
-    return [j for j in resp.json().get("jobs", []) if j["conclusion"] == "failure"]
+    return [j for j in resp.json().get("jobs", [])
+            if j["conclusion"] in ("failure", "timed_out")]
 
 
 def get_failed_test_cases(job_id):
