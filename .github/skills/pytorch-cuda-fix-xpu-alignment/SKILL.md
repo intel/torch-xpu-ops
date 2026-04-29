@@ -47,10 +47,19 @@ For each candidate in the list, perform the following sequence before moving to 
 - If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
 - Update the scan file with: final status (confirmed / not-reproduced / unverified), full run output (stdout/stderr), and a one-line result summary.
 
+#### 2d. Route (confirmed only)
+For each confirmed bug, determine the target repository for the fix:
+- Search `pytorch/pytorch` under `aten/src/ATen/native/xpu/` for the affected op's XPU kernel.
+- If found → `target: pytorch/pytorch` (the XPU implementation lives upstream).
+- If not found → `target: intel/torch-xpu-ops` (the XPU kernel lives in this repo, or needs to be added here).
+- If the bug is in shared dispatch/core infra (not XPU-specific code) → `target: pytorch/pytorch`.
+- Record the target repo and reasoning in the scan file.
+
 ### Step 3: Summarize
 After all candidates have been processed, append a final summary to the scan file:
 - **Filter statistics** — total candidates, number rejected (broken down by reject reason), number passed
 - **Validation statistics** — total tested, number confirmed, number not-reproduced, number unverified, number that fell back to CPU
+- **Routing statistics** — of confirmed bugs: number targeting `pytorch/pytorch`, number targeting `intel/torch-xpu-ops`
 
 ## Guardrails
 - Do not file issues from this skill.
