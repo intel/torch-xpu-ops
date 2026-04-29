@@ -398,13 +398,6 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
   at::native::sparse::sparse_sampled_addmm_check_inputs(
       self, mat1, mat2, beta, alpha, result);
 
-  auto t = self.scalar_type();
-  TORCH_CHECK(
-      t == ScalarType::Double || t == ScalarType::Float ||
-          t == ScalarType::ComplexFloat || t == ScalarType::ComplexDouble,
-      "sparse_sampled_addmm: Expected self to be a floating-point or complex tensor, but got ",
-      t);
-
   if (&result != &self) {
     auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
     result_sizes.push_back(self.size(-2));
@@ -419,7 +412,6 @@ Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
     return result;
   }
 
-  // Call specialized SYCL kernel for sparse_sampled_addmm
   xpu::sparse_sampled_addmm_kernel(self, mat1, mat2, beta, alpha, result);
   return result;
 }
