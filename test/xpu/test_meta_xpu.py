@@ -18,7 +18,6 @@ from functools import partial, wraps
 import numpy as np
 import torch
 import torch.utils._python_dispatch
-
 import yaml
 from torch._dispatch.python import enable_python_dispatcher
 from torch._ops import OpOverload, OpOverloadPacket
@@ -79,6 +78,32 @@ u8 = torch.uint8
 u16 = torch.uint16
 u32 = torch.uint32
 u64 = torch.uint64
+
+_ops_missing_bf16 = [
+    "addbmm",
+    "__rmatmul__",
+    "bmm",
+    "matmul",
+    "nn.functional.bilinear",
+    "torch.ops.aten._efficient_attention_forward",
+]
+_ops_missing_bf16_expected = set(_ops_missing_bf16)
+_ops_missing_bf16_updated = set()
+_ops_count = 0
+for _op in op_db:
+    if _op.name in _ops_missing_bf16_expected:
+        _ops_missing_bf16_updated.add(_op.name)
+        _ops_count += 1
+        for _dtype_list in [_op.dtypesIfCUDA, _op.dtypesIfXPU, _op.dtypesIf.get("xpu")]:
+            if _dtype_list is not None and bf16 not in _dtype_list:
+                _dtype_list.add(bf16)
+        if _ops_count == len(_ops_missing_bf16_expected):
+            break
+_ops_not_found = _ops_missing_bf16_expected - _ops_missing_bf16_updated
+assert not _ops_not_found, (
+    f"Failed to update bf16 dtype coverage for expected ops in op_db: "
+    f"{sorted(_ops_not_found)}. Verify op names exist in operator database."
+)
 
 foreach_op_db = (
     foreach_unary_op_db

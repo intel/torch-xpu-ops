@@ -51,6 +51,7 @@ from torch.testing._internal.common_device_type import (
     dtypes,
     dtypesIfCUDA,
     dtypesIfMPS,
+    dtypesIfXPU,
     expectedFailureMeta,
     expectedFailureMPS,
     get_all_device_types,
@@ -11385,6 +11386,7 @@ class TestNNDeviceType(NNTestCase):
         out = bn(data).sum().backward()
 
     @dtypesIfCUDA(torch.float, torch.double, torch.half, torch.complex128)
+    @dtypesIfXPU(torch.float, torch.double, torch.half, torch.complex128)
     @dtypesIfMPS(torch.float, torch.half, torch.complex64)
     @dtypes(torch.float, torch.double, torch.bfloat16, torch.complex128)
     def test_conv_empty_input(self, device, dtype):
@@ -14059,6 +14061,7 @@ class TestNNDeviceType(NNTestCase):
             self.assertEqual(input.grad, inputf.grad.to(dtype), atol=1e-3, rtol=0)
 
     @dtypesIfCUDA(torch.half, torch.float)
+    @dtypesIfXPU(torch.half, torch.float)
     @dtypes(torch.float)
     def test_softmax_results(self, device, dtype):
         # Non-even sizes and non-zero shifts test fallback paths in vectorized kernel
@@ -14179,6 +14182,7 @@ class TestNNDeviceType(NNTestCase):
         )  # https://github.com/pytorch/pytorch/issues/84144
 
     @dtypes(torch.float)
+    @dtypesIfXPU(torch.half)
     @dtypesIfCUDA(torch.float, torch.half)
     def test_log_softmax_big(self, device, dtype):
         def _test_helper(shape):
@@ -14571,6 +14575,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(logits_soft.grad, logits_hard.grad, atol=tol, rtol=0)
 
     @dtypesIfCUDA(torch.half, torch.float, torch.double)
+    @dtypesIfXPU(torch.half)
     @dtypesIfMPS(torch.float)
     @dtypes(torch.float, torch.double)
     def test_gumbel_softmax(self, device, dtype):
@@ -14615,6 +14620,7 @@ class TestNNDeviceType(NNTestCase):
                 self.assertEqual(grads, grads2)
 
     @dtypesIfCUDA(torch.half, torch.float, torch.double)
+    @dtypesIfXPU(torch.half, torch.float)
     @dtypesIfMPS(torch.half, torch.float)
     @dtypes(torch.double)
     def test_rnn_retain_variables(self, device, dtype):
@@ -15192,6 +15198,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(grad1, grad2)
 
     @dtypes(torch.float)
+    @dtypesIfXPU(torch.float, torch.bfloat16)
     @dtypesIfCUDA(torch.float, torch.bfloat16)
     def test_batchnorm_eval(self, device, dtype):
         self._test_batchnorm_eval(2, device, dtype)
@@ -15241,6 +15248,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(grad1, grad2)
 
     @dtypes(torch.float)
+    @dtypesIfXPU(torch.float, torch.bfloat16)
     @dtypesIfCUDA(torch.float, torch.bfloat16)
     def test_batchnorm_affine(self, device, dtype):
         self._test_batchnorm_affine(2, device, dtype)
@@ -15310,6 +15318,7 @@ class TestNNDeviceType(NNTestCase):
         self.assertEqual(module.running_var, (running_var1 + running_var2) / 2)
 
     @dtypes(torch.float)
+    @dtypesIfXPU(torch.float, torch.bfloat16)
     @dtypesIfCUDA(torch.float, torch.bfloat16)
     def test_batchnorm_simple_average(self, device, dtype):
         self._test_batchnorm_simple_average(device, dtype)
@@ -15605,6 +15614,7 @@ class TestNNDeviceType(NNTestCase):
     @skipIfRocmArch(MI300_ARCH)
     @expectedFailureMPS  # RuntimeError: LSTM with projections is not currently supported with MPS.
     @dtypesIfCUDA(torch.half, torch.float, torch.double)
+    @dtypesIfXPU(torch.half)
     @dtypes(torch.float)
     @tf32_on_and_off(0.005)
     @skipIfTorchDynamo("TorchDynamo fails here for unknown reasons")
@@ -16110,8 +16120,13 @@ if __name__ == '__main__':
         # CUDA says "device-side assert triggered", ROCm says "unspecified launch failure"
         has_cuda_assert = "CUDA error: device-side assert triggered" in stderr
         has_hip_assert = "HIP error" in stderr and "launch failure" in stderr
+        # XPU/SYCL: Windows DPC++ runtime produces "AssertHandler::printMessage",
+        # Linux __assert_fail produces "Assertion `expr` failed."
+        has_xpu_assert = "AssertHandler" in stderr or (
+            "Assertion" in stderr and "failed" in stderr
+        )
         self.assertTrue(
-            has_cuda_assert or has_hip_assert,
+            has_cuda_assert or has_hip_assert or has_xpu_assert,
             f"Expected device assert error in stderr, got: {stderr}",
         )
 
@@ -17323,7 +17338,7 @@ if __name__ == '__main__':
             torch.testing.assert_close(result, ref_output, atol=atol, rtol=rtol)
             mask = torch.tensor([[1]], device=device) == 1
             result = model(encoder_input, src_key_padding_mask=mask)
-            fast_path_device = result.is_cuda or result.is_cpu
+            fast_path_device = result.is_cuda or result.is_cpu or result.is_xpu
             result = result.cpu().detach().numpy()
             # Non Fast Paths
             if (
@@ -17594,6 +17609,7 @@ if __name__ == '__main__':
             model(src, src_mask=src_mask, src_key_padding_mask=src_key_padding_mask)
 
     @dtypes(torch.float)
+    @dtypesIfXPU(torch.half)
     @dtypesIfCUDA(torch.half, torch.float)
     def test_transformerencoderlayer_gelu(self, device, dtype):
         # this is a deterministic test for TransformerEncoderLayer with gelu activation

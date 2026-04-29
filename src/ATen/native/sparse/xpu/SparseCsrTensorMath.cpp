@@ -30,6 +30,7 @@
 #include <ATen/ops/mul.h>
 #include <ATen/ops/scalar_tensor_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
+#include <ATen/ops/triangular_solve.h>
 #endif
 
 namespace at::native {
@@ -231,12 +232,23 @@ Tensor& addmm_out_sparse_compressed_xpu(
       mat2.sizes()[1],
       ")");
 
+  std::array<int64_t, 2> result_shape = {mat1.size(0), mat2.size(1)};
+
+  TORCH_CHECK(
+      result_shape.size() >= (size_t)self.dim(),
+      "The number of sizes provided (",
+      result_shape.size(),
+      ") ",
+      "must be greater or equal to the number of dimensions in the tensor (",
+      self.dim(),
+      ")");
+
   c10::MaybeOwned<at::Tensor> self_;
   // Don't expand self if this is an in-place operation
   if (&result == &self) {
     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
   } else {
-    self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+    self_ = expand_size(self, result_shape, "addmm");
   }
 
   sparse::impl::_check_dim(*self_, 2, "self");
@@ -420,8 +432,17 @@ Tensor& add_out_sparse_compressed_xpu(
       return out;
     }
 
+    // Preserve the index dtype from self (int32 or int64)
+    auto index_dtype = self.crow_indices().scalar_type();
     Tensor out_dense = at::add(self.to_dense(), other.to_dense(), alpha);
-    out = out_dense.to_sparse_csr();
+    Tensor out_csr = out_dense.to_sparse_csr();
+    Tensor result = at::sparse_compressed_tensor(
+        out_csr.crow_indices().to(index_dtype),
+        out_csr.col_indices().to(index_dtype),
+        out_csr.values(),
+        out_csr.sizes(),
+        out_csr.options().layout(at::kSparseCsr));
+    out.copy_(result);
   }
   return out;
 }
@@ -469,4 +490,25 @@ Tensor& addmv_out_sparse_compressed_xpu(
 
   return result;
 }
+
+std::tuple<Tensor&, Tensor&> triangular_solve_out_sparse_csr_xpu(
+    const Tensor& B,
+    const Tensor& A,
+    bool upper,
+    bool transpose,
+    bool unitriangular,
+    Tensor& X,
+    Tensor& clone_A) {
+  TORCH_INTERNAL_ASSERT_DEBUG_ONLY(A.is_sparse_csr());
+
+  if (B.numel() == 0 || X.numel() == 0 || A._nnz() == 0) {
+    X.fill_(NAN);
+    return std::tuple<Tensor&, Tensor&>(X, clone_A);
+  }
+  Tensor temp_clone_A = at::empty({0}, A.options().layout(at::kStrided));
+  at::triangular_solve_out(
+      X, temp_clone_A, B, A.to_dense(), upper, transpose, unitriangular);
+  return std::tuple<Tensor&, Tensor&>(X, clone_A);
+}
+
 } // namespace at::native
