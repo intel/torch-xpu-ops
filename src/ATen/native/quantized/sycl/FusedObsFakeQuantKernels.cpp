@@ -285,7 +285,7 @@ void _calc_moving_avg_qparams_helper(
   auto num_groups = std::get<1>(execution_policy);
   auto group_size = std::get<2>(execution_policy);
 
-  int64_t* fake_quant_on_data = fake_quant_on.data_ptr<int64_t>();
+  const int64_t* fake_quant_on_data = fake_quant_on.const_data_ptr<int64_t>();
   auto local_range = per_row_fq ? group_size : 1;
   AT_DISPATCH_FLOATING_TYPES_AND2(
       at::kBFloat16,
@@ -293,8 +293,10 @@ void _calc_moving_avg_qparams_helper(
       x.scalar_type(),
       "ChooseQuantizationParams",
       [&] {
-        scalar_t* running_min_data = running_min.data_ptr<scalar_t>();
-        scalar_t* running_max_data = running_max.data_ptr<scalar_t>();
+        const scalar_t* running_min_data =
+            running_min.const_data_ptr<scalar_t>();
+        const scalar_t* running_max_data =
+            running_max.const_data_ptr<scalar_t>();
 
         CalcMovingAvgQparamsHelperKernelFunctor<scalar_t> kfn(
             fake_quant_on_data,
