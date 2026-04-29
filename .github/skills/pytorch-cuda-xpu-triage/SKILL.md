@@ -18,6 +18,7 @@ Detailed reference:
 - Use the time window specified by the caller (e.g., last 1 day, last 7 days, or all time). Paginate through **all** search results in the window — do not stop after the first page.
 - Sources may be CUDA-specific, ROCm-specific, or cross-backend — the key question is whether the bug pattern could also manifest on XPU.
 - Follow links between issues, PRs, and commits to narrow down the exact bug trigger (operator, shape, dtype, edge case).
+- Save the raw scan results to a local file (e.g., `triage_scan_<date>.md`) listing every candidate with its URL, title, and status. This makes the scan auditable and re-runnable without re-querying GitHub.
 
 ### Step 2: Filter candidates
 For each candidate, decide: **reject** or **pass through**.
