@@ -3,6 +3,11 @@ on:
   schedule:
     - cron: '0 2 * * *'
 
+  pull_request:
+    paths:
+      - '.github/workflows/ci_break_monitor.yml'
+      - '.github/scripts/check_nightly_status.py'
+
   workflow_dispatch:
     inputs:
       steps:
@@ -34,7 +39,7 @@ permissions:
 jobs:
   ci-monitor:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.CI_MONITOR_ENABLED == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || vars.CI_MONITOR_ENABLED == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

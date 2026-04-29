@@ -71,23 +71,25 @@ def get_latest_xpu_runs(days=1, event=None):
 
 
 def get_failed_jobs(run_id):
-    """Get all failed jobs from a workflow run.
+    """Get all non-success jobs from a workflow run.
 
     A workflow run contains multiple jobs (e.g., different test shards).
-    Returns jobs with conclusion == "failure" or "timed_out".
+    Returns jobs whose conclusion is anything other than "success" or
+    "skipped", so that unexpected statuses (timed_out, cancelled, etc.)
+    are captured for future analysis.
 
     Args:
         run_id: Workflow run ID
 
     Returns:
-        list: List of failed job objects
+        list: List of failed / non-success job objects
     """
     url = f"{API_BASE}/actions/runs/{run_id}/jobs"
     params = {"per_page": 100, "filter": "latest"}
     resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
     resp.raise_for_status()
     return [j for j in resp.json().get("jobs", [])
-            if j["conclusion"] in ("failure", "timed_out")]
+            if j["conclusion"] not in ("success", "skipped", None)]
 
 
 def get_failed_test_cases(job_id):
