@@ -1,79 +1,171 @@
 name: code-check
 description: |
-  Run lintrunner-based code checks (lint / clang-format / clang-tidy) with a
-  consistent setup, structured GitHub annotations, and a step summary section.
+  End-to-end code-check: prints a torch-xpu-ops info block, runs lintrunner
+  (one step per scope) with a unified GitHub step summary, and optionally
+  validates that AI-generated PRs include a pytest-style reproducer.
 
 inputs:
-  scope:
+  scopes:
     description: |
-      Which check to run. One of:
-        - `lint`         : everything except clang-format/clang-tidy/CSV merge
-        - `clang-format` : CLANGFORMAT only
-        - `clang-tidy`   : CLANGTIDY only (requires a built source tree)
-        - `custom`       : pass `lintrunner-args` verbatim
-    required: true
-    default: lint
+      Comma-separated list of lintrunner scopes to run sequentially. Each
+      scope is one of: lint | clang-format | clang-tidy | custom.
+    required: false
+    default: 'lint,clang-format'
   lintrunner-args:
-    description: Additional arguments forwarded to `lintrunner` (used when scope=custom or to override).
+    description: Extra args forwarded to `lintrunner` (used for `custom` scope, applied to all scopes).
     required: false
     default: ''
   python-version:
-    description: Python interpreter to use for the lint venv.
+    description: Python interpreter for the lint venv.
     required: false
     default: '3.10'
   working-directory:
-    description: Directory to run the lint check from.
+    description: Path to the torch-xpu-ops checkout.
     required: false
     default: '.'
-  summary-heading:
-    description: Markdown heading used for this check's section in the step summary.
+  check-reproducer:
+    description: When `true`, validate `test/repro/test_*.py` exists and is in pytest format.
+    required: false
+    default: 'false'
+  reproducer-glob:
+    description: Glob (relative to working-directory) for reproducer files.
+    required: false
+    default: 'test/repro/test_*.py'
+  pr-number:
+    description: PR number for posting the reproducer-failure comment.
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  pr-author:
+    description: PR author login (used to @-mention in the failure comment).
+    required: false
+    default: ${{ github.event.pull_request.user.login }}
+  github-token:
+    description: Token used to post the reproducer-failure PR comment. If empty, comment is skipped.
     required: false
     default: ''
 
 runs:
   using: composite
   steps:
-    - name: Resolve lintrunner args
-      id: args
+    - name: torch-xpu-ops info
       shell: bash
-      env:
-        SCOPE: ${{ inputs.scope }}
-        EXTRA: ${{ inputs.lintrunner-args }}
+      working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        case "${SCOPE}" in
-          lint)
-            args="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
-            ;;
-          clang-format)
-            args="--take CLANGFORMAT --all-files"
-            ;;
-          clang-tidy)
-            args="--take CLANGTIDY --all-files"
-            ;;
-          custom)
-            if [[ -z "${EXTRA}" ]]; then
-              echo "::error::scope=custom requires non-empty 'lintrunner-args'"
-              exit 1
-            fi
-            args=""
-            ;;
-          *)
-            echo "::error::Unknown scope '${SCOPE}'. Expected: lint | clang-format | clang-tidy | custom"
-            exit 1
-            ;;
-        esac
-        if [[ -n "${EXTRA}" ]]; then
-          args="${args} ${EXTRA}"
-        fi
-        echo "args=${args}" >> "${GITHUB_OUTPUT}"
+        repo_url=$(git config --get remote.origin.url || echo 'unknown')
+        head_sha=$(git rev-parse HEAD)
+        head_short=$(git rev-parse --short HEAD)
+        head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}}"
+        base_ref="${GITHUB_BASE_REF:-}"
+        author=$(git log -1 --pretty=format:'%an <%ae>')
+        subject=$(git log -1 --pretty=format:'%s')
+        commit_date=$(git log -1 --pretty=format:'%ci')
+        {
+          echo "## torch-xpu-ops"
+          echo
+          echo "| Field | Value |"
+          echo "|-------|-------|"
+          echo "| Repository | \`${repo_url}\` |"
+          echo "| Branch | \`${head_branch}\` |"
+          echo "| Base ref | \`${base_ref:-N/A}\` |"
+          echo "| Commit | [\`${head_short}\`](${repo_url%.git}/commit/${head_sha}) |"
+          echo "| Author | ${author} |"
+          echo "| Date | ${commit_date} |"
+          echo "| Subject | ${subject} |"
+          echo
+          echo "## Code-check results"
+          echo
+        } >> "${GITHUB_STEP_SUMMARY}"
 
-    - name: Run code-check (${{ inputs.scope }})
+    - name: Run code checks
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        ADDITIONAL_LINTRUNNER_ARGS: ${{ steps.args.outputs.args }}
+        SCOPES: ${{ inputs.scopes }}
+        EXTRA: ${{ inputs.lintrunner-args }}
         LINT_PYTHON_VERSION: ${{ inputs.python-version }}
-        CLANG: ${{ inputs.scope == 'clang-tidy' && '1' || '0' }}
-        LINT_SUMMARY_HEADING: ${{ inputs.summary-heading != '' && inputs.summary-heading || format('### {0}', inputs.scope) }}
-      run: bash .github/scripts/lintrunner.sh
+      run: |
+        set -uo pipefail
+        IFS=',' read -ra scope_list <<< "${SCOPES}"
+        overall_rc=0
+        for raw in "${scope_list[@]}"; do
+          scope="$(echo "${raw}" | xargs)"
+          [[ -z "${scope}" ]] && continue
+          case "${scope}" in
+            lint)         args="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files" ;;
+            clang-format) args="--take CLANGFORMAT --all-files" ;;
+            clang-tidy)   args="--take CLANGTIDY --all-files" ;;
+            custom)
+              if [[ -z "${EXTRA}" ]]; then
+                echo "::error::scope=custom requires non-empty 'lintrunner-args'"
+                overall_rc=1
+                continue
+              fi
+              args=""
+              ;;
+            *)
+              echo "::error::Unknown scope '${scope}'. Expected: lint | clang-format | clang-tidy | custom"
+              overall_rc=1
+              continue
+              ;;
+          esac
+          if [[ -n "${EXTRA}" ]]; then
+            args="${args} ${EXTRA}"
+          fi
+          echo "::group::code-check: ${scope}"
+          ADDITIONAL_LINTRUNNER_ARGS="${args}" \
+          CLANG="$([[ "${scope}" == "clang-tidy" ]] && echo 1 || echo 0)" \
+          LINT_SUMMARY_HEADING="### ${scope}" \
+            bash .github/scripts/lintrunner.sh
+          rc=$?
+          echo "::endgroup::"
+          if [[ ${rc} -ne 0 ]]; then
+            overall_rc=${rc}
+          fi
+        done
+        exit ${overall_rc}
+
+    - name: Check reproducer exists for AI-generated PR
+      if: ${{ inputs.check-reproducer == 'true' }}
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        PR_AUTHOR: ${{ inputs.pr-author }}
+        REPRO_GLOB: ${{ inputs.reproducer-glob }}
+      run: |
+        FAIL_MSG=""
+        # Check if reproducer files exist
+        if ! ls ${REPRO_GLOB} 1>/dev/null 2>&1; then
+          FAIL_MSG="No reproducer test found. AI-generated PRs must include at least one reproducer in \`${REPRO_GLOB}\`."
+        else
+          # Validate pytest format: must contain test functions or test classes
+          VALID=false
+          for f in ${REPRO_GLOB}; do
+            if grep -qE '^[[:space:]]*(def test_|class Test)' "$f"; then
+              VALID=true
+            else
+              FAIL_MSG="Reproducer \`$f\` is not in pytest format. It must contain pytest-style test functions (\`def test_...\`) or test classes (\`class Test...\`)."
+              break
+            fi
+          done
+          if [ "$VALID" = true ] && [ -z "$FAIL_MSG" ]; then
+            echo "All reproducer tests are valid pytest format:"
+            ls ${REPRO_GLOB}
+          fi
+        fi
+        if [ -n "$FAIL_MSG" ]; then
+          if [ -n "${GH_TOKEN}" ] && [ -n "${PR_NUMBER}" ]; then
+            printf -v COMMENT_BODY '%s\n' \
+              "@${PR_AUTHOR} ${FAIL_MSG}" \
+              "" \
+              "Please ensure your reproducer follows pytest conventions:" \
+              "- File name: \`test/repro/test_<description>.py\`" \
+              "- Contains \`def test_...()\` functions or \`class Test...\` classes" \
+              "- Runnable via \`pytest test/repro/\`"
+            gh pr comment "${PR_NUMBER}" --body "${COMMENT_BODY}"
+          fi
+          echo "::error::${FAIL_MSG}"
+          exit 1
+        fi
