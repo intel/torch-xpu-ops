@@ -20,20 +20,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Lint, clang-format, and (for AI-generated PRs) reproducer validation.
+  # Lint, clang-format. Reproducer validation is in the separate
+  # `reproducer-test` job below (which uses `_linux_reproducer.yml`).
   preci-lint-check:
     if: ${{ github.repository_owner == 'intel' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
-    secrets:
-      github-token: ${{ secrets.MERGE_TOKEN }}
-    uses: ./.github/workflows/_lint.yml
-    with:
-      runner: ubuntu-24.04
-      python-version: '3.10'
-      check-reproducer: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v6
+      - name: torch-xpu-ops info
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo_url=$(git config --get remote.origin.url || echo 'unknown')
+          head_sha=$(git rev-parse HEAD)
+          head_short=$(git rev-parse --short HEAD)
+          head_branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-$(git rev-parse --abbrev-ref HEAD)}}"
+          base_ref="${GITHUB_BASE_REF:-}"
+          author=$(git log -1 --pretty=format:'%an <%ae>')
+          subject=$(git log -1 --pretty=format:'%s')
+          commit_date=$(git log -1 --pretty=format:'%ci')
+          {
+            echo "## torch-xpu-ops"
+            echo
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Repository | \`${repo_url}\` |"
+            echo "| Branch | \`${head_branch}\` |"
+            echo "| Base ref | \`${base_ref:-N/A}\` |"
+            echo "| Commit | [\`${head_short}\`](${repo_url%.git}/commit/${head_sha}) |"
+            echo "| Author | ${author} |"
+            echo "| Date | ${commit_date} |"
+            echo "| Subject | ${subject} |"
+            echo
+            echo "## Code-check results"
+            echo
+          } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Lint
+        uses: ./.github/actions/code-check
+        with:
+          scope: lint
+          python-version: '3.10'
+          summary-heading: '### Lint'
+      - name: Clang-format
+        if: ${{ always() }}
+        uses: ./.github/actions/code-check
+        with:
+          scope: clang-format
+          python-version: '3.10'
+          summary-heading: '### Clang-format'
 
   conditions-filter-win:
     if: >-
