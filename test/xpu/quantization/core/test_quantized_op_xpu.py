@@ -10,6 +10,8 @@
 import itertools
 
 import torch
+import torch.testing._internal.hypothesis_utils as hu
+from hypothesis import assume, given, strategies as st
 from torch.nn.modules.utils import _pair
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
 from torch.testing._internal.common_utils import run_tests, TestCase
@@ -25,7 +27,7 @@ except Exception as e:
     from xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    from test_quantized_op import TestQuantizedOps
+    from test_quantized_op import pool_output_shape, TestQuantizedOps
 
 
 def _test_max_pool2d_pt2e(self):
@@ -75,7 +77,59 @@ def _test_max_pool2d_pt2e(self):
         self.assertEqual(a_pool, a_hat, msg="ops.quantized.max_pool2d results are off")
 
 
+@given(
+    X=hu.tensor(
+        shapes=hu.array_shapes(min_dims=3, max_dims=4, min_side=1, max_side=10),
+        qparams=hu.qparams(dtypes=[torch.qint8]),
+    ),
+    kernel=st.sampled_from((3, 5, 7)),
+    stride=st.sampled_from((None, 1, 2)),
+    dilation=st.integers(1, 1),
+    padding=st.integers(0, 2),
+    ceil_mode=st.booleans(),
+)
+def _test_max_pool2d_cudnn(self, X, kernel, stride, dilation, padding, ceil_mode):
+    X, (scale, zero_point, torch_type) = X
+    assume(kernel // 2 >= padding)  # Kernel cannot be overhanging!
+    iH, iW = X.shape[-2:]
+    oH = pool_output_shape(iH, kernel, padding, stride, dilation, ceil_mode)
+    assume(oH > 0)
+    oW = pool_output_shape(iW, kernel, padding, stride, dilation, ceil_mode)
+    assume(oW > 0)
+
+    a = torch.from_numpy(X).to(device="xpu:0")
+    a_pool = torch.nn.functional.max_pool2d(
+        a,
+        kernel_size=kernel,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    a_ref = torch.quantize_per_tensor(
+        a_pool, scale=scale, zero_point=zero_point, dtype=torch_type
+    )
+    a_ref = a_ref.dequantize()
+    qa = torch.quantize_per_tensor(
+        a, scale=scale, zero_point=zero_point, dtype=torch_type
+    )
+
+    # Test the ops.quantized separately, because None is not treated.
+    a_hat = torch.ops.quantized.max_pool2d(
+        qa,
+        kernel_size=_pair(kernel),
+        stride=_pair(kernel if stride is None else stride),
+        padding=_pair(padding),
+        dilation=_pair(dilation),
+        ceil_mode=ceil_mode,
+    )
+    self.assertEqual(
+        a_ref, a_hat.dequantize(), msg="ops.quantized.max_pool2d results are off"
+    )
+
+
 TestQuantizedOps.test_max_pool2d_pt2e = _test_max_pool2d_pt2e
+TestQuantizedOps.test_max_pool2d_cudnn = _test_max_pool2d_cudnn
 
 instantiate_device_type_tests(
     TestQuantizedOps, globals(), only_for="xpu", allow_xpu=True

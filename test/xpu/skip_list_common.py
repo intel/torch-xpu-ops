@@ -27,6 +27,8 @@ skip_dict = {
         "test_add_scalar_relu_xpu",
         # AssertionError: Tensor-likes are not close!
         "test_cat_nhwc_xpu",
+        # NotImplementedError: Could not run 'aten::dequantize.self' with arguments from the 'QuantizedXPU' backend.
+        "test_max_pool2d_cudnn_xpu",
     ),
     "quantization/core/test_quantized_tensor_xpu.py": None,
     "quantization/core/test_workflow_module_xpu.py": None,
