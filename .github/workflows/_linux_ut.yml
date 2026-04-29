@@ -35,7 +35,6 @@ env:
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
-  UT_SKIP_ISSUE: 1624
   NEW_PASSED_ISSUE: 2333
 
 jobs:
@@ -152,6 +151,11 @@ jobs:
         with:
           pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
           path: ${{ github.workspace }}/ut_log
+      - name: Download skipped issues snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: Skipped-Issues-Snapshot-${{ github.event.pull_request.number || github.sha }}-linux-build-start
+          path: ${{ github.workspace }}/issues_snapshot
       - name: Check UT Results
         run: |
           ls -al ${{ github.workspace }}/ut_log
@@ -165,15 +169,17 @@ jobs:
                 -name "reproduce_*.log" \) \
               -exec mv {} ./ \; || true
           cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          # get distributed known issues
-          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
-          # get skipped known issues
-          count=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
-          if [ "$count" -gt 0 ]; then
-            echo -e "$count issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
-              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          fi
+          # Build the known-issues list by merging two sources:
+          #   1. Snapshot captured at build start (covers issues closed mid-run)
+          #   2. Current live state (covers new issues opened after build start)
+          snapshot_dir="${{ github.workspace }}/issues_snapshot"
+          touch issues.log Known_issue.log.tmp
+          echo "Restoring snapshotted skipped issues if available."
+          cp "${snapshot_dir}/known_issue_static.log" Known_issue.log.tmp
+          cp "${snapshot_dir}/issues_snapshot.log" issues.log
+          echo "Fetching current skipped-issues data from GitHub."
+          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh static >> Known_issue.log.tmp
+          bash ${{ github.workspace }}/.github/scripts/fetch_issues.sh open >> issues.log
           if [ "${{ inputs.ut }}" == "basic" ];then
             ut_list="op_regression op_extended op_regression_dev1"
           else
