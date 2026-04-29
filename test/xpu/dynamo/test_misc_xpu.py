@@ -37,7 +37,11 @@ from unittest.mock import patch
 # `from utils import outer_func` relies on test/dynamo being on sys.path,
 # which is true upstream but not when running from test/xpu/dynamo/).
 sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "test", "dynamo"))
+    os.path.abspath(
+        os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "..", "..", "test", "dynamo"
+        )
+    )
 )
 
 import numpy as np
