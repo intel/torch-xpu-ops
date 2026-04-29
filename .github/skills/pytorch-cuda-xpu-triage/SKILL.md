@@ -46,7 +46,7 @@ Append each reproducer script (as a fenced code block) and its validation plan t
 - Print `torch.__version__` and `torch.xpu.is_available()` at the top.
 - Verify the operator actually ran on XPU (not CPU fallback) — e.g., check output tensor `.device` is `xpu`, or run with `TORCH_SHOW_DISPATCH_TRACE=1` and confirm XPU dispatch. If the op fell back to CPU, note it and do not count the result as XPU-validated.
 - If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
-- After all runs complete, update the local scan file with the final status of each candidate (confirmed / not-reproduced / unverified) and a one-line result summary.
+- After all runs complete, update the local scan file with the final status of each candidate (confirmed / not-reproduced / unverified), the full run output (stdout/stderr), and a one-line result summary.
 
 ## Guardrails
 - Do not file issues from this skill.
