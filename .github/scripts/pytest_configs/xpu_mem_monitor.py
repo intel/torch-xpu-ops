@@ -37,7 +37,7 @@ import tempfile
 import threading
 from contextlib import suppress
 from pathlib import Path
-from typing import Iterable, Iterator
+from collections.abc import Iterable, Iterator
 
 # Matches an xpu-smi CSV row, with or without a tile column:
 #   "23:59:21.296,    0, 80"        (device-only)
