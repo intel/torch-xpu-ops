@@ -29,6 +29,8 @@ Reject when:
 
 Everything not rejected passes to the next step. State the reject reason briefly and move on. If all candidates are rejected, report that outcome.
 
+Append each decision (URL, reject/pass, reason) to the local scan file so the full filtering rationale is preserved.
+
 ### Step 3: Draft reproducers
 For each passing candidate, produce:
 1. **Summary** — operator, bug family, why XPU might share the defect
@@ -42,6 +44,7 @@ For each passing candidate, produce:
 - Print `torch.__version__` and `torch.xpu.is_available()` at the top.
 - Verify the operator actually ran on XPU (not CPU fallback) — e.g., check output tensor `.device` is `xpu`, or run with `TORCH_SHOW_DISPATCH_TRACE=1` and confirm XPU dispatch. If the op fell back to CPU, note it and do not count the result as XPU-validated.
 - If shell access is unavailable, return copy-paste commands and specify what evidence to paste back.
+- After all runs complete, update the local scan file with the final status of each candidate (confirmed / not-reproduced / unverified) and a one-line result summary.
 
 ## Guardrails
 - Do not file issues from this skill.
