@@ -8,10 +8,20 @@
 
 # Owner(s): ["module: intel"]
 
+import os
+
+# test_debug_set_in_ci asserts TORCH_SERIALIZATION_DEBUG=1; set it before
+# upstream test_serialization is imported so subprocess workers also see it.
+os.environ.setdefault("TORCH_SERIALIZATION_DEBUG", "1")
+
 import torch
 from torch.serialization import safe_globals
 from torch.testing._internal.common_device_type import instantiate_device_type_tests
-from torch.testing._internal.common_utils import run_tests, TemporaryFileName
+from torch.testing._internal.common_utils import (
+    instantiate_parametrized_tests,
+    run_tests,
+    TemporaryFileName,
+)
 
 try:
     from xpu_test_utils import XPUPatchForImport
@@ -81,6 +91,13 @@ TestSubclassSerialization.test_tensor_subclass_map_location = (
 instantiate_device_type_tests(
     TestBothSerialization, globals(), only_for="xpu", allow_xpu=True
 )
+
+# Upstream test_serialization.py applies these to TestSerialization and
+# TestSubclassSerialization at module bottom; mirror that here so @parametrize
+# tests are expanded with their parameter values rather than collected as bare
+# methods (which then fail with TypeError: missing required positional argument).
+instantiate_parametrized_tests(TestSerialization)
+instantiate_parametrized_tests(TestSubclassSerialization)
 
 
 if __name__ == "__main__":
