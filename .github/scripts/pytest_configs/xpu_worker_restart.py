@@ -51,7 +51,13 @@ _FATAL_RE = re.compile(
 # --- module state -------------------------------------------------------------
 
 _worker_id: str | None = None
-_target_cards: list[int] | None = None  # None = all visible cards
+# Resolved target cards for the memory watchdog:
+#   None       -> ZE_AFFINITY_MASK unset; monitor every visible card.
+#   list[int]  -> the (non-empty) cards parsed from the env var.
+#   []         -> env var was set but parsed to nothing; mem-based
+#                 restart disabled (we won't second-guess the user's
+#                 mask). Fatal-pattern restart still works.
+_target_cards: list[int] | None = None
 _restart_armed: bool = True
 
 
@@ -82,12 +88,26 @@ def _parse_affinity_part(part: str) -> list[int]:
 
 
 def _parse_affinity_mask() -> list[int] | None:
-    """Parse ``ZE_AFFINITY_MASK`` -> list of card ids (or ``None`` = all)."""
-    mask = os.environ.get("ZE_AFFINITY_MASK", "").strip()
+    """Parse ``ZE_AFFINITY_MASK``.
+
+    Returns:
+        ``None``   -- env var unset/empty; monitor every visible card.
+        ``list``   -- parsed card ids (non-empty).
+        ``[]``     -- env var was set but no token parsed; the caller
+                      should disable memory-based restart (we don't
+                      know which cards this worker actually uses).
+    """
+    raw = os.environ.get("ZE_AFFINITY_MASK")
+    if raw is None:
+        return None
+    mask = raw.strip()
     if not mask:
         return None
     cards = [c for part in mask.split(",") for c in _parse_affinity_part(part)]
-    return cards or None
+    if not cards:
+        _log(f"ZE_AFFINITY_MASK={raw!r} parsed to no valid card ids; "
+             "disabling memory-based restart for this worker")
+    return cards
 
 
 def _cleanup_torch_xpu() -> None:
@@ -162,7 +182,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
                 _restart_worker("fatal pattern matched")
                 return  # _restart_worker returns only when disarmed
 
-        if report.when == "teardown":
+        if report.when == "teardown" and _target_cards != []:
             hot = xpu_mem_monitor.get_max_mem_util(_target_cards)
             if hot is not None and hot[1] >= _GPU_MEM_THRESHOLD:
                 card, mem = hot
