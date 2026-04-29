@@ -86,7 +86,13 @@ def _probe_tiles_subprocess() -> int:
 
 
 def _get_tiles_per_device() -> int:
-    """Cached tiles-per-device. Workers read it from env; writers probe once."""
+    """Cached tiles-per-device, read from ``XPU_SMI_TILES``.
+
+    Reader-safe: never spawns a subprocess. The writer publishes the
+    real count in :func:`start` (see :func:`_resolve_tiles_writer`); if
+    the env var is missing or malformed we conservatively default to 1
+    so that the reader still works against a single-tile snapshot.
+    """
     global _tiles_per_device
     if _tiles_per_device is not None:
         return _tiles_per_device
@@ -94,9 +100,15 @@ def _get_tiles_per_device() -> int:
         if _tiles_per_device is not None:
             return _tiles_per_device
         env_val = os.environ.get(_TILES_ENV, "")
-        if env_val.isdigit():
-            _tiles_per_device = max(int(env_val), 1)
-        else:
+        _tiles_per_device = max(int(env_val), 1) if env_val.isdigit() else 1
+        return _tiles_per_device
+
+
+def _resolve_tiles_writer() -> int:
+    """Writer-side: probe via subprocess and cache. Called from :func:`start`."""
+    global _tiles_per_device
+    with _tiles_lock:
+        if _tiles_per_device is None:
             _tiles_per_device = _probe_tiles_subprocess()
         return _tiles_per_device
 
@@ -171,7 +183,7 @@ def start(interval: float = 3, timeout: int = 60) -> str | None:
     _interval = max(float(interval), 0.1)
     _timeout = max(int(timeout), 1)
 
-    tiles = _get_tiles_per_device()
+    tiles = _resolve_tiles_writer()
     os.environ[_TILES_ENV] = str(tiles)
 
     try:
