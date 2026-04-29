@@ -1,26 +1,23 @@
 name: check-reproducer
-description: |
-  Validate that an AI-generated PR includes pytest-style reproducer files
-  under `test/repro/test_*.py`. On failure, optionally post a comment on
-  the PR (when a token is provided) and fail the step.
+description: 'Validate that an AI-generated PR includes pytest-style reproducer files under test/repro/.'
 
 inputs:
   working-directory:
-    description: Path to the torch-xpu-ops checkout containing `test/repro/`.
+    description: 'Path to the torch-xpu-ops checkout containing test/repro/.'
     required: false
     default: '.'
   reproducer-glob:
-    description: Glob (relative to working-directory) for reproducer files.
+    description: 'Glob (relative to working-directory) for reproducer files.'
     required: false
     default: 'test/repro/test_*.py'
   pr-number:
-    description: PR number for posting the failure comment.
+    description: PR number for posting the failure comment. Defaults to current PR.
     required: false
-    default: ${{ github.event.pull_request.number }}
+    default: ''
   pr-author:
-    description: PR author login (used to @-mention in the failure comment).
+    description: PR author login (used to @-mention in the failure comment). Defaults to current PR author.
     required: false
-    default: ${{ github.event.pull_request.user.login }}
+    default: ''
   github-token:
     description: Token used to post the failure comment. If empty, the comment is skipped.
     required: false
@@ -34,8 +31,8 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ inputs.pr-number }}
-        PR_AUTHOR: ${{ inputs.pr-author }}
+        PR_NUMBER: ${{ inputs.pr-number != '' && inputs.pr-number || github.event.pull_request.number }}
+        PR_AUTHOR: ${{ inputs.pr-author != '' && inputs.pr-author || github.event.pull_request.user.login }}
         REPRO_GLOB: ${{ inputs.reproducer-glob }}
       run: |
         FAIL_MSG=""
