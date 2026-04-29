@@ -274,11 +274,11 @@ def format_issue_body(data, all_runs_data=None):
         """Find which job (shard) a test belongs to."""
         for f in failures:
             if test_id in f.get("failed_tests", []):
-                jn = f["job_name"]
+                jn = f.get("job_name", "unknown")
                 shard = "?"
                 if "test (default," in jn:
                     shard = jn.split("test (default,")[1].split(",")[0].strip()
-                return f["job_url"], jn, shard
+                return f.get("job_url", ""), jn, shard
         return "", "", "?"
 
     # 4. NEW Failures (highest priority)
@@ -382,7 +382,7 @@ def format_push_runs_timeline(all_runs_data):
         "|------------|--------|--------|------|",
     ]
     for run in runs:
-        sha = run["head_sha"][:12]
+        sha = run.get("head_sha", "unknown")[:12]
         conclusion = run.get("conclusion") or ""
         icon = "✅" if conclusion == "success" else "❌" if conclusion == "failure" else "❓"
         status = conclusion.upper() if conclusion else "?"
@@ -517,7 +517,7 @@ def main():
         issue_number = existing
     else:
         labels = ["pytorch-ci-failure", "agent:blocked", "ai_generated"]
-        if data["status"] != "ALL_PASS":
+        if data.get("status") != "ALL_PASS":
             labels.append("has-failures")
         if n_new > 0:
             labels.append("new-failures")
