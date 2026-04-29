@@ -109,5 +109,9 @@ WORKDIR /workspace
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD which git && which cmake && which g++ || exit 1
 
+# Fix /bin/sh to use bash (required for Copilot runtime which uses `set -o pipefail`)
+RUN ln -sf /bin/bash /bin/sh && \
+    sh -c 'set -o pipefail && echo "pipefail works"'
+
 # Default command
 CMD ["bash"]

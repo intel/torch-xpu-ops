@@ -161,6 +161,14 @@ std::string dump_xccl_trace(
       xcclDumpMap, includeCollectives, includeStackTraces, onlyActive);
 }
 
+std::string dump_xccl_trace_json(bool includeCollectives, bool onlyActive) {
+  auto xcclDumpMap = std::unordered_map<
+      std::string,
+      std::unordered_map<std::string, std::string>>();
+  return FlightRecorderXCCL::get()->dump_json(
+      xcclDumpMap, includeCollectives, onlyActive);
+}
+
 void reset_xccl_trace() {
   FlightRecorderXCCL::get()->reset_all();
 }
@@ -423,6 +431,28 @@ void ProcessGroupXCCL::setEnqueuedPgStatus(
   pgStatus_->lastEnqueuedNumelOut = work->numelOut_;
 }
 
+void ProcessGroupXCCL::attachRetireAndStatusCallback(
+    c10::intrusive_ptr<ProcessGroupXCCL::WorkXCCL>& work,
+    std::shared_ptr<ProcessGroupStatus> pgStatus) {
+  auto id = work->trace_id_;
+  auto reset_epoch = work->trace_reset_epoch_;
+  int64_t seq = static_cast<int64_t>(work->getSequencenumber());
+  std::string workName = opTypeToString(work->opType_);
+  size_t numelIn = work->numelIn_;
+  size_t numelOut = work->numelOut_;
+  work->future_->addCallback(
+      [id, reset_epoch, pgStatus, seq, workName, numelIn, numelOut](
+          at::ivalue::Future&) {
+        FlightRecorderXCCL::get()->retire_id(
+            id, reset_epoch, /*compute_duration*/ true);
+        pgStatus->lastCompletedSeq = seq;
+        pgStatus->lastCompletedWorkName = workName;
+        pgStatus->lastCompletedNumelIn = numelIn;
+        pgStatus->lastCompletedNumelOut = numelOut;
+      },
+      /*use_future*/ false);
+}
+
 void ProcessGroupXCCL::setSequenceNumberForGroup() {}
 
 uint64_t ProcessGroupXCCL::getSequenceNumberForGroup() {
@@ -634,15 +664,19 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
 
   const auto key = std::to_string(device.index());
   auto stream = xcclStreamsMap_.at(key).xpuStream;
+  auto opProfilerTitle = optype != OpType::COALESCED
+      ? "xccl:" + opTypeToString(optype) + "_coalesced"
+      : "xccl:coalesced";
 
   auto work = initWork(
       device,
       rank_,
       optype,
       coalescing_state_ & CoalP2P,
-      "xccl:coalesced",
+      opProfilerTitle.c_str(),
       {},
-      {});
+      {},
+      coalescing_state_);
 
   work->blockingWait_ = blockingWait_;
 
@@ -655,6 +689,17 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::endCoalescing(OpType optype) {
   groupEnd();
 
   work->xcclEndEvent_->record(stream);
+
+  {
+    std::vector<c10::Stream> streams = {stream.unwrap()};
+    c10::MultiStreamGuard streamGuard(streams);
+    std::vector<at::Device> devices{device};
+    work->future_ = c10::make_intrusive<at::ivalue::Future>(
+        c10::ListType::create(c10::TensorType::get()), devices);
+    work->future_->markCompleted(at::IValue(std::vector<at::Tensor>()));
+  }
+
+  attachRetireAndStatusCallback(work, pgStatus_);
   setEnqueuedPgStatus(work);
 
   coalescing_state_ = 0;
@@ -804,14 +849,6 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
   work->future_ = c10::make_intrusive<at::ivalue::Future>(
       c10::ListType::create(c10::TensorType::get()), devices);
   work->future_->markCompleted(at::IValue(*work->outputs_));
-  auto id = work->trace_id_;
-  auto reset_epoch = work->trace_reset_epoch_;
-  work->future_->addCallback(
-      [id, reset_epoch](at::ivalue::Future&) {
-        FlightRecorderXCCL::get()->retire_id(
-            id, reset_epoch, /*compute_duration*/ true);
-      },
-      /*use_future*/ false);
   work->blockingWait_ = blockingWait_;
 
   work->numelIn_ = 0;
@@ -823,6 +860,7 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::collective(
     work->numelOut_ += output.numel();
   }
   setEnqueuedPgStatus(work);
+  attachRetireAndStatusCallback(work, pgStatus_);
 
   return asyncOp ? work : nullptr;
 }
@@ -964,15 +1002,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::pointToPoint(
       work->future_->markCompleted(at::IValue(*work->outputs_));
     }
 
-    auto id = work->trace_id_;
-    auto reset_epoch = work->trace_reset_epoch_;
-    work->future_->addCallback(
-        [id, reset_epoch](at::ivalue::Future&) {
-          FlightRecorderXCCL::get()->retire_id(
-              id, reset_epoch, /*compute_duration*/ true);
-        },
-        /*use_future*/ false);
     setEnqueuedPgStatus(work);
+    attachRetireAndStatusCallback(work, pgStatus_);
   }
 
   return work;
@@ -1980,8 +2011,8 @@ c10::intrusive_ptr<Work> ProcessGroupXCCL::alltoall_base(
     std::vector<int64_t>& outputSplitSizes,
     std::vector<int64_t>& inputSplitSizes,
     const AllToAllOptions& opts) {
-  checkSingleTensor(outputTensor, true);
-  checkSingleTensor(inputTensor, true);
+  checkSingleTensor(outputTensor);
+  checkSingleTensor(inputTensor);
   if (outputSplitSizes.size() == 0 && inputSplitSizes.size() == 0) {
     RECORD_PARAM_COMMS_DATA_WITH_LOG(
         static_cast<int>(

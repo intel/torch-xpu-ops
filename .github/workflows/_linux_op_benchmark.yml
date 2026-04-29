@@ -17,7 +17,8 @@ on:
         default: '3.10'
         description: Python version
 
-permissions: read-all
+permissions:
+  contents: read
 
 defaults:
   run:
@@ -90,6 +91,8 @@ jobs:
     needs: op_benchmark
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
+      contents: read
       issues: write
     steps:
       - name: Install gh-cli
