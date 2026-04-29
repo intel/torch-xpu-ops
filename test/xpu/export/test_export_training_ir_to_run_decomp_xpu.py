@@ -27,7 +27,6 @@ with XPUPatchForImport(patch_test_case=False) as patcher:
         sys.path.insert(0, str(__pytorch_test_dir))
 
     import torch
-
     from export import test_export, testing
     from torch.testing._internal.common_utils import run_tests
 
