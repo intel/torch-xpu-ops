@@ -232,12 +232,23 @@ Tensor& addmm_out_sparse_compressed_xpu(
       mat2.sizes()[1],
       ")");
 
+  std::array<int64_t, 2> result_shape = {mat1.size(0), mat2.size(1)};
+
+  TORCH_CHECK(
+      result_shape.size() >= (size_t)self.dim(),
+      "The number of sizes provided (",
+      result_shape.size(),
+      ") ",
+      "must be greater or equal to the number of dimensions in the tensor (",
+      self.dim(),
+      ")");
+
   c10::MaybeOwned<at::Tensor> self_;
   // Don't expand self if this is an in-place operation
   if (&result == &self) {
     self_ = c10::MaybeOwned<Tensor>::borrowed(self);
   } else {
-    self_ = expand_size(self, {mat1.size(0), mat2.size(1)}, "addmm");
+    self_ = expand_size(self, result_shape, "addmm");
   }
 
   sparse::impl::_check_dim(*self_, 2, "self");
