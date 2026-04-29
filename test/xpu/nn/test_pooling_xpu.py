@@ -41,6 +41,14 @@ with XPUPatchForImport(False):
     from test_pooling import TestAvgPool, TestPoolingNN, TestPoolingNNDeviceType
 
 
+# Resolve the currently-active accelerator so newly-added tests do not
+# hard-code "xpu" in their bodies; falls back to "xpu" when no accelerator
+# is reported (the file is XPU-port and only ever instantiated for XPU).
+device_type = (
+    acc.type if (acc := torch.accelerator.current_accelerator()) else "xpu"
+)
+
+
 def _test_avg_pool1d_ceil_mode(self):
     # Regression test for gh-36977
     x = 10 * torch.randn((1, 16, 4))
@@ -400,20 +408,23 @@ TestPoolingNNDeviceType.test_max_pool_nan_inf = _test_max_pool_nan_inf
 
 
 # Upstream test_pooling.py:test_adaptive_pooling_avg_nhwc_launch_config_backward
-# uses hard-coded device="cuda"; mirror with device="xpu".
-@largeTensorTest("12GB", device="xpu")
+# uses hard-coded device="cuda"; resolve the GPU device generically so the
+# port is not bound to a single backend.
+@largeTensorTest("12GB", device=device_type)
 def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
     input = torch.randint(
-        1, 10, (1, 32, 2**17 + 1, 32), dtype=torch.float32, device="xpu"
+        1, 10, (1, 32, 2**17 + 1, 32), dtype=torch.float32, device=device_type
     )
     input = input.contiguous(memory_format=torch.channels_last).requires_grad_()
-    grad = torch.randint(1, 10, (1, 32, 10, 32), dtype=torch.float32, device="xpu")
+    grad = torch.randint(
+        1, 10, (1, 32, 10, 32), dtype=torch.float32, device=device_type
+    )
 
-    pool = torch.nn.AdaptiveAvgPool2d((10, 32)).xpu()
+    pool = torch.nn.AdaptiveAvgPool2d((10, 32)).to(device_type)
 
     ref_input = input.detach().clone().contiguous().requires_grad_(True)
     ref_grad = grad.detach().clone().contiguous()
-    ref_pool = torch.nn.AdaptiveAvgPool2d((10, 32)).xpu()
+    ref_pool = torch.nn.AdaptiveAvgPool2d((10, 32)).to(device_type)
 
     out = pool(input)
     out.backward(grad)
@@ -432,15 +443,18 @@ TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward = (
 
 
 # Upstream test_pooling.py:test_adaptive_pooling_avg_nhwc_launch_config_forward
-# uses hard-coded device="cuda"; mirror with device="xpu".
-@largeTensorTest("12GB", device="xpu")
+# uses hard-coded device="cuda"; resolve the GPU device generically so the
+# port is not bound to a single backend.
+@largeTensorTest("12GB", device=device_type)
 def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
-    input = torch.randint(1, 10, (1, 32, 16, 16), dtype=torch.float32, device="xpu")
+    input = torch.randint(
+        1, 10, (1, 32, 16, 16), dtype=torch.float32, device=device_type
+    )
     input = input.contiguous(memory_format=torch.channels_last).requires_grad_()
-    pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).xpu()
+    pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).to(device_type)
 
     ref_input = input.detach().clone().contiguous().requires_grad_(True)
-    ref_pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).xpu()
+    ref_pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).to(device_type)
 
     out = pool(input)
     ref_out = ref_pool(ref_input)
@@ -455,11 +469,13 @@ TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward = (
 )
 
 
-# Upstream test_pooling.py:test_pool3d_large_size_int64 uses torch.cuda.synchronize();
-# mirror with torch.xpu.synchronize(). Body otherwise unchanged.
+# Upstream test_pooling.py:test_pool3d_large_size_int64 uses
+# torch.cuda.synchronize(); resolve sync via the test-supplied `device`
+# (set by instantiate_device_type_tests) so the body is not bound to a
+# single backend. Body otherwise unchanged.
 # Currently fails on XPU due to a max_pool3d fp16 numerical mismatch vs the
 # CPU fp32 reference; tracked in intel/torch-xpu-ops#3511.
-@largeTensorTest("18GB", device="xpu")
+@largeTensorTest("18GB", device=device_type)
 @largeTensorTest("180GB", "cpu")
 def _test_pool3d_large_size_int64(self, device):
     # See https://github.com/pytorch/pytorch/issues/52822
@@ -468,9 +484,9 @@ def _test_pool3d_large_size_int64(self, device):
     )
     y = torch.nn.functional.max_pool3d(x, 5)
     g = torch.randn_like(y, dtype=torch.half)
-    torch.xpu.synchronize()
+    torch.get_device_module(device).synchronize()
     y.backward(g)
-    torch.xpu.synchronize()
+    torch.get_device_module(device).synchronize()
 
     ref_x = x.detach().cpu().float()  # max_pool3d_cpu is not implemented for half
     ref_x.requires_grad = True
@@ -485,17 +501,20 @@ def _test_pool3d_large_size_int64(self, device):
 TestPoolingNNDeviceType.test_pool3d_large_size_int64 = _test_pool3d_large_size_int64
 
 
-# Upstream test_pooling.py:test_pooling_large uses hard-coded device="cuda" and
-# torch.cuda.synchronize(); mirror with xpu.
-@largeTensorTest("6GB", device="xpu")
+# Upstream test_pooling.py:test_pooling_large uses hard-coded device="cuda"
+# and torch.cuda.synchronize(); resolve both via the test-supplied `device`
+# (set by instantiate_device_type_tests) so the body is not bound to a
+# single backend.
+@largeTensorTest("6GB", device=device_type)
 def _test_pooling_large(self, device):
     def helper(pool):
         inp = torch.randn(
-            2**7 + 10, 2**8, 2**8, 2**8, dtype=torch.half, device="xpu"
+            2**7 + 10, 2**8, 2**8, 2**8, dtype=torch.half, device=device
         )
         self.assertTrue(inp.numel() > 2**31 - 1)
         pool(inp)
-        torch.xpu.synchronize()  # asserts test finishes normally without raising errors
+        # asserts test finishes normally without raising errors
+        torch.get_device_module(device).synchronize()
 
     helper(torch.nn.MaxPool2d(4, 4))
     helper(torch.nn.AvgPool2d(4, 4))
