@@ -85,7 +85,7 @@ skip_files_list = [
     "test_shape_ops_xpu.py",
     "test_sort_and_select_xpu.py",
     "test_sparse_csr_xpu.py",
-    "test_sparse_xpu.py",
+    # "test_sparse_xpu.py",
     "test_spectral_ops_xpu.py",
     "test_tensor_creation_ops_xpu.py",
     # "test_torch_xpu.py",
