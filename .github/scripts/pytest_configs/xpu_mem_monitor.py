@@ -1,21 +1,33 @@
-# xpu_mem_monitor.py - Background poller for `xpu-smi` GPU memory utilization.
-#
-# Public API:
-#   start(interval=3, timeout=60) -> Optional[str]
-#       Spawn a daemon thread that runs `xpu-smi dump -m 5 -n 1` every
-#       `interval` seconds and atomically rewrites a small snapshot file
-#       containing only the latest sample. Returns the log path, or None
-#       if `xpu-smi` is unavailable. Idempotent.
-#   stop() -> None
-#       Stop the poller and remove the snapshot file.
-#   attach(path) -> None
-#       Tell this process to read from an existing snapshot file (e.g. a
-#       worker inheriting the controller's log path via env).
-#   get_device_mem_util(device_id) -> Optional[float]
-#       Return the latest GPU memory utilization (%) for `device_id`
-#       (string), or None if the snapshot is unavailable / row missing.
-#   log_path() -> Optional[str]
-#       Current snapshot file path, or None.
+"""Background poller for ``xpu-smi`` GPU memory utilization.
+
+Two roles share this module:
+
+* **Writer** (xdist controller, or a non-xdist run): owns a daemon thread
+  that periodically runs ``xpu-smi dump ... -n 1`` and atomically rewrites
+  a small snapshot file (~100 B). Publishes its tile count via the
+  ``XPU_SMI_TILES`` env var so workers don't need to subprocess.
+* **Reader** (xdist workers): only call :func:`attach` then
+  :func:`get_max_mem_util`. Pure file read + regex; never spawns
+  subprocesses, never imports the installer module.
+
+Public API
+----------
+start(interval=3, timeout=60, cards=None) -> str | None
+    Start the writer. Returns the snapshot path, or ``None`` if
+    ``xpu-smi`` is unavailable. Idempotent.
+stop() -> None
+    Stop the writer (no-op for readers).
+attach(path) -> None
+    Bind this process to an existing snapshot file.
+get_max_mem_util(cards=None) -> tuple[int, float] | None
+    ``(card_id, util)`` with the highest GPU memory utilization across
+    ``cards`` (``None`` = every device/tile in the snapshot). Synthetic
+    card id matches ``card = dev * tiles + tile`` (or ``dev`` in
+    non-tile mode).
+log_path() -> str | None
+    Current snapshot file path, or ``None``.
+"""
+from __future__ import annotations
 
 import os
 import re
@@ -23,112 +35,169 @@ import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import suppress
+from pathlib import Path
+from typing import Iterable, Iterator
 
-from xpu_smi_install import ensure_xpu_smi
-
-# Matches an xpu-smi CSV row like:  "23:59:21.296,    0, 0.80"
+# Matches an xpu-smi CSV row, with or without a tile column:
+#   "23:59:21.296,    0, 80"        (device-only)
+#   "23:59:21.296,    0, 1, 80"     (device+tile)
 _ROW_RE = re.compile(
-    r'^\s*\d{1,2}:\d{2}:\d{2}\.\d+\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*$'
+    r"^\s*\d{1,2}:\d{2}:\d{2}\.\d+\s*,"
+    r"\s*(\d+)\s*,"
+    r"(?:\s*(\d+)\s*,)?"
+    r"\s*([0-9.]+)\s*$"
 )
+_TILE_RE = re.compile(r"Tile\s+(\d+)")
+_TILES_ENV = "XPU_SMI_TILES"
 
-# Module state -----------------------------------------------------------------
+# Module state (per process) ---------------------------------------------------
 
-_log_path = None         # snapshot file (writer or reader, both processes)
-_poller_thread = None    # only set in the process that owns the poller
-_poller_stop = None      # threading.Event to signal the poller to exit
-_interval = 3
-_timeout = 60
+_log_path: Path | None = None
+_poller_thread: threading.Thread | None = None
+_poller_stop: threading.Event | None = None
+_interval: float = 3.0
+_timeout: int = 60
+
+_tiles_per_device: int | None = None
+_tiles_lock = threading.Lock()
 
 
-def _log(msg):
-    sys.stderr.write(f"[xpu-mem] {msg}\n")
+def _log(msg: str) -> None:
+    print(f"[xpu-mem] {msg}", file=sys.stderr, flush=True)
 
 
-# Snapshot writer (controller side) --------------------------------------------
+# --- tile probing -------------------------------------------------------------
 
-def _take_snapshot():
-    """Run `xpu-smi dump -m 5 -n 1` once and return its stdout, or None."""
+def _probe_tiles_subprocess() -> int:
+    """Probe tiles-per-device via ``xpu-smi stats -d 0``. Writer-only."""
     try:
-        out = subprocess.check_output(
-            ['xpu-smi', 'dump', '-m', '5', '-n', '1'],
-            stderr=subprocess.DEVNULL,
-            timeout=_timeout,
+        r = subprocess.run(
+            ["xpu-smi", "stats", "-d", "0"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return 1
+    if r.returncode != 0:
+        return 1
+    return max(len({int(m.group(1)) for m in _TILE_RE.finditer(r.stdout)}), 1)
+
+
+def _get_tiles_per_device() -> int:
+    """Cached tiles-per-device. Workers read it from env; writers probe once."""
+    global _tiles_per_device
+    if _tiles_per_device is not None:
+        return _tiles_per_device
+    with _tiles_lock:
+        if _tiles_per_device is not None:
+            return _tiles_per_device
+        env_val = os.environ.get(_TILES_ENV, "")
+        if env_val.isdigit():
+            _tiles_per_device = max(int(env_val), 1)
+        else:
+            _tiles_per_device = _probe_tiles_subprocess()
+        return _tiles_per_device
+
+
+# --- snapshot writer ----------------------------------------------------------
+
+def _run_xpu_smi(args: list[str]) -> str | None:
+    try:
+        return subprocess.check_output(
+            ["xpu-smi", *args],
+            stderr=subprocess.DEVNULL, text=True, timeout=_timeout,
         )
     except (subprocess.SubprocessError, OSError) as e:
-        _log(f"snapshot failed: {e}")
+        _log(f"xpu-smi {' '.join(args)} failed: {e}")
         return None
-    return out.decode('utf-8', errors='ignore')
 
 
-def _atomic_write(path, text):
-    """Write `text` to `path` atomically (rename within the same dir)."""
-    dirname = os.path.dirname(path) or '.'
-    fd, tmp = tempfile.mkstemp(prefix='.xpu_smi_', suffix='.tmp', dir=dirname)
+def _take_snapshot() -> str | None:
+    tiles = _get_tiles_per_device()
+    if tiles > 1:
+        tile_arg = ",".join(str(t) for t in range(tiles))
+        return _run_xpu_smi(["dump", "-t", tile_arg, "-m", "5", "-n", "1"])
+    return _run_xpu_smi(["dump", "-m", "5", "-n", "1"])
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    fd, tmp_str = tempfile.mkstemp(prefix=".xpu_smi_", suffix=".tmp",
+                                   dir=str(path.parent))
+    tmp = Path(tmp_str)
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
         os.replace(tmp, path)
     except OSError as e:
         _log(f"snapshot write failed: {e}")
-        if os.path.exists(tmp):
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+        with suppress(OSError):
+            tmp.unlink(missing_ok=True)
 
 
-def _poller_loop(stop_event, path):
-    """Take a snapshot every `_interval` seconds and overwrite `path`."""
+def _poller_loop(stop_event: threading.Event, path: Path) -> None:
     while not stop_event.is_set():
-        snap = _take_snapshot()
+        try:
+            snap = _take_snapshot()
+        except Exception as e:  # noqa: BLE001 - never let the thread die
+            _log(f"poller iteration failed: {e!r}")
+            snap = None
         if snap:
             _atomic_write(path, snap)
         if stop_event.wait(_interval):
             return
 
 
-# Public API -------------------------------------------------------------------
+# --- public API ---------------------------------------------------------------
 
-def start(interval=3, timeout=60):
-    """Start the snapshot poller. Returns the log path, or None on failure."""
+def start(interval: float = 3, timeout: int = 60,
+          cards: Iterable[int] | None = None) -> str | None:
+    """Start the writer thread. Returns the snapshot path, or ``None``."""
     global _poller_thread, _poller_stop, _log_path, _interval, _timeout
 
     if _poller_thread is not None:
-        return _log_path
+        return str(_log_path) if _log_path else None
 
+    # Lazy import: only the writer process pulls in the installer module.
+    try:
+        from xpu_smi_install import ensure_xpu_smi
+    except ImportError as e:
+        _log(f"xpu_smi_install import failed: {e}")
+        return None
     if not ensure_xpu_smi():
         _log("xpu-smi unavailable; memory monitoring disabled")
         return None
 
-    _interval = interval
-    _timeout = timeout
+    _interval = max(float(interval), 0.1)
+    _timeout = max(int(timeout), 1)
 
-    path = None
+    tiles = _get_tiles_per_device()
+    os.environ[_TILES_ENV] = str(tiles)
+
     try:
-        fd, path = tempfile.mkstemp(prefix='xpu_smi_', suffix='.log')
+        fd, path_str = tempfile.mkstemp(prefix="xpu_smi_", suffix=".log")
         os.close(fd)
     except OSError as e:
         _log(f"failed to create snapshot file: {e}")
-        if path and os.path.exists(path):
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
         return None
 
-    _poller_stop = threading.Event()
-    _poller_thread = threading.Thread(
-        target=_poller_loop, args=(_poller_stop, path),
-        name='xpu-smi-poller', daemon=True,
+    path = Path(path_str)
+    stop_event = threading.Event()
+    thread = threading.Thread(
+        target=_poller_loop, args=(stop_event, path),
+        name="xpu-smi-poller", daemon=True,
     )
-    _poller_thread.start()
+    thread.start()
+    _poller_stop = stop_event
+    _poller_thread = thread
     _log_path = path
-    _log(f"started poller every {_interval}s, log={path}")
-    return path
+    cards_repr = list(cards) if cards is not None else "all"
+    _log(f"started poller every {_interval}s, tiles={tiles}, "
+         f"cards={cards_repr}, log={path}")
+    return str(path)
 
 
-def stop():
-    """Stop the poller (if owned by this process) and remove the log."""
+def stop() -> None:
+    """Stop the writer (if any) and remove its snapshot file."""
     global _poller_thread, _poller_stop, _log_path
 
     stop_event, _poller_stop = _poller_stop, None
@@ -140,45 +209,75 @@ def stop():
         thread.join(timeout=_timeout + 1)
 
     path, _log_path = _log_path, None
-    if path and os.path.exists(path):
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+    if path is not None:
+        with suppress(OSError):
+            path.unlink(missing_ok=True)
 
 
-def attach(path):
-    """Reader-side: bind this process to an already-running poller's log."""
+def attach(path: str | os.PathLike[str] | None) -> None:
+    """Reader-side: bind this process to an existing snapshot file."""
     global _log_path
-    _log_path = path or None
+    _log_path = Path(path) if path else None
 
 
-def log_path():
-    return _log_path
+def log_path() -> str | None:
+    return str(_log_path) if _log_path else None
 
 
-# Snapshot reader --------------------------------------------------------------
+# --- snapshot reader ----------------------------------------------------------
 
-def _read_snapshot(path):
+def _read_snapshot() -> str:
+    if _log_path is None:
+        return ""
     try:
-        with open(path, 'rb') as f:
-            return f.read().decode('utf-8', errors='ignore')
+        return _log_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return ''
+        return ""
 
 
-def get_device_mem_util(device_id):
-    """Return latest GPU memory utilization (%) for `device_id`, or None."""
-    if not _log_path or not os.path.exists(_log_path):
+def _iter_rows(text: str, tiles: int) -> Iterator[tuple[int, float]]:
+    """Yield ``(card_id, util)`` for each xpu-smi CSV row in ``text``."""
+    for line in text.splitlines():
+        if (m := _ROW_RE.match(line)) is None:
+            continue
+        row_dev, row_tile, val = m.group(1), m.group(2), m.group(3)
+        try:
+            dev, util = int(row_dev), float(val)
+        except ValueError:
+            continue
+        if tiles > 1:
+            if row_tile is None:
+                continue
+            with suppress(ValueError):
+                yield dev * tiles + int(row_tile), util
+        elif row_tile is None:
+            yield dev, util
+
+
+def _coerce_card_set(cards: Iterable[int] | None) -> set[int] | None:
+    if cards is None:
         return None
-    text = _read_snapshot(_log_path)
+    out: set[int] = set()
+    for c in cards:
+        with suppress(TypeError, ValueError):
+            out.add(int(c))
+    return out
+
+
+def get_max_mem_util(
+    cards: Iterable[int] | None = None,
+) -> tuple[int, float] | None:
+    """Return ``(card_id, util)`` with the highest utilization, or ``None``."""
+    text = _read_snapshot()
     if not text:
         return None
-    for line in reversed(text.splitlines()):
-        m = _ROW_RE.match(line)
-        if m and m.group(1) == device_id:
-            try:
-                return float(m.group(2))
-            except ValueError:
-                continue
-    return None
+    target = _coerce_card_set(cards)
+    if cards is not None and not target:
+        return None
+
+    rows = (
+        (card, util)
+        for card, util in _iter_rows(text, _get_tiles_per_device())
+        if target is None or card in target
+    )
+    return max(rows, key=lambda cu: cu[1], default=None)
