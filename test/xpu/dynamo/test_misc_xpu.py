@@ -32,6 +32,14 @@ import warnings
 import weakref
 from unittest.mock import patch
 
+# Make upstream `test/dynamo/utils.py` importable as `utils` for tests like
+# test_nested_function_resuming_with_correct_globals (its fallback
+# `from utils import outer_func` relies on test/dynamo being on sys.path,
+# which is true upstream but not when running from test/xpu/dynamo/).
+sys.path.append(
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "test", "dynamo"))
+)
+
 import numpy as np
 import torch
 import torch._dynamo.testing
