@@ -348,6 +348,124 @@ struct TwoShotAllGatherKernel {
   }
 };
 
+// ============================================================================
+// Fused two-shot all-reduce: RS + AG in a single kernel with three inlined
+// per-WG signal-pad barriers (pre / RS->AG mid / post).
+// ============================================================================
+// Key invariant: all ranks launch with identical (num_groups, num_threads),
+// so the (group_id, lid) -> v mapping is identical on every rank. A per-WG
+// signal exchange therefore guarantees that abs_elem written by RS on the
+// owner rank is visible to the same WG's AG read on every rank.
+//
+// Signal-pad layout for this kernel (per rank, in uint32 slots):
+//   [base + 0*Region ..) pre
+//   [base + 1*Region ..) mid
+//   [base + 2*Region ..) post
+// where Region = kTwoShotMaxNumGroups * kWorldSize.
+// kFusedTwoShotSignalBaseU32 sits beyond the fused one_shot region
+// [512, 512+2*24*8) = [512, 896), so the two paths can coexist.
+constexpr int kFusedTwoShotSignalBaseU32 = 1024;
+
+template <typename scalar_t, int kWorldSize>
+struct FusedTwoShotAllReduceSumKernel {
+  static constexpr int kN = elems_per_vec<scalar_t>();
+  using Vec = VecT<scalar_t, kN>;
+
+  scalar_t** peer_ptrs;
+  scalar_t* self_ptr;
+  uint32_t** signal_pads;
+  int64_t shard_numel;
+  int64_t total_numel;
+  int my_rank;
+
+  static inline uint32_t* slot_of(
+      uint32_t** signal_pads,
+      int owner_rank,
+      int region,
+      int group_id,
+      int src_rank) {
+    const int64_t region_off =
+        (int64_t)region * kTwoShotMaxNumGroups * kWorldSize;
+    return signal_pads[owner_rank] + kFusedTwoShotSignalBaseU32 + region_off +
+        (int64_t)group_id * kWorldSize + src_rank;
+  }
+
+  inline void wg_barrier(sycl::nd_item<1> item, int region) const {
+    // Local fence: all threads in this WG must finish their device-memory
+    // writes before any thread in this WG signals peers.
+    item.barrier(sycl::access::fence_space::local_space);
+
+    const auto lid = item.get_local_id(0);
+    const auto group_id = item.get_group(0);
+    if (lid < (size_t)kWorldSize) {
+      int peer = static_cast<int>(lid);
+      if (peer != my_rank) {
+        uint32_t* put_addr = slot_of(
+            signal_pads, peer, region, group_id, my_rank);
+        uint32_t* wait_addr = slot_of(
+            signal_pads, my_rank, region, group_id, peer);
+        ::c10d::symmetric_memory::put_signal<
+            std::memory_order_release>(put_addr);
+        ::c10d::symmetric_memory::wait_signal<
+            std::memory_order_acquire>(wait_addr);
+      }
+    }
+    // Gate non-barrier threads on the signal exchange. Local fence is OK
+    // because put/wait already issue system-scope atomic_fence internally.
+    item.barrier(sycl::access::fence_space::local_space);
+  }
+
+  void operator()(sycl::nd_item<1> item) const {
+    const int64_t tid = static_cast<int64_t>(item.get_global_linear_id());
+    const int64_t stride = static_cast<int64_t>(item.get_global_range(0));
+    const int64_t vec_total = total_numel / kN;
+
+    // pre-barrier: all peers have finished filling their input symm buffers.
+    wg_barrier(item, /*region=*/0);
+
+    // RS phase: only the owner of each abs_elem reduces across peers and
+    // writes to its own buffer (self).
+    for (int64_t v = tid; v < vec_total; v += stride) {
+      const int64_t abs_elem = v * kN;
+      int owner = static_cast<int>(abs_elem / shard_numel);
+      if (owner >= kWorldSize) owner = kWorldSize - 1;
+      if (owner == my_rank) {
+        Vec acc = *reinterpret_cast<const Vec*>(peer_ptrs[0] + abs_elem);
+#pragma unroll
+        for (int p = 1; p < kWorldSize; ++p) {
+          Vec rhs = *reinterpret_cast<const Vec*>(peer_ptrs[p] + abs_elem);
+#pragma unroll
+          for (int i = 0; i < kN; ++i) {
+            acc.data[i] = static_cast<scalar_t>(
+                static_cast<float>(acc.data[i]) +
+                static_cast<float>(rhs.data[i]));
+          }
+        }
+        *reinterpret_cast<Vec*>(self_ptr + abs_elem) = acc;
+      }
+    }
+
+    // mid-barrier: RS writes on every owner are visible to AG readers.
+    wg_barrier(item, /*region=*/1);
+
+    // AG phase: read reduced shard from peer[owner] for elements not owned
+    // by this rank.
+    for (int64_t v = tid; v < vec_total; v += stride) {
+      const int64_t abs_elem = v * kN;
+      int owner = static_cast<int>(abs_elem / shard_numel);
+      if (owner >= kWorldSize) owner = kWorldSize - 1;
+      if (owner != my_rank) {
+        Vec val = *reinterpret_cast<const Vec*>(peer_ptrs[owner] + abs_elem);
+        *reinterpret_cast<Vec*>(self_ptr + abs_elem) = val;
+      }
+    }
+
+    // post-barrier: prevent peers from overwriting their buffers before we
+    // have finished reading them.
+    wg_barrier(item, /*region=*/2);
+  }
+};
+
 namespace {
 
 // ============================================================================
@@ -464,6 +582,36 @@ static void launch_two_shot_all_gather_self(
 
   TwoShotAllGatherKernel<scalar_t> ker{
       peer_ptrs, self_ptr, shard_numel, total_numel, world_size};
+  sycl_kernel_submit(
+      num_groups * num_threads, num_threads, q, ker);
+}
+
+template <typename scalar_t, int kWorldSize>
+static void launch_fused_two_shot_all_reduce_sum(
+    scalar_t** peer_ptrs,
+    scalar_t* self_ptr,
+    uint32_t** signal_pads,
+    int my_rank,
+    int64_t shard_numel,
+    int64_t total_numel,
+    sycl::queue& q) {
+  constexpr int kN = elems_per_vec<scalar_t>();
+  int64_t num_groups = 0, num_threads = 0;
+  init_launch_cfg_1d(
+      total_numel,
+      kN,
+      kTwoShotMaxNumGroups,
+      kTwoShotMaxNumThreads,
+      num_groups,
+      num_threads);
+  // Need at least kWorldSize threads per WG so each non-self peer gets a
+  // dedicated thread for the inlined signal exchange.
+  if (num_threads < kWorldSize) {
+    num_threads = kWorldSize;
+  }
+
+  FusedTwoShotAllReduceSumKernel<scalar_t, kWorldSize> ker{
+      peer_ptrs, self_ptr, signal_pads, shard_numel, total_numel, my_rank};
   sycl_kernel_submit(
       num_groups * num_threads, num_threads, q, ker);
 }
@@ -695,12 +843,50 @@ at::Tensor two_shot_all_reduce_out_impl(
       elems_per_vec_val;
   int64_t shard_start = shard_numel * rank;
 
-  sycl::queue& q = at::xpu::getCurrentXPUStream().queue();
+  auto stream = at::xpu::getCurrentXPUStream();
+  sycl::queue& q = stream.queue();
 
   void** peer_ptrs_raw = symm_mem->get_buffer_ptrs_dev();
   void* self_ptr_raw = symm_mem->get_buffer_ptrs()[rank];
+  uint32_t** signal_pads =
+      reinterpret_cast<uint32_t**>(symm_mem->get_signal_pad_ptrs_dev());
 
-  symm_mem->barrier(0, /*timeout_ms=*/0);
+  // Fused single-kernel two-shot (RS + AG with 3 inlined per-WG signal
+  // barriers) is the default. Set USE_FUSED_TWOSHOT=0 to fall back to the
+  // 3-host-barrier + 2-kernel path.
+  static const bool kUseFusedTwoShot = []() {
+    const char* env = std::getenv("USE_FUSED_TWOSHOT");
+    return !(env && env[0] == '0');
+  }();
+
+  if (kUseFusedTwoShot) {
+    XPU_DISPATCH_FLOAT_HALF_BF16(dtype, "two_shot_all_reduce(xpu)", [&]() {
+      scalar_t** peer_ptrs = reinterpret_cast<scalar_t**>(peer_ptrs_raw);
+      scalar_t* self_ptr = reinterpret_cast<scalar_t*>(self_ptr_raw);
+      XPU_DISPATCH_WORLD_SIZES(world_size, [&]() {
+        launch_fused_two_shot_all_reduce_sum<scalar_t, k_world_size>(
+            peer_ptrs,
+            self_ptr,
+            signal_pads,
+            rank,
+            shard_numel,
+            numel,
+            q);
+      });
+    });
+    if (!output.is_same(input)) {
+      output.copy_(input);
+    }
+    return output;
+  }
+
+  // Submit device-side signal barriers directly to the same in-order queue
+  // instead of going through symm_mem->barrier(), which may fall back to the
+  // XCCL allreduce host-barrier (~30-100 us per call in this docker build).
+  // Use channels 1/2/3 to avoid clashing with channel 0 used by the fused
+  // one_shot kernel and the host-side symm_mem->barrier(channel=0).
+  c10d::symmetric_memory::barrier_impl_xpu(
+      signal_pads, /*channel=*/1, rank, world_size, /*timeout_ms=*/0, stream);
   XPU_DISPATCH_FLOAT_HALF_BF16(dtype, "two_shot_all_reduce(xpu)", [&]() {
     scalar_t** peer_ptrs = reinterpret_cast<scalar_t**>(peer_ptrs_raw);
     scalar_t* self_ptr = reinterpret_cast<scalar_t*>(self_ptr_raw);
@@ -716,14 +902,16 @@ at::Tensor two_shot_all_reduce_out_impl(
     }
   });
 
-  symm_mem->barrier(0, /*timeout_ms=*/0);
+  c10d::symmetric_memory::barrier_impl_xpu(
+      signal_pads, /*channel=*/2, rank, world_size, /*timeout_ms=*/0, stream);
   XPU_DISPATCH_FLOAT_HALF_BF16(dtype, "two_shot_all_reduce(xpu)", [&]() {
     scalar_t** peer_ptrs = reinterpret_cast<scalar_t**>(peer_ptrs_raw);
     scalar_t* self_ptr = reinterpret_cast<scalar_t*>(self_ptr_raw);
     launch_two_shot_all_gather_self<scalar_t>(
         peer_ptrs, self_ptr, shard_numel, numel, world_size, q);
   });
-  symm_mem->barrier(0, /*timeout_ms=*/0);
+  c10d::symmetric_memory::barrier_impl_xpu(
+      signal_pads, /*channel=*/3, rank, world_size, /*timeout_ms=*/0, stream);
 
   if (!output.is_same(input)) {
     output.copy_(input);
