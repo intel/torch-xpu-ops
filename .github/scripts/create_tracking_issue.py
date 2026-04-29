@@ -383,7 +383,7 @@ def format_push_runs_timeline(all_runs_data):
     ]
     for run in runs:
         sha = run["head_sha"][:12]
-        conclusion = run["conclusion"]
+        conclusion = run.get("conclusion") or ""
         icon = "✅" if conclusion == "success" else "❌" if conclusion == "failure" else "❓"
         status = conclusion.upper() if conclusion else "?"
         created = run.get("created_at", "?")
@@ -516,7 +516,7 @@ def main():
         update_issue(existing, body)
         issue_number = existing
     else:
-        labels = ["pytorch-ci-failure"]
+        labels = ["pytorch-ci-failure", "agent:blocked", "ai_generated"]
         if data["status"] != "ALL_PASS":
             labels.append("has-failures")
         if n_new > 0:

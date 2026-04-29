@@ -99,9 +99,11 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     ])
 
     # Machine-readable reproduce instructions (for automation)
+    # Store full test IDs for auto-close matching (test_file::test_name format)
     repro_data = {
         "commit_sha": commit_sha,
         "test_file": test_file,
+        "test_ids": test_names[:20],
         "test_names": test_method_names[:20],
         "failure_type": f"{tag}_FAILURE",
         "repro_commands": [
@@ -124,7 +126,7 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
 
     body = "\n".join(body_lines)
 
-    labels = ["pytorch-ci-failure", "needs-repro"]
+    labels = ["pytorch-ci-failure", "agent:blocked", "ai_generated"]
     if is_new:
         labels.append("new-failure")
 
@@ -247,7 +249,8 @@ def _extract_tests_from_sub_issue(body):
         block = re.sub(r'\n?```$', '', block)
         try:
             repro = json.loads(block)
-            return repro.get("test_names", [])
+            # Prefer full test IDs for matching; fallback to method names
+            return repro.get("test_ids") or repro.get("test_names", [])
         except json.JSONDecodeError:
             pass
 
