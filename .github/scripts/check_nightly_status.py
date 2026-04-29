@@ -58,7 +58,7 @@ def get_latest_xpu_runs(days=1, event=None):
 
     url = f"{API_BASE}/actions/workflows/{XPU_WORKFLOW_ID}/runs"
     params = {
-        "per_page": 30,
+        "per_page": 100,
         "status": "completed",
         "created": f">={since}",
     }
