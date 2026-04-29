@@ -1,125 +1,201 @@
-name: Get Runner Infos
+name: Get Runner Info
+description: >-
+  Detect runner identity, enumerate XPU devices, distribute CPUs/GPUs,
+  and output numactl/pytest sharding arguments.
+
+inputs:
+  ut_name:
+    required: false
+    default: ''
+    description: UT name — only "xpu_distributed" changes pytest strategy
 
 outputs:
   runner_id:
     value: ${{ steps.runner.outputs.runner_id }}
+    description: Runner ID (RUNNER_NAME without trailing index)
   user_id:
     value: ${{ steps.runner.outputs.user_id }}
+    description: UID of the current user
   render_id:
     value: ${{ steps.runner.outputs.render_id }}
+    description: GID of the render group
   hostname:
     value: ${{ steps.runner.outputs.hostname }}
+    description: Machine hostname
   ZE_AFFINITY_MASK:
     value: ${{ steps.cpu-gpu.outputs.ZE_AFFINITY_MASK }}
+    description: Comma-separated active GPU IDs
   numactl_args:
     value: ${{ steps.cpu-gpu.outputs.numactl_args }}
+    description: Semicolon-delimited numactl commands per GPU
   pytest_extra_args:
     value: ${{ steps.cpu-gpu.outputs.pytest_extra_args }}
+    description: pytest-xdist --tx args per GPU
 
 runs:
   using: composite
   steps:
-    - name: Get runner id
-      shell: bash -xe {0}
+    # ── Cleanup ─────────────────────────────────────────────────────────────
+    - name: Cleanup and fix permissions
+      shell: bash -xeo pipefail {0}
+      run: |
+        # Docker prune
+        if command -v docker &>/dev/null && docker info &>/dev/null; then
+          docker system prune -af || true
+        else
+          echo "::error::Docker not available"
+          exit 1
+        fi
+
+        # Fix ownership
+        ME="$(id -u):$(id -g)"
+        sudo chown "${ME}" "${HOME}" -R 2>/dev/null || true
+        sudo chown "${ME}" . -R 2>/dev/null || true
+
+        if [[ -n "${RUNNER_WORKSPACE}" && -d "${RUNNER_WORKSPACE}/.." ]]; then
+          cd "${RUNNER_WORKSPACE}/.."
+          [[ "$(pwd)" != "/" ]] && sudo chown "${ME}" . -R 2>/dev/null || true
+        fi
+
+        # For dataset caching and other shared resources
+        sudo mkdir -p /opt/xpu-test/.cache || true
+        sudo chmod 775 /opt/ -R 2>/dev/null || true
+        sudo chown "${ME}" /opt/xpu-test -R 2>/dev/null || true
+        sudo chmod 1777 /tmp/ -R 2>/dev/null || true
+        echo "Cleanup completed"
+
+    # ── Identity ────────────────────────────────────────────────────────────
+    - name: Resolve runner identity
       id: runner
+      shell: bash -xeo pipefail {0}
       run: |
-        # get test runner
-        echo "runner_id=$(echo ${RUNNER_NAME} |sed 's/\-[0-9]$//')" |tee -a ${GITHUB_OUTPUT}
-        echo "user_id=$(id -u)" |tee -a ${GITHUB_OUTPUT}
-        echo "render_id=$(getent group render |cut -d: -f3)" |tee -a ${GITHUB_OUTPUT}
-        echo "hostname=$(hostname)" |tee -a ${GITHUB_OUTPUT}
-    - name: Show runner info
-      shell: bash -xe {0}
+        runner_id="${RUNNER_NAME%-[0-9]}"
+        render_id=""
+        getent group render &>/dev/null && render_id=$(getent group render | cut -d: -f3)
+
+        echo "runner_id=${runner_id}"   >> "$GITHUB_OUTPUT"
+        echo "user_id=$(id -u)"        >> "$GITHUB_OUTPUT"
+        echo "render_id=${render_id}"   >> "$GITHUB_OUTPUT"
+        echo "hostname=$(hostname)"     >> "$GITHUB_OUTPUT"
+
+    # ── System info ─────────────────────────────────────────────────────────
+    - name: Show system information
+      shell: bash -xeo pipefail {0}
       run: |
-        # show host info
         lscpu
-        lshw -C display
+        command -v lshw &>/dev/null && lshw -C display 2>/dev/null || true
         free -h
         df -h
-        cat /etc/os-release
+        [[ -f /etc/os-release ]] && cat /etc/os-release
         uname -a
-        dpkg -l |grep -E 'intel-opencl-icd|libze-dev|libigc-dev' || true
-        # clinfo and reboot system to recover if hang
-        timeout 120 clinfo --list || sudo reboot
-    - name: CPU frequency check
-      shell: bash -xe {0}
+        command -v dpkg &>/dev/null && dpkg -l | grep -iE 'intel|libze|libigc' || true
+
+        # clinfo is required — fail early if missing or stuck
+        command -v clinfo &>/dev/null || { echo "::error::clinfo not installed"; exit 1; }
+        timeout 120 clinfo --list || { echo "::error::clinfo failed"; exit 1; }
+
+    # ── CPU governor ────────────────────────────────────────────────────────
+    - name: Optimize CPU frequency
+      shell: bash -xeo pipefail {0}
       run: |
-        scaling_governor=$(cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor |sort |uniq)
-        if [ $(sudo -n true > /dev/null 2>&1 && echo $? || echo $?) -eq 0 ];then
-            if [ "${scaling_governor}" != "performance" ];then
-                # set frequency governor to performance mode
-                sudo apt-get update
-                sudo apt-get install -y linux-tools-common linux-tools-$(uname -r) linux-cloud-tools-$(uname -r)
-                sudo cpupower set -b 0
-                sudo cpupower frequency-set -g performance
+        gov=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo unknown)
+        echo "Current governor: ${gov}"
+
+        if sudo -n true 2>/dev/null; then
+          if [[ "${gov}" != "performance" && "${gov}" != "unknown" ]]; then
+            if ! command -v cpupower &>/dev/null; then
+              sudo apt-get update -qq && sudo apt-get install -yqq \
+                linux-tools-common linux-tools-"$(uname -r)" \
+                linux-cloud-tools-"$(uname -r)" || { echo "::error::cpupower install failed"; exit 1; }
             fi
-            # clean cache
-            sync; sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
-        else
-            echo "[INFO] You do NOT have ROOT permission to set system config."
-            echo "       The frequency governor is ${scaling_governor}."
-        fi
-    - name: Distribute CPUs and GPUs evently
-      id: cpu-gpu
-      shell: bash -xe {0}
-      run: |
-        cpu_num="$(lscpu |grep -E 'Core\(s\) per socket:|Socket\(s\):' |awk 'BEGIN{sum=1}{sum*=$NF}END{printf sum}')"
-        total_xpu_num="$(ls /sys/class/drm/card*/device/enable |wc -l |awk '{if($1 > 8){n=8}else{n=$1};print n}')"
-        online_xpu_num="$(clinfo --list |awk 'BEGIN{gpu=0;}{
-          if(gpu==1 && $0~/Platform/){gpu=0}; if(gpu==1){print $0}; if($0~/Platform.*Graphics/){gpu=1}
-        }' |wc -l)"
-        # check the online GPUs
-        if [ ${online_xpu_num} -ne ${total_xpu_num} ];then
-          echo "[Warning] Some cards are offline!"
-        fi
-        cpus_per_xpu="$(echo |awk -v c="${cpu_num}" -v x="${total_xpu_num}" '{printf c/x}')"
-        # get all online GPUs
-        xpu_list=""
-        for id in $(seq 0 ${total_xpu_num})
-        do
-          xpu_detected="$(ZE_AFFINITY_MASK=$id clinfo --list |grep "Graphics" || true)"
-          if [ "${xpu_detected}" != "" ] && [[ "${xpu_detected}" != *" UHD "* ]];then
-            xpu_list+="${id},"
+            sudo cpupower set -b 0
+            sudo cpupower frequency-set -g performance
           fi
-        done
-        export ZE_AFFINITY_MASK=${xpu_list%,*}
-        numactl_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
-          split(z, xpu_list, ",");
-          if (length(xpu_list) > 1) {
-            for (i=0;i<length(xpu_list);i++) {
-              printf(" ZE_AFFINITY_MASK=%d OMP_NUM_THREADS=%d numactl -l -C %d-%d ;", xpu_list[i+1], cx, i*cx, (i+1)*cx-1);
-            }
-          }else {
-            printf(" numactl -l ");
-          }
-        }')"
-        if [ "${{ inputs.ut_name }}" == "xpu_distributed" ];then
-          pytest_extra_args="$(python ${{ github.workspace }}/.github/scripts/check-topology.py)"
-        else
-          pytest_extra_args="$(echo |awk -v z="${ZE_AFFINITY_MASK}" -v cx="${cpus_per_xpu}" '{
-            split(z, xpu_list, ",");
-            if (length(xpu_list) > 1) {
-              for (i=0;i<length(xpu_list);i++) {
-                ze = xpu_list[i+1];
-                printf(" --tx popen//env:ZE_AFFINITY_MASK=%d//env:OMP_NUM_THREADS=%d//python=\"numactl -l -C %d-%d python\"",
-                        ze, cx, i*cx, (i+1)*cx-1);
-              }
-            }else {
-              printf(" -n 1 ");
-            }
-          }')"
+          sync && sudo sh -c "echo 3 > /proc/sys/vm/drop_caches" || true
         fi
-        echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}" |tee -a ${GITHUB_OUTPUT}
-        echo "numactl_args=${numactl_args}" |tee -a ${GITHUB_OUTPUT}
-        echo "pytest_extra_args=${pytest_extra_args}" |tee -a ${GITHUB_OUTPUT}
-    - name: Cleanup host
-      shell: bash -xe {0}
+
+    # ── CPU / GPU distribution ──────────────────────────────────────────────
+    - name: Distribute CPUs and GPUs
+      id: cpu-gpu
+      shell: bash -xeo pipefail {0}
       run: |
-        # clean docker cache
-        docker system prune -af || true
-        # fix potential permission issue
-        sudo chown $(id -u):$(id -g) ${HOME} /tmp ./ -R
-        cd ${RUNNER_WORKSPACE}/..
-        if [ "${PWD}" != "/" ];then
-          sudo chown $(id -u):$(id -g) . -R || true
+        # ── helpers ─────────────────────────────────────────────────────────
+        get_cpu_count() {
+          local cps=$(lscpu | awk '/^Core\(s\) per socket:/{print $NF}')
+          local sck=$(lscpu | awk '/^Socket\(s\):/{print $NF}')
+          [[ "${cps}" =~ ^[0-9]+$ && "${sck}" =~ ^[0-9]+$ ]] || { echo "::error::Failed to parse lscpu output"; return 1; }
+          echo $((cps * sck))
+        }
+
+        get_xpu_count() {
+          command -v lspci &>/dev/null || { echo 0; return; }
+          lspci -nn |grep  -Ei 'VGA|DISPLAY' |grep 8086 |wc -l
+        }
+
+        get_active_xpu_list() {
+          local n=$1 list=""
+          for ((id=0; id<n; id++)); do
+            local output
+            output=$(ZE_AFFINITY_MASK="${id}" timeout 60 clinfo --list 2>/dev/null) || { echo "::warning::GPU ${id}: clinfo failed or timed out, skipping"; continue; }
+            if echo "$output" | grep -q "Graphics" && \
+               ! echo "$output" | grep -q " UHD "; then
+              list+="${id},"
+            else
+              echo "::notice::GPU ${id}: not a discrete GPU, skipping"
+            fi
+          done
+          echo "${list%,}"
+        }
+
+        # ── detect ──────────────────────────────────────────────────────────
+        cpu_num=$(get_cpu_count)
+        xpu_num=$(get_xpu_count)
+
+        echo "CPUs: ${cpu_num}  XPUs: ${xpu_num}"
+        [[ "${xpu_num}" -eq 0 ]] && echo "::warning::No online XPU devices"
+
+        # Check numactl availability
+        command -v numactl &>/dev/null || { echo "::error::numactl not installed"; exit 1; }
+
+        ZE_AFFINITY_MASK=$(get_active_xpu_list "${xpu_num}")
+        [[ -z "${ZE_AFFINITY_MASK}" ]] && echo "::error::No active XPU devices found" && exit 1
+        IFS=',' read -ra gpus <<< "${ZE_AFFINITY_MASK}"
+        active_num=${#gpus[@]}
+        n=${NUM_GPUS:-$xpu_num}
+        if (( NUM_GPUS > active_num )); then
+          echo "::warning::Requested ${n} GPUs, but only ${active_num} active. Using ${active_num} GPUs."
         fi
+
+        cpus_per_xpu=$(( n > 0 ? cpu_num / n : cpu_num ))
+        echo "Active XPUs: ${active_num}  CPUs/XPU: ${cpus_per_xpu}"
+
+        # ── numactl args (semicolon-delimited, one per GPU) ────────────────
+        if (( n > 1 )); then
+          numactl_args=""
+          for ((i=0; i<n; i++)); do
+            s=$((i * cpus_per_xpu)); e=$(((i+1) * cpus_per_xpu - 1))
+            numactl_args+=" ZE_AFFINITY_MASK=${gpus[i]} OMP_NUM_THREADS=${cpus_per_xpu} numactl -l -C ${s}-${e} ;"
+          done
+          numactl_args="${numactl_args%;}"
+        else
+          numactl_args="numactl -l"
+        fi
+
+        # ── pytest args ─────────────────────────────────────────────────────
+        if [[ "${{ inputs.ut_name }}" == "xpu_distributed" ]]; then
+          topo_script="${{ github.workspace }}/.github/scripts/check-topology.py"
+          pytest_extra_args=""
+          [[ -f "${topo_script}" ]] && pytest_extra_args=$(python "${topo_script}")
+        elif (( n > 1 )); then
+          pytest_extra_args=""
+          for ((i=0; i<n; i++)); do
+            s=$((i * cpus_per_xpu)); e=$(((i+1) * cpus_per_xpu - 1))
+            pytest_extra_args+=" --tx popen//env:ZE_AFFINITY_MASK=${gpus[i]}//env:OMP_NUM_THREADS=${cpus_per_xpu}//python=\"numactl -l -C ${s}-${e} python\""
+          done
+        else
+          pytest_extra_args="-n 1"
+        fi
+
+        echo "ZE_AFFINITY_MASK=${ZE_AFFINITY_MASK}"     >> "$GITHUB_OUTPUT"
+        echo "numactl_args=${numactl_args}"              >> "$GITHUB_OUTPUT"
+        echo "pytest_extra_args=${pytest_extra_args}"     >> "$GITHUB_OUTPUT"

@@ -19,7 +19,7 @@ jobs:
       && (startsWith(github.event.comment.body, '/merge -f') || startsWith(github.event.comment.body, '/merge'))
     steps:
       - name: Get PR Info
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         id: prinfo
         with:
           script: |
@@ -34,7 +34,7 @@ jobs:
             core.setOutput('mergeable_state', pr.data.mergeable_state);
 
       - name: Check Reviews
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         id: reviews
         with:
           script: |
@@ -65,7 +65,7 @@ jobs:
 
       - name: Check CI Status
         if: ${{ !startsWith(github.event.comment.body, '/merge -f') }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         id: status
         with:
           script: |
@@ -119,7 +119,7 @@ jobs:
             }
 
       - name: Check Merge Conflicts
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         id: conflict
         with:
           script: |
@@ -156,7 +156,7 @@ jobs:
             }
 
       - name: Merge PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           FORCE_MERGE: ${{ startsWith(github.event.comment.body, '/merge -f') }}
         with:

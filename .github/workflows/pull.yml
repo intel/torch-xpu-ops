@@ -1,45 +1,36 @@
-name: pull
+name: Pull Request
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-      - labeled
-      - unlabeled
-    branches:
-      - main
-      - release/*
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    branches: [main, release/**]
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  # Lint
   preci-lint-check:
-    if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
       issues: write
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-        with:
-          path: torch-xpu-ops
-      - name: Run lint check
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run basic lint checks
         run: |
           export ADDITIONAL_LINTRUNNER_ARGS="--skip CLANGTIDY,CLANGFORMAT,MERGE_CONFLICTLESS_CSV --all-files"
-          cd ./torch-xpu-ops
           bash .github/scripts/lintrunner.sh
-      - name: Run lint check with Clang
+
+      - name: Run clang format checks
         run: |
-          cd ./torch-xpu-ops
           export ADDITIONAL_LINTRUNNER_ARGS="--take CLANGFORMAT --all-files"
           bash .github/scripts/lintrunner.sh
       - name: Check reproducer exists for AI-generated PR
@@ -82,21 +73,27 @@ jobs:
             exit 1
           fi
 
-  conditions-filter-win:
+  # Resolve test matrix from labels / path changes
+  preci-matrix:
     if: >-
-      ${{ github.repository_owner == 'intel' && github.event.pull_request.draft == false 
-      && !contains(github.event.pull_request.labels.*.name, 'disable_all') 
-      && !contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+      github.repository_owner == 'intel' &&
+      ! github.event.pull_request.draft &&
+      ! contains(github.event.pull_request.labels.*.name, 'disable_all')
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
-      src_changed: ${{ steps.check-files.outputs.src_changed }}
+      ut_list:  ${{ steps.matrix.outputs.ut_list }}
+      e2e_list: ${{ steps.matrix.outputs.e2e_list }}
     steps:
-      - uses: dorny/paths-filter@v3
-        id: check-files
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Detect path changes
+        id: filter
+        uses: dorny/paths-filter@v4
         with:
           filters: |
-            src_changed: 
+            src_changed:
               - 'cmake/**'
               - 'tools/**'
               - 'src/**.cmake'
@@ -107,106 +104,55 @@ jobs:
               - 'src/CMakeLists.txt'
               - '.github/workflows/_windows_ut.yml'
 
-  linux-build:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_all') }}
-    needs: [preci-lint-check]
-    secrets: inherit
-    strategy:
-      fail-fast: false
-      matrix:
-        build: [build]
-    uses: ./.github/workflows/_linux_build.yml
-    with:
-      runner: pvc_rolling
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      - name: Compute ut and e2e suite lists
+        id: matrix
+        env:
+          disable_ut: ${{ contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
+          disable_e2e: ${{ contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
+          disable_distributed: ${{ contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
+          disable_win: ${{ contains(github.event.pull_request.labels.*.name, 'disable_win') }}
+          src_changed: ${{ steps.filter.outputs.src_changed }}
+        run: |
+          # ── unit-test suites ──
+          ut_list="basic,op_ut"
+          if [[ "$src_changed" == "true" && "$disable_win" != "true" ]]; then
+            ut_list+=",windows"
+          fi
+          if [[ "$disable_distributed" != "true" ]]; then
+            ut_list+=",xpu_distributed"
+          fi
+          if [[ "$disable_ut" == "true" ]]; then
+            ut_list=""
+          fi
 
-  linux-ut:
-    needs: [linux-build]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_ut') }}
-    secrets: inherit
+          # ── e2e suites ──
+          if [[ "$disable_e2e" == "true" ]]; then
+            e2e_list=""
+          else
+            e2e_list="huggingface,timm_models,torchbench"
+          fi
+
+          echo "ut_list=${ut_list}"   >> "$GITHUB_OUTPUT"
+          echo "e2e_list=${e2e_list}" >> "$GITHUB_OUTPUT"
+
+  # Run tests
+  preci-tests:
+    needs: [preci-lint-check, preci-matrix]
+    if: >-
+      needs.preci-matrix.outputs.ut_list  != '' ||
+      needs.preci-matrix.outputs.e2e_list != ''
     permissions:
       contents: read
-      issues: write
-    strategy:
-      fail-fast: false
-      matrix:
-        ut_name: [op_ut,basic]
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: pvc_rolling
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
-      ut: ${{ matrix.ut_name }}
-
-  linux-distributed:
-    needs: [linux-build]
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_distributed') }}
-    secrets: inherit
-    permissions:
-      contents: read
-      issues: write
-    strategy:
-      fail-fast: false
-      matrix:
-        ut_name: [xpu_distributed]
-    uses: ./.github/workflows/_linux_ut.yml
-    with:
-      runner: distributed
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
-      ut: ${{ matrix.ut_name }}
-
-  linux-e2e:
-    name: linux-e2e
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable_e2e') }}
-    secrets: inherit
-    needs: [linux-build]
-    strategy:
-      fail-fast: false
-      matrix:
-        suite: [huggingface, timm_models, torchbench]
-    uses: ./.github/workflows/_linux_e2e.yml
-    with:
-      runner: pvc_rolling
-      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      suite: ${{ matrix.suite }}
-  linux-e2e-summary:
-    name: linux-e2e-summary
-    needs: [linux-e2e]
-    if: ${{ ! cancelled() && ! endsWith(needs.linux-e2e.result, 'ed') }}
-    permissions:
       actions: read
-      contents: read
+      checks: write
       issues: write
-      pull-requests: write
-    uses: ./.github/workflows/_linux_e2e_summary.yml
-    with:
-      test_type: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'wheel-cicd' || 'build-cicd' }}
-
-  reproducer-test:
-    needs: [linux-build]
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
     secrets: inherit
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    uses: ./.github/workflows/_linux_reproducer.yml
+    uses: ./.github/workflows/_test_call.yml
     with:
       runner: pvc_rolling
       pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
-      torch_xpu_ops: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'pinned' || 'main' }}
-
-  windows:
-    name: windows
-    needs: [conditions-filter-win, preci-lint-check]
-    secrets: inherit
-    uses: ./.github/workflows/_windows_ut.yml
-    with:
-      ut: op_extended,test_xpu
-      runner: Windows_CI
-      build_runner: Windows_CI_Build
-      src_changed: ${{ needs.conditions-filter-win.outputs.src_changed }}
-      has_label: ${{ contains(github.event.pull_request.labels.*.name, 'windows_ci')}}
-      pytorch: ${{ contains(github.event.pull_request.labels.*.name, 'disable_build') && 'nightly_wheel' || github.base_ref }}
+      torch_xpu_ops: cicd
+      python: '3.10'
+      ut: ${{ needs.preci-matrix.outputs.ut_list }}
+      suite: ${{ needs.preci-matrix.outputs.e2e_list }}
+      category: pr

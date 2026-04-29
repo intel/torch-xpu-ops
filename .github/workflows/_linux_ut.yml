@@ -4,32 +4,51 @@ on:
   workflow_call:
     inputs:
       runner:
-        required: true
         type: string
-        description: Runner label
+        required: true
+        description: Runner label for test execution
+      docker_image_name:
+        type: string
+        default: 'intelgpu/ubuntu-24.04-lts2:2523.40'
+        description: Docker image for test environment
       pytorch:
         type: string
-        default: 'main'
-        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+        default: main
+        description: PyTorch version
       torch_xpu_ops:
         type: string
-        default: 'main'
-        description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+        default: main
+        description: Torch-xpu-ops version (or "pinned" for pytorch pin)
       python:
         type: string
         default: '3.10'
         description: Python version
       ut:
-        required: true
         type: string
-        description: UT scope. one of `op_regression,op_extended,op_ut,skipped_ut,torch_xpu,op_regression_dev1`
+        required: true
+        description: >-
+          UT scope: op_regression, op_regression_dev1, op_extended,
+          op_ut, skipped_ut, torch_xpu, basic, xpu_distributed, xpu_profiling
+      category:
+        type: string
+        default: default
+        description: Category for test comparison
+      component:
+        type: string
+        default: ''
+        description: Component name for comparison
+      component_version:
+        type: string
+        default: ''
+        description: Component version for comparison
 
 permissions:
   contents: read
 
 defaults:
   run:
-    shell: bash -xe {0}
+    shell: bash -eo pipefail {0}
+
 env:
   GH_TOKEN: ${{ github.token }}
   HF_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
@@ -37,163 +56,160 @@ env:
   DOCKER_REGISTRY_AUTH_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
   UT_SKIP_ISSUE: 1624
   NEW_PASSED_ISSUE: 2333
+  WORKSPACE: ${{ github.workspace }}
 
 jobs:
+  # Resolve runner
   runner:
-    runs-on: ${{ inputs.runner }}
     name: get-runner
+    runs-on: ${{ inputs.runner }}
     outputs:
       runner_id: ${{ steps.runner-info.outputs.runner_id }}
       user_id: ${{ steps.runner-info.outputs.user_id }}
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
       pytest_extra_args: ${{ steps.runner-info.outputs.pytest_extra_args }}
+      ze_affinity_mask: ${{ steps.runner-info.outputs.ZE_AFFINITY_MASK }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Get runner
+      - name: Clean workspace
+        run: sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Get runner information
         id: runner-info
         uses: ./.github/actions/get-runner
 
-  test-in-container:
+  # Unit tests (container)
+  UT:
+    name: ${{ inputs.ut }}
     needs: runner
-    timeout-minutes: 1440
     if: ${{ ! contains(inputs.ut, 'distributed') }}
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 1440
     container:
-      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      image: ${{ inputs.docker_image_name }}
       volumes:
         - ${{ github.workspace }}:${{ github.workspace }}
-      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
-              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
-              -e ZE_AFFINITY_MASK
+        - /opt/xpu-test/.cache:/github/home/.cache
+      options: >-
+        --rm
+        --device=/dev/mem
+        --device=/dev/dri
+        --group-add video
+        --security-opt seccomp=unconfined
+        --cap-add=SYS_PTRACE
+        --shm-size=8g
+        -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
       env:
         AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-        PYTEST_ADDOPTS: -v --timeout 600 --timeout_method=thread --max-worker-restart 1000000
-                        --only-rerun 'crashed while running' --reruns 2
-                        --dist worksteal ${{ needs.runner.outputs.pytest_extra_args }}
+        WORKSPACE: ${{ github.workspace }}
+        ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+        PYTHONPATH: ${{ github.workspace }}/.github
+        PYTEST_ADDOPTS: >-
+          -sq -q --tb=short -p scripts.conftest
+          --timeout 600 --timeout_method=thread
+          --max-worker-restart 1000000
+          --dist worksteal
+          --only-rerun 'crashed while running' --reruns 2
+          ${{ needs.runner.outputs.pytest_extra_args }}
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Prepare test environment
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+          suite: ${{ contains(inputs.ut, 'transformers') && 'huggingface' || 'None' }}
+          component: ${{ inputs.component }}
+          component_version: ${{ inputs.component_version }}
+          category: ${{ inputs.category }}
+
+      - name: Run unit tests
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: Upload Inductor XPU UT Log
+
+      - name: Collect UT logs
+        id: collect-logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        run: |
+          if [ ! -d "${WORKSPACE}/ut_log" ]; then
+            echo "::warning::No UT logs found"
+            exit 0
+          fi
+          echo "Collected $(find "${WORKSPACE}/ut_log" -type f | wc -l) log files"
+
+      - name: Upload UT logs
+        if: ${{ ! cancelled() && steps.collect-logs.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
-          if-no-files-found: ignore
-      - name: Upload XPU UT Failure list
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
+          retention-days: 7
           if-no-files-found: ignore
 
-  test-in-baremetal:
+  # Distributed tests (baremetal)
+  distributed:
     needs: runner
-    timeout-minutes: 600
-    if: ${{ contains(inputs.ut, 'distributed') }}
+    if: contains(inputs.ut, 'distributed')
     runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 600
     env:
       AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
-      PYTEST_ADDOPTS: -v --timeout 3600 --timeout_method=thread -n 1 --max-worker-restart 10000
+      WORKSPACE: ${{ github.workspace }}
+      ZE_AFFINITY_MASK: ${{ needs.runner.outputs.ze_affinity_mask }}
+      PYTHONPATH: ${{ github.workspace }}/.github
+      PYTEST_ADDOPTS: >-
+        -sq -q --tb=short -p scripts.conftest
+        --timeout 3600 --timeout_method=thread
+        -n 1
+        --max-worker-restart 10000
     steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Prepare test env
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Prepare test environment
         uses: ./.github/actions/linux-testenv
         with:
           pytorch: ${{ inputs.pytorch }}
           torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
           python: ${{ inputs.python }}
-      - name: Run XPU UT Test on ${{ needs.runner.outputs.hostname }}
+          suite: None
+          component: ${{ inputs.component }}
+          component_version: ${{ inputs.component_version }}
+          category: ${{ inputs.category }}
+
+      - name: Run distributed tests
         uses: ./.github/actions/linux-uttest
         with:
           ut_name: ${{ inputs.ut }}
-      - name: Upload Inductor XPU UT Log
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log
-          if-no-files-found: ignore
-      - name: Upload XPU UT Failure list
-        if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: XPU-UT-Failure-List-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ github.workspace }}/ut_log/ut_failure_list.csv
-          if-no-files-found: ignore
 
-  summary:
-    needs: [test-in-container, test-in-baremetal]
-    if: ${{ ! cancelled() && ! (endsWith(needs.test-in-container.result, 'ed') && endsWith(needs.test-in-baremetal.result, 'ed')) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
-      - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*
-          path: ${{ github.workspace }}/ut_log
-      - name: Check UT Results
-        run: |
-          ls -al ${{ github.workspace }}/ut_log
-          cd ${{ github.workspace }}/ut_log/
-          latest_dir=$(find . -type d -name "Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-*" |sort -V |tail -n 1)
-          cd "${latest_dir}/${{ inputs.ut }}"
-          find "${{ github.workspace }}/ut_log" -type f \
-              \( -name "failures_*.log" -o \
-                -name "passed_*.log" -o \
-                -name "category_*.log" -o \
-                -name "reproduce_*.log" \) \
-              -exec mv {} ./ \; || true
-          cp ${{ github.workspace }}/.github/scripts/ut_result_check.sh ./
-          # get distributed known issues
-          gh --repo intel/torch-xpu-ops issue view $UT_SKIP_ISSUE --json body -q .body |sed -E '/^(#|$)/d' > Known_issue.log.tmp
-          # get skipped known issues
-          count=$(gh api "search/issues?q=repo:$GITHUB_REPOSITORY+label:skipped+state:open" --jq '.total_count')
-          if [ "$count" -gt 0 ]; then
-            echo -e "$count issues with skipped label found"
-            gh api --paginate "repos/${{ github.repository }}/issues?labels=skipped" \
-              --jq '.[] | select(.pull_request == null) | "Issue #\(.number): \(.title)\n\(.body)\n"' > issues.log
-          fi
-          if [ "${{ inputs.ut }}" == "basic" ];then
-            ut_list="op_regression op_extended op_regression_dev1"
-          else
-            ut_list="${{ inputs.ut }}"
-          fi
-          for ut_name in ${ut_list}
-          do
-            cp Known_issue.log.tmp Known_issue.log
-            awk -v r="${ut_name}" 'BEGIN{ print_row = 0 }{
-              if ( ! ( $0 ~ /[a-zA-Z0-9]/ ) ) { print_row = 0 };
-              if ( print_row == 1 && $1 ~ r ) { print $0 };
-              if ( $0 ~ /Cases:/ ) { print_row = 1 };
-            }' issues.log >> Known_issue.log
-            sed -i 's/[[:space:]]*$//g' Known_issue.log
-            TEST_PLATFORM=linux bash ut_result_check.sh "${ut_name}" "${{ inputs.pytorch }}"
-          done
-      - name: Upload Inductor XPU UT Log
+      - name: Collect UT logs
+        id: collect-logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        run: |
+          if [ ! -d "${WORKSPACE}/ut_log" ]; then
+            echo "::warning::No UT logs found"
+            exit 0
+          fi
+          echo "Collected $(find "${WORKSPACE}/ut_log" -type f | wc -l) log files"
+
+      - name: Upload UT logs
+        if: ${{ ! cancelled() && steps.collect-logs.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
         with:
-          name: Inductor-XPU-UT-Data-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: Inductor-XPU-UT-Data-${{ inputs.category }}-${{ github.event.pull_request.number || github.sha }}-${{ inputs.ut }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/ut_log
-          overwrite: true
+          retention-days: 7
+          if-no-files-found: ignore

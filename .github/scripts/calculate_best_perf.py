@@ -233,7 +233,11 @@ def main():
                 model_name = row["name"]
 
                 # Process eager performance
-                eager_perf = row["abs_latency"] * row["speedup"]
+                try:
+                    eager_perf = float(row["abs_latency"]) * float(row["speedup"])
+                except (TypeError, ValueError):
+                    continue
+
                 best_data = update_best_performance(
                     best_data, category, model_name, "eager",
                     eager_perf, system_config

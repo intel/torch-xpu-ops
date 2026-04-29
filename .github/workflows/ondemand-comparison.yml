@@ -1,0 +1,168 @@
+name: OnDemand Acceptance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      # ----- Basic Configuration -----
+      pytorch:
+        type: string
+        required: true
+        default: main
+        description: >-
+          PyTorch version: nightly_wheel(==xxx), release_wheel, test_wheel,
+          or commit/branch/tag, repo@commit/repo@branch/repo@tag
+      runner:
+        type: choice
+        default: BMG
+        description: Runner platform
+        options: [PVC, BMG]
+      python:
+        type: string
+        required: true
+        default: '3.10'
+        description: Python version (e.g. 3.10, 3.11, 3.12)
+
+      # ----- Component Comparison -----
+      component:
+        type: choice
+        required: true
+        default: onednn
+        description: Component to compare
+        options: [onednn, sycltla, triton, oneapi]
+      target_version:
+        type: string
+        required: true
+        default: ''
+        description: 'Target component version (new): commit/branch/tag or repo@ref'
+      baseline_version:
+        type: string
+        required: true
+        default: ''
+        description: 'Baseline component version (reference): commit/branch/tag or repo@ref'
+
+permissions:
+  contents: read
+
+run-name: >-
+  Acceptance / ${{ inputs.component }} (${{ inputs.target_version }} vs ${{ inputs.baseline_version }})
+
+jobs:
+  # Resolve runner
+  get-runner:
+    runs-on: ${{ contains(inputs.runner, 'BMG') && 'bmg-test' || 'pvc_rolling' }}
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+    steps:
+      - name: Clean workspace
+        run: sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Get runner information
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  # Target tests
+  target-tests:
+    needs: get-runner
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+    secrets: inherit
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: pinned
+      python: ${{ inputs.python }}
+      category: target
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.target_version }}
+      ut: op_p0
+      suite: 'huggingface,timm_models,torchbench'
+
+  # Baseline tests
+  baseline-tests:
+    needs: get-runner
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+      issues: write
+    secrets: inherit
+    uses: ./.github/workflows/_test_call.yml
+    with:
+      runner: ${{ needs.get-runner.outputs.runner_id }}
+      pytorch: ${{ inputs.pytorch }}
+      torch_xpu_ops: pinned
+      python: ${{ inputs.python }}
+      category: baseline
+      component: ${{ inputs.component }}
+      component_version: ${{ inputs.baseline_version }}
+      ut: op_p0
+      suite: 'huggingface,timm_models,torchbench'
+
+  # Compare results
+  compare-results:
+    needs: [target-tests, baseline-tests]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download target logs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: 'Inductor-*target*'
+          path: ${{ github.workspace }}/results/target
+
+      - name: Download baseline logs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: 'Inductor-*baseline*'
+          path: ${{ github.workspace }}/results/baseline
+
+      - name: Setup Python environment
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="/usr/local/bin" sh
+          uv venv myvenv --python 3.10 --clear
+          source myvenv/bin/activate
+          uv pip install pip numpy 'setuptools<81' wheel
+          uv pip install pandas pydantic tqdm psutil openpyxl PyGithub
+
+      - name: Compare test results
+        run: |
+          source myvenv/bin/activate
+          exit_code=0
+
+          python .github/scripts/check-results.py \
+            --results-dir "${{ github.workspace }}/results" \
+            --check \
+              ut_new_fail \
+              acc_new_fail \
+              perf_new_fail perf_dropped || exit_code=1
+
+          for file in e2e_comparison.summary.md ut_comparison.summary.md \
+                      e2e_comparison.details.md ut_comparison.details.md; do
+            [ -f "$file" ] && cat "$file" >> "${GITHUB_STEP_SUMMARY}"
+          done
+
+          exit $exit_code
+
+      - name: Upload test summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.component }}-test-summary
+          path: |
+            *_comparison*.csv
+            *_comparison*.xlsx
+            *_comparison*.md
+          retention-days: 30
+          if-no-files-found: warn

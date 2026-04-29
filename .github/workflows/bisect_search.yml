@@ -56,7 +56,7 @@ jobs:
       hostname: ${{ steps.runner-info.outputs.hostname }}
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
@@ -81,7 +81,7 @@ jobs:
         USE_KINETO: 0
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: gs-scripts
       - name: Prepare test env
@@ -213,7 +213,7 @@ jobs:
           done
       - name: Upload Logs
         if: ${{ ! cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bisect-search
           path: ${{ github.workspace }}/gs-logs

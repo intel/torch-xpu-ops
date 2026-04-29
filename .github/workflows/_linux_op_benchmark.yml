@@ -40,8 +40,10 @@ jobs:
       render_id: ${{ steps.runner-info.outputs.render_id }}
       hostname: ${{ steps.runner-info.outputs.hostname }}
     steps:
+      - name: Clean workspace
+        run: sudo find . -maxdepth 1 ! -name '.' ! -name '..' -exec sudo rm -rf {} + 2>/dev/null || true
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Get runner
         id: runner-info
         uses: ./.github/actions/get-runner
@@ -60,7 +62,7 @@ jobs:
         AGENT_TOOLSDIRECTORY: /opt/xpu-tool
     steps:
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Prepare test env
         uses: ./.github/actions/linux-testenv
         with:
@@ -82,7 +84,7 @@ jobs:
           python ${{ github.workspace }}/.github/scripts/microbench_summary.py ${{ github.workspace }}/op_benchmark ${{ github.workspace }}/op_benchmark/backward_op_summary.csv --backward
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
@@ -100,13 +102,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install gh rsync ca-certificates -y
       - name: Checkout torch-xpu-ops
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Setup python-${{ inputs.python }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python }}
       - name: Download XPU UT Logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-*
           path: ${{ github.workspace }}/op_benchmark_tmp
@@ -151,7 +153,7 @@ jobs:
           cp -r ${{ github.workspace }}/new_baseline ${{ github.workspace }}/op_benchmark
       - name: Upload Inductor XPU OP benchmark Log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Inductor-XPU-OP-Benchmark-Data-${{ github.event.pull_request.number || github.sha }}-Updated-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ github.workspace }}/op_benchmark
