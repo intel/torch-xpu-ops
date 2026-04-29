@@ -24,7 +24,6 @@
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
 #include <ATen/native/xpu/sycl/SortingRadixSelect.h>
 #include <ATen/native/xpu/sycl/TensorTopKSbtopkKernel.h>
-#include <c10/util/llvmMathExtras.h>
 #include <ATen/native/xpu/sycl/TensorTopKSingleWgKernel.h>
 #include <c10/util/llvmMathExtras.h>
 #include <comm/DeviceProperties.h>
