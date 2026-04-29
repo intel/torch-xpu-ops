@@ -86,7 +86,7 @@ Tensor addmm_calculation(
   Tensor result_dense = mat1_dense.mm(mat2_dense) * alpha;
   if (beta.toComplexDouble() != 0.) {
     Tensor input_dense = input.layout() != kStrided ? input.to_dense() : input;
-    result_dense.add_(input_dense, beta);
+    result_dense.add_(input_dense * beta);
   }
   return result_dense;
 }
