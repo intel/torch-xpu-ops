@@ -32,6 +32,53 @@ TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
 
 
 # ============================================================================
+# Related Disabled Test Lookup
+# ============================================================================
+
+def find_disabled_test_issues(test_method_names, max_results=10):
+    """Search pytorch/pytorch for DISABLED issues matching our failing tests.
+
+    PyTorch uses issues titled "DISABLED test_foo (...)" to track disabled tests.
+    Finding these helps link our CI failures to known upstream issues.
+
+    Args:
+        test_method_names: List of test method names (without file/class prefix)
+        max_results: Max number of related issues to return
+
+    Returns:
+        list of dicts with keys: test_name, issue_number, issue_url, issue_title
+    """
+    results = []
+    # Search for up to 5 unique test names to avoid API rate limit
+    searched = set()
+    for name in test_method_names:
+        if name in searched or len(results) >= max_results:
+            break
+        searched.add(name)
+
+        # GitHub search API: search issues in pytorch/pytorch with "DISABLED" in title
+        url = "https://api.github.com/search/issues"
+        query = f"DISABLED {name} in:title repo:{PYTORCH_REPO} is:issue"
+        params = {"q": query, "per_page": 3}
+        try:
+            resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
+            if resp.status_code != 200:
+                continue
+            for item in resp.json().get("items", []):
+                results.append({
+                    "test_name": name,
+                    "issue_number": item["number"],
+                    "issue_url": item["html_url"],
+                    "issue_title": item["title"][:120],
+                    "state": item.get("state", "open"),
+                })
+        except requests.RequestException:
+            continue
+
+    return results[:max_results]
+
+
+# ============================================================================
 # Sub-Issue Creation
 # ============================================================================
 
@@ -70,7 +117,7 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     count = len(test_names)
     tag = "NEW" if is_new else "EXISTING"
 
-    title = f"[PyTorch CI] [{tag}] {short_file} ({count} failures) - Ref #{summary_issue_num}"
+    title = f"[ai_generated] [PyTorch CI] [{tag}] {short_file} ({count} failures) - Ref #{summary_issue_num}"
 
     # Dedup: check if sub-issue already exists for this file + summary issue
     dedup_prefix = f"[{tag}] {short_file}"
@@ -123,6 +170,21 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
         "- [ ] PR submitted to pytorch/pytorch",
         "",
     ])
+
+    # Search for related DISABLED test issues in pytorch/pytorch
+    disabled_issues = find_disabled_test_issues(test_method_names[:5])
+    if disabled_issues:
+        body_lines.extend([
+            "### Related Disabled Test Issues (pytorch/pytorch)",
+            "",
+        ])
+        for di in disabled_issues:
+            state_icon = "🟢" if di["state"] == "open" else "⚪"
+            body_lines.append(
+                f"- {state_icon} [{di['issue_title']}]({di['issue_url']}) "
+                f"(#{di['issue_number']}, {di['state']})"
+            )
+        body_lines.extend(["", ""])
 
     # Machine-readable reproduce instructions (for automation)
     # Store full test IDs for auto-close matching (test_file::test_name format)

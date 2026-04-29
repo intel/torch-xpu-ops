@@ -495,12 +495,12 @@ def main():
     n_existing = len(data.get("existing_failed_tests", []))
 
     if data.get("status") == "ALL_PASS":
-        title = f"[PyTorch CI] {date_str} - ALL PASS ({commit_short})"
+        title = f"[ai_generated] [PyTorch CI] {date_str} - ALL PASS ({commit_short})"
     else:
         if n_new > 0 or n_existing > 0:
-            title = f"[PyTorch CI] {date_str} - {n_new} new, {n_existing} existing failure(s) ({commit_short})"
+            title = f"[ai_generated] [PyTorch CI] {date_str} - {n_new} new, {n_existing} existing failure(s) ({commit_short})"
         else:
-            title = f"[PyTorch CI] {date_str} - {n_failures} failure(s) ({commit_short})"
+            title = f"[ai_generated] [PyTorch CI] {date_str} - {n_failures} failure(s) ({commit_short})"
 
     # Dry-run: print without creating
     if args.dry_run:
