@@ -14,7 +14,7 @@ Use existing local checkouts, GitHub MCP tools, or clone as needed. If a repo is
 
 Collect operators from these sources across both repos:
 - `torch-xpu-ops/yaml/xpu_functions.yaml` — supported op list
-- `torch-xpu-ops/src/ATen/native/xpu/` and `sycl/` — kernel implementations (`TORCH_IMPL_FUNC`)
+- `torch-xpu-ops/src/ATen/native/xpu/` and `torch-xpu-ops/src/ATen/native/xpu/sycl/` — kernel implementations (`TORCH_IMPL_FUNC`)
 - `torch-xpu-ops/src/ATen/native/xpu/XPUFallback.template` — fallback op list
 - `pytorch/aten/src/ATen/native/xpu/` — upstream XPU native code
 - `pytorch/aten/src/ATen/native/native_functions.yaml` — ops with XPU dispatch keys
@@ -35,9 +35,10 @@ Triggered by: `scan all`
 Every scan report (full or daily) must end with concrete counts:
 
 - **Total**: N ops scanned
-- **By verdict**: XPU defect (X), Parity gap (Y), Missing native implementation (Z), Fallback only (W), Needs review (V), No issue (U)
-- **By priority**: high (X), medium (Y), low (Z)
-- **By coverage type**: native kernel (X), composite/decomp (Y), fallback only (Z), no coverage (W)
+- **By verdict**: XPU defect, Parity gap, Missing native implementation, Fallback only, Needs review, No issue — each with count
+- **By priority**: high, medium, low — each with count
+- **By coverage type**: native kernel, composite/decomp, fallback only, no coverage — each with count
+- **By target repo**: `pytorch/pytorch` (count), `intel/torch-xpu-ops` (count) — where the fix should land
 - **Top reasons** (descending by count): list the most frequent finding reasons with their counts, e.g. "missing backward: 15, silent CPU fallback: 8, dtype gap: 5"
 
 These numbers are the basis for any future triage decisions. Do not summarize with prose alone — always provide the raw counts.
@@ -50,7 +51,7 @@ Triggered by: `scan daily` or `scan since <date>`
 2. Use `git log --since='<window>' --name-only` in both repos to find changed files under XPU-related paths (`yaml/`, `src/ATen/native/xpu/`, `aten/src/ATen/native/xpu/`, `test/xpu/`).
 3. Map changed files to affected operators — extract op names from diffs, registration macros, and YAML entries.
 4. Create `xpu_scan_daily_<YYYY-MM-DD>_<HHMMSS>.json` and `.md`.
-5. Process affected ops same as full scan step 3-5.
+5. Process affected ops same as full scan step 3-4.
 
 ## Output Files
 

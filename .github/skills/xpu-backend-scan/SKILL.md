@@ -26,7 +26,7 @@ Report everything. Do not dismiss or waive any finding. Assign priority instead.
 ## Workflow
 
 ### Step 1: Identify the operator surface
-Pin the exact schema/overload from `native_functions.yaml`. Do not compare by base op name or filename alone.
+Pin the exact schema/overload from `pytorch/aten/src/ATen/native/native_functions.yaml` (the authoritative source). Do not compare by base op name or filename alone.
 
 ### Step 2: Collect ALL XPU coverage signals
 Check every source and record what you find. Do not stop at the first positive signal — collect all of them.
@@ -35,7 +35,7 @@ Where to look (intel/torch-xpu-ops):
 1. `yaml/native/native_functions.yaml` — dispatch key configuration
 2. `src/ATen/native/xpu/XPUFallback.template` — fallback list
 3. `src/ATen/native/xpu/` and `src/ATen/native/xpu/sycl/` — kernel implementations
-4. `yaml/xpu_functions.yaml` — auxiliary metadata
+4. `yaml/xpu_functions.yaml` — primary supported-operator list (`supported:` entries)
 
 Where to look (pytorch/pytorch):
 1. `aten/src/ATen/native/native_functions.yaml` — authoritative dispatch keys
@@ -47,17 +47,21 @@ Where to look (pytorch/pytorch):
 
 ### Step 3: Classify and validate
 Classify based on user-visible impact, not implementation shape:
-- **XPU defect** (high) — broken dispatch, silent CPU fallback, missing validation, backward gap
+- **XPU defect** (high) — broken dispatch, unexpected/undeclared silent CPU fallback at runtime, missing validation, backward gap
 - **Parity gap** (high) — user-visible contract differs between CUDA and XPU
 - **Missing native implementation** (high) — CUDA has support, XPU has no path at all (not even fallback)
-- **Fallback only** (low) — callable only via CPU fallback
+- **Fallback only** (low) — no native XPU kernel, but coverage is provided via a declared CPU fallback path (listed in `XPUFallback.template`)
 - **Needs review** (medium) — mixed evidence, needs runtime validation
 
-Read helper definitions before comparing call sites. Do not call a finding runtime-confirmed from static review alone.
+Distinguish declared fallback (listed in `XPUFallback.template`) from unexpected runtime fallback. Read helper definitions before comparing call sites. Do not call a finding runtime-confirmed from static review alone.
+
+For each finding, determine the **target repo** for the fix:
+- `pytorch/pytorch` — if the XPU kernel lives upstream (`aten/src/ATen/native/xpu/`) or is in shared dispatch/core infra
+- `intel/torch-xpu-ops` — if the XPU kernel lives in this repo or needs to be added here
 
 ## Hard Rules
 - If CUDA has a feature that XPU lacks, report it.
-- If XPU silently falls back to CPU, report as XPU defect.
-- If XPU only has CPU fallback coverage, report as "fallback only" (low priority).
+- If XPU silently falls back to CPU in an unexpected/undeclared way, report as XPU defect.
+- If XPU only has declared CPU fallback coverage (via `XPUFallback.template`), report as "fallback only" (low priority).
 - SYCL vs CUDA style differences are not bugs.
 - In batch scans: if a single op fails, record `status: error` and continue.
