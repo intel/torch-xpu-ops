@@ -29,8 +29,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_sort_and_select import TestSortAndSelect
 
-    # FIXME: remove torch.bool from unsupported types once support is added for cub sort
-    @dtypes(*all_types_and(torch.half, torch.bfloat16))
+    @dtypes(*all_types_and(torch.half, torch.bfloat16, torch.bool))
     def stable_sort_against_numpy(self, device, dtype):
         if dtype in floating_types_and(torch.float16, torch.bfloat16):
             inf = float("inf")
@@ -102,6 +101,23 @@ with XPUPatchForImport(False):
             self.assertEqual(idx_torch, idx_numpy)
 
     TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
+
+    def sort_large_slice(self, device):
+        # tests direct XPU sort path on large slices
+        x = torch.randn(4, 1024000, device=device)
+        res1val, res1ind = torch.sort(x, stable=True)
+        torch.xpu.synchronize()
+        # assertIsOrdered is too slow, so just compare to cpu
+        res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), stable=True)
+        self.assertEqual(res1val, res1val_cpu.to(device))
+        self.assertEqual(res1ind, res1ind_cpu.to(device))
+        res1val, res1ind = torch.sort(x, descending=True, stable=True)
+        torch.xpu.synchronize()
+        res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), descending=True, stable=True)
+        self.assertEqual(res1val, res1val_cpu.to(device))
+        self.assertEqual(res1ind, res1ind_cpu.to(device))
+
+    TestSortAndSelect.test_sort_large_slice = sort_large_slice
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True

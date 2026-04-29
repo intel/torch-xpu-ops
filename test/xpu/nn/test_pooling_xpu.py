@@ -192,6 +192,56 @@ TestPoolingNN.test_adaptive_avg_pooling_nhwc_overflow = (
 )
 
 
+def _test_adaptive_pooling_avg_nhwc_launch_config_backward(self):
+    input = torch.randint(
+        1, 10, (1, 32, 2**17 + 1, 32), dtype=torch.float32, device="xpu"
+    )
+    input = input.contiguous(memory_format=torch.channels_last).requires_grad_()
+    grad = torch.randint(1, 10, (1, 32, 10, 32), dtype=torch.float32, device="xpu")
+
+    pool = torch.nn.AdaptiveAvgPool2d((10, 32)).to("xpu")
+
+    ref_input = input.detach().clone().contiguous().requires_grad_(True)
+    ref_grad = grad.detach().clone().contiguous()
+    ref_pool = torch.nn.AdaptiveAvgPool2d((10, 32)).to("xpu")
+
+    out = pool(input)
+    out.backward(grad)
+    ref_out = ref_pool(ref_input)
+    ref_out.backward(ref_grad)
+
+    self.assertTrue(out.is_contiguous(memory_format=torch.channels_last))
+    self.assertTrue(ref_out.is_contiguous())
+    self.assertEqual(out, ref_out)
+    self.assertEqual(input.grad, ref_input.grad)
+
+
+TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_backward = (
+    _test_adaptive_pooling_avg_nhwc_launch_config_backward
+)
+
+
+def _test_adaptive_pooling_avg_nhwc_launch_config_forward(self):
+    input = torch.randint(1, 10, (1, 32, 16, 16), dtype=torch.float32, device="xpu")
+    input = input.contiguous(memory_format=torch.channels_last).requires_grad_()
+    pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).to("xpu")
+
+    ref_input = input.detach().clone().contiguous().requires_grad_(True)
+    ref_pool = torch.nn.AdaptiveAvgPool2d((2**17 + 1, 32)).to("xpu")
+
+    out = pool(input)
+    ref_out = ref_pool(ref_input)
+
+    self.assertTrue(out.is_contiguous(memory_format=torch.channels_last))
+    self.assertTrue(ref_out.is_contiguous())
+    self.assertEqual(out, ref_out)
+
+
+TestPoolingNN.test_adaptive_pooling_avg_nhwc_launch_config_forward = (
+    _test_adaptive_pooling_avg_nhwc_launch_config_forward
+)
+
+
 def _test_max_pool2d(self, device):
     def helper(n, c, h, w, ks):
         x = torch.randn(n, c, h, w, device="xpu", dtype=torch.float, requires_grad=True)
