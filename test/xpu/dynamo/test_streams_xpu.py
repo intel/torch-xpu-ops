@@ -709,18 +709,18 @@ class <lambda>(torch.nn.Module):
         # synchronizing the first stream w/ the second stream after the second stream is finished
         def fn(x):
             e = torch.Event()
-            with torch.Stream(device="cuda:0"):
-                y = torch.ones(2, 2, device="cuda:0")
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
+                y = torch.ones(2, 2, device=f"{GPU_TYPE}:0")
                 e.record()
                 z = y * x
 
-            with torch.Stream(device="cuda:0"):
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
                 e.wait()
                 z0 = y * 2 * x
 
             return z0, z
 
-        inp = (torch.ones(2, 2, device="cuda", requires_grad=True),)
+        inp = (torch.ones(2, 2, device=GPU_TYPE, requires_grad=True),)
         (
             actual,
             _,
@@ -736,7 +736,7 @@ class <lambda>(torch.nn.Module):
 class GraphModule(torch.nn.Module):
     def forward(self, tangents_1: "f32[2, 2]", tangents_2: "f32[2, 2]"):
         # Annotation: {'stream': 1}
-        ones: "f32[2, 2]" = torch.ops.aten.ones.default([2, 2], device = device(type='cuda', index=0), pin_memory = False)
+        ones: "f32[2, 2]" = torch.ops.aten.ones.default([2, 2], device = device(type='xpu', index=0), pin_memory = False)
 
         # Annotation: {'stream': 2}
         mul_1: "f32[2, 2]" = torch.ops.aten.mul.Tensor(ones, 2)
@@ -768,22 +768,22 @@ class GraphModule(torch.nn.Module):
         # used on the first stream again then finally used on the last stream
         def fn(x):
             e = torch.Event()
-            with torch.Stream(device="cuda:0"):
-                y = torch.ones(2, 2, device="cuda:0")
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
+                y = torch.ones(2, 2, device=f"{GPU_TYPE}:0")
                 z = y * x
                 e.record()
 
-            with torch.Stream(device="cuda:0"):
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
                 e.wait()
                 z0 = y * 2 * z
                 e.record()
 
-            with torch.Stream(device="cuda:0"):
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
                 e.wait()
                 z1 = y * x * z0
                 e.record()
 
-            with torch.Stream(device="cuda:0"):
+            with torch.Stream(device=f"{GPU_TYPE}:0"):
                 e.wait()
                 z2 = y * 4 * z1
                 e.record()
@@ -791,7 +791,7 @@ class GraphModule(torch.nn.Module):
             e.wait()
             return z, z1, z2
 
-        inp = (torch.ones(2, 2, device="cuda", requires_grad=True),)
+        inp = (torch.ones(2, 2, device=GPU_TYPE, requires_grad=True),)
         (
             actual,
             _,
@@ -808,7 +808,7 @@ class GraphModule(torch.nn.Module):
     def forward(self, primals_1: "f32[2, 2]", mul: "f32[2, 2]", tangents_1: "f32[2, 2]", \
 tangents_2: "f32[2, 2]", tangents_3: "f32[2, 2]"):
         # Annotation: {'stream': 1}
-        ones: "f32[2, 2]" = torch.ops.aten.ones.default([2, 2], device = device(type='cuda', index=0), pin_memory = False)
+        ones: "f32[2, 2]" = torch.ops.aten.ones.default([2, 2], device = device(type='xpu', index=0), pin_memory = False)
 
         # Annotation: {'stream': 4}
         mul_5: "f32[2, 2]" = torch.ops.aten.mul.Tensor(ones, 4)
