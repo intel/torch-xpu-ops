@@ -92,7 +92,9 @@ std::tuple<Tensor, Tensor, Tensor> batch_norm_xpu(
     double momentum,
     double eps) {
   auto output = at::empty_like(input);
-  int64_t n_input = input.size(1);
+  // In eval mode save_mean/save_invstd are not meaningful; allocate empty
+  // tensors to match CPU/CUDA behavior (size 0 when training=False).
+  int64_t n_input = training ? input.size(1) : 0;
   auto options =
       input.options().dtype(at::toAccumulateType(input.scalar_type(), kXPU));
   auto save_mean = at::empty({n_input}, options);

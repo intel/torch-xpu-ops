@@ -4154,15 +4154,22 @@ std::tuple<Tensor&, Tensor&, Tensor&> batch_norm_kernel(
     } else {
       batch_norm_calc_invstd(save_invstd, save_invstd, epsilon);
     }
+    batch_norm_elementwise(
+        output, self, weight_opt, bias_opt, save_mean, save_invstd);
   } else {
+    // In eval mode, save_mean and save_invstd must be empty (size 0) to match
+    // CPU/CUDA behavior. Use local tensors for the elementwise computation.
     TORCH_CHECK(has_running_mean);
-    at::native::resize_output(save_mean, running_mean_opt->sizes());
-    save_mean.copy_(*running_mean_opt, /*non_blocking=*/true);
-    batch_norm_calc_invstd(save_invstd, running_var_opt.value(), epsilon);
+    auto options =
+        self.options().dtype(at::toAccumulateType(self.scalar_type(), kXPU));
+    auto mean_ = at::empty_like(*running_mean_opt, options);
+    auto invstd_ = at::empty_like(*running_var_opt, options);
+    mean_.copy_(*running_mean_opt, /*non_blocking=*/true);
+    batch_norm_calc_invstd(invstd_, running_var_opt.value(), epsilon);
+    batch_norm_elementwise(output, self, weight_opt, bias_opt, mean_, invstd_);
+    at::native::resize_output(save_mean, {0});
+    at::native::resize_output(save_invstd, {0});
   }
-
-  batch_norm_elementwise(
-      output, self, weight_opt, bias_opt, save_mean, save_invstd);
   return std::tuple<Tensor&, Tensor&, Tensor&>(output, save_mean, save_invstd);
 }
 
