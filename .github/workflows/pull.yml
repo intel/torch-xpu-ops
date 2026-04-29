@@ -39,7 +39,11 @@ jobs:
           scopes: 'lint,clang-format'
           python-version: '3.10'
           working-directory: torch-xpu-ops
-          check-reproducer: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+      - name: Check reproducer exists for AI-generated PR
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'ai_generated') }}
+        uses: ./torch-xpu-ops/.github/actions/check-reproducer
+        with:
+          working-directory: torch-xpu-ops
           github-token: ${{ secrets.MERGE_TOKEN }}
 
   conditions-filter-win:
