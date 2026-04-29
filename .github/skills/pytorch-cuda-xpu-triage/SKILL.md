@@ -31,6 +31,8 @@ Everything not rejected passes to the next step. State the reject reason briefly
 
 Append each decision (URL, reject/pass, reason) to the local scan file so the full filtering rationale is preserved.
 
+At the end of filtering, append a summary to the scan file: total candidates, number rejected (broken down by reject reason), and number passed through. This distribution helps refine the reject rules over time.
+
 ### Step 3: Draft reproducers
 For each passing candidate, produce:
 1. **Summary** — operator, bug family, why XPU might share the defect
