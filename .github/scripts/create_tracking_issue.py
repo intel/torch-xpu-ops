@@ -21,9 +21,10 @@ from datetime import datetime, timezone
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json",
 }
+if GITHUB_TOKEN:
+    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
 
 # Repository where tracking issues are created
 TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
@@ -168,7 +169,6 @@ def format_issue_body(data, all_runs_data=None):
     4. NEW Failures: tests that just started failing
     5. EXISTING Failures: tests that were already failing
     6. FIXED: tests that stopped failing
-    7. Push Runs Timeline: for manual bisect reference
 
     Args:
         data: ci_results.json contents from check_nightly_status.py
@@ -308,6 +308,8 @@ def format_issue_body(data, all_runs_data=None):
     def find_job(test_id):
         """Find which job (shard) a test belongs to."""
         for f in failures:
+            if not isinstance(f, dict):
+                continue
             if test_id in f.get("failed_tests", []):
                 jn = f.get("job_name", "unknown")
                 shard = "?"
@@ -575,13 +577,15 @@ def main():
     issue_number = None
     if existing:
         print(f"Updating existing issue #{existing} (same commit {commit_short})")
-        update_issue(existing, body)
+        if not update_issue(existing, body):
+            sys.exit(1)
         issue_number = existing
     else:
         labels = ["pytorch-ci-failure", "agent:blocked", "ai_generated"]
         issue = create_issue(title, body, labels)
-        if issue:
-            issue_number = issue["number"]
+        if not issue:
+            sys.exit(1)
+        issue_number = issue["number"]
 
     # Set GitHub Actions output for downstream steps
     gh_output = os.environ.get("GITHUB_OUTPUT")

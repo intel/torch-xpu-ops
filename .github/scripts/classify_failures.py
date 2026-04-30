@@ -24,9 +24,10 @@ from collections import OrderedDict
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
     "Accept": "application/vnd.github+json",
 }
+if GITHUB_TOKEN:
+    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
 PYTORCH_REPO = "pytorch/pytorch"
 TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
 
@@ -102,8 +103,8 @@ def _get_open_tracking_issues():
     return issues
 
 
-def _check_existing_sub_issue(title_prefix):
-    """Check if a sub-issue already exists with a matching title prefix.
+def _check_existing_sub_issue(expected_title):
+    """Check if a sub-issue already exists with an exact title match.
 
     Prevents duplicate sub-issues when the workflow is re-triggered
     for the same commit.
@@ -112,7 +113,7 @@ def _check_existing_sub_issue(title_prefix):
         int or None: Existing issue number, or None if not found
     """
     for issue in _get_open_tracking_issues():
-        if title_prefix in issue.get("title", ""):
+        if issue.get("title") == expected_title:
             return issue.get("number")
     return None
 
@@ -137,7 +138,7 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     title = f"[ai_generated] [PyTorch CI] {run_ref} ({count} failures)"
 
     # Dedup: check if sub-issue already exists for this file + summary issue
-    existing = _check_existing_sub_issue(run_ref)
+    existing = _check_existing_sub_issue(title)
     if existing:
         print(f"  Sub-issue already exists: #{existing}, skipping")
         return {"number": existing}

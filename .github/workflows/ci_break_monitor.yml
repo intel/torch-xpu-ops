@@ -94,7 +94,7 @@ jobs:
       # NOTE: workflow_dispatch step3_classify also runs Step 1 and Step 2 first,
       # because this step depends on Step 2 output (issue_number).
       - name: "Step 3: Create Sub-Issues"
-        if: ${{ (github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step3_classify') && steps.create_issue.outputs.issue_number != '' }}
+        if: ${{ (github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step3_classify') && steps.create_issue.outputs.issue_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
