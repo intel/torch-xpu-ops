@@ -9,7 +9,12 @@
  */
 
 #include <ATen/ATen.h>
+#include <comm/Macros.h>
+DISABLE_SYCL_DEPRECATED_WARNING_BEGIN
+#define SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
 #include <oneapi/mkl/blas.hpp>
+#undef SYCL_DISABLE_FSYCL_SYCLHPP_WARNING
+DISABLE_SYCL_DEPRECATED_WARNING_END
 
 template <typename T>
 struct get_mkl_type {

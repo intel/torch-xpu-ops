@@ -3717,9 +3717,9 @@ class AssociativeScanTests(TestCase):
         result_exp_flatten = [r for r in result_exp_flatten if r.requires_grad]
 
         # Check the result and parameter lists
-        assert len(result_flatten) == len(
-            result_exp_flatten
-        ), "The number of elements requiring gradients is different for the results and the expected results"
+        assert len(result_flatten) == len(result_exp_flatten), (
+            "The number of elements requiring gradients is different for the results and the expected results"
+        )
 
         grad_exp_init = [torch.ones_like(el) for el in result_exp_flatten]
         expected_grads = torch.autograd.grad(
@@ -7450,13 +7450,11 @@ def forward(self, arg0_1, arg1_1, arg2_1, arg3_1, arg4_1):
             gm.code.strip(),
             """\
 def forward(self, pred_1, x_1):
-    unbind = torch.ops.aten.unbind.int(x_1)
-    getitem = unbind[0];  getitem = None
-    getitem_1 = unbind[1];  unbind = getitem_1 = None
+    select_copy = torch.ops.aten.select_copy.int(x_1, 0, 0);  select_copy = None
     body_graph_0 = self.body_graph_0
     map_impl = torch.ops.higher_order.map_impl(body_graph_0, [x_1], [pred_1]);  body_graph_0 = x_1 = pred_1 = None
-    getitem_2 = map_impl[0];  map_impl = None
-    return getitem_2""",
+    getitem = map_impl[0];  map_impl = None
+    return getitem""",
         )
         self.assertExpectedInline(
             gm.body_graph_0.code.strip(),
