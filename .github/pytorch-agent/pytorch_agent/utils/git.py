@@ -20,6 +20,11 @@ def git(*args: str, workdir: Path | None = None, check: bool = True,
     )
 
 
+def git_out(*args: str, **kwargs) -> str:
+    """Run git and return stdout. Convenience wrapper around git()."""
+    return git(*args, **kwargs).stdout
+
+
 def add_and_commit(message: str, *, issue: int | None = None,
                    workdir: Path | None = None) -> bool:
     """Stage tracked files (excluding third_party/*) and commit if dirty.

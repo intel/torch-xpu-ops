@@ -145,14 +145,18 @@ def update_stage(tracked: TrackedIssue, new_stage: str, message: str) -> None:
 
 # Maps each pipeline stage to which Action Items should be checked off (cumulative).
 # These match the checklist from the CI failure tracking issue template.
+_ALL_ITEMS = [
+    "Reproduce on dev machine", "Identify root cause", "Implement fix",
+    "Verify fix locally", "PR proposal", "Human review", "PR creation",
+]
 _STAGE_CHECKLIST: dict[str, list[str]] = {
     "DISCOVERED":    [],
-    "IMPLEMENTING":  ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally"],
-    "IN_REVIEW":     ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal"],
-    "PUBLIC_PR":     ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review"],
-    "CI_WATCH":      ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review", "PR creation"],
-    "MERGED":        ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review", "PR creation"],
-    "DONE":          ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review", "PR creation"],
+    "IMPLEMENTING":  _ALL_ITEMS[:4],
+    "IN_REVIEW":     _ALL_ITEMS[:5],
+    "PUBLIC_PR":     _ALL_ITEMS[:6],
+    "CI_WATCH":      _ALL_ITEMS,
+    "MERGED":        _ALL_ITEMS,
+    "DONE":          _ALL_ITEMS,
 }
 
 

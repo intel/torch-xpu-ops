@@ -14,7 +14,7 @@ import re
 from .utils import github_client as gh
 from .utils.config import UPSTREAM_ISSUE_REPO
 from .utils.state import (
-    find_tracked_by_issue, update_stage, save_state, TrackedIssue,
+    find_tracked_by_issue, update_stage,
 )
 from .utils.agent_backend import get_backend
 from .utils.logger import log
@@ -63,14 +63,10 @@ def triage_issue(issue_number: int) -> tuple[str, str]:
     )
 
     # Dispatch agent — post session ID to issue for live monitoring
+    from .utils.notify import post_session_started
+
     def _post_session_id(sid: str):
-        gh.add_issue_comment(
-            UPSTREAM_ISSUE_REPO, issue_number,
-            f"🔗 **Triage agent session started**\n\n"
-            f"**Attach to watch live:**\n"
-            f"```bash\ncd ~/pytorch && opencode -s {sid}\n```\n"
-            f"Session ID: `{sid}`",
-        )
+        post_session_started(UPSTREAM_ISSUE_REPO, issue_number, "Triage", sid)
 
     backend = get_backend()
     output, log_path, session_id = backend.run(

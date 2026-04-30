@@ -10,22 +10,26 @@ from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
-import time
 
-from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, STAGE_TIMEOUTS, LOG_DIR
+from .config import OPENCODE_CMD, PYTORCH_DIR, SKILLS_DIR, LOG_DIR
 from .logger import log as pipeline_log
 
 
-def _save_agent_log(output: str, issue: int | None = None,
-                    stage: str | None = None) -> Path:
-    """Save agent output to a timestamped log file. Returns the log path."""
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-    prefix = f"issue-{issue}" if issue else "unknown"
-    stage_str = f"-{stage.lower()}" if stage else ""
-    log_path = LOG_DIR / f"agent-{prefix}{stage_str}-{ts}.log"
-    log_path.write_text(output)
-    return log_path
+def parse_opencode_events(raw_output: str) -> str:
+    """Parse OpenCode JSON event stream and return concatenated text output."""
+    text_parts = []
+    for line in raw_output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "text":
+            part = event.get("part", {})
+            text_parts.append(part.get("text", "") or event.get("content", ""))
+    return "".join(text_parts)
 
 
 class AgentBackend(ABC):
@@ -44,21 +48,6 @@ class AgentBackend(ABC):
 
 
 class OpenCodeBackend(AgentBackend):
-    def _get_latest_session_id(self, workdir: str) -> str | None:
-        """Get the most recent opencode session ID for this project."""
-        try:
-            result = subprocess.run(
-                [OPENCODE_CMD, "session", "list", "-n", "1", "--format", "json"],
-                capture_output=True, text=True, timeout=10, cwd=workdir,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                sessions = json.loads(result.stdout)
-                if sessions:
-                    return sessions[0].get("id")
-        except Exception:
-            pass
-        return None
-
     def run(self, prompt: str, workdir: str | None = None,
             skill: str | None = None, timeout: int | None = None,
             issue: int | None = None, stage: str | None = None,

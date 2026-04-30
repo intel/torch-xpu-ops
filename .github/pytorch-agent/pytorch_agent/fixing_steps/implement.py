@@ -6,7 +6,7 @@ Entry point:
 from __future__ import annotations
 
 import argparse
-import subprocess
+from subprocess import CalledProcessError
 
 from ..utils import github_client as gh
 from ..utils.config import (
@@ -15,6 +15,7 @@ from ..utils.config import (
 )
 from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
 from ..utils.agent_backend import get_backend
+from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
 
 
@@ -40,26 +41,8 @@ Work in the current directory (~/pytorch).
 """
 
 
-def _parse_issue_sections(body: str) -> dict[str, str]:
-    """Parse structured issue body from CI failure template into sections."""
-    sections: dict[str, str] = {}
-    current_key = None
-    current_lines: list[str] = []
-
-    for line in (body or "").split("\n"):
-        # GitHub renders template fields as ### headings
-        if line.startswith("### "):
-            if current_key:
-                sections[current_key] = "\n".join(current_lines).strip()
-            current_key = line[4:].strip()
-            current_lines = []
-        elif current_key is not None:
-            current_lines.append(line)
-
-    if current_key:
-        sections[current_key] = "\n".join(current_lines).strip()
-
-    return sections
+# Issue section parsing — use the shared helper from _issue_format
+from ._issue_format import parse_issue_sections as _parse_issue_sections
 
 
 def _build_body_section(detail: dict) -> str:
@@ -123,29 +106,29 @@ def run(tracked: TrackedIssue) -> None:
     branch = f"agent/issue-{tracked.source_number}"
     tracked.branch = branch
     # Sync review/main with the latest upstream main to avoid divergence
-    _git(["fetch", "upstream"], cwd=str(PYTORCH_DIR))
-    _git(["fetch", REVIEW_REMOTE], cwd=str(PYTORCH_DIR))
+    git("fetch", "upstream", issue=tracked.source_number)
+    git("fetch", REVIEW_REMOTE, issue=tracked.source_number)
     try:
         # Fast-forward review/main to upstream/main so PRs only show our commits
-        _git(["push", REVIEW_REMOTE, "upstream/main:main"], cwd=str(PYTORCH_DIR))
-        _git(["fetch", REVIEW_REMOTE, "main"], cwd=str(PYTORCH_DIR))
-    except subprocess.CalledProcessError:
+        git("push", REVIEW_REMOTE, "upstream/main:main", issue=tracked.source_number)
+        git("fetch", REVIEW_REMOTE, "main", issue=tracked.source_number)
+    except CalledProcessError:
         # review/main might be protected or have diverged; log and continue
         log("WARN", "Could not sync review/main with upstream/main — PR may show extra commits",
             issue=tracked.source_number)
     try:
-        _git(["checkout", "-b", branch, f"{REVIEW_REMOTE}/main"], cwd=str(PYTORCH_DIR))
-    except subprocess.CalledProcessError:
+        git("checkout", "-b", branch, f"{REVIEW_REMOTE}/main", issue=tracked.source_number)
+    except CalledProcessError:
         # Branch already exists — just checkout (do NOT reset, preserves prior commits)
-        _git(["checkout", branch], cwd=str(PYTORCH_DIR))
+        git("checkout", branch, issue=tracked.source_number)
 
     # Get issue details for prompt
     detail = gh.get_issue_detail(UPSTREAM_ISSUE_REPO, tracked.source_number)
 
     # Check if a prior run already produced changes (e.g. pipeline crashed after
     # opencode finished but before push/PR).  Skip re-running the agent.
-    existing_diff = _git(["diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD"],
-                         cwd=str(PYTORCH_DIR)).strip()
+    existing_diff = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
+                            issue=tracked.source_number).strip()
     if existing_diff:
         log("INFO", f"Branch {branch} already has changes vs {REVIEW_REMOTE}/main, "
                      "skipping agent re-run",
@@ -189,41 +172,23 @@ def run(tracked: TrackedIssue) -> None:
             issue=tracked.source_number)
 
         # Post log + session info to source issue
-        session_info = ""
-        if session_id:
-            session_info = (
-                f"\n\n**Debug / attach to this session:**\n"
-                f"```bash\ncd {PYTORCH_DIR} && opencode -s {session_id}\n```\n"
-                f"Session ID: `{session_id}`"
-            )
-        gh.add_issue_comment(
+        from ..utils.notify import post_agent_completed
+        post_agent_completed(
             UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🤖 **Attempt {tracked.attempt_count} completed** — log: `{log_path.name}`"
-            f"{session_info}\n\n"
-            f"<details><summary>Agent output (last 50 lines)</summary>\n\n"
-            f"```\n{chr(10).join(output.strip().splitlines()[-50:]) if output.strip() else '(empty)'}\n```\n"
-            f"</details>",
+            f"Attempt {tracked.attempt_count} completed", log_path, output,
         )
 
     # Verify agent made changes (committed or uncommitted)
-    # First check for uncommitted changes and auto-commit them
-    status = _git(["status", "--porcelain"], cwd=str(PYTORCH_DIR)).strip()
-    if status:
-        # Only add tracked changes, exclude submodule pointers
-        changed_files = [
-            line.split(maxsplit=1)[1].strip()
-            for line in status.split("\n")
-            if not line.split(maxsplit=1)[1].strip().startswith("third_party/")
-        ]
-        if changed_files:
-            _git(["add", "--"] + changed_files, cwd=str(PYTORCH_DIR))
-            _git(["commit", "-m",
-                  f"Fix for intel/torch-xpu-ops#{tracked.source_number}\n\n"
-                  f"{detail.get('title', 'Agent fix')}"],
-                 cwd=str(PYTORCH_DIR))
+    # Auto-commit uncommitted changes (excluding third_party/*)
+    add_and_commit(
+        f"Fix for intel/torch-xpu-ops#{tracked.source_number}\n\n"
+        f"{detail.get('title', 'Agent fix')}",
+        issue=tracked.source_number,
+    )
 
     # Now check if we have commits above review/main
-    diff = _git(["diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD"], cwd=str(PYTORCH_DIR)).strip()
+    diff = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
+                   issue=tracked.source_number).strip()
     if not diff:
         log("WARN", f"Agent produced no changes for #{tracked.source_number}, "
                      f"attempt {tracked.attempt_count}", issue=tracked.source_number)
@@ -232,67 +197,50 @@ def run(tracked: TrackedIssue) -> None:
         return
 
     # Squash all agent commits into one clean commit for a tidy PR
-    commit_count = _git(["rev-list", "--count", f"{REVIEW_REMOTE}/main..HEAD"],
-                        cwd=str(PYTORCH_DIR)).strip()
+    commit_count = git_out("rev-list", "--count", f"{REVIEW_REMOTE}/main..HEAD",
+                           issue=tracked.source_number).strip()
     if int(commit_count) > 1:
         log("INFO", f"Squashing {commit_count} commits into one", issue=tracked.source_number)
-        _git(["reset", "--soft", f"{REVIEW_REMOTE}/main"], cwd=str(PYTORCH_DIR))
-        _git(["commit", "-m",
-              f"{detail.get('title', f'Fix for issue #{tracked.source_number}')}\n\n"
-              f"Fixes intel/torch-xpu-ops#{tracked.source_number}"],
-             cwd=str(PYTORCH_DIR))
+        git("reset", "--soft", f"{REVIEW_REMOTE}/main", issue=tracked.source_number)
+        git("commit", "-m",
+            f"{detail.get('title', f'Fix for issue #{tracked.source_number}')}\n\n"
+            f"Fixes intel/torch-xpu-ops#{tracked.source_number}",
+            issue=tracked.source_number)
 
     # Push to review remote
     try:
-        _git(["push", REVIEW_REMOTE, branch], cwd=str(PYTORCH_DIR))
-    except subprocess.CalledProcessError:
+        git("push", REVIEW_REMOTE, branch, issue=tracked.source_number)
+    except CalledProcessError:
         # Branch may not exist yet or diverged from squash — force push is safe
         # since we haven't created the PR yet (or are updating pre-review)
-        _git(["push", "--force-with-lease", "--set-upstream", REVIEW_REMOTE, branch],
-             cwd=str(PYTORCH_DIR))
+        git("push", "--force-with-lease", "--set-upstream", REVIEW_REMOTE, branch,
+            issue=tracked.source_number)
 
     # Get the push SHA
-    sha = _git(["rev-parse", "HEAD"], cwd=str(PYTORCH_DIR)).strip()
+    sha = git_out("rev-parse", "HEAD", issue=tracked.source_number).strip()
     tracked.last_push_sha = sha
 
     # Build descriptive PR body from issue details + diff summary
-    issue_url = f"https://github.com/{UPSTREAM_ISSUE_REPO}/issues/{tracked.source_number}"
-    diff_stat = _git(["diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD"], cwd=str(PYTORCH_DIR)).strip()
-    diff_content = _git(["diff", f"{REVIEW_REMOTE}/main..HEAD"], cwd=str(PYTORCH_DIR)).strip()
-    # Truncate diff for PR body (keep it readable)
-    diff_lines = diff_content.split("\n")
-    if len(diff_lines) > 100:
-        diff_content = "\n".join(diff_lines[:100]) + "\n... (truncated)"
+    from ._issue_format import build_pr_body
+    diff_stat = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
+                        issue=tracked.source_number).strip()
 
     pr_title = detail.get("title", f"Fix for issue #{tracked.source_number}")
-    pr_body = (
-        f"## Summary\n\n"
-        f"Fix for [{UPSTREAM_ISSUE_REPO}#{tracked.source_number}]({issue_url})\n\n"
-        f"**Issue:** {detail.get('title', 'N/A')}\n\n"
-    )
-    # Add triage reason if available
-    if tracked.triage_reason:
-        pr_body += f"**Root Cause:** {tracked.triage_reason}\n\n"
-    # Add error context from issue body
-    sections = _parse_issue_sections(detail.get("body", ""))
-    if sections.get("Failed Tests"):
-        pr_body += f"**Failed Tests:**\n{sections['Failed Tests']}\n\n"
-    if sections.get("Failure Type"):
-        pr_body += f"**Failure Type:** {sections['Failure Type']}\n\n"
-    # Add diff summary
-    pr_body += (
-        f"## Changes\n\n"
-        f"```\n{diff_stat}\n```\n\n"
-        f"<details><summary>Full diff</summary>\n\n"
-        f"```diff\n{diff_content}\n```\n\n"
-        f"</details>\n"
+    pr_body = build_pr_body(
+        upstream_issue_repo=UPSTREAM_ISSUE_REPO,
+        source_number=tracked.source_number,
+        title=detail.get("title", "N/A"),
+        triage_reason=tracked.triage_reason,
+        issue_body=detail.get("body", ""),
+        include_diff_stat=True,
+        diff_stat=diff_stat,
     )
     try:
         pr = gh.create_draft_pr(
             PRIVATE_REVIEW_REPO, title=pr_title, body=pr_body,
             head=branch,
         )
-    except subprocess.CalledProcessError:
+    except CalledProcessError:
         # PR may already exist for this branch — find and reuse it
         existing = gh.list_prs(PRIVATE_REVIEW_REPO, state="open",
                                search=f"head:{branch}")
@@ -312,13 +260,6 @@ def run(tracked: TrackedIssue) -> None:
                  f"Implementation pushed to `{branch}`, PR created: {tracked.tracking_pr_url}")
     log("INFO", f"Implementation complete for #{tracked.source_number}, "
                  f"attempt {tracked.attempt_count}", issue=tracked.source_number)
-
-
-def _git(args: list[str], cwd: str | None = None) -> str:
-    """Run git command via shared helper. Returns stdout."""
-    from ..utils.git import git as _git_impl
-    result = _git_impl(*args, workdir=Path(cwd) if cwd else None)
-    return result.stdout
 
 
 def main() -> None:

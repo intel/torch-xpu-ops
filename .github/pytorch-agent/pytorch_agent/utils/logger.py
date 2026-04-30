@@ -2,8 +2,6 @@
 import sys
 import traceback
 from datetime import datetime
-from pathlib import Path
-
 from .config import LOG_DIR
 
 

@@ -46,7 +46,6 @@ def _build_task_list(reviews: list[dict]) -> list[str]:
     then parses the numbered list from the response.  Falls back to a
     simple regex splitter if the LLM call fails or times out.
     """
-    import json as _json
     import re
 
     # Combine all review bodies
@@ -72,29 +71,15 @@ def _build_task_list(reviews: list[dict]) -> list[str]:
     )
 
     try:
+        from ..utils.config import OPENCODE_CMD
+        from ..utils.agent_backend import parse_opencode_events
         result = subprocess.run(
-            ["opencode", "run", "--format", "json", "--dir", str(PYTORCH_DIR),
+            [OPENCODE_CMD, "run", "--format", "json", "--dir", str(PYTORCH_DIR),
              "--dangerously-skip-permissions", extraction_prompt],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True, timeout=120,
+            stdin=subprocess.DEVNULL, text=True, timeout=120,
         )
-        # Parse JSON events for text output
-        llm_output = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                evt = _json.loads(line)
-                if evt.get("type") == "text":
-                    # Text lives in part.text, not top-level content
-                    text = (evt.get("part", {}).get("text", "")
-                            or evt.get("content", ""))
-                    llm_output.append(text)
-            except _json.JSONDecodeError:
-                continue
-
-        full_text = "".join(llm_output).strip()
+        full_text = parse_opencode_events(result.stdout)
         if full_text:
             # Parse numbered items: "1. ...", "2. ...", etc.
             items = re.findall(r'^\s*\d+\.\s*(.+)', full_text, re.MULTILINE)
@@ -309,13 +294,12 @@ def run(tracked: TrackedIssue) -> None:
         gh.update_pr_comment(PRIVATE_REVIEW_REPO, task_comment_id, comment)
 
     # Post log to source issue
-    gh.add_issue_comment(
+    from ..utils.notify import post_agent_completed
+    post_agent_completed(
         UPSTREAM_ISSUE_REPO, tracked.source_number,
-        f"🤖 **Review iteration {tracked.review_iteration} log:** `{log_path.name}`\n"
-        f"Tasks addressed: {len(done_tasks)}/{len(tasks)}\n\n"
-        f"<details><summary>Agent output summary</summary>\n\n"
-        f"```\n{''.join(output.strip().splitlines(True)[-30:]) if output.strip() else '(empty)'}```\n"
-        f"</details>",
+        f"Review iteration {tracked.review_iteration} — "
+        f"tasks addressed: {len(done_tasks)}/{len(tasks)}",
+        log_path, output, tail=30,
     )
 
     log("INFO", f"Review iteration {tracked.review_iteration} for #{tracked.source_number}, "

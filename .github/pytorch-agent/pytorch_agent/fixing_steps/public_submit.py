@@ -11,7 +11,7 @@ import subprocess
 
 from ..utils import github_client as gh
 from ..utils.config import (
-    UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO, REVIEW_REMOTE, PYTORCH_DIR,
+    UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO,
     PUBLIC_TARGET_REPO,
 )
 from ..utils.state import TrackedIssue, update_stage, load_tracked
@@ -32,27 +32,15 @@ def run(tracked: TrackedIssue) -> None:
 
     # Build descriptive PR body from issue details + diff
     detail = gh.get_issue_detail(UPSTREAM_ISSUE_REPO, tracked.source_number)
-    issue_url = f"https://github.com/{UPSTREAM_ISSUE_REPO}/issues/{tracked.source_number}"
 
-    body = (
-        f"## Summary\n\n"
-        f"Fix for [{UPSTREAM_ISSUE_REPO}#{tracked.source_number}]({issue_url})\n\n"
-        f"**Issue:** {detail.get('title', 'N/A')}\n\n"
-    )
-    if tracked.triage_reason:
-        body += f"**Root Cause:** {tracked.triage_reason}\n\n"
-
-    # Parse issue sections for context
-    from ._issue_format import parse_issue_sections as _parse_issue_sections
-    sections = _parse_issue_sections(detail.get("body", ""))
-    if sections.get("Failed Tests"):
-        body += f"**Failed Tests:**\n{sections['Failed Tests']}\n\n"
-    if sections.get("Failure Type"):
-        body += f"**Failure Type:** {sections['Failure Type']}\n\n"
-
-    body += (
-                (f"cc @{os.environ.get('PUBLIC_PR_REVIEWER', '')}\\n"
-         if os.environ.get("PUBLIC_PR_REVIEWER") else "")
+    from ._issue_format import build_pr_body
+    body = build_pr_body(
+        upstream_issue_repo=UPSTREAM_ISSUE_REPO,
+        source_number=tracked.source_number,
+        title=detail.get("title", "N/A"),
+        triage_reason=tracked.triage_reason,
+        issue_body=detail.get("body", ""),
+        reviewer=os.environ.get("PUBLIC_PR_REVIEWER", ""),
     )
 
     # Idempotent: check if PR already exists for this branch

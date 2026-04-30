@@ -6,12 +6,12 @@ Entry point:
 from __future__ import annotations
 
 import argparse
-import subprocess
+from subprocess import CalledProcessError
 
 from ..utils import github_client as gh
 from ..utils.config import (
     UPSTREAM_ISSUE_REPO, PUBLIC_TARGET_REPO, PYTORCH_DIR, REVIEW_REMOTE,
-    PRIVATE_REVIEW_REPO, STAGE_TIMEOUTS,
+    STAGE_TIMEOUTS,
 )
 from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
 from ..utils.agent_backend import get_backend
@@ -149,13 +149,14 @@ def run(tracked: TrackedIssue) -> None:
         save_state(tracked)
         log("INFO", f"Pushed CI fix for #{tracked.source_number}",
             issue=tracked.source_number)
-        gh.add_issue_comment(
+        from ..utils.notify import post_agent_completed
+        post_agent_completed(
             UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🤖 **CI fix pushed** (iteration {tracked.ci_iteration}) "
-            f"for PR #{tracked.public_pr_number}\n\n"
-            f"_Agent log: `{log_path.name}`_",
+            f"CI fix pushed (iteration {tracked.ci_iteration}) "
+            f"for PR #{tracked.public_pr_number}",
+            log_path, output, tail=20,
         )
-    except subprocess.CalledProcessError as e:
+    except CalledProcessError as e:
         log("ERROR", f"Failed to push CI fix: {e}", issue=tracked.source_number,
             exc=e)
 
