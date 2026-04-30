@@ -39,6 +39,8 @@ TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
 
 _DISABLED_ISSUE_CACHE = {}
 _DISABLED_ISSUE_RATE_LIMITED = False
+_DISABLED_ISSUE_SEARCH_COUNT = 0
+MAX_DISABLED_ISSUE_SEARCHES = 50
 
 
 def find_disabled_test_issues(test_method_names, max_results=10):
@@ -54,7 +56,7 @@ def find_disabled_test_issues(test_method_names, max_results=10):
     Returns:
         list of dicts with keys: test_name, issue_number, issue_url, issue_title
     """
-    global _DISABLED_ISSUE_RATE_LIMITED
+    global _DISABLED_ISSUE_RATE_LIMITED, _DISABLED_ISSUE_SEARCH_COUNT
 
     if _DISABLED_ISSUE_RATE_LIMITED:
         return []
@@ -71,7 +73,13 @@ def find_disabled_test_issues(test_method_names, max_results=10):
             results.extend(_DISABLED_ISSUE_CACHE[name])
             continue
 
+        if _DISABLED_ISSUE_SEARCH_COUNT >= MAX_DISABLED_ISSUE_SEARCHES:
+            print("Disabled test issue lookup search budget exhausted; skipping further searches")
+            _DISABLED_ISSUE_RATE_LIMITED = True
+            break
+
         # GitHub search API: search issues in pytorch/pytorch with "DISABLED" in title
+        _DISABLED_ISSUE_SEARCH_COUNT += 1
         url = "https://api.github.com/search/issues"
         query = f"DISABLED {name} in:title repo:{PYTORCH_REPO} is:issue"
         params = {"q": query, "per_page": 3}
@@ -126,8 +134,8 @@ def _get_open_tracking_issues():
     return issues
 
 
-def _check_existing_sub_issue(expected_title, open_issues=None):
-    """Check if a sub-issue already exists with an exact title match.
+def _check_existing_sub_issue(dedup_key, open_issues=None):
+    """Check if a sub-issue already exists with a stable title prefix.
 
     Prevents duplicate sub-issues when the workflow is re-triggered
     for the same commit.
@@ -136,7 +144,8 @@ def _check_existing_sub_issue(expected_title, open_issues=None):
         int or None: Existing issue number, or None if not found
     """
     for issue in (open_issues if open_issues is not None else _get_open_tracking_issues()):
-        if issue.get("title") == expected_title:
+        title = issue.get("title", "")
+        if title.startswith(dedup_key) and "(" in title[len(dedup_key):]:
             return issue.get("number")
     return None
 
@@ -160,8 +169,9 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     run_ref = f"[{tag}] {short_file} - Ref #{summary_issue_num}"
     title = f"[ai_generated] [PyTorch CI] {run_ref} ({count} failures)"
 
-    # Dedup: check if sub-issue already exists for this file + summary issue
-    existing = _check_existing_sub_issue(title, open_issues=open_issues)
+    # Dedup: ignore count because it may change between reruns.
+    dedup_key = f"[ai_generated] [PyTorch CI] {run_ref} "
+    existing = _check_existing_sub_issue(dedup_key, open_issues=open_issues)
     if existing:
         print(f"  Sub-issue already exists: #{existing}, skipping")
         return {"number": existing}

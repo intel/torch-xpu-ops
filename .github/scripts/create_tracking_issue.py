@@ -475,6 +475,8 @@ def check_existing_issue(commit_short):
     """
     expected_suffix = f"({commit_short})"
     for issue in _get_open_tracking_issues():
+        if "pull_request" in issue:
+            continue
         if issue.get("title", "").endswith(expected_suffix):
             return issue.get("number")
     return None

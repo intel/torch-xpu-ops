@@ -55,22 +55,22 @@ jobs:
       # ===== Step 1: Scan PyTorch XPU CI =====
       - name: "Step 1: Scan PyTorch XPU CI"
         id: check
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' || inputs.steps == 'step2_create_issue' || inputs.steps == 'step3_classify' }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event.inputs.steps == 'all' || github.event.inputs.steps == 'step1_scan' || github.event.inputs.steps == 'step2_create_issue' || github.event.inputs.steps == 'step3_classify' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python .github/scripts/check_nightly_status.py \
-            --days ${{ inputs.days || '7' }} \
+            --days ${{ github.event.inputs.days || '7' }} \
             --event schedule \
             --num-runs 2 \
-            ${{ (inputs.parse_logs == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--parse-logs' || '' }} \
-            ${{ (inputs.deep_scan == true || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--deep-scan' || '' }} \
-            --max-lookback ${{ inputs.max_lookback || '14' }} \
+            ${{ (github.event.inputs.parse_logs == 'true' || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--parse-logs' || '' }} \
+            ${{ (github.event.inputs.deep_scan == 'true' || github.event_name == 'schedule' || github.event_name == 'pull_request') && '--deep-scan' || '' }} \
+            --max-lookback ${{ github.event.inputs.max_lookback || '14' }} \
             --output ci_results.json \
             --save-all-runs all_runs.json
 
       - name: Upload scan results
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step1_scan' || inputs.steps == 'step2_create_issue' || inputs.steps == 'step3_classify' }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event.inputs.steps == 'all' || github.event.inputs.steps == 'step1_scan' || github.event.inputs.steps == 'step2_create_issue' || github.event.inputs.steps == 'step3_classify' }}
         uses: actions/upload-artifact@v4
         with:
           name: ci-scan-results
@@ -81,7 +81,7 @@ jobs:
       # ===== Step 2: Create Tracking Issue =====
       - name: "Step 2: Create Tracking Issue"
         id: create_issue
-        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || inputs.steps == 'all' || inputs.steps == 'step2_create_issue' || inputs.steps == 'step3_classify' }}
+        if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || github.event.inputs.steps == 'all' || github.event.inputs.steps == 'step2_create_issue' || github.event.inputs.steps == 'step3_classify' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -94,7 +94,7 @@ jobs:
       # NOTE: workflow_dispatch step3_classify also runs Step 1 and Step 2 first,
       # because this step depends on Step 2 output (issue_number).
       - name: "Step 3: Create Sub-Issues"
-        if: ${{ (github.event_name == 'schedule' || inputs.steps == 'all' || inputs.steps == 'step3_classify') && steps.create_issue.outputs.issue_number }}
+        if: ${{ (github.event_name == 'schedule' || github.event.inputs.steps == 'all' || github.event.inputs.steps == 'step3_classify') && steps.create_issue.outputs.issue_number }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
