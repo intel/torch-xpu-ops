@@ -20,7 +20,13 @@ template <typename scalar_t>
 struct IgammaFunctor {
   IgammaFunctor(bool calc_igammac) : calc_igammac_(calc_igammac) {}
   bool calc_igammac_;
-  [[clang::optnone]] scalar_t operator()(scalar_t a, scalar_t b) const {
+#if defined(__clang__)
+  [[clang::optnone]]
+#elif defined(__GNUC__)
+  __attribute__((optimize("O0")))
+#endif
+  scalar_t
+  operator()(scalar_t a, scalar_t b) const {
     if (calc_igammac_) {
       return calc_igammac<scalar_t>(a, b);
     } else {
