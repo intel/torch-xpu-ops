@@ -9679,8 +9679,14 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
         ln = torch.nn.LayerNorm(2, eps=1e-6, elementwise_affine=False)
         self.assertEqual(ln.forward(x), torch.zeros_like(x))
 
-    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
+    # XPU port: drop @unittest.skipIf(not TEST_CUDA) (the test now targets
+    # whichever GPU is available); resolve the GPU device at runtime
+    # instead of hard-coding "cuda" or "xpu". Variable names
+    # `x_cuda`/`ln_cuda`/`grad_output_cuda` left as-is since they're local
+    # and only describe the GPU-side tensor. Tracks intel/torch-xpu-ops#2531.
+    @unittest.skipIf(not TEST_GPU, "no GPU available")
     def test_layer_norm_backwards_eps(self):
+        device = device_type
         dtype = torch.float
         m_x_n_list = [
             (3, 3),
@@ -9702,14 +9708,14 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
             for m, n in m_x_n_list:
                 x = torch.randn((m, n), dtype=dtype, requires_grad=True)
                 grad_output = torch.rand_like(x)
-                x_cuda = x.clone().detach().to("cuda").requires_grad_()
-                grad_output_cuda = grad_output.clone().detach().to("cuda")
+                x_cuda = x.clone().detach().to(device).requires_grad_()
+                grad_output_cuda = grad_output.clone().detach().to(device)
                 ln = nn.LayerNorm(
                     n, dtype=dtype, elementwise_affine=elementwise_affine, bias=bias
                 )
                 ln_cuda = nn.LayerNorm(
                     n,
-                    device="cuda",
+                    device=device,
                     dtype=dtype,
                     elementwise_affine=elementwise_affine,
                     bias=bias,
@@ -9740,11 +9746,14 @@ tensor(..., device='meta', size=(1,), requires_grad=True)""",
                         atol=atol,
                     )
 
-    @unittest.skipIf(not TEST_CUDA, "CUDA not available")
-    @largeTensorTest("40GB", device="cuda")
+    # XPU port: drop @unittest.skipIf(not TEST_CUDA) (the test now targets
+    # whichever GPU is available); resolve the GPU device at runtime
+    # instead of hard-coding "cuda" or "xpu". Tracks intel/torch-xpu-ops#2024.
+    @unittest.skipIf(not TEST_GPU, "no GPU available")
+    @largeTensorTest("40GB", device=device_type)
     def test_layer_norm_large_tensor(self):
         # test for https://github.com/pytorch/pytorch/issues/136291
-        device = torch.device("cuda")
+        device = torch.device(device_type)
         b, n, dp = 16, 3000, 16
         pairwise_repr = torch.randn(b, n, n, dp)
 
