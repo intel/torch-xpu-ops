@@ -82,6 +82,26 @@ def find_disabled_test_issues(test_method_names, max_results=10):
 # Sub-Issue Creation
 # ============================================================================
 
+def _get_open_tracking_issues():
+    """Fetch all open pytorch-ci-failure issues with pagination."""
+    url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
+    params = {"state": "open", "labels": "pytorch-ci-failure", "per_page": 100}
+    issues = []
+    while url:
+        try:
+            resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
+        except requests.RequestException as exc:
+            print(f"Failed to fetch open issues: {exc}")
+            return issues
+        if resp.status_code != 200:
+            print(f"Failed to fetch open issues: {resp.status_code}")
+            return issues
+        issues.extend(resp.json())
+        url = resp.links.get("next", {}).get("url")
+        params = None
+    return issues
+
+
 def _check_existing_sub_issue(title_prefix):
     """Check if a sub-issue already exists with a matching title prefix.
 
@@ -91,13 +111,9 @@ def _check_existing_sub_issue(title_prefix):
     Returns:
         int or None: Existing issue number, or None if not found
     """
-    url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
-    params = {"state": "open", "labels": "pytorch-ci-failure", "per_page": 100}
-    resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
-    if resp.status_code == 200:
-        for issue in resp.json():
-            if title_prefix in issue.get("title", ""):
-                return issue["number"]
+    for issue in _get_open_tracking_issues():
+        if title_prefix in issue.get("title", ""):
+            return issue.get("number")
     return None
 
 
@@ -117,11 +133,11 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     count = len(test_names)
     tag = "NEW" if is_new else "EXISTING"
 
-    title = f"[ai_generated] [PyTorch CI] [{tag}] {short_file} ({count} failures) - Ref #{summary_issue_num}"
+    run_ref = f"[{tag}] {short_file} - Ref #{summary_issue_num}"
+    title = f"[ai_generated] [PyTorch CI] {run_ref} ({count} failures)"
 
     # Dedup: check if sub-issue already exists for this file + summary issue
-    dedup_prefix = f"[{tag}] {short_file}"
-    existing = _check_existing_sub_issue(dedup_prefix)
+    existing = _check_existing_sub_issue(run_ref)
     if existing:
         print(f"  Sub-issue already exists: #{existing}, skipping")
         return {"number": existing}
@@ -188,18 +204,19 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
 
     # Machine-readable reproduce instructions (for automation)
     # Store full test IDs for auto-close matching (test_file::test_name format)
+    repro_test_names = test_method_names[:5]
     repro_data = {
         "commit_sha": commit_sha,
         "test_file": test_file,
-        "test_ids": test_names[:20],
-        "test_names": test_method_names[:20],
+        "test_ids": test_names,
+        "test_names": test_method_names,
         "failure_type": f"{tag}_FAILURE",
         "repro_commands": [
             f"git fetch origin && git checkout {commit_sha}",
             "pip install -e . -v --no-build-isolation",
         ] + [
             f"python {test_file} -k {name} 2>&1 | tail -80"
-            for name in test_method_names[:5]
+            for name in repro_test_names
         ],
     }
     body_lines.extend([
@@ -267,14 +284,7 @@ def close_fixed_sub_issues(fixed_tests, commit_short, dry_run=False):
     fixed_set = set(fixed_tests)
     print(f"\n=== Checking {len(fixed_set)} fixed tests against open sub-issues ===")
 
-    url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
-    params = {"state": "open", "labels": "pytorch-ci-failure", "per_page": 100}
-    resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
-    if resp.status_code != 200:
-        print(f"Failed to fetch open issues: {resp.status_code}")
-        return
-
-    for issue in resp.json():
+    for issue in _get_open_tracking_issues():
         title = issue.get("title", "")
         # Only process sub-issues (title contains [NEW] or [EXISTING])
         if "[NEW]" not in title and "[EXISTING]" not in title:

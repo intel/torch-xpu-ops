@@ -96,7 +96,7 @@ def find_commit_scope(all_runs_data, current_commit):
     return last_pass, first_fail, commit_count
 
 
-def get_suspect_commits_in_scope(last_pass, first_fail, test_files):
+def get_suspect_commits_in_scope(last_pass, first_fail):
     """Find commits in scope that may be related to the failures.
 
     Uses GitHub Compare API to list all commits in scope, then filters
@@ -105,7 +105,6 @@ def get_suspect_commits_in_scope(last_pass, first_fail, test_files):
     Args:
         last_pass: Last PASS commit SHA
         first_fail: First FAIL commit SHA
-        test_files: List of failing test file paths (for relevance hints)
 
     Returns:
         list: Up to 10 suspect commits, each with sha, message, author
@@ -120,10 +119,9 @@ def get_suspect_commits_in_scope(last_pass, first_fail, test_files):
 
     suspects = []
     for commit in commits:
-        sha = commit["sha"]
-        msg = commit["commit"]["message"].split("\n")[0][:120]
-        author = (commit.get("author", {}).get("login", "unknown")
-                  if commit.get("author") else "unknown")
+        sha = commit.get("sha", "")
+        msg = commit.get("commit", {}).get("message", "").split("\n")[0][:120]
+        author = (commit.get("author", {}) or {}).get("login", "unknown")
 
         # Skip obviously irrelevant commits
         msg_lower = msg.lower()
@@ -161,8 +159,8 @@ def format_issue_body(data, all_runs_data=None):
     """
     from collections import OrderedDict
 
-    commit = data.get("commit_sha", "unknown")[:12]
-    full_commit = data.get("commit_sha", "")
+    full_commit = data.get("commit_sha") or "unknown"
+    commit = full_commit[:12]
     failures = data.get("failures", [])
     unique_tests = data.get("unique_failed_tests", [])
     new_tests = data.get("new_failed_tests", [])
@@ -179,17 +177,13 @@ def format_issue_body(data, all_runs_data=None):
     commit_count = "?"
     suspects = []
 
-    if all_runs_data:
+    if all_runs_data and full_commit != "unknown":
         last_pass_sha, first_fail_sha, commit_count = find_commit_scope(
             all_runs_data, full_commit)
 
         # Find suspect commits if we have a scope and new failures
-        if last_pass_sha and new_tests:
-            test_files = list(OrderedDict.fromkeys(
-                t.split("::")[0] for t in new_tests
-            ))
-            suspects = get_suspect_commits_in_scope(
-                last_pass_sha, first_fail_sha, test_files)
+        if last_pass_sha and first_fail_sha and new_tests:
+            suspects = get_suspect_commits_in_scope(last_pass_sha, first_fail_sha)
 
     last_pass_short = last_pass_sha[:12] if last_pass_sha else "unknown"
     first_fail_short = first_fail_sha[:12] if first_fail_sha else commit
@@ -217,11 +211,14 @@ def format_issue_body(data, all_runs_data=None):
             f"| ✅ Last PASS | `{last_pass_short}` | "
             f"[view](https://github.com/{PYTORCH_REPO}/commit/{last_pass_sha}) |"
         )
-    lines.append(
-        f"| ❌ First FAIL | `{first_fail_short}` | "
-        f"[view](https://github.com/{PYTORCH_REPO}/commit/{first_fail_sha}) |"
+    first_fail_link = (
+        f"[view](https://github.com/{PYTORCH_REPO}/commit/{first_fail_sha})"
+        if first_fail_sha and first_fail_sha != "unknown" else "N/A"
     )
-    if last_pass_sha:
+    lines.append(
+        f"| ❌ First FAIL | `{first_fail_short}` | {first_fail_link} |"
+    )
+    if last_pass_sha and first_fail_sha and first_fail_sha != "unknown":
         compare_url = f"https://github.com/{PYTORCH_REPO}/compare/{last_pass_sha}...{first_fail_sha}"
         lines.extend([
             "",
@@ -398,6 +395,26 @@ def format_push_runs_timeline(all_runs_data):
 # Issue CRUD Operations
 # ============================================================================
 
+def _get_open_tracking_issues():
+    """Fetch all open pytorch-ci-failure issues with pagination."""
+    url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
+    params = {"state": "open", "labels": "pytorch-ci-failure", "per_page": 100}
+    issues = []
+    while url:
+        try:
+            resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
+        except requests.RequestException as exc:
+            print(f"Failed to fetch open issues: {exc}")
+            return issues
+        if resp.status_code != 200:
+            print(f"Failed to fetch open issues: {resp.status_code}")
+            return issues
+        issues.extend(resp.json())
+        url = resp.links.get("next", {}).get("url")
+        params = None
+    return issues
+
+
 def check_existing_issue(commit_short):
     """Check if an issue already exists for this commit (avoid duplicates).
 
@@ -407,13 +424,9 @@ def check_existing_issue(commit_short):
     Returns:
         int or None: Existing issue number, or None if not found
     """
-    url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
-    params = {"state": "open", "labels": "pytorch-ci-failure", "per_page": 100}
-    resp = requests.get(url, headers=HEADERS, params=params, timeout=60)
-    if resp.status_code == 200:
-        for issue in resp.json():
-            if commit_short in issue["title"]:
-                return issue["number"]
+    for issue in _get_open_tracking_issues():
+        if commit_short in issue.get("title", ""):
+            return issue.get("number")
     return None
 
 
@@ -479,6 +492,13 @@ def main():
         with open(args.all_runs) as f:
             all_runs_data = json.load(f)
 
+    if not data.get("commit_sha"):
+        schedule_runs = all_runs_data.get("schedule_runs", [])
+        if schedule_runs:
+            data["commit_sha"] = schedule_runs[0].get("head_sha") or "unknown"
+        else:
+            data["commit_sha"] = "unknown"
+
     # Generate issue body
     body = format_issue_body(data, all_runs_data)
 
@@ -507,6 +527,10 @@ def main():
         print(f"=== TITLE ===\n{title}\n")
         print(f"=== BODY ===\n{body}")
         return
+
+    if commit_short == "unknown":
+        print("ERROR: commit_sha unavailable; refusing to create/update issue", file=sys.stderr)
+        sys.exit(1)
 
     # Check for existing issue with same commit
     existing = check_existing_issue(commit_short)
