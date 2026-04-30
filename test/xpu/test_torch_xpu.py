@@ -223,7 +223,6 @@ load_tests = load_tests
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
-
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
     8,
     6,
@@ -341,6 +340,10 @@ class TestTorchDeviceType(TestCase):
         torch.qint32,
         torch.quint4x2,
     )
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_setitem(self, device, dtype):
         # Skip quantized dtypes for CUDA, since they're not supported
         if torch.device(device).type == "cuda" or torch.device(device).type == "xpu":
@@ -372,6 +375,10 @@ class TestTorchDeviceType(TestCase):
         s[2:7] = 1
         self.assertEqual(s, storage_type(l))
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     @skipIfTorchDynamo("https://github.com/pytorch/torchdynamo/issues/1991")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
@@ -386,7 +393,6 @@ class TestTorchDeviceType(TestCase):
         expected_storage_type = getattr(
             module, torch.storage._dtype_to_storage_type_map()[dtype]
         )
-
         self.assertEqual(a.storage_type(), expected_storage_type)
 
     @onlyNativeDeviceTypes
@@ -1271,7 +1277,7 @@ class TestTorchDeviceType(TestCase):
         self.assertFalse(t1.is_set_to(t4))
         self.assertFalse(
             torch.tensor([]).is_set_to(torch.tensor([])),
-            "Tensors with no storages should not appear to be set " "to each other",
+            "Tensors with no storages should not appear to be set to each other",
         )
 
         t1 = torch.tensor([True, True], dtype=torch.bool, device=device)
@@ -6922,7 +6928,9 @@ else:
                 if "cuda" == device.type:
                     self.assertTrue(isinstance(s1._scale, torch.cuda.FloatTensor))
                 elif "xpu" == device.type:
-                    self.assertTrue(isinstance(s1._scale, torch.xpu.FloatTensor))
+                    self.assertTrue(isinstance(s1._scale, torch.Tensor))
+                    self.assertTrue(s1._scale.dtype == torch.float32)
+                    self.assertEqual(s1._scale.device, device)
                 else:
                     self.assertTrue(isinstance(s1._scale, torch.FloatTensor))
 
@@ -9055,6 +9063,10 @@ class TestTorch(TestCase):
         self.assertEqual(bytes.tolist(), [1, 2, 3, 4])
         self.assertTrue(isinstance(bytes, torch.ByteStorage))
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_error(self):
         quantized_storages = [
             torch.QInt32Storage,
@@ -9198,6 +9210,10 @@ class TestTorch(TestCase):
                 with self.assertRaisesRegex(RuntimeError, r"cannot set item"):
                     s.fill_(s_other)
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_error_no_attribute(self):
         if TEST_XPU:
             storage_classes = [
@@ -9387,6 +9403,10 @@ class TestTorch(TestCase):
 
     # Test that internal versions of functions related to TypedStorage do not
     # produce a deprecation warning
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_typed_storage_internal_no_warning(self):
         s0 = torch.FloatStorage(10)
         s0_untyped = s0.untyped()
@@ -9464,6 +9484,10 @@ class TestTorch(TestCase):
 
     # Test that public functions related to TypedStorage produce a deprecation
     # warning
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     @skipIfTorchInductor("FIXME")
     def test_typed_storage_deprecation_warning(self):
         s0 = torch.FloatStorage(10)
@@ -9566,9 +9590,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     def test_torch_from_file(self):
@@ -9599,11 +9624,16 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_print(self):
         default_type = torch.tensor([]).type()
         for t in torch._tensor_classes:
