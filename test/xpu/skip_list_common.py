@@ -94,6 +94,19 @@ skip_dict = {
         "test_compile_dyn_quant_matmul_4bit_m_32_k_64_n_4096_xpu",
         "_tunableop_",
         "_tuning_tunableop_",
+        # skipped due to a bug in OpenBLAS 0.3.20 used in numpy 1.23.* related with Intel(R) Sapphire Rapids CPU
+        # TODO: remove skip after switching CI to python 3.11
+        "test_det_logdet_slogdet_xpu_float64",
+        "test_det_xpu_float64",
+        "test_solve_xpu_float32",
+        "test_solve_xpu_float64",
+        "test_tensorinv_xpu_float32",
+        "test_tensorinv_xpu_float64",
+        "test_inverse_many_batches_xpu_float32",
+        "test_inverse_many_batches_xpu_float64",
+        "test_cond_xpu_float32",
+        "test_cond_xpu_float64",
+        "test_linalg_matrix_exp_analytic_xpu_float64",
     ),
     "test_masked_xpu.py": None,
     "test_maskedtensor_xpu.py": None,
@@ -123,6 +136,9 @@ skip_dict = {
         # For CUDA it's skipped explicitly in common_methods_invocations.py in upstream. We can skip it here
         "test_out_histc_xpu_float32",
         "test_out_mean_xpu_float32",
+        # skipped due to a bug in OpenBLAS 0.3.20 used in numpy 1.23.* related with Intel(R) Sapphire Rapids CPU
+        # TODO: remove skip after switching CI to python 3.11
+        "test_numpy_ref_linalg_tensorinv_xpu_float64",
     ),
     "test_optim_xpu.py": None,
     "test_reductions_xpu.py": None,
