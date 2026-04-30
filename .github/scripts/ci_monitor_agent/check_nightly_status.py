@@ -515,9 +515,9 @@ def main():
             "existing_failure_scope": {},
         }
     else:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"RESULTS for [{args.event}] runs")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Total failed tests: {len(latest_tests)}")
         if prev_tests:
             print(f"  [NEW]      {len(new_tests)} (not in previous run)")

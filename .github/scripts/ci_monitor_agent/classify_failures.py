@@ -246,7 +246,9 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
         "test_names": test_method_names,
         "failure_type": f"{tag}_FAILURE",
         "repro_commands": [
-            f"git fetch origin && git checkout {commit_sha}",
+            "# Run from a pytorch/pytorch checkout",
+            "git remote get-url pytorch || git remote add pytorch https://github.com/pytorch/pytorch.git",
+            f"git fetch pytorch {commit_sha} && git checkout {commit_sha}",
             "pip install -e . -v --no-build-isolation",
         ] + [
             f"python {test_file} -k {name} 2>&1 | tail -80"

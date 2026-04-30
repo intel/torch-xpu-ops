@@ -214,6 +214,16 @@ def format_issue_body(data, all_runs_data=None):
     last_pass_short = last_pass_sha[:12] if last_pass_sha else "unknown"
     first_fail_short = first_fail_sha[:12] if first_fail_sha else commit
 
+    status = data.get("status") or "UNKNOWN"
+    is_all_pass = status == "ALL_PASS"
+    has_failures = bool(failures) or status == "HAS_FAILURES"
+    has_no_result = not is_all_pass and not has_failures
+    status_label = (
+        "ALL PASS" if is_all_pass else
+        "HAS FAILURES" if has_failures else
+        status
+    )
+
     # --- Assemble issue body ---
 
     # 1. Header
@@ -221,7 +231,7 @@ def format_issue_body(data, all_runs_data=None):
         "## XPU CI Nightly Status Report",
         "",
         f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        f"**Status:** {'ALL PASS' if data.get('status') == 'ALL_PASS' else 'HAS FAILURES'}",
+        f"**Status:** {status_label}",
         "",
     ]
 
@@ -261,11 +271,15 @@ def format_issue_body(data, all_runs_data=None):
         lines.append(f"**New Failures:** {n_new} | **Existing:** {n_existing} | **Fixed:** {n_fixed}")
     lines.extend(["", "---", ""])
 
-    status = data.get("status")
-    has_failures = bool(failures) or status == "HAS_FAILURES"
     # Early return only when the run is actually passing.
-    if not has_failures:
+    if is_all_pass:
         lines.append("All XPU tests passed! No action needed.")
+        return "\n".join(lines)
+    if has_no_result:
+        if status == "NO_RUNS_FOUND":
+            lines.append("No matching XPU test runs were found, so no pass/fail result is available.")
+        else:
+            lines.append(f"XPU test status: `{status}`. No pass/fail result is available.")
         return "\n".join(lines)
     if has_failures and not unique_tests:
         lines.extend([
@@ -544,11 +558,19 @@ def main():
     with open(args.input) as f:
         data = json.load(f)
 
-    # Read all_runs.json if provided
+    # Read all_runs.json if provided. Continue without it if the file is absent
+    # or invalid, because it is only used for extra commit-scope context.
     all_runs_data = {}
     if args.all_runs:
-        with open(args.all_runs) as f:
-            all_runs_data = json.load(f)
+        try:
+            with open(args.all_runs) as f:
+                all_runs_data = json.load(f)
+        except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
+            print(
+                f"WARNING: Failed to read --all-runs file '{args.all_runs}': {exc}. "
+                "Continuing without all-runs data.",
+                file=sys.stderr,
+            )
 
     if not data.get("commit_sha"):
         schedule_runs = all_runs_data.get("schedule_runs", [])
