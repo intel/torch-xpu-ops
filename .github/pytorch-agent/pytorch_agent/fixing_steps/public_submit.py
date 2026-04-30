@@ -6,11 +6,16 @@ Entry point:
 from __future__ import annotations
 
 import argparse
+import subprocess
 
 from ..utils import github_client as gh
+import os
+
 from ..utils.config import (
     UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO,
 )
+
+PUBLIC_PR_REVIEWER = os.environ.get("PUBLIC_PR_REVIEWER", "")
 from ..utils.state import TrackedIssue, update_stage, load_tracked
 from ..utils.logger import log
 
@@ -40,7 +45,7 @@ def run(tracked: TrackedIssue) -> None:
         body += f"**Root Cause:** {tracked.triage_reason}\n\n"
 
     # Parse issue sections for context
-    from .implement import _parse_issue_sections
+    from ._issue_format import parse_issue_sections as _parse_issue_sections
     sections = _parse_issue_sections(detail.get("body", ""))
     if sections.get("Failed Tests"):
         body += f"**Failed Tests:**\n{sections['Failed Tests']}\n\n"
@@ -48,16 +53,37 @@ def run(tracked: TrackedIssue) -> None:
         body += f"**Failure Type:** {sections['Failure Type']}\n\n"
 
     body += (
-        f"cc @Stonepia\n"
+        (f"cc @{PUBLIC_PR_REVIEWER}\n" if PUBLIC_PR_REVIEWER else "")
     )
 
-    pr = gh.create_cross_fork_pr(
-        head_repo=PRIVATE_REVIEW_REPO,
-        head_branch=branch,
-        base_repo=PUBLIC_TARGET_REPO,
-        title=title,
-        body=body,
-    )
+    # Idempotent: check if PR already exists for this branch
+    try:
+        existing = gh._gh_api(
+            f"/repos/{PUBLIC_TARGET_REPO}/pulls",
+            query=f"head={PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}&state=open",
+        )
+        if existing:
+            pr = existing[0]
+            log("INFO", f"Public PR already exists: #{pr.get('number')}",
+                issue=tracked.source_number)
+        else:
+            pr = gh.create_cross_fork_pr(
+                head_repo=PRIVATE_REVIEW_REPO,
+                head_branch=branch,
+                base_repo=PUBLIC_TARGET_REPO,
+                title=title,
+                body=body,
+            )
+    except subprocess.CalledProcessError:
+        # 422 "PR already exists" — find it
+        existing = gh._gh_api(
+            f"/repos/{PUBLIC_TARGET_REPO}/pulls",
+            query=f"head={PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}&state=open",
+        )
+        if existing:
+            pr = existing[0]
+        else:
+            raise
 
     tracked.public_pr_number = pr.get("number")
     tracked.public_pr_url = pr.get("html_url", pr.get("url"))

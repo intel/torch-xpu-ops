@@ -56,7 +56,7 @@ def advance(issue_number: int) -> None:
         case "CI_WATCH":
             from .fixing_steps.ci_watch import run
             _run_step("ci_watch", run, tracked, issue_number)
-        case "DONE":
+        case "MERGED" | "DONE":
             from .fixing_steps.close_issue import run
             _run_step("close_issue", run, tracked, issue_number)
         case "NEEDS_HUMAN":

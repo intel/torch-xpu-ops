@@ -19,8 +19,8 @@ from .config import (
 from .logger import log
 
 STAGES = [
-    "DISCOVERED", "TRIAGING", "IMPLEMENTING", "IN_REVIEW",
-    "PUBLIC_PR", "CI_WATCH", "DONE", "SKIPPED", "NEEDS_HUMAN",
+    "DISCOVERED", "IMPLEMENTING", "IN_REVIEW",
+    "PUBLIC_PR", "CI_WATCH", "MERGED", "DONE", "SKIPPED", "NEEDS_HUMAN",
 ]
 
 STATE_COMMENT_MARKER = "<!-- AGENT_STATE:"
@@ -43,6 +43,7 @@ class TrackedIssue:
     attempt_count: int = 0
     last_push_sha: str | None = None
     paused: bool = False
+    ci_iteration: int = 0
     _state_comment_id: int | None = field(default=None, repr=False)
 
 
@@ -140,7 +141,7 @@ def update_stage(tracked: TrackedIssue, new_stage: str, message: str) -> None:
 # These match the checklist from the CI failure tracking issue template.
 _STAGE_CHECKLIST: dict[str, list[str]] = {
     "DISCOVERED":    [],
-    "TRIAGING":      [],
+    
     "IMPLEMENTING":  ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally"],
     "IN_REVIEW":     ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal"],
     "PUBLIC_PR":     ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review"],

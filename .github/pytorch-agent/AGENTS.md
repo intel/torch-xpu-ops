@@ -27,16 +27,18 @@ issue_discovery.py → issue_triaging_agent.py → issue_fixing_agent.py
 ## State Tracking
 
 State is stored on **source issues** in `intel/torch-xpu-ops`:
-- **Labels:** `agent:tracking`, `agent:implementing`, `agent:in-review`, etc.
+- **Labels:** `agent:active`, `agent:blocked`, `agent:done`, `agent:skipped`, `agent:needs-human`, `agent:paused`
 - **JSON state:** Hidden HTML comment in a dedicated issue comment
 - **Stage transitions:** Human-readable comments posted on each change
 
 ## Stage Flow
 
 ```
-DISCOVERED → TRIAGING → IMPLEMENTING → IN_REVIEW → PUBLIC_PR → CI_WATCH → DONE
-                ↓              ↓            ↓
-              SKIPPED    NEEDS_HUMAN   NEEDS_HUMAN
+DISCOVERED → IMPLEMENTING → IN_REVIEW → PUBLIC_PR → CI_WATCH → MERGED → DONE
+                        ↓            ↓                       ↓
+                  NEEDS_HUMAN   NEEDS_HUMAN/PAUSED     NEEDS_HUMAN
+                                     ↓
+                                   SKIPPED
 ```
 
 ## Repos & Remotes
@@ -49,8 +51,10 @@ DISCOVERED → TRIAGING → IMPLEMENTING → IN_REVIEW → PUBLIC_PR → CI_WATC
 
 ## Escalation
 
-- Implementation: max 3 attempts → `needs:human` label + NEEDS_HUMAN stage
-- Review: max 3 iterations → `needs:human` label + NEEDS_HUMAN stage
+- Implementation: max 3 attempts → `agent:needs-human` label + NEEDS_HUMAN stage
+- Review: max 3 iterations → `agent:needs-human` label + NEEDS_HUMAN stage
+- CI watch: max 3 iterations → `agent:needs-human` label + NEEDS_HUMAN stage
+- `/agent pause` command → PAUSED (stays in IN_REVIEW, cron skips)
 
 ## Configuration
 

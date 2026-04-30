@@ -23,8 +23,7 @@ git remote add review <your-private-review-fork-url>
 
 ```bash
 REPO=intel/torch-xpu-ops
-for label in agent:tracking agent:implementing agent:in-review agent:public-pr \
-             agent:ci-watch agent:done agent:skipped needs:human; do
+for label in agent:active agent:blocked agent:done agent:skipped agent:needs-human agent:paused; do
   gh label create "$label" --repo $REPO --color ededed --force
 done
 ```

@@ -11,7 +11,7 @@ import subprocess
 from ..utils import github_client as gh
 from ..utils.config import (
     UPSTREAM_ISSUE_REPO, PUBLIC_TARGET_REPO, PYTORCH_DIR, REVIEW_REMOTE,
-    PRIVATE_REVIEW_REPO, STAGE_TIMEOUTS,
+    PRIVATE_REVIEW_REPO, STAGE_TIMEOUTS, MAX_REVIEW_ITERATIONS,
 )
 from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
 from ..utils.agent_backend import get_backend
@@ -89,7 +89,7 @@ def run(tracked: TrackedIssue) -> None:
     # Handle failures
     failure_text = "\n".join(
         f"- **{c.get('name', 'unknown')}**: {c.get('conclusion', '?')} — "
-        f"{c.get('output', {}).get('summary', 'no details')}"
+        f"{(c.get('output') or {}).get('summary', 'no details')}"
         for c in failed
     )
 
@@ -101,16 +101,22 @@ def run(tracked: TrackedIssue) -> None:
         f"Agent is analyzing failures...",
     )
 
+    # --- CI iteration limit ---
+    ci_iteration = getattr(tracked, "ci_iteration", 0)
+    if ci_iteration >= MAX_REVIEW_ITERATIONS:
+        update_stage(tracked, "NEEDS_HUMAN",
+                     f"CI fix iteration limit ({MAX_REVIEW_ITERATIONS}) reached.")
+        return
+    tracked.ci_iteration = ci_iteration + 1
+    save_state(tracked)
+
     prompt = CI_FIX_PROMPT_TEMPLATE.format(failures=failure_text)
 
+    from ..utils.notify import post_session_started
+
     def _post_session_id(sid: str):
-        gh.add_issue_comment(
-            UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🔗 **CI fix agent session started**\n\n"
-            f"**Attach to watch live:**\n"
-            f"```bash\ncd ~/pytorch && opencode -s {sid}\n```\n"
-            f"Session ID: `{sid}`",
-        )
+        post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
+                             "CI fix", sid)
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("CI_WATCH", 600)
@@ -121,18 +127,41 @@ def run(tracked: TrackedIssue) -> None:
     log("INFO", f"CI fix agent log: {log_path}",
         issue=tracked.source_number)
 
-    # Push any fixes
+    # Auto-commit any changes the agent made
     branch = tracked.branch or f"agent/issue-{tracked.source_number}"
     try:
+        subprocess.run(["git", "add", "-A"], cwd=str(PYTORCH_DIR), check=True)
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=str(PYTORCH_DIR),
+        )
+        if result.returncode != 0:
+            subprocess.run(
+                ["git", "commit", "-m",
+                 f"[agent] CI fix iteration {tracked.ci_iteration} "
+                 f"for #{tracked.source_number}"],
+                cwd=str(PYTORCH_DIR), check=True,
+            )
+    except subprocess.CalledProcessError:
+        pass  # No changes to commit
+
+    # Push fixes (no force push — preserves reviewed commits)
+    try:
         subprocess.run(
-            ["git", "push", "-f", REVIEW_REMOTE, branch],
+            ["git", "push", REVIEW_REMOTE, branch],
             cwd=str(PYTORCH_DIR), check=True,
         )
+        tracked.last_push_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(PYTORCH_DIR),
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        save_state(tracked)
         log("INFO", f"Pushed CI fix for #{tracked.source_number}",
             issue=tracked.source_number)
         gh.add_issue_comment(
             UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🤖 **CI fix pushed** for PR #{tracked.public_pr_number}\n\n"
+            f"🤖 **CI fix pushed** (iteration {tracked.ci_iteration}) "
+            f"for PR #{tracked.public_pr_number}\n\n"
             f"_Agent log: `{log_path.name}`_",
         )
     except subprocess.CalledProcessError as e:

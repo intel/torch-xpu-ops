@@ -11,11 +11,12 @@ PUBLIC_TARGET_REPO = os.environ.get("PUBLIC_TARGET_REPO", "pytorch/pytorch")
 ISSUE_LABEL = "ai_generated"
 STAGE_TO_LABEL = {
     "DISCOVERED": "agent:active",
-    "TRIAGING": "agent:active",
     "IMPLEMENTING": "agent:active",
     "IN_REVIEW": "agent:blocked",
     "PUBLIC_PR": "agent:blocked",
-    "CI_WATCH": "agent:blocked",
+    "CI_WATCH": "agent:active",
+    "MERGED": "agent:active",
+    "PAUSED": "agent:paused",
     "DONE": "agent:done",
     "SKIPPED": "agent:skipped",
     "NEEDS_HUMAN": "agent:needs-human",

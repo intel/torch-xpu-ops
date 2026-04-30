@@ -194,7 +194,6 @@ def run(tracked: TrackedIssue) -> None:
     if tracked.review_iteration > MAX_REVIEW_ITERATIONS:
         update_stage(tracked, "NEEDS_HUMAN",
                      f"Exceeded {MAX_REVIEW_ITERATIONS} review iterations. Needs human.")
-        gh.add_label(UPSTREAM_ISSUE_REPO, tracked.source_number, "agent:needs-human")
         return
 
     save_state(tracked)
@@ -204,8 +203,8 @@ def run(tracked: TrackedIssue) -> None:
                                   tracked.last_push_sha)
     # If no new reviews after last push, nothing to address — skip
     if not reviews:
-        logger.info("No new review feedback after last push for #%s, skipping",
-                     tracked.source_number)
+        log("INFO", f"No new review feedback after last push for #{tracked.source_number}, skipping",
+            issue=tracked.source_number)
         return
     review_text = format_reviews_for_prompt(reviews)
 
@@ -240,14 +239,11 @@ def run(tracked: TrackedIssue) -> None:
         capture_output=True, text=True, check=True,
     ).stdout.strip()
 
+    from ..utils.notify import post_session_started
+
     def _post_session_id(sid: str):
-        gh.add_issue_comment(
-            UPSTREAM_ISSUE_REPO, tracked.source_number,
-            f"🔗 **Review fix agent session started**\n\n"
-            f"**Attach to watch live:**\n"
-            f"```bash\ncd ~/pytorch && opencode -s {sid}\n```\n"
-            f"Session ID: `{sid}`",
-        )
+        post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
+                             "Review fix", sid)
 
     backend = get_backend()
     timeout = STAGE_TIMEOUTS.get("IN_REVIEW", 1800)

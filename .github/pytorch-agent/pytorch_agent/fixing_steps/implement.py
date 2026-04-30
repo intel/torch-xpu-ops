@@ -117,7 +117,6 @@ def run(tracked: TrackedIssue) -> None:
     if tracked.attempt_count > MAX_AGENT_ATTEMPTS:
         update_stage(tracked, "NEEDS_HUMAN",
                      f"Exceeded {MAX_AGENT_ATTEMPTS} implementation attempts. Needs human.")
-        gh.add_label(UPSTREAM_ISSUE_REPO, tracked.source_number, "agent:needs-human")
         return
     save_state(tracked)
 
@@ -174,14 +173,11 @@ def run(tracked: TrackedIssue) -> None:
         )
 
         # Dispatch agent — post session ID to issue as soon as it's available
+        from ..utils.notify import post_session_started
+
         def _post_session_id(sid: str):
-            gh.add_issue_comment(
-                UPSTREAM_ISSUE_REPO, tracked.source_number,
-                f"🔗 **Agent session started**\n\n"
-                f"**Attach to watch live:**\n"
-                f"```bash\ncd {PYTORCH_DIR} && opencode -s {sid}\n```\n"
-                f"Session ID: `{sid}`",
-            )
+            post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
+                                 "Implementation", sid, str(PYTORCH_DIR))
 
         backend = get_backend()
         timeout = STAGE_TIMEOUTS.get("IMPLEMENTING", 1800)
