@@ -102,22 +102,29 @@ with XPUPatchForImport(False):
 
     TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
 
-    def sort_large_slice(self, device):
-        # tests direct XPU sort path on large slices
+    # Upstream test_sort_and_select.py:test_sort_large_slice carries
+    # @onlyCUDA and uses torch.cuda.synchronize() / .cuda(); resolve sync
+    # and the .to(device) move via the test-supplied `device` (set by
+    # instantiate_device_type_tests) so the body is not bound to a single
+    # backend. The @onlyCUDA decorator is dropped because the override
+    # runs through instantiate_device_type_tests with device="xpu".
+    # Addresses intel/torch-xpu-ops#2531.
+    def _test_sort_large_slice(self, device):
+        # tests direct cub path
         x = torch.randn(4, 1024000, device=device)
         res1val, res1ind = torch.sort(x, stable=True)
-        torch.xpu.synchronize()
+        torch.get_device_module(device).synchronize()
         # assertIsOrdered is too slow, so just compare to cpu
         res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), stable=True)
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
         res1val, res1ind = torch.sort(x, descending=True, stable=True)
-        torch.xpu.synchronize()
+        torch.get_device_module(device).synchronize()
         res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), descending=True, stable=True)
         self.assertEqual(res1val, res1val_cpu.to(device))
         self.assertEqual(res1ind, res1ind_cpu.to(device))
 
-    TestSortAndSelect.test_sort_large_slice = sort_large_slice
+    TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True
