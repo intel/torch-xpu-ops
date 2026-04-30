@@ -506,9 +506,7 @@ TestPoolingNNDeviceType.test_pool3d_large_size_int64 = _test_pool3d_large_size_i
 @largeTensorTest("6GB", device=device_type)
 def _test_pooling_large(self, device):
     def helper(pool):
-        inp = torch.randn(
-            2**7 + 10, 2**8, 2**8, 2**8, dtype=torch.half, device=device
-        )
+        inp = torch.randn(2**7 + 10, 2**8, 2**8, 2**8, dtype=torch.half, device=device)
         self.assertTrue(inp.numel() > 2**31 - 1)
         pool(inp)
         # asserts test finishes normally without raising errors
