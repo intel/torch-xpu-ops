@@ -341,37 +341,32 @@ namespace at::native::xpu {
 
             DISPATCH_KERNEL_FOR_CACHE_CASE(use_lxu_cache, [&] {
                 try {
-                    sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
-                    auto device = queue.get_device();
 
                     const size_t local_x = kThreadGroupSize; 
                     const size_t local_y = kForwardMaxThreads / kThreadGroupSize;
                     const size_t grid_x = div_round_up(static_cast<size_t>(total_B), local_y);
 
-                    queue.submit([&](sycl::handler& cgh) {
-                        cgh.parallel_for<SplitEmbeddingNoBagCodegenForwardUnweightedKernel<emb_t, cache_t, output_t, use_cache_t, index_t, kThreadGroupSize>>(
-                            sycl::nd_range<2>(
-                                sycl::range<2>(grid_x * local_y, local_x),
-                                sycl::range<2>(local_y, local_x)
-                            ),
-                            SplitEmbeddingNoBagCodegenForwardUnweightedKernel<emb_t, cache_t, output_t, use_cache_t, index_t, kThreadGroupSize>(
-                                dev_weights.packed_accessor64<emb_t, 1, RestrictPtrTraits>(),
-                                uvm_weights.packed_accessor64<emb_t, 1, RestrictPtrTraits>(),
-                                lxu_cache_weights.packed_accessor64<cache_t, 2, RestrictPtrTraits>(),
-                                weights_placements.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
-                                weights_offsets.packed_accessor32<int64_t, 1, RestrictPtrTraits>(),
-                                D,
-                                FixedDivisor(B),
-                                indices.packed_accessor32<index_t, 1, RestrictPtrTraits>(),
-                                offsets.packed_accessor32<index_t, 1, RestrictPtrTraits>(),
-                                lxu_cache_locations.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
-                                uvm_cache_stats.size(0) == 0
-                                    ? nullptr
-                                    : (uvm_cache_stats.data_ptr<int32_t>() + uvm_cache_stats_index::num_conflict_unique_misses),
-                                output.packed_accessor64<output_t, 2, RestrictPtrTraits>()
-                            )
-                        );
-                    });
+                    sycl_kernel_submit(
+                        sycl::range<2>(grid_x * local_y, local_x),
+                        sycl::range<2>(local_y, local_x),
+                        getCurrentSYCLQueue(),
+                        SplitEmbeddingNoBagCodegenForwardUnweightedKernel<emb_t, cache_t, output_t, use_cache_t, index_t, kThreadGroupSize>(
+                            dev_weights.packed_accessor64<emb_t, 1, RestrictPtrTraits>(),
+                            uvm_weights.packed_accessor64<emb_t, 1, RestrictPtrTraits>(),
+                            lxu_cache_weights.packed_accessor64<cache_t, 2, RestrictPtrTraits>(),
+                            weights_placements.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
+                            weights_offsets.packed_accessor32<int64_t, 1, RestrictPtrTraits>(),
+                            D,
+                            FixedDivisor(B),
+                            indices.packed_accessor32<index_t, 1, RestrictPtrTraits>(),
+                            offsets.packed_accessor32<index_t, 1, RestrictPtrTraits>(),
+                            lxu_cache_locations.packed_accessor32<int32_t, 1, RestrictPtrTraits>(),
+                            uvm_cache_stats.size(0) == 0
+                                ? nullptr
+                                : (uvm_cache_stats.data_ptr<int32_t>() + uvm_cache_stats_index::num_conflict_unique_misses),
+                            output.packed_accessor64<output_t, 2, RestrictPtrTraits>()
+                        )
+                    );
                     
                 } catch (const sycl::exception& e) {
                     std::cerr << "SYCL exception: " << e.what() << std::endl;
