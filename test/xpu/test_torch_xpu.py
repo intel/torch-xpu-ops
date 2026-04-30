@@ -242,12 +242,15 @@ def torch_vital_set(value):
 # Tests Vital Signs for Torch
 # FIXME: document or deprecate whatever this is
 class TestBasicVitalSigns(TestCase):
+    # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
+    @onlyCUDA
     def test_basic_vitals(self):
         with torch_vital_set(""):
             self.assertFalse(torch.vitals_enabled())
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
 
+    @onlyCUDA
     def test_basic_vitals_read_write(self):
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
@@ -258,6 +261,7 @@ class TestBasicVitalSigns(TestCase):
             self.assertIn("TEST_VALUE_STRING", torch.read_vitals())
             self.assertIn("CUDA.used", torch.read_vitals())
 
+    @onlyCUDA
     def test_dataloader_vitals(self):
         with torch_vital_set("ON"):
             inps = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
@@ -392,6 +396,10 @@ class TestTorchDeviceType(TestCase):
         torch.qint32,
         torch.quint4x2,
     )
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_setitem(self, device, dtype):
         # Skip quantized dtypes for CUDA, since they're not supported
         if torch.device(device).type == "cuda" or torch.device(device).type == "xpu":
@@ -423,6 +431,10 @@ class TestTorchDeviceType(TestCase):
         s[2:7] = 1
         self.assertEqual(s, storage_type(l))
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     @skipIfTorchDynamo("https://github.com/pytorch/torchdynamo/issues/1991")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
@@ -437,7 +449,6 @@ class TestTorchDeviceType(TestCase):
         expected_storage_type = getattr(
             module, torch.storage._dtype_to_storage_type_map()[dtype]
         )
-
         self.assertEqual(a.storage_type(), expected_storage_type)
 
     @onlyNativeDeviceTypes
@@ -1322,7 +1333,7 @@ class TestTorchDeviceType(TestCase):
         self.assertFalse(t1.is_set_to(t4))
         self.assertFalse(
             torch.tensor([]).is_set_to(torch.tensor([])),
-            "Tensors with no storages should not appear to be set " "to each other",
+            "Tensors with no storages should not appear to be set to each other",
         )
 
         t1 = torch.tensor([True, True], dtype=torch.bool, device=device)
@@ -1395,8 +1406,8 @@ class TestTorchDeviceType(TestCase):
             small2 = torch.randn(*dims_small2, device=device).float()
             small2_expanded = small2.expand(*dims_full)
 
-        if small.is_cuda and fn in ["map", "map2"]:
-            # map and map2 are not implementd on CUDA tensors
+        if (small.device.type in ["cuda", "xpu"]) and fn in ["map", "map2"]:
+            # map and map2 are not implemented on CUDA and XPU tensors
             return
 
         if hasattr(large_expanded, fn):
@@ -6973,7 +6984,9 @@ else:
                 if "cuda" == device.type:
                     self.assertTrue(isinstance(s1._scale, torch.cuda.FloatTensor))
                 elif "xpu" == device.type:
-                    self.assertTrue(isinstance(s1._scale, torch.xpu.FloatTensor))
+                    self.assertTrue(isinstance(s1._scale, torch.Tensor))
+                    self.assertTrue(s1._scale.dtype == torch.float32)
+                    self.assertEqual(s1._scale.device, device)
                 else:
                     self.assertTrue(isinstance(s1._scale, torch.FloatTensor))
 
@@ -9106,6 +9119,10 @@ class TestTorch(TestCase):
         self.assertEqual(bytes.tolist(), [1, 2, 3, 4])
         self.assertTrue(isinstance(bytes, torch.ByteStorage))
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_error(self):
         quantized_storages = [
             torch.QInt32Storage,
@@ -9249,6 +9266,10 @@ class TestTorch(TestCase):
                 with self.assertRaisesRegex(RuntimeError, r"cannot set item"):
                     s.fill_(s_other)
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_error_no_attribute(self):
         if TEST_XPU:
             storage_classes = [
@@ -9438,6 +9459,10 @@ class TestTorch(TestCase):
 
     # Test that internal versions of functions related to TypedStorage do not
     # produce a deprecation warning
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_typed_storage_internal_no_warning(self):
         s0 = torch.FloatStorage(10)
         s0_untyped = s0.untyped()
@@ -9515,6 +9540,10 @@ class TestTorch(TestCase):
 
     # Test that public functions related to TypedStorage produce a deprecation
     # warning
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     @skipIfTorchInductor("FIXME")
     def test_typed_storage_deprecation_warning(self):
         s0 = torch.FloatStorage(10)
@@ -9617,9 +9646,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     def test_torch_from_file(self):
@@ -9650,11 +9680,16 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_print(self):
         default_type = torch.tensor([]).type()
         for t in torch._tensor_classes:

@@ -256,8 +256,6 @@ def determine_category(ut):
         return 'op_regression_dev1'
     elif ut == 'op_extended':
         return 'op_extended'
-    elif ut == 'op_transformers':
-        return 'op_transformers'
     elif ut == 'test_xpu':
         return 'test_xpu'
     elif 'op_ut' in ut:
