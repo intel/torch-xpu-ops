@@ -99,15 +99,16 @@ def find_commit_scope(all_runs_data, current_commit):
     # Sort chronologically (API returns newest first)
     runs_chrono = sorted(push_runs, key=lambda r: r.get("created_at", ""))
 
+    failure_conclusions = {"failure", "timed_out", "startup_failure", "action_required"}
     last_pass = None
     first_fail = None
     for run in runs_chrono:
-        conclusion = run.get("conclusion", "")
+        conclusion = run.get("conclusion") or ""
         sha = run.get("head_sha", "")
         if conclusion == "success":
             last_pass = sha
             first_fail = None  # Reset: we want the first FAIL after this PASS
-        elif conclusion != "success" and conclusion not in ("skipped", None, "") and first_fail is None:
+        elif conclusion in failure_conclusions and first_fail is None:
             first_fail = sha
 
     if not first_fail:
@@ -609,6 +610,9 @@ def main():
         return
 
     if commit_short == "unknown":
+        if data.get("status") in ("NO_RUNS_FOUND", "UNKNOWN"):
+            print("No commit_sha available for no-result status; skipping issue creation")
+            return
         print("ERROR: commit_sha unavailable; refusing to create/update issue", file=sys.stderr)
         sys.exit(1)
 

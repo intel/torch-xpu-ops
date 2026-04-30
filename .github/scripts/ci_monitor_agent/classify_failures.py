@@ -144,6 +144,8 @@ def _check_existing_sub_issue(dedup_key, open_issues=None):
         int or None: Existing issue number, or None if not found
     """
     for issue in (open_issues if open_issues is not None else _get_open_tracking_issues()):
+        if "pull_request" in issue:
+            continue
         title = issue.get("title", "")
         if title.startswith(dedup_key) and "(" in title[len(dedup_key):]:
             return issue.get("number")
