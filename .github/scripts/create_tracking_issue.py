@@ -73,6 +73,23 @@ def find_commit_scope(all_runs_data, current_commit):
     if not push_runs:
         return None, current_commit, "?"
 
+    schedule_runs = all_runs_data.get("schedule_runs", [])
+    current_run_time = None
+    for run in schedule_runs:
+        if run.get("head_sha") == current_commit:
+            current_run_time = run.get("created_at")
+            break
+    if not current_run_time and schedule_runs:
+        current_run_time = schedule_runs[0].get("created_at")
+
+    if current_run_time:
+        push_runs = [
+            run for run in push_runs
+            if run.get("created_at", "") <= current_run_time
+        ]
+        if not push_runs:
+            return None, current_commit, "?"
+
     # Sort chronologically (API returns newest first)
     runs_chrono = sorted(push_runs, key=lambda r: r.get("created_at", ""))
 
@@ -235,9 +252,30 @@ def format_issue_body(data, all_runs_data=None):
         lines.append(f"**New Failures:** {n_new} | **Existing:** {n_existing} | **Fixed:** {n_fixed}")
     lines.extend(["", "---", ""])
 
-    # Early return if all tests passed
-    if not unique_tests:
+    status = data.get("status")
+    has_failures = bool(failures) or status == "HAS_FAILURES"
+    # Early return only when the run is actually passing.
+    if not has_failures:
         lines.append("All XPU tests passed! No action needed.")
+        return "\n".join(lines)
+    if has_failures and not unique_tests:
+        lines.extend([
+            "Failed jobs were detected, but individual failed test names are unavailable.",
+            "This can happen when log parsing is disabled or test extraction failed.",
+            "",
+            "### Failed Jobs",
+            "",
+        ])
+        for failure in failures:
+            if not isinstance(failure, dict):
+                lines.append(f"- {failure}")
+                continue
+            job_name = failure.get("job_name") or failure.get("job") or failure.get("name") or "unknown job"
+            run_id = failure.get("run_id")
+            job_url = failure.get("job_url") or failure.get("html_url") or ""
+            details = f"run_id {run_id}" if run_id not in (None, "") else ""
+            label = f"{job_name} ({details})" if details else job_name
+            lines.append(f"- [{label}]({job_url})" if job_url else f"- {label}")
         return "\n".join(lines)
 
     # 3. Suspect Commits
@@ -541,10 +579,6 @@ def main():
         issue_number = existing
     else:
         labels = ["pytorch-ci-failure", "agent:blocked", "ai_generated"]
-        if data.get("status") != "ALL_PASS":
-            labels.append("has-failures")
-        if n_new > 0:
-            labels.append("new-failures")
         issue = create_issue(title, body, labels)
         if issue:
             issue_number = issue["number"]

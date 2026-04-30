@@ -401,8 +401,11 @@ def main():
     existing_tests = data.get("existing_failed_tests", [])
     fixed_tests = data.get("fixed_tests", [])
 
-    # Phase 1: Close fixed sub-issues
-    close_fixed_sub_issues(fixed_tests, commit_short, dry_run=args.dry_run)
+    # Phase 1: Close fixed sub-issues. Skip network reads in dry-run mode.
+    if args.dry_run:
+        print("\n[DRY-RUN] Skipping fixed sub-issue close check")
+    else:
+        close_fixed_sub_issues(fixed_tests, commit_short, dry_run=False)
 
     # Phase 2: Create sub-issues for failure groups
     new_groups = group_by_file(new_tests)
