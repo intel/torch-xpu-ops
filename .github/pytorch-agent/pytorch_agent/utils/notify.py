@@ -1,6 +1,8 @@
 """Shared notification helpers for agent sessions."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from . import github_client as gh
 
 
@@ -18,7 +20,7 @@ def post_session_started(
 
 
 def post_agent_completed(
-    repo: str, issue: int, header: str, log_path: "Path",
+    repo: str, issue: int, header: str, log_path: Path,
     output: str, *, tail: int = 50,
 ) -> None:
     """Post a standardised agent-completed comment with log tail."""

@@ -19,6 +19,8 @@ from ..utils.review_handler import (
 )
 from ..utils.agent_backend import get_backend
 from ..utils.logger import log
+from ..utils.notify import post_agent_completed, post_session_started
+from ..utils.git import git, add_and_commit
 
 
 REVIEW_FIX_PROMPT_TEMPLATE = """Address the following code review feedback on your PyTorch fix.
@@ -219,10 +221,7 @@ def run(tracked: TrackedIssue) -> None:
     )
 
     # Record pre-agent HEAD so we can check if agent made changes
-    from ..utils.git import git, add_and_commit
     pre_sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
-
-    from ..utils.notify import post_session_started
 
     def _post_session_id(sid: str):
         post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
@@ -294,7 +293,6 @@ def run(tracked: TrackedIssue) -> None:
         gh.update_pr_comment(PRIVATE_REVIEW_REPO, task_comment_id, comment)
 
     # Post log to source issue
-    from ..utils.notify import post_agent_completed
     post_agent_completed(
         UPSTREAM_ISSUE_REPO, tracked.source_number,
         f"Review iteration {tracked.review_iteration} — "

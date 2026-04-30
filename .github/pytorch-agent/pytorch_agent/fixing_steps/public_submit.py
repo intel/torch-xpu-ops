@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
+from subprocess import CalledProcessError
 
 from ..utils import github_client as gh
 from ..utils.config import (
@@ -16,6 +16,7 @@ from ..utils.config import (
 )
 from ..utils.state import TrackedIssue, update_stage, load_tracked
 from ..utils.logger import log
+from ._issue_format import build_pr_body
 
 
 def run(tracked: TrackedIssue) -> None:
@@ -33,7 +34,6 @@ def run(tracked: TrackedIssue) -> None:
     # Build descriptive PR body from issue details + diff
     detail = gh.get_issue_detail(UPSTREAM_ISSUE_REPO, tracked.source_number)
 
-    from ._issue_format import build_pr_body
     body = build_pr_body(
         upstream_issue_repo=UPSTREAM_ISSUE_REPO,
         source_number=tracked.source_number,
@@ -63,8 +63,10 @@ def run(tracked: TrackedIssue) -> None:
                 title=title,
                 body=body,
             )
-    except (subprocess.CalledProcessError, Exception) as exc:
+    except CalledProcessError as exc:
         # 422 "PR already exists" — find it
+        log("WARN", f"PR creation failed, checking for existing: {exc}",
+            issue=tracked.source_number)
         existing = gh._gh_api(
             f"/repos/{PUBLIC_TARGET_REPO}/pulls",
             token=gh._token_for_repo(PUBLIC_TARGET_REPO),

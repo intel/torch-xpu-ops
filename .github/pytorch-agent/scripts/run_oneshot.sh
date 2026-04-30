@@ -10,7 +10,7 @@ exec 200>"$LOCKFILE"
 flock -n 200 || { echo "$(date) Pipeline already running, skipping"; exit 0; }
 
 cd "$AGENT_DIR"
-source .env
+set -a && source .env && set +a
 
 # Pass all arguments through (e.g., --issue 3509)
 python3 scripts/run_pipeline.py "$@" 2>&1

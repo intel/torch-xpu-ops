@@ -17,6 +17,8 @@ from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
 from ..utils.agent_backend import get_backend
 from ..utils.git import git, git_out, add_and_commit
 from ..utils.logger import log
+from ..utils.notify import post_agent_completed, post_session_started
+from ._issue_format import build_pr_body, parse_issue_sections
 
 
 IMPLEMENT_PROMPT_TEMPLATE = """Fix the following PyTorch CI failure for Intel XPU.
@@ -41,8 +43,6 @@ Work in the current directory (~/pytorch).
 """
 
 
-# Issue section parsing — use the shared helper from _issue_format
-from ._issue_format import parse_issue_sections as _parse_issue_sections
 
 
 def _build_body_section(detail: dict) -> str:
@@ -52,7 +52,7 @@ def _build_body_section(detail: dict) -> str:
     Otherwise fall back to the raw issue body.
     """
     body = detail.get("body", "")
-    sections = _parse_issue_sections(body)
+    sections = parse_issue_sections(body)
 
     # If we got structured sections, build a focused prompt
     if sections.get("Failed Tests"):
@@ -156,8 +156,6 @@ def run(tracked: TrackedIssue) -> None:
         )
 
         # Dispatch agent — post session ID to issue as soon as it's available
-        from ..utils.notify import post_session_started
-
         def _post_session_id(sid: str):
             post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
                                  "Implementation", sid, str(PYTORCH_DIR))
@@ -172,7 +170,6 @@ def run(tracked: TrackedIssue) -> None:
             issue=tracked.source_number)
 
         # Post log + session info to source issue
-        from ..utils.notify import post_agent_completed
         post_agent_completed(
             UPSTREAM_ISSUE_REPO, tracked.source_number,
             f"Attempt {tracked.attempt_count} completed", log_path, output,
@@ -221,7 +218,6 @@ def run(tracked: TrackedIssue) -> None:
     tracked.last_push_sha = sha
 
     # Build descriptive PR body from issue details + diff summary
-    from ._issue_format import build_pr_body
     diff_stat = git_out("diff", "--stat", f"{REVIEW_REMOTE}/main..HEAD",
                         issue=tracked.source_number).strip()
 

@@ -16,7 +16,7 @@ STAGE_TO_LABEL = {
     "PUBLIC_PR": "agent:blocked",
     "CI_WATCH": "agent:active",
     "MERGED": "agent:active",
-    "PAUSED": "agent:paused",
+    
     "DONE": "agent:done",
     "SKIPPED": "agent:skipped",
     "NEEDS_HUMAN": "agent:needs-human",

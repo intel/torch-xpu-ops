@@ -44,6 +44,9 @@ def add_and_commit(message: str, *, issue: int | None = None,
         if len(parts) < 2:
             continue
         fname = parts[1].strip()
+        # Handle rename porcelain: "R  old -> new"
+        if " -> " in fname:
+            fname = fname.split(" -> ", 1)[1]
         if fname.startswith("third_party/"):
             log("INFO", f"Skipping submodule change: {fname}", issue=issue)
             continue

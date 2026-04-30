@@ -20,7 +20,7 @@ from pytorch_agent.utils.config import POLL_INTERVAL
 from pytorch_agent.utils.logger import log
 
 
-TERMINAL_STAGES = {"DONE", "SKIPPED", "NEEDS_HUMAN", "PAUSED"}
+TERMINAL_STAGES = {"DONE", "SKIPPED", "NEEDS_HUMAN"}
 
 
 def run_cycle() -> None:
@@ -34,7 +34,7 @@ def run_cycle() -> None:
     # 2. Advance each tracked issue (sequential — they share ~/pytorch workdir)
     active = [
         t for t in get_all_tracked()
-        if t.stage not in TERMINAL_STAGES
+        if t.stage not in TERMINAL_STAGES and not t.paused
     ]
     for t in active:
         try:
@@ -67,6 +67,10 @@ def run_single(issue_number: int) -> None:
     # Re-load after triage may have changed stage
     from pytorch_agent.utils.state import load_tracked
     tracked = load_tracked(issue_number)
+
+    if tracked.paused:
+        log("INFO", f"Issue #{issue_number} is paused, skipping", issue=issue_number)
+        return
 
     # Loop: keep advancing until terminal or stuck
     max_loops = 10  # safety guard against infinite loops

@@ -60,8 +60,7 @@ def build_pr_body(
     if include_diff_stat and diff_stat:
         body += f"---\n\n**Diff stat:**\n```\n{diff_stat}\n```\n\n"
 
-    body += "---\n\n"
     if reviewer:
-        body += f"cc @{reviewer}\n"
+        body += f"---\n\ncc @{reviewer}\n"
 
     return body

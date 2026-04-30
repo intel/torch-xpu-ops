@@ -16,6 +16,8 @@ from ..utils.config import (
 from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
 from ..utils.agent_backend import get_backend
 from ..utils.logger import log
+from ..utils.notify import post_agent_completed, post_session_started
+from ..utils.git import git, add_and_commit
 
 
 CI_FIX_PROMPT_TEMPLATE = """CI is failing on the public PR for your PyTorch fix.
@@ -103,15 +105,14 @@ def run(tracked: TrackedIssue) -> None:
 
     # --- CI iteration limit ---
     MAX_CI_ITERATIONS = 3
-    ci_iteration = getattr(tracked, "ci_iteration", 0)
-    if ci_iteration >= MAX_CI_ITERATIONS:
+    tracked.ci_iteration = getattr(tracked, "ci_iteration", 0) + 1
+    save_state(tracked)
+    if tracked.ci_iteration > MAX_CI_ITERATIONS:
         update_stage(tracked, "NEEDS_HUMAN",
                      f"CI fix iteration limit ({MAX_CI_ITERATIONS}) reached.")
         return
 
     prompt = CI_FIX_PROMPT_TEMPLATE.format(failures=failure_text)
-
-    from ..utils.notify import post_session_started
 
     def _post_session_id(sid: str):
         post_session_started(UPSTREAM_ISSUE_REPO, tracked.source_number,
@@ -128,7 +129,6 @@ def run(tracked: TrackedIssue) -> None:
 
     # Auto-commit any changes the agent made (excluding third_party/*)
     branch = tracked.branch or f"agent/issue-{tracked.source_number}"
-    from ..utils.git import git, add_and_commit
     committed = add_and_commit(
         f"[agent] CI fix iteration {tracked.ci_iteration} "
         f"for #{tracked.source_number}",
@@ -145,11 +145,9 @@ def run(tracked: TrackedIssue) -> None:
         tracked.last_push_sha = git(
             "rev-parse", "HEAD", issue=tracked.source_number,
         ).stdout.strip()
-        tracked.ci_iteration = ci_iteration + 1
         save_state(tracked)
         log("INFO", f"Pushed CI fix for #{tracked.source_number}",
             issue=tracked.source_number)
-        from ..utils.notify import post_agent_completed
         post_agent_completed(
             UPSTREAM_ISSUE_REPO, tracked.source_number,
             f"CI fix pushed (iteration {tracked.ci_iteration}) "

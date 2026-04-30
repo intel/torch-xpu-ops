@@ -18,6 +18,7 @@ from .utils.state import (
 )
 from .utils.agent_backend import get_backend
 from .utils.logger import log
+from .utils.notify import post_session_started
 from .issue_discovery import process_issue
 
 
@@ -63,8 +64,6 @@ def triage_issue(issue_number: int) -> tuple[str, str]:
     )
 
     # Dispatch agent — post session ID to issue for live monitoring
-    from .utils.notify import post_session_started
-
     def _post_session_id(sid: str):
         post_session_started(UPSTREAM_ISSUE_REPO, issue_number, "Triage", sid)
 

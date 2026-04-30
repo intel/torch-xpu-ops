@@ -130,6 +130,8 @@ class OpenCodeBackend(AgentBackend):
                             except Exception:
                                 pass
                     # Collect text output from assistant
+                    # Note: intentionally separate from parse_opencode_events() —
+                    # streaming side effects (session-id extraction, live logging)
                     if event.get("type") == "text":
                         part = event.get("part", {})
                         text_parts.append(part.get("text", ""))
