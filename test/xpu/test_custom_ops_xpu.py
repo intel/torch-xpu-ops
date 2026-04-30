@@ -33,7 +33,6 @@ import torch.distributed
 import torch.testing._internal.optests as optests
 import torch.utils._pytree as pytree
 import torch.utils.cpp_extension
-
 import yaml
 from torch import Tensor
 from torch._custom_op.impl import CustomOp, infer_schema
@@ -466,8 +465,7 @@ class TestCustomOpTesting(CustomOpTestCaseBase):
             )
 
         @custom_op(f"{self.test_ns}::foo")
-        def foo(x: torch.Tensor) -> torch.Tensor:
-            ...
+        def foo(x: torch.Tensor) -> torch.Tensor: ...
 
         @foo.impl(["cpu", "cuda"])
         def foo_impl(x):
