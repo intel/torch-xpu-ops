@@ -6,9 +6,9 @@ on:
   pull_request:
     paths:
       - '.github/workflows/ci_break_monitor.yml'
-      - '.github/scripts/check_nightly_status.py'
-      - '.github/scripts/create_tracking_issue.py'
-      - '.github/scripts/classify_failures.py'
+      - '.github/scripts/ci_monitor_agent/check_nightly_status.py'
+      - '.github/scripts/ci_monitor_agent/create_tracking_issue.py'
+      - '.github/scripts/ci_monitor_agent/classify_failures.py'
 
   workflow_dispatch:
     inputs:
@@ -59,7 +59,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python .github/scripts/check_nightly_status.py \
+          python .github/scripts/ci_monitor_agent/check_nightly_status.py \
             --days ${{ github.event.inputs.days || '7' }} \
             --event schedule \
             --num-runs 2 \
@@ -85,7 +85,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python .github/scripts/create_tracking_issue.py \
+          python .github/scripts/ci_monitor_agent/create_tracking_issue.py \
             --input ci_results.json \
             --all-runs all_runs.json \
             ${{ github.event_name == 'pull_request' && '--dry-run' || '' }}
@@ -98,14 +98,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python .github/scripts/classify_failures.py \
+          python .github/scripts/ci_monitor_agent/classify_failures.py \
             --input ci_results.json \
             --summary-issue ${{ steps.create_issue.outputs.issue_number }}
 
       - name: "Step 3: Create Sub-Issues (dry-run for PR)"
         if: ${{ github.event_name == 'pull_request' }}
         run: |
-          python .github/scripts/classify_failures.py \
+          python .github/scripts/ci_monitor_agent/classify_failures.py \
             --input ci_results.json \
             --summary-issue 0 \
             --dry-run
