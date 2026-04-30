@@ -609,6 +609,10 @@ def main():
         print(f"=== BODY ===\n{body}")
         return
 
+    if data.get("status") != "HAS_FAILURES" and not (n_failures or n_new or n_existing):
+        print(f"No failures for status {data.get('status', 'UNKNOWN')}; skipping issue creation")
+        return
+
     if commit_short == "unknown":
         if data.get("status") in ("NO_RUNS_FOUND", "UNKNOWN"):
             print("No commit_sha available for no-result status; skipping issue creation")

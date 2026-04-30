@@ -146,7 +146,7 @@ def _check_existing_sub_issue(dedup_key, open_issues=None):
     for issue in (open_issues if open_issues is not None else _get_open_tracking_issues()):
         if "pull_request" in issue:
             continue
-        title = issue.get("title", "")
+        title = issue.get("title") or ""
         if title.startswith(dedup_key) and "(" in title[len(dedup_key):]:
             return issue.get("number")
     return None
@@ -466,33 +466,25 @@ def main():
     group_num = 0
     open_issues = _get_open_tracking_issues() if not args.dry_run else []
 
-    # NEW failures -> create sub-issues
-    for test_file, tests in new_groups.items():
-        group_num += 1
-        short = test_file.split("/")[-1]
-        print(f"[{group_num}] NEW: {short} ({len(tests)} tests)")
-        if not args.dry_run:
-            issue = create_sub_issue(args.summary_issue, group_num, test_file, tests,
-                                     is_new=True, commit_sha=commit_sha,
-                                     open_issues=open_issues)
-            if not issue:
-                sys.exit(1)
-            open_issues.append({"title": issue.get("title"), "number": issue.get("number")})
-        print()
-
-    # EXISTING failures -> create sub-issues
-    for test_file, tests in existing_groups.items():
-        group_num += 1
-        short = test_file.split("/")[-1]
-        print(f"[{group_num}] EXISTING: {short} ({len(tests)} tests)")
-        if not args.dry_run:
-            issue = create_sub_issue(args.summary_issue, group_num, test_file, tests,
-                                     is_new=False, commit_sha=commit_sha,
-                                     open_issues=open_issues)
-            if not issue:
-                sys.exit(1)
-            open_issues.append({"title": issue.get("title"), "number": issue.get("number")})
-        print()
+    for tag, is_new, groups in (
+        ("NEW", True, new_groups),
+        ("EXISTING", False, existing_groups),
+    ):
+        for test_file, tests in groups.items():
+            group_num += 1
+            short = test_file.split("/")[-1]
+            print(f"[{group_num}] {tag}: {short} ({len(tests)} tests)")
+            if not args.dry_run:
+                issue = create_sub_issue(args.summary_issue, group_num, test_file, tests,
+                                         is_new=is_new, commit_sha=commit_sha,
+                                         open_issues=open_issues)
+                if not issue:
+                    sys.exit(1)
+                open_issues.append({
+                    "title": issue.get("title") or "",
+                    "number": issue.get("number"),
+                })
+            print()
 
     # Summary
     print(f"=== Done: {group_num} sub-issues, {len(fixed_tests)} fixed tests checked ===")
