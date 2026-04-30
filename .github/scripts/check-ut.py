@@ -15,6 +15,8 @@ summaries = []
 failures_by_category = defaultdict(list)
 passed_cases = []
 passed_by_category = defaultdict(list)
+skipped_cases = []
+skipped_by_category = defaultdict(list)
 category_totals = defaultdict(lambda: {
     'Test cases': 0,
     'Passed': 0,
@@ -306,6 +308,10 @@ def process_xml_file(xml_file):
                     case._file_category = category
                     passed_cases.append(case)
                     passed_by_category[category].append(case)
+                elif get_result(case) == "skipped":
+                    case._file_category = category
+                    skipped_cases.append(case)
+                    skipped_by_category[category].append(case)
     except Exception as e:
         print(f"Error processing {xml_file}: {e}", file=sys.stderr)
 
@@ -323,6 +329,21 @@ def generate_passed_log():
                 class_name = get_classname(case)
                 test_name = get_name(case)
                 status = get_result(case)
+                log_file.write(f"{category},{class_name},{test_name}\n")
+
+def generate_skipped_log():
+    if not skipped_cases:
+        return
+
+    for category, category_skipped in skipped_by_category.items():
+        if not category_skipped:
+            continue
+
+        log_filename = f"skipped_{category}.log"
+        with open(log_filename, "w", encoding='utf-8') as log_file:
+            for case in category_skipped:
+                class_name = get_classname(case)
+                test_name = get_name(case)
                 log_file.write(f"{category},{class_name},{test_name}\n")
 
 def generate_category_totals_log():
@@ -390,6 +411,7 @@ def main():
 
     generate_failures_log()
     generate_passed_log()
+    generate_skipped_log()
     generate_category_totals_log()
     print_summary()
 

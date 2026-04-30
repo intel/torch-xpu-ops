@@ -486,6 +486,13 @@ jobs:
           else
             echo -e "No Passed logs"
           fi
+          # Copied the skipped logs
+          if ls skipped*.log 1> /dev/null 2>&1; then
+            cp skipped*.log ${{ github.workspace }}/ut_log
+            echo -e "Skipped logs Copied"
+          else
+            echo -e "No Skipped logs"
+          fi
           # Copied the Summary logs
           if ls category*.log 1> /dev/null 2>&1; then
             cp category*.log ${{ github.workspace }}/ut_log
@@ -525,6 +532,7 @@ jobs:
           find "${{ github.workspace }}/ut_log" -type f \
               \( -name "failures_*.log" -o \
                 -name "passed_*.log" -o \
+                -name "skipped_*.log" -o \
                 -name "category_*.log" \) \
               -exec mv {} ./ \; || true
 
