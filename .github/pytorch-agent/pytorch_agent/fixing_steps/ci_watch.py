@@ -11,7 +11,7 @@ import subprocess
 from ..utils import github_client as gh
 from ..utils.config import (
     UPSTREAM_ISSUE_REPO, PUBLIC_TARGET_REPO, PYTORCH_DIR, REVIEW_REMOTE,
-    PRIVATE_REVIEW_REPO, STAGE_TIMEOUTS, MAX_REVIEW_ITERATIONS,
+    PRIVATE_REVIEW_REPO, STAGE_TIMEOUTS,
 )
 from ..utils.state import TrackedIssue, update_stage, save_state, load_tracked
 from ..utils.agent_backend import get_backend
@@ -43,7 +43,7 @@ def run(tracked: TrackedIssue) -> None:
     # Check if PR is already merged
     pr_status = gh.get_pr_status(PUBLIC_TARGET_REPO, tracked.public_pr_number)
     if pr_status == "merged":
-        update_stage(tracked, "DONE",
+        update_stage(tracked, "MERGED",
                      f"Public PR #{tracked.public_pr_number} merged!")
         return
 
@@ -102,13 +102,12 @@ def run(tracked: TrackedIssue) -> None:
     )
 
     # --- CI iteration limit ---
+    MAX_CI_ITERATIONS = 3
     ci_iteration = getattr(tracked, "ci_iteration", 0)
-    if ci_iteration >= MAX_REVIEW_ITERATIONS:
+    if ci_iteration >= MAX_CI_ITERATIONS:
         update_stage(tracked, "NEEDS_HUMAN",
-                     f"CI fix iteration limit ({MAX_REVIEW_ITERATIONS}) reached.")
+                     f"CI fix iteration limit ({MAX_CI_ITERATIONS}) reached.")
         return
-    tracked.ci_iteration = ci_iteration + 1
-    save_state(tracked)
 
     prompt = CI_FIX_PROMPT_TEMPLATE.format(failures=failure_text)
 
@@ -127,34 +126,26 @@ def run(tracked: TrackedIssue) -> None:
     log("INFO", f"CI fix agent log: {log_path}",
         issue=tracked.source_number)
 
-    # Auto-commit any changes the agent made
+    # Auto-commit any changes the agent made (excluding third_party/*)
     branch = tracked.branch or f"agent/issue-{tracked.source_number}"
-    try:
-        subprocess.run(["git", "add", "-A"], cwd=str(PYTORCH_DIR), check=True)
-        result = subprocess.run(
-            ["git", "diff", "--cached", "--quiet"],
-            cwd=str(PYTORCH_DIR),
-        )
-        if result.returncode != 0:
-            subprocess.run(
-                ["git", "commit", "-m",
-                 f"[agent] CI fix iteration {tracked.ci_iteration} "
-                 f"for #{tracked.source_number}"],
-                cwd=str(PYTORCH_DIR), check=True,
-            )
-    except subprocess.CalledProcessError:
-        pass  # No changes to commit
+    from ..utils.git import git, add_and_commit
+    committed = add_and_commit(
+        f"[agent] CI fix iteration {tracked.ci_iteration} "
+        f"for #{tracked.source_number}",
+        issue=tracked.source_number,
+    )
+
+    if not committed:
+        log("INFO", "No changes to commit after CI fix agent",
+            issue=tracked.source_number)
 
     # Push fixes (no force push — preserves reviewed commits)
     try:
-        subprocess.run(
-            ["git", "push", REVIEW_REMOTE, branch],
-            cwd=str(PYTORCH_DIR), check=True,
-        )
-        tracked.last_push_sha = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=str(PYTORCH_DIR),
-            capture_output=True, text=True, check=True,
+        git("push", REVIEW_REMOTE, branch, issue=tracked.source_number)
+        tracked.last_push_sha = git(
+            "rev-parse", "HEAD", issue=tracked.source_number,
         ).stdout.strip()
+        tracked.ci_iteration = ci_iteration + 1
         save_state(tracked)
         log("INFO", f"Pushed CI fix for #{tracked.source_number}",
             issue=tracked.source_number)

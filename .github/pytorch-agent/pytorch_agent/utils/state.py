@@ -68,9 +68,15 @@ def parse_state_comment(comment_body: str) -> TrackedIssue | None:
     )
     if not match:
         return None
-    data = json.loads(match.group(1))
+    try:
+        data = json.loads(match.group(1))
+    except (json.JSONDecodeError, ValueError):
+        return None
     comment_id = data.pop("_state_comment_id", None)
-    tracked = TrackedIssue(**data)
+    try:
+        tracked = TrackedIssue(**data)
+    except TypeError:
+        return None
     tracked._state_comment_id = comment_id
     return tracked
 
@@ -141,11 +147,11 @@ def update_stage(tracked: TrackedIssue, new_stage: str, message: str) -> None:
 # These match the checklist from the CI failure tracking issue template.
 _STAGE_CHECKLIST: dict[str, list[str]] = {
     "DISCOVERED":    [],
-    
     "IMPLEMENTING":  ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally"],
     "IN_REVIEW":     ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal"],
     "PUBLIC_PR":     ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review"],
     "CI_WATCH":      ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review", "PR creation"],
+    "MERGED":        ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review", "PR creation"],
     "DONE":          ["Reproduce on dev machine", "Identify root cause", "Implement fix", "Verify fix locally", "PR proposal", "Human review", "PR creation"],
 }
 

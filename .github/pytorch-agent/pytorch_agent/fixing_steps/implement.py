@@ -315,15 +315,9 @@ def run(tracked: TrackedIssue) -> None:
 
 
 def _git(args: list[str], cwd: str | None = None) -> str:
-    """Run git command and log it."""
-    cmd_str = f"git {' '.join(args)}"
-    log("DEBUG", f"Running: {cmd_str}", issue=None)
-    result = subprocess.run(
-        ["git"] + args, capture_output=True, text=True,
-        cwd=cwd, check=True,
-    )
-    if result.stdout.strip():
-        log("DEBUG", f"  → {result.stdout.strip()[:200]}", issue=None)
+    """Run git command via shared helper. Returns stdout."""
+    from ..utils.git import git as _git_impl
+    result = _git_impl(*args, workdir=Path(cwd) if cwd else None)
     return result.stdout
 
 

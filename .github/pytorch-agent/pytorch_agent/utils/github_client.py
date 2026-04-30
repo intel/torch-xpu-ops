@@ -177,13 +177,14 @@ def get_pr_status(repo: str, pr_number: int) -> str:
 
 
 def create_cross_fork_pr(head_repo: str, head_branch: str,
-                         base_repo: str, title: str, body: str) -> dict:
+                         base_repo: str, title: str, body: str,
+                         base_branch: str = "main") -> dict:
     """Create a cross-fork PR (e.g. reviewfork:branch → pytorch/pytorch:main)."""
     owner = head_repo.split("/")[0]
     return _gh_api(
         f"/repos/{base_repo}/pulls", method="POST",
         token=_token_for_repo(base_repo), title=title, body=body,
-        head=f"{owner}:{head_branch}", base="main",
+        head=f"{owner}:{head_branch}", base=base_branch,
     )
 
 

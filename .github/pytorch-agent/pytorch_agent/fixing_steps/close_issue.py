@@ -17,7 +17,7 @@ from ..utils.logger import log
 
 def run(tracked: TrackedIssue) -> None:
     """Close source issue and clean up."""
-    if tracked.stage != "DONE":
+    if tracked.stage != "MERGED":
         return
 
     if not tracked.public_pr_number:
@@ -46,6 +46,7 @@ def run(tracked: TrackedIssue) -> None:
     branch = tracked.branch or f"agent/issue-{tracked.source_number}"
     gh.delete_branch(PRIVATE_REVIEW_REPO, branch)
 
+    update_stage(tracked, "DONE", "Issue closed and branch cleaned up.")
     log("INFO", f"Issue #{tracked.source_number} closed. "
                  f"Public PR: {tracked.public_pr_url}",
         issue=tracked.source_number)

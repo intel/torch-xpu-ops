@@ -20,7 +20,7 @@ from pytorch_agent.utils.config import POLL_INTERVAL
 from pytorch_agent.utils.logger import log
 
 
-TERMINAL_STAGES = {"DONE", "SKIPPED", "NEEDS_HUMAN"}
+TERMINAL_STAGES = {"DONE", "SKIPPED", "NEEDS_HUMAN", "PAUSED"}
 
 
 def run_cycle() -> None:

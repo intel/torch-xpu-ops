@@ -2,9 +2,36 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from . import github_client as gh
 from .config import PRIVATE_REVIEW_REPO
+
+
+def _resolve_push_dt(last_push_sha: str | None) -> Optional[datetime]:
+    """Get the timestamp of a commit SHA, or None if unavailable."""
+    if not last_push_sha:
+        return None
+    try:
+        commit = gh._gh_api(
+            f"/repos/{PRIVATE_REVIEW_REPO}/commits/{last_push_sha}"
+        )
+        push_ts = commit.get("commit", {}).get("committer", {}).get("date", "")
+        if push_ts:
+            return datetime.fromisoformat(push_ts.replace("Z", "+00:00"))
+    except Exception:
+        pass
+    return None
+
+
+def _is_after(timestamp: str, push_dt: Optional[datetime]) -> bool:
+    """Return True if timestamp is after push_dt (or if either is unknown)."""
+    if not push_dt or not timestamp:
+        return True
+    try:
+        return datetime.fromisoformat(timestamp.replace("Z", "+00:00")) > push_dt
+    except Exception:
+        return True
 
 
 def get_pending_reviews(tracking_pr_number: int,
@@ -19,25 +46,7 @@ def get_pending_reviews(tracking_pr_number: int,
     If last_push_sha is provided, filters to feedback submitted after
     the push that produced that SHA (by comparing timestamps).
     """
-    push_dt = None
-    if last_push_sha:
-        try:
-            commit = gh._gh_api(
-                f"/repos/{PRIVATE_REVIEW_REPO}/commits/{last_push_sha}"
-            )
-            push_ts = commit.get("commit", {}).get("committer", {}).get("date", "")
-            if push_ts:
-                push_dt = datetime.fromisoformat(push_ts.replace("Z", "+00:00"))
-        except Exception:
-            pass
-
-    def _after_push(timestamp: str) -> bool:
-        if not push_dt or not timestamp:
-            return True
-        try:
-            return datetime.fromisoformat(timestamp.replace("Z", "+00:00")) > push_dt
-        except Exception:
-            return True
+    push_dt = _resolve_push_dt(last_push_sha)
 
     feedback: list[dict] = []
 
@@ -47,14 +56,14 @@ def get_pending_reviews(tracking_pr_number: int,
         state = r.get("state", "")
         body = (r.get("body") or "").strip()
         if state == "CHANGES_REQUESTED" or (state == "COMMENTED" and body):
-            if _after_push(r.get("submitted_at", "")):
+            if _is_after(r.get("submitted_at", ""), push_dt):
                 feedback.append(r)
 
     # 2. PR review comments (inline)
     try:
         review_comments = gh.get_pr_review_comments(PRIVATE_REVIEW_REPO, tracking_pr_number)
         for c in review_comments:
-            if _after_push(c.get("created_at", "")):
+            if _is_after(c.get("created_at", ""), push_dt):
                 feedback.append({
                     "user": c.get("user", {}),
                     "state": "INLINE_COMMENT",
@@ -87,7 +96,7 @@ def get_pending_reviews(tracking_pr_number: int,
             agent_body = body[len("/agent"):].strip()
             if not agent_body or agent_body.lower() == "pause":
                 continue
-            if _after_push(c.get("created_at", "")):
+            if _is_after(c.get("created_at", ""), push_dt):
                 feedback.append({
                     "user": c.get("user", {}),
                     "state": "COMMENT",
@@ -128,26 +137,7 @@ def get_review_state(tracking_pr_number: int,
     Explicit APPROVED review = 'approved'.
     No feedback = 'pending'.
     """
-    # Determine push timestamp for filtering
-    push_dt = None
-    if last_push_sha:
-        try:
-            commit = gh._gh_api(
-                f"/repos/{PRIVATE_REVIEW_REPO}/commits/{last_push_sha}"
-            )
-            push_ts = commit.get("commit", {}).get("committer", {}).get("date", "")
-            if push_ts:
-                push_dt = datetime.fromisoformat(push_ts.replace("Z", "+00:00"))
-        except Exception:
-            pass
-
-    def _after_push(timestamp: str) -> bool:
-        if not push_dt or not timestamp:
-            return True
-        try:
-            return datetime.fromisoformat(timestamp.replace("Z", "+00:00")) > push_dt
-        except Exception:
-            return True
+    push_dt = _resolve_push_dt(last_push_sha)
 
     reviews = gh.get_pr_reviews(PRIVATE_REVIEW_REPO, tracking_pr_number)
 
@@ -166,7 +156,7 @@ def get_review_state(tracking_pr_number: int,
         ]
         new_comments = [
             c for c in human_comments
-            if _after_push(c.get("created_at", ""))
+            if _is_after(c.get("created_at", ""), push_dt)
         ]
         agent_commands = [
             c for c in new_comments
@@ -204,7 +194,7 @@ def get_review_state(tracking_pr_number: int,
             # Check if any CHANGES_REQUESTED review is after push
             for review in reviews:
                 if (review.get("state") == "CHANGES_REQUESTED"
-                        and _after_push(review.get("submitted_at", ""))):
+                        and _is_after(review.get("submitted_at", ""), push_dt)):
                     return "changes_requested"
         if all(s == "APPROVED" for s in states):
             return "approved"
@@ -213,7 +203,7 @@ def get_review_state(tracking_pr_number: int,
     comment_reviews = [
         r for r in reviews
         if r.get("state") == "COMMENTED" and (r.get("body") or "").strip()
-        and _after_push(r.get("submitted_at", ""))
+        and _is_after(r.get("submitted_at", ""), push_dt)
     ]
     if comment_reviews:
         return "changes_requested"
@@ -223,7 +213,7 @@ def get_review_state(tracking_pr_number: int,
         review_comments = gh.get_pr_review_comments(
             PRIVATE_REVIEW_REPO, tracking_pr_number)
         for c in review_comments:
-            if _after_push(c.get("created_at", "")):
+            if _is_after(c.get("created_at", ""), push_dt):
                 return "changes_requested"
     except Exception:
         pass

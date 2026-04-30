@@ -6,16 +6,14 @@ Entry point:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 
 from ..utils import github_client as gh
-import os
-
 from ..utils.config import (
-    UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO, PUBLIC_TARGET_REPO,
+    UPSTREAM_ISSUE_REPO, PRIVATE_REVIEW_REPO, REVIEW_REMOTE, PYTORCH_DIR,
+    PUBLIC_TARGET_REPO,
 )
-
-PUBLIC_PR_REVIEWER = os.environ.get("PUBLIC_PR_REVIEWER", "")
 from ..utils.state import TrackedIssue, update_stage, load_tracked
 from ..utils.logger import log
 
@@ -53,7 +51,8 @@ def run(tracked: TrackedIssue) -> None:
         body += f"**Failure Type:** {sections['Failure Type']}\n\n"
 
     body += (
-        (f"cc @{PUBLIC_PR_REVIEWER}\n" if PUBLIC_PR_REVIEWER else "")
+                (f"cc @{os.environ.get('PUBLIC_PR_REVIEWER', '')}\\n"
+         if os.environ.get("PUBLIC_PR_REVIEWER") else "")
     )
 
     # Idempotent: check if PR already exists for this branch
@@ -78,7 +77,8 @@ def run(tracked: TrackedIssue) -> None:
         # 422 "PR already exists" — find it
         existing = gh._gh_api(
             f"/repos/{PUBLIC_TARGET_REPO}/pulls",
-            query=f"head={PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}&state=open",
+            head=f"{PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}",
+            state="open",
         )
         if existing:
             pr = existing[0]
@@ -96,6 +96,7 @@ def run(tracked: TrackedIssue) -> None:
         f"CI is now running. Agent will monitor and address failures.",
     )
 
+    tracked.ci_iteration = 0
     update_stage(tracked, "CI_WATCH",
                  f"Public PR #{tracked.public_pr_number} created: {tracked.public_pr_url}")
     log("INFO", f"Public PR created for #{tracked.source_number}: "

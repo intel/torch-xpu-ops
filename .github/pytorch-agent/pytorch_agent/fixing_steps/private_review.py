@@ -234,10 +234,8 @@ def run(tracked: TrackedIssue) -> None:
     )
 
     # Record pre-agent HEAD so we can check if agent made changes
-    pre_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=str(PYTORCH_DIR),
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
+    from ..utils.git import git, add_and_commit
+    pre_sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
 
     from ..utils.notify import post_session_started
 
@@ -255,31 +253,18 @@ def run(tracked: TrackedIssue) -> None:
         issue=tracked.source_number)
 
     # Check if agent actually made changes (committed or uncommitted)
-    post_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=str(PYTORCH_DIR),
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
-    uncommitted = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=str(PYTORCH_DIR),
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
+    post_sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
+    uncommitted = git("status", "--porcelain", issue=tracked.source_number).stdout.strip()
     has_changes = (post_sha != pre_sha) or bool(uncommitted)
 
     # Auto-commit any uncommitted changes the agent left
     if uncommitted:
-        # Exclude submodule pointers
-        changed_files = [
-            line.split(maxsplit=1)[1].strip()
-            for line in uncommitted.split("\n")
-            if line.strip() and not line.split(maxsplit=1)[1].strip().startswith("third_party/")
-        ]
-        if changed_files:
-            subprocess.run(["git", "add", "--"] + changed_files,
-                           cwd=str(PYTORCH_DIR), check=True)
-            subprocess.run(["git", "commit", "-m",
-                           f"Address review feedback (iteration {tracked.review_iteration})\n\n"
-                           f"intel/torch-xpu-ops#{tracked.source_number}"],
-                          cwd=str(PYTORCH_DIR), check=True)
+        committed = add_and_commit(
+            f"Address review feedback (iteration {tracked.review_iteration})\n\n"
+            f"intel/torch-xpu-ops#{tracked.source_number}",
+            issue=tracked.source_number,
+        )
+        if committed:
             has_changes = True
 
     # Determine which tasks were addressed by checking agent output
@@ -301,16 +286,10 @@ def run(tracked: TrackedIssue) -> None:
     # Push updated code (NEVER force push — it destroys reviewed commits)
     branch = tracked.branch or f"agent/issue-{tracked.source_number}"
     if has_changes:
-        subprocess.run(
-            ["git", "push", REVIEW_REMOTE, branch],
-            cwd=str(PYTORCH_DIR), check=True,
-        )
+        git("push", REVIEW_REMOTE, branch, issue=tracked.source_number)
 
     # Update last_push_sha
-    sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=str(PYTORCH_DIR),
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()
+    sha = git("rev-parse", "HEAD", issue=tracked.source_number).stdout.strip()
     tracked.last_push_sha = sha
     save_state(tracked)
 
