@@ -1014,8 +1014,14 @@ class XPUPatchForImport:
         self.cuda_get_device_capability = torch.cuda.get_device_capability
         self.skipXPU = common_device_type.skipXPU
 
+    @staticmethod
+    def _preserve_cuda_only_decorators_on_xpu(op_name):
+        return "jiterator" in op_name
+
     def align_db_decorators(self, db):
         def gen_xpu_wrappers(op_name, wrappers):
+            if self._preserve_cuda_only_decorators_on_xpu(op_name):
+                return False, list(wrappers)
             wrapper_xpu = []
             replaced = False
             for wrapper in wrappers:
@@ -1240,9 +1246,9 @@ def copy_tests(
     generic_base_class_members = set(generic_base_class.__dict__.keys()) - set(
         generic_test_class.__dict__.keys()
     )
-    assert not (
-        applicable_list and bypass_list
-    ), "Does not support setting both applicable list and bypass list."
+    assert not (applicable_list and bypass_list), (
+        "Does not support setting both applicable list and bypass list."
+    )
     if applicable_list:
         generic_base_class_members = [
             x for x in generic_base_class_members if x in applicable_list

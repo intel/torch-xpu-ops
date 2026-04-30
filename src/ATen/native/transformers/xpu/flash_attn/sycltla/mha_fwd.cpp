@@ -449,17 +449,18 @@ flash_attention_forward_sycltla(
           .get_info<
               sycl::ext::oneapi::experimental::info::device::architecture>();
   constexpr auto supported_architectures =
-      std::array<sycl::ext::oneapi::experimental::architecture, 3>{
+      std::array<sycl::ext::oneapi::experimental::architecture, 4>{
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc,
           sycl::ext::oneapi::experimental::architecture::intel_gpu_pvc_vg,
-          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21};
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g21,
+          sycl::ext::oneapi::experimental::architecture::intel_gpu_bmg_g31};
   if (std::find(
           supported_architectures.begin(),
           supported_architectures.end(),
           device_architecture) == supported_architectures.end()) {
     TORCH_CHECK(
         false,
-        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21.");
+        "XPU device architecture does not support flash attention. Supported architectures are: intel_gpu_pvc, intel_gpu_pvc_vg, intel_gpu_bmg_g21, intel_gpu_bmg_g31.");
   }
 
   FLASH_FWD_params params;
@@ -497,8 +498,8 @@ flash_attention_forward_sycltla(
       logsumexp,
       /* cumulative_sequence_length_q */ at::Tensor(),
       /* cumulative_sequence_length_k */ at::Tensor(),
-      /* max_seqlen_batch_q */ c10::SymInt(0),
-      /* max_seqlen_batch_k */ c10::SymInt(0),
+      /* max_seqlen_batch_q */ c10::SymInt(seqlen_qo),
+      /* max_seqlen_batch_k */ c10::SymInt(seqlen_kv),
       /* philox_seed */ at::empty({}, at::dtype(at::kLong)),
       /* philox_offset */ at::empty({}, at::dtype(at::kLong))};
 }

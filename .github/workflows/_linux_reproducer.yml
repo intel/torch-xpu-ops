@@ -1,0 +1,155 @@
+name: Linux Reproducer Test
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+        description: Runner label
+      pytorch:
+        type: string
+        default: 'main'
+        description: Pytorch main by default, or 'commit/branch', or 'repo@commit/repo@branch'
+      torch_xpu_ops:
+        type: string
+        default: 'main'
+        description: Torch-xpu-ops version, 'commit/branch', or 'repo@commit/repo@branch', or 'pinned' for pytorch pin
+      python:
+        type: string
+        default: '3.10'
+        description: Python version
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash -xe {0}
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  runner:
+    runs-on: ${{ inputs.runner }}
+    name: get-runner
+    outputs:
+      runner_id: ${{ steps.runner-info.outputs.runner_id }}
+      user_id: ${{ steps.runner-info.outputs.user_id }}
+      render_id: ${{ steps.runner-info.outputs.render_id }}
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Get runner
+        id: runner-info
+        uses: ./.github/actions/get-runner
+
+  reproducer-test:
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.runner_id }}
+    timeout-minutes: 30
+    container:
+      image: intelgpu/ubuntu-24.04-lts2:2523.40
+      volumes:
+        - ${{ github.workspace }}:${{ github.workspace }}
+      options: --device=/dev/mem --device=/dev/dri --group-add video --security-opt seccomp=unconfined --cap-add=SYS_PTRACE --shm-size=8g
+              -u ${{ needs.runner.outputs.user_id }}:${{ needs.runner.outputs.render_id }}
+              -e ZE_AFFINITY_MASK
+      env:
+        AGENT_TOOLSDIRECTORY: /tmp/xpu-tool
+    steps:
+      - name: Checkout torch-xpu-ops
+        uses: actions/checkout@v4
+      - name: Prepare test env
+        uses: ./.github/actions/linux-testenv
+        with:
+          pytorch: ${{ inputs.pytorch }}
+          torch_xpu_ops: ${{ inputs.torch_xpu_ops }}
+          python: ${{ inputs.python }}
+      - name: Run reproducer tests
+        id: reproducer
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cd pytorch
+          pytest ../torch-xpu-ops/test/repro/ -v 2>&1 | tee ${{ github.workspace }}/reproducer_output.txt
+      - name: Upload reproducer log
+        if: ${{ ! cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reproducer-Log-${{ github.event.pull_request.number || github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ github.workspace }}/reproducer_output.txt
+          if-no-files-found: ignore
+      - name: Write summary
+        if: ${{ steps.reproducer.outcome == 'success' }}
+        run: echo "✅ Reproducer test passed. All tests in \`test/repro/\` executed successfully." >> $GITHUB_STEP_SUMMARY
+      - name: Fail if reproducer failed
+        if: ${{ steps.reproducer.outcome == 'failure' }}
+        run: exit 1
+
+  summary:
+    needs: [reproducer-test]
+    if: ${{ ! cancelled() && needs.reproducer-test.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Download reproducer log
+        uses: actions/download-artifact@v4
+        with:
+          pattern: Reproducer-Log-${{ github.event.pull_request.number || github.sha }}-*
+          path: ${{ github.workspace }}/reproducer_log
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.MERGE_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const prNumber = context.issue.number;
+            const jobUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            let outputSection;
+            const logDir = '${{ github.workspace }}/reproducer_log';
+            const logFiles = fs.existsSync(logDir)
+              ? fs.readdirSync(logDir, { recursive: true }).filter(f => f.endsWith('.txt'))
+              : [];
+            if (logFiles.length > 0) {
+              const rawOutput = fs.readFileSync(path.join(logDir, logFiles[0]), 'utf8');
+              const maxLen = 60000;
+              const output = rawOutput.length > maxLen
+                ? '... (truncated, see full log in job link below)\n' + rawOutput.slice(-maxLen)
+                : rawOutput;
+              outputSection = [
+                '<details><summary>Reproducer test output</summary>',
+                '',
+                '```',
+                output,
+                '```',
+                '',
+                '</details>'
+              ].join('\n');
+            } else {
+              outputSection = '_No test output captured. See the full log for details._';
+            }
+            const body = [
+              '@copilot The reproducer test failed. Please analyze the error output below and fix the code in this PR accordingly.',
+              '',
+              `Full log: ${jobUrl}`,
+              '',
+              outputSection,
+              '',
+              'Instructions:',
+              '1. Review the test failure output above (or the full log via the link)',
+              '2. Identify the root cause of the failure',
+              '3. Update the relevant source code to fix the issue',
+              '4. Ensure the reproducer in test/repro/ passes after your fix'
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: body
+            });
