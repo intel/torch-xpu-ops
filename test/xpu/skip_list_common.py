@@ -47,6 +47,11 @@ skip_dict = {
         "test_profiler_emit_nvtx_xpu",
         "test_checkpointing_without_reentrant_dataparallel",
         "test_dataparallel_saved_tensors_hooks",
+        # CUDA-specific bogus autograd registration tests, not applicable to XPU
+        # As noted in pytorch/pytorch#180969, this test is not applicable to XPU.
+        "test_view_copy_xpu",
+        "test_autograd_multiple_dispatch_registrations_xpu",
+        "test_foward_mode_AD_xpu",
     ),
     "test_binary_ufuncs_xpu.py": ("_jiterator_",),
     "test_comparison_utils_xpu.py": None,
@@ -284,6 +289,7 @@ skip_dict = {
     "export/test_strict_export_v2_xpu.py": None,
     "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
+    "functorch/test_memory_efficient_fusion_xpu.py": None,
     "higher_order_ops/test_invoke_subgraph_xpu.py": None,
     "higher_order_ops/test_with_effects_xpu.py": None,
 }
