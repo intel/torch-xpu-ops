@@ -60,6 +60,7 @@ def run(tracked: TrackedIssue) -> None:
     try:
         existing = gh._gh_api(
             f"/repos/{PUBLIC_TARGET_REPO}/pulls",
+            token=gh._token_for_repo(PUBLIC_TARGET_REPO),
             head=head_label, state="open",
         )
         if existing:
@@ -78,6 +79,7 @@ def run(tracked: TrackedIssue) -> None:
         # 422 "PR already exists" — find it
         existing = gh._gh_api(
             f"/repos/{PUBLIC_TARGET_REPO}/pulls",
+            token=gh._token_for_repo(PUBLIC_TARGET_REPO),
             head=head_label, state="open",
         )
         if existing:

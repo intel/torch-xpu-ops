@@ -12,8 +12,9 @@ def _token_for_repo(repo: str) -> str | None:
     GH_TOKEN → for everything else (upstream issues, public PRs)
     """
     review_repo = os.environ.get("PRIVATE_REVIEW_REPO", "")
+    public_target = os.environ.get("PUBLIC_TARGET_REPO", "")
     review_token = os.environ.get("REVIEW_GH_TOKEN")
-    if review_token and repo == review_repo:
+    if review_token and repo in (review_repo, public_target):
         return review_token
     return os.environ.get("GH_TOKEN")
 
