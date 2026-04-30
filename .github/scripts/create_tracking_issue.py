@@ -22,9 +22,10 @@ from datetime import datetime, timezone
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 HEADERS = {
     "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
 }
 if GITHUB_TOKEN:
-    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
+    HEADERS["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
 # Repository where tracking issues are created
 TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
@@ -48,7 +49,11 @@ def get_commit_count(base_sha, head_sha):
         int or "?": Number of commits, "?" on API failure
     """
     url = f"https://api.github.com/repos/{PYTORCH_REPO}/compare/{base_sha}...{head_sha}"
-    resp = requests.get(url, headers=HEADERS, timeout=60)
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=60)
+    except requests.RequestException as exc:
+        print(f"Warning: failed to get commit count: {exc}")
+        return "?"
     if resp.status_code == 200:
         return resp.json().get("total_commits", "?")
     return "?"
@@ -128,7 +133,11 @@ def get_suspect_commits_in_scope(last_pass, first_fail):
         list: Up to 10 suspect commits, each with sha, message, author
     """
     url = f"https://api.github.com/repos/{PYTORCH_REPO}/compare/{last_pass}...{first_fail}"
-    resp = requests.get(url, headers=HEADERS, timeout=60)
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=60)
+    except requests.RequestException as exc:
+        print(f"Warning: failed to get suspect commits: {exc}")
+        return []
     if resp.status_code != 200:
         return []
 
@@ -459,13 +468,14 @@ def check_existing_issue(commit_short):
     """Check if an issue already exists for this commit (avoid duplicates).
 
     Searches TRACKING_REPO for open issues with label 'pytorch-ci-failure'
-    whose title contains the short SHA.
+    whose title ends with the short SHA in parentheses.
 
     Returns:
         int or None: Existing issue number, or None if not found
     """
+    expected_suffix = f"({commit_short})"
     for issue in _get_open_tracking_issues():
-        if commit_short in issue.get("title", ""):
+        if issue.get("title", "").endswith(expected_suffix):
             return issue.get("number")
     return None
 

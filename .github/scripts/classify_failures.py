@@ -25,9 +25,10 @@ from collections import OrderedDict
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 HEADERS = {
     "Accept": "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
 }
 if GITHUB_TOKEN:
-    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
+    HEADERS["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 PYTORCH_REPO = "pytorch/pytorch"
 TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
 
@@ -35,6 +36,10 @@ TRACKING_REPO = os.environ.get("TRACKING_REPO", "intel/torch-xpu-ops")
 # ============================================================================
 # Related Disabled Test Lookup
 # ============================================================================
+
+_DISABLED_ISSUE_CACHE = {}
+_DISABLED_ISSUE_RATE_LIMITED = False
+
 
 def find_disabled_test_issues(test_method_names, max_results=10):
     """Search pytorch/pytorch for DISABLED issues matching our failing tests.
@@ -49,6 +54,11 @@ def find_disabled_test_issues(test_method_names, max_results=10):
     Returns:
         list of dicts with keys: test_name, issue_number, issue_url, issue_title
     """
+    global _DISABLED_ISSUE_RATE_LIMITED
+
+    if _DISABLED_ISSUE_RATE_LIMITED:
+        return []
+
     results = []
     # Search for up to 5 unique test names to avoid API rate limit
     searched = set()
@@ -57,23 +67,36 @@ def find_disabled_test_issues(test_method_names, max_results=10):
             break
         searched.add(name)
 
+        if name in _DISABLED_ISSUE_CACHE:
+            results.extend(_DISABLED_ISSUE_CACHE[name])
+            continue
+
         # GitHub search API: search issues in pytorch/pytorch with "DISABLED" in title
         url = "https://api.github.com/search/issues"
         query = f"DISABLED {name} in:title repo:{PYTORCH_REPO} is:issue"
         params = {"q": query, "per_page": 3}
         try:
             resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
+            if resp.status_code in (403, 429):
+                print("Disabled test issue lookup rate-limited; skipping further searches")
+                _DISABLED_ISSUE_RATE_LIMITED = True
+                break
             if resp.status_code != 200:
+                _DISABLED_ISSUE_CACHE[name] = []
                 continue
+            found = []
             for item in resp.json().get("items", []):
-                results.append({
+                found.append({
                     "test_name": name,
-                    "issue_number": item["number"],
-                    "issue_url": item["html_url"],
-                    "issue_title": item["title"][:120],
+                    "issue_number": item.get("number"),
+                    "issue_url": item.get("html_url", ""),
+                    "issue_title": item.get("title", "")[:120],
                     "state": item.get("state", "open"),
                 })
+            _DISABLED_ISSUE_CACHE[name] = found
+            results.extend(found)
         except requests.RequestException:
+            _DISABLED_ISSUE_CACHE[name] = []
             continue
 
     return results[:max_results]
@@ -103,7 +126,7 @@ def _get_open_tracking_issues():
     return issues
 
 
-def _check_existing_sub_issue(expected_title):
+def _check_existing_sub_issue(expected_title, open_issues=None):
     """Check if a sub-issue already exists with an exact title match.
 
     Prevents duplicate sub-issues when the workflow is re-triggered
@@ -112,14 +135,14 @@ def _check_existing_sub_issue(expected_title):
     Returns:
         int or None: Existing issue number, or None if not found
     """
-    for issue in _get_open_tracking_issues():
+    for issue in (open_issues if open_issues is not None else _get_open_tracking_issues()):
         if issue.get("title") == expected_title:
             return issue.get("number")
     return None
 
 
 def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
-                     is_new, commit_sha="unknown"):
+                     is_new, commit_sha="unknown", open_issues=None):
     """Create a sub-issue for a failure group.
 
     Args:
@@ -138,7 +161,7 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     title = f"[ai_generated] [PyTorch CI] {run_ref} ({count} failures)"
 
     # Dedup: check if sub-issue already exists for this file + summary issue
-    existing = _check_existing_sub_issue(title)
+    existing = _check_existing_sub_issue(title, open_issues=open_issues)
     if existing:
         print(f"  Sub-issue already exists: #{existing}, skipping")
         return {"number": existing}
@@ -188,8 +211,8 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
         "",
     ])
 
-    # Search for related DISABLED test issues in pytorch/pytorch
-    disabled_issues = find_disabled_test_issues(test_method_names[:5])
+    # Search for related DISABLED test issues in pytorch/pytorch for NEW failures only.
+    disabled_issues = find_disabled_test_issues(test_method_names[:5]) if is_new else []
     if disabled_issues:
         body_lines.extend([
             "### Related Disabled Test Issues (pytorch/pytorch)",
@@ -418,6 +441,7 @@ def main():
     print()
 
     group_num = 0
+    open_issues = _get_open_tracking_issues() if not args.dry_run else []
 
     # NEW failures -> create sub-issues
     for test_file, tests in new_groups.items():
@@ -426,7 +450,8 @@ def main():
         print(f"[{group_num}] NEW: {short} ({len(tests)} tests)")
         if not args.dry_run:
             create_sub_issue(args.summary_issue, group_num, test_file, tests,
-                             is_new=True, commit_sha=commit_sha)
+                             is_new=True, commit_sha=commit_sha,
+                             open_issues=open_issues)
         print()
 
     # EXISTING failures -> create sub-issues
@@ -436,7 +461,8 @@ def main():
         print(f"[{group_num}] EXISTING: {short} ({len(tests)} tests)")
         if not args.dry_run:
             create_sub_issue(args.summary_issue, group_num, test_file, tests,
-                             is_new=False, commit_sha=commit_sha)
+                             is_new=False, commit_sha=commit_sha,
+                             open_issues=open_issues)
         print()
 
     # Summary
