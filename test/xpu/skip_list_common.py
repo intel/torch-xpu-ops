@@ -288,6 +288,8 @@ skip_dict = {
         # CPU-only parametrizations of test_cache_hot_load: not XPU target.
         # XPU-side hot_load failures are tracked separately as a real bug.
         "test_cache_hot_load_device_cpu",
+        # CPU test
+        "test_cache_lazy_backward_for_compiled_autograd",
     ),
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
