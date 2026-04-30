@@ -15,6 +15,13 @@
 
 namespace at::native::xpu {
 
+TORCH_XPU_API void linalg_cholesky_ex_kernel(
+    const Tensor& A,
+    bool upper,
+    bool check_errors,
+    const Tensor& L,
+    const Tensor& info);
+
 TORCH_XPU_API void lu_solve_mkl(
     const Tensor& LU,
     const Tensor& pivots,

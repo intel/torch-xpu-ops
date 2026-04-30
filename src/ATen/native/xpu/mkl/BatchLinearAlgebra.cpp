@@ -479,4 +479,78 @@ void triangular_solve_mkl(
       });
 }
 
+template <typename scalar_t>
+void linalg_cholesky_ex_kernel_impl(
+    const Tensor& A,
+    bool upper,
+    bool check_errors,
+    const Tensor& L,
+    const Tensor& info) {
+  TORCH_CHECK(A.device().is_xpu(), "A must be an XPU tensor");
+
+  if (A.numel() == 0) {
+    info.zero_();
+    return;
+  }
+
+  at::Tensor A_contig = A.contiguous();
+  L.copy_(A_contig);
+
+  int64_t batch_size = native::batchCount(A_contig);
+  int64_t n = A_contig.size(-2);
+  int64_t lda = n;
+  int64_t stride_a = n * n;
+
+  sycl::queue& queue = c10::xpu::getCurrentXPUStream().queue();
+  auto uplo = upper ? oneapi::mkl::uplo::upper : oneapi::mkl::uplo::lower;
+
+  int64_t bufsize = oneapi::mkl::lapack::potrf_batch_scratchpad_size<scalar_t>(
+      queue, uplo, n, n, stride_a, batch_size);
+  scalar_t* buffer = sycl::malloc_device<scalar_t>(bufsize, queue);
+  scalar_t* r_buf = L.data_ptr<scalar_t>();
+
+  Tensor info_cpu = at::zeros(info.sizes(), info.options().device(at::kCPU));
+  int32_t* info_data = info_cpu.data_ptr<int32_t>();
+
+  try {
+    oneapi::mkl::lapack::potrf_batch(
+        queue, uplo, n, r_buf, lda, stride_a, batch_size, buffer, bufsize);
+  } catch (const oneapi::mkl::lapack::batch_error& be) {
+    error_handle(info_data, be);
+  } catch (const oneapi::mkl::lapack::exception& e) {
+    info_data[0] = e.info();
+  }
+  queue.wait_and_throw();
+  info.copy_(info_cpu);
+  sycl::free(buffer, queue);
+
+  // Zero out the unused triangular part of the output
+  // potrf writes only one triangle; clear the other half
+  if (upper) {
+    L.triu_();
+  } else {
+    L.tril_();
+  }
+}
+
+void linalg_cholesky_ex_kernel(
+    const Tensor& A,
+    bool upper,
+    bool check_errors,
+    const Tensor& L,
+    const Tensor& info) {
+  if (A.is_complex()) {
+    // CPU fallback for complex types
+    auto A_cpu = A.to(A.options().device(kCPU));
+    auto L_cpu = at::empty_like(L, L.options().device(kCPU));
+    auto info_cpu = at::empty_like(info, info.options().device(kCPU));
+    at::linalg_cholesky_ex_out(L_cpu, info_cpu, A_cpu, upper, check_errors);
+    L.copy_(L_cpu);
+    info.copy_(info_cpu);
+  } else {
+    AT_DISPATCH_FLOATING_TYPES(A.scalar_type(), "linalg_cholesky_ex_xpu", [&] {
+      linalg_cholesky_ex_kernel_impl<scalar_t>(A, upper, check_errors, L, info);
+    });
+  }
+}
 } // namespace at::native::xpu
