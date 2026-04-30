@@ -56,10 +56,11 @@ def run(tracked: TrackedIssue) -> None:
     )
 
     # Idempotent: check if PR already exists for this branch
+    head_label = f"{PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}"
     try:
         existing = gh._gh_api(
             f"/repos/{PUBLIC_TARGET_REPO}/pulls",
-            query=f"head={PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}&state=open",
+            head=head_label, state="open",
         )
         if existing:
             pr = existing[0]
@@ -73,12 +74,11 @@ def run(tracked: TrackedIssue) -> None:
                 title=title,
                 body=body,
             )
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, Exception) as exc:
         # 422 "PR already exists" — find it
         existing = gh._gh_api(
             f"/repos/{PUBLIC_TARGET_REPO}/pulls",
-            head=f"{PRIVATE_REVIEW_REPO.split('/')[0]}:{branch}",
-            state="open",
+            head=head_label, state="open",
         )
         if existing:
             pr = existing[0]
