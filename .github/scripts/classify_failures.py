@@ -256,19 +256,20 @@ def create_sub_issue(summary_issue_num, group_num, test_file, test_names,
     body = "\n".join(body_lines)
 
     labels = ["pytorch-ci-failure", "agent:blocked", "ai_generated"]
-    if is_new:
-        labels.append("new-failure")
 
     url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
     payload = {"title": title, "body": body, "labels": labels}
-    resp = requests.post(url, headers=HEADERS, json=payload, timeout=60)
+    try:
+        resp = requests.post(url, headers=HEADERS, json=payload, timeout=60)
+    except requests.RequestException as exc:
+        print(f"  Failed to create sub-issue: {exc}")
+        return None
     if resp.status_code == 201:
         issue = resp.json()
         print(f"  Sub-issue created: {issue['html_url']}")
         return issue
-    else:
-        print(f"  Failed to create sub-issue: {resp.status_code} {resp.text[:200]}")
-        return None
+    print(f"  Failed to create sub-issue: {resp.status_code} {resp.text[:200]}")
+    return None
 
 
 def group_by_file(tests):
@@ -384,7 +385,11 @@ def _extract_tests_from_sub_issue(body):
 def _add_comment(issue_number, body):
     """Add a comment to an issue."""
     url = f"https://api.github.com/repos/{TRACKING_REPO}/issues/{issue_number}/comments"
-    resp = requests.post(url, headers=HEADERS, json={"body": body}, timeout=60)
+    try:
+        resp = requests.post(url, headers=HEADERS, json={"body": body}, timeout=60)
+    except requests.RequestException as exc:
+        print(f"  Failed to add comment to #{issue_number}: {exc}")
+        return
     if resp.status_code != 201:
         print(f"  Failed to add comment to #{issue_number}: {resp.status_code}")
 
@@ -392,7 +397,11 @@ def _add_comment(issue_number, body):
 def _close_issue(issue_number):
     """Close an issue."""
     url = f"https://api.github.com/repos/{TRACKING_REPO}/issues/{issue_number}"
-    resp = requests.patch(url, headers=HEADERS, json={"state": "closed"}, timeout=60)
+    try:
+        resp = requests.patch(url, headers=HEADERS, json={"state": "closed"}, timeout=60)
+    except requests.RequestException as exc:
+        print(f"  Failed to close #{issue_number}: {exc}")
+        return
     if resp.status_code != 200:
         print(f"  Failed to close #{issue_number}: {resp.status_code}")
 
@@ -449,9 +458,12 @@ def main():
         short = test_file.split("/")[-1]
         print(f"[{group_num}] NEW: {short} ({len(tests)} tests)")
         if not args.dry_run:
-            create_sub_issue(args.summary_issue, group_num, test_file, tests,
-                             is_new=True, commit_sha=commit_sha,
-                             open_issues=open_issues)
+            issue = create_sub_issue(args.summary_issue, group_num, test_file, tests,
+                                     is_new=True, commit_sha=commit_sha,
+                                     open_issues=open_issues)
+            if not issue:
+                sys.exit(1)
+            open_issues.append({"title": issue.get("title"), "number": issue.get("number")})
         print()
 
     # EXISTING failures -> create sub-issues
@@ -460,9 +472,12 @@ def main():
         short = test_file.split("/")[-1]
         print(f"[{group_num}] EXISTING: {short} ({len(tests)} tests)")
         if not args.dry_run:
-            create_sub_issue(args.summary_issue, group_num, test_file, tests,
-                             is_new=False, commit_sha=commit_sha,
-                             open_issues=open_issues)
+            issue = create_sub_issue(args.summary_issue, group_num, test_file, tests,
+                                     is_new=False, commit_sha=commit_sha,
+                                     open_issues=open_issues)
+            if not issue:
+                sys.exit(1)
+            open_issues.append({"title": issue.get("title"), "number": issue.get("number")})
         print()
 
     # Summary

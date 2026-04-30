@@ -488,27 +488,33 @@ def create_issue(title, body, labels=None):
     """
     url = f"https://api.github.com/repos/{TRACKING_REPO}/issues"
     payload = {"title": title, "body": body, "labels": labels or []}
-    resp = requests.post(url, headers=HEADERS, json=payload, timeout=60)
+    try:
+        resp = requests.post(url, headers=HEADERS, json=payload, timeout=60)
+    except requests.RequestException as exc:
+        print(f"Failed to create issue: {exc}")
+        return None
     if resp.status_code == 201:
         issue = resp.json()
         print(f"Issue created: {issue['html_url']}")
         return issue
-    else:
-        print(f"Failed to create issue: {resp.status_code} {resp.text[:200]}")
-        return None
+    print(f"Failed to create issue: {resp.status_code} {resp.text[:200]}")
+    return None
 
 
 def update_issue(issue_number, body):
     """Update an existing issue's body (same commit → update, not duplicate)."""
     url = f"https://api.github.com/repos/{TRACKING_REPO}/issues/{issue_number}"
     payload = {"body": body}
-    resp = requests.patch(url, headers=HEADERS, json=payload, timeout=60)
+    try:
+        resp = requests.patch(url, headers=HEADERS, json=payload, timeout=60)
+    except requests.RequestException as exc:
+        print(f"Failed to update issue: {exc}")
+        return None
     if resp.status_code == 200:
         print(f"Issue #{issue_number} updated")
         return resp.json()
-    else:
-        print(f"Failed to update issue: {resp.status_code}")
-        return None
+    print(f"Failed to update issue: {resp.status_code} {resp.text[:200]}")
+    return None
 
 
 # ============================================================================
