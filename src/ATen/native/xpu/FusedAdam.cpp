@@ -29,8 +29,7 @@ namespace native {
 namespace {
 
 bool found_inf_nonzero(const std::optional<at::Tensor>& found_inf) {
-  return found_inf.has_value() && found_inf->is_cpu() &&
-      found_inf->item<double>() != 0.0;
+  return found_inf.has_value() && found_inf->item<double>() != 0.0;
 }
 
 double grad_scale_value(const std::optional<at::Tensor>& grad_scale) {

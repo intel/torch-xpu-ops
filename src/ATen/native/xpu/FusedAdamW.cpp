@@ -29,8 +29,7 @@ namespace native {
 namespace {
 
 bool found_inf_nonzero(const std::optional<at::Tensor>& found_inf) {
-  return found_inf.has_value() && found_inf->is_cpu() &&
-      found_inf->item<double>() != 0.0;
+  return found_inf.has_value() && found_inf->item<double>() != 0.0;
 }
 
 double grad_scale_value(const std::optional<at::Tensor>& grad_scale) {
@@ -225,6 +224,7 @@ void fused_adamw_fallback_xpu_(
 
     if (grad_scale.has_value()) {
       grad = grad_scale_on_cpu ? grad.div(grad_scale_v) : grad.div(*grad_scale);
+      grads[i].copy_(grad);
     }
     if (maximize) {
       grad = grad.neg();
