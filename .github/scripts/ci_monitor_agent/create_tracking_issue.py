@@ -566,7 +566,7 @@ def main():
         try:
             with open(args.all_runs) as f:
                 all_runs_data = json.load(f)
-        except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
+        except (OSError, json.JSONDecodeError) as exc:
             print(
                 f"WARNING: Failed to read --all-runs file '{args.all_runs}': {exc}. "
                 "Continuing without all-runs data.",
