@@ -44,7 +44,6 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_DEV_DBG_ASAN,
 )
 
-
 device_type = torch.device(get_devtype())
 
 try:
