@@ -1713,12 +1713,12 @@ class TestOperators(TestCase):
             tol1(
                 "nn.functional.conv_transpose3d",
                 {torch.float32: tol(atol=5e-5, rtol=5e-6)},
-                device_type=device_type,
+                device_type="xpu",
             ),
             tol1(
                 "nn.functional.conv2d",
                 {torch.float32: tol(atol=5e-5, rtol=5e-6)},
-                device_type=device_type,
+                device_type="xpu",
             ),
         ),
     )
