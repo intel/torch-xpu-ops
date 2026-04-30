@@ -1,0 +1,2 @@
+# pytorch-agent dependencies
+# gh CLI and opencode are system-level — not pip-installable
