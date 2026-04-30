@@ -285,11 +285,9 @@ skip_dict = {
     "export/test_torchbind_xpu.py": None,
     "functorch/test_aotdispatch_xpu.py": None,
     "dynamo/test_aot_autograd_cache_xpu.py": (
-        # CPU tests: ported tests' counter expectations don't match the
-        # AOTAutograd / inductor cache bookkeeping currently produced on
-        # XPU and CPU; not an XPU kernel issue.
-        "test_cache_hot_load_device",
-        "test_cache_lazy_backward_for_compiled_autograd",
+        # CPU-only parametrizations of test_cache_hot_load: not XPU target.
+        # XPU-side hot_load failures are tracked separately as a real bug.
+        "test_cache_hot_load_device_cpu",
     ),
     "dynamo/test_compiler_bisector_xpu.py": None,
     "dynamo/test_deviceguard_xpu.py": None,
