@@ -138,7 +138,8 @@ skip_dict = {
     "test_scatter_gather_ops_xpu.py": None,
     "test_segment_reductions_xpu.py": None,
     "test_shape_ops_xpu.py": (
-        "test_flip_xpu_float32",  # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        # QuantizedXPU is deprecated https://github.com/pytorch/pytorch/pull/173923
+        "test_flip_xpu_float32",
     ),
     "test_sort_and_select_xpu.py": None,
     "test_sparse_csr_xpu.py": None,
