@@ -7,7 +7,6 @@ from unittest.mock import patch
 
 import torch
 import torch._dynamo.test_case
-import torch._dynamo.testing
 from torch._dynamo.graph_bytecode_inputs import (
     reset_user_object_tracking,
     store_user_object_weakrefs,
