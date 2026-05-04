@@ -212,19 +212,15 @@ class CtxManagerTests(torch._dynamo.test_case.TestCaseWithNestedGraphBreaks):
         "requires cuda or xpu",
     )
     def test_cuda_stream_context_manager1(self):
+        device_module = torch.get_device_module(GPU_TYPE)
+
         def fn(x):
-            s = torch.cuda.Stream() if torch.cuda.is_available() else torch.xpu.Stream()
+            s = device_module.Stream()
             x = torch.mul(x, 5)
             x = torch.add(x, 2)
-            current_stream = (
-                torch.cuda.current_stream()
-                if torch.cuda.is_available()
-                else torch.xpu.current_stream()
-            )
+            current_stream = device_module.current_stream()
             s.wait_stream(current_stream)
-            with torch.cuda.stream(
-                s
-            ) if torch.cuda.is_available() else torch.xpu.stream(s):
+            with device_module.stream(s):
                 x = torch.relu(x)
             current_stream.wait_stream(s)
             x = torch.add(x, 1)
