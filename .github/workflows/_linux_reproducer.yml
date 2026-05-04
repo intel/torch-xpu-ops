@@ -107,11 +107,15 @@ jobs:
         env:
           PR_BODY_CMD: ${{ inputs.pr_body_cmd }}
         run: |
-          set -o pipefail
           cd pytorch/third_party/torch-xpu-ops
-          echo "=== Running reproducer command from PR description ==="
-          echo "Command: $PR_BODY_CMD"
-          eval "$PR_BODY_CMD" 2>&1 | tee -a ${{ github.workspace }}/reproducer_output.txt
+          echo "=== Running reproducer commands from PR description ==="
+          RESULT=0
+          while IFS= read -r cmd; do
+            [ -z "$cmd" ] && continue
+            echo "--- Running: $cmd ---"
+            eval "$cmd" 2>&1 | tee -a ${{ github.workspace }}/reproducer_output.txt || RESULT=1
+          done <<< "$PR_BODY_CMD"
+          exit $RESULT
       - name: Upload reproducer log
         if: ${{ ! cancelled() }}
         uses: actions/upload-artifact@v4
