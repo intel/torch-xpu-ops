@@ -112,7 +112,7 @@ jobs:
 
           # Check if PR description contains a reproducer-cmd block
           PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body' 2>/dev/null || true)
-          PR_CMD=$(echo "$PR_BODY" | sed -n '/^```reproducer-cmd/,/^```/{/^```/d;p}')
+          PR_CMD=$(echo "$PR_BODY" | sed -n '/^```reproducer-cmd/,/^```/{/^```/d;p}' | tr -d '\r')
           if [ -n "$PR_CMD" ]; then
             HAS_PR_CMD=true
             echo "Found reproducer command in PR description:"
