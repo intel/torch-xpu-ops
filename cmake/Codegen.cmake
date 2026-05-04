@@ -40,6 +40,7 @@ set(XPU_CODEGEN_COMMAND
   "${Python_EXECUTABLE}" -m torchgen.gen
   --source-path ${CODEGEN_XPU_YAML_DIR}
   --install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
+  --headeronly-install-dir ${BUILD_TORCH_XPU_ATEN_GENERATED}
   --per-operator-headers
   --backend-whitelist XPU SparseXPU SparseCsrXPU NestedTensorXPU
   --xpu
