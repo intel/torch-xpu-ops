@@ -1333,7 +1333,7 @@ class TestTorchDeviceType(TestCase):
         self.assertFalse(t1.is_set_to(t4))
         self.assertFalse(
             torch.tensor([]).is_set_to(torch.tensor([])),
-            "Tensors with no storages should not appear to be set " "to each other",
+            "Tensors with no storages should not appear to be set to each other",
         )
 
         t1 = torch.tensor([True, True], dtype=torch.bool, device=device)
@@ -9646,9 +9646,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     def test_torch_from_file(self):
@@ -9679,9 +9680,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     @unittest.skipIf(
