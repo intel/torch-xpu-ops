@@ -29,8 +29,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_sort_and_select import TestSortAndSelect
 
-    # FIXME: remove torch.bool from unsupported types once support is added for cub sort
-    @dtypes(*all_types_and(torch.half, torch.bfloat16))
+    @dtypes(*all_types_and(torch.half, torch.bfloat16, torch.bool))
     def stable_sort_against_numpy(self, device, dtype):
         if dtype in floating_types_and(torch.float16, torch.bfloat16):
             inf = float("inf")
