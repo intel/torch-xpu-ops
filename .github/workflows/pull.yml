@@ -110,12 +110,12 @@ jobs:
             fi
           fi
 
-          # Check if PR description contains a reproducer-cmd block
+          # Check if PR description contains pytest commands (lines starting with "pytest")
           PR_BODY=$(gh pr view ${{ github.event.pull_request.number }} --json body -q '.body' 2>/dev/null || true)
-          PR_CMD=$(echo "$PR_BODY" | sed -n '/^```reproducer-cmd/,/^```/{/^```/d;p}' | tr -d '\r')
+          PR_CMD=$(echo "$PR_BODY" | tr -d '\r' | grep -E '^pytest ' || true)
           if [ -n "$PR_CMD" ]; then
             HAS_PR_CMD=true
-            echo "Found reproducer command in PR description:"
+            echo "Found reproducer commands in PR description:"
             echo "$PR_CMD"
           fi
 
@@ -129,7 +129,7 @@ jobs:
 
           # Fail only if neither source is available
           if [ "$HAS_REPRO_FILES" = false ] && [ "$HAS_PR_CMD" = false ] && [ -z "$FAIL_MSG" ]; then
-            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or a \`reproducer-cmd\` block in the PR description."
+            FAIL_MSG="No reproducer found. AI-generated PRs must include either reproducer files in \`test/repro/test_*.py\` or pytest commands in the PR description (lines starting with \`pytest\`)."
           fi
 
           if [ -n "$FAIL_MSG" ]; then
@@ -139,7 +139,7 @@ jobs:
               "" \
               "Please provide a reproducer using one of these methods:" \
               "- Add reproducer files: \`test/repro/test_<description>.py\` (pytest format)" \
-              "- Add a reproducer command in PR description using a fenced code block with \`reproducer-cmd\` as the language identifier"
+              "- Add pytest commands in the PR description (lines starting with \`pytest\`, e.g. \`pytest test/xpu/test_ops.py -k test_foo -v\`)"
             gh pr comment ${{ github.event.pull_request.number }} --body "${COMMENT_BODY}"
             echo "::error::${FAIL_MSG}"
             exit 1
