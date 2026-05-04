@@ -179,8 +179,14 @@ void nested_op_dense_kernel_impl(
     int64_t embedding_dim,
     const int64_t* input_offsets,
     func_t func) {
-  int max_vec_size = memory::can_vectorize_up_to<scalar_t>(
+  int max_input_vec_size = memory::can_vectorize_up_to<scalar_t>(
       reinterpret_cast<const char*>(input));
+  int max_dense_vec_size = memory::can_vectorize_up_to<scalar_t>(
+      reinterpret_cast<const char*>(dense));
+  int max_output_vec_size = memory::can_vectorize_up_to<scalar_t>(
+      reinterpret_cast<const char*>(output));
+  int max_vec_size =
+      std::min({max_input_vec_size, max_dense_vec_size, max_output_vec_size});
   int vec_size{1};
   for (int size : {8, 4, 2}) {
     if (max_vec_size >= size && embedding_dim % size == 0) {
@@ -193,6 +199,9 @@ void nested_op_dense_kernel_impl(
       ? ceil_div(embedding_dim, SLM_TILING_THRESHOLD)
       : 1;
   int64_t total_groups = batch_size * chunks_per_batch;
+  if (total_groups == 0) {
+    return;
+  }
 
   constexpr int64_t GROUP_DIM{256};
 
