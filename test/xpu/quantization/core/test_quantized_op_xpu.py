@@ -75,7 +75,18 @@ def _test_max_pool2d_pt2e(self):
         self.assertEqual(a_pool, a_hat, msg="ops.quantized.max_pool2d results are off")
 
 
+def _test_qsoftmax_qnnpack(self):
+    from torch.testing._internal.common_quantized import override_quantized_engine
+    with override_quantized_engine('qnnpack'):
+        # After device instantiation, test_qsoftmax becomes test_qsoftmax_xpu
+        if hasattr(self, 'test_qsoftmax_xpu'):
+            self.test_qsoftmax_xpu()
+        else:
+            self.test_qsoftmax()
+
+
 TestQuantizedOps.test_max_pool2d_pt2e = _test_max_pool2d_pt2e
+TestQuantizedOps.test_qsoftmax_qnnpack = _test_qsoftmax_qnnpack
 
 instantiate_device_type_tests(
     TestQuantizedOps, globals(), only_for="xpu", allow_xpu=True
