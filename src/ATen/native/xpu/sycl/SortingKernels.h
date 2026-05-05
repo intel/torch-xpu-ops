@@ -15,6 +15,7 @@
 #include <ATen/native/xpu/sycl/SortingRadixSort.h>
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
+#include <cstdint>
 
 namespace at {
 namespace native {
