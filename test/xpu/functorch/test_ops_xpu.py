@@ -1706,6 +1706,22 @@ class TestOperators(TestCase):
             }
         ),
     )
+    @opsToleranceOverride(
+        "TestOperators",
+        "test_vjpvmap",
+        (
+            tol1(
+                "nn.functional.conv_transpose3d",
+                {torch.float32: tol(atol=5e-5, rtol=5e-6)},
+                device_type="xpu",
+            ),
+            tol1(
+                "nn.functional.conv2d",
+                {torch.float32: tol(atol=5e-5, rtol=5e-6)},
+                device_type="xpu",
+            ),
+        ),
+    )
     def test_vjpvmap(self, device, dtype, op):
         # NB: there is no vjpvmap_has_batch_rule test because that is almost
         # certainly redundant with the vmap_has_batch_rule test in test_vmap.py
