@@ -1883,6 +1883,11 @@ class TestOperators(TestCase):
             tol2(
                 "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-03, rtol=5e-03)}
             ),
+            tol1(
+                "nn.functional.conv_transpose3d",
+                {torch.float32: tol(atol=3e-05, rtol=5e-6)},
+                device_type="xpu",
+            ),
         ),
     )
     def test_jvpvjp(self, device, dtype, op):
