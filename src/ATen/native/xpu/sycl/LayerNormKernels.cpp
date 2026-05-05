@@ -1289,7 +1289,9 @@ void layer_norm_backward_kernel_impl(
           getCurrentSYCLQueue(),
           kfn);
       *dgamma = dgamma_blocks.sum(0);
-      *dbeta = dbeta_blocks.sum(0);
+      if constexpr (!rms_norm) {
+        *dbeta = dbeta_blocks.sum(0);
+      }
     } else if (dgamma->defined() && !dbeta->defined()) {
       GammaBetaReduceFunctor<
           scalar_t,
