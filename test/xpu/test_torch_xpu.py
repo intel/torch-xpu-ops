@@ -223,62 +223,6 @@ load_tests = load_tests
 
 AMPERE_OR_ROCM = TEST_WITH_ROCM or torch.cuda.is_tf32_supported()
 
-
-@contextlib.contextmanager
-def torch_vital_set(value):
-    stash = None
-    if "TORCH_VITAL" in os.environ:
-        stash = os.environ["TORCH_VITAL"]
-    os.environ["TORCH_VITAL"] = value
-    try:
-        yield
-    finally:
-        if stash:
-            os.environ["TORCH_VITAL"] = stash
-        else:
-            del os.environ["TORCH_VITAL"]
-
-
-# Tests Vital Signs for Torch
-# FIXME: document or deprecate whatever this is
-class TestBasicVitalSigns(TestCase):
-    # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
-    @onlyCUDA
-    def test_basic_vitals(self):
-        with torch_vital_set(""):
-            self.assertFalse(torch.vitals_enabled())
-        with torch_vital_set("ON"):
-            self.assertTrue(torch.vitals_enabled())
-
-    @onlyCUDA
-    def test_basic_vitals_read_write(self):
-        with torch_vital_set("ON"):
-            self.assertTrue(torch.vitals_enabled())
-            # This tests the code path of setting a vital
-            self.assertTrue(
-                torch.set_vital("Dataloader", "basic_unit_test", "TEST_VALUE_STRING")
-            )
-            self.assertIn("TEST_VALUE_STRING", torch.read_vitals())
-            self.assertIn("CUDA.used", torch.read_vitals())
-
-    @onlyCUDA
-    def test_dataloader_vitals(self):
-        with torch_vital_set("ON"):
-            inps = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
-            tgts = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
-            dataset = torch.utils.data.TensorDataset(inps, tgts)
-            loader = torch.utils.data.DataLoader(dataset, batch_size=2)
-            self.assertIn("Dataloader.enabled\t\t True", torch.read_vitals())
-
-
-# FIXME: document or deprecate whatever this is
-class TestVitalSignsCuda(TestCase):
-    @onlyCUDA  # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
-    def test_cuda_vitals_gpu_only(self, device):
-        with torch_vital_set("ON"):
-            self.assertIn("CUDA.used\t\t true", torch.read_vitals())
-
-
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
     8,
     6,
@@ -12895,9 +12839,6 @@ class TestTensorDeviceOps(TestCase):
 # pytest will fail.
 add_neg_dim_tests()
 instantiate_device_type_tests(TestViewOps, globals(), only_for="xpu", allow_xpu=True)
-instantiate_device_type_tests(
-    TestVitalSignsCuda, globals(), only_for="xpu", allow_xpu=True
-)
 instantiate_device_type_tests(
     TestTensorDeviceOps, globals(), only_for="xpu", allow_xpu=True
 )
