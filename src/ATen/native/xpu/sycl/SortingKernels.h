@@ -16,6 +16,7 @@
 #include <c10/core/Allocator.h>
 #include <comm/SYCLContext.h>
 #include <cstdint>
+#include <limits>
 
 namespace at {
 namespace native {
@@ -349,9 +350,14 @@ void segmented_radix_sort_pairs_kernel(
     int num_segments,
     int num_elements) {
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
-  int64_t num_tiles =
+  int64_t num_tiles_64 =
       (static_cast<int64_t>(num_elements) + TILE_PROCESSING_LENGTH - 1) /
       TILE_PROCESSING_LENGTH;
+  TORCH_CHECK(
+      num_tiles_64 <= std::numeric_limits<int>::max(),
+      "num_tiles overflow: ",
+      num_tiles_64);
+  int num_tiles = static_cast<int>(num_tiles_64);
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
