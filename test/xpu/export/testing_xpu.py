@@ -214,7 +214,11 @@ def make_test_cls_with_mocked_export(
             new_name = f"{name}{fn_suffix}"
             new_fn = _make_fn_with_mocked_export(fn, mocked_export_fn)
             new_fn.__name__ = new_name
-            if xfail_prop is not None and hasattr(fn, xfail_prop):
+            if (
+                xfail_prop is not None
+                and hasattr(fn, xfail_prop)
+                and not getattr(fn, "_xpu_expected_success", False)
+            ):
                 new_fn = unittest.expectedFailure(new_fn)
             elif test_only_if_no_xfail and any(
                 x.startswith("_expected_failure") for x in dir(fn)
@@ -277,6 +281,12 @@ def expectedFailureRetraceability(fn):
 # Controls tests generated in test/export/test_retraceability.py
 def expectedFailureRetraceabilityNonStrict(fn):
     fn._expected_failure_retrace_non_strict = True
+    return fn
+
+
+def xpuExpectedSuccess(fn):
+    """Mark a test as expected to succeed on XPU, overriding any xfail decorators."""
+    fn._xpu_expected_success = True
     return fn
 
 
