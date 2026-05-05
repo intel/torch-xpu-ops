@@ -446,7 +446,12 @@ _scaled_dot_product_efficient_attention_xpu(
         at::scalar_tensor(int64_t(0), query.options().dtype(at::kLong));
   }
 
-  auto res = at::_scaled_dot_product_attention_math(
+    // Keep this internal fallback op numerically stable across compile/checkpoint
+    // paths by matching CUDA behavior: do not let ambient autocast alter the math
+    // implementation of efficient attention itself.
+    c10::impl::ExcludeDispatchKeyGuard no_autocast_xpu(
+      c10::DispatchKey::AutocastXPU);
+    auto res = at::_scaled_dot_product_attention_math(
       query,
       key,
       value,
@@ -600,15 +605,17 @@ _scaled_dot_product_efficient_attention_backward_xpu(
     // dropout_p (not 0.0) so that _scaled_dot_product_attention_math applies
     // the correct scaling factor 1/(1-dropout_p) alongside the mask, matching
     // exactly what the original forward computed.
+    c10::impl::ExcludeDispatchKeyGuard no_autocast_xpu(
+      c10::DispatchKey::AutocastXPU);
     auto res = at::_scaled_dot_product_attention_math(
-        q,
-        k,
-        v,
-        attn_bias_opt,
-        dropout_mask_opt.has_value() ? dropout_p : 0.0,
-        is_causal,
-        dropout_mask_opt,
-        scale);
+      q,
+      k,
+      v,
+      attn_bias_opt,
+      dropout_mask_opt.has_value() ? dropout_p : 0.0,
+      is_causal,
+      dropout_mask_opt,
+      scale);
     attention = std::get<0>(res);
   }
 
