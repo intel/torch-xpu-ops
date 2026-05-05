@@ -321,9 +321,9 @@ struct MaxPool3dBackwardKernelFunctor {
   void operator()(sycl::nd_item<1> item) const {
     auto outputIndex = item.get_global_id(0);
     if (outputIndex < gradOutputSize_) {
-      int batch = outputIndex / out_nbatch_stride_;
+      int64_t batch = outputIndex / out_nbatch_stride_;
       if constexpr (channels_last) {
-        int channel = outputIndex % features_;
+        int64_t channel = outputIndex % features_;
         int64_t index = indicesData_[outputIndex];
         int64_t gradIn_offset =
             batch * in_nbatch_stride_ + channel + index * features_;
@@ -331,7 +331,7 @@ struct MaxPool3dBackwardKernelFunctor {
             (sycl_global_ptr<scalar_t>)&gradInputData_[gradIn_offset],
             gradOutputData_[outputIndex]);
       } else {
-        int channel = outputIndex / out_cf_channel_stride_ % features_;
+        int64_t channel = outputIndex / out_cf_channel_stride_ % features_;
         int64_t index = indicesData_[outputIndex];
         int64_t gradIn_offset =
             batch * in_nbatch_stride_ + channel * in_cf_channel_stride_ + index;
@@ -345,12 +345,12 @@ struct MaxPool3dBackwardKernelFunctor {
       scalar_t* gradInputData,
       const scalar_t* gradOutputData,
       const int64_t* indicesData,
-      int features,
+      int64_t features,
       int64_t gradOutputSize,
-      int out_cf_channel_stride,
-      int in_cf_channel_stride,
-      int out_nbatch_stride,
-      int in_nbatch_stride)
+      int64_t out_cf_channel_stride,
+      int64_t in_cf_channel_stride,
+      int64_t out_nbatch_stride,
+      int64_t in_nbatch_stride)
       : gradInputData_(gradInputData),
         gradOutputData_(gradOutputData),
         indicesData_(indicesData),
@@ -365,12 +365,12 @@ struct MaxPool3dBackwardKernelFunctor {
   scalar_t* gradInputData_;
   const scalar_t* gradOutputData_;
   const int64_t* indicesData_;
-  int features_;
+  int64_t features_;
   int64_t gradOutputSize_;
-  int out_cf_channel_stride_;
-  int in_cf_channel_stride_;
-  int out_nbatch_stride_;
-  int in_nbatch_stride_;
+  int64_t out_cf_channel_stride_;
+  int64_t in_cf_channel_stride_;
+  int64_t out_nbatch_stride_;
+  int64_t in_nbatch_stride_;
 };
 
 template <typename scalar_t, bool channels_last>
@@ -378,20 +378,20 @@ void max_pool3d_with_indices_backward_template(
     scalar_t* gradInputData,
     const scalar_t* gradOutputData,
     const int64_t* indicesData,
-    int features,
-    int itime,
-    int iheight,
-    int iwidth,
-    int obatch,
-    int otime,
-    int oheight,
-    int owidth) {
+    int64_t features,
+    int64_t itime,
+    int64_t iheight,
+    int64_t iwidth,
+    int64_t obatch,
+    int64_t otime,
+    int64_t oheight,
+    int64_t owidth) {
   int64_t gradOutputSize = obatch * features * otime * oheight * owidth;
 
-  auto out_cf_channel_stride = otime * oheight * owidth;
-  auto in_cf_channel_stride = itime * iheight * iwidth;
-  auto out_nbatch_stride = features * out_cf_channel_stride;
-  auto in_nbatch_stride = features * in_cf_channel_stride;
+  int64_t out_cf_channel_stride = otime * oheight * owidth;
+  int64_t in_cf_channel_stride = itime * iheight * iwidth;
+  int64_t out_nbatch_stride = features * out_cf_channel_stride;
+  int64_t in_nbatch_stride = features * in_cf_channel_stride;
   MaxPool3dBackwardKernelFunctor<scalar_t, channels_last> kfn(
       gradInputData,
       gradOutputData,
