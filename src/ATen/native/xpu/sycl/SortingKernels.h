@@ -348,8 +348,9 @@ void segmented_radix_sort_pairs_kernel(
     int num_segments,
     int num_elements) {
   constexpr int TILE_PROCESSING_LENGTH = GROUP_SIZE * KEYS_PER_ITEM;
-  int num_tiles =
-      (num_elements + TILE_PROCESSING_LENGTH - 1) / TILE_PROCESSING_LENGTH;
+  int64_t num_tiles =
+      (static_cast<int64_t>(num_elements) + TILE_PROCESSING_LENGTH - 1) /
+      TILE_PROCESSING_LENGTH;
   constexpr int RADIX_BITS = 4;
   constexpr int RADIX_BUCKETS = 16;
   int begin_bit = 0;
