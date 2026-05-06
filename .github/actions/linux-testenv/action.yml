@@ -221,5 +221,5 @@ runs:
       shell: bash -xe {0}
       run: |
         pip uninstall -y torch && pip uninstall -y torch
-        pip install ${{ github.workspace }}/wheels/torch-*.whl --no-deps
+        pip install ${{ github.workspace }}/wheels/torch-*.whl
         pip list |grep -E 'intel|torch|triton'
