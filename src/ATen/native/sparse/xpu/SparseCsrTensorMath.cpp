@@ -12,6 +12,7 @@
 #include <ATen/SparseCsrTensorUtils.h>
 #include <ATen/TensorOperators.h>
 #include <ATen/native/Resize.h>
+#include <ATen/native/sparse/SparseBlas.h>
 #include <ATen/native/sparse/SparseCsrTensorMath.h>
 #include <ATen/native/sparse/SparseStubs.h>
 #include <ATen/native/sparse/xpu/sycl/SparseCsrTensorMathKernels.h>
@@ -29,6 +30,8 @@
 #include <ATen/ops/copy_native.h>
 #include <ATen/ops/mul.h>
 #include <ATen/ops/scalar_tensor_native.h>
+#include <ATen/ops/sparse_mask.h>
+#include <ATen/ops/sparse_sampled_addmm_native.h>
 #include <ATen/ops/sparse_compressed_tensor.h>
 #include <ATen/ops/triangular_solve.h>
 #endif
@@ -306,6 +309,50 @@ Tensor& addmm_out_sparse_compressed_xpu(
   }
 
   addmm_out_sparse_csr(*self_, mat1, mat2, beta, alpha, result);
+  return result;
+}
+
+Tensor& sparse_sampled_addmm_out_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha,
+    Tensor& result) {
+  at::native::sparse::sparse_sampled_addmm_check_inputs(
+      self, mat1, mat2, beta, alpha, result);
+
+  if (&result != &self) {
+    // Allow self to be unbatched while mat1/mat2 are batched.
+    auto result_sizes = DimVector(mat1.sizes().slice(0, mat1.dim() - 2));
+    result_sizes.push_back(self.size(-2));
+    result_sizes.push_back(self.size(-1));
+    at::sparse_csr::get_sparse_csr_impl(result)->resize_(self._nnz(), result_sizes);
+    result.copy_(self);
+  }
+
+  if (mat1.numel() == 0 || mat2.numel() == 0 || result._nnz() == 0) {
+    result.mul_(beta);
+    return result;
+  }
+
+  auto prod = mat1.matmul(mat2);
+  auto sampled = prod.sparse_mask(result);
+  result.values().mul_(beta);
+  result.values().add_(sampled.values(), alpha);
+
+  return result;
+}
+
+Tensor sparse_sampled_addmm_sparse_csr_xpu(
+    const Tensor& self,
+    const Tensor& mat1,
+    const Tensor& mat2,
+    const Scalar& beta,
+    const Scalar& alpha) {
+  auto result = at::empty({0, 0}, self.options());
+  at::native::sparse_sampled_addmm_out_sparse_csr_xpu(
+      self, mat1, mat2, beta, alpha, result);
   return result;
 }
 
