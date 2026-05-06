@@ -446,10 +446,16 @@ jobs:
   summary:
     needs: [ut_test]
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Setup container environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Setup python-${{ inputs.python }}
@@ -504,10 +510,16 @@ jobs:
   summary_check:
     needs: [summary]
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Setup container environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates gh
       - name: Checkout torch-xpu-ops
         uses: actions/checkout@v4
       - name: Download XPU UT Logs

@@ -311,7 +311,13 @@ jobs:
     needs: tests
     if: ${{ success() || failure() }}
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     steps:
+      - name: Setup container environment
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates
       - name: Download reports
         uses: actions/download-artifact@v4
         with:

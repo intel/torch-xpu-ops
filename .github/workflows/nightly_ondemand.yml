@@ -60,6 +60,8 @@ jobs:
     name: conditions-filter
     if: ${{ github.repository_owner == 'intel' }}
     runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
     timeout-minutes: 3
     outputs:
       # Test type, (build or wheel)-(nightly, weekly or ondemand)
