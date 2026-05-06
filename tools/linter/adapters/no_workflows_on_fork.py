@@ -1,3 +1,18 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#   "pyyaml==6.0.2",
+# ]
+# ///
+
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 """
 This a linter that ensures that jobs that can be triggered by push,
 pull_request, or schedule will check if the repository owner is 'pytorch'.  This
@@ -22,7 +37,8 @@ import os
 import re
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional
+from collections.abc import Callable
 
 from yaml import load
 

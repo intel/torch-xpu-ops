@@ -1,3 +1,15 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["oncall: distributed"]
 # This test file contains positive tests for c10d with XCCL backend.
 # During the test, it is expected that ProcessGroup will not be aborted, destroyed or incur fatal error.
@@ -169,6 +181,26 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         #     tensors[0],
         # )
 
+        # Premul Sum
+        for dtype in torch.half, torch.float, torch.double:
+            for factor in (
+                3.0,
+                torch.tensor([5.0], device=local_device_id, dtype=dtype),
+            ):
+                tensors = [
+                    torch.tensor([self.rank + 1]).xpu(local_device_id).to(dtype=dtype)
+                ]
+                allreduce(tensors, c10d.ReduceOp.PREMUL_SUM(factor))
+                self.assertEqual(
+                    factor
+                    * torch.tensor(
+                        [self.world_size * (self.world_size + 1) / 2],
+                        dtype=dtype,
+                        device=local_device_id,
+                    ),
+                    tensors[0],
+                )
+
         # Product
         tensors = [torch.tensor([self.rank + 1]).xpu(local_device_id)]
 
@@ -193,6 +225,18 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         ):
             with self.assertRaisesRegex(ValueError, "Cannot use " + err + " with XCCL"):
                 allreduce(tensors, op)
+
+        # Test that PREMUL_SUM is callable and returns a ReduceOp
+        premul_op = c10d.ReduceOp.PREMUL_SUM(2.0)
+        self.assertIsInstance(premul_op, c10d.ReduceOp)
+
+        # Test equality comparison
+        premul_op1 = c10d.ReduceOp.PREMUL_SUM(2.0)
+        premul_op2 = c10d.ReduceOp.PREMUL_SUM(2.0)
+        self.assertEqual(premul_op1, premul_op2)
+
+        # Like other ReduceOps, PREMUL_SUM should have a unique integer value.
+        self.assertEqual(c10d.ReduceOp.PREMUL_SUM, 8)
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
@@ -259,6 +303,29 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
                     ValueError, "Cannot use " + err + " with XCCL"
                 ):
                     reduce(tensors, self.rank, rt, op)
+
+        # Premul Sum not supported for reduce op
+        # for factor in (3.0, torch.tensor([5.0], device=local_device_id)):
+        #     if isinstance(factor, torch.Tensor):
+        #         factor_ref = factor.cpu().item()
+        #     else:
+        #         factor_ref = factor
+        #     float_tensors = [
+        #         torch.tensor(
+        #             [self.rank + 1.0], device=f"xpu:{local_device_id}"
+        #         )
+        #     ]
+        #     float_tensors_ref = [
+        #         torch.tensor(
+        #             [(self.rank + 1.0) * factor_ref],
+        #             device=f"xpu:{local_device_id}",
+        #         )
+        #     ]
+
+        #     reduce(float_tensors_ref, rt, 0)
+        #     reduce(float_tensors, rt, 0, c10d.ReduceOp.PREMUL_SUM(factor))
+        #     if self.rank == rt:
+        #         self.assertEqual(float_tensors_ref[0], float_tensors[0])
 
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
@@ -713,6 +780,21 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         expected = torch.tensor(prod_val)
         self.assertEqual(expected, output_tensor)
 
+        for factor in (3.0, torch.tensor([5.0], device=self.rank)):
+            if isinstance(factor, torch.Tensor):
+                factor_ref = factor.cpu().item()
+            else:
+                factor_ref = factor
+            output = [t.float() for t in output]
+            tensor_lists = [[t.float() for t in tl] for tl in tensor_lists]
+            output_ref = [t.float() for t in output]
+            tensor_lists_ref = [
+                [t.float() * factor_ref for t in tl] for tl in tensor_lists
+            ]
+            reduce_scatter(output, tensor_lists, c10d.ReduceOp.PREMUL_SUM(factor))
+            reduce_scatter(output_ref, tensor_lists_ref, c10d.ReduceOp.SUM)
+            self.assertEqual(output_ref, output)
+
     @requires_xccl()
     @skip_but_pass_in_sandcastle_if(not TEST_MULTIGPU, "XCCL test requires 2+ GPUs")
     def test_reduce_scatter_base_ops(self):
@@ -918,7 +1000,8 @@ class ProcessGroupXCCLOpTest(MultiProcContinuousTest):
         out = torch.zeros(self.world_size, 2, dtype=send.dtype).to(device)
         dist.all_to_all_single(out, send)
         self.assertEqual(
-            out.tolist(), list(zip(range(self.world_size), range(self.world_size)))
+            out.tolist(),
+            list(zip(range(self.world_size), range(self.world_size))),
         )
 
 

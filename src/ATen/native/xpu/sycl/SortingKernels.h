@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/xpu/sycl/Loops.h>
@@ -15,8 +25,8 @@ namespace xpu {
 template <typename method_t, typename key_t, typename value_t>
 struct SegmentedGroupRadixSortPairsFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     int seg_idx = item.get_group(0);
     int seg_offset = seg_idx * num_elements_;
     auto method = method_t(item, slm_);
@@ -96,8 +106,8 @@ void segmented_group_radix_sort_pairs_kernel(
 template <typename method_t, typename key_t, typename value_t>
 struct SegmentedRadixSortPairsUpsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
         method_t::PROCESSING_LENGTH;
     int seg_idx = item.get_group(0) / num_tiles;
@@ -179,8 +189,8 @@ void segmented_radix_sort_pairs_upsweep_kernel(
 template <typename method_t>
 struct SegmentedRadixSortPairsScanFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     constexpr int RADIX_BUCKETS = 16;
     int seg_idx = item.get_group(0);
     auto counts_seg = counts_ + seg_idx * RADIX_BUCKETS * num_tiles_;
@@ -218,8 +228,8 @@ void segmented_radix_sort_pairs_scan_kernel(
 template <typename method_t, typename key_t, typename value_t>
 struct SegmentedRadixSortPairsDownsweepFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     int num_tiles = (num_elements_ + method_t::PROCESSING_LENGTH - 1) /
         method_t::PROCESSING_LENGTH;
     int seg_idx = item.get_group(0) / num_tiles;
@@ -448,8 +458,8 @@ struct SegmentedGroupRadixSelectPairsFunctor
     MAX_KV_BYTES = std::max(sizeof(key_t), sizeof(value_t)),
   };
 
-  [[sycl::reqd_sub_group_size(method_t::SUBGROUP_SIZE)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(method_t::SUBGROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     int seg_idx = item.get_group(0);
     int seg_offset = seg_idx * nelements_;
     auto method = method_t(item, slm_);
@@ -471,13 +481,13 @@ struct SegmentedGroupRadixSelectPairsFunctor
     int num_start = method_t::PROCESSING_LENGTH;
     while (num_start < nelements_) {
       method.topk(KeyTraits<key_t>::endbit(), 0, k_, keys_temp, values_temp);
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       method.topk_append_keys(
           keys_in_seg, keys_temp, nelements_, num_start, k_);
       method.topk_append_values(
           values_in_seg, values_temp, nelements_, num_start, k_);
       num_start += method_t::PROCESSING_LENGTH - k_;
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     method.topk(

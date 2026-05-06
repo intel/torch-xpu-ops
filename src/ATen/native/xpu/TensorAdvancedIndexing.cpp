@@ -1,3 +1,17 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Portions of this file are derived from PyTorch
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
 #include <ATen/ExpandUtils.h>
 #include <ATen/MemoryOverlap.h>
 #include <ATen/NamedTensorUtils.h>
@@ -11,12 +25,11 @@
 #include <ATen/native/TensorAdvancedIndexing.h>
 #include <ATen/native/TensorAdvancedIndexingUtils.h>
 #include <ATen/native/TensorIterator.h>
-//#include <ATen/native/TensorFactories.cpp>
+// #include <ATen/native/TensorFactories.cpp>
 #include <ATen/native/xpu/sycl/IndexingKernels.h>
 #include <ATen/native/xpu/sycl/ScatterGatherKernels.h>
 #include <ATen/ops/ones_like.h>
 #include <ATen/ops/zeros_like.h>
-#include <comm/RegisterUtils.h>
 #include <comm/xpu_aten.h>
 #include <torch/library.h>
 
@@ -24,7 +37,7 @@
 #include <ATen/ops/index_add_native.h>
 #include <ATen/ops/index_reduce_meta.h>
 #include <ATen/ops/index_reduce_native.h> //generated
-//#include <ATen/ops/index_reduce_prod_native.h> //generated
+// #include <ATen/ops/index_reduce_prod_native.h> //generated
 
 namespace at {
 

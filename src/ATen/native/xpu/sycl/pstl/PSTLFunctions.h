@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/ceil_div.h>
@@ -120,14 +130,14 @@ struct KSScanKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     }
     if (local_id == 0)
       local_scan_[local_id] += cur_init;
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // body of KS algo
     for (auto __k = 1; __k < N_; __k <<= 1) {
       auto tmp = (local_id >= __k) ? local_scan_[local_id - __k] : 0;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
       local_scan_[local_id] += tmp;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
     }
 
     // flush result into dst
@@ -173,14 +183,14 @@ struct KSScanWithCarrierKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         carry_ptr_[group_id] = c10::load(&first_[global_id]);
       }
     }
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     // body of KS algo
     for (auto __k = 1; __k < wgroup_size_; __k <<= 1) {
       auto tmp = (local_id >= __k) ? local_scan_[local_id - __k] : 0;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
       local_scan_[local_id] += tmp;
-      item_id.barrier(sycl_local_fence);
+      sycl::group_barrier(item_id.get_group());
     }
 
     // flush result into dst
@@ -233,7 +243,7 @@ struct ScanAccumulateKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     if (local_id == 0)
       local_carry_[0] = carry_ptr_[group_id];
-    item_id.barrier(sycl_local_fence);
+    sycl::group_barrier(item_id.get_group());
 
     if (global_id < N_) {
       d_first_[global_id] += local_carry_[0];
@@ -1088,7 +1098,8 @@ OutputIt count_by_segment(
   sycl_kernel_submit(sycl::range<1>(N), q, kfn1);
 
   // 2. get target positions with inclusive_scan
-  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, static_cast<index_t>(0));
+  constexpr index_t ZERO_BASED_INDEX_OFFSET = static_cast<index_t>(-1);
+  inclusive_scan(gmask_ptr, gmask_ptr + N, tpos_ptr, ZERO_BASED_INDEX_OFFSET);
 
   // 3. calculate counts for each unique point
   Tensor range = at::empty({N + 1}, options);
@@ -1289,6 +1300,16 @@ inline void merge(
   size_t r_sq2_low_bound;
   size_t l_sq1_upper_bound;
   size_t r_sq1_upper_bound;
+
+  // Copy only the first sequence if the second one is empty.
+  if (sq2_start >= sq2_end) {
+    for (unsigned int i = 0; i < chunk1_size; ++i) {
+      out_key[chunk1_start + i] = in_key[chunk1_start + i];
+      out_val[chunk1_start + i] = in_val[chunk1_start + i];
+    }
+    return;
+  }
+
   if (!comp_t(in_key[sq2_start], in_key[sq1_end - 1])) {
     for (unsigned int i = 0; i < chunk1_size; ++i) {
       out_key[chunk1_start + i] = in_key[chunk1_start + i];

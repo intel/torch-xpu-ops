@@ -1,9 +1,17 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
 
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -168,11 +176,11 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // Finds the start offset for our slice
     index_t valuesSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, values_);
+        IndexToOffset<scalar_t, index_t, Dim>::get(slice, values_);
     index_t indicesSliceStartIndex =
-        IndexToOffset<int64_t, index_t>::get(slice, indices_);
+        IndexToOffset<int64_t, index_t, Dim>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
@@ -191,7 +199,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       num_nan_[0] = 0;
     }
 
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (nan_count > 0) {
       atomicAdd(
           (sycl_local_ptr<index_t>)(num_nan_
@@ -200,7 +208,7 @@ struct GatherMedianKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
                                         .get()),
           nan_count);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // For torch.median, if we found nan set k to last index so the computed
     // value is nan, otherwise set k to the middle element of the non-nan
@@ -286,11 +294,11 @@ struct GatherKthValueKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
     // Finds the start offset for our slice
     index_t valuesSliceStartIndex =
-        IndexToOffset<scalar_t, index_t>::get(slice, values_);
+        IndexToOffset<scalar_t, index_t, Dim>::get(slice, values_);
     index_t indicesSliceStartIndex =
-        IndexToOffset<int64_t, index_t>::get(slice, indices_);
+        IndexToOffset<int64_t, index_t, Dim>::get(slice, indices_);
     index_t inputSliceStartIndex =
-        IndexToOffset<const scalar_t, index_t>::get(slice, input_);
+        IndexToOffset<const scalar_t, index_t, Dim>::get(slice, input_);
 
     scalar_t* valuesSliceStart = values_data_ + valuesSliceStartIndex;
     int64_t* indicesSliceStart = indices_data_ + indicesSliceStartIndex;
@@ -546,5 +554,6 @@ void launch_kthvalue_kernel(
 
 } // namespace at::native::xpu
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on

@@ -1,3 +1,15 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: intel"]
 
 import numpy as np
@@ -17,8 +29,7 @@ except Exception as e:
 with XPUPatchForImport(False):
     from test_sort_and_select import TestSortAndSelect
 
-    # FIXME: remove torch.bool from unsupported types once support is added for cub sort
-    @dtypes(*all_types_and(torch.half, torch.bfloat16))
+    @dtypes(*all_types_and(torch.half, torch.bfloat16, torch.bool))
     def stable_sort_against_numpy(self, device, dtype):
         if dtype in floating_types_and(torch.float16, torch.bfloat16):
             inf = float("inf")
@@ -90,6 +101,30 @@ with XPUPatchForImport(False):
             self.assertEqual(idx_torch, idx_numpy)
 
     TestSortAndSelect.test_stable_sort_against_numpy = stable_sort_against_numpy
+
+    # Upstream test_sort_and_select.py:test_sort_large_slice carries
+    # @onlyCUDA and uses torch.cuda.synchronize() / .cuda(); resolve sync
+    # and the .to(device) move via the test-supplied `device` (set by
+    # instantiate_device_type_tests) so the body is not bound to a single
+    # backend. The @onlyCUDA decorator is dropped because the override
+    # runs through instantiate_device_type_tests with device="xpu".
+    # Addresses intel/torch-xpu-ops#2531.
+    def _test_sort_large_slice(self, device):
+        # tests direct cub path
+        x = torch.randn(4, 1024000, device=device)
+        res1val, res1ind = torch.sort(x, stable=True)
+        torch.get_device_module(device).synchronize()
+        # assertIsOrdered is too slow, so just compare to cpu
+        res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), stable=True)
+        self.assertEqual(res1val, res1val_cpu.to(device))
+        self.assertEqual(res1ind, res1ind_cpu.to(device))
+        res1val, res1ind = torch.sort(x, descending=True, stable=True)
+        torch.get_device_module(device).synchronize()
+        res1val_cpu, res1ind_cpu = torch.sort(x.cpu(), descending=True, stable=True)
+        self.assertEqual(res1val, res1val_cpu.to(device))
+        self.assertEqual(res1ind, res1ind_cpu.to(device))
+
+    TestSortAndSelect.test_sort_large_slice = _test_sort_large_slice
 
 instantiate_device_type_tests(
     TestSortAndSelect, globals(), only_for="xpu", allow_xpu=True

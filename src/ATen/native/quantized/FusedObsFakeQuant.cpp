@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/core/Tensor.h>
 
@@ -60,7 +70,7 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
     }
     native::xpu::_calculate_moving_average(
         y,
-        observer_on,
+        observer_on.to(at::kLong),
         running_min,
         running_max,
         averaging_const,
@@ -69,7 +79,7 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
   } else {
     native::xpu::_calculate_moving_average(
         x_contig,
-        observer_on,
+        observer_on.to(at::kLong),
         running_min,
         running_max,
         averaging_const,
@@ -82,7 +92,7 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
 
   native::xpu::_calc_moving_avg_qparams_helper(
       x_contig,
-      fake_quant_on,
+      fake_quant_on.to(at::kLong),
       running_min,
       running_max,
       scale_ptr,
@@ -103,7 +113,12 @@ std::tuple<at::Tensor, at::Tensor> fused_moving_avg_obs_fake_quant_xpu(
     }
   } else {
     return at::_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
-        x, scale, zero_point, fake_quant_on, quant_min, quant_max);
+        x,
+        scale,
+        zero_point,
+        fake_quant_on.to(at::kLong),
+        quant_min,
+        quant_max);
   }
 }
 

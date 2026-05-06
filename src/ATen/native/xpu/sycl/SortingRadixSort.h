@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/xpu/sycl/SortingCommon.h>
@@ -88,7 +98,7 @@ class GroupRadixSort {
       bin_offset_ = counts[group_id + bin_idx * num_groups];
     }
     enable_bin_offsets_ = true;
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline GroupRadixSort(sycl::nd_item<1>& item, sycl_local_acc_t<char> buffer)
@@ -110,13 +120,17 @@ class GroupRadixSort {
             KeyTraits<KeyT>::convert(c10::load(&keys_group_in[offset]));
       } else {
         KeyTraitsT padding_key;
-        if (IS_DESCENDING) {
-          padding_key = 0;
+        if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+          padding_key = IS_DESCENDING ? false : true;
         } else {
-          constexpr uint64_t KEY_TRAITS_TYPE_MASK = 1ll
-              << ((sizeof(KeyTraitsT) << 3) - 1);
-          padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
-          padding_key = padding_key ^ (padding_key - 1);
+          if (IS_DESCENDING) {
+            padding_key = 0;
+          } else {
+            constexpr uint64_t KEY_TRAITS_TYPE_MASK = uint64_t{1}
+                << ((sizeof(KeyTraitsT) << 3) - 1);
+            padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
+            padding_key = padding_key ^ (padding_key - 1);
+          }
         }
         ukeys_[ITEM] = padding_key;
       }
@@ -147,7 +161,7 @@ class GroupRadixSort {
       local_storage_.exchange_ukeys[lid_ * KEYS_PER_THREAD + ITEM] =
           ukeys_[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
@@ -156,7 +170,7 @@ class GroupRadixSort {
             KeyTraits<KeyT>::deconvert(local_storage_.exchange_ukeys[offset]);
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void store_keys(KeyT* out, int offset_select, int num_selected) {
@@ -175,7 +189,7 @@ class GroupRadixSort {
       local_storage_.exchange_values[lid_ * KEYS_PER_THREAD + ITEM] =
           values_[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
@@ -183,7 +197,7 @@ class GroupRadixSort {
         values_group_out[offset] = local_storage_.exchange_values[offset];
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void store_values(ValueT* out, int offset_select, int num_selected) {
@@ -200,7 +214,7 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
@@ -212,7 +226,7 @@ class GroupRadixSort {
         keys_out[offset] = KeyTraits<KeyT>::deconvert(ukey);
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void exchange_and_store_values(ValueT* values_out, int num_elements) {
@@ -220,7 +234,7 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_values[ranks_[ITEM]] = values_[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ + ITEM * GROUP_THREADS;
@@ -230,7 +244,7 @@ class GroupRadixSort {
         values_out[offset] = value;
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void exchange_keys() {
@@ -238,13 +252,13 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_ukeys[ranks_[ITEM]] = ukeys_[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       ukeys_[ITEM] = local_storage_.exchange_ukeys[offset];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void exchange_keys(
@@ -258,7 +272,7 @@ class GroupRadixSort {
             ukeys_[ITEM];
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
     *mask = 0u;
     int new_length = upper_offset - lower_offset;
 #pragma unroll
@@ -269,7 +283,7 @@ class GroupRadixSort {
         ukeys_[ITEM] = local_storage_.exchange_ukeys[offset];
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void exchange_values() {
@@ -277,13 +291,13 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       local_storage_.exchange_values[ranks_[ITEM]] = values_[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       int offset = lid_ * KEYS_PER_THREAD + ITEM;
       values_[ITEM] = local_storage_.exchange_values[offset];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void exchange_values(int lower_offset, int upper_offset) {
@@ -294,7 +308,7 @@ class GroupRadixSort {
             values_[ITEM];
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
     int new_length = upper_offset - lower_offset;
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
@@ -303,7 +317,7 @@ class GroupRadixSort {
         values_[ITEM] = local_storage_.exchange_values[offset];
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline DigitT extract_digit(KeyTraitsT key) {
@@ -321,7 +335,7 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < COUNTER_LANES; ++ITEM) {
       local_storage_.rank_storage.counters[ITEM][lid_] = 0;
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
@@ -337,7 +351,7 @@ class GroupRadixSort {
       ranks_[ITEM] = *digit_counters[ITEM];
       *digit_counters[ITEM] = ranks_[ITEM] + 1;
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     CounterT exclusive = group_exclusive_cumsum<
         CounterT,
@@ -356,14 +370,14 @@ class GroupRadixSort {
     for (int INDEX = 0; INDEX < COUNTER_LANES; ++INDEX) {
       local_storage_.rank_storage.counters[INDEX][lid_] += c;
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     // inc rank
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       ranks_[ITEM] += *digit_counters[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     if (enable_bin_offsets_) {
       int digit = lid_;
@@ -376,7 +390,7 @@ class GroupRadixSort {
             local_storage_.rank_storage.buckets[counter_lane][0][sub_counter];
         local_storage_.relative_bin_offsets[lid_] = bin_offset_ - digit_offset;
       }
-      item_.barrier(sycl_local_fence);
+      sycl::group_barrier(item_.get_group());
     }
   }
 
@@ -419,7 +433,7 @@ class GroupRadixSort {
     for (int ITEM = 0; ITEM < COUNTER_LANES; ++ITEM) {
       local_storage_.rank_storage.counters[ITEM][lid_] = 0;
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
@@ -438,7 +452,7 @@ class GroupRadixSort {
         *digit_counters[ITEM] = ranks_[ITEM] + 1;
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     CounterT exclusive = group_exclusive_cumsum<
         CounterT,
@@ -464,19 +478,19 @@ class GroupRadixSort {
     for (int INDEX = 0; INDEX < COUNTER_LANES; ++INDEX) {
       local_storage_.rank_storage.counters[INDEX][lid_] += c;
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     // inc rank
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       ranks_[ITEM] += *digit_counters[ITEM];
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     find_select_offset(
         carry, num_to_select, out_offset_select, out_offset_active);
 
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
   }
 
   inline void topk(
@@ -532,13 +546,17 @@ class GroupRadixSort {
           ukeys_[ITEM] = KeyTraits<KeyT>::convert(c10::load(&keys_in[offset]));
         } else {
           KeyTraitsT padding_key;
-          if (IS_DESCENDING) {
-            padding_key = 0;
+          if constexpr (std::is_same<KeyTraitsT, bool>::value) {
+            padding_key = IS_DESCENDING ? false : true;
           } else {
-            constexpr uint64_t KEY_TRAITS_TYPE_MASK = 1ll
-                << ((sizeof(KeyTraitsT) << 3) - 1);
-            padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
-            padding_key = padding_key ^ (padding_key - 1);
+            if (IS_DESCENDING) {
+              padding_key = 0;
+            } else {
+              constexpr uint64_t KEY_TRAITS_TYPE_MASK = uint64_t{1}
+                  << ((sizeof(KeyTraitsT) << 3) - 1);
+              padding_key = static_cast<KeyTraitsT>(KEY_TRAITS_TYPE_MASK);
+              padding_key = padding_key ^ (padding_key - 1);
+            }
           }
           ukeys_[ITEM] = padding_key;
         }
@@ -671,7 +689,7 @@ class RadixSortUpsweep {
       keys[ITEM] = KeyTraits<KeyT>::convert(
           c10::load(&group_ptr[lid_ + ITEM * GROUP_THREADS]));
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 #pragma unroll
     for (int ITEM = 0; ITEM < KEYS_PER_THREAD; ++ITEM) {
       auto digit = extract_digit(keys[ITEM]);
@@ -747,7 +765,7 @@ class RadixSortUpsweep {
       }
     }
 
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
 
     if ((RADIX_BUCKETS % GROUP_THREADS != 0) && (lid_ < RADIX_BUCKETS)) {
       int bin_idx = lid_;
@@ -773,9 +791,9 @@ class RadixSortUpsweep {
         process_full_tile(group_offset);
         group_offset += PROCESSING_LENGTH;
       }
-      item_.barrier(sycl_local_fence);
+      sycl::group_barrier(item_.get_group());
       unpack_digit_counts();
-      item_.barrier(sycl_local_fence);
+      sycl::group_barrier(item_.get_group());
       reset_digit_counters();
     }
 
@@ -785,9 +803,9 @@ class RadixSortUpsweep {
     }
 
     process_partial_tile(group_offset, group_end);
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
     unpack_digit_counts();
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
     extract_counts();
   }
 };
@@ -843,7 +861,7 @@ class RadixSortScanBins {
         partial_output[ITEM] = d_local[offset];
       }
     }
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
     // Thread reduce
     int thread_partial = partial_output[0];
 #pragma unroll
@@ -864,7 +882,7 @@ class RadixSortScanBins {
         subgroup_exclusive_sum);
     if (subgroup_tid == (SUBGROUP_SIZE - 1))
       slm_[subgroup_id] = subgroup_inclusive_sum;
-    item_.barrier(sycl_local_fence);
+    sycl::group_barrier(item_.get_group());
     // Group scan
     int group_all_sum = 0, subgroup_prefix_sum;
 #pragma unroll

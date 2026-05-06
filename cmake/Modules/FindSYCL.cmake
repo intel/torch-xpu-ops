@@ -1,3 +1,11 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 #.rst:
 # FindSYCL
 # --------
@@ -10,7 +18,7 @@
 #  SYCL_COMPILER
 #  -- SYCL compiler's executable.
 #
-#  SYCL_FLAGS
+#  SYCL_COMPILE_FLAGS
 #  -- SYCL compiler's compilation command line arguments.
 #
 #  SYCL_HOST_FLAGS
@@ -35,6 +43,11 @@
 #
 #  SYCL_ADD_LIBRARY
 
+if(NOT CMAKE_SYCL_COMPILER_LAUNCHER AND DEFINED ENV{CMAKE_SYCL_COMPILER_LAUNCHER})
+  set(CMAKE_SYCL_COMPILER_LAUNCHER "$ENV{CMAKE_SYCL_COMPILER_LAUNCHER}"
+    CACHE STRING "Compiler launcher for SYCL.")
+endif()
+
 macro(SYCL_FIND_HELPER_FILE _name _extension)
   set(_full_name "${_name}.${_extension}")
   # CMAKE_CURRENT_LIST_FILE contains the full path to the file currently being
@@ -55,21 +68,7 @@ set(SYCL_HOST_COMPILER "${CMAKE_CXX_COMPILER}"
   CACHE FILEPATH "Host side compiler used by SYCL")
 
 # SYCL_EXECUTABLE
-if(SYCL_COMPILER)
-  set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
-else()
-  if(WIN32)
-    set(SYCL_EXECUTABLE_NAME icx)
-  else()
-    set(SYCL_EXECUTABLE_NAME icpx)
-  endif()
-  find_program(SYCL_EXECUTABLE
-    NAMES ${SYCL_EXECUTABLE_NAME}
-    PATHS "${SYCL_PACKAGE_DIR}"
-    PATH_SUFFIXES bin bin64
-    NO_DEFAULT_PATH
-    )
-endif()
+set(SYCL_EXECUTABLE ${SYCL_COMPILER} CACHE FILEPATH "SYCL compiler")
 
 # Parse HOST_COMPILATION mode.
 option(SYCL_HOST_COMPILATION_CXX "Generated file extension" ON)
@@ -107,7 +106,7 @@ macro(SYCL_INCLUDE_DEPENDENCIES dependency_file)
 
   if(SYCL_DEPEND_REGENERATE)
     set(SYCL_DEPEND ${dependency_file})
-    file(WRITE ${dependency_file} "#FindCUDA.cmake generated file.  Do not edit.\n")
+    file(WRITE ${dependency_file} "#FindSYCL.cmake generated file.  Do not edit.\n")
   endif()
 endmacro()
 
@@ -212,7 +211,6 @@ endfunction()
 
 macro(SYCL_WRAP_SRCS sycl_target generated_files)
   # Optional arguments
-  set(SYCL_flags "")
   set(generated_extension ${CMAKE_${SYCL_C_OR_CXX}_OUTPUT_EXTENSION})
 
   set(SYCL_include_dirs "${SYCL_INCLUDE_DIR}")
@@ -383,7 +381,6 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     set(SYCL_device_link_flags
         ${link_type_flag}
         ${important_host_flags}
-        ${SYCL_FLAGS}
         ${SYCL_DEVICE_LINK_FLAGS})
 
     file(RELATIVE_PATH output_file_relative_path "${CMAKE_BINARY_DIR}" "${output_file}")
@@ -405,7 +402,7 @@ macro(SYCL_LINK_DEVICE_OBJECTS output_file sycl_target)
     add_custom_command(
       OUTPUT ${output_file}
       DEPENDS ${object_files}
-      COMMAND ${SYCL_EXECUTABLE}
+      COMMAND ${CMAKE_SYCL_COMPILER_LAUNCHER} ${SYCL_EXECUTABLE}
       ${SYCL_device_link_flags}
       -fsycl-link ${object_files}
       -Xs ${SYCL_OFFLINE_COMPILER_FLAGS}
@@ -535,5 +532,3 @@ macro(SYCL_ADD_EXECUTABLE sycl_target)
     LINKER_LANGUAGE ${SYCL_C_OR_CXX})
 
 endmacro()
-
-set(SYCL_FOUND True)

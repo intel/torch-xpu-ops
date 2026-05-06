@@ -1,3 +1,15 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: nn"]
 import contextlib
 import itertools
@@ -9,6 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.testing._internal.common_device_type import (
+    dtypes,
     expectedFailureXLA,
     instantiate_device_type_tests,
 )
@@ -236,8 +249,9 @@ class TestDropoutNNDeviceType(NNTestCase):
             self.assertTrue(result[b, c].count_nonzero() in (0, channel_numel))
 
     @expectedFailureXLA  # seems like freeze_rng_state is not honoured by XLA
-    def test_Dropout1d(self, device):
-        with set_default_dtype(torch.double):
+    @dtypes(torch.double)
+    def test_Dropout1d(self, device, dtype):
+        with set_default_dtype(dtype):
             N, C, L = (
                 random.randint(10, 15),
                 random.randint(10, 15),

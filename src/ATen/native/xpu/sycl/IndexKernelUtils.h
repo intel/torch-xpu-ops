@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/ceil_div.h>
 #include <ATen/native/TensorIterator.h>
 #include <ATen/native/xpu/sycl/MemoryAccess.h>
@@ -42,8 +52,7 @@ inline bool fast_gather_kernel_eligible(
 
 template <int Alignment, typename index_t>
 struct VectorizedGatherKernel {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<2> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<2> item) const {
     int64_t ind = idx_[item.get_group(1)];
     if (allow_neg_indices_) {
       ind = (ind < 0) ? ind + ind_dim_size_ : ind;

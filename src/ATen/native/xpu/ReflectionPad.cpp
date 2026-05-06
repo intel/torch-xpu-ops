@@ -1,9 +1,20 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/core/op_registration/adaption.h>
 #include <ATen/native/Padding.h>
 #include <ATen/native/xpu/sycl/ReflectionPadKernels.h>
 
+#include <ATen/TensorMeta.h>
 #include <ATen/ops/empty.h>
 #include <ATen/ops/reflection_pad1d_backward_native.h>
 #include <ATen/ops/reflection_pad1d_native.h>
@@ -12,7 +23,6 @@
 #include <ATen/ops/reflection_pad3d_backward_native.h>
 #include <ATen/ops/reflection_pad3d_native.h>
 #include <ATen/ops/zeros_like.h>
-#include "ATen/TensorMeta.h"
 
 namespace at {
 namespace native {
@@ -50,9 +60,6 @@ Tensor& reflection_pad2d_backward_out_xpu(
     const Tensor& input,
     IntArrayRef padding,
     Tensor& grad_input) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("reflection_pad2d_backward_out_xpu");
   grad_input.resize_as_(input);
   grad_input.zero_();
   native::xpu::reflection_pad2d_backward_kernel(
@@ -64,9 +71,6 @@ Tensor reflection_pad2d_backward_xpu(
     const Tensor& grad_output,
     const Tensor& input,
     IntArrayRef padding) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("reflection_pad2d_backward_xpu");
   auto grad_input = at::zeros_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
   native::xpu::reflection_pad2d_backward_kernel(
       grad_input, grad_output, input, padding);

@@ -45,3 +45,8 @@ TrOCRForCausalLM,pass,pass,pass,pass,pass
 XGLMForCausalLM,pass,pass,pass,pass,pass
 XLNetLMHeadModel,pass,pass,pass,pass,pass
 YituTechConvBert,pass,pass,pass,pass,pass
+# https://github.com/intel/torch-xpu-ops/issues/2055
+Qwen/Qwen3-0.6B,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+google/gemma-2-2b,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+meta-llama/Llama-3.2-1B,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run
+openai/whisper-tiny,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run,eager_fail_to_run

@@ -1,3 +1,15 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: tests"]
 
 import contextlib
@@ -23,7 +35,6 @@ import weakref
 from functools import partial
 from itertools import chain, combinations, permutations, product
 from multiprocessing.reduction import ForkingPickler
-from typing import Tuple
 
 import numpy as np
 import torch
@@ -50,6 +61,7 @@ from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     largeTensorTest,
     onlyCPU,
+    onlyCUDA,
     onlyXPU,
     PYTORCH_CUDA_MEMCHECK,
     skipMeta,
@@ -120,10 +132,8 @@ torch.testing._internal.common_utils.NATIVE_DEVICES = (
     torch._C._get_privateuse1_backend_name(),
 )
 
-from typing import List
 
-
-def my_get_all_device_types_xpu() -> List[str]:
+def my_get_all_device_types_xpu() -> list[str]:
     devices = [
         "cpu",
     ]
@@ -232,12 +242,15 @@ def torch_vital_set(value):
 # Tests Vital Signs for Torch
 # FIXME: document or deprecate whatever this is
 class TestBasicVitalSigns(TestCase):
+    # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
+    @onlyCUDA
     def test_basic_vitals(self):
         with torch_vital_set(""):
             self.assertFalse(torch.vitals_enabled())
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
 
+    @onlyCUDA
     def test_basic_vitals_read_write(self):
         with torch_vital_set("ON"):
             self.assertTrue(torch.vitals_enabled())
@@ -248,6 +261,7 @@ class TestBasicVitalSigns(TestCase):
             self.assertIn("TEST_VALUE_STRING", torch.read_vitals())
             self.assertIn("CUDA.used", torch.read_vitals())
 
+    @onlyCUDA
     def test_dataloader_vitals(self):
         with torch_vital_set("ON"):
             inps = torch.arange(10 * 5, dtype=torch.float32).view(10, 5)
@@ -259,14 +273,10 @@ class TestBasicVitalSigns(TestCase):
 
 # FIXME: document or deprecate whatever this is
 class TestVitalSignsCuda(TestCase):
-    @onlyXPU
+    @onlyCUDA  # VitalsAPI has been deactivated and will remain disabled unless a valid use case is identified.
     def test_cuda_vitals_gpu_only(self, device):
-        if TEST_XPU:
-            with torch_vital_set("ON"):
-                self.assertIn("XPU.used\t\t true", torch.read_vitals())
-        else:
-            with torch_vital_set("ON"):
-                self.assertIn("CUDA.used\t\t true", torch.read_vitals())
+        with torch_vital_set("ON"):
+            self.assertIn("CUDA.used\t\t true", torch.read_vitals())
 
 
 is_cuda_sm86 = torch.cuda.is_available() and torch.cuda.get_device_capability(0) == (
@@ -386,6 +396,10 @@ class TestTorchDeviceType(TestCase):
         torch.qint32,
         torch.quint4x2,
     )
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_setitem(self, device, dtype):
         # Skip quantized dtypes for CUDA, since they're not supported
         if torch.device(device).type == "cuda" or torch.device(device).type == "xpu":
@@ -417,6 +431,10 @@ class TestTorchDeviceType(TestCase):
         s[2:7] = 1
         self.assertEqual(s, storage_type(l))
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     @skipIfTorchDynamo("https://github.com/pytorch/torchdynamo/issues/1991")
     @onlyNativeDeviceTypes
     @dtypes(*all_types_and_complex_and(torch.half, torch.bool, torch.bfloat16))
@@ -431,7 +449,6 @@ class TestTorchDeviceType(TestCase):
         expected_storage_type = getattr(
             module, torch.storage._dtype_to_storage_type_map()[dtype]
         )
-
         self.assertEqual(a.storage_type(), expected_storage_type)
 
     @onlyNativeDeviceTypes
@@ -487,7 +504,7 @@ class TestTorchDeviceType(TestCase):
 
     def _check_storage_meta(self, s, s_check):
         self.assertTrue(
-            isinstance(s, (torch.UntypedStorage, torch.TypedStorage))
+            isinstance(s, torch.UntypedStorage | torch.TypedStorage)
             and isinstance(s_check, type(s)),
             (
                 "s and s_check must both be one of UntypedStorage or "
@@ -1316,7 +1333,7 @@ class TestTorchDeviceType(TestCase):
         self.assertFalse(t1.is_set_to(t4))
         self.assertFalse(
             torch.tensor([]).is_set_to(torch.tensor([])),
-            "Tensors with no storages should not appear to be set " "to each other",
+            "Tensors with no storages should not appear to be set to each other",
         )
 
         t1 = torch.tensor([True, True], dtype=torch.bool, device=device)
@@ -1389,8 +1406,8 @@ class TestTorchDeviceType(TestCase):
             small2 = torch.randn(*dims_small2, device=device).float()
             small2_expanded = small2.expand(*dims_full)
 
-        if small.is_cuda and fn in ["map", "map2"]:
-            # map and map2 are not implementd on CUDA tensors
+        if (small.device.type in ["cuda", "xpu"]) and fn in ["map", "map2"]:
+            # map and map2 are not implemented on CUDA and XPU tensors
             return
 
         if hasattr(large_expanded, fn):
@@ -2024,7 +2041,7 @@ else:
         self.check_nondeterministic_alert(
             lambda: res.backward(grad, retain_graph=True),
             "reflection_pad2d_backward_" + torch.device(device).type,
-            torch.device(device).type == "cuda" or torch.device(device).type == "xpu",
+            torch.device(device).type == "cuda",
         )
 
     @skipIfMPS
@@ -2495,7 +2512,7 @@ else:
         result = original.scatter(0, null_index, null_arr)
         self.assertEqual(result, original, atol=0, rtol=0)
 
-    @onlyXPU
+    @onlyCUDA
     @skipIfTorchInductor("FIXME")
     def test_sync_warning(self, device):
         def _sync_raises_helper(f, level):
@@ -4138,7 +4155,7 @@ else:
 
     def _prepare_data_for_index_copy_and_add_deterministic(
         self, dim: int, device: torch.device
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         assert dim >= 0 and dim < 3
         a = [5, 4, 3]
         a[dim] = 2000
@@ -6672,12 +6689,6 @@ else:
                     if torch.cuda.amp.common.amp_definitely_not_available()
                     else a.is_enabled()
                 )
-            elif device.type == "xpu":
-                self.assertTrue(
-                    not a.is_enabled()
-                    if torch.xpu.amp.common.amp_definitely_not_available()
-                    else a.is_enabled()
-                )
             else:
                 self.assertTrue(a.is_enabled())
             if lazy_init_scale:
@@ -6973,7 +6984,9 @@ else:
                 if "cuda" == device.type:
                     self.assertTrue(isinstance(s1._scale, torch.cuda.FloatTensor))
                 elif "xpu" == device.type:
-                    self.assertTrue(isinstance(s1._scale, torch.xpu.FloatTensor))
+                    self.assertTrue(isinstance(s1._scale, torch.Tensor))
+                    self.assertTrue(s1._scale.dtype == torch.float32)
+                    self.assertEqual(s1._scale.device, device)
                 else:
                     self.assertTrue(isinstance(s1._scale, torch.FloatTensor))
 
@@ -7678,6 +7691,11 @@ else:
             self.skipTest("uint16,32,64 not implemented on XLA")
         t = torch.ones((), device=device, dtype=dtype)
         self.assertEqual(1, t.item())
+
+    def test__local_scalar_dense_with_empty_tensor(self, device):
+        input = torch.randn(0, device=device)
+        with self.assertRaisesRegex(RuntimeError, "Empty tensor not supported"):
+            torch.ops.aten._local_scalar_dense(input)
 
     @onlyNativeDeviceTypes
     def test_masked_scatter_inplace_noncontiguous(self, device):
@@ -9101,6 +9119,10 @@ class TestTorch(TestCase):
         self.assertEqual(bytes.tolist(), [1, 2, 3, 4])
         self.assertTrue(isinstance(bytes, torch.ByteStorage))
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_error(self):
         quantized_storages = [
             torch.QInt32Storage,
@@ -9244,6 +9266,10 @@ class TestTorch(TestCase):
                 with self.assertRaisesRegex(RuntimeError, r"cannot set item"):
                     s.fill_(s_other)
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_storage_error_no_attribute(self):
         if TEST_XPU:
             storage_classes = [
@@ -9433,6 +9459,10 @@ class TestTorch(TestCase):
 
     # Test that internal versions of functions related to TypedStorage do not
     # produce a deprecation warning
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_typed_storage_internal_no_warning(self):
         s0 = torch.FloatStorage(10)
         s0_untyped = s0.untyped()
@@ -9510,6 +9540,10 @@ class TestTorch(TestCase):
 
     # Test that public functions related to TypedStorage produce a deprecation
     # warning
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     @skipIfTorchInductor("FIXME")
     def test_typed_storage_deprecation_warning(self):
         s0 = torch.FloatStorage(10)
@@ -9612,9 +9646,10 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
     def test_torch_from_file(self):
@@ -9645,11 +9680,16 @@ class TestTorch(TestCase):
             assert_with_filename(fname)
 
         if IS_FILESYSTEM_UTF8_ENCODING:
-            with TemporaryDirectoryName(
-                suffix="\u4e2d\u6587"
-            ) as dname, TemporaryFileName(dir=dname) as fname:
+            with (
+                TemporaryDirectoryName(suffix="\u4e2d\u6587") as dname,
+                TemporaryFileName(dir=dname) as fname,
+            ):
                 assert_with_filename(fname)
 
+    @unittest.skipIf(
+        TEST_XPU,
+        "TypedStorage is deprecated and not available on XPU. See skip_list_common.py for details.",
+    )
     def test_print(self):
         default_type = torch.tensor([]).type()
         for t in torch._tensor_classes:
@@ -9724,7 +9764,7 @@ class TestTorch(TestCase):
         self.assertExpectedInline(str(x), """tensor([1.0000e+02, 1.0000e-02])""")
         torch.set_printoptions(sci_mode=False)
         self.assertEqual(x.__repr__(), str(x))
-        self.assertExpectedInline(str(x), """tensor([  100.0000,     0.0100])""")
+        self.assertExpectedInline(str(x), """tensor([100.0000,   0.0100])""")
         torch.set_printoptions(sci_mode=None)  # reset to the default value
 
         # test no leading space if all elements positive
@@ -11214,7 +11254,7 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
         err_msg = (
             "Creating a Tensor subclass from a class that does not inherit from Tensor"
         )
-        with self.assertRaisesRegex(RuntimeError, err_msg):
+        with self.assertRaisesRegex(TypeError, err_msg):
             s0 = t0.as_subclass(BadSubTensor)
 
     # FIXME: Port to a test suite that better fits slicing
@@ -12308,37 +12348,31 @@ tensor([[[1.+1.j, 1.+1.j, 1.+1.j,  ..., 1.+1.j, 1.+1.j, 1.+1.j],
 
     @skipIfTorchDynamo("https://github.com/pytorch/torchdynamo/issues/1993")
     def test_tensor_dead_weak_ref(self):
-        x = torch.empty(2)
+        x = torch.ones(2)
         w_x = weakref.ref(x)
-        y = torch.empty(2)
+        y = torch.ones(2)
         y.grad = x
         del x
 
         x = w_x()
-        # Ideally, x would keep the tensor live.  But CPython doesn't
-        # provide enough hooks to do this.  So it will go dead and x
-        # will transmute into an undefined tensor.  Not great, but the
-        # best we can do.
         del y
 
-        self.assertRaises(RuntimeError, lambda: x.sigmoid())
+        self.assertEqual(2, x.sum())
+
+        del x
+        self.assertIsNone(w_x())
 
     @skipIfTorchDynamo("https://github.com/pytorch/torchdynamo/issues/1993")
     def test_storage_dead_weak_ref(self):
         x = torch.UntypedStorage(2)
         w_x = weakref.ref(x)
         y = torch.tensor(x)
+
         del x
+        self.assertIsNotNone(w_x())
 
-        x = w_x()
-        # Ideally, x would keep the storage live.  But CPython doesn't
-        # provide enough hooks to do this.  So it will go dead and x
-        # will transmute into storage with null StorageImpl. Not great, but the
-        # best we can do.
         del y
-
-        self.assertRaisesRegex(RuntimeError, "Got a null Storage", lambda: x[0])
-        self.assertRaisesRegex(RuntimeError, "Got a null Storage", lambda: x.float())
+        self.assertIsNone(w_x())
 
     def test_tensor_resurrected_weak_ref(self):
         x = torch.empty(2)

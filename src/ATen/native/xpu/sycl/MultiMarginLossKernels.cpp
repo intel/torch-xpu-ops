@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
@@ -34,10 +44,14 @@ void multi_margin_loss_shape_check(
 
   TORCH_CHECK(
       target.dim() <= 1 && target.numel() == nframe,
-      "inconsistent target size, expected ",
+      "multi_margin_loss: target tensor should be 1-D with size equal to "
+      "the number of input samples (batch size). Expected target size [",
       nframe,
-      " but got ",
-      target.sizes());
+      "], but got ",
+      target.sizes(),
+      ". Input has shape ",
+      input.sizes(),
+      ".");
   if (weight && weight->defined()) {
     TORCH_CHECK(
         weight->dim() <= 1 && weight->numel() == dim,
@@ -78,7 +92,7 @@ struct MultiMarginLossForwardKernelFunctor
         smem_[item.get_local_linear_id()] += h;
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // reduce
     if (item.get_local_linear_id() == 0) {
@@ -165,7 +179,7 @@ struct MultiMarginLossBackwardKernelFunctor
         gradInput_k[i] = static_cast<scalar_t>(0);
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // reduce
     if (item.get_local_linear_id() == 0) {

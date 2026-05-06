@@ -1,8 +1,17 @@
-#pragma clang diagnostic push
-#pragma GCC diagnostic push
-// Avoid SYCL compiler return-type error
-#pragma clang diagnostic ignored "-Wreturn-type"
-#pragma GCC diagnostic ignored "-Wreturn-type"
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
+#include <comm/Macros.h>
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_BEGIN
+// clang-format on
 
 #include <ATen/Dispatch.h>
 #include <ATen/MemoryOverlap.h>
@@ -754,9 +763,6 @@ void scatter_add_kernel(
     int64_t dim,
     const Tensor& index,
     const Tensor& src) {
-  // See Note [Writing Nondeterministic Operations]
-  // Nondeterministic because of atomicAdd usage
-  globalContext().alertNotDeterministic("scatter_add_kernel");
   ScatterGatherBaseKernel</*is_scatter_like=*/true, /*cast_to_opaque=*/false>()(
       self, dim, index, src, "scatter_add_kernel", reduce_add);
 }
@@ -797,7 +803,6 @@ void scatter_reduce_two_kernel(
     const ReductionType& reduce) {
   switch (reduce) {
     case ReductionType::SUM:
-      globalContext().alertNotDeterministic("scatter_reduce_kernel_sum");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_sum", reduce_add);
       break;
@@ -815,7 +820,6 @@ void scatter_reduce_two_kernel(
           self, dim, index, src, "scatter_reduce_kernel_amin", reduce_minimum);
       break;
     case ReductionType::MEAN:
-      globalContext().alertNotDeterministic("scatter_reduce_kernel_mean");
       ScatterGatherBaseKernel<true, false>()(
           self, dim, index, src, "scatter_reduce_kernel_mean", reduce_mean);
       break;
@@ -851,5 +855,6 @@ void scatter_scalar_reduce_kernel(
 } // namespace native
 } // namespace at
 
-#pragma GCC diagnostic pop
-#pragma clang diagnostic pop
+// clang-format off
+DISABLE_RETURN_TYPE_WARNING_END
+// clang-format on

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <comm/SYCLContext.h>
 #include <comm/xpu_aten.h>
@@ -54,7 +64,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       block_boxes[item.get_local_id(1) * 4 + 3] = dets_sorted_ptr_
           [(nms_items_per_group * col_start + item.get_local_id(1)) * 4 + 3];
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (item.get_local_id(1) < row_size) {
       const int cur_box_idx =
@@ -79,7 +89,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   NMSKernelFunctor(
       int dets_num,
       float iou_threshold,
-      scalar_t* dets_sorted_ptr,
+      const scalar_t* dets_sorted_ptr,
       unsigned long long* mask_ptr)
       : dets_num_(dets_num),
         iou_threshold_(iou_threshold),
@@ -93,7 +103,7 @@ struct NMSKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
  private:
   int dets_num_;
   float iou_threshold_;
-  scalar_t* dets_sorted_ptr_;
+  const scalar_t* dets_sorted_ptr_;
   unsigned long long* mask_ptr_;
   sycl_local_acc_t<acc_t> slm_;
 };
@@ -106,11 +116,11 @@ struct GatherKeepFromMask : public __SYCL_KER_CONFIG_CONVENTION__ {
     for (int i = thread_id; i < col_blocks_; i += nms_items_per_group) {
       removed_[i] = 0;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     for (int nblock = 0; nblock < col_blocks_; nblock++) {
       auto removed_val = removed_[nblock];
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
       const int i_offset = nblock * nms_items_per_group;
 
       for (int inblock = 0; inblock < nms_items_per_group; inblock++) {
@@ -130,7 +140,7 @@ struct GatherKeepFromMask : public __SYCL_KER_CONFIG_CONVENTION__ {
             if (j >= nblock)
               removed_[j] |= p[j];
           }
-          item.barrier(sycl_local_fence);
+          sycl::group_barrier(item.get_group());
           removed_val = removed_[nblock];
         }
       }
@@ -173,7 +183,7 @@ Tensor nms_kernel(const Tensor& dets_sorted, float iou_threshold) {
             (size_t)col_blocks, (size_t)col_blocks * nms_items_per_group};
         sycl::range<2> local_range{1, (size_t)nms_items_per_group};
         using acc_t = acc_type_device<scalar_t, kXPU>;
-        auto dets_sorted_ptr = dets_sorted.data_ptr<scalar_t>();
+        auto dets_sorted_ptr = dets_sorted.const_data_ptr<scalar_t>();
         auto mask_ptr = (unsigned long long*)mask.data_ptr<int64_t>();
         auto caller = NMSKernelFunctor<scalar_t, acc_t>(
             dets_num, iou_threshold, dets_sorted_ptr, mask_ptr);

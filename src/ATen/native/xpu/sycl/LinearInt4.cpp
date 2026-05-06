@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/native/xpu/sycl/GroupReduceUtils.h>
 #include <ATen/native/xpu/sycl/LinearInt4.h>
 #include <ATen/native/xpu/sycl/MemoryAccessUtils.h>
@@ -41,8 +51,7 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
         ldc(ldc) {}
   void sycl_ker_config_convention(sycl::handler& cgh) {}
 
-  [[sycl::reqd_sub_group_size(16)]] void operator()(
-      sycl::nd_item<1> it) const {
+  SYCL_REQD_SUB_GROUP_SIZE(16) void operator()(sycl::nd_item<1> it) const {
     int constexpr Unroll = 2;
     int constexpr SgSize = 16;
     int constexpr blocksize = block_size;
@@ -76,8 +85,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
             scalarx2_t tmpB = {
-                static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
             scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += static_cast<float>(tmpAmulB[0]);
             tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -126,8 +135,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
           for (int ikk = 0; ikk < TileK; ikk += 2) {
             scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK + ikk);
             scalarx2_t tmpB = {
-                static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+                static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
             scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
             tmpAcc += static_cast<float>(tmpAmulB[0]);
             tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -152,8 +161,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
             for (int ikk = 0; ikk < TileK2; ikk += 2) {
               scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * TileK2 + ikk);
               scalarx2_t tmpB = {
-                  static_cast<int8_t>((tmps8[ikk / 2] & 0x0f) - 8),
-                  static_cast<int8_t>((tmps8[ikk / 2] >> 4) - 8)};
+                  static_cast<scalar_t>((tmps8[ikk / 2] & 0x0f) - 8),
+                  static_cast<scalar_t>((tmps8[ikk / 2] >> 4) - 8)};
               scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
               tmpAcc += static_cast<float>(tmpAmulB[0]);
               tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -175,8 +184,8 @@ struct LinearInt4KernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
 
           scalarx2_t tmpA = *(scalarx2_t*)(aptr + sg_id * 2);
           scalarx2_t tmpB = {
-              static_cast<int8_t>((tmps8 & 0x0f) - 8),
-              static_cast<int8_t>((tmps8 >> 4) - 8)};
+              static_cast<scalar_t>((tmps8 & 0x0f) - 8),
+              static_cast<scalar_t>((tmps8 >> 4) - 8)};
           scalarx2_t tmpAmulB = tmpA * (tmpB * scale + zero_point);
           tmpAcc += static_cast<float>(tmpAmulB[0]);
           tmpAcc += static_cast<float>(tmpAmulB[1]);
@@ -228,14 +237,16 @@ void linear_int4_kernel(
             sycl::half,
             sycl::ext::oneapi::bfloat16>;
         const scalar_sycl_t* input_data =
-            reinterpret_cast<scalar_sycl_t*>(A.data_ptr<scalar_t>());
-        uint8_t* weight_data =
-            reinterpret_cast<uint8_t*>(B.data_ptr()); // int4x2 or int4x8
+            reinterpret_cast<const scalar_sycl_t*>(
+                A.const_data_ptr<scalar_t>());
+        const uint8_t* weight_data = reinterpret_cast<const uint8_t*>(
+            B.const_data_ptr()); // int4x2 or int4x8
 
         scalar_sycl_t* output_data =
             reinterpret_cast<scalar_sycl_t*>(C.data_ptr<scalar_t>());
-        scalar_sycl_t* scale_zeros_data = reinterpret_cast<scalar_sycl_t*>(
-            qScaleAndZeros.data_ptr<scalar_t>());
+        const scalar_sycl_t* scale_zeros_data =
+            reinterpret_cast<const scalar_sycl_t*>(
+                qScaleAndZeros.const_data_ptr<scalar_t>());
 
         switch (qGroupSize) {
           case 16: {

@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #define TORCH_ASSERT_ONLY_METHOD_OPERATORS
 #include <ATen/Dispatch_v2.h>
 #include <ATen/EmptyTensor.h>
@@ -8,6 +18,8 @@
 namespace at::native {
 
 Scalar _local_scalar_dense_xpu(const Tensor& self) {
+  TORCH_CHECK(
+      self.numel() > 0, "_local_scalar_dense: Empty tensor not supported");
   Scalar r;
   AT_DISPATCH_V2(
       self.scalar_type(),
@@ -32,6 +44,7 @@ Scalar _local_scalar_dense_xpu(const Tensor& self) {
         r = Scalar(*value.const_data_ptr<scalar_t>());
       }),
       AT_EXPAND(AT_ALL_TYPES_AND_COMPLEX),
+      AT_EXPAND(AT_FLOAT8_TYPES),
       kComplexHalf,
       kHalf,
       kBool,

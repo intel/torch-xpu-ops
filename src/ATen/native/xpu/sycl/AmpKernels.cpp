@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/OpMathType.h>
 #include <ATen/native/TensorIterator.h>
@@ -25,12 +35,14 @@ struct AmpNonFiniteCheckUnscaleFunctor {
         inv_scale_val == 1.f ? val : val * inv_scale_val);
   }
 
-  AmpNonFiniteCheckUnscaleFunctor(float* found_inf_ptr, float* inv_scale_ptr)
+  AmpNonFiniteCheckUnscaleFunctor(
+      float* found_inf_ptr,
+      const float* inv_scale_ptr)
       : found_inf_ptr_(found_inf_ptr), inv_scale_ptr_(inv_scale_ptr) {}
 
  private:
   float* found_inf_ptr_;
-  float* inv_scale_ptr_;
+  const float* inv_scale_ptr_;
 };
 
 void amp_non_finite_check_and_unscale_kernel(
@@ -46,7 +58,7 @@ void amp_non_finite_check_and_unscale_kernel(
       "amp_non_finite_check_and_unscale_xpu",
       [&iter, &found_inf, &inv_scale] {
         auto* found_inf_ptr = found_inf.data_ptr<float>();
-        auto* inv_scale_ptr = inv_scale.data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         AmpNonFiniteCheckUnscaleFunctor<scalar_t> f(
             found_inf_ptr, inv_scale_ptr);
@@ -67,12 +79,12 @@ struct AmpForeachNonFiniteCheckUnscaleFunctor {
 
   AmpForeachNonFiniteCheckUnscaleFunctor(
       float* found_inf_ptr,
-      float* inv_scale_ptr)
+      const float* inv_scale_ptr)
       : found_inf_ptr_(found_inf_ptr), inv_scale_ptr_(inv_scale_ptr) {}
 
  private:
   float* found_inf_ptr_;
-  float* inv_scale_ptr_;
+  const float* inv_scale_ptr_;
 };
 
 void amp_foreach_non_finite_check_and_unscale_kernel(
@@ -86,7 +98,7 @@ void amp_foreach_non_finite_check_and_unscale_kernel(
       "amp_foreach_non_finite_check_and_unscale_xpu",
       [&scaled_grads, &found_inf, &inv_scale] {
         auto* found_inf_ptr = found_inf.data_ptr<float>();
-        auto* inv_scale_ptr = inv_scale.data_ptr<float>();
+        auto* inv_scale_ptr = inv_scale.const_data_ptr<float>();
 
         using opmath_t = at::opmath_type<scalar_t>;
 

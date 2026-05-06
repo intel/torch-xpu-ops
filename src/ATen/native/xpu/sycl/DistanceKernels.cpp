@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/native/xpu/sycl/BatchKernel.h>
 #include <ATen/ops/empty.h>
@@ -25,7 +35,11 @@ class Dists {
 template <typename scalar_t>
 struct DistsZero {
   static void inc(scalar_t& agg, const scalar_t diff, const scalar_t p) {
-    agg += diff != 0.0f;
+    if (diff != diff) { // NaN
+      agg = diff;
+    } else if (diff != 0.0) {
+      agg += 1.0;
+    }
   }
   static scalar_t finish(const scalar_t agg, const scalar_t p) {
     return agg;
@@ -211,11 +225,11 @@ static inline scalar_t group_reduce_agg_without_broadcast(
         item, agg, sg_size);
     if (num_active_sg == 1)
       return agg;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     if (0 == lane_id) {
       local_shared_mem[sg_id] = agg;
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
     agg =
         local_id < num_active_sg ? local_shared_mem[local_id] : (scalar_t)0.0f;
     if (num_active_sg > sg_size)
@@ -223,7 +237,7 @@ static inline scalar_t group_reduce_agg_without_broadcast(
   } while (num_active_sg > sg_size);
 
   // num of active sgs < sg_size
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   if (0 == sg_id) {
     agg = subgroup_reduce_agg_without_broadcast<scalar_t, F, nd_item>(
         item, agg, sg_size);
@@ -647,7 +661,7 @@ void cdist_backward_kernel(
               r1 * m,
               r2 * m);
         } else if (p < 2.0) {
-          cdist_backward_kernel_impl<scalar_t, DistsTwo<scalar_t>, 1>(
+          cdist_backward_kernel_impl<scalar_t, DistsLtTwo<scalar_t>, 1>(
               buffer,
               grad,
               x1,
@@ -729,7 +743,7 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
     const size_t stride = item_id.get_local_range().size();
 
     int64_t i = static_cast<int64_t>(
-        (n2_val_ - device_sqrt<accscalar_t>(n2_squared_minus_1_val_ - 2 * k)));
+        (n2_val_ - device_sqrt<double>(n2_squared_minus_1_val_ - 2 * k)));
     int64_t j = k - n_ * i + i * (i + 1) / 2 + i + 1;
 
     const scalar_t* const start = in_ptr + i * m_;
@@ -760,8 +774,8 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
       const int64_t n,
       const int64_t m,
       accscalar_t p_val,
-      accscalar_t n2_val,
-      accscalar_t n2_squared_minus_1_val,
+      const double n2_val,
+      const double n2_squared_minus_1_val,
       scalar_t* out_data,
       const scalar_t* in_data,
       const int64_t wgroup_size)
@@ -778,8 +792,8 @@ struct PdistKernelFunctor : public __SYCL_KER_CONFIG_CONVENTION__ {
   const int64_t n_;
   const int64_t m_;
   accscalar_t p_val_;
-  accscalar_t n2_val_;
-  accscalar_t n2_squared_minus_1_val_;
+  const double n2_val_;
+  const double n2_squared_minus_1_val_;
   scalar_t* out_data_;
   const scalar_t* in_data_;
   sycl_local_acc_t<scalar_t, 1> shared_;
@@ -805,8 +819,6 @@ static void pdist_kernel_impl(
   }
 
   auto p_val = static_cast<accscalar_t>(p);
-  auto n2_val = static_cast<accscalar_t>(n2);
-  auto n2_squared_minus_1_val = static_cast<accscalar_t>(n2_squared_minus_1);
 
   auto out_data = result.mutable_data_ptr<scalar_t>();
   auto in_data = self.const_data_ptr<scalar_t>();
@@ -815,8 +827,8 @@ static void pdist_kernel_impl(
       n,
       m,
       p_val,
-      n2_val,
-      n2_squared_minus_1_val,
+      n2,
+      n2_squared_minus_1,
       out_data,
       in_data,
       wgroup_size / min_sg_size);

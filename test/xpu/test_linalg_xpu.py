@@ -1,10 +1,24 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: intel"]
 
 import contextlib
 import itertools
 import math
 import unittest
+import warnings
 from functools import partial
+from math import inf
 
 import torch
 from torch.testing import make_tensor
@@ -15,6 +29,7 @@ from torch.testing._internal.common_device_type import (
     precisionOverride,
 )
 from torch.testing._internal.common_dtype import (
+    floating_and_complex_types,
     floating_and_complex_types_and,
     floating_types_and,
 )
@@ -53,9 +68,28 @@ def large_bmm_backward(self, device):
 
 
 @setBlasBackendsToDefaultFinally
-@unittest.skip("xpu not support multi blas")
 def preferred_blas_library(self):
-    pass
+    m1 = torch.randint(2, 5, (2048, 2400), device="xpu", dtype=torch.float)
+    m2 = torch.randint(2, 5, (128, 2400), device="xpu", dtype=torch.float)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublaslt")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out1 = torch.nn.functional.linear(m1, m2)
+
+    try:
+        torch.backends.cuda.preferred_blas_library("cublas")
+    except RuntimeError as err:
+        self.skipTest(f"preferred_blas_library unsupported in this build: {err}")
+    out2 = torch.nn.functional.linear(m1, m2)
+
+    # Although blas preferred flags doesn't affect CPU currently,
+    # we set this to make sure the flag can switch back to default normally.
+    out_ref = torch.nn.functional.linear(m1.cpu(), m2.cpu())
+
+    self.assertEqual(out1, out2)
+    self.assertEqual(out_ref, out2.cpu())
 
 
 @dtypes(torch.float, torch.double)
@@ -236,9 +270,9 @@ def _int_mm(self, device, k, n, use_transpose_a, use_transpose_b):
 
 
 @unittest.skipIf(IS_WINDOWS, "Skipped on Windows!")
-@parametrize("m", [1, 32, 1024])
+@parametrize("m", [1, 32, 64, 1024])
 @parametrize("k", [32, 64, 128, 256, 512, 1024])
-@parametrize("n", [32, 64, 128, 256, 512, 1024])
+@parametrize("n", [32, 48, 64, 128, 256, 512, 1024])
 def _int4_mm(self, device, m, k, n):
     def _group_quantize_tensor(w, n_bit=4, q_group_size=16):
         assert w.dim() == 2
@@ -416,6 +450,12 @@ def addmm_relu_tunableop_rocm(self, device, dtype):
         self._test_addmm_impl(torch._addmm_activation, "relu", device, dtype)
 
 
+@unittest.skip("xpu does not support TunableOp rotating buffer API")
+@dtypes(torch.float)
+def rotating_buffer_tunableop(self, device, dtype):
+    pass
+
+
 def get_tunableop_untuned_filename():
     import os
 
@@ -476,6 +516,161 @@ def __tunableop_ctx(self):
 with XPUPatchForImport(False):
     from test_linalg import TestLinalg
 
+
+@dtypes(*floating_and_complex_types())
+def pinv_errors_and_warnings(self, device, dtype):
+    # pinv requires at least 2D tensor
+    a = torch.randn(1, device=device, dtype=dtype)
+    with self.assertRaisesRegex(
+        RuntimeError, "expected a tensor with 2 or more dimensions"
+    ):
+        torch.linalg.pinv(a)
+
+    # if non-empty out tensor with wrong shape is passed a warning is given
+    a = torch.randn(3, 3, dtype=dtype, device=device)
+    out = torch.empty(7, 7, dtype=dtype, device=device)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*Aten Op fallback from XPU to CPU happends.*",
+            category=UserWarning,
+        )
+        torch.linalg.pinv(a, out=out)
+        self.assertEqual(len(w), 1)
+        self.assertTrue(
+            "An output with one or more elements was resized" in str(w[-1].message)
+        )
+
+    # dtypes of out and input should be safely castable
+    out = torch.empty_like(a).to(torch.int)
+    with self.assertRaisesRegex(RuntimeError, "but got result with dtype Int"):
+        torch.linalg.pinv(a, out=out)
+
+    if torch.xpu.is_available():
+        # device of out and input should match
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        out = torch.empty_like(a).to(wrong_device)
+        with self.assertRaisesRegex(
+            RuntimeError, "Expected result and input tensors to be on the same device"
+        ):
+            torch.linalg.pinv(a, out=out)
+
+        # device of rcond and input should match
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        rcond = torch.full((), 1e-2, device=wrong_device)
+        with self.assertRaisesRegex(
+            RuntimeError, "Expected all tensors to be on the same device"
+        ):
+            torch.linalg.pinv(a, rcond=rcond)
+
+    # rcond can't be complex
+    rcond = torch.full((), 1j, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "rcond tensor of complex type is not supported"
+    ):
+        torch.linalg.pinv(a, rcond=rcond)
+
+    # atol can't be complex
+    atol = torch.full((), 1j, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "atol tensor of complex type is not supported"
+    ):
+        torch.linalg.pinv(a, atol=atol)
+
+    # rtol can't be complex
+    rtol = torch.full((), 1j, device=device)
+    with self.assertRaisesRegex(
+        RuntimeError, "rtol tensor of complex type is not supported"
+    ):
+        torch.linalg.pinv(a, rtol=rtol)
+
+
+@dtypes(*floating_and_complex_types())
+@precisionOverride({torch.float32: 1e-3})
+def cond_errors_and_warnings(self, device, dtype):
+    norm_types = [1, -1, 2, -2, inf, -inf, "fro", "nuc", None]
+
+    # cond expects the input to be at least 2-dimensional
+    a = torch.ones(3, dtype=dtype, device=device)
+    for p in norm_types:
+        with self.assertRaisesRegex(RuntimeError, r"at least 2 dimensions"):
+            torch.linalg.cond(a, p)
+
+    # for some norm types cond expects the input to be square
+    a = torch.ones(3, 2, dtype=dtype, device=device)
+    norm_types = [1, -1, inf, -inf, "fro", "nuc"]
+    for p in norm_types:
+        with self.assertRaisesRegex(
+            RuntimeError, r"must be batches of square matrices"
+        ):
+            torch.linalg.cond(a, p)
+
+    # if non-empty out tensor with wrong shape is passed a warning is given
+    a = torch.ones((2, 2), dtype=dtype, device=device)
+    for p in ["fro", 2]:
+        real_dtype = a.real.dtype if dtype.is_complex else dtype
+        out = torch.empty(a.shape, dtype=real_dtype, device=device)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*Aten Op fallback from XPU to CPU happends.*",
+                category=UserWarning,
+            )
+            # Trigger warning
+            torch.linalg.cond(a, p, out=out)
+            # Check warning occurs
+            self.assertEqual(len(w), 1)
+            self.assertTrue(
+                "An output with one or more elements was resized" in str(w[-1].message)
+            )
+
+    # dtypes should be safely castable
+    out = torch.empty(0, dtype=torch.int, device=device)
+    for p in ["fro", 2]:
+        with self.assertRaisesRegex(RuntimeError, "but got result with dtype Int"):
+            torch.linalg.cond(a, p, out=out)
+
+    # device should match
+    if torch.xpu.is_available():
+        wrong_device = "cpu" if self.device_type != "cpu" else "xpu"
+        out = torch.empty(0, dtype=dtype, device=wrong_device)
+        for p in ["fro", 2]:
+            with self.assertRaisesRegex(
+                RuntimeError, "tensors to be on the same device"
+            ):
+                torch.linalg.cond(a, p, out=out)
+
+    # for batched input if at least one matrix in the batch is not invertible,
+    # we can't get the result for all other (possibly) invertible matrices in the batch without an explicit for loop.
+    # this should change when at::inverse works with silent errors
+    # NumPy works fine in this case because it's possible to silence the error and get the inverse matrix results
+    # possibly filled with NANs
+    batch_dim = 3
+    a = torch.eye(3, 3, dtype=dtype, device=device)
+    a = a.reshape((1, 3, 3))
+    a = a.repeat(batch_dim, 1, 1)
+    a[1, -1, -1] = 0  # now a[1] is singular
+    for p in [1, -1, inf, -inf, "fro", "nuc"]:
+        result = torch.linalg.cond(a, p)
+        self.assertEqual(result[1], float("inf"))
+
+    # check invalid norm type
+    a = torch.ones(3, 3, dtype=dtype, device=device)
+    for p in ["wrong_norm", 5]:
+        with self.assertRaisesRegex(
+            RuntimeError, f"linalg.cond got an invalid norm type: {p}"
+        ):
+            torch.linalg.cond(a, p)
+
+
+# Skip Float8_e4m3fnuz rowwise scaled GEMM on XPU: oneDNN lacks FNUZ support.
+# Note: the primary CUDA test is already limited to ROCm (onlyCUDA + skipCUDAIfNotRocm),
+# so this XPU variant is intentionally skipped for the same unsupported dtype.
+if hasattr(TestLinalg, "test_rowwise_scaled_gemm_numerics_tunableop"):
+    TestLinalg.test_rowwise_scaled_gemm_numerics_tunableop = unittest.skip(
+        "XPU/oneDNN does not support Float8_e4m3fnuz (CUDA primary is ROCm-only)"
+    )(TestLinalg.test_rowwise_scaled_gemm_numerics_tunableop)
+
 TestLinalg.test_large_bmm_mm_backward = large_bmm_mm_backward
 TestLinalg.test_large_bmm_backward = large_bmm_backward
 TestLinalg.test_preferred_blas_library = preferred_blas_library
@@ -492,6 +687,9 @@ TestLinalg.test_matmul_small_brute_force_2d_Nd = matmul_small_brute_force_2d_Nd
 TestLinalg.test_matmul_small_brute_force_3d_Nd = matmul_small_brute_force_3d_Nd
 TestLinalg.test_ck_blas_library = ck_blas_library
 TestLinalg.test_addmm_relu_tunableop_rocm = addmm_relu_tunableop_rocm
+TestLinalg.test_pinv_errors_and_warnings = pinv_errors_and_warnings
+TestLinalg.test_rotating_buffer_tunableop = rotating_buffer_tunableop
+TestLinalg.test_cond_errors_and_warnings = cond_errors_and_warnings
 TestLinalg._tunableop_ctx = __tunableop_ctx
 
 TestLinalg._default_dtype_check_enabled = True

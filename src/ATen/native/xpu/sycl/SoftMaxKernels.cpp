@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/native/CanUse32BitIndexMath.h>
@@ -61,7 +71,7 @@ static inline void softmax_group_reduce(
   if (sg_local_id == 0) {
     local_data[lid_row][idx] = val;
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   // use one subgroup to reduce WGroupSize/subGroupSize elements
   // into the final result
@@ -87,7 +97,7 @@ static inline void softmax_group_reduce(
     }
   }
 
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
   val = local_data[lid_row][0];
 }
 
@@ -110,7 +120,7 @@ static inline void softmax_group_reduce_spatial(
   for (int j = 0; j < vec_size; ++j) {
     local_data[local_row_id][local_col_id][j] = input[j];
   }
-  item.barrier(sycl_local_fence);
+  sycl::group_barrier(item.get_group());
 
   int k = 1;
   while (k < block_row) {
@@ -122,7 +132,7 @@ static inline void softmax_group_reduce_spatial(
             local_data[local_row_id + k][local_col_id][j]);
       }
     k *= 2;
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
   }
 }
 
@@ -216,8 +226,7 @@ template <
     bool is_same_dtype>
 struct DispatchSoftmaxForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
 
@@ -664,7 +673,7 @@ void softmax_forward_kernel(
     const inscalar_t* in_data,
     outscalar_t* out_data,
     int dim_size,
-    int outer_size) {
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<inscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   using KernelClass = SoftmaxForwardKernelFunctor<
@@ -738,7 +747,7 @@ struct SpatialSoftmaxForwardKernelFunctor
       for (int j = 0; j < vec_size; ++j) {
         max_value[j] = local_data_[0][local_col_id][j];
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
     }
 
     // get sum value
@@ -933,8 +942,7 @@ template <
     bool is_same_dtype = false>
 struct DispatchSoftmaxBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(SIMD)]] void operator()(
-      sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(SIMD) void operator()(sycl::nd_item<1> item) const {
     if (local_size_ == 1 && item.get_global_id(0) >= outer_size_)
       return;
 
@@ -1323,8 +1331,8 @@ void softmax_backward_kernel(
     inscalar_t* gradInput,
     const outscalar_t* output,
     const outscalar_t* gradOutput,
-    int dim_size,
-    int outer_size) {
+    int64_t dim_size,
+    int64_t outer_size) {
   using vec_t = at::native::memory::aligned_vector<outscalar_t, vec_size>;
   constexpr int align_bytes = alignof(vec_t);
   using KernelClass = SoftmaxBackwardKernelFunctor<
@@ -1337,9 +1345,9 @@ void softmax_backward_kernel(
       align_bytes,
       is_same_dtype>;
 
-  int local_size = std::min(
+  int64_t local_size = std::min(
       (dim_size + vec_size - 1) / vec_size,
-      int(syclMaxWorkGroupSize<KernelClass>()));
+      int64_t(syclMaxWorkGroupSize<KernelClass>()));
   int64_t local_range{local_size};
   int64_t global_range{local_size * outer_size};
 
@@ -1559,8 +1567,7 @@ void spatial_softmax_forward(
       canUse32BitIndexMath(input) && canUse32BitIndexMath(output);
 
   // decide SIMD: SIMD32 or SIMD16
-  auto dev_id = at::xpu::getDeviceIndexOfCurrentQueue();
-  auto* dev_prop = at::xpu::getDeviceProperties(dev_id);
+  auto* dev_prop = at::xpu::getCurrentDeviceProperties();
   auto sub_group_size = dev_prop->sub_group_sizes;
   int SIMD = sub_group_size[1];
   if (SIMD == SIMD32) {
@@ -1749,8 +1756,7 @@ void spatial_softmax_backward(
       canUse32BitIndexMath(output) && canUse32BitIndexMath(gradOutput);
 
   // decide SIMD: SIMD32 or SIMD16
-  auto* dev_prop =
-      at::xpu::getDeviceProperties(at::xpu::getDeviceIndexOfCurrentQueue());
+  auto* dev_prop = at::xpu::getCurrentDeviceProperties();
   auto sub_group_size = dev_prop->sub_group_sizes;
   int SIMD = sub_group_size[1];
   if (SIMD == SIMD32) {
@@ -1901,8 +1907,7 @@ Tensor& masked_softmax_forward(
       canUse32BitIndexMath(input) && canUse32BitIndexMath(output);
 
   // decide SIMD: SIMD32 or SIMD16
-  auto* dev_prop =
-      at::xpu::getDeviceProperties(at::xpu::getDeviceIndexOfCurrentQueue());
+  auto* dev_prop = at::xpu::getCurrentDeviceProperties();
   auto sub_group_size = dev_prop->sub_group_sizes;
   int SIMD = sub_group_size[1];
   if (SIMD == SIMD32) {
@@ -2026,8 +2031,7 @@ void masked_softmax_backward(
       canUse32BitIndexMath(output) && canUse32BitIndexMath(gradOutput);
 
   // decide SIMD: SIMD32 or SIMD16
-  auto* dev_prop =
-      at::xpu::getDeviceProperties(at::xpu::getDeviceIndexOfCurrentQueue());
+  auto* dev_prop = at::xpu::getCurrentDeviceProperties();
   auto sub_group_size = dev_prop->sub_group_sizes;
   int SIMD = sub_group_size[1];
   if (SIMD == SIMD32) {

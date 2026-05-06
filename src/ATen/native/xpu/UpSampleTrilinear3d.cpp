@@ -1,6 +1,16 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
+#include <ATen/Context.h>
 #include <ATen/core/Tensor.h>
 #include <ATen/native/xpu/sycl/UpSampleTrilinear3dKernels.h>
-#include <comm/SYCLContext.h>
 
 #include <ATen/ops/upsample_trilinear3d_backward_native.h>
 #include <ATen/ops/upsample_trilinear3d_native.h>

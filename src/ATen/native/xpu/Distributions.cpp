@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/Dispatch.h>
 #include <ATen/Dispatch_v2.h>
 #include <ATen/ScalarOps.h>
@@ -45,6 +55,14 @@ Tensor _s_binomial_xpu(
     const Tensor& count,
     const Tensor& prob,
     std::optional<Generator> generator) {
+  TORCH_CHECK_VALUE(
+      at::isFloatingType(count.scalar_type()),
+      "binomial only supports floating-point dtypes for count, got: ",
+      count.scalar_type());
+  TORCH_CHECK_VALUE(
+      at::isFloatingType(prob.scalar_type()),
+      "binomial only supports floating-point dtypes for prob, got: ",
+      prob.scalar_type());
   auto gen = get_generator_or_default<at::XPUGeneratorImpl>(
       generator, at::xpu::detail::getDefaultXPUGenerator());
   Tensor ret = at::empty(count.sizes(), count.options());

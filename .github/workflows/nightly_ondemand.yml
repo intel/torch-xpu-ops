@@ -29,7 +29,7 @@ on:
       ut:
         type: string
         default: ''
-        description: UT scope. 'op_regression,op_transformers,op_extended,op_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
+        description: UT scope. 'op_regression,op_extended,op_ut,skipped_ut,xpu_profiling,torch_xpu,op_regression_dev1,xpu_distributed,microbench,windows'. Delimiter is comma
       suite:
         type: string
         default: ''
@@ -95,7 +95,7 @@ jobs:
               echo "No such scheduler: ${{ github.event.schedule }}"
               exit 1
             fi
-            ut='["basic","op_ut","xpu_profiling","xpu_distributed"]'
+            ut='["basic","op_ut","skipped_ut","xpu_profiling","xpu_distributed"]'
             suite='["huggingface","timm_models","torchbench","pt2e"]'
             triton=''
             python='3.10'
@@ -111,7 +111,7 @@ jobs:
             else
               test_type="build-ondemand"
             fi
-            ut="$(echo ${{ inputs.ut }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
+            ut="$(echo ${{ inputs.ut }} |sed -E 's/(microbench,|,microbench)//g;s/(,windows|windows,)//g;s/,/","/g;s/^/["/;s/$/"]/')"
             suite="$(echo ${{ inputs.suite }} |sed 's/,/","/g;s/^/["/;s/$/"]/')"
             triton="${{ inputs.triton }}"
             python="${{ inputs.python }}"
@@ -145,6 +145,9 @@ jobs:
     name: linux-ut
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
@@ -181,7 +184,11 @@ jobs:
     name: linux-e2e
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-E2E-Tests]
     if: ${{ ! cancelled() && ! endsWith(needs.Linux-Nightly-Ondemand-E2E-Tests.result, 'ed') }}
-    permissions: write-all
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
     uses: ./.github/workflows/_linux_e2e_summary.yml
     with:
       test_type: ${{ needs.Conditions-Filter.outputs.test_type }}
@@ -189,7 +196,10 @@ jobs:
   Linux-Nightly-Ondemand-OP-Microbench-Tests-Rolling:
     if: ${{ github.event_name == 'schedule' || contains(inputs.ut, 'microbench') }}
     name: linux-microbench
-    permissions: write-all
+    permissions:
+      actions: read
+      contents: read
+      issues: write
     needs: [Conditions-Filter, Linux-Nightly-Ondemand-Build]
     secrets: inherit
     strategy:
@@ -209,8 +219,11 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/_windows_ut.yml
     with:
-      ut: 'op_extended,test_xpu'
+      ut: 'op_extended,test_xpu,op_ut'
       python: ${{ needs.Conditions-Filter.outputs.python }}
       src_changed: false
       has_label: true
       runner: Windows_CI
+      build_runner: Windows_CI_Build
+      torch_xpu_ops: ${{ needs.Conditions-Filter.outputs.torch_xpu_ops }}
+      pytorch: ${{ needs.Conditions-Filter.outputs.pytorch }}

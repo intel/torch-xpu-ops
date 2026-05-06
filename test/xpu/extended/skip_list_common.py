@@ -1,3 +1,11 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 skip_dict = {
     "test_ops_xpu.py": (
         # Calculation error between XPU implementation and CPU implementation,
@@ -69,6 +77,12 @@ skip_dict = {
         "test_cow_input_addr_xpu_float32",
         "test_cow_input_cdist_xpu_float32",
         "test_cow_input_nn_functional_multi_head_attention_forward_xpu_float32",
+        # jiterator operators are CUDA-only in upstream OpInfo.
+        "test_cow_input_jiterator_unary_xpu_float32",
+        "test_cow_input_jiterator_binary_xpu_float32",
+        "test_cow_input_jiterator_binary_return_by_ref_xpu_float32",
+        "test_cow_input_jiterator_2inputs_2outputs_xpu_float32",
+        "test_cow_input_jiterator_4inputs_with_extra_args_xpu_float32",
         # XPU implementation is correct.
         # std::exp{-inf, nan}, the result is (±0,±0) (signs are unspecified)
         # std::exp{-inf, inf}, the result is (±0,±0) (signs are unspecified)
@@ -112,13 +126,6 @@ skip_dict = {
         "test_compare_cpu_nn_functional_huber_loss_xpu_bfloat16",
         "test_compare_cpu_nansum_xpu_bfloat16",
         "test_compare_cpu_nanmean_xpu_bfloat16",
-        # Align with CUDA impl by using accumulate type. But CPU doesn't use.
-        # When XPU uses original data type, the case passes.
-        "test_compare_cpu_logit_xpu_bfloat16",
-        # precison error
-        #     Mismatched elements: 1 / 24 (4.2%)
-        # Greatest absolute difference: 0.03125 at index (0, 1, 0, 1) (up to 0.001 allowed)
-        # Greatest relative difference: 0.0048828125 at index (0, 1, 0, 1) (up to 0.001 allowed)
         "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_bfloat16",
         # RuntimeError: "compute_index_ranges_weights" not implemented for 'Half'
         "test_compare_cpu_nn_functional_interpolate_bilinear_xpu_float16",

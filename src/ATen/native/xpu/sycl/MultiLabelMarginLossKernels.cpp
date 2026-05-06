@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/AccumulateType.h>
 #include <ATen/Dispatch.h>
 #include <ATen/core/Tensor.h>
@@ -51,8 +61,8 @@ void multilabel_margin_loss_shape_check(
 template <typename scalar_t, typename accscalar_t>
 struct MultilabelMarginLossForwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
-  operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(MULTILABELMARGIN_SUB_GROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
     const scalar_t* input_k = input_ + k * dim_;
     const int64_t* target_k = target_ + k * dim_;
@@ -62,7 +72,7 @@ struct MultilabelMarginLossForwardKernelFunctor
          d += item.get_local_range(0)) {
       is_target_k[d] = static_cast<scalar_t>(0);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     if (item.get_local_linear_id() == 0) {
       for (int dt = 0; dt < dim_; dt++) {
@@ -73,7 +83,7 @@ struct MultilabelMarginLossForwardKernelFunctor
         is_target_k[target_idx] = static_cast<scalar_t>(1);
       }
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     accscalar_t sum = 0;
     for (int dt = 0; dt < dim_; dt++) {
@@ -148,8 +158,8 @@ struct MultilabelMarginLossForwardKernelFunctor
 template <typename scalar_t, typename accscalar_t>
 struct MultilabelMarginLossBackwardKernelFunctor
     : public __SYCL_KER_CONFIG_CONVENTION__ {
-  [[sycl::reqd_sub_group_size(MULTILABELMARGIN_SUB_GROUP_SIZE)]] void
-  operator()(sycl::nd_item<1> item) const {
+  SYCL_REQD_SUB_GROUP_SIZE(MULTILABELMARGIN_SUB_GROUP_SIZE)
+  void operator()(sycl::nd_item<1> item) const {
     int k = item.get_group(0);
     const scalar_t* input_k = input_ + k * dim_;
     scalar_t* grad_input_k = grad_input_ + k * dim_;
@@ -171,7 +181,7 @@ struct MultilabelMarginLossBackwardKernelFunctor
     for (int d = item.get_local_id(0); d < dim_; d += item.get_local_range(0)) {
       grad_input_k[d] = static_cast<scalar_t>(0);
     }
-    item.barrier(sycl_local_fence);
+    sycl::group_barrier(item.get_group());
 
     // iterate over targets
     for (int dt = 0; dt < dim_; dt++) {
@@ -197,7 +207,7 @@ struct MultilabelMarginLossBackwardKernelFunctor
           }
         }
       }
-      item.barrier(sycl_local_fence);
+      sycl::group_barrier(item.get_group());
 
       sum = GroupReduceSumWithoutBroadcast<
           accscalar_t,

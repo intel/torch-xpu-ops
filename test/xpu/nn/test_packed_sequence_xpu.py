@@ -1,3 +1,15 @@
+# Copyright 2020-2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Portions of this file are derived from PyTorch
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Owner(s): ["module: intel"]
 
 from torch.testing._internal.common_utils import run_tests
@@ -8,8 +20,6 @@ except Exception as e:
     from ..xpu_test_utils import XPUPatchForImport
 
 with XPUPatchForImport(False):
-    import types
-
     import torch
     import torch.nn.utils.rnn as rnn_utils
     from test_packed_sequence import PackedSequenceTest
@@ -22,7 +32,7 @@ with XPUPatchForImport(False):
             return self.to(*args, **kwargs)
         return self.to(*args, device="xpu", **kwargs)
 
-    rnn_utils.PackedSequence.xpu = types.MethodType(rnn_utils.PackedSequence, myxpu)
+    rnn_utils.PackedSequence.xpu = myxpu
 
     def my_test_to(self):
         for enforce_sorted in (True, False):
@@ -55,7 +65,7 @@ with XPUPatchForImport(False):
                     "xpu",
                     "xpu:0" if torch.xpu.device_count() == 1 else "xpu:1",
                 ]:
-                    b = a.xpu()
+                    b = a.xpu(device=xpu)
                     self.assertIs(b, b.to(xpu))
                     self.assertIs(b, b.xpu())
                     self.assertEqual(a, b.to("cpu"))

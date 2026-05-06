@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #pragma once
 
 #include <ATen/native/TensorIterator.h>
@@ -51,10 +61,15 @@ TORCH_XPU_API void add_padding_kernel(
     const int batch_size,
     const int output_batch_size);
 
-TORCH_XPU_API at::Tensor _fbgemm_jagged_to_padded_dense_forward_kernel(
+TORCH_XPU_API at::Tensor jagged_to_padded_dense_forward_xpu_kernel(
     const Tensor& values,
     TensorList offsets,
     c10::IntArrayRef max_lengths,
     const double padding_value);
+
+TORCH_XPU_API at::Tensor dense_to_jagged_forward_kernel(
+    const Tensor& dense,
+    TensorList offsets,
+    std::optional<c10::SymInt> total_L);
 
 } // namespace at::native::xpu

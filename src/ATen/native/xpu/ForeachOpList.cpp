@@ -1,3 +1,13 @@
+/*
+ * Copyright 2020-2026 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ */
+
 #include <ATen/native/ForeachUtils.h>
 #include <ATen/ops/_foreach_add_native.h>
 #include <ATen/ops/_foreach_addcdiv_native.h>
@@ -20,6 +30,25 @@
 
 namespace at {
 namespace native {
+
+namespace {
+
+bool can_use_fast_route_for_copy(TensorList self, TensorList src) {
+  const bool is_all_src_same_dtype =
+      std::all_of(src.cbegin(), src.cend(), [&](const auto& t) -> bool {
+        return t.dtype() == src[0].dtype();
+      });
+  const bool is_all_self_same_dtype =
+      std::all_of(self.cbegin(), self.cend(), [&](const auto& t) -> bool {
+        return t.dtype() == self[0].dtype();
+      });
+  return _check_tensors_share_device_and_dtype(
+             {self, src}, /* skip_dtype_check */ true) &&
+      is_all_src_same_dtype && is_all_self_same_dtype &&
+      _check_tensors_share_sizes_and_strides({self, src});
+}
+
+} // anonymous namespace
 
 #define FOREACH_BINARY_OP_LIST(NAME, DIVISION_OP)                           \
   void foreach_tensor_##NAME##_list_kernel_xpu_(                            \
@@ -156,8 +185,7 @@ void foreach_tensor_copy_list_kernel_xpu_(
     TensorList src,
     bool non_blocking) {
   check_foreach_api_restrictions(self, src);
-  if (!can_use_fast_route(
-          self, src, /* does_op_promote_integer_inputs_to_float */ false)) {
+  if (!can_use_fast_route_for_copy(self, src)) {
     return foreach_tensor_copy_list_kernel_slow_(self, src, non_blocking);
   }
 
