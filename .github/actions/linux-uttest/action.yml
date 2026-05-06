@@ -155,6 +155,25 @@ runs:
           tee ${{ github.workspace }}/ut_log/xpu_distributed/xpu_distributed_test.log
         find ../ -type f -name "*.xml" -exec cp {} ${{ github.workspace }}/ut_log/ \;
 
+    - name: op_p0
+      shell: timeout 72000 bash -eo pipefail {0}
+      if: ${{ inputs.ut_name == 'op_p0' }}
+      env:
+        PYTORCH_TEST_WITH_SLOW: 1
+        LOG_BASE: ${{ github.workspace }}/ut_log/op_p0
+        PYTORCH_ROOT_DIR: ${{ github.workspace }}/pytorch
+        XML_OUTPUT_DIR: ${{ github.workspace }}/ut_log
+        XML_PREFIX: op_p0_with_
+      run: |
+        mkdir -p "${LOG_BASE}"
+        cd "${GITHUB_WORKSPACE}/pytorch/"
+        bash "${GITHUB_WORKSPACE}/torch-xpu-ops/.ci/benchmarks/p0/run_ut.sh" \
+          2> "${LOG_BASE}/op_p0_with_skip_test_error.log" \
+          | tee "${LOG_BASE}/op_p0_with_skip_test.log" || true
+        find . -name "op_p0_with_*.xml" -exec cp {} "${GITHUB_WORKSPACE}/ut_log/" \; 2>/dev/null || true
+        echo "Reproduce: cd $(pwd) && pytest -sv <failed_case>" \
+          | tee "${GITHUB_WORKSPACE}/ut_log/reproduce_op_p0.log"
+
     # Summary
     - name: UT Test Results Summary
       shell: timeout 180 bash -xe {0}
