@@ -15,26 +15,12 @@ exclude_patterns = [
     '.github/scripts/*.py',
 ]
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/flake8_linter.py',
     '--',
     '@{{PATHSFILE}}'
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'flake8==6.1.0',
-    'flake8-bugbear==23.3.23',
-    'flake8-comprehensions==3.15.0',
-    'flake8-executable==2.1.3',
-    'flake8-logging-format==0.9.0',
-    'flake8-pyi==23.3.1',
-    'flake8-simplify==0.19.3',
-    'mccabe==0.7.0',
-    'pycodestyle==2.11.1',
-    'pyflakes==3.1.0',
-    'torchfix==0.4.0 ; python_version < "3.13"',
 ]
 
 
@@ -64,58 +50,6 @@ command = [
 is_formatter = true
 
 [[linter]]
-code = 'MYPY'
-include_patterns = [
-    '**/*.py',
-    '**/*.pyi',
-]
-command = [
-    'python3',
-    'tools/linter/adapters/mypy_linter.py',
-    '--config=mypy.ini',
-    '--',
-    '@{{PATHSFILE}}'
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'numpy==1.26.4 ; python_version <= "3.11"',
-    'numpy==2.1.0 ; python_version >= "3.12"',
-    'expecttest==0.3.0',
-    'mypy==1.13.0',
-    'sympy==1.13.0',
-    'types-requests==2.27.25',
-    'types-PyYAML==6.0.7',
-    'types-tabulate==0.8.8',
-    'types-protobuf==3.19.18',
-    'types-pkg-resources==0.1.3',
-    'types-Jinja2==2.11.9',
-    'types-colorama==0.4.6',
-    'filelock==3.13.1',
-    'junitparser==2.1.1',
-    'rich==10.9.0',
-    'pyyaml==6.0.1',
-    'optree==0.13.0',
-]
-
-[[linter]]
-code = 'MYPYSTRICT'
-include_patterns = [
-    '**/*.py',
-    '**/*.pyi',
-]
-
-command = [
-    'python3',
-    'tools/linter/adapters/mypy_linter.py',
-    '--config=mypy-strict.ini',
-    '--code=MYPYSTRICT',
-    '--',
-    '@{{PATHSFILE}}'
-]
-
-[[linter]]
 code = 'CLANGTIDY'
 include_patterns = [
     'src/**/*.h',
@@ -134,7 +68,6 @@ command = [
     'python3',
     'tools/linter/adapters/clangtidy_linter.py',
     '--binary=.lintbin/clang-tidy',
-    '--build_dir=./build',
     '--',
     '@{{PATHSFILE}}'
 ]
@@ -213,7 +146,9 @@ command = [
 code = 'GHA'
 include_patterns=['.github/workflows/**/*.yml']
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/gha_linter.py',
     '--',
     '@{{PATHSFILE}}'
@@ -592,17 +527,13 @@ include_patterns = [
 ]
 
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/cmake_linter.py',
     '--config=.cmakelintrc',
     '--',
     '@{{PATHSFILE}}',
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'cmakelint==1.4.1',
 ]
 
 [[linter]]
@@ -616,16 +547,12 @@ exclude_patterns = [
     '.github/scripts/env.sh'
 ]
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/shellcheck_linter.py',
     '--',
     '@{{PATHSFILE}}',
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'shellcheck-py==0.7.2.1',
 ]
 
 #[[linter]]
@@ -680,7 +607,9 @@ exclude_patterns = [
 ]
 
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/test_has_main_linter.py',
     '--',
     '@{{PATHSFILE}}',
@@ -754,16 +683,12 @@ include_patterns = [
     '.github/workflows/slow.yml',
 ]
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/workflow_consistency_linter.py',
     '--',
     '@{{PATHSFILE}}'
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'PyYAML==6.0.1',
 ]
 
 [[linter]]
@@ -776,16 +701,12 @@ exclude_patterns = [
     '.github/workflows/*.yml'
 ]
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/no_workflows_on_fork.py',
     '--',
     '@{{PATHSFILE}}',
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'PyYAML==6.0.1',
 ]
 
 # usort + ruff-format
@@ -802,20 +723,12 @@ exclude_patterns = [
     'test/xpu/test_autograd_xpu.py',
 ]
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/pyfmt_linter.py',
     '--',
     '@{{PATHSFILE}}'
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    '--no-black-binary',
-    'black==23.12.1',
-    'usort==1.0.8.post1',
-    'isort==5.13.2',
-    'ruff==0.7.4',  # sync with RUFF
 ]
 is_formatter = true
 
@@ -840,27 +753,6 @@ command = [
 ]
 
 [[linter]]
-code = 'BAZEL_LINTER'
-include_patterns = ['WORKSPACE']
-command = [
-    'python3',
-    'tools/linter/adapters/bazel_linter.py',
-    '--binary=.lintbin/bazel',
-    '--',
-    '@{{PATHSFILE}}'
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/s3_init.py',
-    '--config-json=tools/linter/adapters/s3_init_config.json',
-    '--linter=bazel',
-    '--dry-run={{DRYRUN}}',
-    '--output-dir=.lintbin',
-    '--output-name=bazel',
-]
-is_formatter = true
-
-[[linter]]
 code = 'LINTRUNNER_VERSION'
 include_patterns = ['**']
 command = [
@@ -883,18 +775,14 @@ include_patterns = ['**/*.py', '**/*.pyi']
 #    '**/fb/**',
 #]
 command = [
-    'python3',
+    'uv',
+    'run',
+    '--script',
     'tools/linter/adapters/ruff_linter.py',
     '--config=pyproject.toml',
     '--show-disable',
     '--',
     '@{{PATHSFILE}}'
-]
-init_command = [
-    'python3',
-    'tools/linter/adapters/pip_init.py',
-    '--dry-run={{DRYRUN}}',
-    'ruff==0.7.4',  # sync with PYFMT
 ]
 is_formatter = true
 

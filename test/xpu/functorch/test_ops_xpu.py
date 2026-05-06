@@ -1706,6 +1706,22 @@ class TestOperators(TestCase):
             }
         ),
     )
+    @opsToleranceOverride(
+        "TestOperators",
+        "test_vjpvmap",
+        (
+            tol1(
+                "nn.functional.conv_transpose3d",
+                {torch.float32: tol(atol=5e-5, rtol=5e-6)},
+                device_type="xpu",
+            ),
+            tol1(
+                "nn.functional.conv2d",
+                {torch.float32: tol(atol=5e-5, rtol=5e-6)},
+                device_type="xpu",
+            ),
+        ),
+    )
     def test_vjpvmap(self, device, dtype, op):
         # NB: there is no vjpvmap_has_batch_rule test because that is almost
         # certainly redundant with the vmap_has_batch_rule test in test_vmap.py
@@ -1866,6 +1882,11 @@ class TestOperators(TestCase):
             ),
             tol2(
                 "linalg.pinv", "hermitian", {torch.float32: tol(atol=5e-03, rtol=5e-03)}
+            ),
+            tol1(
+                "nn.functional.conv_transpose3d",
+                {torch.float32: tol(atol=3e-05, rtol=5e-6)},
+                device_type="xpu",
             ),
         ),
     )
@@ -2199,9 +2220,9 @@ class TestOperators(TestCase):
                 else:
                     weight = torch.randn(weight_shape, device=device)
                 target = torch.randint(0, C, target_shape, device=device)
-                target[
-                    0
-                ] = 1  # since we're ignoring index 0, at least one element must be non-zero
+                target[0] = (
+                    1  # since we're ignoring index 0, at least one element must be non-zero
+                )
 
                 fn = functools.partial(
                     torch.nn.functional.nll_loss, target=target, weight=weight, **kwargs
