@@ -470,11 +470,7 @@ void random_from_to_kernel(
       iter.dtype(),
       "random_from_to_kernel_xpu",
       AT_WRAP([&] {
-        if ((std::is_same<scalar_t, int64_t>::value ||
-             std::is_same<scalar_t, double>::value ||
-             std::is_same<scalar_t, float>::value ||
-             std::is_same<scalar_t, at::BFloat16>::value) &&
-            range >= 1ULL << 32) {
+        if (range >= 1ULL << 28) {
           distribution_nullary_kernel<
               scalar_t,
               uint64_t,
