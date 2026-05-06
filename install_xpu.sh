@@ -297,8 +297,12 @@ if [[ -n "$DRIVER" ]]; then
             banner "Install client rolling GPU driver (PPA)"
             apt update
             apt-get install -y software-properties-common
-            add-apt-repository -y ppa:kobuk-team/intel-graphics
             client_pkgs=()
+            if [[ "${VERSION_ID}" != "26.04" ]]; then
+                add-apt-repository -y ppa:kobuk-team/intel-graphics
+            else
+                add-apt-repository -y ppa:kobuk-team/intel-graphics-testing
+            fi
             read -ra client_pkgs <<< "$(_pkgs_client)"
             apt-get install -y "${client_pkgs[@]}"
             ;;
