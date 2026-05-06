@@ -41,8 +41,19 @@ void cumsum_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
 
 void cumprod_kernel(const Tensor& result, const Tensor& self, int64_t dim) {
   auto result_ = contiguous_out_arg(result);
+  constexpr int64_t kLongCumprodThreshold = 1 << 16;
+  const auto wrapped_dim = self.dim() > 0 ? maybe_wrap_dim(dim, self.dim()) : 0;
 
-  launch_cumprod_kernel(*result_, self, dim);
+  if (self.scalar_type() == ScalarType::Float && self.dim() > 0 &&
+      self.size(wrapped_dim) >= kLongCumprodThreshold) {
+    auto self_double = self.to(ScalarType::Double);
+    auto result_double = at::empty(
+        result_->sizes(), result_->options().dtype(ScalarType::Double));
+    launch_cumprod_kernel(result_double, self_double, dim);
+    result_->copy_(result_double);
+  } else {
+    launch_cumprod_kernel(*result_, self, dim);
+  }
 
   if (!result.is_same(*result_)) {
     result.copy_(*result_);
